@@ -4,7 +4,7 @@ import { useDraft, syncStage } from "./settings-draft.js";
 
 const COPY = {
   en: { title: "Notifications", heading: "Quota notices", hint: "One reminder per account, shared by its enabled agents. Exhaustion, pause and auto-continue messages are always kept.",
-    scope: "Rule for", fleet: "Fleet default", backend: "Backend", agent: "Agent", enabled: "Reminders", inherit: "Inherit", on: "On", off: "Off",
+    classic: "ClassicBot", periodExample: "weekly", scope: "Rule for", fleet: "Fleet default", backend: "Backend", agent: "Agent", enabled: "Reminders", inherit: "Inherit", on: "On", off: "Off",
     thresholds: "Remaining percentages", thresholdHint: "Comma-separated, 1–99 (up to 8). Blank inherits; none disables reminders.",
     periods: "Periods", periodHint: "session, hourly, daily, weekly, monthly. Comma-separated; blank inherits; none disables reminders.",
     target: "Send to", general: "General", error: "Check percentages and periods. Changes cannot be saved yet.",
@@ -12,7 +12,7 @@ const COPY = {
     sources: "Only fresh account usage with a known reset is used. Unsupported or stale readings do not send reminders. Enabled agents contribute a union of rules; disabling one does not silence others.",
     effective: "In effect", defaults: "Built-in: on · 10% remaining · weekly · General", saved: "Quota notices" },
   "zh-TW": { title: "通知", heading: "用量提醒", hint: "同一帳號共用一份提醒，由啟用提醒的 Agent 合併規則。額度耗盡、暫停與自動繼續的狀態訊息一律保留。",
-    scope: "設定對象", fleet: "全隊預設", backend: "後端", agent: "Agent", enabled: "提醒", inherit: "繼承", on: "開啟", off: "關閉",
+    classic: "ClassicBot", periodExample: "weekly", scope: "設定對象", fleet: "全隊預設", backend: "後端", agent: "Agent", enabled: "提醒", inherit: "繼承", on: "開啟", off: "關閉",
     thresholds: "剩餘百分比", thresholdHint: "以逗號分隔，1–99，最多 8 個。空白表示繼承；none 表示不提醒。",
     periods: "週期", periodHint: "session（工作階段）、hourly（每小時）、daily（每日）、weekly（每週）、monthly（每月）。以逗號分隔；空白繼承；none 不提醒。",
     target: "傳送至", general: "General", error: "請檢查百分比與週期，目前無法儲存。",
@@ -73,7 +73,7 @@ export function QuotaNoticeSettings({ ctx }) {
   return html`<section class="s-card" id="quota-notices"><h2>${text.heading}</h2><p>${text.hint}</p><p class="muted">${text.defaults}</p>
     ${!supported ? html`<p role="status">${text.old}</p>` : null}
     ${!invalid ? html`<p class="muted" data-quota-effective>${text.effective}: ${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.join(", ") || "—"}</p>` : null}
-    <fieldset disabled=${!supported} style="border:0;padding:0;min-width:0">
+    <fieldset disabled=${!supported} class="s-quota-fields">
       <div class="field"><label for="qn-target">${text.target}</label><select id="qn-target" value=${form.target} onChange=${e => setForm(f => ({ ...f, target: e.target.value }))}>
         <option value="general">${text.general}</option>${Object.entries(instances).filter(([n]) => n !== "general").map(([n, c]) => html`<option value=${n}>${c.display_name || n}</option>`)}
         ${form.target !== "general" && !Object.hasOwn(instances, form.target) ? html`<option value=${form.target}>${form.target}</option>` : null}
@@ -81,10 +81,10 @@ export function QuotaNoticeSettings({ ctx }) {
       <div class="field"><label for="qn-scope">${text.scope}</label><select id="qn-scope" value=${scope} onChange=${e => setScope(e.target.value)}>
         <option value="fleet">${text.fleet}</option>${BACKENDS.map(b => html`<option value=${`backend:${b}`}>${text.backend} · ${b}</option>`)}
         ${Object.entries(instances).map(([n, c]) => html`<option value=${`agent:${n}`}>${text.agent} · ${c.display_name || n}</option>`)}
-        ${Object.entries(classic).map(([n, c]) => html`<option value=${`classic:${n}`}>ClassicBot · ${c.name || c.instanceName || n}</option>`)}
+        ${Object.entries(classic).map(([n, c]) => html`<option value=${`classic:${n}`}>${text.classic} · ${c.name || c.instanceName || n}</option>`)}
       </select></div>
       <div class="field"><label for="qn-enabled">${text.enabled}</label><select id="qn-enabled" value=${value.enabled} onChange=${update("enabled")}><option value="">${text.inherit}</option><option value="on">${text.on}</option><option value="off">${text.off}</option></select></div>
       <div class="field"><label for="qn-thresholds">${text.thresholds}</label><input id="qn-thresholds" value=${value.thresholds} onInput=${update("thresholds")} placeholder="10" /><p class="muted">${text.thresholdHint}</p></div>
-      <div class="field"><label for="qn-periods">${text.periods}</label><input id="qn-periods" value=${value.periods} onInput=${update("periods")} placeholder="weekly" /><p class="muted">${text.periodHint}</p></div>
+      <div class="field"><label for="qn-periods">${text.periods}</label><input id="qn-periods" value=${value.periods} onInput=${update("periods")} placeholder=${text.periodExample} /><p class="muted">${text.periodHint}</p></div>
     </fieldset>${invalid ? html`<p class="feedback error" role="alert">${text.error}</p>` : null}<p class="muted">${text.sources}</p></section>`;
 }
