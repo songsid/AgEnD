@@ -3,7 +3,6 @@ name: concepts
 description: AgEnD product concepts and definitions — fleet, instances, General, tool sets, delivery, schedules, and the rest; the agents' built-in role reference
 roles: [general, worker]
 ---
-
 # AgEnD concepts and definitions
 
 Draft. Each term states what the code on main does today, verified against the
@@ -164,9 +163,21 @@ owner too, with the same authority, checked on every request.
   treated as the owner. It can read `web.token` and mint this session, and it
   can edit `fleet.yaml` anyway. AgEnD defends against remote parties, other OS
   users, links, guests and CSRF; see `docs/SECURITY.md#threat-model`.
-- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`);
-  `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`.
-- Refs: 28c2d3a3, 64a289a0, #3165, #3327.
+- Confirming a held Settings change on a web-only fleet (alpha.7, the user's
+  decision hmsg-468cc290; threat model 64a289a0): the host operator's own
+  session on this computer (its host session, a loopback request with no
+  forwarding header) confirms with Apply now, including the Hub changes that
+  open the fleet outward (pairing, publishing an agent, the browser
+  certificate). Any other admin session on this computer or the LAN confirms
+  with a fresh authenticator code. The code is the authority, bound to that one
+  change, used once, under the same wrong-code limit as signing in from
+  outside, and audited as "Authenticator code". Never over a link (named or
+  quick): there the page says to confirm on the host computer's own browser,
+  or in General. On a chat-connected fleet the primary General's card decides.
+- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`, `hostSessionHere`);
+  `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`;
+  `src/fleet-manager.ts` (`settingsTotpSession`, `settingsTotpConfirm`).
+- Refs: 28c2d3a3, 64a289a0, #3165, #3327, #3352.
 
 ## fleet admin (`admin_users`)
 

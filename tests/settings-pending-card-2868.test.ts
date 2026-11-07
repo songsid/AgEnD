@@ -120,3 +120,46 @@ describe("this browser", () => {
       .toEqual([undefined, true, true]);
   });
 });
+
+// alpha.6 feedback #2c (the user's decision hmsg-468cc290 + the leader's ruling (b)): the authenticator-code confirmation.
+describe("confirm with the authenticator code (web-only fleet, this computer or the LAN)", () => {
+  const DIGEST = "d".repeat(32);
+  const posted: Array<{ url: string; body: any }> = [];
+  const withCode = async (answer: { __status: number; [k: string]: unknown }, lang = "en", totp = "ready") => {
+    posted.length = 0;
+    const c = await card(view({ confirmation: { kind: "host_cli", code: ID, reason: "no_chat" }, totp, confirm_digest: DIGEST }), undefined, lang,
+      { [`/api/settings/pending/${ID}/confirm-totp`]: answer });
+    return c;
+  };
+  it("ready: a code field and Confirm; the code goes with this change's digest", async () => {
+    const c = await withCode({ __status: 202, ok: true, result: "pending_confirmation", pending_change: view({ state: "applying" }) });
+    const input = c.p.root.querySelector(".pending-card .pending-code-input") as any;
+    expect([!!input, c.text()]).toEqual([true, expect.stringContaining("Or confirm it here with the code from your authenticator app.")]);
+    input.value = "123 456"; fire(input, "input"); await settle(3);
+    fire(c.p.root.querySelector(".pending-card form.pending-code")!, "submit"); await settle(6);
+    const call = c.calls.find(([m, u]) => m === "POST" && u.endsWith("/confirm-totp"));
+    expect(call).toBeDefined();
+  });
+  it.each([
+    [{ __status: 401, error: "wrong_code" }, "That code is not right. Use the current code in your authenticator app."],
+    [{ __status: 409, error: "confirmation_changed" }, "This change is no longer the one shown here. Reload the page and check it again."],
+    [{ __status: 429, error: "paused", retryAfterMs: 15 * 60_000 }, "Too many wrong codes. Try again in 15 minutes."],
+  ])("refused (%j): says why, in plain words", async (answer, words) => {
+    const c = await withCode(answer as any);
+    const input = c.p.root.querySelector(".pending-card .pending-code-input") as any;
+    input.value = "123456"; fire(input, "input"); await settle(3);
+    fire(c.p.root.querySelector(".pending-card form.pending-code")!, "submit"); await settle(6);
+    expect(c.text()).toContain(words);
+  });
+  it("over a link (on_host): no field — confirm in the host computer's browser, or in General; never a host command", async () => {
+    const c = await withCode({ __status: 200 }, "en", "on_host");
+    expect([!!c.p.root.querySelector(".pending-code-input"), c.text()]).toEqual([false, expect.stringContaining("Confirm it in the browser on the computer running AgEnD, or in General.")]);
+    const outside = (c.p.root.querySelector(".pending-card")!.textContent ?? "").replace(c.p.root.querySelector(".pending-card details.pending-host")!.textContent ?? "", "");
+    expect(outside).not.toContain("agend settings confirm");
+  });
+  it("no authenticator set up: says so and links to Access & security", async () => {
+    const c = await withCode({ __status: 200 }, "zh-TW", "not_set_up");
+    expect(c.text()).toContain("若要在這裡用代碼確認變更，請先到「存取與安全」設定驗證器 App。");
+    expect((c.p.root.querySelector(".pending-code-setup a") as any).getAttribute("href")).toBe("/settings/access");
+  });
+});
