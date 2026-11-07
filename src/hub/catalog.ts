@@ -20,7 +20,7 @@ import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubExposure, HubExposureSnapshot, HubGrant, HubRequestContext, PersonKey } from "./types.js";
 import type { HubLinkContext } from "./server.js";
-import { personByLogin, personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
+import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 
 /** P1 grants last at most this long; the owner chooses within it. */
 export const GRANT_MAX_MS = 365 * 24 * 60 * 60_000;
@@ -126,40 +126,69 @@ export class HubCatalogService {
       }
       return { mine, askable };
     });
+    // A grant may precede its recipient's first sign-in. Resolve display labels by the grant's immutable key,
+    // without manufacturing a Hub person row. Existing signed-in people's labels retain the normal path.
+    const recipientNames = new Map<string, { login: string; displayName?: string } | null>();
+    for (const exposure of initial.mine) for (const grant of exposure.grants) {
+      const id = personKeyString(grant.subject.person);
+      if (!grant.subjectLogin && !recipientNames.has(id)) recipientNames.set(id, await this.core.current(grant.subject.person));
+    }
+    if (recipientNames.size) await ctx.current();
+    const mine = initial.mine.map(exposure => ({ ...exposure, grants: exposure.grants.map(grant => {
+      const name = recipientNames.get(personKeyString(grant.subject.person));
+      return name ? { ...grant, subjectLogin: name.login, subjectName: name.displayName ?? name.login } : grant;
+    }) }));
     const context = this.core.groupContext(ctx), proofs: HubOperationPermit[] = [], askable: HubCatalogView["askable"][number][] = [];
+    let canAsk = true;
     try { proofs.push(await this.core.groupAsker(person, context)); }
-    catch (e) { if (e instanceof HubProtocolError && e.code === "denied") return { mine: initial.mine, askable }; throw e; }
-    for (const candidate of initial.askable) {
+    catch (e) { if (e instanceof HubProtocolError && e.code === "denied") canAsk = false; else throw e; }
+    for (const candidate of canAsk ? initial.askable : []) {
       try { proofs.push(await this.core.groupExposure(candidate.exposure.id, null, context)); askable.push(candidate); }
       catch (e) { if (!(e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked"))) throw e; }
     }
     for (const proof of proofs) proof.assertCurrent();
     // Recheck ordinary grants after all asynchronous group reads too.
-    return this.core.atomic(db => ({ mine: initial.mine, askable: askable.filter(candidate => {
+    return this.core.atomic(db => ({ mine: mine.filter(candidate => {
+      const row = readExposure(db, candidate.id);
+      return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision;
+    }).map(exposure => ({ ...exposure, grants: exposure.grants.filter(grant => {
+      const row = readGrant(db, grant.id);
+      return row && row.revision === grant.revision && row.state === "active" && row.expires_at > this.core.now();
+    }) })), askable: askable.filter(candidate => {
       const e = readExposure(db, candidate.exposure.id), g = readGrant(db, candidate.grant.id);
       return e && g && exposureOf(e).state === "published" && grantOf(g).revision === candidate.grant.revision
         && grantApplies(grantOf(g), exposureOf(e), person, this.core.now());
     }) }), { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
   }
 
-  /** Grant one known Hub person `ask` on the owner's exposure at the revision the owner saw. */
+  /** Grant one eligible directory person `ask` on the owner's exposure at the revision the owner saw. */
   async grant(ctx: HubRequestContext, input: { exposureId: string; exposureRevision: number; login: string; days: number }): Promise<HubGrant> {
-    const owner = await ctx.requirePerson(), me = personKeyString(owner), now = this.core.now();
+    const owner = await ctx.requirePerson(), me = personKeyString(owner);
     if (!Number.isSafeInteger(input.days) || input.days < 1 || input.days * 86_400_000 > GRANT_MAX_MS) throw new HubProtocolError("invalid");
-    // Unknown, shared or renamed-away labels are refused: a name never stands for an id (personByLogin).
-    const subject = await personByLogin(this.core, input.login);
-    const subjectId = subject ? personKeyString(subject) : null;
-    if (!subject || !subjectId || subjectId === me) throw new HubProtocolError("not-found");
-    await ctx.current();
-    const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: input.exposureId, exposureRevision: input.exposureRevision,
-      approvedBy: owner, approvedAt: now, subject: { kind: "person", person: subject }, permissions: [...PERMISSIONS],
-      startsAt: now, expiresAt: now + input.days * 86_400_000, state: "active" };
-    this.core.atomic((db, tx) => {
+    const login = input.login.trim();
+    if (!login || login.length > 256) throw new HubProtocolError("invalid");
+    // A signed-in person may resolve a recipient only for their own exact published exposure.
+    // Repeat these checks after every directory await, in the transaction that creates the grant.
+    const ownedExposure = (db: Database.Database) => {
       const row = readExposure(db, input.exposureId);
       if (!row || row.owner !== me) throw new HubProtocolError("not-found");
       const exposure = exposureOf(row);
       if (exposure.revision !== input.exposureRevision) throw new HubProtocolError("conflict");
       if (exposure.state !== "published") throw new HubProtocolError("denied");
+      return exposure;
+    };
+    this.core.atomic(ownedExposure);
+    const subject = await this.core.lookupGrantRecipient(login);
+    const subjectId = subject ? personKeyString(subject) : null;
+    if (!subject || !subjectId || subjectId === me) throw new HubProtocolError("not-found");
+    await ctx.current();
+    const now = this.core.now();
+    const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: input.exposureId, exposureRevision: input.exposureRevision,
+      approvedBy: owner, approvedAt: now, subject: { kind: "person", person: subject }, permissions: [...PERMISSIONS],
+      startsAt: now, expiresAt: now + input.days * 86_400_000, state: "active" };
+    this.core.atomic((db, tx) => {
+      if (ctx.isCurrent?.() === false) throw new HubProtocolError("revoked");
+      const exposure = ownedExposure(db);
       for (const g of db.prepare("SELECT id FROM hub_grants WHERE exposure_id=? AND subject=? AND state='active' AND exposure_revision=?").all(exposure.id, subjectId, exposure.revision) as { id: string }[])
         db.prepare("UPDATE hub_grants SET state='revoked', revision=revision+1 WHERE id=?").run(g.id);   // one live grant per person and revision
       db.prepare(`INSERT INTO hub_grants(id, revision, owner, exposure_id, exposure_revision, approved_by, approved_at, subject, permissions, starts_at, expires_at, state)

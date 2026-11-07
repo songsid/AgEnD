@@ -27,7 +27,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "group-lookup" | "group-membership";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -247,7 +247,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     return { ok: true, person: toPerson(current, objectId) };
   };
 
-  const lookup = async (login: string, operation: "initialization-lookup" | "pairing-owner-lookup"): Promise<DirectoryLookupResult> => {
+  const lookup = async (login: string, operation: "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup"): Promise<DirectoryLookupResult> => {
     if (closed) return { ok: false, reason: "unavailable" };
     if (!validLogin(login)) return { ok: false, reason: "bad-input" };
     let service: Session | undefined;
@@ -344,6 +344,9 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     },
     lookupForPairing(login: string): Promise<DirectoryLookupResult> {
       return lookup(login, "pairing-owner-lookup");
+    },
+    lookupForGrant(login: string): Promise<DirectoryLookupResult> {
+      return lookup(login, "grant-recipient-lookup");
     },
 
     async signIn(login: string, password: string): Promise<SignInResult> {
