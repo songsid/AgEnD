@@ -16,6 +16,7 @@ import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
 import { toast } from "/assets/ui-toast.js";
+import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, manageWords } from "./accounts-manage.js";   // #3212 PR 2
 
 register("accounts", {
@@ -131,6 +132,11 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const [removing, setRemoving] = useState(null);   // { cli, row }
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
+  // #3291 review (Prism P2-5 remainder): each dialog this view opens is a new interaction. Add's follow-up (the read,
+  // then Sign in) belongs to the interaction it came from: any later one — another Add, a Remove, Move agents — makes it
+  // do nothing.
+  const interaction = useRef(0);
+  const begin = (fn) => (...a) => { interaction.current++; fn(...a); };
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
   useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
@@ -143,10 +149,10 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
-    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${(row) => setMove({ cli, row })} stageDefault=${stageDefault}
-      onAdd=${() => setAdding(cli)} onRemove=${(row) => setRemoving({ cli, row })} />`)}
+    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
+      onAdd=${begin(() => setAdding(cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
-    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => void accountAdded(adding.backend, name, () => mounted.current)} />` : null}
+    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => { const mine = ++interaction.current; void accountAdded(adding.backend, name, () => mounted.current && interaction.current === mine); }} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
       onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
   </section>`;
@@ -154,11 +160,12 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
 
 /**
  * After + Add account: the view read again (a read begun after the write), then Sign in at once where the dashboard can
- * sign it in (else its row shows the host command) — only while the Accounts view is still on screen (`alive()`).
+ * sign it in (else its row shows the host command) — only while this is still the person's current interaction
+ * (`current()`: the view on screen, no dialog opened since) and no other dialog is open on the page.
  */
-async function accountAdded(backend, name, alive) {
+async function accountAdded(backend, name, current) {
   await refreshAccounts({ fresh: true });
-  if (!alive()) return;
+  if (!current() || shellStore.get().dialog) return;
   const v = accountsStore.get().view, cli = v && Array.isArray(v.clis) ? v.clis.find((c) => c.backend === backend) : null;
   const row = cli ? cli.rows.find((r) => r.scope && r.scope.kind === "host" && r.profile === name) : null;
   if (row && row.signIn) { toast(manageWords.added(name), true); openSignIn({ backend, profile: name }); }

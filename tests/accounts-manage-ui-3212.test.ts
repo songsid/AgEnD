@@ -144,6 +144,31 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     read.release(); await settle(12);
     expect(shell.shellStore.get().dialog).toBe(null);
   });
+  it("P2-5: a newer dialog wins — the read after one Add answering late opens no Sign in over the next Add", async () => {
+    await mount();
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "oldacct");
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "oldacct", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    const read = deferred(); holdGet = read.p;                           // the read after the write is held
+    btn(dialog(), "Add").click(); await settle(8);
+    card("codex").querySelector(".s-account-add").click(); await settle(6);   // the person moves on: another Add
+    await type(dialog().querySelector("#acctAddName"), "draft2");
+    read.release(); await settle(12);
+    expect(shell.shellStore.get().dialog).toBe(null);                    // no Sign in for oldacct
+    expect(dialog()?.querySelector("#acctAddName")?.value).toBe("draft2"); // the new dialog and its draft are untouched
+  });
+  it("P2-5: a Sign in the person opened meanwhile is not replaced by the late one", async () => {
+    await mount();
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "oldacct2");
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "oldacct2", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    const read = deferred(); holdGet = read.p;
+    btn(dialog(), "Add").click(); await settle(8);
+    rowOf("claude-code", "personal").querySelector(".s-actions button").click(); await settle(6);   // Sign in on another row
+    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "personal" });
+    read.release(); await settle(12);
+    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "personal" });
+  });
   it("P2-5: while Remove runs its dialog can't be dismissed, and Move… waits too", async () => {
     await mount();
     const del = deferred();
