@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
@@ -1574,17 +1575,19 @@ function OperationCard({ op, schema }) {
   const needsRestart = rows.some((r) => r.status === "restart-required");
   const failedRows = rows.some((r) => r.status === "failed");
   const mismatch = schema && schema.fleet_signature_mismatch;
+  // S-92: a fleet with no chat connection — its restart is recorded in the dashboard's Notices, not a chat channel.
+  const webOnly = useStore(appStore).connections === 0;
   const title = op.phase === "failed" ? tn("applyPartial") : fleetRestarting ? tn("restartFleetTitle") : busy ? tn("applying")
     : failedRows ? tn("applyPartial") : needsRestart ? tn("applyRestartNeeded") : tn("applyDone");
   const note = op.phase === "failed" ? (op.error === "busy" ? tn("applyBusy") : op.error ? tn("applyStepFailed", applyErrorText(op.error)) : "")
     : fleetRestarting ? tn("restartFleetWaiting") : op.lostJob ? tn("applyLostJob")
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
-    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
+    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn(webOnly ? "applyRestartHintWebOnly" : "applyRestartHint") : "";
   const lease = useLease("operation-card");
   const restart = async () => {
     // The yes is for the job this card shows: it restarts AgEnD for that job only, and only while the card stands.
     const forJob = { opId: op.id, jobId: op.job && op.job.id };
-    if (!(await ask(tn("restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
+    if (!(await ask(tn(webOnly ? "restartFleetConfirmWebOnly" : "restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
     if (!lease.current()) return;
     setRestarting(true);
     const res = await restartFleet(forJob);

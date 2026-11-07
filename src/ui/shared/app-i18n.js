@@ -101,6 +101,8 @@ register("app", {
     opFailed: "Settings were not applied", openSettings: "Open Settings",
     restartWaiting: "{0} saved change(s) take effect after AgEnD restarts", restartNow: "Restart now", restartLater: "Later",
     restartConfirm: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. A notice is posted to your chat channel.",
+    // S-92: a fleet with no chat connection — its restart is recorded in the dashboard's Notices instead.
+    restartConfirmWebOnly: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. It is recorded in this dashboard's Notices.",
     restartOnHost: "Restart AgEnD to use them.",
     restartOnHostChat: "Send /restart in General to use them.",
     restartRefused: "Restart refused: {0}",
@@ -149,6 +151,7 @@ register("app", {
     opFailed: "設定沒有套用", openSettings: "開啟設定",
     restartWaiting: "{0} 項已儲存的變更要在 AgEnD 重新啟動後才會生效", restartNow: "立即重新啟動", restartLater: "稍後",
     restartConfirm: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。聊天頻道會收到一則通知。",
+    restartConfirmWebOnly: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。這次重新啟動會記錄在這個儀表板的通知中。",
     restartOnHost: "請重新啟動 AgEnD 讓它們生效。",
     restartOnHostChat: "請在 General 傳 /restart 讓它們生效。",
     restartRefused: "重新啟動被拒絕：{0}",

@@ -39,6 +39,8 @@ export type UpdateProgressStage =
 export type UpdateProgressOperation = "update" | "full-restart";
 
 export interface UpdateProgressTarget {
+  /** S-92: "web" — a web-only fleet's Settings restart (no chat message; its notices are the dashboard's). */
+  surface?: "web";
   adapterId: string;
   chatId: string;
   threadId?: string;
