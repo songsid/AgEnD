@@ -25704,6 +25704,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // settles it (settleAfterRestart only touches running jobs), a failed launch finishes it.
       current.status = "running";
       delete current.finishedAt;
+      current.restartStartedAt = Date.now();         // its time counts from now, not from the Save (#3373 review P3)
       current.restart_key = key;
       current.deadlineMs = SELF_RESTART_DEADLINE_MS;
     });

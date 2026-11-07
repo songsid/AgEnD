@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { APPLY_FLEET_TARGET, ApplyJobStore, type ApplyJob } from "../src/apply-job.js";
+import { APPLY_FLEET_TARGET, ApplyJobStore, viewOf, type ApplyJob } from "../src/apply-job.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
@@ -829,6 +829,20 @@ describe("#3373 review: the web restart's trace is on disk, its job settles, a l
       expect(texts(any).includes(failText)).toBe(failed);
       expect(fm.applyJobs.get(accepted.jobId)!.status).toBe(failed ? "failed" : "running");
     });
+});
+
+describe("#3373 review P3: a restart's time counts from when it was asked, not from the Save it uses", () => {
+  it("a Save from twenty minutes ago, restarted now: not 'still restarting', and its time is the restart's", async () => {
+    const dir = tempDir();
+    const { fm, job } = await fleetWithPendingRestart(dir);
+    fm.applyJobs.update(job.id, (j: ApplyJob) => { j.startedAt -= 20 * 60_000; if (j.finishedAt) j.finishedAt -= 20 * 60_000; });
+    expect((await fm.requestSettingsSelfRestart(job.id, "key-3373-p3-age")).ok).toBe(true);
+    const view = viewOf(fm.applyJobs.get(job.id)!);
+    expect([view.status, view.overdue, view.message, view.elapsed_ms < 60_000]).toEqual(["running", false, "", true]);
+    // …and past the restart's own deadline it says so, counted from the restart.
+    const late = viewOf(fm.applyJobs.get(job.id)!, fm.applyJobs.get(job.id)!.restartStartedAt! + 301_000);
+    expect([late.overdue, late.message]).toEqual([true, "Still restarting (301s)"]);
+  });
 });
 
 describe("S-92: POST /api/settings/restart-fleet with pending: true", () => {

@@ -88,6 +88,11 @@ export interface ApplyJob {
    * to is about to be replaced — a retry after the restart has to find it.
    */
   restart_key?: string;
+  /**
+   * #3373 review P3: when its restart was asked for. A restart may use a Save's job from long before (the newest that
+   * carries the pending changes): its "still restarting" time counts from here, never from the Save.
+   */
+  restartStartedAt?: number;
 }
 
 interface JobFile {
@@ -109,7 +114,7 @@ export interface ApplyJobView extends ApplyJob {
 }
 
 export function viewOf(job: ApplyJob, now = Date.now()): ApplyJobView {
-  const elapsed = Math.max(0, (job.finishedAt ?? now) - job.startedAt);
+  const elapsed = Math.max(0, (job.finishedAt ?? now) - (job.restartStartedAt ?? job.startedAt));
   const overdue = !isTerminal(job.status) && elapsed > job.deadlineMs;
   return {
     ...job,
