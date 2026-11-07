@@ -14,6 +14,7 @@ const disk = () => yaml.load(readFileSync(file, "utf8")) as any;
 const seed = () => {
   const cfg = disk();
   cfg.defaults ||= {};
+  cfg.defaults.auto_pause_after = 0;
   cfg.defaults.quota_notice = { enabled: true, thresholds: [10], periods: ["weekly"], target: "general", backends: { "kiro-cli": { periods: ["monthly"] } } };
   cfg.instances.worker = { working_directory: process.env.AGEND_HOME!, backend: "codex", display_name: "Quota worker" };
   writeFileSync(file, yaml.dump(cfg));
@@ -22,7 +23,7 @@ const seed = () => {
 };
 const failures: string[] = [], results: unknown[] = [];
 const check = (name: string, value: boolean) => { if (!value) failures.push(name); };
-const old = (f: string) => execFileSync("git", ["show", `5a45a0259:src/ui/${f}`], { encoding: "utf8" });
+const old = (f: string) => execFileSync("git", ["show", `89723c726:src/ui/${f}`], { encoding: "utf8" });
 async function page(c: any, skew?: "strings" | "schema" | "panel" | "route") {
   const p = await freshPage(fx, c), errors: string[] = [];
   p.page.on("pageerror", (e: unknown) => errors.push(String(e)));
@@ -37,7 +38,7 @@ async function page(c: any, skew?: "strings" | "schema" | "panel" | "route") {
 }
 const save = async (p: any, language: string, urls = ["fleet/defaults", "fleet/instances/worker", "classic/channels/fixture"]) => {
   const writes = urls.map(url => p.waitForResponse((r: any) => ["PUT", "PATCH"].includes(r.request().method()) && r.url().endsWith("/api/settings/" + url), { timeout: 15_000 }));
-  await p.locator(".btn-primary", { hasText: language === "en" ? /^Save/ : /^儲存/ }).last().click();
+  await p.locator(".s-pending .btn-primary", { hasText: language === "en" ? /^Save/ : /^儲存/ }).last().click();
   for (const response of await Promise.all(writes)) { if (!response.ok()) throw new Error(`${response.status()} ${await response.text()}`); }
   for (let n = 0; n < 100; n++) {
     const result = await p.evaluate(async () => (await import("/assets/app-store.js")).appStore.get().settingsOp);
@@ -86,7 +87,9 @@ try {
   {
     const p = await page({ device: "desk", theme: "light", lang: "en" }, "panel");
     const before = disk().defaults.quota_notice;
-    await p.page.locator("#g-auto").fill("12"); await save(p.page, "en", ["fleet/defaults"]);
+    await p.page.locator("#g-auto").fill("12");
+    if (process.env.DEBUG_NET) p.page.on("request", (r: any) => { if (r.method() !== "GET") console.log("NET", r.method(), r.url(), r.postData()); });
+    await save(p.page, "en", ["fleet/defaults"]);
     check("old panel unrelated save retains quota rules", JSON.stringify(disk().defaults.quota_notice) === JSON.stringify(before));
     check("old panel: no page errors", !p.errors.length); await p.ctx.close();
   }

@@ -31,6 +31,16 @@ describe("quota reminder integration", () => {
     fm.shuttingDown = true;
     expect(fm.quotaNoticePolicy().subscriptions).toEqual([]);
   });
+  it("does not treat Windows or paired-machine credentials as the local usage account", () => {
+    const fm = Object.create(FleetManager.prototype) as any;
+    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true, topic_id: 1 },
+      local: { backend: "codex", runtime: "windows" }, paired: { backend: "codex", runtime: "wsl", machine_id: "fixture-pc" }, host: { backend: "codex" } } };
+    fm.getInstanceStatus = () => "running";
+    fm.webOnlyPromptPlace = () => null; fm.getInstanceAdapterId = () => "fixture";
+    fm.getChannelConfig = () => ({ group_id: "fixture-group" }); fm.getAdapterForInstance = () => ({});
+    expect(fm.quotaNoticePolicy().subscriptions).toHaveLength(2); // General's Claude login plus host Codex.
+    expect(fm.quotaNoticePolicy().subscriptions.map((s: any) => s.account)).toEqual(["claude-code:host:", "codex:host:"]);
+  });
   it("feeds completed cache reads once, isolates observer failure, and does not refetch on cache hits", async () => {
     vi.stubEnv("AGEND_HOME", scratch());
     const observer = vi.fn(), fetch = vi.fn(async () => ({ fetchedAt: new Date().toISOString(), providers: [] }));
