@@ -125,6 +125,64 @@ describe("confirming with the code", () => {
   });
 });
 
+describe("#3355 review (Prism P2): the code's authority is the app it came from, through execution", () => {
+  const confirmHeld = (f: ReturnType<typeof fleet>) => {
+    const s = f.session(), p = f.propose();
+    const r = f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id));
+    expect(r.label).toBe("Authenticator code");
+    return { p, r, decided: f.store.decide(p.view.id, "confirm", { ...r, via: "web" }) };
+  };
+  /** Set up another app the way Access & security does: begin, then its first code. */
+  const reenroll = (f: ReturnType<typeof fleet>) => {
+    const access = f.any.webRemoteAccess(), handle = "a".repeat(16);
+    const { secret } = access.beginEnrollment(handle, "owner");
+    expect(access.confirmEnrollment(handle, hotp(base32Decode(secret)!, totpStep(Date.now())))).toBe("ok");
+  };
+  it("control: the same app still set up when the change runs — applied", async () => {
+    const f = fleet(); f.hold();
+    const { p, decided } = confirmHeld(f);
+    p.release(); await decided;
+    expect([p.apply.mock.calls.length, f.store.get(p.view.id, "browser")!.state]).toEqual([1, "applied"]);
+  });
+  it("the app replaced while the change waits: not applied (stale)", async () => {
+    const f = fleet(); f.hold();
+    const { p, decided } = confirmHeld(f);
+    reenroll(f);
+    p.release(); await decided;
+    expect([p.apply.mock.calls.length, f.store.get(p.view.id, "browser")!.state]).toEqual([0, "stale"]);
+  });
+  it("the app removed and another set up while the change waits: not applied (stale)", async () => {
+    const f = fleet(); f.hold();
+    const { p, decided } = confirmHeld(f);
+    expect(f.any.webRemoteAccess().remove()).toBe(true);
+    reenroll(f);
+    p.release(); await decided;
+    expect([p.apply.mock.calls.length, f.store.get(p.view.id, "browser")!.state]).toEqual([0, "stale"]);
+  });
+  it("ended for good: the very same app back afterwards does not revive it", () => {
+    const f = fleet(), s = f.session(), p = f.propose();
+    const r = f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id));
+    expect(r.current()).toBe(true);
+    const access = f.any.webRemoteAccess(), saved = access.enrollment;
+    expect(access.remove()).toBe(true);
+    expect(r.current()).toBe(false);
+    // The original file back, read again: the same enrollment as the code came from.
+    writeFileSync(join(f.fm.dataDir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+    f.any.webRemoteAccessState = null;
+    expect(f.any.webRemoteAccess().enrollment).toBe(saved);
+    expect(r.current()).toBe(false);
+  });
+  it("the enrollment id: null with no app, another for another app, never the secret", () => {
+    const f = fleet(), access = f.any.webRemoteAccess(), first = access.enrollment;
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(first).not.toContain(SECRET.toLowerCase());
+    reenroll(f);
+    expect(access.enrollment).not.toBe(first);
+    access.remove();
+    expect(access.enrollment).toBeNull();
+  });
+});
+
 describe("#3352 security review: binding, shared budget, and who else", () => {
   it("point 2: a code is bound to the change the page showed — a different change's digest is refused before the code is used", () => {
     const f = fleet(), s = f.session(), a = f.propose(), b = f.propose("/api/settings/hub/retention", { contentDays: 14, eventDays: 60, revision: 1 }, {});

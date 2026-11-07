@@ -3249,11 +3249,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * alpha.6 feedback #2c — the user's decision hmsg-468cc290 (option A; decisions 28c2d3a3/0471da59 keep the second factor): on a
    * web-only fleet, a pending change can be confirmed on THIS computer's own page with the owner's authenticator code, by a
-   * local admin session that is not the host operator (who already has "Apply now"). Never over a public link, never from the
-   * LAN, never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
+   * local admin session that is not the host operator (who already has "Apply now"), on this computer or the LAN. Never over
+   * a link (named or quick), never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
    * the same store as signing in from outside (#3008): each time step once, the fleet-wide wrong-code limit. Asked again at
-   * execution (`current`): the same session, still an admin here on this computer, the fleet still web-only, the app still
-   * set up. Audited by the store under its own label; a correct and a refused use are logged.
+   * execution (`current`): the same session, still an admin here (this computer or the LAN), the fleet still web-only, the
+   * same app still set up (not replaced, nor removed and set up again). Audited by the store under its own label; a correct and a refused use are logged.
    */
   private settingsTotpSession(req: IncomingMessage): { handle: string; current(): boolean } | null {
     // Who is offered the code (the leader's ruling, (b) — Fable's view; threat model 64a289a0): on a web-only fleet, an admin
@@ -3291,10 +3291,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #3352 security review, point 2: the code confirms exactly the change the page showed — checked before the code is.
     if (digest !== store.confirmDigest(id)) return { error: "changed" };
     const shown = store.inspectHost(id)?.view.summary ?? [];
+    // #3355 review (Prism P2): the code's authority is the app it came from. Bound to that enrollment through execution — an
+    // app replaced, or removed and set up again, while the change waits ends it, for good (a later match never revives it).
+    const enrollment = access.enrollment;
     const v = access.verify(code);
     if (v.kind === "ok") {
+      if (!enrollment) return { error: "not_here" };
       this.logger.info({ id, handle: local.handle }, "Settings change confirmed on this computer with the authenticator code");
-      return { label: t("settings_confirm.totp_label"), current: local.current, audit: { confirmed_with: "authenticator_code", summary: shown },
+      let lost = false;
+      const current = (): boolean => {
+        if (!lost && !(local.current() && this.webRemoteAccess()?.enrollment === enrollment)) lost = true;
+        return !lost;
+      };
+      return { label: t("settings_confirm.totp_label"), current, audit: { confirmed_with: "authenticator_code", summary: shown },
         done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed with the authenticator code: done"); } };
     }
     if (v.kind === "paused") return { error: "paused", retryAfterMs: v.retryAfterMs };
