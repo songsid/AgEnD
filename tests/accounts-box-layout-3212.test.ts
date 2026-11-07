@@ -1,8 +1,8 @@
 /**
- * AGEND-101 + AGEND-105: Settings → Accounts, box layout (src/ui/accounts-view.js, accounts-keepalive.js and their stylesheets, over a faked GET /ui/accounts).
+ * #3212 + #3321: Settings → Accounts, box layout (src/ui/accounts-view.js, accounts-keepalive.js and their stylesheets, over a faked GET /ui/accounts).
  * Each account is a box with three layers: the title bar (name, state, default tag · compact buttons without a trailing "…"), the meta bar
  * (masked email · plan, "used by" pill), the usage block (the short "5h" window and the week) and Keep sign-in alive as the box's foot.
- * AGEND-105 (the upstream UI rules, songsid/AgEnD#3321: shared components, theme variables, no one-off styles): the windows are the Usage panel's own
+ * #3321 (the upstream UI rules, songsid/AgEnD#3321: shared components, theme variables, no one-off styles): the windows are the Usage panel's own
  * `CompactMeter`, "used by N agents ▾" is the shared `Menu` (one item per agent, choosing it opens that agent's settings), the foot's explanations are
  * `InfoTip` (hover, focus or a tap), the CLI's block is a `.card`, and the stylesheets hold no colour of their own — only the theme's variables (tokens.css),
  * layers floating over the box (position: absolute), the box overflow visible, and no inline style (CSP style-src 'self'). Fixtures only (example.com).
@@ -58,7 +58,7 @@ const wins = (backend: string, acct: string) => rowOf(backend, acct).querySelect
 /** A meter's words: its name, its percent and its reset as drawn ("↻ 3h"; the full "(resets in 3h 1m)" after it is for a screen reader only). */
 const meterText = (w: any) => [text(w.querySelector(".u-cm-tag")), text(w.querySelector(".u-cm-pct")), text(w.querySelector(".u-cm-reset")).replace(/ \(.*\)$/, "")];
 
-describe("the account box: three layers (AGEND-101)", () => {
+describe("the account box: three layers (#3212)", () => {
   it("title bar: name, state and the default tag on the left, the buttons on the right; meta bar: who, used by; usage: the week", async () => {
     await mount();
     const work = rowOf("claude-code", "work");
@@ -117,7 +117,7 @@ describe("the account box: three layers (AGEND-101)", () => {
   });
 });
 
-describe("“used by N agents ▾”: the shared Menu, one item per agent, each opening that agent's settings (AGEND-105)", () => {
+describe("“used by N agents ▾”: the shared Menu, one item per agent, each opening that agent's settings (#3321)", () => {
   const list = (backend: string, acct: string) => rowOf(backend, acct).querySelector(".menu-list");
   const items = (backend: string, acct: string) => list(backend, acct).querySelectorAll('[role="menuitem"]');
   it("a static pill when no agent uses the account (nothing to open); a Menu button when agents do", async () => {
@@ -198,7 +198,7 @@ describe("“used by N agents ▾”: the shared Menu, one item per agent, each 
   });
 });
 
-describe("the usage block: the short window and the week, as CompactMeter (AGEND-101 phase 2, AGEND-105)", () => {
+describe("the usage block: the short window and the week, as CompactMeter (#3212, #3321)", () => {
   const short = (percent: number, extra: Record<string, unknown> = {}) => ({ percent, windowMs: 5 * 3_600_000, resetsAt: new Date(Date.now() + 3 * 3_600_000 + 30_000).toISOString(), ...extra });
   const level = (w: any) => w.querySelector(".u-cm-fill").className.split(" ").filter((c: string) => /^(warn|crit)$/.test(c));
 
@@ -295,7 +295,7 @@ describe("the usage block: the short window and the week, as CompactMeter (AGEND
   });
 });
 
-describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (AGEND-101, AGEND-105)", () => {
+describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3212, #3321)", () => {
   const ka = (backend: string, acct: string) => rowOf(backend, acct).querySelector(".s-account-keepalive");
   const tipBtn = (tip: any) => tip.querySelector(".s-tipbtn");
   it("the explanation is the shared InfoTip beside its switch (a button described by a tooltip); the fallback switch has its own", async () => {
@@ -348,7 +348,7 @@ describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (AG
   });
 });
 
-describe("the stylesheets: the theme's colours only, layers float, the box does not clip them (AGEND-101, AGEND-105)", () => {
+describe("the stylesheets: the theme's colours only, layers float, the box does not clip them (#3212, #3321)", () => {
   const css = readFileSync(new URL("../src/ui/shared/accounts.css", import.meta.url), "utf8");
   const ka = readFileSync(new URL("../src/ui/shared/accounts-keepalive.css", import.meta.url), "utf8");
   const rule = (sheet: string, selector: string) => {

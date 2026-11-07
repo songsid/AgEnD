@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TmuxTerminalBackend } from "../src/web-terminal.js";
 
 /**
- * AGEND-101: a sign-in's terminal output reaches AgEnD through a FIFO that tmux's pipe-pane writes to. With `cat >> fifo`, GNU cat
+ * #3212: a sign-in's terminal output reaches AgEnD through a FIFO that tmux's pipe-pane writes to. With `cat >> fifo`, GNU cat
  * uses splice(), and on Linux 6.6 its second splice() takes the FIFO's lock and then sleeps on tmux's socket waiting for more output while
  * holding it — so AgEnD's own read() of the FIFO blocks in the kernel (state D, wchan pipe_read) and the whole process freezes as soon as
  * a login prints its first lines and waits for input. `dd` copies with read() + write() and never holds the lock.
@@ -33,7 +33,7 @@ exit 0
   return { dir, bin, calls: () => readFileSync(log, "utf8").split("\n").filter(Boolean) };
 }
 
-describe("the terminal's output pipe uses dd, not cat (AGEND-101)", () => {
+describe("the terminal's output pipe uses dd, not cat (#3212)", () => {
   it("pipe-pane runs `dd bs=65536 status=none >> <the FIFO start() made>` and never cat", async () => {
     const t = recordingTmux();
     const backend = new TmuxTerminalBackend(t.bin);

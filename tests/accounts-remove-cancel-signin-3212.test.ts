@@ -1,5 +1,5 @@
 /**
- * AGEND-101: Remove… on an account whose sign-in is still running (src/ui/accounts-manage.js through accounts-view.js, over a faked /ui/accounts).
+ * #3212: Remove… on an account whose sign-in is still running (src/ui/accounts-manage.js through accounts-view.js, over a faked /ui/accounts).
  * The server refuses ("signing_in": a sign-in for this account is running). The dialog now offers “Cancel sign-in and remove” beside Remove — only after that
  * refusal, only for an account on this host (a paired computer's sign-in is cancelled from that computer's side), and only while the name is still the one
  * typed. It cancels the running sign-in, then removes the account (the same DELETE, the same typed name). Both languages. Fixtures only (example.com).
@@ -60,7 +60,7 @@ async function removeChy(reply: typeof answer) {
   btn(dialog(), "Remove").click(); await settle(10);
 }
 
-describe("Remove on an account whose sign-in is running (AGEND-101)", () => {
+describe("Remove on an account whose sign-in is running (#3212)", () => {
   it("not offered at first; after the “signing in” refusal it is, beside Remove", async () => {
     await mount();
     rowOf("CHY").querySelector(".s-account-remove").click(); await settle(6);

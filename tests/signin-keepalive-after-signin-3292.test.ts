@@ -1,5 +1,5 @@
 /**
- * AGEND-101: when a sign-in ends, FleetManager has Keep sign-in alive look at that one account once (signin-keepalive-signed-in-101.test.ts holds what
+ * #3292: when a sign-in ends, FleetManager has Keep sign-in alive look at that one account once (signin-keepalive-signed-in-3292.test.ts holds what
  * tick({ only }) then does), so the Accounts row does not keep the "needs signing in again" it recorded before the sign-in.
  * - keepAliveAfterSignIn(backend, profile): Claude Code and Codex only; asks for that profile (null: the default sign-in); never awaited and never allowed
  *   to fail (a rejection is logged at debug level, not left unhandled);

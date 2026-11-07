@@ -48,7 +48,7 @@ export interface AccountRow {
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   /** The week's usage (the window closest to a week; see `weeklyUsage`). */
   usage?: AccountUsage;
-  /** AGEND-101: the short window's usage (the "5h" one; see `shortUsage`), beside the week's. Absent when the CLI reports none. */
+  /** #3212: the short window's usage (the "5h" one; see `shortUsage`), beside the week's. Absent when the CLI reports none. */
   shortUsage?: AccountUsage;
   /** #3292: "Keep sign-in alive" (Claude Code and Codex host rows): the setting, its last run, the dates the sign-in's file says. */
   keepAlive?: AccountKeepAlive;
@@ -88,7 +88,7 @@ export interface AccountsInput {
   fleetDefaults: ReadonlyMap<string, string>;
   /** Weekly (or longer) usage per row, by `backend\0profile` ("" for the default). */
   usage?: ReadonlyMap<string, AccountUsage>;
-  /** AGEND-101: the short window's usage per row, by the same `backend\0profile` key. */
+  /** #3212: the short window's usage per row, by the same `backend\0profile` key. */
   shortUsage?: ReadonlyMap<string, AccountUsage>;
   /** #3190 Part 3c: paired computers' accounts, as rows under their own scope. Absent: no computer. */
   machines?: readonly MachineAccountsInput[];
@@ -221,7 +221,7 @@ export function weeklyUsage(provider: { metrics?: ReadonlyArray<Record<string, u
 }
 
 /**
- * AGEND-101: the usage row's short window ("5h"): the percent metric whose window is under two days — the shortest one when
+ * #3212: the usage row's short window ("5h"): the percent metric whose window is under two days — the shortest one when
  * there are several — as the usage panel's compact line picks it (`compactSlots`). Never a per-model quota, and never a
  * window that has reset since the read (its percent would be the old window's). Same shape as `weeklyUsage`.
  */

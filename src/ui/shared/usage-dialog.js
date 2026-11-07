@@ -241,7 +241,7 @@ function resetClock(m, now = Date.now()) {
  * when this window resets ("↻ 8m"; the user's ask, 2026-10-23: a week's reset was hidden behind the 5 h one's). A pool's
  * line (#2240): the pool's name in place of the window, the reset of the window its percent is, every window (with its
  * reset time) in the tooltip.
- * Exported (AGEND-105) so Settings → Accounts draws its 5h / week windows with this same meter and thresholds (70% / 90%): `m` needs
+ * Exported (#3321) so Settings → Accounts draws its 5h / week windows with this same meter and thresholds (70% / 90%): `m` needs
  * `used` (0–100), `resetsAt` and either `windowMs` or `label`; `tag` overrides the window's few characters.
  */
 export function CompactMeter({ m, tag, title }) {
