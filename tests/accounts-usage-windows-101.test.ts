@@ -89,7 +89,7 @@ describe("FleetManager.accountsView takes both windows from one usage snapshot (
     const path = join(dir, "fleet.yaml");
     writeFileSync(path, `defaults:\n  backend: claude-code\ninstances:\n  dev:\n    working_directory: ${work}\n`);
     const fm = new FleetManager(dir); fm.loadConfig(path);
-    vi.spyOn(fm as never, "refreshSignInIdentities").mockImplementation(() => {});
+    vi.spyOn(fm as any, "refreshSignInIdentities").mockImplementation(() => {});
     const pid = usageProviderIdForBackend("claude-code")!;
     expect(pid).toBeTruthy();
     vi.mocked(getUsageSnapshot).mockResolvedValue({ providers: [
