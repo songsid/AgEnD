@@ -365,6 +365,9 @@ export interface SettingsChangeDiff {
    * (#2170), whatever else the change holds. Judged from the config before and after (prepareSettingsEffect), never the body.
    */
   noSelfConfirm?: true;
+  /** B2b (the leader's ruling on #3352 F1): a noSelfConfirm change that this computer's host operator, on its own local
+   *  session, may still Apply now (the outward Hub changes on a web-only fleet; threat model A). */
+  hostLocalConfirm?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {

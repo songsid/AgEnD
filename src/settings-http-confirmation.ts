@@ -31,8 +31,8 @@ export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse,
  * execution — or why not.
  */
 export interface SettingsTotpConfirmation {
-  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | null;
-  confirm(req: IncomingMessage, id: string, code: string): SettingsSelfConfirmation | { error: "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number };
+  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null;
+  confirm(req: IncomingMessage, id: string, code: string, digest: string): (SettingsSelfConfirmation & { audit?: Record<string, unknown> }) | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number };
 }
 function json(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.headersSent) return;
@@ -60,12 +60,7 @@ export class SettingsHttpConfirmation {
     const path = url.pathname, method = req.method ?? "GET";
     const pending = path.match(/^\/api\/settings\/pending(?:\/([0-9a-f]{32}))?$/);
     // #2868: whether this browser could confirm a pending one itself now (#2170's own checks, asked at each read).
-    const mine = (view: SettingsPendingView): SettingsPendingView => {
-      if (view.state !== "pending") return view;
-      if (this.options.selfConfirm?.(req, view.id)) return { ...view, can_self_confirm: true };
-      const totp = this.options.totp?.state(req, view.id) ?? null;
-      return totp ? { ...view, totp } : view;
-    };
+    const mine = (view: SettingsPendingView): SettingsPendingView => this.forPage(req, view);
     if (pending && (method === "GET" || method === "DELETE" && pending[1])) {
       const principal = this.options.principal(req);
       if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
@@ -94,15 +89,17 @@ export class SettingsHttpConfirmation {
       if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
       if (!this.options.totp || gatewayRequestContext(req)) { json(res, 403, { error: "totp_confirm_unavailable" }); return true; }
       void readBoundedWebBody(req, 1024).then(raw => {
-        let code: unknown; try { code = JSON.parse(raw.toString("utf8") || "{}")?.code; } catch { code = undefined; }
-        if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code_required" }); return; }
+        let code: unknown, digest: unknown;
+        try { const b = JSON.parse(raw.toString("utf8") || "{}"); code = b?.code; digest = b?.digest; } catch { code = undefined; }
+        if (typeof code !== "string" || code.length > 32 || typeof digest !== "string" || digest.length > 64) { json(res, 400, { error: "code_required" }); return; }
         if (!principal.current()) { json(res, 401, { error: "session_required" }); return; }
         const view = this.store.get(totp[1], principal.id);
         if (!view) { json(res, 404, { error: "not_found" }); return; }
         if (view.state !== "pending") { json(res, 409, { error: "confirmation_not_pending" }); return; }
-        const result = this.options.totp!.confirm(req, view.id, code);
+        const result = this.options.totp!.confirm(req, view.id, code, digest);
         if ("error" in result) {
           if (result.error === "paused") { res.setHeader("Retry-After", String(Math.ceil((result.retryAfterMs ?? 60_000) / 1000))); json(res, 429, { error: "paused", retryAfterMs: result.retryAfterMs ?? null }); return; }
+          if (result.error === "changed") { json(res, 409, { error: "confirmation_changed" }); return; }
           json(res, result.error === "wrong" ? 401 : result.error === "unavailable" ? 503 : 403, { error: result.error === "wrong" ? "wrong_code" : result.error === "unavailable" ? "unavailable" : "totp_confirm_unavailable" });
           return;
         }
@@ -156,7 +153,7 @@ export class SettingsHttpConfirmation {
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
-      ...(effect.diff.noSelfConfirm ? { noSelfConfirm: true as const } : {}),
+      ...(effect.diff.noSelfConfirm ? { noSelfConfirm: true as const } : {}), ...(effect.diff.hostLocalConfirm ? { hostLocalConfirm: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
       unchanged: async () => (await this.options.baseline()).fingerprint === baseline.fingerprint && settingsFingerprint(this.options.snapshot()) === snapshot,
@@ -207,6 +204,16 @@ export class SettingsHttpConfirmation {
       json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.store.get(result.view.id, principal.id) ?? result.view });
       return;
     }
-    json(res, 202, { ok: true, result: "pending_confirmation", pending_change: result.view });
+    // B2b: the first answer already says how this page may confirm it (Apply now, the code, or where), not only the next read.
+    json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.forPage(req, result.view, false) });
+  }
+  /** #2868 / B2b: how THIS request's page may confirm a pending change — Apply now, the authenticator code (with the digest
+   *  it is bound to), or where to go — asked at each read. */
+  private forPage(req: IncomingMessage, view: SettingsPendingView, self?: false): SettingsPendingView {
+    if (view.state !== "pending") return view;
+    // (`self` false: the caller has just asked — it is not — so it is not asked twice.)
+    if (self !== false && this.options.selfConfirm?.(req, view.id)) return { ...view, can_self_confirm: true };
+    const totp = this.options.totp?.state(req, view.id) ?? null;
+    return totp ? { ...view, totp, ...(totp === "ready" ? { confirm_digest: this.store.confirmDigest(view.id) ?? undefined } : {}) } : view;
   }
 }
