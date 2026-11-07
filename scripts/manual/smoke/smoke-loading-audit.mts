@@ -54,6 +54,13 @@ try {
     const tag = `${c.device}-${c.lang}`;
     const { ctx, page } = await fx.page(c, { path: `/ui/chat/${agent}` });
     await throttle(page);
+    if (process.env.MODE === "accounts") {
+      await navigateHold(page, tag, "accounts", "/settings/agents", u => u.pathname === "/ui/accounts", async () => {
+        await page.locator(".s-ai-accounts > summary").click();
+        await page.locator(".s-ai-accounts .s-disclosure-body").evaluate((el: HTMLElement) => el.scrollIntoView({ block: "start" }));
+      });
+      await ctx.close(); continue;
+    }
     if (process.env.MODE === "readiness") {
       await navigateHold(page, tag, "needs", "/ui/needs", u => u.pathname === "/ui/events" || u.pathname === "/ui/poll", async () => { await page.waitForSelector(".p-needs", { timeout: 30_000 }); });
       await navigateHold(page, tag, "notices", "/ui/notices", u => u.pathname === "/ui/notices/list", async () => { await page.waitForSelector(".p-notices", { timeout: 30_000 }); });
@@ -91,7 +98,10 @@ try {
     // Alpha-only surfaces are requested by path; main's common audit omits them.
     if (process.env.ALPHA === "1") {
       await navigateHold(page, tag, "runtime", "/settings/runtimes", u => u.pathname === "/ui/runtimes");
-      await navigateHold(page, tag, "accounts", "/settings/agents", u => u.pathname === "/ui/accounts", async () => { await page.locator(".s-ai-accounts > summary").click(); });
+      await navigateHold(page, tag, "accounts", "/settings/agents", u => u.pathname === "/ui/accounts", async () => {
+        await page.locator(".s-ai-accounts > summary").click();
+        await page.locator(".s-ai-accounts .s-disclosure-body").evaluate((el: HTMLElement) => el.scrollIntoView({ block: "start" }));
+      });
       await page.goto(`${fx.base}/ui/chat/${agent}`); await page.waitForSelector("#msgIn", { timeout: 30_000 });
       const workspace = await hold(page, u => u.pathname === "/ui/workspace" && u.searchParams.get("op") === "changes");
       try {
