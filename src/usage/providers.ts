@@ -453,7 +453,7 @@ export async function getClaudeOAuthToken(storeHome?: string): Promise<string | 
  * login is cannot be proven from config files (a stale `.claude.json`, an env token), and a hidden quota in use is
  * worse than two rows of one subscription (Prism, #2237 review).
  */
-export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean }
+export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean; hasChat?: boolean }
 
 /**
  * Exported for tests — the statusline/API preference order is the subject.
@@ -488,11 +488,12 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // #2236: a profile on the host that no instance uses, signed out: not set up here — no row.
     if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
-      // On screen (`ok`, as kiro's signed-out row): chat `/login` when that path
-      // exists (#1699 part 2), otherwise Settings → Agents → Sign-ins. Never a host command.
-      if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
+      // On screen (`ok`, as kiro's signed-out row): Settings is always on the
+      // dashboard. Chat `/login` only when this fleet has a chat channel — CHAT_PROFILE_LOGIN_BACKENDS is a backend
+      // capability, not this fleet's chat availability.
+      if (scope.profile && scope.hasChat && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
-        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
+        return { status: "ok", hint: `Not logged in — sign in from Settings → Agents → Sign-ins, or with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
       return { status: "ok", hint: "Not logged in — sign in from Settings → Agents → Sign-ins.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
@@ -1810,18 +1811,24 @@ export function providersForConfig(
  * The shared row is "Claude (default)" beside profiles (shown whenever that login exists); a profile no instance uses
  * shows only when signed in. isHostLoginUsageProvider keeps these rows through the snapshot's running-instances filter.
  */
+function fleetHasChat(config: UsageFleetConfig | null | undefined): boolean {
+  const channels = (config as { channels?: unknown } | null | undefined)?.channels;
+  return Array.isArray(channels) && channels.length > 0;
+}
+
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
   const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
+  const hasChat = fleetHasChat(config);
   return [
     { id: provider.id, name: `${provider.name} (default)`, defaultLogin: true, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
     ...profiles.map((profile, i) => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       profile,
-      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile } : { profile, hostOnly: true }),
+      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile, hasChat } : { profile, hostOnly: true, hasChat }),
     })),
   ];
 }

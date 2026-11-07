@@ -120,12 +120,19 @@ describe("a profile with no login", () => {
     credentials(process.env.CLAUDE_HOME!, "dummy-shared");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "dummy-shared";
     statusline("shared-one", 70, join(root, ".claude", "projects", "-w", "s.jsonl"), 1000);   // the shared account's limits
-    const row = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
+    const row = rowOf(providersForConfig({ channels: [{}], defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await row.fetch();
     expect([row.id, bearers, u.status, u.metrics, u.hint, u.hintI18n]).toEqual([
-      "claude:work", [], "ok", [], "Not logged in — sign in with `/login claude-code work`.",
+      "claude:work", [], "ok", [], "Not logged in — sign in from Settings → Agents → Sign-ins, or with `/login claude-code work`.",
       { key: "usage.hint.claude_profile_signed_out_chat", args: ["/login claude-code work"] },
     ]);
+  });
+
+  it("a web-only fleet (channels: []) names Settings, not /login", async () => {
+    const row = rowOf(providersForConfig({ channels: [], defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
+    const u = await row.fetch();
+    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not logged in — sign in from Settings → Agents → Sign-ins.", { key: "usage.hint.claude_profile_signed_out" }]);
+    expect(u.hint).not.toMatch(/\/login/);
   });
 
   it("asked for a config dir alone (no profile name to log in from chat): Settings → Agents → Sign-ins", async () => {
@@ -154,7 +161,8 @@ describe("what /usage and get_usage carry", () => {
     expect(text).toMatch(/· Claude \(default\) \(Team Standard \(1\.25x\)\): [^\n]*11%/);
     expect(text).toMatch(/· Claude \(work\) \(Team Standard \(1\.25x\)\): [^\n]*22%/);
     expect(text).toContain(`· Claude (team): `);
-    expect(text).toContain("Not logged in — sign in with `/login claude-code team`.");
+    expect(text).toContain("Not logged in — sign in from Settings → Agents → Sign-ins.");
+    expect(text).not.toMatch(/\/login/);
   });
 });
 
@@ -185,7 +193,7 @@ describe("macOS: the profile's own Keychain item", () => {
     const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const team = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("team") } } as never, BASE as never), "claude:team");
     const w = await work.fetch(), t = await team.fetch();
-    expect([session(w), bearers, t.hintI18n?.key]).toEqual([22, ["dummy-work"], "usage.hint.claude_profile_signed_out_chat"]);
+    expect([session(w), bearers, t.hintI18n?.key]).toEqual([22, ["dummy-work"], "usage.hint.claude_profile_signed_out"]);
   });
 });
 
@@ -219,7 +227,7 @@ describe("review r1: the Keychain as claude reads it", () => {
     process.env.USER = "someone";
     credentials(profileHome("work"), "dummy-team");
     const u = await workRow().fetch();
-    expect([bearers, u.metrics, u.hintI18n?.key, await getClaudeOAuthToken(profileHome("work"))]).toEqual([[], [], "usage.hint.claude_profile_signed_out_chat", null]);
+    expect([bearers, u.metrics, u.hintI18n?.key, await getClaudeOAuthToken(profileHome("work"))]).toEqual([[], [], "usage.hint.claude_profile_signed_out", null]);
   });
 
   it("control: an item that is not a credentials document (unparseable) is no item — the file is read", async () => {
@@ -258,7 +266,7 @@ describe("statusline rate limits stay with their subscription", () => {
     const signedOut = await workRow().fetch();                        // (a) no login of its own
     credentials(profileHome("work"), "dummy-work");
     const failing = await workRow().fetch();                          // (b) its own login, API down
-    expect([session(signedOut), signedOut.hintI18n?.key, session(failing), failing.status]).toEqual([null, "usage.hint.claude_profile_signed_out_chat", null, "error"]);
+    expect([session(signedOut), signedOut.hintI18n?.key, session(failing), failing.status]).toEqual([null, "usage.hint.claude_profile_signed_out", null, "error"]);
   });
 
   it("review r1: the same with the token exported in a shell rc (the pane's shell reads it)", async () => {
