@@ -14,12 +14,12 @@ register("hubMembership", {
     retry: "Check again", reload: "Reload page", reloadHint: "Reload the page to refresh the Hub controls.",
   },
   "zh-TW": {
-    title: "Hub 成員功能", enabled: "允許這個艦隊連線至 Hub",
-    hint: "預設關閉。啟用不會自動配對 Hub 或分享代理；請在下方另外選擇。",
-    off: "關閉後會停止新的 Hub 工作與回答傳送，既有代理對話會保留。",
+    title: "Hub 成員功能", enabled: "允許這個 Fleet 連線至 Hub",
+    hint: "預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。",
+    off: "關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
     loading: "正在讀取成員設定…", pending: "等待擁有者確認…",
     failed: "無法確認成員設定是否已變更。請再次檢查，再嘗試其他變更。",
-    unavailable: "目前無法使用成員設定。請開啟這個艦隊自己的擁有者設定頁面，再次檢查。",
+    unavailable: "目前無法使用成員設定。請開啟這個 Fleet 自己的擁有者設定頁面，再次檢查。",
     retry: "再次檢查", reload: "重新整理頁面", reloadHint: "請重新整理頁面以更新 Hub 控制項。",
   },
 });
@@ -66,9 +66,9 @@ export function HubMembershipSettings() {
     finally { owner.current.busy = false; if (owner.current.mounted) setBusy(false); }
   };
   if (publicPage) return null;
-  return html`<div class="form hub-membership-settings"><section class="card">
+  return html`<div class="form hub-membership-settings"><section class="card" id="hub-membership">
     <h3>${copy("title")}</h3><p class="note">${copy("hint")}</p>
-    ${!view && messageKey === "loading" ? html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />` : html`<label class="check"><input class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}
+    ${!view && messageKey === "loading" ? html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />` : html`<label class="check"><input id="hubMemberEnabled" class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}
       disabled=${!view || busy} onChange=${e => change(e.target.checked)} /><span>${copy("enabled")}</span></label>`}
     <p class="note">${copy("off")}</p>
     ${messageKey && messageKey !== "loading" ? html`<p role="status">${copy(messageKey)}</p>` : null}

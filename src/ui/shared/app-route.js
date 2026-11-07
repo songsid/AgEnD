@@ -6,7 +6,7 @@ export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
-  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "runtimes", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "advanced"]) }),
+  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "runtimes", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"]) }),
 ]);
 export const SETTINGS_SECTIONS = Object.freeze(SETTINGS_GROUPS.flatMap((g) => g.sections));
 /** #2347: the sections' names before the regrouping (links and bookmarks keep working) and where each one went. */

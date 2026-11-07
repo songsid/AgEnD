@@ -15,6 +15,9 @@ const L = (en, zh) => ({ en, "zh-TW": zh });
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
+  // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
+  ["hub.membership", "hub", "#hubMemberEnabled", null, "hub_member.enabled", ["hub", "team hub", "membership", "connect", "join", "pair", "share agents"], ["Hub", "團隊 Hub", "成員", "連線", "加入", "配對", "分享"], L("Allow this fleet to connect to a Hub", "允許這個 Fleet 連線至 Hub")],
+  ["hub.connect", "hub", "#hub-connect", null, null, ["hub", "connect to a hub", "pairing code", "hub address", "fingerprint", "pair", "unpair", "disconnect", "join"], ["Hub", "連線至 Hub", "配對碼", "Hub 位址", "指紋", "配對", "解除配對", "中斷連線", "加入"], L("Connect to a Hub", "連線至 Hub")],
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
