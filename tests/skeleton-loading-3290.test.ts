@@ -42,11 +42,16 @@ describe("#3290 shared loading states", () => {
     const { appStore, mergeNoticeList } = await import("/assets/app-store.js");
     const { NeedsPanel } = await import("/ui/js/panel-needs.js");
     const { NoticesPanel } = await import("/ui/js/panel-notices.js");
-    appStore.set({ ready: false, needs: [], instances: [], connections: 0, notices: null, noticesError: false, readNotices: () => {} });
+    appStore.set({ ready: false, needsLoaded: false, needs: [], instances: [], connections: 0, notices: null, noticesError: false, readNotices: () => {} });
     await p.mount(h(NeedsPanel, { navKey: "pending" }));
     expect(p.document.querySelector(".p-needs .skeleton")).not.toBeNull();
     expect(p.document.querySelector(".p-needs .empty")).toBeNull();
     appStore.set({ ready: true }); await settle();
+    expect(p.document.querySelector(".p-needs .empty")).toBeNull();
+    appStore.set({ needsLoaded: true }); await settle();
+    expect(p.document.querySelector(".p-needs .empty")).not.toBeNull();
+    // An older app.js never names this optional flag; its known status remains the fallback.
+    appStore.set({ needsLoaded: undefined }); await settle();
     expect(p.document.querySelector(".p-needs .empty")).not.toBeNull();
     await p.mount(h(NoticesPanel, { navKey: "notices" }));
     expect(p.document.querySelector(".p-notices .skeleton")).not.toBeNull();
