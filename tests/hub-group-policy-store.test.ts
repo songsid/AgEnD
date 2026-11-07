@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { applyHubMigrations } from "../src/hub/db.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
-import { createHubGroupPolicyStore, groupPolicyMigration } from "../src/hub/group-policy/store.js";
+import { createHubGroupPolicyStore, groupPolicyMigration, inspectHubGroupPolicyBinding } from "../src/hub/group-policy/store.js";
 import type { PolicyGroupFacts } from "../src/hub/directory/groups.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
 const user = { realm: "example", objectId: "11111111-1111-4111-8111-111111111111" }, group = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -136,6 +136,23 @@ describe("durable Hub group-policy foundation", () => {
     f.db.prepare("UPDATE hub_group_policy SET hub_id='another-hub'").run(); expect(() => f.store.read()).toThrow("group_policy_unavailable");
     f.db.prepare("UPDATE hub_group_policy SET hub_id='hub-1', body='{}'").run(); expect(() => f.store.read()).toThrow("group_policy_unavailable");
     f.db.prepare("DELETE FROM hub_group_policy").run(); expect(() => createHubGroupPolicyStore(f.options)).toThrow("group_policy_unavailable");
+  });
+  it("gives composition a repair state without a never-enabled generation change silently denying legacy operations", () => {
+    const f = fixture();
+    const inspect = () => inspectHubGroupPolicyBinding(f.db, "hub-1", "example", "generation-2");
+    expect(inspect()).toEqual({ kind: "repair-required", legacy: true });
+    expect(inspectHubGroupPolicyBinding(f.db, "hub-1", "example", "generation-1")).toEqual({ kind: "ready" });
+    f.enable(); expect(inspect()).toEqual({ kind: "repair-required", legacy: false });
+    expect(() => createHubGroupPolicyStore({ ...f.options, generation: "generation-2" })).toThrow("group_policy_unavailable");
+    f.store.replace({ ...f.store.read(), state: "suspended" }, user, f.ctx);
+    expect(inspect()).toEqual({ kind: "repair-required", legacy: false });
+    for (const [hub, realm] of [["another-hub", "example"], ["hub-1", "other"]]) {
+      expect(inspectHubGroupPolicyBinding(f.db, hub!, realm!, "generation-1")).toEqual({ kind: "repair-required", legacy: false });
+    }
+    f.db.prepare("UPDATE hub_group_policy SET body='{}'").run();
+    expect(inspect()).toEqual({ kind: "repair-required", legacy: false });
+    f.db.prepare("DELETE FROM hub_group_policy").run();
+    expect(inspect()).toEqual({ kind: "repair-required", legacy: false });
   });
   it("no-op saves do not audit or bump revision", () => {
     const f = fixture(); f.enable(); const current = f.store.read();
