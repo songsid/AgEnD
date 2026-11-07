@@ -28,17 +28,18 @@ const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
 describe("tmux-sources.json and the package manifest", () => {
-  it("pins every source by https url and sha256; jemalloc links only on darwin", () => {
+  it("pins every source by https url and sha256; no jemalloc anywhere (§3)", () => {
     const s = readSources();
     expect(s.tmux.version).toBe("3.8");
-    for (const k of ["tmux", "libevent", "ncurses", "utf8proc", "jemalloc"]) {
+    expect((s as unknown as Record<string, unknown>).jemalloc).toBeUndefined();
+    for (const k of ["tmux", "libevent", "ncurses", "utf8proc"] as const) {
       expect(s[k].url, k).toMatch(/^https:\/\//);
       expect(s[k].sha256, k).toMatch(/^[0-9a-f]{64}$/);
       expect(s[k].url, k).toContain(s[k].version);
     }
-    expect(partsFor(s, "linux-x64")).not.toContain("jemalloc");
-    expect(partsFor(s, "darwin-arm64")).toContain("jemalloc");
-    expect(partsFor(s, "darwin-arm64")).toContain("utf8proc");
+    expect(partsFor(s, "darwin-arm64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc"]);
+    expect(partsFor(s, "darwin-x64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc"]);
+    expect(partsFor(s, "linux-x64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc", "musl"]);
     expect(srcDirName("utf8proc", "2.12.0")).toBe("utf8proc-2.12.0");
     // The terminfo subset holds what panes and attaching terminals need, and the alias names a listed entry.
     for (const t of ["tmux-256color", "xterm-256color", "screen-256color", "kitty"]) expect(s.terminfo).toContain(t);
@@ -111,7 +112,8 @@ describe("tmux-sources.json and the package manifest", () => {
 
   it("THIRD_PARTY_NOTICES names every bundled component", () => {
     const notices = readFileSync(join(process.cwd(), "THIRD_PARTY_NOTICES.md"), "utf8");
-    for (const name of ["tmux", "libevent", "ncurses", "utf8proc", "jemalloc"]) expect(notices, name).toMatch(new RegExp(`\\b${name}\\b`, "i"));
+    for (const name of ["tmux", "libevent", "ncurses", "utf8proc"]) expect(notices, name).toMatch(new RegExp(`\\b${name}\\b`, "i"));
+    expect(notices).not.toMatch(/\bjemalloc\b/i);   // no longer linked (§3)
   });
 });
 
@@ -422,24 +424,15 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
   });
 });
 
-describe("the darwin build links jemalloc the way tmux's configure finds it", () => {
-  // tmux 3.8's configure: --enable-jemalloc → PKG_CHECK_MODULES(JEMALLOC, jemalloc, …), else "jemalloc not found".
-  // The first macOS dry run (run 42265015287) failed there on both Macs: only the static library and headers were
-  // installed, not jemalloc.pc.
-  it("installs jemalloc's pkg-config file beside its static library, where PKG_CONFIG_PATH points", () => {
+describe("the darwin build", () => {
+  // §3: the statically linked jemalloc 5.3.0 crashed the macOS tmux server on darwin-x64 (dry runs) and on darwin-arm64
+  // (the real Mac, C-4 leg M). Both Macs use the system allocator; configure is told so explicitly, or it would look for
+  // a jemalloc itself and could link a runner's Homebrew dylib.
+  it("never links jemalloc: no such part, and --disable-jemalloc on macOS", () => {
     const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
-    const install = /sh\("make", \[([^\]]*)\], \{ cwd: dirs\.jemalloc/.exec(src)?.[1] ?? "";
-    expect(install.split(",").map(s => s.trim().replace(/"/g, ""))).toEqual(["install_lib_static", "install_lib_pc", "install_include"]);
-    expect(src).toMatch(/PKG_CONFIG_PATH: join\(deps, "lib\/pkgconfig"\)/);
-    expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
-  });
-
-  it("jemalloc per target: darwin-arm64 links it, darwin-x64 and Linux do not (§3: x86_64's server died with it)", () => {
-    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
-    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc"))).toEqual([true, false, false, false]);
-    // configure gets --enable-jemalloc only where it is linked, and an explicit --disable-jemalloc on the other Mac
-    // (tmux's configure would otherwise look for one itself and could link a Homebrew dylib).
-    expect(src).toContain('if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");\n  else if (darwin) tmuxArgs.push("--disable-jemalloc");');
+    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc" as never))).toEqual([false, false, false, false]);
+    expect(src).toContain('if (darwin) tmuxArgs.push("--disable-jemalloc");');
+    expect(src).not.toContain("--enable-jemalloc");
   });
 
   it("a darwin build is reproducible: object paths relative in the debug map, ar member dates zeroed", () => {
