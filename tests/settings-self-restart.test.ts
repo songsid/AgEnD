@@ -274,7 +274,7 @@ describe("restarting AgEnD from Settings", () => {
     const result = await fm.requestSettingsSelfRestart(job.id, "key-no-audit");
 
     expect(result).toMatchObject({ ok: false, status: 409 });
-    expect((result as { error: string }).error).toContain("agend restart");
+    expect((result as { error: string }).error).toContain("computer's owner");
     expect(fullRestart).not.toHaveBeenCalled();
     // The attempt is recorded before the notice is posted, so a failed
     // announcement still costs an attempt — otherwise a data dir that cannot be
@@ -290,7 +290,7 @@ describe("restarting AgEnD from Settings", () => {
     const result = await fm.requestSettingsSelfRestart(job.id, "key-no-channel");
 
     expect(result).toMatchObject({ ok: false, status: 409 });
-    expect((result as { error: string }).error).toContain("agend restart");
+    expect((result as { error: string }).error).toContain("computer's owner");
     expect(fullRestart).not.toHaveBeenCalled();
   });
 
@@ -320,7 +320,7 @@ describe("restarting AgEnD from Settings", () => {
     const result = await fm.requestSettingsSelfRestart(job.id, "key-damaged-limit");
 
     expect(result).toMatchObject({ ok: false, status: 503 });
-    expect((result as { error: string }).error).toContain("self-restart.json");
+    expect((result as { error: string }).error).toContain("/restart");
     expect(fullRestart).not.toHaveBeenCalled();
     expect(sendText).not.toHaveBeenCalled();
   });

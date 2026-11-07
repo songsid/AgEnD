@@ -54,7 +54,7 @@ describe("kiro sign-in screen after token expiry", () => {
     expect(match, "an unrecognised sign-in screen is what produced the fake 'stuck'").toBeDefined();
     expect(match).toMatchObject({ type: "auth_error", action: "pause" });
     // Same remedy as every other kiro auth failure — one message, not two.
-    expect(match?.message).toMatch(/kiro-cli login/);
+    expect(match?.message).toMatch(/Settings → Accounts|\/login/);
   });
 
   it("is recognised by the startup scan's login-screen pattern too", () => {
