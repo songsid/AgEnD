@@ -28,6 +28,8 @@ fm.waitForFullRestartIdleGrace = async () => {};
 // The fleet Notices the server records (the web-only trace), as they are recorded.
 const recorded: string[] = [];
 { const real = fm.recordWebNotice.bind(fm); fm.recordWebNotice = (kind: string, text: string, inst?: string) => { recorded.push(text); return real(kind, text, inst); }; }
+// The restart's own trace must be on disk first (#3373 review): it goes through the durable path — counted only once written.
+{ const real = fm.recordWebNoticeDurable.bind(fm); fm.recordWebNoticeDurable = (kind: string, text: string) => { const ok = real(kind, text); if (ok) recorded.push(text); return ok; }; }
 /** What a real start records, then a hand edit of fleet.yaml: a restart is pending, and no Settings job carries it. */
 const handEdit = () => {
   // A case's restart never really happens here (the launcher is stubbed): its job is settled, so the next case starts clean.
