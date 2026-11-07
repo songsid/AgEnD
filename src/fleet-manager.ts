@@ -479,6 +479,8 @@ import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
+import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
+import { MachineSignIns } from "./machine-signins.js";
 import { runQuiet } from "./quiet-run.js";
 
 const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
@@ -19945,6 +19947,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.loginController;
   }
 
+  /**
+   * #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts): #3212's StructuredSignIn over a RuntimeSignInTransport, one computer and one
+   * credential profile at a time. Its own coordinator, not the host's: it never touches the host's sign-in checklist or login window.
+   */
+  private machineSignInsInstance: MachineSignIns | null = null;
+  get machineSignIns(): MachineSignIns {
+    return this.machineSignInsInstance ??= new MachineSignIns({
+      call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
+      current: owner => this.browserSignInOwnerCurrent(owner),
+      reported: (id, profile) => this.machineAccounts.profileState(id, profile),
+      readiness: id => this.machineAccounts.readiness(id),
+      actor: owner => { const handle = (owner as SessionRecord).handle; return typeof handle === "string" && /^[a-f0-9]{16}$/.test(handle) ? `admin:${handle}` : null; },
+      changed: (event, owner) => {
+        // Safe fields only: the computer, the profile name, a phase and a fixed reason. Never a URL, a code, output or an e-mail address.
+        this.logger.info({ machine: event.machine, profile: event.profile, phase: event.phase, ...(event.reason ? { reason: event.reason } : {}), by: (owner as SessionRecord).label },
+          "Computer account sign-in from Settings → Accounts");
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        this.needsYou?.poke();
+      },
+    });
+  }
+  private machineAccountsInstance: MachineAccounts | null = null;
+  /** #3190 Part 3c: a paired computer's accounts in Settings → Accounts (machine-accounts.ts). */
+  get machineAccounts(): MachineAccounts {
+    return this.machineAccountsInstance ??= new MachineAccounts({
+      call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
+      machine: id => remoteRuntimeEnabled() ? this.runtimeCoordinator().machine(id) ?? undefined : undefined,
+      machines: () => remoteRuntimeEnabled() ? this.runtimeCoordinator().listMachines() : [],
+      agents: id => machineAgents(this.fleetConfig?.instances, id, name => { try { return nativeCredentialProfile(this.fleetConfig?.instances[name]) ?? null; } catch { return null; } }, this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      signingIn: (id, profile) => this.machineSignInsInstance?.signingIn(id, profile) ?? false,
+      log: entry => this.logger.info(entry, entry.outcome === "ok" ? "Computer account changed from Settings → Accounts" : "Computer account change refused"),
+    });
+  }
+
   private browserBackendSignInsInstance: BrowserBackendSignIns | null = null;
   private structuredLoginCleanupFailed = false;
   private readonly pendingBackendSince = new Map<string, number>();
@@ -20122,7 +20158,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const v = ka.view(backend, profile); if (v) keepAlive.set(`${backend}\0${profile ?? ""}`, v);
       }
     }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive });
+    // #3190 Part 3c: each paired computer's accounts, as rows under the `machine` scope. Read from what the computers reported; the view never waits long for one.
+    // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
+    let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
+    if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines });
   }
 
   /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
@@ -20304,7 +20344,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
-  addAccountProfile(backend: string, name: unknown, by: string): AddResult {
+  addAccountProfile(backend: string, name: unknown, by: string, machine?: MachineActor): AddResult | Promise<MachineAccountResult> {
+    // #3190 Part 3c: on a paired computer the profile's folder is made by its Runtime when the first sign-in starts; this only checks what can be checked first.
+    if (machine) return this.machineAccounts.add(backend, name, machine.id, by);
     const { agents, classic, fleetDefaults } = this.accountUses();
     const configured = new Set<string>();
     for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
@@ -20319,7 +20361,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): Promise<RemoveResult> {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<RemoveResult | MachineAccountResult> {
+    if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
@@ -20434,7 +20477,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
   }
-  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
+  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<SignOutResult | MachineAccountResult> {
+    if (machine) return this.machineAccounts.signOut(backend, profile, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime runs the CLI's own logout
     const named = typeof profile === "string" ? profile : null;
     const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
@@ -20840,6 +20884,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (confirmed) this.browserBackendSignInsInstance = null;
         else { this.structuredLoginCleanupFailed = true; this.logger.error("Structured login cleanup failed; sign-in admission remains closed until the host is restarted."); }
       }), "browser-controls"),
+      // #3190 Part 3c: a sign-in running on a paired computer is ended (its Runtime also ends it when the connection goes). One that could not be shown gone is logged.
+      bounded(this.machineSignInsInstance?.close().then(confirmed => {
+        if (confirmed) this.machineSignInsInstance = null;
+        else this.logger.error("A computer's account sign-in could not be confirmed ended; check that computer's Runtime window.");
+      }), "machine-signins"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
       // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.

@@ -68,8 +68,8 @@ describe("what a Runtime reports about the account behind a sign-in", () => {
     await f.hub.call(f.machineId, "probe", { force: true });
     const inventory = f.hub.machine(f.machineId)!.inventory!;
     expect(inventory.credentialProfiles?.profiles).toEqual([
-      { name: "empty", loggedIn: null }, { name: "home", loggedIn: true, identity: { maskedEmail: "bo***@example.org", plan: "max" } },
-      { name: "key", loggedIn: true, identity: { apiKey: true } }, { name: "work", loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" } }]);
+      { name: "empty", loggedIn: null, created: false }, { name: "home", loggedIn: true, identity: { maskedEmail: "bo***@example.org", plan: "max" }, created: false },
+      { name: "key", loggedIn: true, identity: { apiKey: true }, created: false }, { name: "work", loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" }, created: false }]);
     expect(inventory.clis[0].identity).toEqual({ maskedEmail: "de***@example.com", plan: "pro" });
     // Nowhere: not in what AgEnD holds, not on the Runtime's disk, not in what the Runtime printed.
     for (const text of [JSON.stringify(f.hub.listMachines()), everything(f.hubHome), everything(f.runtimeHome), f.lines.join("\n")]) for (const secret of [RAW, RAW_OTHER, "alice.fixture", "bob.fixture"]) expect(text).not.toContain(secret);

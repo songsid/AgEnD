@@ -1,4 +1,5 @@
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
+import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -359,6 +360,11 @@ const __dirname = dirname(__filename);
 export const SSE_HEARTBEAT_MS = 10_000;
 
 /** Minimal interface — only what web-api needs from FleetManager. */
+/** #3190 Part 3c: a paired computer an account write is for, and who asked (`admin:<handle>`: the name that computer's audit log records for the person). */
+export interface AccountMachine { id: string; actor: string }
+/** What an account write answers: done, or a code (and, for a computer, its own refusal sentence). */
+export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
+
 export interface WebApiContext {
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
@@ -381,6 +387,8 @@ export interface WebApiContext {
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
+  /** #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts), reached through the same `/ui/browser-backend-signins` with `?machine=&profile=`. */
+  readonly machineSignIns?: import("./machine-signins.js").MachineSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
   /** Starts, in the background, reading the account behind each Claude Code sign-in (masked). Never awaited: the list answers at once with what is known. */
@@ -407,10 +415,10 @@ export interface WebApiContext {
   /** #3212: the Accounts view (accounts-view.ts), for the local admin session only. */
   accountsView?(): Promise<unknown>;
   /** #3212 PR 2: + Add account / Remove (accounts-profiles.ts); `by` is the session's label, for the fleet log. */
-  addAccountProfile?(backend: string, name: unknown, by: string): { ok: true } | { ok: false; error: string; clash?: string };
-  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string; users?: unknown }>;
+  addAccountProfile?(backend: string, name: unknown, by: string, machine?: AccountMachine): AccountWriteResult | Promise<AccountWriteResult>;
+  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
-  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string }>;
+  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
   setAccountKeepAlive?(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): { ok: true } | { ok: false; error: string };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
@@ -1112,12 +1120,46 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   };
   const owner = who();
   if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
-  if (!["GET", "POST"].includes(req.method ?? "") || [...url.searchParams.keys()].length) { json(res, 404, { error: "not_found" }); return true; }
-  const service = ctx.browserBackendSignIns;
-  if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
+  if (!["GET", "POST"].includes(req.method ?? "")) { json(res, 404, { error: "not_found" }); return true; }
+  // #3190 Part 3c: `?machine=<id>&profile=<name>` addresses the same sign-in controls for a credential profile on a paired computer (machine-signins.ts). Nothing else
+  // is accepted in the query, and both are checked in full before anything else happens.
+  const keys = [...url.searchParams.keys()];
+  let target: { machine: string; profile: string } | null = null;
+  if (keys.length) {
+    const machine = url.searchParams.get("machine"), profile = url.searchParams.get("profile");
+    if (keys.length !== 2 || !machine || !profile || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) || !validCredentialProfileName(profile)) { json(res, 404, { error: "not_found" }); return true; }
+    target = { machine, profile };
+  }
+  // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's does not need it.
+  const service = target ? undefined : ctx.browserBackendSignIns, machines = target ? ctx.machineSignIns : undefined;
+  if (target ? !machines : !service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   void (async () => {
     let result;
-    if (reading) result = await service.refresh(owner);
+    if (target && machines) {
+      if (reading) result = machines.snapshot(owner, target);
+      else {
+        let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
+        let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+        // Only what a computer's sign-in can do: start (Claude Code, subscription: the Runtime builds the command), answer a prompt, cancel, read again.
+        const parsed = z.discriminatedUnion("operation", [
+          z.strictObject({ operation: z.literal("start"), backend: z.literal("claude-code"), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
+            z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
+            z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
+          ]) }),
+          z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+        ]).safeParse(body);
+        if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
+        const action = parsed.data;
+        if (action.operation === "start") result = await machines.begin(owner, target, action.relogin === true);
+        else if (action.operation === "input") result = await machines.input(owner, target, action.id, action.revision, action.action);
+        else if (action.operation === "cancel") result = await machines.cancel(owner, target);
+        else result = machines.snapshot(owner, target);
+      }
+    } else if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return; }
+    else if (reading) result = await service.refresh(owner);
     else {
       let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
@@ -1147,7 +1189,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
     json(res, 200, result);
   })().catch(error => {
     const code = error instanceof Error ? error.message : "";
-    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist))$/.test(code) ? code : "signin_failed";
+    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
     if (!res.destroyed && !res.writableEnded) json(res, safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
   });
   return true;
@@ -1216,6 +1258,9 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
   unsafe: 409, default_home: 409, failed: 500, unsupported: 400,
+  // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
+  machine_unknown: 404, machine_offline: 409, machine_unsupported: 409, machine_accounts_off: 409, machine_unreachable: 502, machine_profile_not_owned: 409,
+  machine_refused: 409, machine_default_login: 409,
 };
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1243,24 +1288,38 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
     const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
     if (now.handle !== first.handle) { json(res, 409, { error: "accounts_session_changed" }); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "accounts_json" }); return; }
+    // #3190 Part 3c: `machine` (a paired computer's id) turns the same route into that computer's account; the person's audit name is the session's opaque handle.
+    const machineId = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/).optional();
+    const onMachine = (id: string | undefined): AccountMachine | undefined | "refused" => {
+      if (id === undefined) return undefined;
+      return /^[a-f0-9]{16}$/.test(now.handle) ? { id, actor: `admin:${now.handle}` } : "refused";
+    };
+    const fail = (r: { error: string; clash?: string; users?: unknown; message?: string }) =>
+      json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}), ...(r.users ? { users: r.users } : {}), ...(r.message ? { message: r.message } : {}) });
     if (add) {
-      const parsed = z.strictObject({ name: z.string().max(200) }).safeParse(body);
+      const parsed = z.strictObject({ name: z.string().max(200), machine: machineId }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label);
-      if (r.ok) json(res, 200, { added: parsed.data.name });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}) });
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label, machine) : ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label));
+      if (r.ok) json(res, 200, { added: parsed.data.name, ...(machine ? { machine: machine.id } : {}) });
+      else fail(r);
     } else if (remove) {
-      const parsed = z.strictObject({ confirm: z.string().max(200) }).safeParse(body);
+      const parsed = z.strictObject({ confirm: z.string().max(200), machine: machineId }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = await ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label);
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, machine) : ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label));
       if (r.ok) json(res, 200, { removed: target, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.users ? { users: r.users } : {}) });
+      else fail(r);
     } else {
-      const parsed = z.strictObject({ profile: z.string().max(200).nullable(), confirm: z.literal(true) }).safeParse(body);
+      const parsed = z.strictObject({ profile: z.string().max(200).nullable(), confirm: z.literal(true), machine: machineId }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = await ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label);
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label, machine) : ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label));
       if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error });
+      else fail(r);
     }
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
   return true;

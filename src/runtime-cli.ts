@@ -15,7 +15,7 @@ import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type Crede
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
-import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
+import { createRuntimeProfile, isCreatedProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
 
@@ -213,7 +213,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const credentials = store.credentials();
     let credentialProfile: string | undefined; try { credentialProfile = store.credentialDefault(); } catch { /* status must still report the rest */ }
     process.stdout.write(`${JSON.stringify({ runtimeInfo: readRuntimeInfo(), profile: store.directory, paired: !!credentials, ...(credentials ? { server: credentials.server, machineId: credentials.machineId, name: credentials.name } : {}),
-      credentialProfiles: credentialProfileReport(credentialRoot, credentialProfile),
+      credentialProfiles: credentialProfileReport(credentialRoot, credentialProfile, name => isCreatedProfile(credentialRoot, "claude-code", name)),
       rotationPending: !!credentials?.pendingCredential, blocked: store.blocked(), jobs: store.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) }, null, 2)}\n`);
     return;
   }

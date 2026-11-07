@@ -6,7 +6,9 @@
 //   staging and Save (a change of account waits for the same confirmation as any credential setting, and restarts).
 // - Fleet default: the same, for `defaults.backend_options.<cli>.credential_profile`.
 // - AccountSelect: the Agent dialog's Account field (settings-dialogs.js), from the same view.
-// Rows carry a `scope`: only `host` today; a paired computer's rows (`machine`) are drawn read-only under its name.
+// Rows carry a `scope`: `host`, and (#3190 Part 3c) a paired computer's `machine` rows under its name — Claude Code first. A computer's account is signed in, signed
+// out and removed here only where its Runtime allows it (its owner turned `accounts` on there, and the profile is one that Runtime created); every other row is
+// read-only with the reason (a code from the server, worded here) and the command to run on that computer.
 // Words are registered here (a new module: an older cached strings file never leaves a raw key).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -19,6 +21,7 @@ import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
 import { toast } from "/assets/ui-toast.js";
 import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
+import { machineSignInStore, openMachineSignIn } from "./machine-signin.js";   // #3190 Part 3c
 import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
 
 register("accounts", {
@@ -34,7 +37,16 @@ register("accounts", {
     carry_claude: "Claude Code carries its conversation over.", carry_codex: "Codex keeps its conversation.", carry_kiro: "Kiro starts a new conversation, with a handover.",
     moveNone: "Every {0} agent already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
     fleetDefault: "Fleet default for {0} agents", fleetDefaultHint: "Agents that don't choose an account use this one.",
-    machine: "On {0}", machineReadOnly: "Read-only here",
+    machine: "On {0}", machineReadOnly: "Read-only here", machineOnline: "online", machineOffline: "offline", machineDefaultTag: "this computer's default",
+    machineNoUsage: "—", machineNoUsageHint: "That computer does not report usage.",
+    machineCommand: "Sign in on that computer", machineCommandHint: "Run this in a terminal on {0}.",
+    why_offline: "{0} is offline. Start its Runtime to manage its accounts.",
+    why_runtime_old: "{0}'s Runtime is too old to manage accounts from here. Update the Runtime on that computer.",
+    why_accounts_off: "The owner of {0} has not allowed account changes from AgEnD. On that computer run: agend-runtime remote-setup accounts on",
+    why_switch_unreadable: "{0} did not say whether account changes are allowed. Check its Runtime window.",
+    why_not_installed: "Claude Code is not installed on {0}. Install it from Settings → Runtime.",
+    why_not_created: "This account was not created by AgEnD's Runtime, so it can only be handled on {0}.",
+    why_default_login: "This is the Windows user's own sign-in on {0}. It is never changed from here: add an account instead.",
     acctLabel: "Account", acctInherit: "Fleet default ({0})", acctInheritDefault: "Fleet default (default sign-in)", acctNotSignedIn: "{0} — not signed in",
     acctHint: "Changing the account restarts the agent. A signed-out account can't be chosen: sign it in under Accounts first.",
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
@@ -51,13 +63,25 @@ register("accounts", {
     carry_claude: "Claude Code 會帶著對話過去。", carry_codex: "Codex 保留原本的對話。", carry_kiro: "Kiro 會開新對話並附上交接。",
     moveNone: "所有 {0} Agent 都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
     fleetDefault: "{0} Agent 的 Fleet 預設帳號", fleetDefaultHint: "沒有指定帳號的 Agent 會使用這個。",
-    machine: "在 {0}", machineReadOnly: "這裡只能檢視",
+    machine: "在 {0}", machineReadOnly: "這裡只能檢視", machineOnline: "在線", machineOffline: "離線", machineDefaultTag: "這台電腦的預設",
+    machineNoUsage: "—", machineNoUsageHint: "那台電腦不回報用量。",
+    machineCommand: "在那台電腦上登入", machineCommandHint: "請在 {0} 的終端機執行。",
+    why_offline: "{0} 離線了。請先啟動它的 Runtime，才能管理它的帳號。",
+    why_runtime_old: "{0} 的 Runtime 太舊，無法從這裡管理帳號。請更新那台電腦上的 Runtime。",
+    why_accounts_off: "{0} 的擁有者尚未允許從 AgEnD 變更帳號。請在那台電腦上執行：agend-runtime remote-setup accounts on",
+    why_switch_unreadable: "{0} 沒有回報是否允許變更帳號。請檢查它的 Runtime 視窗。",
+    why_not_installed: "{0} 上沒有安裝 Claude Code。請從「設定 → Runtime」安裝。",
+    why_not_created: "這個帳號不是 AgEnD 的 Runtime 建立的，只能在 {0} 上處理。",
+    why_default_login: "這是 {0} 上 Windows 使用者自己的登入，永遠不會從這裡更改：請改用新增帳號。",
     acctLabel: "帳號", acctInherit: "Fleet 預設（{0}）", acctInheritDefault: "Fleet 預設（預設登入）", acctNotSignedIn: "{0}——尚未登入",
     acctHint: "更換帳號會重新啟動 Agent。尚未登入的帳號不能選，請先在「帳號」登入。",
     acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
   },
 });
 const tx = (k, ...v) => t(`accounts.${k}`, ...v);
+/** The reasons that apply to a whole computer (the heading says them once); the others belong to one row. A code a newer server sends that this page does not know is shown as it is. */
+const MACHINE_LEVEL = new Set(["offline", "runtime_old", "accounts_off", "switch_unreadable", "not_installed"]);
+const reasonText = (code, name) => { const key = `why_${code}`, text = tx(key, name); return text === `accounts.${key}` ? String(code) : text; };
 /** This view's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
 function linkAccountsCss(doc = typeof document !== "undefined" ? document : null) {
   try {
@@ -142,8 +166,9 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   // Settings read its data again (after a Save): so does this view.
   useEffect(() => { if (loaded) void refreshAccounts(); }, [instances]);
   const { structured, login } = useStore(signInStore);
+  const machineLogin = useStore(machineSignInStore);   // #3190 Part 3c: the open sign-in dialog of a computer's account
   const [move, setMove] = useState(null);           // { cli, row }
-  const [adding, setAdding] = useState(null);       // #3212 PR 2: the card whose + Add account is open
+  const [adding, setAdding] = useState(null);       // #3212 PR 2: the card whose + Add account is open; #3190 Part 3c: { cli, machine } for a computer's
   const [removing, setRemoving] = useState(null);   // { cli, row }
   const [signingOut, setSigningOut] = useState(null);   // #3212 PR 3: { cli, row, mode: "signout" | "switch" }
   const mounted = useRef(true);
@@ -156,10 +181,11 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
   useEffect(() => { linkAccountsCss(); listenAccountsEvent(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
-  const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}`;
+  const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}:${machineLogin.phase || ""}`;
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
   const active = structured && structured.login;
-  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)));
+  const machineActive = !!machineLogin.phase && machineLogin.phase !== "done" && !(machineLogin.phase === "failed" && machineLogin.reason);
+  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) || machineActive);
   if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
@@ -168,10 +194,11 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
-      onAdd=${begin(() => setAdding(cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => openSignIn(target))}
+      onAdd=${begin((machine) => setAdding(machine ? { cli, machine } : cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => (target.machine ? openMachineSignIn(target) : openSignIn(target)))}
       onSignOut=${begin((row, mode) => setSigningOut({ cli, row, mode }))} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
-    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => { const mine = ++interaction.current; void accountAdded(adding.backend, name, () => mounted.current && interaction.current === mine); }} />` : null}
+    ${adding ? html`<${AddAccountDialog} cli=${adding.machine ? adding.cli : adding} machine=${adding.machine || null} label=${cliLabel((adding.machine ? adding.cli : adding).backend)} onClose=${() => setAdding(null)}
+      onAdded=${(name) => { const mine = ++interaction.current, a = adding; void (a.machine ? machineAdded(a.machine, name, () => mounted.current && interaction.current === mine) : accountAdded(a.backend, name, () => mounted.current && interaction.current === mine)); }} />` : null}
     ${signingOut ? html`<${SignOutDialog} cli=${signingOut.cli} row=${signingOut.row} mode=${signingOut.mode} label=${cliLabel(signingOut.cli.backend)}
       onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent)}
       onDone=${() => { const s = signingOut, mine = ++interaction.current; void signedOut(s, () => mounted.current && interaction.current === mine); }} />` : null}
@@ -192,6 +219,15 @@ async function accountAdded(backend, name, current) {
   const row = cli ? cli.rows.find((r) => r.scope && r.scope.kind === "host" && r.profile === name) : null;
   if (row && row.signIn) { toast(manageWords.added(name), true); openSignIn({ backend, profile: name }); }
   else toast(manageWords.addedHost(name), true);
+}
+/**
+ * #3190 Part 3c: after + Add account on a computer: the server only checked the name (the folder is made by that computer's Runtime when the first sign-in starts), so
+ * Sign in opens at once for the new name — while this is still the person's current interaction and no other dialog is open.
+ */
+async function machineAdded(machine, name, current) {
+  await refreshAccounts({ fresh: true });
+  if (!current() || shellStore.get().dialog) return;
+  openMachineSignIn({ machine, profile: name });
 }
 /**
  * #3212 PR 3: after Sign out — the view and the sign-ins read again (reads begun after it); Switch account then opens
@@ -221,10 +257,9 @@ function Card({ cli, running, onMove, stageDefault, onAdd, onRemove, onSignIn, o
   const signedIn = host.filter((r) => r.profile && r.state !== "not_signed_in");
   return html`<div class="s-account-card" data-backend=${cli.backend}>
     <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
-      ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${onAdd}>${manageWords.add()}</button>` : null}</div>
+      ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${() => onAdd()}>${manageWords.add()}</button>` : null}</div>
     <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} onRemove=${onRemove} onSignIn=${onSignIn} onSignOut=${onSignOut} />`)}</div>
-    ${[...machines.values()].map((m) => html`<div class="s-account-machine"><p class="note">${tx("machine", m.scope.name)}${m.scope.readOnlyReason ? ` — ${m.scope.readOnlyReason}` : ` — ${tx("machineReadOnly")}`}</p>
-      ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} readOnly=${true} />`)}</div>`)}
+    ${[...machines.values()].map((m) => html`<${MachineSection} key=${m.scope.id} cli=${cli} m=${m} running=${running} onAdd=${onAdd} onSignIn=${onSignIn} onSignOut=${onSignOut} onRemove=${onRemove} />`)}
     ${cli.profiles && typeof stageDefault === "function" ? html`<label class="field s-account-default"><span>${tx("fleetDefault", cliLabel(cli.backend))}</span>
       <select value=${(picked !== undefined ? picked : cli.fleetDefault) || ""} onChange=${(e) => { setPicked(e.target.value || null); stageDefault(cli.backend, e.target.value || null); }}>
         <option value="">${tx("def")}</option>
@@ -234,26 +269,48 @@ function Card({ cli, running, onMove, stageDefault, onAdd, onRemove, onSignIn, o
   </div>`;
 }
 
+/**
+ * #3190 Part 3c: one paired computer's accounts under its name: online or not, why nothing can be changed there when that is so (said once, for the whole
+ * computer), + Add account where its Runtime will take one, and its rows.
+ */
+function MachineSection({ cli, m, running, onAdd, onSignIn, onSignOut, onRemove }) {
+  const level = m.rows.map((r) => r.scope.readOnlyReason).find((code) => code && MACHINE_LEVEL.has(code));
+  const online = !!m.scope.online;
+  return html`<div class="s-account-machine" data-machine=${m.scope.id}>
+    <div class="s-account-machine-head"><strong>${tx("machine", m.scope.name)}</strong>
+      <span class=${`tag s-auth-state is-${online ? "usable" : "unknown"}`}>${online ? tx("machineOnline") : tx("machineOffline")}</span>
+      ${cli.profiles && !level && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" disabled=${running} onClick=${() => onAdd(m.scope)}>${manageWords.add()}</button>` : null}</div>
+    ${level ? html`<p class="note s-account-why" role="status">${reasonText(level, m.scope.name)}</p>` : null}
+    ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} running=${running} onSignIn=${onSignIn} onSignOut=${onSignOut} onRemove=${onRemove} />`)}
+  </div>`;
+}
+
 function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, running = false, readOnly = false }) {
   // #3212 PR 3: a signed-in account of a CLI whose own logout the dashboard runs; Switch account on the default sign-in.
-  const canSignOut = typeof onSignOut === "function" && row.state === "usable" && SIGN_OUT_CLIS.has(row.backend);
+  // #3190 Part 3c: a computer's row is changed only where its Runtime allows it (`signIn`); never its default (the Windows user's own sign-in), never Move or Switch.
+  const machine = row.scope && row.scope.kind === "machine" ? row.scope : null;
+  const manageable = !machine || (row.signIn && !!row.profile);
+  const canSignOut = manageable && typeof onSignOut === "function" && row.state === "usable" && SIGN_OUT_CLIS.has(row.backend);
   const who = identityText(row.identity);
   const u = row.usage;
+  const why = machine && machine.readOnlyReason && !MACHINE_LEVEL.has(machine.readOnlyReason) ? reasonText(machine.readOnlyReason, machine.name) : "";
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-who"><strong>${rowName(row)}</strong>
       ${who ? html`<small class="s-account-identity">${who}</small>` : null}
-      <small class="s-account-used">${usedText(row)}${row.usedBy.fleetDefault && cli.profiles ? html` · <span class="tag">${tx("fleetDefaultTag")}</span>` : null}</small>
+      <small class="s-account-used">${usedText(row)}${row.usedBy.fleetDefault && cli.profiles ? html` · <span class="tag">${machine ? tx("machineDefaultTag") : tx("fleetDefaultTag")}</span>` : null}</small>
+      ${machine ? html`<small class="s-account-usage is-none" title=${tx("machineNoUsageHint")}>${tx("machineNoUsage")}</small>` : null}
+      ${why ? html`<small class="note s-account-why">${why}</small>` : null}
       ${u ? html`<small class=${`s-account-usage${u.stale ? " is-stale" : ""}`}>${tx("weekly", u.percent)}${u.resetsAt ? ` · ${tx("resets", when(u.resetsAt))}` : ""}${u.stale ? ` · ${tx("stale")}` : ""}</small>` : null}
     </div>
     <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${tx(`state_${row.state || "unknown"}`)}</span>
     ${readOnly ? null : html`<span class="s-actions">
-      ${row.signIn ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
-      ${cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
-      ${canSignOut && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
+      ${row.signIn && typeof onSignIn === "function" ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}), ...(machine ? { machine } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
+      ${!machine && cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
+      ${canSignOut && !machine && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
       ${canSignOut ? html`<button type="button" class="btn btn-sm btn-ghost s-account-signout" disabled=${running} onClick=${() => onSignOut(row, "signout")}>${manageWords.signOut()}</button>` : null}
-      ${row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
+      ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
     </span>`}
-    ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${tx("hostCommand")}</summary><p class="note">${tx("hostCommandHint")}</p><p class="s-host-cli-command"><code>${row.hostCommand}</code></p></details>` : null}
+    ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${machine ? tx("machineCommand") : tx("hostCommand")}</summary><p class="note">${machine ? tx("machineCommandHint", machine.name) : tx("hostCommandHint")}</p><p class="s-host-cli-command"><code>${row.hostCommand}</code></p></details>` : null}
     ${!readOnly && row.keepAlive && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}
   </div>`;
 }

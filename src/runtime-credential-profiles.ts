@@ -29,8 +29,12 @@ const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[
  * A pane host passes exactly this kind of message across its local link (anything else is flattened to a generic refusal).
  */
 export class CredentialProfileRefusal extends Error { constructor(message: string) { super(message); this.name = "CredentialProfileRefusal"; } }
-/** `identity` (masked e-mail and plan) only for a profile that is signed in as an account; never present otherwise. */
-export interface CredentialProfileStatus { name: string; loggedIn: boolean | null; identity?: AccountIdentity }
+/**
+ * `identity` (masked e-mail and plan) only for a profile that is signed in as an account; never present otherwise.
+ * `created` (#3190 Part 3c): this Runtime made the folder and recorded it (`created.json`), so the dashboard may sign it in, sign it out and remove it when the
+ * computer's owner allows; absent or false, the profile is only for the person at that computer. Absent also from a Runtime that does not report it.
+ */
+export interface CredentialProfileStatus { name: string; loggedIn: boolean | null; identity?: AccountIdentity; created?: boolean }
 export interface CredentialProfileReport { profiles: CredentialProfileStatus[]; default?: string }
 
 export function isCredentialProfileCli(value: unknown): value is CredentialProfileCli {
@@ -185,9 +189,10 @@ export function forgetCredentialStatus(root: string, cli: CredentialProfileCli, 
   try { atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
 }
 /** What this computer tells AgEnD: names and a signed-in yes/no (null = not checked yet). No path, e-mail, account or token. */
-export function credentialProfileReport(root: string, defaultName?: string): CredentialProfileReport {
+export function credentialProfileReport(root: string, defaultName?: string, created?: (name: string) => boolean): CredentialProfileReport {
   const kind: CredentialProfileCli = "claude-code";
-  const profiles = listCredentialProfileNames(root, kind).map(name => { const known = cachedCredentialStatus(root, kind, name); return { name, loggedIn: known?.loggedIn ?? null, ...(known?.identity ? { identity: known.identity } : {}) }; });
+  const profiles = listCredentialProfileNames(root, kind).map(name => { const known = cachedCredentialStatus(root, kind, name);
+    return { name, loggedIn: known?.loggedIn ?? null, ...(known?.identity ? { identity: known.identity } : {}), ...(created ? { created: created(name) } : {}) }; });
   return { profiles, ...(defaultName && profiles.some(row => row.name === defaultName) ? { default: defaultName } : {}) };
 }
 /** Bounded, closed parse of what a Runtime reports: only names and a signed-in yes/no. Anything else (a path, an e-mail) is a protocol error. */
@@ -201,14 +206,15 @@ export function parseCredentialProfileReport(value: unknown): CredentialProfileR
   for (const row of input.profiles) {
     if (!row || typeof row !== "object" || Array.isArray(row)) return fail("profile");
     const item = row as Record<string, unknown>;
-    if (Object.keys(item).some(key => key !== "name" && key !== "loggedIn" && key !== "identity")) return fail("profile field");
+    if (Object.keys(item).some(key => key !== "name" && key !== "loggedIn" && key !== "identity" && key !== "created")) return fail("profile field");
+    if (item.created !== undefined && typeof item.created !== "boolean") return fail("created");
     if (!validCredentialProfileName(item.name) || ![true, false, null].includes(item.loggedIn as boolean | null) || seen.has(item.name.toLowerCase())) return fail("name or loggedIn");
     // The account is only a masked e-mail and a plan, and only for a signed-in profile; an unmasked e-mail is a protocol error.
     if (item.identity !== undefined && item.loggedIn !== true) return fail("identity");
     let identity: AccountIdentity | undefined;
     try { identity = item.identity === undefined ? undefined : parseAccountIdentity(item.identity); }
     catch (error) { return fail(`identity ${/^Invalid account identity: (identity|unknown field|maskedEmail|plan|apiKey)$/.exec((error as Error).message)?.[1] ?? "invalid"}`); }
-    seen.add(item.name.toLowerCase()); profiles.push({ name: item.name, loggedIn: item.loggedIn as boolean | null, ...(identity ? { identity } : {}) });
+    seen.add(item.name.toLowerCase()); profiles.push({ name: item.name, loggedIn: item.loggedIn as boolean | null, ...(identity ? { identity } : {}), ...(item.created !== undefined ? { created: item.created as boolean } : {}) });
   }
   if (input.default !== undefined && (!validCredentialProfileName(input.default) || !profiles.some(row => row.name === input.default))) return fail("default");
   return { profiles, ...(input.default !== undefined ? { default: input.default as string } : {}) };

@@ -186,14 +186,14 @@ describe("what a Runtime tells AgEnD about its profiles", () => {
     expect(f.hub.machine(f.machineId)?.runtimeInfo?.capabilities).toContain("credential-profiles");
     await f.hub.call(f.machineId, "probe", { force: true });
     const machine = f.hub.machine(f.machineId)!, report = machine.inventory?.credentialProfiles;
-    expect(report).toEqual({ profiles: [{ name: "home", loggedIn: false }, { name: "work", loggedIn: true }], default: "work" });
+    expect(report).toEqual({ profiles: [{ name: "home", loggedIn: false, created: false }, { name: "work", loggedIn: true, created: false }], default: "work" });   // `created`: whether this Runtime recorded making it (#3190 Part 3c)
     expect(JSON.stringify(machine)).not.toContain(f.root); expect(JSON.stringify(machine)).not.toMatch(/credential-profiles[\\/]/);
   });
   it("a read that is not an explicit detection starts no CLI: names from the disk, the last known answer, otherwise unknown", async () => {
     const f = await fixture(); ensureCredentialProfile(f.root, "claude-code", "fresh");
     f.login.mockClear(); await f.hub.call(f.machineId, "probe", {});
     expect(f.login).not.toHaveBeenCalled();
-    expect(f.hub.machine(f.machineId)?.inventory?.credentialProfiles?.profiles).toEqual([{ name: "fresh", loggedIn: null }]);
+    expect(f.hub.machine(f.machineId)?.inventory?.credentialProfiles?.profiles).toEqual([{ name: "fresh", loggedIn: null, created: false }]);
   });
   it("is the Runtime's own report: whatever the CLI worker's inventory carries, only names and yes/no leave this computer", async () => {
     const f = await fixture(); ensureCredentialProfile(f.root, "claude-code", "work");

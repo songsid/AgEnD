@@ -97,6 +97,11 @@ export function structuredSignInPrompt(backend: StructuredBackend, input: string
 
 export interface StructuredSignInLaunch {
   argv: readonly string[];
+  /**
+   * #3190 Part 3c: a credential profile NAME on a paired computer, for a transport that signs a profile in there. Only a name: the transport turns it into
+   * its own folder and variable. Never a path, an environment or an argument. A transport that has no profiles (the host's own) refuses it.
+   */
+  profile?: string;
   /** Fixed command, only after an explicit re-login choice. Never an implicit logout. */
   logoutArgv?: readonly string[];
 }
@@ -116,6 +121,8 @@ export interface StructuredSignInDeps {
   lock: LoginWindowLock;
   /** Current setup owner / local-admin session. Rechecked after every await. */
   current(): boolean;
+  /** The credential profile NAME this sign-in is for (a paired computer's, #3190 Part 3c). Passed to the transport as `StructuredSignInLaunch.profile`; the closed name check is the caller's. */
+  profile?: string;
   /** Independently probe the backend's auth status; bounded and token-free (LOGIN_FLOWS.authCheck). */
   checkAuth(): Promise<AuthCheckResult>;
   /** Monotonic elapsed milliseconds; wall-clock corrections must not extend an attempt. */
@@ -193,7 +200,7 @@ export class StructuredSignIn {
       this.setPhase("starting");
       if (!this.current()) { await this.finish(this.lostReason()); return; }
       this.transportTouched = true;
-      this.startInFlight = this.deps.transport.start({ argv: [...ARGV[this.backend]],
+      this.startInFlight = this.deps.transport.start({ argv: [...ARGV[this.backend]], ...(this.deps.profile !== undefined ? { profile: this.deps.profile } : {}),
         ...(confirmedRelogin && this.backend === "kiro-cli" ? { logoutArgv: ["kiro-cli", "logout"] } : {}) }, this.abort.signal);
       await this.startInFlight;
       if (!this.current()) { await this.finish(this.lostReason()); return; }

@@ -67,10 +67,11 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect([team2.querySelector(".s-actions button")?.textContent ?? null, text(team2.querySelector("details code"))]).toEqual(["Move agents here…", "CODEX_HOME=/x codex login"]);
   });
 
-  it("a paired computer's accounts are drawn read-only under its name (the reserved machine scope)", async () => {
+  it("an offline computer's accounts are drawn read-only under its name, with the reason (the machine scope)", async () => {
     await mount();
     const m = card("claude-code").querySelector(".s-account-machine");
-    expect(text(m.querySelector(".note"))).toBe("On Desk PC — offline");
+    expect(text(m.querySelector("strong"))).toBe("On Desk PC");
+    expect(text(m.querySelector(".s-account-why"))).toBe("Desk PC is offline. Start its Runtime to manage its accounts.");   // #3190 Part 3c words the server's reason code
     expect(m.querySelectorAll("button")).toHaveLength(0);
   });
 

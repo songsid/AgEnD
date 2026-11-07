@@ -20,3 +20,9 @@
 .s-account-inuse li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .s-account-inuse li > span { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
 .s-account-inuse li > small { flex-basis: 100%; }
+/* #3190 Part 3c: a paired computer's accounts under its name (a tab with an older copy of this file only loses the layout). */
+.s-account-machine { display: grid; gap: var(--s-1); }
+.s-account-machine-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.s-account-machine-head .s-account-add { margin-left: auto; }
+.s-account-why { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.s-account-usage.is-none { color: var(--text-3); }
