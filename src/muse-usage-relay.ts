@@ -20,6 +20,8 @@ export const MUSE_USAGE_STATE_FILE = "muse-usage.json";
 export const MUSE_USAGE_STALE_MS = 15 * 60_000;
 
 export interface MuseUsageWindow {
+  /** Local observation time of this window; absent on legacy snapshots. */
+  observedAt?: number;
   usedPercent: number;
   resetsAt: number;
   windowMs?: number;
@@ -137,11 +139,13 @@ export class MuseUsageSseParser {
 }
 
 function mergeSnapshot(previous: MuseUsageSnapshot | undefined, update: Partial<MuseUsageSnapshot>): MuseUsageSnapshot {
+  const observedAt = Date.now();
   return {
-    observedAt: Date.now(),
+    observedAt,
     plan: update.plan ?? previous?.plan,
-    session: update.session ?? previous?.session,
-    weekly: update.weekly ?? previous?.weekly,
+    // A partial/plan-only frame must never rejuvenate a retained window.
+    session: update.session ? { ...update.session, observedAt } : previous?.session,
+    weekly: update.weekly ? { ...update.weekly, observedAt } : previous?.weekly,
   };
 }
 

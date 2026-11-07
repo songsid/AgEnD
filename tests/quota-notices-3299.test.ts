@@ -102,7 +102,7 @@ describe("account quota reminders", () => {
     await s.observe(r.payload(92, START + 2 * WEEK)); expect(r.send).toHaveBeenCalledTimes(1);
     r.advance(WEEK + 1000); await s.observe(r.payload(92, START + 2 * WEEK)); expect(r.send).toHaveBeenCalledTimes(2);
   });
-  it.each(["stale", "error", "unlimited", "expired", "expiry", "unknown-window", "non-percent", "stale-local", "future-local", "bad-number", "old-fetch"])("ignores %s evidence", async mode => {
+  it.each(["stale", "error", "unlimited", "expired", "expiry", "unknown-window", "non-percent", "stale-local", "future-local", "bad-number", "negative", "unknown-window-age", "old-window-age", "future-window-age", "old-fetch"])("ignores %s evidence", async mode => {
     const r = await rig(), p = r.payload(), row = p.providers[0]!, m = row.metrics[0]!;
     if (mode === "stale") row.stale = true;
     if (mode === "error") row.status = "error";
@@ -114,6 +114,10 @@ describe("account quota reminders", () => {
     if (mode === "stale-local") row.observedAt = new Date(START - 11 * 60_000).toISOString();
     if (mode === "future-local") row.observedAt = new Date(START + 120_000).toISOString();
     if (mode === "bad-number") m.used = NaN;
+    if (mode === "negative") m.used = -1;
+    if (mode === "unknown-window-age") m.observedAt = null;
+    if (mode === "old-window-age") m.observedAt = new Date(START - 11 * 60_000).toISOString();
+    if (mode === "future-window-age") m.observedAt = new Date(START + 120_000).toISOString();
     if (mode === "old-fetch") p.fetchedAt = new Date(START - 11 * 60_000).toISOString();
     await r.service().observe(p); expect(r.send).not.toHaveBeenCalled();
   });
@@ -133,6 +137,14 @@ describe("account quota reminders", () => {
     const s = r.service(async (file, state) => { entered.release(); await held.promise; await writeFile(file, state); });
     const work = s.observe(r.payload()); await entered.promise;
     r.advance(11 * 60_000); held.release(); await work;
+    expect(r.send).not.toHaveBeenCalled();
+  });
+  it("rechecks each selected window's age after durable storage", async () => {
+    const r = await rig(), entered = gate(), held = gate();
+    const p = r.payload(); p.providers[0]!.metrics[0]!.observedAt = new Date(START - 9 * 60_000).toISOString();
+    const service = r.service(async (file, state) => { entered.release(); await held.promise; await writeFile(file, state); });
+    const work = service.observe(p); await entered.promise;
+    r.advance(2 * 60_000); held.release(); await work;
     expect(r.send).not.toHaveBeenCalled();
   });
   it("holds storage failures and corrupt state, without resetting to empty", async () => {

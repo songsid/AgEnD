@@ -27,6 +27,7 @@ async function page(c: any, skew?: "strings" | "schema" | "panel" | "route") {
   const p = await freshPage(fx, c);
   const errors = p.errors;
   await p.page.addInitScript(() => {
+    (window as any).__name = (fn: unknown) => fn; // tsx function-name helper in page.evaluate
     (window as any).__quotaCsp = [];
     document.addEventListener("securitypolicyviolation", e => (window as any).__quotaCsp.push(e.violatedDirective + " " + e.blockedURI));
   });
@@ -94,6 +95,45 @@ try {
     await p.page.locator("#g-auto").fill("12"); await save(p.page, "en", ["fleet/defaults"]);
     check("old panel unrelated save retains quota rules", JSON.stringify(disk().defaults.quota_notice) === JSON.stringify(before));
     check("old panel: no page errors", !p.errors.length); await p.ctx.close();
+  }
+  {
+    seed(); const p = await page({ device: "desk", theme: "light", lang: "en" });
+    // Real Preact/useDraft remount with retained unsaved fields, as after the
+    // create-agent dialog reloads Settings. No agent/CLI is created by this rig.
+    await p.page.evaluate(async () => {
+      const { html, render } = await import("/assets/app-html.js");
+      const { QuotaNoticeSettings } = await import("/ui/js/settings-quota-notice.js");
+      const root = document.createElement("div"); root.id = "quota-draft-probe"; document.body.append(root);
+      const staged = new Map(), ctx: any = { schema: { impacts: { "instance.quota_notice": "now" } }, drafts: new Map(),
+        fleet: { defaults: { quota_notice: { thresholds: [10], periods: ["weekly"] } }, instances: { worker: { backend: "codex" } } },
+        classic: { channels: {} }, stage: (k: string, v: any) => staged.set(k, v), unstage: (k: string) => staged.delete(k) };
+      let epoch = 0;
+      const draw = () => render(html`<${QuotaNoticeSettings} key=${epoch} ctx=${ctx} />`, root);
+      (window as any).__quotaDraftProbe = { ctx, staged, reload() {
+        ctx.fleet.instances.newAgent = { quota_notice: { enabled: false } };
+        ctx.fleet.instances.worker.quota_notice = { enabled: false, periods: ["daily"] };
+        ctx.fleet.defaults.quota_notice.periods = ["monthly"]; staged.clear(); epoch++; draw();
+      }, close() { render(null, root); root.remove(); } };
+      draw();
+    });
+    const root = p.page.locator("#quota-draft-probe");
+    await root.locator("#qn-thresholds").fill("25");
+    await root.locator("#qn-scope").selectOption("agent:worker"); await root.locator("#qn-thresholds").fill("5");
+    await p.page.waitForFunction(() => Object.values((window as any).__quotaDraftProbe.ctx.drafts.get("quota-notices") || {}).includes("5"));
+    await p.page.evaluate(() => (window as any).__quotaDraftProbe.reload());
+    await root.locator("#qn-scope").selectOption("agent:newAgent");
+    check("draft reload: new agent remains disabled", await root.locator("#qn-enabled").inputValue() === "off");
+    await root.locator("#qn-scope").selectOption("agent:worker");
+    check("draft reload: edited threshold retained", await root.locator("#qn-thresholds").inputValue() === "5");
+    check("draft reload: untouched same-rule enable follows reload", await root.locator("#qn-enabled").inputValue() === "off");
+    check("draft reload: untouched same-rule period follows reload", await root.locator("#qn-periods").inputValue() === "daily");
+    await root.locator("#qn-scope").selectOption("fleet");
+    check("draft reload: fleet edit retained", await root.locator("#qn-thresholds").inputValue() === "25");
+    check("draft reload: untouched fleet period follows reload", await root.locator("#qn-periods").inputValue() === "monthly");
+    await p.page.waitForFunction(() => (window as any).__quotaDraftProbe.staged.has("quota:defaults"));
+    check("draft reload: new agent never staged for deletion", !await p.page.evaluate(() => (window as any).__quotaDraftProbe.staged.has("quota:agent:newAgent")));
+    await p.page.evaluate(() => (window as any).__quotaDraftProbe.close());
+    check("draft reload: no page errors", !p.errors.length); await p.ctx.close();
   }
   const out = process.env.OUT || "/tmp/quota-notice-smoke"; mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "result.json"), JSON.stringify({ results, failures }, null, 2));
