@@ -57,10 +57,10 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(p.root.querySelectorAll(".s-account-card").map((c: any) => c.getAttribute("data-backend"))).toEqual(["claude-code", "codex"]);
     const def = rowOf("claude-code", "default"), work = rowOf("claude-code", "work"), off = rowOf("claude-code", "personal");
     expect([text(def.querySelector(".s-account-title-left strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
-      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents", "7d 37%"]);
+      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents", "7d37%"]);
     expect(text(def.querySelector(".s-account-title-left .s-account-default-tag"))).toBe("fleet default");     // the tag is in the title bar, not in the used-by pill
     expect([text(work.querySelector(".s-account-title-left strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
-      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "7d 82% (stale)"]);
+      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "7d82%(stale)"]);
     expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not signed in", "used by no agent"]);
     expect(text(off.querySelector(".s-actions button"))).toBe("Sign in");
     expect(off.querySelector(".s-actions").textContent).not.toContain("Move agents here");      // a signed-out account takes no agents

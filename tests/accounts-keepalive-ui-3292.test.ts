@@ -69,7 +69,7 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     const off = ka("claude-code", "default"), on = ka("claude-code", "work"), cx = ka("codex", "default");
     expect(text(off.querySelector("label"))).toBe("Keep sign-in alive");
     expect(off.querySelector('input[type="checkbox"]').checked).toBe(false);
-    expect(text(off.querySelector(".s-keepalive-hint"))).toContain("No model request");
+    expect(text(off.querySelector('[role="tooltip"]'))).toContain("No model request");
     expect(off.querySelector(".s-keepalive-fallback")).toBeNull();                         // the fallback only once it is on
     expect(off.querySelector(".s-keepalive-ends").className).not.toContain("is-warn");
     expect(on.querySelector(".s-keepalive-ends").className).toContain("is-warn");
@@ -77,7 +77,7 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     expect(text(on.querySelector(".s-keepalive-fallback"))).toContain("smallest model");
     expect(on.querySelector(".s-keepalive-last").className).toContain("is-bad");
     expect(text(on.querySelector(".s-keepalive-last"))).toMatch(/^Last check .+: not renewed$/);
-    expect(text(cx.querySelector(".s-keepalive-hint"))).toContain("Codex's own refresh");
+    expect(text(cx.querySelector('[role="tooltip"]'))).toContain("Codex's own refresh");
     expect([text(cx.querySelector(".s-keepalive-plan")), cx.querySelector(".s-keepalive-ends"), cx.querySelector(".s-keepalive-fallback")]).toEqual(["Plan: free", null, null]);
   });
   it("switching POSTs the setting (profile null for the default) and reads the view again", async () => {
