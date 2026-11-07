@@ -116,9 +116,9 @@ export function createNoticesSync({ store, fetchList, setTimer = (fn, ms) => set
   function read() {
     return (inFlight ??= Promise.resolve().then(fetchList).then((d) => {
       if (!d || !Array.isArray(d.items)) throw new Error("no list");
-      store.set({ notices: mergeNoticeList(store.get().notices, d) });
+      store.set({ notices: mergeNoticeList(store.get().notices, d), noticesError: false });
       return true;
-    }).catch(() => false).then((ok) => {
+    }).catch(() => { store.set({ noticesError: true }); return false; }).then((ok) => {
       inFlight = null;
       if (behind()) later(ok ? NOTICES_RETRY_MS.stale : NOTICES_RETRY_MS.failed);
       else retryAt = 0;

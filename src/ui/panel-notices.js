@@ -8,7 +8,7 @@ import { appStore, applyNoticesSeen, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
-import { Empty } from "/assets/ui-states.js";
+import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 
 register("notices", {
@@ -64,7 +64,7 @@ function markShown() {
 
 export function NoticesPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { notices, instances } = useStore(appStore);
+  const { notices, noticesError, instances, connections } = useStore(appStore);
   const items = notices && Array.isArray(notices.items) ? notices.items : [];
   // What was unread when the page opened stays marked "New" while it is open (it is marked read on the server at once).
   const [seenAtOpen] = useState(() => (notices ? notices.seen | 0 : 0));
@@ -82,7 +82,8 @@ export function NoticesPanel({ navKey }) {
     <${PanelHeader} title=${tn("title")} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${items.length ? html`<p class="note notice-sub">${tn("sub")}</p>` : null}
-      ${!items.length ? html`<${Empty} icon="bell" title=${tn("empty")} hint=${tn("emptyHint")} />`
+      ${!notices && noticesError ? html`<${ErrorState} onRetry=${() => appStore.get().readNotices?.()} />`
+        : !notices && (connections == null || connections === 0) ? html`<${Skeleton} variant="rows" lines=${3} />` : !items.length ? html`<${Empty} icon="bell" title=${tn("empty")} hint=${tn("emptyHint")} />`
         : items.map((n) => html`<article key=${n.id} class=${`n-item notice${n.id > seenAtOpen ? " unread" : ""}${n.kind === "fleet" ? " bad" : ""}`}>
           <span class="n-icon"><${Icon} name=${ICON[n.kind] || "info"} size=${18} /></span>
           <div class="n-body">

@@ -96,6 +96,7 @@
   // …and no "No chat bot?" help: the hint above already is it.
   if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
+  $("checking").setAttribute?.("aria-label", t("checking"));
   if (outside) {
     const input = $("code");
     input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");

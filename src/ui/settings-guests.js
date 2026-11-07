@@ -11,6 +11,7 @@
 // reset from ctx.fleet), ctx.readOnly (the public link: controls disabled, actions hidden), `s-dirty` on edited rows.
 import { html, useEffect, useMemo, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
@@ -227,7 +228,7 @@ export function GuestsSection({ ctx, staged }) {
       <p class="note">${tn("guestsChatHint")}</p>
 </div></div>
       ${failed ? html`<p class="note" role="status">${tn("guestsLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`
-        : !overview ? html`<p class="note">${t("app.loading")}</p>` : null}
+        : !overview ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
       ${!f.grants && overview ? html`<div class="g-legacy"><p class="note">${tn("grantsLegacy")}</p>
         ${readOnly ? null : html`<button type="button" class="btn btn-sm" id="grantsConvert" onClick=${convert}>${tn("grantsConvert")}</button>`}</div>` : null}
 <div class="s-guest-workbench"><section class="s-guest-list-card"><h4>${layoutText("revGuestManagement")}</h4>
@@ -273,7 +274,7 @@ export function GuestsSection({ ctx, staged }) {
       })}${!rows.length ? html`<p class="note">${layoutText("revSelectGuest")}</p>` : null}</aside></div>
       ${readOnly ? null : html`<details class="s-guest-add"><summary>${tn("grantsAdd")}</summary><div>
         <input type="search" class="input g-search" id="grantsSearch" value=${query} aria-label=${tn("grantsSearch")} placeholder=${tn("grantsSearch")} onInput=${(e) => setQuery(e.target.value)} />
-        ${people === null ? html`<p class="note">${t("app.loading")}</p>` : !candidates.length ? html`<p class="note" id="grantsNoPeople">${tn("grantsNoPeople")}</p>`
+        ${people === null ? html`<${Skeleton} variant="rows" lines=${3} />` : !candidates.length ? html`<p class="note" id="grantsNoPeople">${tn("grantsNoPeople")}</p>`
           : html`<ul class="g-pick">${candidates.map((p) => html`<li key=${accountKey(p)} class="g-cand" data-account=${accountKey(p)}>
             <span class="g-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
             <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span></span>

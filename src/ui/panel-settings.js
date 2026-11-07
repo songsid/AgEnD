@@ -715,6 +715,8 @@ export function ProfileCard({ embedded = false } = {}) {
   };
   const busy = state.phase !== "ready";
   const changed = draft.trim() !== state.name;
+  if (state.phase === "loading") return embedded ? html`<div class="s-profile s-pref-profile-fields"><${Skeleton} lines=${4} /></div>`
+    : html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3><${Skeleton} lines=${4} /></section>`;
   const initial = [...(state.shown || state.name || "web-user")][0]?.toUpperCase() || "W";
   const fields = html`<div class="s-pref-profile-layout">
     ${embedded ? html`<span class="s-pref-avatar" aria-hidden="true">${initial}</span>` : null}

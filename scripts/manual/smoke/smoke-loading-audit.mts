@@ -2,6 +2,7 @@
 // REPO=<checkout> PW_DIR=<playwright-core dir> OUT=<screenshots dir> npx tsx scripts/manual/smoke/smoke-loading-audit.mts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { bootFixture } from "../smoke-fixture/index.mts";
 
 const OUT = process.env.OUT!, REPO = process.env.REPO!;
@@ -22,13 +23,32 @@ async function throttle(page: any) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 250_000, uploadThroughput: 100_000 });
+  if (process.env.OLD_CSS) {
+    const body = execFileSync("git", ["-C", REPO, "show", `${process.env.OLD_CSS}:src/ui/shared/app.css`], { encoding: "utf8" });
+    await page.route("**/assets/app.css*", (route: any) => route.fulfill({ contentType: "text/css", body }));
+  }
+  if (process.env.OLD_STATES) {
+    const body = execFileSync("git", ["-C", REPO, "show", `${process.env.OLD_STATES}:src/ui/shared/ui-states.js`], { encoding: "utf8" });
+    await page.route("**/assets/ui-states.js*", (route: any) => route.fulfill({ contentType: "text/javascript", body }));
+  }
 }
+const pending: Record<string, string> = { boot: ".sk-boot", "agent-details": ".p-details .skeleton", "search-open": "dialog .skeleton", search: ".search-body .skeleton",
+  "search-context": ".search-detail .skeleton", preview: ".pv-md-panel .skeleton", needs: ".p-needs .skeleton", notices: ".p-notices .skeleton",
+  profile: ".s-profile .skeleton", access: ".s-web-authority .skeleton", accounts: ".s-auth-body .skeleton", runtime: ".runtime-settings .skeleton", "files-changes": ".ws-panel .skeleton", signin: "#checking.skeleton" };
 async function shot(page: any, tag: string, name: string) {
   await page.waitForSelector("body", { state: "attached", timeout: 30_000 });
   await page.waitForTimeout(700);
   const state = await page.evaluate(() => ({ text: document.body.innerText.slice(-3500), skeletons: document.querySelectorAll(".skeleton").length,
     busy: document.querySelectorAll('[aria-busy="true"]').length, overflow: document.documentElement.scrollWidth > innerWidth }));
   await page.screenshot({ path: join(OUT, `${tag}-${name}.png`) });
+  if (process.env.EXPECT_SKELETON === "1") {
+    if (!await page.locator(pending[name]).first().isVisible()) throw new Error(`${tag}/${name}: no visible content skeleton at ${pending[name]}`);
+    if (state.overflow) throw new Error(`${tag}/${name}: page overflow`);
+    const paint = await page.locator(pending[name]).first().evaluate((el: Element) => ({ opacity: getComputedStyle(el).opacity,
+      animation: getComputedStyle(el).animationName, reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      color: getComputedStyle(el.querySelector(".sk-line") || el).backgroundColor }));
+    if (paint.opacity === "0" || paint.color === "rgba(0, 0, 0, 0)" || paint.reduced && paint.animation !== "none") throw new Error(`${tag}/${name}: bad skeleton paint ${JSON.stringify(paint)}`);
+  }
   results.cases.push({ tag, name, ...state });
   console.log(`${tag} ${name}: skeletons=${state.skeletons} busy=${state.busy}`);
 }
@@ -44,15 +64,23 @@ async function hold(page: any, matches: (u: URL) => boolean) {
 }
 async function navigateHold(page: any, tag: string, name: string, path: string, matches: (u: URL) => boolean, during?: () => Promise<void>) {
   const h = await hold(page, matches);
+  let frame: any = null;
   try {
     await page.goto(fx.base + path, { waitUntil: "commit" }); await h.requested(); if (during) await during(); await shot(page, tag, name);
+    frame = await page.evaluate(() => { const el = document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; });
   } finally { await h.release(); }
   await page.waitForTimeout(800);
+  if (process.env.EXPECT_SKELETON === "1") {
+    await page.locator(pending[name]).first().waitFor({ state: "hidden", timeout: 25_000 });
+    const next = await page.evaluate(() => { const el = document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; });
+    if (frame && next && Object.keys(frame).some(k => Math.abs(frame[k] - next[k]) > 2)) throw new Error(`${tag}/${name}: frame moved ${JSON.stringify({ frame, next })}`);
+  }
 }
 try {
   for (const c of cases) {
     const tag = `${c.device}-${c.lang}`;
     const { ctx, page } = await fx.page(c, { path: `/ui/chat/${agent}` });
+    await page.emulateMedia({ reducedMotion: c.lang === "zh-TW" ? "reduce" : "no-preference" });
     await throttle(page);
     if (process.env.MODE === "accounts") {
       await navigateHold(page, tag, "accounts", "/settings/agents", u => u.pathname === "/ui/accounts", async () => {
