@@ -90,6 +90,16 @@ export class HubCatalogService {
       return; // A byte-identical retransmission neither creates provenance nor consults groups again.
     }
     const oldRows = before.rows as (ExposureRow & { updated_at: number })[];
+    const validateBindings = (db: Database.Database) => {
+      for (const e of snapshot.exposures) {
+        const old = readExposure(db, e.id);
+        if (old && (old.fleet_id !== link.fleetId || old.owner !== owner)) throw new HubProtocolError("denied");
+        if (old && e.revision < old.revision) throw new HubProtocolError("stale");
+        if (old && e.revision === old.revision && (old.policy_digest !== e.policyDigest || old.data_view_id !== e.dataViewId
+          || old.allowed_tools !== JSON.stringify([...e.allowedTools]))) throw new HubProtocolError("conflict");
+      }
+    };
+    this.core.atomic(validateBindings); // Ordinary malformed/stale consent never reaches the group-refusal narrowing path.
     const publishing = snapshot.exposures.filter(e => {
       const old = oldRows.find(r => r.id === e.id);
       return e.state === "published" && (!old || e.revision > old.frozen_through)
@@ -105,6 +115,39 @@ export class HubCatalogService {
       if (serializedFleet !== undefined && JSON.stringify(this.core.deps.store.read().fleets.find(f => f.id === link.fleetId)) !== serializedFleet) throw new HubProtocolError("stale");
       if (JSON.stringify(this.core.atomic(db => image(db))) !== expectedImage) throw new HubProtocolError("conflict");
     } };
+    // A publication refusal cannot keep an independently withdrawn agent reachable. Apply only reductions
+    // to the prior exact material, retaining the cursor so the complete snapshot can be retried later.
+    const narrowRefused = () => {
+      const requested = new Map(snapshot.exposures.map(e => [e.id, e]));
+      const narrowed = oldRows.filter(row => row.state !== "withdrawn" && (!requested.has(row.id) || requested.get(row.id)!.state !== "published"));
+      if (!narrowed.length) return;
+      let written = false;
+      const narrowingPermit = { assertCurrent: () => {
+        if (!ctx.current() || this.core.deps.groups !== groups) throw new HubProtocolError("unavailable");
+        if (serializedFleet !== undefined && JSON.stringify(this.core.deps.store.read().fleets.find(f => f.id === link.fleetId)) !== serializedFleet) throw new HubProtocolError("stale");
+        this.core.atomic(db => {
+          if (JSON.stringify(image(db)) !== expectedImage) throw new HubProtocolError("conflict");
+          if (written) for (const row of narrowed) {
+            if (db.prepare("SELECT 1 FROM hub_grants WHERE exposure_id=? AND state='active'").get(row.id)
+              || db.prepare("SELECT 1 FROM hub_rooms WHERE exposure_id=? AND state<>'closed'").get(row.id)) throw new HubProtocolError("conflict");
+          }
+        });
+      } };
+      this.core.atomic((db, tx) => {
+        validateBindings(db);
+        for (const row of narrowed) {
+          const state = requested.get(row.id)?.state ?? "withdrawn";
+          db.prepare("UPDATE hub_exposures SET state=?,frozen_through=MAX(frozen_through,?),updated_at=? WHERE id=?")
+            .run(state, state === "frozen" ? row.revision : row.frozen_through, now, row.id);
+          db.prepare("UPDATE hub_grants SET state='revoked',revision=revision+1 WHERE exposure_id=? AND state='active'").run(row.id);
+          db.prepare("UPDATE hub_rooms SET state='closed' WHERE exposure_id=? AND state<>'closed'").run(row.id);
+        }
+        expectedImage = JSON.stringify(image(db)); written = true;
+        this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot-narrowed", result: "completed",
+          fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: "publication-refused" });
+      }, narrowingPermit);
+    };
+    let preparedAll = false;
     try {
       if (groups && publishing.length) {
         const fleet = this.core.deps.store.read().fleets.find(f => f.id === link.fleetId);
@@ -117,6 +160,7 @@ export class HubCatalogService {
           prepared.push(await groups.prepareEnrollment({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx));
         }
       }
+      preparedAll = true;
       this.core.atomic((db, tx) => {
         const cursor = db.prepare("SELECT revision, digest FROM hub_catalog_cursor WHERE fleet_id=?").get(link.fleetId) as { revision: number; digest: string } | undefined;
         if (cursor && snapshot.revision < cursor.revision) throw new HubProtocolError("stale");
@@ -124,13 +168,7 @@ export class HubCatalogService {
           if (cursor.digest !== dig) throw new HubProtocolError("conflict");
           return;                                            // the same revision again: nothing changes
         }
-        for (const e of snapshot.exposures) {
-          const old = readExposure(db, e.id);
-          if (old && (old.fleet_id !== link.fleetId || old.owner !== owner)) throw new HubProtocolError("denied");
-          if (old && e.revision < old.revision) throw new HubProtocolError("stale");
-          if (old && e.revision === old.revision && (old.policy_digest !== e.policyDigest || old.data_view_id !== e.dataViewId
-            || old.allowed_tools !== JSON.stringify([...e.allowedTools]))) throw new HubProtocolError("conflict");
-        }
+        validateBindings(db);
         const listed = new Set(snapshot.exposures.map((e) => e.id));
         const absent = (db.prepare("SELECT id FROM hub_exposures WHERE fleet_id=? AND state<>'withdrawn'").all(link.fleetId) as { id: string }[])
           .filter((r) => !listed.has(r.id));
@@ -157,6 +195,7 @@ export class HubCatalogService {
           fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: absent.length ? "withdrawn" : undefined });
       }, permit);
     } catch (error) {
+      if (!preparedAll && error instanceof HubGroupPolicyError) narrowRefused();
       if ((error instanceof HubGroupAuthorizationError && ["denied", "resume-required"].includes(error.reason))
         || (error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")) throw new HubProtocolError("denied");
       if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");

@@ -8,6 +8,7 @@ import { createHubGroupResources, HUB_GROUP_RESOURCES_MIGRATION } from "../src/h
 import { createHubGroupAuthorization } from "../src/hub/group-policy/authorization.js";
 import type { HubExposure, PersonKey } from "../src/hub/types.js";
 import type { PolicyGroupFacts } from "../src/hub/directory/groups.js";
+import { personKeyString } from "../src/hub/identity.js";
 type Rig = Awaited<ReturnType<typeof s3bRig>>;
 let rig: Rig | undefined;
 afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(); });
@@ -78,6 +79,74 @@ describe("group enrollment with actual publication snapshots", () => {
     const w = await world(), e = w.exposure(); await w.send(1, [e]); w.read.mockClear(); w.read.mockResolvedValue({ kind: "unknown" });
     await w.send(2, [{ ...e, displayName: "Renamed helper" }]); expect(w.read).not.toHaveBeenCalled();
     await w.send(3, []); expect(w.rows()).toMatchObject([{ state: "withdrawn" }]); expect(w.read).not.toHaveBeenCalled();
+  });
+  it.each(["unknown", "denied"] as const)("still withdraws an absent agent and ends its grants/rooms when another publication is %s", async kind => {
+    const w = await world(), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]);
+    const cursor = w.r.db.prepare("SELECT * FROM hub_catalog_cursor").all(), grant = randomUUID(), room = randomUUID(), owner = personKeyString(w.owner);
+    w.r.db.prepare(`INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state)
+      VALUES(?,1,?,?,1,?,100000,?,'["ask","read-own-room"]',100000,200000,'active')`).run(grant, owner, b.id, owner, personKeyString(w.r.admin));
+    w.r.db.prepare(`INSERT INTO hub_rooms(id,exposure_id,grant_id,asker,owner_at_creation,state,created_at) VALUES(?,?,?,?,?,'active',100000)`)
+      .run(room, b.id, grant, personKeyString(w.r.admin), owner);
+    w.read.mockImplementation(async person => kind === "unknown" ? { kind: "unknown" } : { kind: "complete", person, groups: [w.other], observedAt: 100_000 });
+    await expect(w.send(2, [{ ...a, revision: 2 }])).rejects.toThrow(kind === "unknown" ? "unavailable" : "denied");
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state: "withdrawn", revision: 1 });
+    expect(w.rows().find((row: any) => row.id === a.id)).toMatchObject({ state: "published", revision: 1 });
+    expect(w.r.db.prepare("SELECT state,revision FROM hub_grants WHERE id=?").get(grant)).toEqual({ state: "revoked", revision: 2 });
+    expect(w.r.db.prepare("SELECT state FROM hub_rooms WHERE id=?").get(room)).toEqual({ state: "closed" });
+    expect(w.r.db.prepare("SELECT * FROM hub_catalog_cursor").all()).toEqual(cursor);
+    expect(w.resources.read(w.resource({ ...a, revision: 2 }))).toBeNull();
+    w.read.mockImplementation(async person => ({ kind: "complete", person, groups: [w.group], observedAt: 100_000 }));
+    await w.send(2, [{ ...a, revision: 2 }]); expect(w.rows().find((row: any) => row.id === a.id)).toMatchObject({ state: "published", revision: 2 });
+    expect(w.r.db.prepare("SELECT revision FROM hub_catalog_cursor").get()).toEqual({ revision: 2 }); expect(w.audit.verifyChain()).toMatchObject({ ok: true });
+  });
+  it.each(["withdrawn", "frozen"] as const)("applies explicit %s without copying refused new material or advancing the cursor", async state => {
+    const w = await world(), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]); w.read.mockResolvedValue({ kind: "unknown" });
+    await expect(w.send(2, [{ ...a, revision: 2 }, { ...b, revision: 2, state, policyDigest: "c".repeat(64) }])).rejects.toThrow("unavailable");
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state, revision: 1, policy_digest: b.policyDigest });
+    expect(w.r.db.prepare("SELECT revision FROM hub_catalog_cursor").get()).toEqual({ revision: 1 });
+  });
+  it("also retains narrowing when the fleet's own group read is unknown", async () => {
+    const w = await world({ manualFleet: false }), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]); w.read.mockResolvedValue({ kind: "unknown" });
+    await expect(w.send(2, [{ ...a, revision: 2 }])).rejects.toThrow("unavailable");
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state: "withdrawn" });
+    expect(w.resources.read(w.fleetResource)).toMatchObject({ state: "active" });
+  });
+  it.each(["failure", "material", "cursor", "grant", "room"] as const)("rolls narrowing back when its required audit has %s", async fault => {
+    const w = await world(), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]); w.read.mockResolvedValue({ kind: "unknown" });
+    const grant = randomUUID(), room = randomUUID(), owner = personKeyString(w.owner);
+    w.r.db.prepare(`INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state)
+      VALUES(?,1,?,?,1,?,100000,?,'["ask","read-own-room"]',100000,200000,'active')`).run(grant, owner, b.id, owner, personKeyString(w.r.admin));
+    w.r.db.prepare(`INSERT INTO hub_rooms(id,exposure_id,grant_id,asker,owner_at_creation,state,created_at) VALUES(?,?,?,?,?,'active',100000)`)
+      .run(room, b.id, grant, personKeyString(w.r.admin), owner);
+    w.append.mockImplementation((event, db) => {
+      const result = w.audit.appendInTransaction(event, db);
+      if (event.action === "exposure.snapshot-narrowed") {
+        if (fault === "failure") throw Error("narrowing audit unavailable");
+        if (fault === "material") db.prepare("UPDATE hub_exposures SET state='published' WHERE id=?").run(b.id);
+        if (fault === "cursor") db.prepare("UPDATE hub_catalog_cursor SET revision=revision+1").run();
+        if (fault === "grant") db.prepare("UPDATE hub_grants SET state='active' WHERE id=?").run(grant);
+        if (fault === "room") db.prepare("UPDATE hub_rooms SET state='active' WHERE id=?").run(room);
+      }
+      return result;
+    });
+    await expect(w.send(2, [{ ...a, revision: 2 }])).rejects.toThrow(fault === "failure" ? "narrowing audit unavailable" : "conflict");
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state: "published" });
+    expect(w.r.db.prepare("SELECT revision FROM hub_catalog_cursor").get()).toEqual({ revision: 1 });
+    expect(w.audit.verifyChain()).toMatchObject({ ok: true });
+  });
+  it("rejects invalid ordinary consent before group I/O or narrowing", async () => {
+    const w = await world(), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]); w.read.mockClear(); w.read.mockResolvedValue({ kind: "unknown" });
+    await expect(w.send(2, [{ ...a, policyDigest: "c".repeat(64) }])).rejects.toThrow("conflict");
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state: "published" }); expect(w.read).not.toHaveBeenCalled();
+  });
+  it.each(["link", "fleet-owner"] as const)("does not narrow through a %s changed during a refused publication read", async changed => {
+    const w = await world(), a = w.exposure(), b = w.exposure(); await w.send(1, [a, b]);
+    const entered = gate<void>(), held = gate<PolicyGroupFacts>(); w.read.mockImplementationOnce(() => { entered.resolve(); return held.promise; });
+    const pending = w.send(2, [{ ...a, revision: 2 }]); await entered.promise;
+    if (changed === "link") w.link.alive = false; else w.mutate(s => { s.fleets[0]!.owner = w.r.admin; });
+    held.resolve({ kind: "unknown" }); await expect(pending).rejects.toThrow();
+    expect(w.rows().find((row: any) => row.id === b.id)).toMatchObject({ state: "published" });
+    expect(w.r.db.prepare("SELECT revision FROM hub_catalog_cursor").get()).toEqual({ revision: 1 });
   });
   it("preserves exact manual publication but requires a fresh group allowance for its next revision", async () => {
     const w = await world({ enable: false }), e = w.exposure(); await w.send(1, [e]); w.resources.captureManual(w.resource(e), w.ctx); w.enable();
