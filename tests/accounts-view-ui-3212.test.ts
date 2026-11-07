@@ -1,7 +1,7 @@
 /**
  * #3212 PR 1: Settings → Agents → Accounts (src/ui/accounts-view.js, the real module over a faked GET /ui/accounts).
  * One card per CLI: the default sign-in and named accounts with which account each is (masked), who uses it and its
- * weekly usage; Sign in opens the existing dialog; "Move agents here…" stages each chosen agent's account (its other
+ * weekly usage; Sign in opens the existing dialog; "Move agents here" stages each chosen agent's account (its other
  * backend options kept); the fleet default stages a defaults change; a paired computer's rows are read-only under its
  * name; the Agent dialog's Account field lists signed-in accounts and disables a signed-out one; both languages.
  * Fixtures only (example.com).
@@ -56,15 +56,16 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     await mount();
     expect(p.root.querySelectorAll(".s-account-card").map((c: any) => c.getAttribute("data-backend"))).toEqual(["claude-code", "codex"]);
     const def = rowOf("claude-code", "default"), work = rowOf("claude-code", "work"), off = rowOf("claude-code", "personal");
-    expect([text(def.querySelector(".s-account-who strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
-      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents · fleet default", "37% of the week"]);
-    expect([text(work.querySelector(".s-account-who strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
-      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "82% of the week · last known"]);
+    expect([text(def.querySelector(".s-account-title-left strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
+      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents", "7d37%"]);
+    expect(text(def.querySelector(".s-account-title-left .s-account-default-tag"))).toBe("fleet default");     // the tag is in the title bar, not in the used-by pill
+    expect([text(work.querySelector(".s-account-title-left strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
+      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "7d82%(stale)"]);
     expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not signed in", "used by no agent"]);
     expect(text(off.querySelector(".s-actions button"))).toBe("Sign in");
     expect(off.querySelector(".s-actions").textContent).not.toContain("Move agents here");      // a signed-out account takes no agents
     const team2 = rowOf("codex", "team2");
-    expect([team2.querySelector(".s-actions button")?.textContent ?? null, text(team2.querySelector("details code"))]).toEqual(["Move agents here…", "CODEX_HOME=/x codex login"]);
+    expect([team2.querySelector(".s-actions button")?.textContent ?? null, text(team2.querySelector("details code"))]).toEqual(["Move agents here", "CODEX_HOME=/x codex login"]);
   });
 
   it("an offline computer's accounts are drawn read-only under its name, with the reason (the machine scope)", async () => {
@@ -82,9 +83,9 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(dialog && dialog.props).toMatchObject({ backend: "claude-code", profile: "personal" });
   });
 
-  it("Move agents here… stages each chosen agent onto the account, keeping its other backend options", async () => {
+  it("Move agents here stages each chosen agent onto the account, keeping its other backend options", async () => {
     const { staged } = await mount();
-    const move = [...rowOf("claude-code", "work").querySelectorAll(".s-actions button")].find((b: any) => b.textContent === "Move agents here…");
+    const move = [...rowOf("claude-code", "work").querySelectorAll(".s-actions button")].find((b: any) => b.textContent === "Move agents here");
     fire(move, "click"); await settle(6);
     const items = [...p.root.querySelectorAll(".s-account-move li")] as any[];
     expect(items.map((li) => [text(li.querySelector("span")), text(li.querySelector("small"))])).toEqual([["rev", "now: Default sign-in"], ["ops", "now: Default sign-in"]]);   // dev is already on it
@@ -117,7 +118,7 @@ describe("Settings → Agents → Accounts (#3212)", () => {
   it("in zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
-    expect([text(rowOf("claude-code", "default").querySelector(".s-account-who strong")), text(rowOf("claude-code", "work").querySelector(".s-account-used"))])
+    expect([text(rowOf("claude-code", "default").querySelector(".s-account-title-left strong")), text(rowOf("claude-code", "work").querySelector(".s-account-used"))])
       .toEqual(["預設登入", "使用者：1 個 Agent · 1 個 ClassicBot 房間"]);
   });
 

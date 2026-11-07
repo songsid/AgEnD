@@ -59,6 +59,8 @@ const dialog = () => p.document.querySelector("dialog") ?? p.root.querySelector(
 const type = async (el: any, value: string) => { el.value = value; fire(el, "input"); await settle(4); };
 const btn = (root: any, label: string) => [...root.querySelectorAll("button")].find((b: any) => text(b) === label);
 const labels = (root: any) => [...root.querySelectorAll("button")].map((b: any) => text(b));
+/** The buttons of an account's toolbar (not the "used by" pill, which is a button too when agents use the account). */
+const actions = (row: any) => labels(row.querySelector(".s-actions"));
 
 describe("a computer's accounts under its name", () => {
   it("its name and whether it is online, its default read-only with the reason, and each profile as its Runtime reports it", async () => {
@@ -67,17 +69,18 @@ describe("a computer's accounts under its name", () => {
     expect(text(machineBox().querySelector(".s-account-machine-head .tag"))).toBe("online");
     const def = mrow("default"), by = mrow("by-hand"), work = mrow("work");
     // The default: the Windows user's own sign-in. No Sign in, Sign out, Switch or Remove; the reason in words.
-    expect(labels(def)).toEqual([]);
+    expect(actions(def)).toEqual([]);
     expect(text(def.querySelector(".s-account-why"))).toBe("This is the Windows user's own sign-in on Desk PC. It is never changed from here: add an account instead.");
     expect(text(def.querySelector(".s-account-identity"))).toBe("cd***@example.com · Pro");
     // A profile its Runtime did not create: read-only, why, and the command to run on that computer.
-    expect(labels(by)).toEqual([]);
+    expect(actions(by)).toEqual([]);
     expect(text(by.querySelector(".s-account-why"))).toBe("This account was not created by AgEnD's Runtime, so it can only be handled on Desk PC.");
     expect([text(by.querySelector("summary")), text(by.querySelector("code"))]).toEqual(["Sign in on that computer", "agend-runtime login claude-code by-hand"]);
     // One it did create: Sign in again, Sign out, Remove — never Move agents here or Switch account.
-    expect(labels(work)).toEqual(["Sign in again", "Sign out…", "Remove…"]);
+    expect(actions(work)).toEqual(["Sign in again", "Sign out", "Remove"]);
     expect(text(work.querySelector(".s-account-identity"))).toBe("ab***@example.com · Max");
-    expect(text(work.querySelector(".s-account-used"))).toBe("used by 1 agent · this computer's default");
+    expect(text(work.querySelector(".s-account-used"))).toBe("used by 1 agent");
+    expect(text(work.querySelector(".s-account-default-tag"))).toBe("this computer's default");      // the tag sits in the title bar, beside the name and state
   });
   it("no usage on a computer's row: a dash that says why, never 0%", async () => {
     await mount();
@@ -89,7 +92,7 @@ describe("a computer's accounts under its name", () => {
   it("the host's own rows and their buttons are as they were", async () => {
     await mount();
     const host = card().querySelector('.s-account-rows .s-account-row[data-account="default"]');
-    expect(labels(host)).toEqual(expect.arrayContaining(["Sign in again", "Switch account…", "Sign out…"]));
+    expect(actions(host)).toEqual(expect.arrayContaining(["Sign in again", "Switch account", "Sign out"]));
     expect(card().querySelectorAll(".s-account-machine")).toHaveLength(1);
     // Ridge #3321 S08: beside "On Desk PC", the host's rows are named as the host's, before them.
     const head = card().querySelector(".s-account-host-head strong");
@@ -108,7 +111,7 @@ describe("a computer's accounts under its name", () => {
     await mount();
     expect(text(machineBox().querySelectorAll(".s-account-why")[0])).toBe(words);        // the first note under the name, before any row
     expect(machineBox().querySelector(".s-account-add")).toBe(null);
-    expect(labels(mrow("work"))).toEqual([]);
+    expect(actions(mrow("work"))).toEqual([]);
     expect(text(mrow("work").querySelector("code"))).toBe("agend-runtime login claude-code work");
     expect(text(machineBox().querySelector(".s-account-machine-head .tag"))).toBe(code === "offline" ? "offline" : "online");
   });
@@ -121,7 +124,7 @@ describe("a computer's accounts under its name", () => {
     i18n.setLang("zh-TW", { store: false }); await mount();
     expect(text(machineBox().querySelector(".s-account-machine-head strong"))).toBe("在 Desk PC");
     expect(text(mrow("by-hand").querySelector(".s-account-why"))).toBe("這個帳號不是 AgEnD 的 Runtime 建立的，只能在 Desk PC 上處理。");
-    expect(labels(mrow("work"))).toEqual(["重新登入", "登出…", "移除…"]);
+    expect(actions(mrow("work"))).toEqual(["重新登入", "登出", "移除"]);
     expect(text(mrow("default").querySelector(".s-account-usage"))).toBe("—");
   });
 });
@@ -204,7 +207,7 @@ describe("+ Add account on a computer", () => {
 describe("Remove and Sign out on a computer", () => {
   it("Sign out names the computer, asks its Runtime (the body carries the computer), and offers no Switch", async () => {
     await mount();
-    btn(mrow("work"), "Sign out…").click(); await settle(6);
+    btn(mrow("work"), "Sign out").click(); await settle(6);
     const d = dialog();
     expect(text(d)).toContain("AgEnD asks Desk PC's Runtime to run Claude Code's own logout for this account.");
     expect(labels(d)).not.toContain("Sign out and sign in");
@@ -213,14 +216,14 @@ describe("Remove and Sign out on a computer", () => {
   });
   it("Remove: the account's users are listed (an agent there with Move…, the computer's own default without one — changing it is done on that computer); typing the name enables it; the body carries the computer", async () => {
     await mount();
-    btn(mrow("work"), "Remove…").click(); await settle(6);
+    btn(mrow("work"), "Remove").click(); await settle(6);
     let d = dialog();
     expect(text(d.querySelector(".s-account-inuse"))).toContain("Agent w1"); expect(text(d.querySelector(".s-account-inuse"))).toContain("This computer's default account for agents");
     const moves = d.querySelectorAll(".s-account-inuse button"); expect(moves).toHaveLength(1);           // the agent's Move…, not the computer's default
     moves[0].click(); await settle(6); expect(opened).toEqual(["w1"]);
     // A computer's profile nobody uses: its name typed exactly, then DELETE with the computer.
     view.clis[0].rows[3] = row("work", { usedBy: { agents: [], classic: [], fleetDefault: false } });
-    await mount(); btn(mrow("work"), "Remove…").click(); await settle(6); d = dialog();
+    await mount(); btn(mrow("work"), "Remove").click(); await settle(6); d = dialog();
     expect(text(d)).toContain("This deletes the account's folder on Desk PC"); expect(btn(d, "Remove").disabled).toBe(true);
     await type(d.querySelector("#acctRemoveName"), "work"); btn(d, "Remove").click(); await settle(12);
     expect(calls).toEqual([{ method: "DELETE", url: "/ui/accounts/claude-code/work", body: { confirm: "work", machine: "m1" } }]);
@@ -228,7 +231,7 @@ describe("Remove and Sign out on a computer", () => {
   it("the computer's own refusal sentence is shown as it came; a refusal by code is worded", async () => {
     view.clis[0].rows[3] = row("work", { usedBy: { agents: [], classic: [], fleetDefault: false } });
     answer = () => ({ status: 409, body: { error: "machine_refused", message: 'Credential profile "work" is in use by a running task on this computer; stop it first' } });
-    await mount(); btn(mrow("work"), "Remove…").click(); await settle(6);
+    await mount(); btn(mrow("work"), "Remove").click(); await settle(6);
     let d = dialog(); await type(d.querySelector("#acctRemoveName"), "work"); btn(d, "Remove").click(); await settle(10);
     expect(text(d.querySelector(".err"))).toBe('Credential profile "work" is in use by a running task on this computer; stop it first');
     answer = () => ({ status: 409, body: { error: "machine_offline" } });

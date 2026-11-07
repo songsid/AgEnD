@@ -46,7 +46,10 @@ export interface AccountRow {
   install?: string;
   update?: string;
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
+  /** The week's usage (the window closest to a week; see `weeklyUsage`). */
   usage?: AccountUsage;
+  /** #3212: the short window's usage (the "5h" one; see `shortUsage`), beside the week's. Absent when the CLI reports none. */
+  shortUsage?: AccountUsage;
   /** #3292: "Keep sign-in alive" (Claude Code and Codex host rows): the setting, its last run, the dates the sign-in's file says. */
   keepAlive?: AccountKeepAlive;
 }
@@ -85,6 +88,8 @@ export interface AccountsInput {
   fleetDefaults: ReadonlyMap<string, string>;
   /** Weekly (or longer) usage per row, by `backend\0profile` ("" for the default). */
   usage?: ReadonlyMap<string, AccountUsage>;
+  /** #3212: the short window's usage per row, by the same `backend\0profile` key. */
+  shortUsage?: ReadonlyMap<string, AccountUsage>;
   /** #3190 Part 3c: paired computers' accounts, as rows under their own scope. Absent: no computer. */
   machines?: readonly MachineAccountsInput[];
   /**
@@ -146,13 +151,14 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       fleetDefault: fleetDefault === profile || (profile === null && fleetDefault === null),
     });
     const usage = (profile: string | null) => input.usage?.get(key(backend, profile));
+    const shortOf = (profile: string | null) => input.shortUsage?.get(key(backend, profile));
     const keepAlive = (profile: string | null) => { const k = input.keepAlive?.get(key(backend, profile)); return k ? { keepAlive: k } : {}; };
     // A card that is only here for a paired computer (nothing on the host uses this CLI) shows no host rows.
     if (hostRelevant) rows.push({
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
-      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...keepAlive(null),
+      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...(shortOf(null) ? { shortUsage: shortOf(null) } : {}), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {
       const names = new Set<string>();
@@ -168,7 +174,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
         rows.push({
           scope: { kind: "host" }, backend, profile, state: src?.state ?? "not_signed_in", signIn: !!src?.signIn,
           ...(src?.identity ? { identity: src.identity } : {}), ...(src?.hostCommand ? { hostCommand: src.hostCommand } : {}),
-          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}), ...keepAlive(profile),
+          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}), ...(shortOf(profile) ? { shortUsage: shortOf(profile) } : {}), ...keepAlive(profile),
         });
       }
     }
@@ -193,6 +199,12 @@ export function profilesOnDisk(dataDir: string, backend: string): string[] {
   } catch { return []; }
 }
 
+const TWO_DAYS = 2 * 86_400_000;
+const usageOf = (m: Record<string, unknown>, provider: { stale?: boolean }): AccountUsage => {
+  const resetsAt = typeof m.resetsAt === "string" ? m.resetsAt : undefined;
+  return { percent: Math.max(0, Math.min(100, Math.round(m.used as number))), windowMs: m.windowMs as number, ...(resetsAt ? { resetsAt } : {}), ...(provider.stale ? { stale: true } : {}) };
+};
+
 /**
  * The usage row's weekly metric: the percent metric whose window is closest to a week (at least two days). From a
  * usage payload's providers (ProviderUsage), by the provider id the usage panel gives a backend (and `:<profile>`).
@@ -202,10 +214,24 @@ export function weeklyUsage(provider: { metrics?: ReadonlyArray<Record<string, u
   const WEEK = 7 * 86_400_000;
   let best: Record<string, unknown> | undefined;
   for (const m of provider.metrics) {
-    if (m.scope === "model" || m.type !== "percent" || typeof m.used !== "number" || typeof m.windowMs !== "number" || m.windowMs < 2 * 86_400_000) continue;
+    if (m.scope === "model" || m.type !== "percent" || typeof m.used !== "number" || typeof m.windowMs !== "number" || m.windowMs < TWO_DAYS) continue;
     if (!best || Math.abs((m.windowMs as number) - WEEK) < Math.abs((best.windowMs as number) - WEEK)) best = m;
   }
-  if (!best) return undefined;
-  const resetsAt = typeof best.resetsAt === "string" ? best.resetsAt : undefined;
-  return { percent: Math.max(0, Math.min(100, Math.round(best.used as number))), windowMs: best.windowMs as number, ...(resetsAt ? { resetsAt } : {}), ...(provider.stale ? { stale: true } : {}) };
+  return best ? usageOf(best, provider) : undefined;
+}
+
+/**
+ * #3212: the usage row's short window ("5h"): the percent metric whose window is under two days — the shortest one when
+ * there are several — as the usage panel's compact line picks it (`compactSlots`). Never a per-model quota, and never a
+ * window that has reset since the read (its percent would be the old window's). Same shape as `weeklyUsage`.
+ */
+export function shortUsage(provider: { metrics?: ReadonlyArray<Record<string, unknown>>; stale?: boolean } | undefined): AccountUsage | undefined {
+  if (!provider || !Array.isArray(provider.metrics)) return undefined;
+  let best: Record<string, unknown> | undefined;
+  for (const m of provider.metrics) {
+    if (m.scope === "model" || m.type !== "percent" || typeof m.used !== "number" || m.resetPassed) continue;
+    if (typeof m.windowMs !== "number" || !(m.windowMs > 0) || m.windowMs >= TWO_DAYS) continue;
+    if (!best || (m.windowMs as number) < (best.windowMs as number)) best = m;
+  }
+  return best ? usageOf(best, provider) : undefined;
 }
