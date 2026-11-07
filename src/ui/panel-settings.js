@@ -60,22 +60,7 @@ import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { DevicesCard } from "./settings-devices.js";
-/** The pure owner Settings switch is available while off; its pairing UI remains lazy and member-mark gated. */
-function HubCardSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-membership.js").then((m) => { if (live) setCard(() => m.HubMembershipSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
-function HubBrowserCertificateSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-browser-certificate.js").then(m => { if (live) setCard(() => m.HubBrowserCertificateSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
-function HubRetentionSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-retention.js").then(m => { if (live) setCard(() => m.HubRetentionSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
+import { HubSection, hubSectionText } from "./settings-hub-section.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 import { AccountsView, defaultsBackendOptions } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
@@ -93,7 +78,7 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", hub: "plug", advanced: "code" };
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -434,6 +419,8 @@ export function SettingsPanel({ route, navKey }) {
           <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
+    // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
+    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} />`
     : html`<${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
@@ -1414,8 +1401,8 @@ function WebSection({ ctx, staged, part = "all" }) {
       <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
-          ${!overPublicLink ? html`<${HubCardSlot} />` : null}
-          ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} /><${HubBrowserCertificateSlot} />` : null}
+          ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
+          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${overPublicLink} hubHost=${!!ctx.fleet.hub?.hubId} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
@@ -1428,6 +1415,7 @@ function WebSection({ ctx, staged, part = "all" }) {
         </div><aside class="card s-access-related"><h3>${layoutText("revRelatedAccess")}</h3>
           <button type="button" onClick=${() => setAccessTab("guests")}><${Icon} name="user" size=${18} /><span><strong>${layoutText("accessGuests")}</strong><small>${layoutText("revRelatedGuests")}</small></span><${Icon} name="chevron" size=${16} /></button>
           <button type="button" onClick=${() => setAccessTab("sharing")}><${Icon} name="globe" size=${18} /><span><strong>${layoutText("accessSharing")}</strong><small>${layoutText("revRelatedSharing")}</small></span><${Icon} name="chevron" size=${16} /></button>
+          ${!overPublicLink && SETTINGS_SECTIONS.includes("hub") ? html`<button type="button" onClick=${() => navigate(sectionPath("hub"))}><${Icon} name="plug" size=${18} /><span><strong>${hubSectionText("relatedTitle")}</strong><small>${hubSectionText("relatedHint")}</small></span><${Icon} name="chevron" size=${16} /></button>` : null}
         </aside></div>
       </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="guests" active=${accessTab === "guests"}>
