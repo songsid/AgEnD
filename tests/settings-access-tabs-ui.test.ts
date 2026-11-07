@@ -52,6 +52,14 @@ async function open(section: string, hash = "") {
 }
 
 describe("the real Settings forms across page tabs", () => {
+  it("alpha.6 feedback (#2): Access & security's related card points to Settings → Hub, and it goes there", async () => {
+    await open("access");
+    const hub = [...p.root.querySelectorAll(".s-access-related > button")].find((b: any) => b.querySelector("strong")?.textContent === "Hub") as any;
+    expect(hub, "the Hub entry").toBeDefined();
+    expect(hub.querySelector("small").textContent).toBe("Connect this fleet to a team Hub and choose which agents to share.");
+    fire(hub, "click"); await settle(6);
+    expect([location.pathname, nav.navStore.get().route]).toEqual(["/settings/hub", { panel: "settings", section: "hub" }]);
+  });
   it("keeps Access edits and the same fields while viewing other groups, without writing", async () => {
     await open("access");
     const session = byId("webSessionAbsolute"), hostname = byId("publicWebHostname");
