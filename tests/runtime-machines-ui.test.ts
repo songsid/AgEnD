@@ -400,8 +400,8 @@ describe("remote machine UI",()=>{
   it("S-30: a computer card names its platform and host name, never a version slot that is always \"Not reported\"",async()=>{
     machines=[{...machine(idA,"Desktop"),version:undefined,hostname:"DESKTOP-7Q2"},{...machine(idB,"Laptop","pending"),version:undefined}];
     await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
-    expect(p.root.querySelector(`[data-machine-id="${idA}"] header p`).textContent).toBe("Windows · DESKTOP-7Q2 · 1 CLIs");
-    expect(p.root.querySelector(`[data-machine-id="${idB}"] header p`).textContent).toBe("Windows · 1 CLIs");
+    expect(p.root.querySelector(`[data-machine-id="${idA}"] header p`).textContent).toBe("Windows · DESKTOP-7Q2 · 1 CLI");
+    expect(p.root.querySelector(`[data-machine-id="${idB}"] header p`).textContent).toBe("Windows · 1 CLI");
     expect(p.root.querySelector(".runtime-machines").textContent).not.toContain("Not reported");
   });
   it("keeps local Runtime settings visible while remote connections are disabled",async()=>{
@@ -432,7 +432,7 @@ describe("remote machine UI",()=>{
     machines=[machine(idA,"Desktop"),machine(idB,"Laptop","revoked")];
     await p.mount(h(Panel,{navKey:"revoked-on-load"}));await settle(12);
     expect(p.root.querySelector(`[data-machine-id="${idA}"]`)).not.toBeNull();expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).toBeNull();
-    expect(p.root.textContent).not.toContain("Laptop");expect(p.root.querySelector(".runtime-computers-heading .note").textContent).toBe("1 computers");
+    expect(p.root.textContent).not.toContain("Laptop");expect(p.root.querySelector(".runtime-computers-heading .note").textContent).toBe("1 computer");
     await p.unmount();catalog.forgetRuntimeCatalog();
     await p.mount(h(Create,{onClose(){}}));await settle(8);
     const values=p.root.querySelectorAll(".agent-runtime-picker input").map((item:any)=>item.value);

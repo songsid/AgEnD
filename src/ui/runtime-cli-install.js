@@ -1,6 +1,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { ErrorState, Skeleton } from "/assets/ui-states.js";
 
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
@@ -43,6 +44,20 @@ export const OFFICIAL_COMMANDS = [
 export const versionNumber = printed => typeof printed === "string" ? /(?<![\d.])\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?![\d.])/.exec(printed)?.[0] ?? null : null;
 export const offersCliInstall = machine => !!machine && !machine.isLocal && machine.runtimeInfo?.capabilities?.includes("cli-install") === true && ["online", "offline"].includes(machine.status);
 
+// Ridge #3321 S06 / S09: the words of the loading state and the copyable commands.
+register("runtimeInstall", {
+  en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer" },
+  "zh-TW": { loading: "正在讀取這台電腦的安裝設定…", copy: "複製", copied: "已複製", switchCommand: "在那台電腦執行的指令" },
+});
+/** Ridge #3321 S09: a command to run on that computer — Runtime's labelled command card (runtime-install.css), with Copy. */
+function CommandCard({ label, command }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { try { await navigator.clipboard.writeText(command); setCopied(true); } catch { /* it is on screen to copy by hand */ } };
+  return html`<div class="runtime-command-card"><span class="runtime-command-label">${label}</span><div class="runtime-command-row">
+    <pre class="runtime-command-text" tabindex="0" aria-label=${label}><code>${command}</code></pre>
+    <button type="button" class="btn btn-sm" onClick=${copy}>${text(copied ? "copied" : "copy")}</button></div></div>`;
+}
+
 export function CliInstall({ machine, lease, onChanged }) {
   const [view, setView] = useState(null), [error, setError] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const last = useRef("");
@@ -56,7 +71,8 @@ export function CliInstall({ machine, lease, onChanged }) {
     setView(value);
     return value;
   };
-  useEffect(() => { if (online) load().catch(() => { if (lease.current()) setError(text("unreadable")); }); }, [lease, machine.id, online]);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { if (online) { setError(""); load().catch(() => { if (lease.current()) setError(text("unreadable")); }); } }, [lease, machine.id, online, attempt]);
   const job = view?.job, running = job?.state === "installing";
   // While an install runs the page asks again every few seconds; when it ends the computer's list is refreshed once.
   useEffect(() => {
@@ -100,15 +116,19 @@ export function CliInstall({ machine, lease, onChanged }) {
       ${upToDate ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
   };
   return html`<div class="runtime-cli-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>
-    ${!online ? html`<p class="note" role="status">${text("offline")}</p>` : view && !view.capable ? html`<p class="note" role="status">${text("old")}</p>` : html`
+    ${!online ? html`<p class="note" role="status">${text("offline")}</p>`
+      // Ridge #3321 S06: until the computer's setting and the pinned versions are read, the shared loading state — not a
+      // settled-looking form of disabled buttons with empty versions; a first read that fails says so, with Retry.
+      : !view ? (error ? html`<${ErrorState} message=${error} onRetry=${() => setAttempt((n) => n + 1)} />` : html`<${Skeleton} variant="rows" lines=${2} label=${text("loading")} />`)
+      : !view.capable ? html`<p class="note" role="status">${text("old")}</p>` : html`
       <ul class="runtime-cli-install-list" aria-label=${text("title")}>${INSTALL_CLIS.map(row)}</ul>
       ${view && !view.switches ? html`<p class="note" role="status">${text("unreadable")}</p>` : null}
-      ${switchState && !allowed ? html`<p class="note runtime-cli-install-off" role="status">${text("switchOff")}</p><pre><code>${SWITCH_COMMAND}</code></pre>` : null}
+      ${switchState && !allowed ? html`<p class="note runtime-cli-install-off" role="status">${text("switchOff")}</p><${CommandCard} label=${text("switchCommand")} command=${SWITCH_COMMAND} />` : null}
       ${allowed ? html`<p class="note">${switchState.until ? text("switchUntil", new Date(switchState.until).toLocaleString()) : text("switchOn")}</p>` : null}
       ${running ? html`<p class="note" role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${text("installing")}</p>` : null}
       ${note ? html`<p class="note" role="status">${note}</p>` : null}
       ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}`}
     <details class="runtime-cli-install-others"><summary>${text("othersTitle")}</summary><p class="note">${text("othersLead")}</p>
-      <ul>${OFFICIAL_COMMANDS.map(item => html`<li key=${item.id}><strong>${item.label}</strong>${item.administrator ? html` <span class="note">(${text("needsAdmin")})</span>` : null}<pre><code>${item.command}</code></pre></li>`)}</ul></details>
+      <ul>${OFFICIAL_COMMANDS.map(item => html`<li key=${item.id}><${CommandCard} label=${item.administrator ? `${item.label} (${text("needsAdmin")})` : item.label} command=${item.command} /></li>`)}</ul></details>
   </div>`;
 }

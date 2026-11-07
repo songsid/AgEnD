@@ -10,6 +10,8 @@ const caps = (extra: string[]) => ({ version: "2.3.5-alpha", buildId: "a".repeat
 const machine = (id: string, name: string, over: any = {}) => ({ id, name, status: "online", platform: "win32", lastSeenAt: Date.now(), inventoryUpdatedAt: Date.now(), runtimeInfo: caps(["credential-profiles", "remote-signin", "cli-install"]),
   inventory: { home: `C:\\${name}`, clis: [claude] }, ...over });
 let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, installAnswer: { status: number; body: any };
+// Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
+let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
 const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
@@ -23,7 +25,7 @@ beforeAll(async () => {
     const body = options.body ? JSON.parse(options.body) : null;
     if (options.method === "POST") posts.push({ path, body });
     if (path === "/ui/runtimes") return response({ enabled: true, machines });
-    if (path.endsWith("/remote-setup")) return response(setup);
+    if (path.endsWith("/remote-setup")) return setupAnswer ? setupAnswer() : response(setup);
     if (path.endsWith("/cli-install")) return response(installAnswer.body, installAnswer.status);
     if (path === "/api/settings/runtimes") return response({ switches: { windows_cli: { on: false }, remote_runtime: { on: true } }, max_agents_per_machine: { value: 4, min: 1, max: 16, default: 4 }, local_origin: "http://127.0.0.1:19280" });
     return response({});
@@ -33,7 +35,7 @@ beforeAll(async () => {
   Panel = (await import("/ui/js/panel-runtimes.js")).RuntimesPanel;
 });
 beforeEach(() => {
-  posts = []; (globalThis as any).confirm = () => true;
+  posts = []; (globalThis as any).confirm = () => true; setupAnswer = null;
   machines = [machine(idA, "Desktop"), machine(idB, "Old Laptop", { runtimeInfo: caps(["credential-profiles"]) })];
   setup = { capable: true, online: true, switches: { accounts: { on: false }, install: { on: true } }, job: null, catalog: catalogRows };
   installAnswer = { status: 202, body: { job: { cli: "codex", state: "installing", startedAt: 1 } } };
@@ -140,5 +142,44 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
     expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
     i18n.setLang("en", { store: false });
+  });
+});
+
+describe("Ridge #3321 S06 / S09: the install card before its read, after a failed read, and its commands", () => {
+  it("S06: while the computer's setting is being read — the shared loading state, no buttons and no empty version slots", async () => {
+    let release!: () => void;
+    setupAnswer = () => new Promise((done) => { release = () => done(response(setup)); });
+    await p.mount(h(Panel, { navKey: "s06-held" })); await settle(14);
+    const box = card().querySelector(".runtime-cli-install");
+    // (the Other CLIs' Copy buttons, in their closed drawer, are not install controls)
+    const controls = [...box.querySelectorAll("button")].filter((b: any) => !b.closest(".runtime-cli-install-others"));
+    expect([!!box.querySelector(".skeleton, [aria-busy=true]"), controls.length, !!box.querySelector(".runtime-cli-install-list")]).toEqual([true, 0, false]);
+    // The loading state says what it waits for (the Skeleton's accessible label).
+    expect([...box.querySelectorAll("[aria-label]")].map((n: any) => n.getAttribute("aria-label"))).toContain("Reading this computer's install setting…");
+    release(); await settle(14);
+    expect([!!card().querySelector(".runtime-cli-install-list"), !!installButton("codex")]).toEqual([true, true]);
+  });
+  it("S06: a first read that fails says so with Retry (no form); Retry reads it again", async () => {
+    let fails = true;
+    setupAnswer = async () => (fails ? response({ error: "unavailable" }, 503) : response(setup));
+    await p.mount(h(Panel, { navKey: "s06-failed" })); await settle(14);
+    const box = card().querySelector(".runtime-cli-install");
+    expect([box.textContent.includes("Could not read this computer's setting."), !!box.querySelector(".runtime-cli-install-list")]).toEqual([true, false]);
+    const retry = [...box.querySelectorAll("button")].find((b: any) => /retry|try again/i.test(b.textContent)) as any;
+    expect(retry, "Retry").toBeDefined();
+    fails = false; fire(retry, "click"); await settle(14);
+    expect(!!card().querySelector(".runtime-cli-install-list")).toBe(true);
+  });
+  it("S09: the owner's switch command and the other CLIs' commands are labelled cards with Copy", async () => {
+    setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };
+    const written: string[] = [];
+    Object.defineProperty((globalThis as any).navigator, "clipboard", { configurable: true, value: { writeText: async (s: string) => { written.push(s); } } });
+    await p.mount(h(Panel, { navKey: "s09" })); await settle(14);
+    const cards = [...card().querySelectorAll(".runtime-cli-install .runtime-command-card")] as any[];
+    expect(cards.length).toBeGreaterThan(1);
+    const first = cards[0];
+    expect(first.querySelector(".runtime-command-label").textContent).toBe("Command for that computer");
+    fire(first.querySelector("button"), "click"); await settle(6);
+    expect([written, first.querySelector("button").textContent]).toEqual([[first.querySelector("code").textContent], "Copied"]);
   });
 });
