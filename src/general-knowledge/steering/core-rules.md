@@ -56,7 +56,7 @@ channel:
 - `pairing` — old configuration alias for allowlist-only access; use `locked` for new configuration
 - `open` — public demo, shared team bot, testing
 
-Add allowed users in Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot), using the existing confirmation. Runtime/Hub pairing is separate.
+Add allowed users in Settings → Chat & connections → the bot → Allowed users (primary bot), using the existing confirmation. Runtime/Hub pairing is separate.
 
 ## Dangerous Working Directories
 

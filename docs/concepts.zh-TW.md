@@ -194,7 +194,7 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 - 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
 - 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
-- 人的存取權由「設定 → 聊天與連線 → 聊天連線 → 該 bot → 允許使用者（主 bot）」管理，跟 Runtime 配對不同。舊的使用者存取碼已移除，既有持久化授權仍保留；它不會授予 fleet 管理員權限。
+- 人的存取權由「設定 → 聊天與連線 → 該 bot → 允許使用者（主 bot）」管理，跟 Runtime 配對不同。舊的使用者存取碼已移除，既有持久化授權仍保留；它不會授予 fleet 管理員權限。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
 - 相關決議與議題：72353fdf、#2936、#3007。
 
