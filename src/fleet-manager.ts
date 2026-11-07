@@ -2539,6 +2539,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupDashboard: FleetStartup | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private adapterRetryInFlight = new Map<string, Promise<void>>();
+  /** #3365 review P2: connections whose adapter could not be confirmed stopped — none is admitted for them until a restart. */
+  private adapterTeardownUnknown = new Set<string>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
    * and stale callbacks from the old client must not win. */
@@ -11002,6 +11004,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const MAX_DELAY_MS = 5 * 60_000;
     const state = this.adapterState.get(adapterId);
     if (this.shuttingDown || !state || state.retryTimer || this.adapterRetryInFlight.has(adapterId)) return;
+    if (this.adapterTeardownUnknown.has(adapterId)) return;          // #3365 review P2: held until a restart, never retried
     const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, Math.min(state.retryCount, 6)), MAX_DELAY_MS);
     this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
     const timer = setTimeout(() => {
@@ -11248,6 +11251,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -11403,6 +11407,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -26346,8 +26351,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!wasRunning) {
             // S-91: it was not running: the new adapter that did not come up is taken down (never left half-started), and
             // the connection is the background retry's again, as before the token was entered.
-            await this.dropAdapterAfterFailedStart(job.connectionId, message);
-            job.result = "rolled_back";
+            if (await this.dropAdapterAfterFailedStart(job.connectionId, message)) job.result = "rolled_back";
+            else { job.result = "rollback_failed"; job.error = "the new adapter could not be confirmed stopped; restart AgEnD"; }
           } else {
             // Build a fresh adapter from the restored token. If the old adapter
             // was stopped already, this is the only safe way to return to the
@@ -26375,34 +26380,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * S-91: a connection this process set up at start, with the same settings as now — its adapter start ran (and failed,
-   * or found no token), so starting it now is what the background retry does. One added or changed since is not.
+   * S-91: how a connection stands against what this process set up at start. "same": its adapter start ran (and failed, or
+   * found no token), so starting it now is what the background retry does. "changed": its binding waits for the restart —
+   * never started live, whatever its role (#3365 review P2). "added": #1519 P6's rule.
    */
-  private startedWithConnection(connectionId: string, channel: ChannelConfig): boolean {
+  private startedWithConnection(connectionId: string, channel: ChannelConfig): "same" | "changed" | "added" {
     const started = this.startupFleetConfig;
     const list = started?.channels ?? (started?.channel ? [started.channel] : []);
     const then = list.find(item => (item.id ?? item.type) === connectionId);
-    return !!then && isDeepStrictEqual(then, channel);
+    return !then ? "added" : isDeepStrictEqual(then, channel) ? "same" : "changed";
   }
 
   /**
    * S-91: a token's live start for a connection that was not running did not come up. Whatever adapter it left is taken
    * down (handlers off, stopped, unregistered), and the connection goes back to the background retry with the error.
    */
-  private async dropAdapterAfterFailedStart(connectionId: string, error: string): Promise<void> {
+  private async dropAdapterAfterFailedStart(connectionId: string, error: string): Promise<boolean> {
     const fresh = this.adapters.get(connectionId);
+    // #3365 review P3: the primary's prune interval goes with it (a later start sets it up again, once).
+    if (this.getPrimaryAdapterId() === connectionId && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+    let stopped = true;
     if (fresh) {
       fresh.removeAllListeners();
-      await fresh.stop().catch(() => {});
+      stopped = await fresh.stop().then(() => true, () => false);
       if (this.adapters.get(connectionId) === fresh) this.adapters.delete(connectionId);
       if (this.worlds.get(connectionId)?.adapter === fresh) this.worlds.delete(connectionId);
       if (this.adapter === fresh) this.adapter = null;
     }
-    if (this.shuttingDown || !this.secureConnectionChannel(connectionId)) return;
     const previous = this.adapterState.get(connectionId);
     if (previous?.retryTimer) clearTimeout(previous.retryTimer);
+    if (!stopped) {
+      // #3365 review P2: a stop that failed leaves the provider client's end unknown (it may still poll the bot). Said so —
+      // never "rolled back" — and no adapter for this connection is admitted again in this process: no retry, and every
+      // start refuses it (startSingleAdapterOwned / startAdditionalAdapterOwned). A restart of AgEnD clears it.
+      this.adapterTeardownUnknown.add(connectionId);
+      this.adapterState.set(connectionId, { status: "failed", retryCount: previous?.retryCount ?? 0, lastError: "the new adapter could not be confirmed stopped — restart AgEnD" });
+      this.logger.error({ connectionId, reason: error }, "Settings connection secret: the adapter that did not start could not be confirmed stopped");
+      return false;
+    }
+    if (this.shuttingDown || !this.secureConnectionChannel(connectionId)) return true;
     this.adapterState.set(connectionId, { status: "retrying", retryCount: previous?.retryCount ?? 0, lastError: error });
     this.scheduleAdapterRetry(connectionId);
+    return true;
   }
 
   /** Stop the old provider client and construct a new one from process.env. */
@@ -26416,11 +26435,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const inFlight = this.adapterRetryInFlight.get(connectionId);
     if (inFlight) { await inFlight.catch(() => {}); check(); }
     const old = this.adapters.get(connectionId);
-    // No adapter: a connection that is not the primary, in a fleet already running connections, starts now (#1519 P6). So
-    // does one this process started with, unchanged since (its start failed, or it had no token): S-91, the way the
-    // background retry starts it, the primary included. Otherwise (added since, or changed) the secret is valid on disk
-    // and the next start adopts it.
-    if (!old && !force && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0) && !this.startedWithConnection(connectionId, channel)) return false;
+    // No adapter: one this process started with, unchanged since (its start failed, or it had no token), starts now — S-91,
+    // the way the background retry starts it, the primary included. One added since starts now when it is not the primary
+    // and the fleet runs connections (#1519 P6). One changed since (its binding pending) never does: the secret is valid on
+    // disk and the next start adopts it with its binding.
+    if (!old && !force) {
+      const since = this.startedWithConnection(connectionId, channel);
+      if (since === "changed") return false;
+      if (since === "added" && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    }
     if (!old) { const pending = this.adapterState.get(connectionId)?.retryTimer; if (pending) clearTimeout(pending); }
     const primary = this.getPrimaryAdapterId() === connectionId;
     const previousState = this.adapterState.get(connectionId);

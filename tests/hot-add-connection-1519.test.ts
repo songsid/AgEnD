@@ -226,4 +226,50 @@ describe("S-91: a token stored for a connection this process started with starts
     expect([fm.adapterState.get("primary")?.status, scheduled.mock.calls.at(-1)?.[0]]).toEqual(["retrying", "primary"]);
     expect(fm.startSingleAdapter, "never started again with the old token").toHaveBeenCalledTimes(1);
   });
+  it("#3365 review P2: a non-primary changed since start, with a sibling running, waits for the restart; one added since still starts (#1519 P6)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    fm.adapters.set("primary", Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) }));   // the primary runs
+    process.env.AGEND_TEST_P6_TOKEN = "fake-token";
+    expect(await fm.rebuildAdapterForSecret("discord-2", { ...second, group_id: "2" }), "changed: its binding is pending").toBe(false);
+    expect(fm.startAdditionalAdapter).not.toHaveBeenCalled();
+    fm.startupFleetConfig = { ...fm.startupFleetConfig, channels: [primary] };
+    expect(await fm.rebuildAdapterForSecret("discord-2", second), "added since: #1519 P6 starts it").toBe(true);
+    expect(fm.startAdditionalAdapter).toHaveBeenCalledTimes(1);
+  });
+  it("#3365 review P2: a teardown that fails is said (rollback_failed), never retried, and no adapter is admitted for it again", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    writeFileSync(join(dir, ".env"), "AGEND_TEST_P6_PRIMARY=old-token\n");
+    process.env.AGEND_TEST_P6_PRIMARY = "old-token";
+    fm.startSingleAdapter = vi.fn(async (_f: unknown, channel: { id: string }) => {
+      fm.adapters.set(channel.id, Object.assign(new EventEmitter(), { stop: vi.fn(async () => { throw new Error("stop failed"); }) }));
+      throw new Error("login failed");
+    });
+    const scheduled = vi.spyOn(fm, "scheduleAdapterRetry");
+    const job: any = { id: "s91-stop", connectionId: "primary", status: "running", result: "applying" };
+    await fm.runConnectionSecretApply(job, "new-token");
+    expect([job.status, job.result, fm.adapterState.get("primary")?.status, fm.adapterState.get("primary")?.retryTimer]).toEqual(["done", "rollback_failed", "failed", undefined]);
+    expect(process.env.AGEND_TEST_P6_PRIMARY, "the token still goes back").toBe("old-token");
+    fm.scheduleAdapterRetry("primary");
+    expect(fm.adapterState.get("primary")?.retryTimer, "no retry rearmed").toBeUndefined();
+    // Every start refuses it (the real admission, not the test's fake).
+    await expect(fm.startSingleAdapterOwned(fm.fleetConfig, primary)).rejects.toThrow(/could not be confirmed stopped/);
+    await expect(fm.startAdditionalAdapterOwned(primary)).rejects.toThrow(/could not be confirmed stopped/);
+    expect(scheduled.mock.results.every((r: any) => r.value === undefined)).toBe(true);
+  });
+  it("#3365 review P3: a failed primary start retires the session-prune interval it set", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_PRIMARY = "old-token";
+    vi.spyOn(fm, "scheduleAdapterRetry").mockImplementation(() => {});
+    fm.startSingleAdapter = vi.fn(async (_f: unknown, channel: { id: string }) => {
+      fm.sessionPruneTimer = setInterval(() => {}, 60_000);                // what a real primary start installs
+      fm.adapters.set(channel.id, Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) }));
+      throw new Error("login failed");
+    });
+    const job: any = { id: "s91-prune", connectionId: "primary", status: "running", result: "applying" };
+    await fm.runConnectionSecretApply(job, "new-token");
+    expect([job.result, fm.sessionPruneTimer]).toEqual(["rolled_back", null]);
+  });
 });
