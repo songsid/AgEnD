@@ -31,7 +31,7 @@ register("accounts", {
     def: "Default sign-in", profile: "Account “{0}”", state_usable: "signed in", state_not_signed_in: "not signed in", state_unknown: "not checked",
     state_not_installed: "not installed", state_too_old: "too old",
     usedBy: "used by {0}", usedByNone: "used by no agent", agents: "{0} agents", agent: "1 agent", channels: "{0} ClassicBot rooms", channel: "1 ClassicBot room",
-    fleetDefaultTag: "fleet default", resets: "resets {0}",
+    fleetDefaultTag: "fleet default", resets: "resets {0}", resetsIn: "resets in {0}",
     usageLabel: "Usage", winHours: "{0}h", winDays: "{0}d", winWeek: "7d", winStale: "(stale)",
     signIn: "Sign in", signInAgain: "Sign in again", hostCommand: "Sign in on the host", hostCommandHint: "Run this in a terminal on the host running AgEnD.",
     moveHere: "Move agents here", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
@@ -59,7 +59,7 @@ register("accounts", {
     def: "預設登入", profile: "帳號「{0}」", state_usable: "已登入", state_not_signed_in: "尚未登入", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
     usedBy: "使用者：{0}", usedByNone: "沒有 Agent 使用", agents: "{0} 個 Agent", agent: "1 個 Agent", channels: "{0} 個 ClassicBot 房間", channel: "1 個 ClassicBot 房間",
-    fleetDefaultTag: "Fleet 預設", resets: "{0} 重置",
+    fleetDefaultTag: "Fleet 預設", resets: "{0} 重置", resetsIn: "{0} 後重置",
     usageLabel: "用量", winHours: "{0}h", winDays: "{0}天", winWeek: "本週", winStale: "（未更新）",
     signIn: "登入", signInAgain: "重新登入", hostCommand: "在主機上登入", hostCommandHint: "請在執行 AgEnD 的主機終端機執行。",
     moveHere: "移入 Agent", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
@@ -144,6 +144,15 @@ const when = (iso, now = new Date()) => {
     return d.toLocaleString(undefined, d.toDateString() === now.toDateString() ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
   } catch { return ""; }
 };
+/** How long until `iso`, in the coarsest unit that still says something: "45m", "3h" (hours up to two days), "3d". "" when it is not ahead. */
+const until = (iso, now = Date.now()) => {
+  const ms = new Date(iso).getTime() - now;
+  if (!(ms > 0)) return "";
+  const min = Math.ceil(ms / 60_000);
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
+};
 /** A usage window's name, from its length: "5h" for hours, the week's own word near seven days, else "30d". `fallback`: what a window of unknown length is. */
 const winLabel = (u, fallback = "") => {
   const ms = Number(u && u.windowMs);
@@ -157,11 +166,14 @@ const winLabel = (u, fallback = "") => {
 function UsageWindow({ u, kind }) {
   const p = Math.max(0, Math.min(100, Math.round(Number(u.percent) || 0)));
   const level = p >= 90 ? " is-crit" : p >= 70 ? " is-warn" : "";
-  const reset = u.resetsAt ? tx("resets", when(u.resetsAt)) : "";
+  // The short window resets within hours: "resets in 3h" says more than a clock time. The week's reset is a day and time. The exact time is the tooltip.
+  const t = u.resetsAt ? (kind === "short" ? until(u.resetsAt) : when(u.resetsAt)) : "";
+  const reset = t ? tx(kind === "short" ? "resetsIn" : "resets", t) : "";
+  const exact = reset && new Date(u.resetsAt).toLocaleString();
   // The spaces between the cells are not drawn (a grid ignores whitespace between its items); they keep the text readable where it is copied or read as text.
   return html`<div class=${`s-usage-win is-${kind}${level}`}><span class="s-usage-win-lbl">${winLabel(u, kind === "weekly" ? tx("winWeek") : "")}</span>${" "}
     <progress class="s-usage-meter" max="100" value=${p} aria-hidden="true"></progress>${" "}
-    <span class="s-usage-win-pct">${p}%</span>${" "}<span class="s-usage-win-reset">${reset}</span>${" "}</div>`;
+    <span class="s-usage-win-pct">${p}%</span>${" "}<span class="s-usage-win-reset" title=${exact || null}>${reset}</span>${" "}</div>`;
 }
 
 /**

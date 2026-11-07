@@ -73,12 +73,15 @@
 .s-account-used { font-family: inherit; color: var(--text-3); }
 /* Layer 3: the usage block — the short window ("5h") and the week. Wide: two columns side by side; narrow: two rows stacked. Each window is a row of
  * four fixed columns (name · meter · percent · reset), so stacked rows line up. */
-.s-account-usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 16px; margin-top: 10px; padding: 7px 11px; border: 1px solid var(--ac-usage-line); border-radius: 8px; background: var(--ac-usage-bg); font-size: var(--fs-xs); line-height: 1.4; }
+.s-account-usage { container-type: inline-size; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 16px; margin-top: 10px; padding: 7px 11px; border: 1px solid var(--ac-usage-line); border-radius: 8px; background: var(--ac-usage-bg); font-size: var(--fs-xs); line-height: 1.4; }
 .s-account-usage.is-none { display: none; }   /* a computer reports no usage: the dash says nothing, so it is not drawn (the node stays) */
 .s-usage-win { display: grid; grid-template-columns: 36px minmax(60px, 1fr) 38px auto; align-items: center; gap: 8px; min-width: 0; }
+/* Stacked (the block is too narrow for two columns of 220px): the rows are separate grids, so give both the same column widths (the reset a share of the row,
+ * wrapping when long) — then the meters start and end together and the percents and resets line up. */
+@container (max-width: 455px) { .s-usage-win { grid-template-columns: 36px minmax(36px, 1fr) 38px 28%; } }
 .s-usage-win-lbl { color: var(--text-2); font-weight: var(--fw-semibold); white-space: nowrap; }
 .s-usage-win-pct { color: var(--text); font-weight: var(--fw-bold); text-align: right; font-variant-numeric: tabular-nums; }
-.s-usage-win-reset { color: var(--text-3); text-align: right; white-space: nowrap; }
+.s-usage-win-reset { min-width: 0; color: var(--text-3); text-align: right; }   /* wraps rather than overflowing the block when a phone is narrow */
 .s-usage-meter { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 6px; border: 0; border-radius: var(--r-full); overflow: hidden; background: var(--ac-meter-track); color: var(--ac-bar); }
 .s-usage-meter::-webkit-progress-bar { background: var(--ac-meter-track); border-radius: var(--r-full); }
 .s-usage-meter::-webkit-progress-value { background: var(--ac-bar); border-radius: var(--r-full); }
