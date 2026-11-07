@@ -9891,16 +9891,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
-    const { tmuxSocket, bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
+    // M-2457: AgEnD's own tmux socket (`agend` for the real home).
+    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
-    // M-2457 §6 rule 2 (bundled tmux only): a server from another pin still on the socket is ended by its own recorded
+    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
+    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
+    try {
+      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
+      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
+    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
+    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = bundledTmuxEnabled() ? await (async () => {
+    const bundled = await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
-      return { srv, socket: tmuxSocket()!, current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
-    })() : null;
+      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })();
+    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
+    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
+    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
+    // agent of this start writes its own.
+    this.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(getAgendHome(), bundled.previous);
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -9919,6 +9931,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (bundled) {
         await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
           log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
+        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
+        TmuxManager.onSessionCreated(async () => {
+          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
+        });
         // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
         const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
         if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
@@ -10475,6 +10494,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
+
+    // M-2457 §5: the first start on AgEnD's own tmux says so, once per home: `tmux attach` no longer shows the agents.
+    this.announceOwnTmux();
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -16325,6 +16347,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
 
+
+  /**
+   * M-2457 §5: one fleet notice, the first time an upgraded home's fleet runs on AgEnD's own tmux. Marked done only once it
+   * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
+   * post it tries again next start.
+   */
+  /** Set at fleet start (before any agent starts): this home ran agents on an earlier AgEnD's system tmux. */
+  ownTmuxUpgradedHome = false;
+
+  /** An upgraded home: agent state from an earlier start, and no AgEnD tmux server ever recorded (`previous`). */
+  static ownTmuxUpgraded(agendHome: string, previous: unknown): boolean {
+    return previous === null && FleetManager.priorAgentState(join(agendHome, "instances"));
+  }
+
+  /** Whether any instance directory holds state from an earlier start (its output log or a session id). */
+  static priorAgentState(instancesDir: string): boolean {
+    let names: string[] = [];
+    try { names = readdirSync(instancesDir); } catch { return false; }
+    return names.some(n => ["output.log", "session-id"].some(f => existsSync(join(instancesDir, n, f))));
+  }
+
+  announceOwnTmux(): void {
+    const marker = join(getAgendHome(), "tmux", "own-server-announced");
+    if (existsSync(marker)) return;
+    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3):
+    // agent state from before this start and no recorded AgEnD tmux server (set at fleet start), or a migration journal
+    // (2.3 window ids found). A fresh home is marked without a notice.
+    const upgraded = this.ownTmuxUpgradedHome || existsSync(join(getAgendHome(), "tmux-migration.json"));
+    if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
+    try {
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, `${new Date().toISOString()}\n`);
+    } catch (err) { this.logger.warn({ err }, "Could not record that the own-tmux notice was posted"); }
+  }
 
   /**
    * Post the daily summary where fleet-wide notices go.

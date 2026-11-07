@@ -20,3 +20,7 @@ allow-licenses:
   - MIT
   - MPL-2.0
   - Python-2.0
+  # M-2457: AgEnD's bundled tmux (@songsid/agend-tmux-*) — ncurses X11, utf8proc Unicode-3.0 (the action checks each id
+  # of an AND expression on its own; ISC, BSD-3-Clause, MIT and BSD-2-Clause are above).
+  - Unicode-3.0
+  - X11

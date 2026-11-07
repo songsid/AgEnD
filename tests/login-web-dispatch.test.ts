@@ -16,7 +16,8 @@ vi.mock("node:child_process", async (importOriginal) => {
   const fakeChild = { stdin: { on() {}, end() {} } };
   const fakeExecFile = (file: string, args: unknown, opts: unknown, cb: unknown) => {
     const callback = (typeof opts === "function" ? opts : cb) as ((...a: any[]) => void) | undefined;
-    if (file !== "tmux") return (real.execFile as any)(file, args, opts, cb);
+    // AgEnD's own tmux is run by its resolved path, never PATH's: match the binary's name.
+    if (!/(^|\/)tmux$/.test(file)) return (real.execFile as any)(file, args, opts, cb);
     const argv: string[] = Array.isArray(args) ? args : [];
     if (argv[0] !== "-L" || typeof argv[1] !== "string" || argv[1].length === 0) {
       tmuxGuard.withoutL.push(argv);

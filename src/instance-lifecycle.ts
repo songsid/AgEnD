@@ -2075,6 +2075,13 @@ export class InstanceLifecycle {
       if (recovered.queued || recovered.reconciliationPending) {
         this.ctx.logger.warn({ name, ...recovered }, "Preparing durable outbox rows before target generation start");
       }
+      // M-2457 (Fable #3312 N2): a 2.3 window id goes to the migration journal before reconciliation reads window-id
+      // — read as a pane of AgEnD's own server it could be another instance's window. Fleet start sweeps every instance
+      // already; this covers a sweep that failed there. A sweep that cannot run holds this instance.
+      if (!native) {
+        const [{ sweepLegacyWindowIds }, { tmuxSocket }] = await Promise.all([import("./tmux-legacy.js"), import("./tmux-binary.js")]);
+        sweepLegacyWindowIds(getAgendHome(), [{ name, dir: instanceDir }], tmuxSocket());
+      }
       const reconciled = native
         ? { uncertain: 0, safeToStart: await this.ctx.reconcileNativePaneBeforeStart?.(name, daemon) === true }
         : await reconcileTargetBeforeStart(
@@ -2386,6 +2393,9 @@ export class InstanceLifecycle {
             if (fencedWindowId) {
               try {
                 writeFileSync(join(this.ctx.getInstanceDir(name), "window-id"), `${fencedWindowId}\n`, { mode: 0o600 });
+                // M-2457: a window of AgEnD's own server (tagged), never taken for a 2.3 one (tmux-legacy.ts).
+                const [{ tagWindowId }, { tmuxSocket }] = await Promise.all([import("./tmux-legacy.js"), import("./tmux-binary.js")]);
+                tagWindowId(this.ctx.getInstanceDir(name), tmuxSocket(), fencedWindowId);
               } catch (err) {
                 this.ctx.logger.error({ err, name, windowId: fencedWindowId }, "Could not persist old window id after unverified durable stop");
               }

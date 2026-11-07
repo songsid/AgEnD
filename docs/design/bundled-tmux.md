@@ -167,7 +167,10 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 
 ## 5. The private socket, and what a user sees
 
-- **Socket:** `-L agend` for the real home. Isolated homes keep `agend-<hash6>` (`paths.ts:49-55`). The session stays
+- **Socket:** `-L agend` for the real home. An isolated home gets `agend-<hash6>-b`: its 2.3 hashed name
+  (`paths.ts:49-55`) with `-b`, never the hashed name itself. 2.3 ran the **system** tmux on `agend-<hash6>`, and a 2.3
+  server that survives the upgrade there (launchd, foreground) is a legacy server for §6 rule 3, not a server of ours
+  (C-4 leg I: sharing the name held the whole fleet on "no record of the server"). The session stays
   `agend`. With `-L`, tmux puts the socket in `$TMUX_TMPDIR` or `/tmp/tmux-<uid>/` (mode 0700, owner-only).
 - **Config:** the server starts with `-f <package>/share/agend-tmux.conf`, a small file with our options. The user's
   `~/.tmux.conf` no longer applies to AgEnD's server, so their key bindings or plugins can't change delivery. The
@@ -234,14 +237,19 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
      SIGTERM, then the same positive-exit wait. Anything else holds the fleet with a Needs-you line ("AgEnD's previous
      tmux server is still running and can't be verified: <reason>"), and nothing is killed.
    - Two CLIs never resume one conversation: the old window is gone, positively, before the new one starts.
-3. **The 2.3.x → 2.4 hop** (the old server on the **default** socket, run by the system tmux):
+3. **The 2.3.x → 2.4 hop** (the old server, run by the system tmux on **2.3's socket for this home**: the **default**
+   socket for the real home, `agend-<hash6>` for an isolated one — "the default server" below means that socket):
    - On systemd/WSL, the old service's stop ends it.
    - On launchd and in the foreground it may still run. **Every 2.4 start, before any instance starts**, runs the legacy
      check with the **system** tmux on the **default** socket. It is not a once-per-host step: a rollback to 2.3 and a
      second upgrade create new legacy windows, and they are found the same way.
-     - **The trigger is per instance:** 2.4 writes `instances/<name>/window-id` with a socket tag (`agend:@12`); a file
-       without the tag was written by 2.3 and names a window on the default server. Any untagged file, or a default
-       server with session `agend` (or `AGEND_TMUX_SESSION`), means the check runs.
+     - **The trigger is per instance:** 2.4 writes `instances/<name>/window-id` with a socket tag (a sidecar
+       `window-id.socket`); a file without the tag was written by 2.3 and names a window on the default server.
+     - **The 2.3 id leaves `window-id` at once** (C-4 leg L3): at fleet start, before any instance does anything, every
+       untagged id moves into the journal's `pending` and its file is removed (journal first), and each instance's start
+       does the same. So no other reader of `window-id` (a stop, a pane check, a restart) can act on a 2.3 id against
+       the new server, whose ids start again from `@0`, and a hold survives the instance's retries and restarts until
+       the window is gone, migrated or released.
      - **Prove** each window ours: its `#{window_id}` equals the untagged window-id file, its name equals that
        instance's, and its pane's process tree runs that instance's backend binary.
      - Checkpoint each proven window's session id, `kill-window` it, and confirm it gone (and its pane pid exited)
@@ -252,9 +260,9 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
        may still be running (system tmux). Close it, or run `agend tmux-migrate --release <name>`." The rest of the fleet
        starts.
      - `~/.agend/tmux-migration.json` is a **journal**, not a skip flag: it names the default server incarnation
-       (`#{pid}` + `#{start_time}`) and each window's step (checkpointed, killed, confirmed). It lets an interrupted
-       migration resume on the **same** server without checkpointing twice; a different incarnation, or a new untagged
-       file, starts a fresh pass.
+       (`#{pid}` + `#{start_time}`), each window's step (checkpointed, killed, confirmed), the `pending` 2.3 ids and the
+       `released` ones. It lets an interrupted migration resume on the **same** server without checkpointing twice; a
+       different incarnation, or a new untagged file, starts a fresh pass.
    - The window-id files are rewritten (tagged) by the new spawns.
 4. **Later 2.4.x → 2.4.y with a new pin:** rule 2. The receipt names the pin and the server reports `#{version}`, so a
    mismatch can't outlive an update even where the server survives.

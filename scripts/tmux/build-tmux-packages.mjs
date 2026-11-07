@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readSources, TARGETS } from "./build-tmux.mjs";
+import { partsFor, readSources, TARGETS } from "./build-tmux.mjs";
 
 /** tmux "3.8" → "3.8.0", "3.7b" → "3.7.2" (the letter is the patch: a = 1). */
 export function tmuxSemver(tmuxVersion, repack) {
@@ -26,13 +26,21 @@ export function tmuxSemver(tmuxVersion, repack) {
   return `${m[1]}.${m[2]}.${patch}${repack ? `-agend.${repack}` : ""}`;
 }
 
-export function tmuxManifest(target, info, repack) {
+/** The package's SPDX licence: the licences of exactly the parts this target links (tmux-sources.json), each once. */
+export function licenseFor(target, sources = readSources()) {
+  const ids = [];
+  for (const part of partsFor(sources, target)) for (const id of String(sources[part].license).split(" AND ")) if (!ids.includes(id)) ids.push(id);
+  return ids.join(" AND ");
+}
+
+export function tmuxManifest(target, info, repack, sources = readSources()) {
   const [os, cpu] = target.split("-");
   return {
     name: `@songsid/agend-tmux-${target}`,
     version: tmuxSemver(info.tmux, repack),
     description: `tmux ${info.tmux} for ${target}, built statically from pinned sources as AgEnD's private terminal multiplexer (M-2457). Not a general-purpose tmux install.`,
-    license: "ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0" + (os === "darwin" ? " AND BSD-2-Clause" : ""),
+    // From the linked parts (Fable #3312: a hard-coded darwin " AND BSD-2-Clause" outlived jemalloc, #3308).
+    license: licenseFor(target, sources),
     repository: { type: "git", url: "git+https://github.com/songsid/AgEnD.git" },
     os: [os],
     cpu: [cpu],

@@ -210,18 +210,20 @@ const TOP_WIRE = [
 describe("TmuxManager.listPanePids (a private tmux server, never the live one)", () => {
   it("every pane of the session: its shell's pid and its window's name; a missing session is []", async () => {
     const { execFileSync } = await import("node:child_process");
+    const { tmuxBinary } = await import("../src/tmux-binary.js");
+    const TMUX = tmuxBinary();   // the server is read by TmuxManager, which runs this same binary (M-2457 C-4)
     const SOCK = `agend-test-2015-${process.pid}`;
     TmuxManager.setSocketName(SOCK);
     try {
-      execFileSync("tmux", ["-L", SOCK, "new-session", "-d", "-s", "s2015", "-n", "dev-a", "sleep 60"]);
-      execFileSync("tmux", ["-L", SOCK, "new-window", "-d", "-t", "s2015", "-n", "web", "sleep 60"]);
-      const want = execFileSync("tmux", ["-L", SOCK, "list-panes", "-s", "-t", "s2015", "-F", "#{pane_pid} #{window_name}"], { encoding: "utf8" })
+      execFileSync(TMUX, ["-L", SOCK, "new-session", "-d", "-s", "s2015", "-n", "dev-a", "sleep 60"]);
+      execFileSync(TMUX, ["-L", SOCK, "new-window", "-d", "-t", "s2015", "-n", "web", "sleep 60"]);
+      const want = execFileSync(TMUX, ["-L", SOCK, "list-panes", "-s", "-t", "s2015", "-F", "#{pane_pid} #{window_name}"], { encoding: "utf8" })
         .trim().split("\n").map(l => { const [pid, window] = l.split(" "); return { pid: Number(pid), window }; });
       expect(await TmuxManager.listPanePids("s2015")).toEqual(want);
       expect(want.map(p => p.window).sort()).toEqual(["dev-a", "web"]);
       expect(await TmuxManager.listPanePids("no-such-session")).toEqual([]);
     } finally {
-      try { execFileSync("tmux", ["-L", SOCK, "kill-server"], { stdio: "ignore" }); } catch { /* already gone */ }
+      try { execFileSync(TMUX, ["-L", SOCK, "kill-server"], { stdio: "ignore" }); } catch { /* already gone */ }
       TmuxManager.setSocketName(null);
     }
   });

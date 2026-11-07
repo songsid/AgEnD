@@ -11,6 +11,7 @@ import { confirmGeneralHostExit } from "../src/general-host-owner.js";
 import { ClaudeCodeBackend, claudeProjectKey } from "../src/backend/claude-code.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 const execFile = promisify(exec), roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const errno = (code: string) => Object.assign(Error(code), { code });
@@ -33,10 +34,11 @@ describe("General's host positive-exit barrier", () => {
     const root = mkdtempSync(join(tmpdir(), "agend-general-owner-")); roots.push(root);
     const socket = `agend-test-general-owner-${process.pid}-${randomUUID().slice(0, 8)}`, session = "fixture";
     vi.stubEnv("AGEND_HOME", root); TmuxManager.setSocketName(socket);
+    const TMUX = tmuxBinary();   // the server is read by TmuxManager, which runs this same binary (M-2457 C-4)
     try {
-      await execFile("tmux", ["-L", socket, "new-session", "-d", "-s", session, "-n", "first", "exec sleep 60"]);
+      await execFile(TMUX, ["-L", socket, "new-session", "-d", "-s", session, "-n", "first", "exec sleep 60"]);
       const first = (await TmuxManager.listWindows(session))[0].id;
-      const other = (await execFile("tmux", ["-L", socket, "new-window", "-d", "-P", "-F", "#{window_id}", "-t", session, "-n", "other", "exec sleep 60"])).stdout.trim();
+      const other = (await execFile(TMUX, ["-L", socket, "new-window", "-d", "-P", "-F", "#{window_id}", "-t", session, "-n", "other", "exec sleep 60"])).stdout.trim();
       const pid = await TmuxManager.getPanePid(session, first), otherPid = await TmuxManager.getPanePid(session, other);
       expect(pid).toBeGreaterThan(1); expect(otherPid).toBeGreaterThan(1);
       const captured = { kind: "tmux" as const, windowId: first, pid: pid! };
@@ -46,7 +48,7 @@ describe("General's host positive-exit barrier", () => {
       for (let i = 0; i < 20 && !gone; i++) { gone = await confirmGeneralHostExit(captured, session); if (!gone) await new Promise(r => setTimeout(r, 100)); }
       expect(gone).toBe(true); expect(process.kill(otherPid!, 0)).toBe(true);
       expect((await TmuxManager.listWindows(session)).some(row => row.id === other)).toBe(true);
-    } finally { await execFile("tmux", ["-L", socket, "kill-server"]).catch(() => {}); TmuxManager.setSocketName(null); }
+    } finally { await execFile(TMUX, ["-L", socket, "kill-server"]).catch(() => {}); TmuxManager.setSocketName(null); }
   }, 15_000);
 });
 

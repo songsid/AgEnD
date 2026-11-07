@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExecHelper, HELPER_STOP_WAIT_MS, tmuxExecHelper } from "../src/tmux-exec-helper.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { resetTmuxResolution } from "../src/tmux-binary.js";
 
 let root: string, bin: string;
 const helpers: ExecHelper[] = [];
@@ -19,8 +20,17 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "agend-2364-")); bin = join(root, "bin"); mkdirSync(bin);
   writeFileSync(join(bin, "tmux"), `#!/bin/sh\nif [ "$1" = "-L" ]; then shift 2; fi\ncase "$1" in slow) sleep "$2"; printf slow ;; *) printf ok ;; esac\n`);
   chmodSync(join(bin, "tmux"), 0o755);
+  // The helper runs AgEnD's tmux (the resolved binary), so the fake is that binary for this test.
+  vi.stubEnv("AGEND_TMUX_BIN", join(bin, "tmux"));
+  resetTmuxResolution();
 });
-afterEach(() => { for (const h of helpers.splice(0)) void h.stop(0); rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); });
+afterEach(() => {
+  for (const h of helpers.splice(0)) void h.stop(0);
+  rmSync(root, { recursive: true, force: true });
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  resetTmuxResolution();
+});
 const make = (spawnHelper?: (allow: string[]) => ChildProcess) => {
   const h = new ExecHelper({ direct: () => Promise.resolve({ stdout: "direct", stderr: "" }), path: () => `${bin}:${process.env.PATH}`, ...(spawnHelper ? { spawnHelper } : {}) });
   helpers.push(h);

@@ -24,7 +24,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 const { TmuxControlClient } = await import("../src/tmux-control.js");
 const { TmuxManager } = await import("../src/tmux-manager.js");
-const { getTmuxSocketName } = await import("../src/paths.js");
+const { tmuxSocket } = await import("../src/tmux-binary.js");
 
 function processFixture() {
   return Object.assign(new EventEmitter(), {
@@ -71,7 +71,7 @@ function frame(proc: Proc, call: number, output: string): Buffer {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
   processes = []; sequence = 1; fallbackCalls = 0;
-  TmuxManager.setSocketName(getTmuxSocketName());
+  TmuxManager.setSocketName(tmuxSocket());
   mocks.spawn.mockReset().mockImplementation(() => { const proc = processFixture(); processes.push(proc); return proc; });
   mocks.execFile.mockReset().mockImplementation((_file, _args, _options, callback) => {
     fallbackCalls++;

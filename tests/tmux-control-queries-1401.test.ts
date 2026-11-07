@@ -21,7 +21,7 @@ vi.mock("node:child_process", async importOriginal => {
 import { Daemon } from "../src/daemon.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
-import { getTmuxSocketName } from "../src/paths.js";
+import { tmuxSocket } from "../src/tmux-binary.js";
 import { TMUX_READ_MAX_BYTES, TMUX_READ_QUEUE_LIMIT, TmuxReadLane, tmuxReadArgs, tmuxCommandToken } from "../src/tmux-read.js";
 
 function processFixture() {
@@ -69,7 +69,7 @@ beforeEach(() => {
   processes = []; sequence = 1; mocks.randomUUID.mockReset();
   mocks.spawn.mockReset().mockImplementation(() => { const proc = processFixture(); processes.push(proc); return proc; });
   mocks.execFile.mockReset().mockImplementation(() => { throw new Error("unexpected fallback spawn"); });
-  TmuxManager.setSocketName(getTmuxSocketName());
+  TmuxManager.setSocketName(tmuxSocket());
 });
 afterEach(() => {
   for (const daemon of daemons.splice(0)) {
@@ -174,7 +174,7 @@ describe("#1401 control read protocol and manager wiring", () => {
 
   it("rejects wrong session/socket and safely serializes special tokens", async () => {
     const { client, proc, manager } = opened();
-    expect(client.isFor("other", getTmuxSocketName())).toBe(false);
+    expect(client.isFor("other", tmuxSocket())).toBe(false);
     await expect(client.read({ kind: "windows", session: "other" })).rejects.toThrow("scope");
     TmuxManager.setSocketName("other"); const wrong = manager.capturePane();
     if (proc.stdin.write.mock.calls.length) answer(proc, "wrong scope\n");
@@ -348,7 +348,7 @@ describe("#1401 real daemon handlers and registration fences", () => {
   it("real lane saturation defers a real health tick without crash, kill or respawn", async () => {
     const { client, manager } = opened(); const { d, logger } = daemonFixture(manager, client);
     d.config.restart_policy.max_retries = 2;
-    const lane = new TmuxReadLane(getTmuxSocketName(), {
+    const lane = new TmuxReadLane(tmuxSocket(), {
       ready: () => true, execute: () => new Promise(() => {}), retire: vi.fn(),
     });
     (client as any).reads = lane;

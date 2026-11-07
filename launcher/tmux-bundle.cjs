@@ -78,15 +78,21 @@ function sleepMs(ms) {
  * Has process `pid` exited? true only on positive evidence: no such process (ESRCH), or a zombie (it has exited and
  * waits for a parent that may never reap it, e.g. a container whose PID 1 is not an init). Anything else is false.
  */
-function processGone(pid, platform) {
-  try { process.kill(pid, 0); } catch (e) { return !!e && e.code === "ESRCH"; }
+function processGone(pid, platform, io) {
+  var o = io || { kill: function (p, sig) { process.kill(p, sig); }, read: function (f) { return fs.readFileSync(f, "utf8"); } };
+  var esrch = function () { try { o.kill(pid, 0); return false; } catch (e) { return !!e && e.code === "ESRCH"; } };
+  try { o.kill(pid, 0); } catch (e) { return !!e && e.code === "ESRCH"; }
+  if ((platform || process.platform) === "linux") {
+    var stat;
+    // The process can be reaped between kill(0) and this read (a zombie's parent reaping it): its /proc entry is then
+    // gone. Asked again, ESRCH is the positive evidence; anything else stays "not gone" (runner CI, Fable #3312 F1).
+    try { stat = o.read("/proc/" + pid + "/stat"); } catch (e) { return !!e && (e.code === "ENOENT" || e.code === "ESRCH") && esrch(); }
+    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) === "Z";
+  }
   try {
-    if ((platform || process.platform) === "linux") {
-      var stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
-      return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) === "Z";
-    }
     var ps = childProcess.spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
-    return ps.status === 0 && /^\s*Z/.test(String(ps.stdout));
+    if (ps.status === 0 && /^\s*Z/.test(String(ps.stdout))) return true;
+    return ps.status === 1 && esrch();   // ps found no such process: gone if kill(0) agrees now
   } catch (e) { return false; }
 }
 
@@ -164,8 +170,10 @@ function verifyTmux(candidate, pin, deps) {
       // Monotonic (alpha CI run 42287645555: the wall clock stepped mid-wait, the deadline was already past at the first
       // check, and a server killed a moment earlier was refused as "still running" in 151 ms of a 1.5 s budget).
       var deadline = monotonicMs() + exitWaitMs;
-      while (!gone(server.pid) && monotonicMs() < deadline) sleepMs(50);
-      if (!gone(server.pid)) failed = "its server (pid " + server.pid + ") was still running after kill-server";
+      // The loop's own last observation decides: a second, separate ask could catch the process mid-reap.
+      var ended = gone(server.pid);
+      while (!ended && monotonicMs() < deadline) { sleepMs(50); ended = gone(server.pid); }
+      if (!ended) failed = "its server (pid " + server.pid + ") was still running after kill-server";
       else {
         var after = run(["-L", sock, "has-session"]);
         if (!clean(after)) failed = "whether its server ended could not be confirmed (has-session: " + why(after) + ")";
