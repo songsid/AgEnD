@@ -1,3 +1,4 @@
+import { Skeleton, ErrorState } from "/assets/ui-states.js";
 // AgEnD Hub P1, slice 3 (docs/design/hub-ui-client.md): Settings → Access & security → "Connect to a Hub", on a member
 // fleet (the page's mark; never drawn or loaded while hub_member is off). The address and one-time code, then each
 // pairing state as it is — waiting (the pairing fingerprint to compare, both confirmations), connected (the approved
@@ -32,14 +33,19 @@ function Fingerprint({ label, fp }) {
 export function HubConnectCard() {
   const client = hubClient();
   const [pairing, setPairing] = useState(null);
+  const [readError, setReadError] = useState(false);
   const [form, setForm] = useState({ address: "", code: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);
+  const readPairing = () => {
+    setReadError(false);
+    return client.pairing().then((p) => { if (live.current) setPairing(p); }, () => { if (live.current) setReadError(true); });
+  };
   useEffect(() => {
     linkHubCss();
     live.current = true;
-    client.pairing().then((p) => { if (live.current) setPairing(p); }, () => {});
+    readPairing();
     const off = client.subscribe((p) => { if (live.current) setPairing(p); });
     return () => { live.current = false; off(); };
   }, []);
@@ -69,7 +75,7 @@ export function HubConnectCard() {
 
   const p = pairing;
   let body = null;
-  if (!p) body = null;
+  if (!p) body = readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${readPairing} />` : html`<${Skeleton} variant="form" lines=${4} />`;
   else if (p.state === "unpaired") {
     const addressOk = ADDRESS_HINT.test(form.address.trim()), codeOk = CODE_HINT.test(form.code.trim());
     body = html`<form class="form hub-connect" onSubmit=${(e) => { e.preventDefault(); connect(); }}>
@@ -152,10 +158,11 @@ export function HubConnectCard() {
  */
 function HubExposures({ client }) {
   const [rows, setRows] = useState(null);
+  const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);
-  const load = () => client.exposures().then((r) => { if (live.current) setRows(r); }, () => { if (live.current) setRows([]); });
+  const load = () => { setReadError(false); return client.exposures().then((r) => { if (live.current) setRows(r); }, () => { if (live.current) setReadError(true); }); };
   useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, []);
   const toggle = async (row, on) => {
     if (busy) return;
@@ -173,6 +180,7 @@ function HubExposures({ client }) {
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
     <p class="note">${hw("agentLead")}</p>
+    ${readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${load} />` : !rows ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
     ${rows && !rows.length ? html`<p class="note">${hw("noAgents")}</p>` : null}
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>
       <label class="hub-exposure-main">

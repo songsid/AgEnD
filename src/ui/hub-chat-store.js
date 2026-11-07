@@ -56,7 +56,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
-  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, error: null, pending: [], full: false, reads: 0, farTurn: 0 };
+  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, loaded: false, error: null, pending: [], full: false, reads: 0, farTurn: 0 };
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
@@ -101,7 +101,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       // (an older Hub) keeps what is known.
       if (r.room) { st.room = { ...st.room, ...r.room }; if (!Object.prototype.hasOwnProperty.call(r.room, "quota")) delete st.room.quota; }
       st.pending = st.pending.filter((p) => !st.entries.some((e) => e.messageId === p.messageId));
-      st.error = null; emit(); schedule(POLL_MS); return;
+      st.loaded = true; st.error = null; emit(); schedule(POLL_MS); return;
     }
     if (r.code === "revoked" || r.code === "not-found") { st.closed = true; emit(); return; }
     st.error = r.code || "failed"; emit();
@@ -123,6 +123,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     room: () => st.room,
     closed: () => st.closed,
+    loaded: () => st.loaded,
     error: () => st.error,
     entries: () => st.entries,
     messages() {

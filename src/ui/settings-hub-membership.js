@@ -1,3 +1,4 @@
+import { Skeleton, ErrorState } from "/assets/ui-states.js";
 // Pure lazy owner Settings while off. Hub clients/pairing UI load only after a saved on state and a member page mark.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -29,9 +30,11 @@ export function HubMembershipSettings() {
   const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
   const [view, setView] = useState(null), [busy, setBusy] = useState(false), [messageKey, setMessageKey] = useState("loading");
   const [Connect, setConnect] = useState(null);
+  const [connectError, setConnectError] = useState(false), [attempt, setAttempt] = useState(0);
   const owner = useRef({ mounted: true, seq: 0, busy: false });
   const read = async () => {
     const seq = ++owner.current.seq;
+    if (!view) setMessageKey("loading");
     let result; try { result = await api(path); } catch { result = null; }
     if (!owner.current.mounted || owner.current.seq !== seq) return;
     if (result?.ok && typeof result.body?.enabled === "boolean") { setView({ enabled: result.body.enabled }); setMessageKey(""); }
@@ -44,9 +47,12 @@ export function HubMembershipSettings() {
   }, [publicPage]);
   useEffect(() => {
     let live = true;
-    if (!publicPage && view?.enabled && markedMember()) import("./settings-hub.js").then(m => { if (live) setConnect(() => m.HubConnectCard); }, () => {});
+    if (!publicPage && view?.enabled && markedMember()) {
+      setConnectError(false);
+      import("./settings-hub.js").then(m => { if (live) setConnect(() => m.HubConnectCard); }, () => { if (live) setConnectError(true); });
+    }
     return () => { live = false; };
-  }, [publicPage, view?.enabled]);
+  }, [publicPage, view?.enabled, attempt]);
   const change = async enabled => {
     if (publicPage || !view || owner.current.busy) return;
     owner.current.busy = true; owner.current.seq++; setBusy(true); setMessageKey("");
@@ -62,11 +68,11 @@ export function HubMembershipSettings() {
   if (publicPage) return null;
   return html`<div class="form hub-membership-settings"><section class="card">
     <h3>${copy("title")}</h3><p class="note">${copy("hint")}</p>
-    <label class="check"><input class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}
-      disabled=${!view || busy} onChange=${e => change(e.target.checked)} /><span>${copy("enabled")}</span></label>
+    ${!view && messageKey === "loading" ? html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />` : html`<label class="check"><input class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}
+      disabled=${!view || busy} onChange=${e => change(e.target.checked)} /><span>${copy("enabled")}</span></label>`}
     <p class="note">${copy("off")}</p>
-    ${messageKey ? html`<p role="status">${copy(messageKey)}</p>` : null}
+    ${messageKey && messageKey !== "loading" ? html`<p role="status">${copy(messageKey)}</p>` : null}
     ${!view && !busy && messageKey !== "loading" ? html`<button class="btn btn-sm" type="button" onClick=${read}>${copy("retry")}</button>` : null}
     ${view && view.enabled !== markedMember() ? html`<p class="note">${copy("reloadHint")} <button class="btn btn-sm" type="button" disabled=${busy} onClick=${() => location.reload()}>${copy("reload")}</button></p>` : null}
-  </section>${view?.enabled && markedMember() && Connect ? html`<${Connect} />` : null}</div>`;
+  </section>${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
 }

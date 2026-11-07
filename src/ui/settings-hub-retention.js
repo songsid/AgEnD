@@ -1,3 +1,4 @@
+import { Skeleton } from "/assets/ui-states.js";
 // Host-owner Settings only. Own the copy here so an open tab's older Settings strings still work.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -43,6 +44,7 @@ export function HubRetentionSettings() {
   };
   return html`<section class="card hub-retention"><h3>${copy("title")}</h3>
     <p class="note">${copy("hint")}</p>
+    ${!policy && !messageKey ? html`<${Skeleton} variant="form" lines=${4} />` : null}
     ${policy ? html`<form class="form" onSubmit=${save}><div class="grid2">
       <label class="field">${copy("content")}<input type="number" min="1" max="3650" step="1" value=${content} disabled=${busy} onInput=${e => setContent(e.target.value)} /></label>
       <label class="field">${copy("events")}<input type="number" min="1" max="3650" step="1" value=${events} disabled=${busy} onInput=${e => setEvents(e.target.value)} /></label>
