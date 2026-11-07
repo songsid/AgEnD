@@ -9914,7 +9914,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
     // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
     // agent of this start writes its own.
-    this.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(getAgendHome(), bundled.previous);
+    // Persisted before this start records server.json (see ownTmuxStartDecision).
+    this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -16370,17 +16371,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return names.some(n => ["output.log", "session-id"].some(f => existsSync(join(instancesDir, n, f))));
   }
 
+  /** Where an upgraded home's not-yet-dispatched own-tmux notice is kept across restarts; only a dispatch clears it. */
+  static ownTmuxPendingPath(agendHome: string): string { return join(agendHome, "tmux", "own-server-notice-pending"); }
+
+  /**
+   * Fleet start's decision, made before this start records server.json: an upgraded home is persisted as owing the
+   * notice. A restart before the notice is dispatched (a slow first start; alpha.6 leg M on the real Mac) would otherwise
+   * read the just-recorded server as "not an upgrade" and drop it.
+   */
+  static ownTmuxStartDecision(agendHome: string, previous: unknown, logger?: { warn: (o: object, m: string) => void }): boolean {
+    const upgraded = FleetManager.ownTmuxUpgraded(agendHome, previous);
+    if (upgraded) FleetManager.persistOwnTmuxPending(agendHome, logger);
+    return upgraded;
+  }
+
+  /** Record that this home owes the own-tmux notice (unless it was already posted). */
+  static persistOwnTmuxPending(agendHome: string, logger?: { warn: (o: object, m: string) => void }): void {
+    if (existsSync(join(agendHome, "tmux", "own-server-announced"))) return;
+    try {
+      mkdirSync(join(agendHome, "tmux"), { recursive: true });
+      writeFileSync(FleetManager.ownTmuxPendingPath(agendHome), `${new Date().toISOString()}\n`);
+    } catch (err) { logger?.warn({ err }, "Could not record the pending own-tmux notice"); }
+  }
+
   announceOwnTmux(): void {
     const marker = join(getAgendHome(), "tmux", "own-server-announced");
+    const pending = FleetManager.ownTmuxPendingPath(getAgendHome());
     if (existsSync(marker)) return;
     // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3):
     // agent state from before this start and no recorded AgEnD tmux server (set at fleet start), or a migration journal
     // (2.3 window ids found). A fresh home is marked without a notice.
-    const upgraded = this.ownTmuxUpgradedHome || existsSync(join(getAgendHome(), "tmux-migration.json"));
+    // A pending notice persisted by an earlier start counts too: that start's server record must not hide the upgrade.
+    const upgraded = this.ownTmuxUpgradedHome || existsSync(pending) || existsSync(join(getAgendHome(), "tmux-migration.json"));
     if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
     try {
       mkdirSync(dirname(marker), { recursive: true });
       writeFileSync(marker, `${new Date().toISOString()}\n`);
+      rmSync(pending, { force: true });
     } catch (err) { this.logger.warn({ err }, "Could not record that the own-tmux notice was posted"); }
   }
 
