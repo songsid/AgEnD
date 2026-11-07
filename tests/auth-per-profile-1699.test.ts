@@ -95,7 +95,9 @@ describe.each(BACKENDS)("#1699 follow-up — $backend: an instance on a profile 
     await new Promise(res => setTimeout(res, 20));
     // #1699 part 2 (claude-code), #3212 PR 4 (codex, kiro-cli): a profile signs in from chat — the remedy names it, with
     // the host line as the alternative, and the button carries the profile (the plain one would sign the DEFAULT login in).
-    expect(text).toContain(`Use \`/login ${b.backend} work\` to sign that profile in remotely (or run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host)`);
+    // 721ca0c3: the /login way only — no host command in the alert.
+    expect(text).toContain(`Use \`/login ${b.backend} work\` to sign that profile in remotely.`);
+    expect(text).not.toContain("on the host");
     expect(r.offerBackendLogin).toHaveBeenCalledWith("w1", b.backend, "work");
   });
 

@@ -840,7 +840,8 @@ export class InstanceLifecycle {
     const profileLogin = profile ? credentialProfileLoginCommand(getAgendHome(), backend, profile) : null;
     const chatLogin = !!profileLogin && CHAT_PROFILE_LOGIN_BACKENDS.has(backend);
     const remedy = chatLogin
-      ? `Use \`/login ${backend} ${profile}\` to sign that profile in remotely (or run \`${profileLogin}\` on the host).`
+      // 721ca0c3: never guide a person to type a host command — the chat sign-in is the way.
+      ? `Use \`/login ${backend} ${profile}\` to sign that profile in remotely.`
       : profileLogin
       ? `Run \`${profileLogin}\` on the host, then wake the affected instance(s).`
       : backend === "opencode"
