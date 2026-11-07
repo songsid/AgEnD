@@ -350,6 +350,14 @@ The first time:
 
 After that, a new pinned Node publishes through OIDC alone.
 
+The bundled tmux packages, `@songsid/agend-tmux-<os>-<cpu>`
+(`publish-tmux.yml`, inputs `repack`, `dry_run` and `npm_tag`), follow the same
+steps. `npm_tag` (default `latest`) is the dist-tag of the publish. To check that
+a newly configured trusted publisher works without a new tmux, publish a repack
+under another tag: `repack=1, npm_tag=oidc-check, dry_run=false` publishes
+`<version>-agend.1` through OIDC and leaves `latest` on the real package. AgEnD
+pins exact versions, so a package under another tag is never installed by default.
+
 ### Channels
 
 | Channel | Tag | Install |

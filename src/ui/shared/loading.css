@@ -1,0 +1,37 @@
+/* The shared Skeleton's calm content shapes, including before the app's modules arrive. No shimmer or spinner. */
+.skeleton { box-sizing: border-box; width: 100%; min-width: 0; }
+.skeleton > [aria-hidden] { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.skeleton .sk-line { height: 14px; flex-shrink: 0; background: var(--surface-2, #e8e8eb); border-radius: 5px; }
+.sk-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 0; }
+.sk-row .sk-thumb { width: 36px; height: 36px; border-radius: 9px; }
+.sk-row .sk-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 9px; }
+.sk-row .sk-copy .sk-line { width: 76%; height: 12px; }
+.sk-row .sk-copy .sk-line + .sk-line { width: 51%; height: 10px; }
+.sk-row .sk-pill { width: 52px; height: 22px; border-radius: 99px; }
+.sk-cards .sk-row { min-height: 104px; border-bottom: 1px solid var(--border, #ddd); }
+.sk-inline { max-width: 140px; min-width: 90px; padding: 0; margin: 0; }
+.s-profile { position: relative; }
+.s-profile-fields { display: flex; flex-direction: column; gap: var(--s-3, 12px); }
+.sk-reserve { visibility: hidden; pointer-events: none; }
+.sk-profile-cover { position: absolute; inset: 52px 16px 16px; }
+.s-pref-profile-fields > .sk-profile-cover { inset: 0; }
+.sk-profile-cover .skeleton { padding: 0; margin: 0; max-width: none; }
+.sk-form .sk-line:nth-child(3) { width: 100%; height: 40px; }
+.sk-form .sk-line:nth-child(4) { width: 48%; height: 32px; border-radius: 99px; }
+.sk-boot { display: flex; height: 100dvh; background: var(--bg, #f6f6f8); }
+.sk-boot-side { width: var(--sidebar-w, 248px); padding: 28px 20px; border-right: 1px solid var(--border, #ddd); }
+.sk-boot-main { flex: 1; min-width: 0; }
+.sk-boot-head { height: 64px; border-bottom: 1px solid var(--border, #ddd); }
+.sk-boot-head .sk-line { width: 160px; }
+.sk-boot .skeleton { margin: 0; max-width: 760px; opacity: 1; animation: none; }
+.sk-boot .sk-line { height: 14px; background: var(--surface-2, #e8e8eb); }
+.signin-card { position: relative; }
+/* Reserve the real, translated form's size while the session is checked; hidden fields cannot be focused. */
+.signin-card:has(#checking:not([hidden])) #form[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
+.sk-signin { position: absolute; inset: 72px 24px 28px; width: auto; padding: 0; margin: 0; max-width: none; }
+.sk-signin > [aria-hidden] { gap: 18px; }
+.sk-signin .sk-line:first-child { width: 70%; height: 26px; }
+.sk-signin .sk-line:nth-child(3) { width: 100%; height: 48px; }
+.sk-signin .sk-line:nth-child(4) { width: 100%; height: 42px; border-radius: 99px; }
+@media (max-width: 899px) { .sk-boot-side { display: none; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; opacity: 1; } }

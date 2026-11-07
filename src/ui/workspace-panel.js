@@ -12,6 +12,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Skeleton } from "/assets/ui-states.js";
 import "./workspace-strings.js";          // this panel's own words (an older cached chat-strings.js lacks them)
 import "./workspace-follow-strings.js";   // #3160's words, a module of their own (an older workspace-strings.js lacks them)
 
@@ -305,7 +306,7 @@ function FollowStrip({ history, current, info, pick }) {
 }
 
 function Changes({ state, openFiles, toggle }) {
-  if (!state || state.state === "loading") return html`<div class="pv-note">${t("chat.pvLoading")}</div>`;
+  if (!state || state.state === "loading") return html`<${Skeleton} variant="rows" lines=${4} label=${t("chat.pvLoading")} />`;
   if (state.state === "failed") return html`<div class="pv-note" role="alert">${errText(state.error)}</div>`;
   const c = state.body;
   if (!c.repo) return html`<div class="pv-note">${t("chat.wsNoRepo")}</div>`;
@@ -331,7 +332,7 @@ function Changes({ state, openFiles, toggle }) {
 }
 
 function Listing({ listing, hl, openDir, openFile }) {
-  if (!listing || listing.state === "loading") return html`<div class="pv-note">${t("chat.pvLoading")}</div>`;
+  if (!listing || listing.state === "loading") return html`<${Skeleton} variant="rows" lines=${6} label=${t("chat.pvLoading")} />`;
   if (listing.state === "failed") return html`<div class="pv-note" role="alert">${errText(listing.error)}</div>`;
   const l = listing.body;
   return html`<div>
@@ -360,7 +361,7 @@ function Viewer({ file, instance, back, scroll }) {
     const el = pre.current && pre.current.querySelector(".ws-line.hl-edit, .ws-line.hl-read");
     if (el && typeof scroll === "function") scroll(el);
   }, [file]);
-  if (file.state === "loading") return html`<div>${head}<div class="pv-note">${t("chat.pvLoading")}</div></div>`;
+  if (file.state === "loading") return html`<div>${head}<${Skeleton} lines=${10} label=${t("chat.pvLoading")} /></div>`;
   if (file.state === "failed") return html`<div>${head}<div class="pv-note" role="alert">${errText(file.error)}</div></div>`;
   const f = file.body;
   if (f.kind === "image") return html`<div>${head}<img class="ws-image" alt=${f.path} src=${api(instance, "image", f.path)} /></div>`;

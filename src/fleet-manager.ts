@@ -6,6 +6,9 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
+import { quotaNoticeRule } from "./quota-notice-config.js";
+import { onUsageSnapshot } from "./usage/usage-api.js";
 import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
@@ -265,7 +268,7 @@ import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_C
 import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeInstallService } from "./runtime-install.js";
-import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY, validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -468,10 +471,21 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
+import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
+import { runQuiet } from "./quiet-run.js";
+
+const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
+  platform: process.platform,
+  run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),   // its `gone` is kept by withAccountWriter
+  // #3305 review P2-5: a deadline is a failure (runQuiet), for the Keychain query too; it only reads, so its child is not
+  // held as a credential writer (its answer is a failure until it exits 0 in time).
+  keychainHas: async (service: string) => (await runQuiet("security", ["find-generic-password", "-s", service], process.env, { timeoutMs: 15_000 })).code === 0,
+};
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -7257,6 +7271,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private classicBehaviorUpdate(instanceName: string): Record<string, unknown> {
     return {
+      quota_notice: this.classicChannels?.getQuotaNoticeByInstance?.(instanceName) ?? null,
       reply_triggers: this.classicChannels?.getReplyTriggersByInstance(instanceName, this.fleetConfig?.defaults?.reply_triggers) ?? DEFAULT_REPLY_TRIGGERS,
       tool_progress: this.classicChannels?.getToolProgressByInstance(
         instanceName,
@@ -9817,7 +9832,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async startAllWithinDeadline(configPath: string, deadline: StartupMemoryDeadline): Promise<void> {
-    if (!this.structuredLoginCleanupFailed) this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
+    if (!this.structuredLoginCleanupFailed) this.reopenLoginWindow();                           // a stopAll → startAll restart must accept login windows again
     this.loginController?.reopen();
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
@@ -10521,7 +10536,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Discord bot and while some account has a running agent, read every 30 min — the same cached read (its 5-minute TTL
    * still bounds the vendor calls), recorded like any other.
    */
+  private quotaNotices: QuotaNotices | null = null;
+  private stopQuotaObserver: (() => void) | null = null;
+
+  private quotaNoticePolicy(): QuotaNoticePolicy {
+    const defaults = this.fleetConfig?.defaults.quota_notice;
+    const wanted = defaults?.target ?? "general";
+    const instances = this.fleetConfig?.instances ?? {};
+    const target = wanted === "general"
+      ? Object.entries(instances).find(([name, c]) => c.general_topic === true || name === "general")?.[0]
+      : Object.hasOwn(instances, wanted) ? wanted : undefined;
+    const webOnly = !!this.webOnlyPromptPlace();
+    const config = target ? instances[target] : undefined;
+    const adapterId = target ? this.getInstanceAdapterId(target) : undefined;
+    const groupId = target ? this.getChannelConfig(adapterId)?.group_id : undefined;
+    const ready = !!target && (webOnly || (config?.topic_id != null && !!groupId && !!(this.getAdapterForInstance(target) ?? this.adapter)));
+    return {
+      target: this.shuttingDown ? "" : ready ? target! : !target && wanted === "general" && webOnly ? "/notices" : "",
+      destinationBinding: JSON.stringify([webOnly, adapterId, groupId, config?.topic_id]),
+      locale: this.fleetConfig?.defaults.locale ?? getLocale(),
+      subscriptions: this.shuttingDown ? [] : this.activeBackendBindings().flatMap(([name, backend, profile]) => {
+        // Local WSL usage cannot prove a Windows/paired machine's credential source.
+        const instance = instances[name];
+        if (instance?.runtime === "windows" || instance?.machine_id) return [];
+        const provider = usageProviderIdForBackend(backend);
+        if (!provider) return [];
+        const providerId = profile ? `${provider}:${profile}` : provider;
+        return [{ account: `${backend}:host:${profile ?? ""}`, providerId,
+          rule: quotaNoticeRule(defaults, backend, instances[name]?.quota_notice ?? this.classicChannels?.getQuotaNoticeByInstance?.(name)) }];
+      }),
+    };
+  }
+
   private startQuotaBackgroundReads(): void {
+    if (!this.quotaNotices) {
+      this.quotaNotices = new QuotaNotices({
+        file: join(this.dataDir, "quota-notices.json"), policy: () => this.quotaNoticePolicy(),
+        send: (target, text) => target === "/notices" ? this.recordWebNotice("fleet", text) : this.notifyInstanceTopic(target, text),
+        warn: err => this.logger.warn({ err }, "Optional quota reminders held: could not retain dispatch state"),
+      });
+      this.stopQuotaObserver = onUsageSnapshot(payload => { void this.quotaNotices?.observe(payload); });
+    }
     if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
     this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
     this.quotaReadTimer.unref?.();
@@ -19996,8 +20051,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * usage is the usage panel's cached read (never forced), given at most `usageWaitMs` before the view is sent without it.
    */
   async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
-    const fleet = this.fleetConfig;
-    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
     this.refreshSignInIdentities();
     const targets = this.backendSignInTargets();
     const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
@@ -20014,15 +20067,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       diskProfiles.set(backend, rows);
     }
-    // Host agents only: an agent on a paired Windows computer runs on that computer's accounts (its own scope, later).
-    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
-      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
-    const classic = readClassicBindings(this.dataDir).map(b => {
-      const backend = b.backend ?? defaultBackend;
-      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
-    });
-    const fleetDefaults = new Map<string, string>();
-    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    const { agents, classic, fleetDefaults } = this.accountUses();
     // Weekly usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
@@ -20039,6 +20084,174 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     } catch { /* the view without usage */ }
     return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+  }
+
+  /**
+   * Who uses which account: host agents (an agent on a paired Windows computer runs on that computer's accounts — its
+   * own scope), ClassicBot rooms and the fleet default per CLI, each with its effective profile (null: the default sign-in).
+   */
+  private accountUses(): { agents: Array<{ name: string; backend: string; profile: string | null }>; classic: Array<{ key: string; backend: string; profile: string | null }>; fleetDefaults: Map<string, string> } {
+    const fleet = this.fleetConfig;
+    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
+    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
+      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
+    const classic = readClassicBindings(this.dataDir).map(b => {
+      const backend = b.backend ?? defaultBackend;
+      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
+    });
+    const fleetDefaults = new Map<string, string>();
+    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    return { agents, classic, fleetDefaults };
+  }
+
+  /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
+  addAccountProfile(backend: string, name: unknown, by: string): AddResult {
+    const { agents, classic, fleetDefaults } = this.accountUses();
+    const configured = new Set<string>();
+    for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
+    const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
+    const result = addAccountProfile(this.dataDir, backend, name, configured);
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /**
+   * #3212 PR 2: Settings → Accounts → Remove. Refused while anything uses it or a sign-in for it runs (the login controller,
+   * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
+   * The fleet log records who removed which backend's profile — never what was in it.
+   */
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): Promise<RemoveResult> {
+    const profile = typeof name === "string" ? name : "";
+    const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
+    // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
+    // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
+    // #3305 review: the logout holds the shared login window (no sign-in or other logout starts meanwhile), and after it
+    // every check is made again — who uses it, sign-ins, ClassicBot's settings — on the same folder (its identity).
+    const signOutDeps = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    let keychainLeft = false;
+    let removed: RemoveResult;
+    if (backend === "claude-code" && signOutDeps.platform === "darwin") {
+      const dry = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null), undefined, { dryRun: true });
+      if (!dry.ok) return refused(dry);
+      const claim = this.loginWindow.tryClaim("web", backend);
+      if (!claim) return refused({ ok: false, error: "signing_in" });
+      const step = await this.withAccountWriter(claim, async deps => {
+        const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, deps);
+        if (!out.ok) return { ok: false, error: out.error === "unsafe" ? "unsafe" : "failed" } as RemoveResult;
+        if (!this.loginWindow.isCurrent(claim)) return { ok: false, error: "failed" } as RemoveResult;   // the fleet is stopping
+        keychainLeft = out.keychainLeft === true;
+        return removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, claim), undefined, { expect: dry.identity });
+      });
+      if (!step.ok) return refused(step);
+      removed = step;
+    } else removed = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null));
+    if (!removed.ok) return refused(removed);
+    this.logger.info({ backend, profile, by, ...(keychainLeft ? { keychainLeft } : {}) }, "Credential profile removed from Settings → Accounts");
+    return keychainLeft ? { ok: true, keychainLeft: true } : { ok: true };
+  }
+
+  /**
+   * Remove's whole safety proof, read now (#3291 review): who uses the account — configured agents and live daemons, the
+   * fleet default, ClassicBot rooms read strictly — and whether a sign-in for it runs. `ownClaim`: the login window this
+   * removal holds itself, which is not someone else's sign-in.
+   */
+  private removalRequest(backend: string, name: unknown, confirm: unknown, ownClaim: import("./login-window-lock.js").LoginWindowClaim | null) {
+    const profile = typeof name === "string" ? name : "";
+    // #3291 review (Prism P2-3): one folder on a case-insensitive disk (Windows, default macOS) — `Work` and `work` are the
+    // same account for every safety check here.
+    const same = (p: string | null | undefined) => !!p && p.toLowerCase() === profile.toLowerCase();
+    const { agents, fleetDefaults } = this.accountUses();
+    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
+    // #3291 review (Prism P2-2): ClassicBot rooms read strictly — an unreadable or malformed classicBot.yaml is not "no rooms".
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    const classic = rooms.kind === "ok" ? rooms.bindings.map(b => {
+      const cli = b.backend ?? defaultBackend;
+      return { key: b.key, backend: cli, profile: profileName(classicProfile(b.backend_options, this.fleetConfig?.defaults?.backend_options, cli)) };
+    }) : [];
+    // #3291 review (Prism P2-1): what a running CLI was launched with. An agent or room moved off this account keeps
+    // running on it until its process stops (the configuration changes first): it is still a user until then.
+    const live: string[] = [];
+    for (const [instance, daemon] of this.daemons ?? []) {
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap)) continue;
+      const cli = snap.backend ?? defaultBackend;
+      if (cli !== backend) continue;
+      let launched: string | null = null;
+      try { launched = resolveCredentialProfile(snap.backend_options?.[cli]); } catch { launched = null; }
+      if (same(launched)) live.push(instance);
+    }
+    const users = {
+      agents: [...new Set([...agents.filter(a => a.backend === backend && same(a.profile)).map(a => a.name), ...live])].sort(),
+      classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
+      fleetDefault: same(fleetDefaults.get(backend)),
+    };
+    const held = this.loginWindow.current;
+    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
+      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend);
+    return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
+  }
+
+  /**
+   * #3212 PR 3: Settings → Accounts → Sign out (accounts-signout.ts): the CLI's own logout for the default sign-in
+   * (`profile` null) or a named account. Refused while a sign-in for it runs (case-insensitive, as Remove). The fleet
+   * log records who signed out which backend's account; then every page reads the sign-ins again.
+   */
+  /** How a CLI's logout is run and the Keychain asked (a test's stand-in; the platform with it). */
+  accountSignOutDeps = ACCOUNT_SIGN_OUT_DEPS;
+  /** #3305 review: every account logout's whole life — its CLI children until positively gone (shutdown drains them). */
+  private readonly accountWriters = new Set<Promise<void>>();
+
+  /**
+   * #3305 review P2-3/P2-5: run `work` as the owner of the credential writer (`claim`). Its CLIs run through a runner
+   * that records each child's positive end; the work is told whether it still owns the writer (`stillOwner`) before it
+   * cleans anything; and the claim is released only once every child it started is positively gone — a child whose end
+   * is unknown keeps sign-in admission closed (logged). Shutdown waits for these (shutdownLoginWindows), and a restart
+   * reopens admission only after they are gone.
+   */
+  private async withAccountWriter<T>(claim: import("./login-window-lock.js").LoginWindowClaim, work: (deps: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform" | "stillOwner">) => Promise<T>): Promise<T> {
+    const base = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    const children: Promise<void>[] = [];
+    const watch = async (r: { code: number | null; gone?: Promise<void> }) => { if (r.gone) children.push(r.gone); return r; };
+    const deps = {
+      platform: base.platform,
+      run: async (b: string, a: readonly string[], e: NodeJS.ProcessEnv) => watch(await base.run(b, a, e)),
+      keychainHas: base.keychainHas,
+      stillOwner: () => this.loginWindow.isCurrent(claim),
+    };
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.accountWriters.add(life);
+    try { return await work(deps); }
+    finally {
+      const settle = () => { this.loginWindow.release(claim); this.accountWriters.delete(life); finished(); };
+      if (!children.length) settle();
+      else {
+        let warned = false;
+        const t = setTimeout(() => { warned = true; this.logger.error("An account logout's CLI has not ended: sign-in stays closed until it does"); }, 30_000);
+        t.unref?.();
+        void Promise.all(children).then(() => { clearTimeout(t); if (warned) this.logger.info("The account logout's CLI ended: sign-in is open again"); settle(); });
+      }
+    }
+  }
+  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
+    const named = typeof profile === "string" ? profile : null;
+    const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
+    // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
+    // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
+    const signingIn = this.loginController?.signingIn(backend, named) ?? false;
+    const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
+    let result: SignOutResult;
+    if (!claim) result = { ok: false, error: "signing_in" };
+    else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));
+    if (result.ok) {
+      this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}) }, "Account signed out from Settings → Accounts");
+      this.forgetSignInIdentities();
+      void this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+    } else this.logger.info({ backend, profile: shown, by, refused: result.error }, "Account sign-out refused");
+    return result;
   }
 
   backendSignInTargets(): SignInTarget[] {
@@ -20375,7 +20588,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Fleet shutdown: end any web login or install window and wait for its confirmed teardown. */
+  /**
+   * #3305 review P2-3: reopen sign-in admission after a restart — only once no account logout's CLI from before is still
+   * alive (a fresh sign-in must never overlap it). Each reopen supersedes a deferred one.
+   */
+  private loginReopenGen = 0;
+  private reopenLoginWindow(): void {
+    const gen = ++this.loginReopenGen;
+    const pending = [...this.accountWriters];
+    if (!pending.length) { this.loginWindow.reopen(); return; }
+    this.logger.warn({ pending: pending.length }, "Sign-in admission reopens once an account logout from before the restart has ended");
+    void Promise.all(pending).then(() => { if (gen === this.loginReopenGen && !this.structuredLoginCleanupFailed) this.loginWindow.reopen(); });
+  }
+
   private async shutdownLoginWindows(): Promise<void> {
+    // #3305 review: a newer stop supersedes a reopen still waiting for an old account logout's CLI.
+    this.loginReopenGen++;
     // Close the lock FIRST: in-flight starts parked in a pre-check or
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
@@ -20412,6 +20640,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }), "browser-controls"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
+      // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.
+      bounded(this.accountWriters.size ? Promise.all([...this.accountWriters]).then(() => undefined) : undefined, "account-logout"),
     ]);
   }
 
@@ -23945,6 +24175,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
+      quota_notice: classicIdentity?.quotaNotice,
       tool_progress: toolProgress ?? "off",
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),
@@ -24111,6 +24342,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
+    const quotaNoticesStopped = this.quotaNotices?.stop();
     // Stop receive admission before the first await or any instance shutdown; outbound
     // adapters remain available below to retire notices and pending prompts.
     for (const state of this.adapterState.values()) {
@@ -24188,6 +24421,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await needsStopped;
     await settingsControlStopped;
     await cacheStopped;
+    await quotaNoticesStopped;
+    this.quotaNotices = null;
     await webChatStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;

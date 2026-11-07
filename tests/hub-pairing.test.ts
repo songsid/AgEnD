@@ -17,10 +17,10 @@ function fixture() {
   const directory: HubDirectory = { realm: "directory", signIn: vi.fn(), checkEligibility: vi.fn(async () => ({ eligible: true as const, person: { key: owner, login: "owner", dn: "private", groups: [] } })), close: vi.fn() };
   const ctx: HubRequestContext = { requestId: randomUUID(), current: vi.fn(), requirePerson: vi.fn(async () => owner), requireAdmin: vi.fn(async () => ({ kind: "local-host" as const, sessionId: randomUUID(), directoryBinding: owner })) };
   const identity = { hubId: randomUUID(), memberOrigin: "https://hub.test:9443", webOrigin: "https://hub.test:9444", spkiSha256: "a".repeat(64), issuerPublicKey: "public" };
-  const fence = vi.fn(), service = new HubPairingService({ store, directory, identity, enabled: () => enabled, now: () => now, fenceFleet: fence });
+  const fence = vi.fn(), refresh = vi.fn(), service = new HubPairingService({ store, directory, identity, enabled: () => enabled, now: () => now, fenceFleet: fence, refreshAuthorization: refresh });
   const pair = async () => { const offer = await service.create(ctx, owner); const pending = service.pair({ code: offer.code }); return { offer, pending }; };
   const approve = async () => { const x = await pair(); await service.confirmOwner(ctx, x.pending.pairingId, x.pending.fingerprint); await service.approve(ctx, x.pending.pairingId, x.pending.fingerprint); return x; };
-  return { db, store, service, ctx, directory, owner, identity, fence, pair, approve, setNow: (n: number) => { now = n; }, off: () => { enabled = false; }, failAudit: () => { auditFailed = true; }, setFloor: (n: number) => { floor = n; } };
+  return { db, store, service, ctx, directory, owner, identity, fence, refresh, pair, approve, setNow: (n: number) => { now = n; }, off: () => { enabled = false; }, failAudit: () => { auditFailed = true; }, setFloor: (n: number) => { floor = n; } };
 }
 describe("Hub pairing authorization and durable state", () => {
   it("requires owner AND admin comparison, issues once, stores no usable secret", async () => {
@@ -69,6 +69,27 @@ describe("Hub pairing authorization and durable state", () => {
     expect(b.linkEpoch).toBeGreaterThan(a.linkEpoch); expect(f.fence).toHaveBeenCalledWith(claim.fleetId, "replaced");
     await f.service.revoke(f.ctx, claim.fleetId);
     expect(() => f.service.authenticate(claim.credential)).toThrow(); await expect(f.service.connect(claim.credential)).rejects.toThrow();
+  });
+  it("refreshes the global authorization version only after the revoke transaction and audit commit", async () => {
+    const f = fixture(), x = await f.approve();
+    const claim = await f.service.claim({ pairingId: x.pending.pairingId, fleetId: x.pending.fleetId, claimSecret: x.pending.claimSecret });
+    if (claim.status !== "approved") throw Error();
+    f.refresh.mockImplementation(() => {
+      expect(f.db.inTransaction).toBe(false);
+      expect(f.store.read()).toMatchObject({ revocationVersion: 1, fleets: [{ id: claim.fleetId, status: "revoked", credentialHash: null, generation: 2 }] });
+      const audit = (f.db.prepare("SELECT record FROM audit ORDER BY rowid DESC LIMIT 1").get() as { record: string }).record;
+      expect(JSON.parse(audit)).toMatchObject({ action: "member.revoked", policyVersion: 1 });
+    });
+    await f.service.revoke(f.ctx, claim.fleetId); expect(f.refresh).toHaveBeenCalledExactlyOnceWith();
+  });
+  it("does not refresh other members for a refused or failed revoke transaction", async () => {
+    const f = fixture(); await expect(f.service.revoke(f.ctx, randomUUID())).rejects.toThrow("not-found");
+    expect(f.refresh).not.toHaveBeenCalled();
+    const x = await f.approve();
+    await f.service.claim({ pairingId: x.pending.pairingId, fleetId: x.pending.fleetId, claimSecret: x.pending.claimSecret });
+    f.failAudit();
+    await expect(f.service.revoke(f.ctx, x.pending.fleetId)).rejects.toThrow("full");
+    expect(f.refresh).not.toHaveBeenCalled();
   });
   it("fails closed on audit failure and monotonic floor mismatch", async () => {
     const f = fixture(); await f.service.create(f.ctx, f.owner); f.failAudit();

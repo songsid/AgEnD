@@ -82,6 +82,12 @@ export function filterUsageProviders(
   };
 }
 
+/** Completed owned reads only; observers never trigger additional provider calls. */
+const usageObservers = new Set<(payload: UsagePayload) => void>();
+export function onUsageSnapshot(observer: (payload: UsagePayload) => void): () => void {
+  usageObservers.add(observer); return () => { usageObservers.delete(observer); };
+}
+
 const CACHE_MS = 5 * 60 * 1000;
 /** Token rollover is routine and normally heals within seconds. */
 const TRANSIENT_CACHE_MS = 30 * 1000;
@@ -439,6 +445,11 @@ function fetchFor(owner: UsageOwner, effectiveForce: boolean, again: () => Promi
         payload: resolved,
         owner,
       };
+      // Recheck the source owner after the fetch. Unknown/config-switched reads are not notice evidence.
+      configKeyMemo = null;
+      if (sameOwner(owner, { configKey: usageConfigKey(), museRevision: museUsageRevision() })) {
+        for (const observer of usageObservers) { try { observer(resolved); } catch { /* usage reads must survive observer failure */ } }
+      }
       return resolved;
     })
     .finally(() => { if (inflight?.promise === promise) inflight = null; });

@@ -13,9 +13,10 @@
  * password is refused before the network (to LDAP it would be an unauthenticated bind that "succeeds").
  */
 import { isIP } from "node:net";
+import { AD_EXTENDED_DN, extendedGroupIds, type PolicyGroupLookup, type PolicyGroupFacts } from "./groups.js";
 import * as net from "node:net";
 import * as tls from "node:tls";
-import type { Client as LdapClient, Entry, Filter } from "ldapts";
+import type { Client as LdapClient, Control, Entry, Filter } from "ldapts";
 import { HubDirectoryConfigError, resolveDirectoryConfig, type ResolvedDirectoryConfig } from "./config.js";
 import { PROFILES, escapeFilterValue, isDisabled, objectIdMatch, readObjectId, readText, readTextList } from "./profiles.js";
 import type { DirectoryPerson, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult } from "./types.js";
@@ -26,7 +27,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "group-lookup" | "group-membership";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -44,6 +45,21 @@ class InsecureTransportError extends Error {
     super(message);
     this.name = "InsecureTransportError";
   }
+}
+
+/** Compare base RDN boundaries, tolerating formatting after commas without splitting escaped commas. */
+function withinGroupBase(dn: string, base: string): boolean {
+  const parts = (text: string): string[] => {
+    const out: string[] = []; let part = "", escaped = false;
+    for (const c of text) {
+      if (c === "," && !escaped) { out.push(part.trimStart().toLowerCase()); part = ""; }
+      else part += c;
+      escaped = c === "\\" && !escaped;
+    }
+    out.push(part.trimStart().toLowerCase()); return out;
+  };
+  const child = parts(dn), parent = parts(base);
+  return child.length > parent.length && parent.every((rdn, i) => rdn.length > 0 && child[child.length - parent.length + i] === rdn);
 }
 
 type Ldapts = typeof import("ldapts");
@@ -131,16 +147,17 @@ class Session {
     this.assertSecure();
   }
 
-  async search(filter: string | Filter, attributes: string[], binary: readonly string[], scope: "sub" | "base" = "sub", base = this.cfg.baseDn): Promise<Entry[]> {
+  async search(filter: string | Filter, attributes: string[], binary: readonly string[], scope: "sub" | "base" = "sub", base = this.cfg.baseDn, controls?: Control[], complete = false): Promise<Entry[]> {
     this.assertSecure();
-    const { searchEntries } = await this.client.search(base, {
+    const { searchEntries, searchReferences } = await this.client.search(base, {
       scope,
       filter,
       attributes,
       explicitBufferAttributes: [...binary],
       sizeLimit: 2,
       derefAliases: "never",
-    });
+    }, controls);
+    if (complete && searchReferences?.length) throw new Error("incomplete group result");
     return searchEntries;
   }
 
@@ -230,8 +247,74 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     return { ok: true, person: toPerson(current, objectId) };
   };
 
+  const groupSupport = cfg.profile === "ad" && cfg.port === 636;
+  const securityGroup = (entry: Entry): boolean => {
+    const raw = readText(entry, "groupType");
+    const n = raw !== undefined && /^-?\d{1,11}$/.test(raw) ? Number(raw) : NaN;
+    return Number.isInteger(n) && n >= -2147483648 && n <= 4294967295 && ((n >>> 0) & 0x80000000) !== 0;
+  };
+  const groupEntry = (entry: Entry, expectedId?: string) => {
+    const id = readObjectId("ad", entry);
+    return id && (!expectedId || id === expectedId) && securityGroup(entry) ? id : undefined;
+  };
+
   return {
     realm: cfg.realm,
+    ...(groupSupport ? { groupPolicy: "ad-direct-guid" as const } : {}),
+
+    async resolvePolicyGroup(dn: string): Promise<PolicyGroupLookup> {
+      if (!groupSupport) return { ok: false, reason: "unsupported" };
+      if (closed) return { ok: false, reason: "unknown" };
+      if (typeof dn !== "string" || !/^[^\u0000-\u001f\u007f]{1,1024}$/.test(dn)
+        || !withinGroupBase(dn, cfg.baseDn)) return { ok: false, reason: "invalid" };
+      let service: Session | undefined;
+      try {
+        service = await openService();
+        const attrs = ["objectGUID", "groupType"];
+        const found = await service.search("(objectClass=group)", attrs, ["objectGUID"], "base", dn, undefined, true);
+        if (closed || found.length > 1) return { ok: false, reason: "unknown" };
+        const entry = found[0];
+        if (!entry) return { ok: false, reason: "not-found" };
+        if (!withinGroupBase(entry.dn, cfg.baseDn)) return { ok: false, reason: "invalid" };
+        const id = groupEntry(entry);
+        if (!id) return { ok: false, reason: "not-security-group" };
+        const { AndFilter, EqualityFilter, FilterParser } = await loadLdapts();
+        const filter = new AndFilter({ filters: [FilterParser.parseString("(objectClass=group)"), new EqualityFilter(objectIdMatch("ad", id)!)] });
+        const again = await service.search(filter, attrs, ["objectGUID"], "sub", cfg.baseDn, undefined, true);
+        if (closed || again.length !== 1 || !groupEntry(again[0]!, id) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
+        return { ok: true, group: Object.freeze({ key: Object.freeze({ realm: cfg.realm, objectId: id }), dn: again[0]!.dn }) };
+      } catch { report("group-lookup", "unknown"); return { ok: false, reason: "unknown" }; }
+      finally { await service?.close(); }
+    },
+
+    async readPolicyGroups(key: PersonKey): Promise<PolicyGroupFacts> {
+      // Capture caller-owned identity before any await; later replacement cannot retarget a result.
+      const who = key && Object.freeze({ realm: key.realm, objectId: key.objectId });
+      if (!groupSupport || closed || !who || who.realm !== cfg.realm || !objectIdMatch("ad", who.objectId)) return { kind: "unknown" };
+      let service: Session | undefined;
+      try {
+        service = await openService();
+        const { Control, AndFilter, EqualityFilter, FilterParser } = await loadLdapts();
+        class ExtendedDn extends Control {
+          constructor() { super(AD_EXTENDED_DN, { critical: true }); }
+          protected override writeControl(writer: import("ldapts").BerWriter): void {
+            // LDAP controlValue OCTET STRING contains SEQUENCE { Flags INTEGER(1) }.
+            writer.writeBuffer(Buffer.from([0x30, 0x03, 0x02, 0x01, 0x01]), 0x04);
+          }
+        }
+        const filter = new AndFilter({ filters: [FilterParser.parseString(cfg.userFilter), new EqualityFilter(objectIdMatch("ad", who.objectId)!)] });
+        const found = await service.search(filter, attributes, ["objectGUID"], "sub", cfg.baseDn, [new ExtendedDn()], true);
+        if (closed || found.length > 1) return { kind: "unknown" };
+        const entry = found[0], observedAt = now();
+        if (!entry) return { kind: "ineligible", person: who, reason: "gone", observedAt };
+        if (readObjectId("ad", entry) !== who.objectId) return { kind: "unknown" };
+        if (isDisabled("ad", entry, observedAt)) return { kind: "ineligible", person: who, reason: "disabled", observedAt };
+        const groups = extendedGroupIds(entry);
+        if (!groups) return { kind: "unknown" };
+        return Object.freeze({ kind: "complete", person: who, groups, observedAt });
+      } catch { report("group-membership", "unknown"); return { kind: "unknown" }; }
+      finally { await service?.close(); }
+    },
 
     async close(): Promise<void> {
       // Nothing is pooled; after close every call refuses (fail closed) instead of opening a new connection.

@@ -21,7 +21,9 @@ const pairBody = z.strictObject({ code: z.string().regex(/^[a-f0-9]{12}$/) });
 const claimBody = z.strictObject({ pairingId: uuid, fleetId: uuid, claimSecret: token });
 export class HubPairingService {
   constructor(private readonly options: { store: HubTransportStore; identity: HubPairingIdentity; directory: HubDirectory;
-    enabled(): boolean; now?: () => number; fenceFleet(fleetId: string, reason: "replaced" | "revoked"): void }) {}
+    enabled(): boolean; now?: () => number; fenceFleet(fleetId: string, reason: "replaced" | "revoked"): void;
+    /** Required when composed with a live member server; reconnect other links after a global version commit. */
+    refreshAuthorization?(): void }) {}
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private check(): void { if (!this.options.enabled()) throw new HubProtocolError("unavailable"); }
   private audit(actor: HubActor | { kind: "member"; fleetId: string }, action: string, requestId: string) {
@@ -118,8 +120,10 @@ export class HubPairingService {
     const fleet = this.options.store.read().fleets.find(f => f.status === "active" && f.credentialHash && timingSafeEqual(digest, Buffer.from(f.credentialHash, "hex")));
     if (!fleet) throw new HubProtocolError("denied"); return { fleetId: fleet.id, owner: fleet.owner, generation: fleet.generation };
   }
-  bindingCurrent(fleetId: string, generation: number): boolean {
-    try { this.check(); const f = this.options.store.read().fleets.find(f => f.id === fleetId); return f?.status === "active" && f.generation === generation; } catch { return false; }
+  bindingCurrent(fleetId: string, generation: number, revocationVersion?: number): boolean {
+    try { this.check(); const state = this.options.store.read(), f = state.fleets.find(f => f.id === fleetId);
+      return f?.status === "active" && f.generation === generation && (revocationVersion === undefined || state.revocationVersion === revocationVersion);
+    } catch { return false; }
   }
   async connect(credential: string): Promise<{ fleetId: string; owner: PersonKey; generation: number; linkEpoch: number; revocationVersion: number }> {
     let f = this.authenticate(credential);
@@ -138,5 +142,8 @@ export class HubPairingService {
       const f = state.fleets.find(f => f.id === fleetId); if (!f) throw new HubProtocolError("not-found");
       f.status = "revoked"; f.credentialHash = null; f.generation++; state.revocationVersion++;
     });
+    // The version is global. Other members keep their credentials and reconnect immediately,
+    // rather than keeping a stale socket until its next heartbeat. Never refresh before commit.
+    this.options.refreshAuthorization?.();
   }
 }

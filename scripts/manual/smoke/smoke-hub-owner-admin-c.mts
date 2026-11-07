@@ -41,7 +41,9 @@ await http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [exp
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings)\.js|ui\/hub|favicon)/;
+// The Hub's own /ui/js list as the listener serves it (a later Hub module is allowed by the same list, never hand-copied).
+const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts");
+const ALLOWED = new RegExp(`^/(hub/v1/|assets/|ui/js/(${(HUB_UI_MODULES as readonly string[]).map((f) => f.replace(/\.js$/, "").replace(/[-]/g, "\\-")).join("|")})\\.js|ui/hub|favicon)`);
 async function open(c: (typeof CASES)[number], path: string, route?: (page: any) => Promise<void>) {
   const ctx = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
     isMobile: c.device === "phone", hasTouch: c.device === "phone", deviceScaleFactor: 2 });

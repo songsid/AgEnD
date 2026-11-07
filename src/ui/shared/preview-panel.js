@@ -13,6 +13,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Skeleton } from "/assets/ui-states.js";
 import "/assets/chat-render.js";
 import "/assets/preview.js";
 import { loadHtmlAttachment } from "/assets/html-attachment.js";
@@ -343,7 +344,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     // #2915 review: the panel's generation, not just the key — a close and reopen of the same block while this read
     // waits moves it, and the read is then dropped (claimPanel also drops any earlier click still reading).
     const gen = claimPanel(), mine = reading.current = spec;
-    setNewerNote(t("chat.pvLoading"));
+    setNewerNote({ loading: true });
     // A click on a version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
     const r = await loadHtmlAttachment(spec.att, undefined, { anyway: true });
     if (reading.current === mine) reading.current = null;
@@ -481,8 +482,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
         <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
-        <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
-      ${newerNote && !(newer && newer.key !== open.key) ? html`<div class="pv-note pv-ver-note" role="status">${newerNote}</div>` : null}
+        <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? newerNote.loading
+          ? html`<${Skeleton} variant="inline" lines=${1} label=${t("chat.pvLoading")} />` : html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
+      ${newerNote && !(newer && newer.key !== open.key) ? newerNote.loading ? html`<${Skeleton} lines=${3} label=${t("chat.pvLoading")} />` : html`<div class="pv-note pv-ver-note" role="status">${newerNote}</div>` : null}
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
       ${cdnHost && shown === "preview" ? html`<div class="pv-note pv-cdn-note" role="status">${t("chat.pvCdnNote", cdnHost)}</div>` : null}
@@ -521,7 +523,7 @@ function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, 
         onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
       ${open.att ? html`<a class="btn btn-sm pv-panel-dl" href=${`/ui/file/${open.att.id}`} download=${open.att.name} title=${t("chat.pvDownload")}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></a>` : null}
     </div>
-    ${md && md.state === "loading" ? html`<div class="pv-note" role="status">${t("chat.pvLoading")}</div>` : null}
+    ${md && md.state === "loading" ? html`<${Skeleton} lines=${8} label=${t("chat.pvLoading")} />` : null}
     ${md && md.state === "failed" ? html`<div class="pv-note" role="alert">${md.reason}</div>` : null}
     ${ready && view === "rendered" && plain ? html`<div class="pv-note" role="status">${t("chat.tcPlain")}</div>` : null}
     <div class="pv-panel-body show-code">
@@ -533,7 +535,7 @@ function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, 
 
 /** The Changes view: hunks of the line diff as a unified diff shows them, drawn as text (never as HTML). */
 function Changes({ changes }) {
-  if (!changes || changes.state === "loading") return html`<div class="pv-note pv-diff-note">${t("chat.pvLoading")}</div>`;
+  if (!changes || changes.state === "loading") return html`<${Skeleton} lines=${8} label=${t("chat.pvLoading")} />`;
   if (changes.state === "failed") return html`<div class="pv-note pv-diff-note">${changes.reason}</div>`;
   if (changes.state === "big") return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesBig")}</div>`;
   if (!changes.hunks.length) return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesNone", changes.from)}</div>`;

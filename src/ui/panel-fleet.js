@@ -595,7 +595,7 @@ export function CreateInstanceDialog({ onClose }) {
     <ol class="agent-create-steps" aria-label=${tr("progress")}>${["runtimeStep","configureStep","doneStep"].map((label,index) => html`<li key=${label} class=${index+1 === step ? "current" : index+1 < step ? "complete" : ""} aria-current=${index+1 === step ? "step" : undefined}><span class="agent-create-step-number">${index+1 < step ? html`<${Icon} name="check" size=${13} />` : index+1}</span><span>${tr(label)}</span></li>`)}</ol>
     ${step === 1 ? html`<section class="agent-create-stage"><h3 ref=${heading} tabindex="-1">${tr("where")}</h3><p class="note">${tr("runtimeLead")}</p>
       <${RuntimePicker} value=${runtime} onChange=${chooseRuntime} windowsEnabled=${windowsCli} legend=${tr("environment")} machineId=${machineId} machines=${machines} onMachineChange=${id => chooseRuntime("windows",id)} onRefresh=${machineCatalog.refresh} loaded=${!!machineCatalog.data && !machineCatalog.error} />
-      ${machineCatalog.loading && !machineCatalog.data ? html`<p class="note" role="status">${tr("machineLoading")}</p>` : null}
+      ${machineCatalog.loading && !machineCatalog.data ? html`<${Skeleton} variant="rows" lines=${2} label=${tr("machineLoading")} />` : null}
       ${machineCatalog.error ? html`<p class="note" role="alert">${tr("machineFailed")}</p>` : null}
       <a class="note runtime-manage-link" href="/settings/runtimes">${tr("manage")}</a>
       ${runtime ? html`<div class="agent-create-cli">${backendField}</div>` : null}

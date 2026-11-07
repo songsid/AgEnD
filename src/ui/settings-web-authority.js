@@ -5,6 +5,7 @@
 // them grants anything by itself — a session still needs its account's Confirm in Discord or Telegram).
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { useTypedText } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -70,7 +71,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const webOnly = !!overview && overview.webOnly === true;
   const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText(webOnly ? "revAuthorityBriefWeb" : "revAuthorityBrief")}</p><p class="note s-authority-rule">${layoutText("revAuthorityRule")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
-  if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
+  if (!overview || !f) return card(html`<${Skeleton} variant="rows" lines=${3} />`);
 
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
   const hoursError = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max) ? "vaHoursRange" : "";

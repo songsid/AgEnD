@@ -274,6 +274,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         enabled: live,
         now,
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
+        refreshAuthorization: () => memberServer?.refreshAuthorization(),
       });
       let generation = 0;
       const mode: HubMode = { serverEnabled: live, memberEnabled: () => false, epoch: () => generation };

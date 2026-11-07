@@ -54,6 +54,7 @@ import {
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionRecord, type SessionTier, type WebSessionStore } from "./web-session.js";
 import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
+import { isWsl } from "./wsl-detect.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -133,6 +134,7 @@ export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask f
 
 /** The only files `/assets/` will serve. A map, not a directory: nothing else can be named into it. */
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
+  "loading.css": { file: join("shared", "loading.css"), type: "text/css; charset=utf-8" },
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
   "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },
@@ -500,9 +502,11 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
+      // #3270: what a long-lived first-install code additionally needs — this computer's own loopback peer, and no host session ever authorized.
+      const redeemContext = { loopbackPeer: !gateway && classifyWebPeer(req) === "loopback", hostEverAuthorized: sessions.hostEverAuthorized };
       const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
-        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
-        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext)
+        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
@@ -626,9 +630,20 @@ export function handleAuthRequest(
       return true;
     }
     // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
-    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true });
-    ctx.logger.info({ source: "cli" }, "Web login code issued");
-    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
+    // #3270: the first host code on a fresh install (no host session EVER authorized — not "none right now") may live for an
+    // hour instead of five minutes, redeemable from this computer only and only until the first host session exists. Every
+    // one of these must hold, and a missing header is the ordinary 5 minutes:
+    //   - the caller says the code is going to an interactive terminal (`X-Agend-Code-Delivery: tty`; `agend web --code` with a
+    //     TTY on stdout). A code for a URL (`url`: browser history), for a pipe or a redirect (`non-tty`: an install log, a
+    //     service's journal) or from a caller that does not say, is never the long one;
+    //   - this is not WSL: Windows processes reach the fleet as loopback there and can read the distro's files;
+    //   - no host session was ever authorized here (the persisted marker).
+    // Nothing logged below carries the code itself — only that a first-install one was issued.
+    const delivery = String(req.headers["x-agend-code-delivery"] ?? "").trim().toLowerCase();
+    const bootstrap = delivery === "tty" && !isWsl() && !!ctx.webSessions && !ctx.webSessions.hostEverAuthorized;
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true, ...(bootstrap ? { bootstrap: true as const } : {}) });
+    ctx.logger.info({ source: "cli", ...(issued.bootstrap ? { bootstrap: true } : {}) }, "Web login code issued");
+    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt, ...(issued.bootstrap ? { bootstrap: true } : {}) });
     return true;
   }
 
