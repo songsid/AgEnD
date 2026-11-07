@@ -31,6 +31,7 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
+    if (path === "/api/settings/hub/membership") return { enabled: false };
     if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(namedHost ? { namedHost } : {}) };
     if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
     if (path === "/api/fleet") return { version: "2.4.0", instances: [] };
@@ -58,6 +59,8 @@ afterEach(async () => { await p.unmount(); });
 
 const open = async (section: string) => {
   const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  // Await the Hub’s lazy membership module so registry coverage examines the settled form.
+  if (section === "hub") await import("/ui/js/settings-hub-membership.js");
   await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}|${Math.random()}` }));
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));

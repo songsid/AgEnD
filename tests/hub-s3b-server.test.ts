@@ -193,7 +193,7 @@ describe("Hub catalog mirror and grants (S3b)", () => {
     const { e, o, a } = await world(rig);
     rig.addPerson("bea");
     expect((await rig.call(a, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bea", days: 1 })).status).toBe(404);
-    expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(404);   // bea never signed in
+    expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(409);   // reject stale revision before recipient lookup
     await rig.signIn("bea");
     expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(409);
     expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bea", days: 400 })).status).toBe(400);

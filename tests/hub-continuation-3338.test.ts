@@ -24,7 +24,8 @@ async function mount(path: string, Component: any, props: any = {}) {
   mounted.push(pg); router.startRouter(pg.window);
   await pg.mount(h(Component, props)); await settle(10); return pg;
 }
-function api({ mine = [exposure()], askable = [] as any[], signedIn = true, memberOrigin = "https://members.example.test:9443" as string | undefined } = {}) {
+function api({ mine = [exposure()], askable = [] as any[], signedIn = true, memberOrigin = "https://members.example.test:9443" as string | undefined,
+  grantFailure = null as { code: string; status: number } | null } = {}) {
   const calls: { path: string; method: string; body: any; csrf: any }[] = [];
   const signed = { signedIn: true, displayName: "Owner", login: "owner", admin: true, csrf: "c".repeat(64) };
   client.setHubClient(client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
@@ -38,11 +39,31 @@ function api({ mine = [exposure()], askable = [] as any[], signedIn = true, memb
     else if (path === "/hub/v1/rooms") json = { rooms: [] };
     else if (path === "/hub/v1/pairings") json = { pairings: [] };
     else if (path.endsWith("/activity")) json = { activity: [] };
+    else if (path === "/hub/v1/grants" && grantFailure) return { ok: false, status: grantFailure.status, json: async () => ({ code: grantFailure.code }), headers: { get: () => null } };
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
   } }));
   panel.resetHubSession(); return calls;
 }
 function exposure(state = "published") { return { id: ID, displayName: "Worker", revision: 7, state, grants: [] }; }
+describe("#3370 grant refusal inside the active form", () => {
+  it.each(["en", "zh-TW"])("explains an unknown or ineligible recipient without a second click in %s", async lang => {
+    const calls = api({ grantFailure: { code: "not-found", status: 404 } }); i18n.setLang(lang, { store: false });
+    const pg = await mount(`/ui/hub/exposures?agent=${ID}&grant=1`, panel.HubPanel, { route: { tab: "exposures" } });
+    await until(() => pg.root.querySelector(".hub-grant")); input(pg, ".hub-grant input", "unknown-colleague"); await settle(3);
+    fire(pg.root.querySelector(".hub-grant")!, "submit"); await until(() => pg.root.querySelector(".hub-grant [role=alert]"));
+    expect(pg.root.querySelector(".hub-grant [role=alert]")?.textContent).toContain(lang === "en" ? "Check the sign-in name and that the account is active" : "請確認登入名稱正確、帳號仍可使用");
+    expect(pg.root.textContent).not.toContain("Not found, or not available to you.");
+    expect(calls.filter(c => c.path === "/hub/v1/grants")).toHaveLength(1);
+    input(pg, ".hub-grant input", "alex"); await settle(3); expect(pg.root.querySelector(".hub-grant [role=alert]")).toBeNull();
+  });
+  it.each(["en", "zh-TW"])("explains a directory outage without exposing its internals in %s", async lang => {
+    api({ grantFailure: { code: "unavailable", status: 503 } }); i18n.setLang(lang, { store: false });
+    const pg = await mount(`/ui/hub/exposures?agent=${ID}&grant=1`, panel.HubPanel, { route: { tab: "exposures" } });
+    await until(() => pg.root.querySelector(".hub-grant")); input(pg, ".hub-grant input", "alex"); await settle(3);
+    fire(pg.root.querySelector(".hub-grant")!, "submit"); await until(() => pg.root.querySelector(".hub-grant [role=alert]"));
+    expect(pg.root.querySelector(".hub-grant [role=alert]")?.textContent).toContain(lang === "en" ? "The directory couldn't be checked" : "目前無法查核目錄服務");
+  });
+});
 describe("#3337 the administrator's code handoff", () => {
   it.each(["en", "zh-TW"])("labels the member address separately and copies address plus code in %s", async lang => {
     api(); i18n.setLang(lang, { store: false });

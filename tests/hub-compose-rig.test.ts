@@ -7,6 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { request } from "node:https";
+import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -14,6 +15,7 @@ import { Attribute, Change, Client } from "ldapts";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime } from "../src/hub/runtime.js";
+import { createHubDirectory } from "../src/hub/directory/index.js";
 import { makeTestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
 
@@ -55,16 +57,21 @@ function call(port: number, ca: string, origin: string, method: string, path: st
 
 describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub whole flow against the fake directory (S5b PR 2)", () => {
   let admin: Client;
-  let aliceDn = "uid=alice,ou=people,dc=example,dc=test";
-  let aliceUuid = "";
+  // This suite disables its administrator; shared seed users remain read-only for concurrent suites.
+  const ownerLogin = `compose-${randomUUID()}`, ownerDn = `uid=${ownerLogin},ou=people,dc=example,dc=test`;
+  let ownerUuid = "", ownerCreated = false;
   beforeAll(async () => {
     admin = new Client({ url: rig.AGEND_HUB_RIG_LDAPS_URL!, tlsOptions: { ca: readFileSync(rig.AGEND_HUB_RIG_CA!, "utf8") } });
     await admin.bind(rig.AGEND_HUB_RIG_ADMIN_DN!, rig.AGEND_HUB_RIG_ADMIN_PASSWORD!);
-    const { searchEntries } = await admin.search(aliceDn, { scope: "base", attributes: ["entryUUID"] });
-    aliceUuid = String(searchEntries[0]!.entryUUID);
+    await admin.add(ownerDn, { objectClass: "inetOrgPerson", uid: ownerLogin, cn: "Compose administrator", sn: "Test",
+      userPassword: rig.AGEND_HUB_RIG_SEED_PASSWORD! });
+    ownerCreated = true;
+    const { searchEntries } = await admin.search(ownerDn, { scope: "base", attributes: ["entryUUID"] });
+    ownerUuid = String(searchEntries[0]!.entryUUID);
   });
   afterAll(async () => {
-    await admin?.unbind();
+    try { if (ownerCreated) await admin.del(ownerDn); }
+    finally { await admin?.unbind(); }
   });
 
   it("init → mount → directory sign-in → admin → disabled in the directory = refused at the next request", async () => {
@@ -80,7 +87,7 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
       webTls: { certFile: certs.cert, keyFile: certs.key },
       directory: { realm: "rig", url: rig.AGEND_HUB_RIG_LDAPS_URL!, caPem: readFileSync(rig.AGEND_HUB_RIG_CA!, "utf8"), baseDn: rig.AGEND_HUB_RIG_BASE_DN!, bindDn: rig.AGEND_HUB_RIG_BIND_DN!, profile: "openldap" as const },
       bindPasswordRef: "file:hub/secrets/directory-bind",
-      administrator: { realm: "rig", objectId: aliceUuid },
+      administrator: { realm: "rig", objectId: ownerUuid },
       retention: { contentDays: 30, eventDays: 180 },
       coexistence: "dedicated" as const,
     };
@@ -96,12 +103,12 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
       expect(runtime.currentHolds()).toEqual([]);
       const seed = rig.AGEND_HUB_RIG_SEED_PASSWORD!;
 
-      expect((await call(webPort, ca, webOrigin, "POST", "/hub/v1/session", { body: { login: "alice", password: "wrong-" + "x".repeat(8) } })).status).toBeGreaterThanOrEqual(400);
+      expect((await call(webPort, ca, webOrigin, "POST", "/hub/v1/session", { body: { login: ownerLogin, password: "wrong-" + "x".repeat(8) } })).status).toBeGreaterThanOrEqual(400);
       expect((await call(webPort, ca, webOrigin, "POST", "/hub/v1/session", { body: { login: "bob", password: seed } })).status).toBeGreaterThanOrEqual(400);
 
-      const signIn = await call(webPort, ca, webOrigin, "POST", "/hub/v1/session", { body: { login: "alice", password: seed } });
+      const signIn = await call(webPort, ca, webOrigin, "POST", "/hub/v1/session", { body: { login: ownerLogin, password: seed } });
       expect(signIn.status).toBe(200);
-      expect(signIn.body).toMatchObject({ signedIn: true, login: "alice", admin: true });
+      expect(signIn.body).toMatchObject({ signedIn: true, login: ownerLogin, admin: true });
       expect(signIn.cookie).toMatch(new RegExp(`^__Host-agend_hub_${config.hub.hubId}=`));
       expect(JSON.stringify(signIn.body)).not.toContain(seed);
 
@@ -109,13 +116,17 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
       expect(overview.status).toBe(200);
       expect(overview.body).toMatchObject({ fleets: [], pairings: [] });
 
-      // The directory disables alice: her next request is refused (no eligibility cache), then she is restored.
-      await admin.modify(aliceDn, new Change({ operation: "add", modification: new Attribute({ type: "pwdAccountLockedTime", values: ["000001010000Z"] }) }));
+      // Disable only this suite’s administrator: its next request is refused without affecting the shared seed.
+      await admin.modify(ownerDn, new Change({ operation: "add", modification: new Attribute({ type: "pwdAccountLockedTime", values: ["000001010000Z"] }) }));
+      const control = createHubDirectory(plan.directory, { bindPassword: rig.AGEND_HUB_RIG_BIND_PASSWORD! });
       try {
         const after = await call(webPort, ca, webOrigin, "GET", "/hub/v1/admin/overview", { cookie: signIn.cookie! });
         expect(after.status).toBeGreaterThanOrEqual(400);
+        // Other concurrent suites read the seed account; this flow must not disable their positive control.
+        expect(await control.signIn("alice", seed)).toMatchObject({ ok: true });
       } finally {
-        await admin.modify(aliceDn, new Change({ operation: "delete", modification: new Attribute({ type: "pwdAccountLockedTime", values: [] }) }));
+        await control.close();
+        await admin.modify(ownerDn, new Change({ operation: "delete", modification: new Attribute({ type: "pwdAccountLockedTime", values: [] }) }));
       }
     } finally {
       await runtime.close();
