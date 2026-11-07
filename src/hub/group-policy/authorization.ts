@@ -72,9 +72,11 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     const binding = bindingOf();
     if (binding.kind !== "ready") {
       if (binding.kind !== "repair-required" || !binding.legacy || operation === "resume") throw new HubGroupAuthorizationError("repair-required");
+      const fingerprint = binding.fingerprint;
+      if (typeof fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new HubGroupAuthorizationError("repair-required");
       return Object.freeze({ source: "legacy" as const, assertCurrent() {
         assert(ctx.current); const next = bindingOf();
-        if (next.kind !== "repair-required" || !next.legacy || version() !== epoch) throw new HubGroupPolicyError("conflict");
+        if (next.kind !== "repair-required" || !next.legacy || next.fingerprint !== fingerprint || version() !== epoch) throw new HubGroupPolicyError("conflict");
       } });
     }
     const policy = policyOf(), before = policy.read(), serializedPolicy = JSON.stringify(before);
@@ -102,6 +104,9 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     const resources = createHubGroupResources({ db, policy, audit, current: alive, now, invalidate(tx, changed) {
       if (tx !== db || !db.inTransaction) throw new HubGroupPolicyError("invalid");
       const previous = version();
+      // A resume may advance only its captured epoch. This check is inside the lifecycle
+      // transaction: a raced membership read or reentrant audit rolls back the pending broadening.
+      if (operation === "resume" && previous !== epoch) throw new HubGroupPolicyError("conflict");
       synchronous(advanceAuthorization(tx, parseHubGroupResource(changed)));
       if (version() <= previous) throw new HubGroupPolicyError("unavailable");
       invalidated = true;

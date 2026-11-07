@@ -65,6 +65,35 @@ describe("recheckable Hub group action permits (not yet composed into HTTP)", ()
     expect(() => permit.assertCurrent()).toThrow("group_policy_conflict");
     await expect(f.actions.check(resource, f.ctx)).rejects.toMatchObject({ reason: "repair-required" });
   });
+  it.each(["selected-generation", "stored-generation", "stored-revision"])("fences a repair permit when its %s changes, without reading the strict store", async changed => {
+    const f = fixture(); f.generation("generation-2");
+    f.policyOf.mockImplementation(() => { throw Error("strict store must not be touched"); });
+    const permit = await f.actions.check(resource, f.ctx); permit.assertCurrent(); permit.assertCurrent();
+    if (changed === "selected-generation") f.generation("generation-3");
+    else {
+      const before = f.policy.read();
+      f.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify({ ...before,
+        ...(changed === "stored-generation" ? { generation: "generation-3" } : { revision: before.revision + 1 }) }));
+    }
+    expect(() => permit.assertCurrent()).toThrow("group_policy_conflict");
+    (await f.actions.check(resource, f.ctx)).assertCurrent();
+    expect(f.policyOf).not.toHaveBeenCalled(); expect(f.read).not.toHaveBeenCalled(); expect(auditCount(f.db)).toBe(0);
+  });
+  it.each([undefined, 123, "not-a-digest", "A".repeat(64)])("refuses an unvalidated repair fingerprint (%s)", async fingerprint => {
+    const f = fixture();
+    const actions = createHubGroupAuthorization({ ...f.options,
+      binding: () => ({ kind: "repair-required", legacy: true, fingerprint }) as unknown as ReturnType<typeof inspectHubGroupPolicyBinding> });
+    await expect(actions.check(resource, f.ctx)).rejects.toMatchObject({ reason: "repair-required" });
+    expect(f.policyOf).not.toHaveBeenCalled(); expect(f.read).not.toHaveBeenCalled();
+  });
+  it("captures the repair fingerprint value instead of retaining a mutable probe result", async () => {
+    const f = fixture(); f.generation("generation-2"); const original = f.options.binding();
+    if (original.kind !== "repair-required" || !original.legacy) throw Error("expected intact repair fixture");
+    const binding = { ...original }, actions = createHubGroupAuthorization({ ...f.options, binding: () => binding });
+    const permit = await actions.check(resource, f.ctx); permit.assertCurrent();
+    binding.fingerprint = "f".repeat(64); expect(() => permit.assertCurrent()).toThrow("group_policy_conflict");
+    expect(f.policyOf).not.toHaveBeenCalled();
+  });
   it.each(["enabled", "suspended"])("refuses a generation mismatch for a previously %s policy", async state => {
     const f = fixture(); f.enable();
     if (state === "suspended") f.policy.replace({ ...f.policy.read(), state }, owner, f.ctx);
@@ -115,6 +144,43 @@ describe("recheckable Hub group action permits (not yet composed into HTTP)", ()
     const f = fixture(); f.enable(); await f.actions.enroll(resource, f.ctx);
     f.negative(); await expect(f.actions.check(resource, { ...f.ctx, current: () => f.transport.read().revocationVersion === 0 })).rejects.toMatchObject({ reason: "denied" });
     expect(f.resources.read(resource)).toMatchObject({ state: "suspended" }); expect(f.refresh).toHaveBeenCalledOnce();
+  });
+  it.each([false, true])("held resume membership cannot absorb an unrelated epoch advance (advance=%s)", async changed => {
+    const f = fixture(); f.enable(); await f.actions.enroll(resource, f.ctx);
+    f.negative(); await expect(f.actions.check(resource, f.ctx)).rejects.toThrow();
+    const gate = held<PolicyGroupFacts>(), entered = held<void>();
+    f.read.mockImplementationOnce(() => { entered.resolve(); return gate.promise; });
+    const pending = f.actions.resume(resource, f.resumeCtx);
+    const settled = pending.then(permit => ({ permit }), error => ({ error }));
+    await entered.promise;
+    if (changed) f.db.transaction(() => f.advance(f.db, { ...resource, id: "unrelated-resource" })).immediate();
+    const advances = f.advance.mock.calls.length, refreshes = f.refresh.mock.calls.length;
+    gate.resolve({ kind: "complete", person: owner, groups: [group], observedAt: 100 });
+    const result = await settled;
+    if (changed) {
+      expect(result).toMatchObject({ error: { message: "group_policy_conflict" } });
+      expect(f.resources.read(resource)).toMatchObject({ state: "suspended", revision: 2 });
+      expect(f.advance).toHaveBeenCalledTimes(advances); expect(f.refresh).toHaveBeenCalledTimes(refreshes);
+      expect(f.db.prepare("SELECT id FROM hub_audit WHERE action='group-resource.resumed'").all()).toEqual([]);
+    } else {
+      expect(result).toHaveProperty("permit"); if ("permit" in result) result.permit.assertCurrent();
+      expect(f.resources.read(resource)).toMatchObject({ state: "active", revision: 3 });
+      expect(f.advance).toHaveBeenCalledTimes(advances + 1); expect(f.refresh).toHaveBeenCalledTimes(refreshes + 1);
+    }
+    expect(f.transport.read().revocationVersion).toBe(2); expect(f.audit.verifyChain()).toMatchObject({ ok: true });
+  });
+  it("rolls back resume if its audit reentrantly advances the captured epoch, without refreshing", async () => {
+    const f = fixture(); f.enable(); await f.actions.enroll(resource, f.ctx);
+    f.negative(); await expect(f.actions.check(resource, f.ctx)).rejects.toThrow();
+    f.append.mockImplementation((...args) => {
+      f.audit.appendInTransaction(...args);
+      if (args[0].action === "group-resource.resumed") f.advance(f.db, { ...resource, id: "unrelated-resource" });
+    });
+    await expect(f.actions.resume(resource, f.resumeCtx)).rejects.toThrow("group_policy_conflict");
+    expect(f.resources.read(resource)).toMatchObject({ state: "suspended", revision: 2 }); expect(f.refresh).toHaveBeenCalledTimes(1);
+    const body = (f.db.prepare("SELECT state FROM hub_transport_state").get() as { state: string }).state;
+    expect(JSON.parse(body).revocationVersion).toBe(1);
+    expect(() => f.transport.read()).toThrow("uncertain"); // A rolled-back floor advance never restores an old permit.
   });
   it("grandfathering is exact and membership-exempt, but person denial still suspends and removing it requires explicit resume", async () => {
     const f = fixture(); f.resources.captureManual(resource, f.ctx); f.enable(); f.policy.replace({ ...f.policy.read(), groups: [] }, owner, f.ctx);

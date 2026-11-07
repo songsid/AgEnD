@@ -25,8 +25,10 @@ export function groupPolicyMigration(hubId: string, realm: string, generation: s
 export type HubGroupPolicyBinding = { readonly kind: "ready" } | {
   readonly kind: "repair-required";
   /** Only an intact, same-Hub/same-realm never-enabled record may preserve legacy behavior. */
-  readonly legacy: boolean;
-};
+  readonly legacy: true;
+  /** Validated selected binding plus the complete stored policy; never a strict-store read. */
+  readonly fingerprint: string;
+} | { readonly kind: "repair-required"; readonly legacy: false };
 /** Read-only composition probe: a directory-generation change must not take sign-in/admin repair down. */
 export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: string, realm: string, generation: string): HubGroupPolicyBinding {
   try {
@@ -36,7 +38,10 @@ export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: strin
     const policy = parseGroupPolicy(parseStrictJson(row.body));
     if (policy.realm !== binding.realm) return { kind: "repair-required", legacy: false };
     if (policy.generation === binding.generation) return { kind: "ready" };
-    return { kind: "repair-required", legacy: policy.state === "never-enabled" };
+    if (policy.state !== "never-enabled") return { kind: "repair-required", legacy: false };
+    const fingerprint = createHash("sha256").update(JSON.stringify({ hubId: row.hub_id,
+      realm: binding.realm, generation: binding.generation, policy })).digest("hex");
+    return { kind: "repair-required", legacy: true, fingerprint };
   } catch { return { kind: "repair-required", legacy: false }; }
 }
 
