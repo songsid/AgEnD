@@ -6,7 +6,7 @@
  * instance starts throw — nothing is launched.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { APPLY_FLEET_TARGET } from "../src/apply-job.js";
 
 const dirs: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); delete process.env.AGEND_TEST_P6_TOKEN; delete process.env.AGEND_TEST_P6_PRIMARY; });
+afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); delete process.env.AGEND_TEST_P6_TOKEN; delete process.env.AGEND_TEST_P6_PRIMARY; vi.useRealTimers(); });
 
 const primary = { id: "primary", type: "discord", mode: "topic", bot_token_env: "AGEND_TEST_P6_PRIMARY", group_id: "1", access: { mode: "locked", allowed_users: ["9"] } };
 const second = { id: "discord-2", type: "discord", mode: "topic", bot_token_env: "AGEND_TEST_P6_TOKEN", group_id: "1", access: { mode: "locked", allowed_users: [] } };
@@ -125,10 +125,12 @@ describe("a token stored for a stopped connection", () => {
     expect(await fm.rebuildAdapterForSecret("discord-2", second)).toBe(true);
     expect(fm.adapters.has("discord-2")).toBe(true);
   });
-  it("the primary, or a fleet with no running connection: still the next start (false)", async () => {
+  it("the primary, or a fleet with no running connection, added since AgEnD started: still the next start (false)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-p6-")); dirs.push(dir);
     const { fm } = fleet(dir, [primary, second]);
     process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    // S-91: one this process started with now starts (the describe below); one added since is set up by a fresh process.
+    fm.startupFleetConfig = { ...fm.startupFleetConfig, channels: [] };
     // The primary stopped while another connection runs: still the next start (a fresh process sets the primary up).
     fm.adapters.delete("primary");
     fm.adapters.set("other", Object.assign(new EventEmitter(), { stop: vi.fn() }));
@@ -138,5 +140,90 @@ describe("a token stored for a stopped connection", () => {
     fm.adapters.clear();
     expect(await fm.rebuildAdapterForSecret("discord-2", second), "no connection running").toBe(false);
     expect(fm.startAdditionalAdapter).not.toHaveBeenCalled();
+  });
+});
+
+describe("S-91: a token stored for a connection this process started with starts it now (no restart)", () => {
+  const stopped = (dir: string) => {
+    const { fm } = fleet(dir, [primary, second]);
+    fm.startupFleetConfig = structuredClone(fm.fleetConfig);             // what finishStartup records in a real start
+    fm.adapters.clear();                                                   // its start failed (a revoked token): nothing runs
+    const made: any[] = [];
+    const register = (id: string, onStarted?: () => void) => { const a = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) }); made.push(a); fm.adapters.set(id, a); onStarted?.(); };
+    fm.startSingleAdapter = vi.fn(async (_f: unknown, channel: { id: string }, onStarted?: () => void) => register(channel.id, onStarted));
+    fm.startAdditionalAdapter = vi.fn(async (channel: { id: string }, _r: boolean, onStarted?: () => void) => register(channel.id, onStarted));
+    return { fm, made };
+  };
+  it("the primary, nothing running: started now, the way the background retry starts it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    expect(await fm.rebuildAdapterForSecret("primary", primary)).toBe(true);
+    expect([fm.startSingleAdapter.mock.calls.length, fm.adapters.has("primary"), fm.adapterState.get("primary")?.status]).toEqual([1, true, "connected"]);
+  });
+  it("a non-primary in a fleet with nothing running: started now", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_TOKEN = "fake-token";
+    expect(await fm.rebuildAdapterForSecret("discord-2", second)).toBe(true);
+    expect(fm.startAdditionalAdapter).toHaveBeenCalledTimes(1);
+  });
+  it("one changed since AgEnD started, or added since: still the next start (false), nothing started", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    expect(await fm.rebuildAdapterForSecret("primary", { ...primary, group_id: "2" }), "changed").toBe(false);
+    fm.startupFleetConfig = { ...fm.startupFleetConfig, channels: [primary] };
+    process.env.AGEND_TEST_P6_TOKEN = "fake-token";
+    expect(await fm.rebuildAdapterForSecret("discord-2", second), "added since").toBe(false);
+    expect([fm.startSingleAdapter.mock.calls.length, fm.startAdditionalAdapter.mock.calls.length, fm.adapters.size]).toEqual([0, 0, 0]);
+  });
+  it("never two starts at once: a background retry in flight finishes first", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    let finish!: () => void;
+    fm.adapterRetryInFlight.set("primary", new Promise<void>((r) => { finish = r; }));
+    const rebuilt = fm.rebuildAdapterForSecret("primary", primary);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fm.startSingleAdapter, "waits for the retry").not.toHaveBeenCalled();
+    fm.adapterRetryInFlight.delete("primary"); finish();
+    expect(await rebuilt).toBe(true);
+    expect(fm.startSingleAdapter).toHaveBeenCalledTimes(1);
+  });
+  it.each([["no health snapshot (Telegram)", false], ["a health snapshot (Discord)", true]])("a retry timer set while it came up never starts it a second time: %s", async (_n, snapshot) => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm } = stopped(dir);
+    process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fm.startSingleAdapter = vi.fn(async (_f: unknown, channel: { id: string }, onStarted?: () => void) => {
+        fm.scheduleAdapterRetry(channel.id);                             // the in-flight retry's own, giving way
+        const a = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}), ...(snapshot ? { getHealthSnapshot: () => ({ status: "connected" }) } : {}) });
+        fm.adapters.set(channel.id, a); onStarted?.();
+      });
+      const retry = vi.spyOn(fm, "attemptAdapterRetry");
+      expect(await fm.rebuildAdapterForSecret("primary", primary)).toBe(true);
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(retry).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+  it("its start fails: the token goes back, the adapter it left is taken down, and the connection is the background retry's again", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-s91-")); dirs.push(dir);
+    const { fm, made } = stopped(dir);
+    writeFileSync(join(dir, ".env"), "AGEND_TEST_P6_PRIMARY=old-token\n");
+    process.env.AGEND_TEST_P6_PRIMARY = "old-token";
+    fm.startSingleAdapter = vi.fn(async (_f: unknown, channel: { id: string }) => {
+      const a = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) }); made.push(a); fm.adapters.set(channel.id, a);   // registered, then…
+      throw new Error("login failed");                                                                                               // …never came up
+    });
+    const scheduled = vi.spyOn(fm, "scheduleAdapterRetry").mockImplementation(() => {});
+    const job: any = { id: "s91", connectionId: "primary", status: "running", result: "applying" };
+    await fm.runConnectionSecretApply(job, "new-token");
+    expect([job.status, job.result]).toEqual(["done", "rolled_back"]);
+    expect([process.env.AGEND_TEST_P6_PRIMARY, readFileSync(join(dir, ".env"), "utf8").includes("old-token"), readFileSync(join(dir, ".env"), "utf8").includes("new-token")]).toEqual(["old-token", true, false]);
+    expect([fm.adapters.has("primary"), made[0].stop.mock.calls.length, made[0].listenerCount("message")]).toEqual([false, 1, 0]);
+    expect([fm.adapterState.get("primary")?.status, scheduled.mock.calls.at(-1)?.[0]]).toEqual(["retrying", "primary"]);
+    expect(fm.startSingleAdapter, "never started again with the old token").toHaveBeenCalledTimes(1);
   });
 });
