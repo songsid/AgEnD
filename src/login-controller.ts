@@ -333,7 +333,8 @@ export class LoginController {
   signingIn(backend: string, profile: string | null): boolean {
     if (this.pendingTunnelStart?.backend === backend) return true;
     const a = this.active;
-    return !!a && a.backend === backend && (a.profile ?? null) === profile;
+    // One account on a case-insensitive disk whatever the spelling (#3291 review, Prism P2-3).
+    return !!a && a.backend === backend && (a.profile ?? "").toLowerCase() === (profile ?? "").toLowerCase();
   }
 
   /**

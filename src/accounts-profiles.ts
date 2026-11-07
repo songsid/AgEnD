@@ -31,7 +31,7 @@ export const PROFILES_DIRECTORY = "credential-profiles";
 export interface ProfileUsers { agents: string[]; classic: string[]; fleetDefault: boolean }
 
 export type AddRefusal = "backend" | "name" | "exists" | "case_clash" | "unsafe_root";
-export type RemoveRefusal = "backend" | "name" | "confirm" | "in_use" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
+export type RemoveRefusal = "backend" | "name" | "confirm" | "in_use" | "users_unknown" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
 
 export type AddResult = { ok: true } | { ok: false; error: AddRefusal; clash?: string };
 export type RemoveResult = { ok: true } | { ok: false; error: RemoveRefusal; users?: ProfileUsers };
@@ -43,7 +43,7 @@ export interface ProfileFs {
   defaultHome(backend: string): string | null;
 }
 
-const realFs = (): ProfileFs => ({
+export const realFs = (): ProfileFs => ({
   uid: typeof process.getuid === "function" ? process.getuid() : null,
   defaultHome: backend => { try { return credentialHomeSpec(backend)?.sharedRoot() ?? null; } catch { return null; } },
 });
@@ -94,17 +94,17 @@ export interface RemoveRequest {
   users: ProfileUsers;
   /** A sign-in for this backend and profile is running (or one for this backend is starting and its profile is not known). */
   signingIn: boolean;
+  /** Who uses it could not be read completely (ClassicBot's settings unreadable or malformed): nothing proves it unused. */
+  usersUnknown?: boolean;
 }
 
-/** Remove a profile's folder, or refuse (nothing deleted). See the module comment for every rule. */
-export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: ProfileFs = realFs()): RemoveResult {
-  const { backend, name } = req;
-  if (!PROFILE_CLIS.has(backend)) return { ok: false, error: "backend" };
-  if (!validCredentialProfileName(name)) return { ok: false, error: "name" };
-  if (req.confirm !== name) return { ok: false, error: "confirm" };
-  const u = req.users;
-  if (u.agents.length || u.classic.length || u.fleetDefault) return { ok: false, error: "in_use", users: u };
-  if (req.signingIn) return { ok: false, error: "signing_in" };
+/**
+ * The folder of an existing profile, when it is AgEnD's own (Remove's and Sign out's check): `<root>/<backend>/<name>`,
+ * each level a real directory (never a link) owned by this account, its real path exactly that place under the real
+ * root, and neither the CLI's default sign-in home nor inside or around it. `name` must already be valid.
+ */
+export function ownProfileFolder(dataDir: string, backend: string, name: string, fs: ProfileFs = realFs()):
+  { ok: true; base: string; home: string; st: Stats; realRoot: string } | { ok: false; error: "missing" | "unsafe" | "default_home" } {
   const root = join(dataDir, PROFILES_DIRECTORY), base = join(root, backend), home = join(base, name);
   const st = lst(home);
   if (!st) return { ok: false, error: "missing" };
@@ -117,6 +117,22 @@ export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: Pr
     const realDefault = realOrNull(dflt) ?? dflt;
     if (within(realDefault, real) || within(real, realDefault)) return { ok: false, error: "default_home" };
   }
+  return { ok: true, base, home, st, realRoot };
+}
+
+/** Remove a profile's folder, or refuse (nothing deleted). See the module comment for every rule. */
+export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: ProfileFs = realFs()): RemoveResult {
+  const { backend, name } = req;
+  if (!PROFILE_CLIS.has(backend)) return { ok: false, error: "backend" };
+  if (!validCredentialProfileName(name)) return { ok: false, error: "name" };
+  if (req.confirm !== name) return { ok: false, error: "confirm" };
+  const u = req.users;
+  if (u.agents.length || u.classic.length || u.fleetDefault) return { ok: false, error: "in_use", users: u };
+  if (req.usersUnknown) return { ok: false, error: "users_unknown" };
+  if (req.signingIn) return { ok: false, error: "signing_in" };
+  const own = ownProfileFolder(dataDir, backend, name, fs);
+  if (!own.ok) return own;
+  const { base, home, st, realRoot } = own;
   // Out of sight first (a hidden name the listing never shows), then the same folder again, then deleted.
   const parked = join(base, `.removing-${name}-${randomBytes(6).toString("hex")}`);
   try { renameSync(home, parked); } catch { return { ok: false, error: "failed" }; }

@@ -1209,7 +1209,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
  * a read session, the public link or the gateway — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
-  backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, signing_in: 409, missing: 404,
+  backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
   unsafe: 409, default_home: 409, failed: 500,
 };
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {

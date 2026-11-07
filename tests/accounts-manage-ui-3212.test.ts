@@ -27,12 +27,18 @@ const VIEW = () => ({ clis: [
 ] });
 let view: any = VIEW();
 const calls: Array<{ method: string; url: string; body: any }> = [];
-let answer: (method: string, url: string, body: any) => { status: number; body: any } = () => ({ status: 200, body: {} });
+let answer: (method: string, url: string, body: any) => { status: number; body: any } | Promise<{ status: number; body: any }> = () => ({ status: 200, body: {} });
+/** A GET of the accounts held until released, answered with the view as it was when it began. */
+let holdGet: Promise<void> | null = null;
 const fetchFake = async (url: string, init: any = {}) => {
   const method = (init.method || "GET").toUpperCase(), body = init.body ? JSON.parse(init.body) : undefined;
   if (method !== "GET") calls.push({ method, url: String(url), body });
-  if (method === "GET") return { ok: true, status: 200, json: async () => (String(url).startsWith("/ui/accounts") ? view : { login: null, targets: [] }) };
-  const a = answer(method, String(url), body);
+  if (method === "GET") {
+    const snapshot = JSON.parse(JSON.stringify(view)), held = String(url).startsWith("/ui/accounts") ? holdGet : null;
+    if (held) { holdGet = null; await held; }
+    return { ok: true, status: 200, json: async () => (String(url).startsWith("/ui/accounts") ? snapshot : { login: null, targets: [] }) };
+  }
+  const a = await answer(method, String(url), body);
   return { ok: a.status < 300, status: a.status, json: async () => a.body };
 };
 let p: AppPage, A: any, S: any, i18n: any, shell: any;
@@ -45,7 +51,7 @@ beforeAll(async () => {
 });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
-  await p.unmount(); i18n.setLang("en", { store: false }); view = VIEW(); calls.length = 0; answer = () => ({ status: 200, body: {} });
+  await p.unmount(); i18n.setLang("en", { store: false }); view = VIEW(); calls.length = 0; answer = () => ({ status: 200, body: {} }); holdGet = null;
   A.accountsStore.set({ loaded: false, failed: false, view: null });
   S.signInStore.set({ loaded: false, login: null, targets: [], structured: null }); shell.shellStore.set({ dialog: null });
 });
@@ -95,6 +101,50 @@ describe("+ Add account (#3212 PR 2)", () => {
     view.clis[1].rows.push({ scope: { kind: "host" }, backend: "codex", profile: "team", state: "not_signed_in", signIn: false, hostCommand: "CODEX_HOME=/x codex login", usedBy: { agents: [], classic: [], fleetDefault: false } });
     btn(dialog(), "Add").click(); await settle(12);
     expect(shell.shellStore.get().dialog).toBe(null);
+  });
+});
+
+describe("#3291 review (Prism): writes and the reads and dialogs around them", () => {
+  const deferred = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
+  it("P2-4: the read after Add begins after it; an older read answering later never brings the old view back", async () => {
+    await mount();
+    const old = deferred(); holdGet = old.p;
+    void A.refreshAccounts();                                            // an older read, still out
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "newacct");
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "newacct", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    btn(dialog(), "Add").click(); await settle(12);
+    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "newacct" });
+    old.release(); await settle(12);                                     // the old snapshot (without newacct) answers last
+    expect(!!rowOf("claude-code", "newacct")).toBe(true);
+  });
+  it("P2-5: while Add runs its dialog can't be dismissed; an answer after the view left opens nothing", async () => {
+    await mount();
+    const post = deferred();
+    answer = async () => { await post.p; return { status: 200, body: { added: "late" } }; };
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "late");
+    btn(dialog(), "Add").click(); await settle(4);
+    expect(btn(dialog(), "Cancel").disabled).toBe(true);
+    fire(p.document, "keydown", { key: "Escape" }); await settle(4);
+    expect(dialog()?.querySelector("#acctAddName")).toBeTruthy();         // still here, still running
+    await p.unmount();                                                   // the person navigated away
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "late", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    post.release(); await settle(12);
+    expect(shell.shellStore.get().dialog).toBe(null);                    // no sign-in opened for a page that left
+  });
+  it("P2-5: while Remove runs its dialog can't be dismissed, and Move… waits too", async () => {
+    await mount();
+    const del = deferred();
+    answer = async () => { await del.p; return { status: 200, body: { removed: "personal" } }; };
+    rowOf("claude-code", "personal").querySelector(".s-account-remove").click(); await settle(6);
+    await type(dialog().querySelector("#acctRemoveName"), "personal");
+    btn(dialog(), "Remove").click(); await settle(4);
+    expect(btn(dialog(), "Cancel").disabled).toBe(true);
+    fire(p.document, "keydown", { key: "Escape" }); await settle(4);
+    expect(dialog()?.querySelector("#acctRemoveName")).toBeTruthy();
+    del.release(); await settle(12);
+    expect(dialog()?.querySelector("#acctRemoveName") ?? null).toBe(null);
   });
 });
 

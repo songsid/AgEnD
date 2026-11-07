@@ -30,6 +30,7 @@ register("accountsManage", {
     err_confirm: "Type the account's name exactly.", err_in_use: "Something still uses this account.", err_signing_in: "A sign-in for this account is running. Wait for it to end, or cancel it.",
     err_missing: "This account's folder is no longer there.", err_unsafe: "This account's folder isn't a plain folder of this account inside AgEnD's accounts folder, so nothing was deleted.",
     err_default_home: "That is the CLI's default sign-in, which is never deleted here.",
+    err_users_unknown: "AgEnD can't read the ClassicBot settings, so it can't tell whether a room uses this account. Fix classicBot.yaml, then try again.",
   },
   "zh-TW": {
     add: "＋ 新增帳號", addTitle: "新增 {0} 帳號", addLead: "具名帳號是這台主機上另一組登入。先取名，再登入。",
@@ -49,6 +50,7 @@ register("accountsManage", {
     err_confirm: "請正確輸入帳號名稱。", err_in_use: "仍有項目在使用這個帳號。", err_signing_in: "這個帳號正在登入。請等它結束，或取消它。",
     err_missing: "這個帳號的資料夾已經不在了。", err_unsafe: "這個帳號的資料夾不是 AgEnD 帳號資料夾裡、屬於這個使用者的一般資料夾，所以沒有刪除任何東西。",
     err_default_home: "那是 CLI 的預設登入，這裡永遠不會刪除它。",
+    err_users_unknown: "AgEnD 無法讀取 ClassicBot 設定，所以無法確定是否有房間在使用這個帳號。請先修正 classicBot.yaml 再試一次。",
   },
 });
 const tm = (k, ...v) => t(`accountsManage.${k}`, ...v);
@@ -71,11 +73,22 @@ const errText = (r) => {
 };
 
 /** `cli`: the Accounts view's card; `label`: the CLI's name; `onAdded(name)`: after the server made it. */
+/**
+ * #3291 review (Prism P2-5): while its request runs a dialog can't be dismissed (Cancel, ×, Esc), and an answer that
+ * comes after the dialog left the page (navigation) does nothing — it never closes or opens what replaced it.
+ */
+function useLive() {
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+  return live;
+}
 export function AddAccountDialog({ cli, label, onClose, onAdded }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const input = useRef(null);
+  const live = useLive();
+  const close = () => { if (!busy) onClose(); };
   useEffect(() => { input.current && input.current.focus(); }, []);
   const trimmed = name.trim();
   const shownErr = err || (trimmed && !validAccountName(trimmed) ? tm("err_name") : "");
@@ -83,11 +96,12 @@ export function AddAccountDialog({ cli, label, onClose, onAdded }) {
     if (busy || !validAccountName(trimmed)) return;
     setBusy(true); setErr("");
     const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}`, { name: trimmed });
+    if (!live.current) return;
     setBusy(false);
     if (!r.ok) { setErr(errText(r)); return; }
     onClose(); onAdded(trimmed);
   };
-  return html`<${Dialog} title=${tm("addTitle", label)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tm("cancel")}</button>
+  return html`<${Dialog} title=${tm("addTitle", label)} onClose=${close} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tm("cancel")}</button>
     <button type="button" class="btn btn-primary" disabled=${busy || !validAccountName(trimmed)} onClick=${go}>${busy ? tm("adding") : tm("addGo")}</button>`}>
     <p>${tm("addLead")}</p>
     <div class="field"><label for="acctAddName">${tm("nameLabel")}</label>
@@ -107,18 +121,21 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [users, setUsers] = useState(row.usedBy);    // the server's answer replaces it when it knows better
+  const live = useLive();
+  const close = () => { if (!busy) onClose(); };
   const inUse = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
   const go = async () => {
     if (busy || inUse || typed !== row.profile) return;
     setBusy(true); setErr("");
     const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed });
+    if (!live.current) return;
     setBusy(false);
     if (r.ok) { toast(tm("removed", row.profile), true); onClose(); onRemoved(); return; }
     if (r.error === "in_use" && r.users) setUsers(r.users);
     setErr(errText(r));
   };
-  const moveBtn = (user) => html`<button type="button" class="btn btn-sm" onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
-  return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tm("cancel")}</button>
+  const moveBtn = (user) => html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
+  return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${close} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tm("cancel")}</button>
     <button type="button" class="btn btn-danger" disabled=${busy || inUse || typed !== row.profile} onClick=${go}>${busy ? tm("removing") : tm("removeGo")}</button>`}>
     <p>${cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>

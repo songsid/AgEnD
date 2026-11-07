@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { createServer, request, type Server } from "node:http";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addAccountProfile, removeAccountProfile, type ProfileFs, type ProfileUsers } from "../src/accounts-profiles.js";
@@ -22,6 +22,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { GUEST_ROUTES } from "../src/web-guest-access.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { LoginController } from "../src/login-controller.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -142,6 +143,59 @@ describe("Remove: the positive case", () => {
     expect(call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: true });
     expect(info).toHaveBeenCalledWith({ backend: "claude-code", profile: "spare", by: "Firefox on Linux" }, "Credential profile removed from Settings → Accounts");
     expect(JSON.stringify(info.mock.calls)).not.toContain(data);        // never a path
+  });
+});
+
+describe("#3291 review (Prism): who uses it is never under-counted", () => {
+  const call = (fm: any, ...a: unknown[]) => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
+  const fm = (data: string, over: Record<string, unknown> = {}) => ({
+    dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
+    accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
+    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null }, ...over,
+  });
+  const daemon = (cfg: Record<string, unknown>) => ({ getConfigSnapshot: () => cfg });
+  it("P2-1: a running CLI launched on it is a user, though the configuration has moved off it", () => {
+    const { data, home } = withProfile();
+    const daemons = new Map<string, unknown>([
+      ["moved", daemon({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "spare" } } })],
+      ["other", daemon({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } })],
+      ["win", daemon({ backend: "claude-code", runtime: "windows", backend_options: { "claude-code": { credential_profile: "spare" } } })],
+      ["cx", daemon({ backend: "codex", backend_options: { codex: { credential_profile: "spare" } } })],
+    ]);
+    expect(call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: ["moved"], classic: [], fleetDefault: false } });
+    expect(existsSync(home)).toBe(true);
+    daemons.delete("moved");                                             // it stopped: nothing launched on it is left
+    expect(call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+  });
+  it("P2-2: an unreadable or malformed classicBot.yaml refuses (nothing proves no room uses it); an absent one does not", () => {
+    for (const body of ["channels: [1, 2]\n", "channels:\n  a: [\n", "- a list\n"]) {
+      const { data, home } = withProfile();
+      writeFileSync(join(data, "classicBot.yaml"), body);
+      expect(call(fm(data), "claude-code", "spare", "spare", "x"), body).toEqual({ ok: false, error: "users_unknown" });
+      expect(existsSync(home)).toBe(true);
+    }
+    const { data, home } = withProfile();
+    writeFileSync(join(data, "classicBot.yaml"), "channels: {}\n"); chmodSync(join(data, "classicBot.yaml"), 0o000);
+    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "users_unknown" });
+    chmodSync(join(data, "classicBot.yaml"), 0o600);
+    // A room that uses it, read from the file, is named; with no file there are no rooms.
+    writeFileSync(join(data, "classicBot.yaml"), "channels:\n  room1:\n    backend: claude-code\n    backend_options:\n      claude-code:\n        credential_profile: Spare\n");
+    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: [], classic: ["room1"], fleetDefault: false } });
+    rmSync(join(data, "classicBot.yaml"));
+    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(existsSync(home)).toBe(false);
+  });
+  it("P2-3: a case variant is the same account — configured, launched, the fleet default, and a sign-in", () => {
+    const { data } = withProfile("Work");
+    const uses = (agents: unknown[], fd?: string) => () => ({ agents, classic: [], fleetDefaults: new Map(fd ? [["claude-code", fd]] : []) });
+    expect(call(fm(data, { accountUses: uses([{ name: "dev", backend: "claude-code", profile: "work" }]) }), "claude-code", "Work", "Work", "x").error).toBe("in_use");
+    expect(call(fm(data, { accountUses: uses([], "WORK") }), "claude-code", "Work", "Work", "x").users.fleetDefault).toBe(true);
+    const daemons = new Map([["d", daemon({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } })]]);
+    expect(call(fm(data, { daemons }), "claude-code", "Work", "Work", "x").users.agents).toEqual(["d"]);
+    const signingIn = (LoginController.prototype as any).signingIn;
+    expect(signingIn.call({ active: { backend: "claude-code", profile: "work" }, pendingTunnelStart: null }, "claude-code", "Work")).toBe(true);
+    expect(signingIn.call({ active: { backend: "claude-code", profile: "other" }, pendingTunnelStart: null }, "claude-code", "Work")).toBe(false);
+    expect(signingIn.call({ active: { backend: "claude-code" }, pendingTunnelStart: null }, "claude-code", null)).toBe(true);
   });
 });
 

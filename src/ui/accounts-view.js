@@ -8,7 +8,7 @@
 // - AccountSelect: the Agent dialog's Account field (settings-dialogs.js), from the same view.
 // Rows carry a `scope`: only `host` today; a paired computer's rows (`machine`) are drawn read-only under its name.
 // Words are registered here (a new module: an older cached strings file never leaves a raw key).
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -67,15 +67,22 @@ function linkAccountsCss(doc = typeof document !== "undefined" ? document : null
 const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };
 
 export const accountsStore = createStore({ loaded: false, failed: false, view: null });
-let reading = null;
-/** Read GET /ui/accounts (one read at a time). */
-export function refreshAccounts() {
-  if (reading) return reading;
-  reading = fetch("/ui/accounts", { credentials: "same-origin", cache: "no-store" })
-    .then(async (r) => { const v = r.ok ? await r.json() : null; accountsStore.set({ loaded: true, failed: !v, view: v }); })
-    .catch(() => accountsStore.set({ loaded: true, failed: true, view: accountsStore.get().view }))
-    .finally(() => { reading = null; });
-  return reading;
+let reading = null, started = 0, applied = 0;
+/**
+ * Read GET /ui/accounts. A read already running is joined — unless `fresh` (#3291 review, Prism P2-4: after a write, the
+ * view must come from a read that began after it): then a new read starts, and an older one that answers later never
+ * replaces a newer answer.
+ */
+export function refreshAccounts({ fresh = false } = {}) {
+  if (reading && !fresh) return reading;
+  const mine = ++started;
+  const apply = (next) => { if (mine > applied) { applied = mine; accountsStore.set(next); } };
+  const p = fetch("/ui/accounts", { credentials: "same-origin", cache: "no-store" })
+    .then(async (r) => { const v = r.ok ? await r.json() : null; apply({ loaded: true, failed: !v, view: v }); })
+    .catch(() => apply({ loaded: true, failed: true, view: accountsStore.get().view }))
+    .finally(() => { if (reading === p) reading = null; });
+  reading = p;
+  return p;
 }
 const rowName = (row) => (row.profile ? tx("profile", row.profile) : tx("def"));
 const usedText = (row) => {
@@ -122,6 +129,8 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const [move, setMove] = useState(null);           // { cli, row }
   const [adding, setAdding] = useState(null);       // #3212 PR 2: the card whose + Add account is open
   const [removing, setRemoving] = useState(null);   // { cli, row }
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
   useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
@@ -137,15 +146,19 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
     ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${(row) => setMove({ cli, row })} stageDefault=${stageDefault}
       onAdd=${() => setAdding(cli)} onRemove=${(row) => setRemoving({ cli, row })} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
-    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => void accountAdded(adding.backend, name)} />` : null}
+    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => void accountAdded(adding.backend, name, () => mounted.current)} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
-      onRemoved=${() => void refreshAccounts()} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
+      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
   </section>`;
 }
 
-/** After + Add account: the view read again, then Sign in at once where the dashboard can sign it in (else its row shows the host command). */
-async function accountAdded(backend, name) {
-  await refreshAccounts();
+/**
+ * After + Add account: the view read again (a read begun after the write), then Sign in at once where the dashboard can
+ * sign it in (else its row shows the host command) — only while the Accounts view is still on screen (`alive()`).
+ */
+async function accountAdded(backend, name, alive) {
+  await refreshAccounts({ fresh: true });
+  if (!alive()) return;
   const v = accountsStore.get().view, cli = v && Array.isArray(v.clis) ? v.clis.find((c) => c.backend === backend) : null;
   const row = cli ? cli.rows.find((r) => r.scope && r.scope.kind === "host" && r.profile === name) : null;
   if (row && row.signIn) { toast(manageWords.added(name), true); openSignIn({ backend, profile: name }); }

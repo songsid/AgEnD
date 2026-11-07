@@ -468,9 +468,9 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
+import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import {
@@ -20036,16 +20036,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): RemoveResult {
     const profile = typeof name === "string" ? name : "";
-    const { agents, classic, fleetDefaults } = this.accountUses();
+    // #3291 review (Prism P2-3): one folder on a case-insensitive disk (Windows, default macOS) — `Work` and `work` are the
+    // same account for every safety check here.
+    const same = (p: string | null | undefined) => !!p && p.toLowerCase() === profile.toLowerCase();
+    const { agents, fleetDefaults } = this.accountUses();
+    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
+    // #3291 review (Prism P2-2): ClassicBot rooms read strictly — an unreadable or malformed classicBot.yaml is not "no rooms".
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    const classic = rooms.kind === "ok" ? rooms.bindings.map(b => {
+      const cli = b.backend ?? defaultBackend;
+      return { key: b.key, backend: cli, profile: profileName(classicProfile(b.backend_options, this.fleetConfig?.defaults?.backend_options, cli)) };
+    }) : [];
+    // #3291 review (Prism P2-1): what a running CLI was launched with. An agent or room moved off this account keeps
+    // running on it until its process stops (the configuration changes first): it is still a user until then.
+    const live: string[] = [];
+    for (const [instance, daemon] of this.daemons ?? []) {
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap)) continue;
+      const cli = snap.backend ?? defaultBackend;
+      if (cli !== backend) continue;
+      let launched: string | null = null;
+      try { launched = resolveCredentialProfile(snap.backend_options?.[cli]); } catch { launched = null; }
+      if (same(launched)) live.push(instance);
+    }
     const users = {
-      agents: agents.filter(a => a.backend === backend && a.profile === profile).map(a => a.name),
-      classic: classic.filter(c => c.backend === backend && c.profile === profile).map(c => c.key),
-      fleetDefault: fleetDefaults.get(backend) === profile,
+      agents: [...new Set([...agents.filter(a => a.backend === backend && same(a.profile)).map(a => a.name), ...live])].sort(),
+      classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
+      fleetDefault: same(fleetDefaults.get(backend)),
     };
     const held = this.loginWindow.current;
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
       || (held?.backend === backend && !this.loginController?.activeBackend);
-    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn });
+    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" });
     if (result.ok) this.logger.info({ backend, profile, by }, "Credential profile removed from Settings → Accounts");
     else this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: result.error }, "Credential profile removal refused");
     return result;
