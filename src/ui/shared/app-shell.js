@@ -820,7 +820,7 @@ export async function refreshRestartPending() {
  * the server makes the job (`restartRunner(null)`); the line saying where else to restart is for a page that cannot.
  */
 function RestartLine() {
-  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
   const [later, setLater] = useState(null);
   const [busy, setBusy] = useState(false);
   const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
@@ -831,7 +831,9 @@ function RestartLine() {
   if (later === seen) return null;
   const canRestart = typeof restartRunner === "function";
   const restart = async () => {
-    if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
+    // S-92: on a fleet with no chat connection the restart is announced in the dashboard's Notices, not a chat channel.
+    const message = t(connections === 0 ? "app.restartConfirmWebOnly" : "app.restartConfirm");
+    if (!(await confirmDialog({ title: t("app.restartNow"), message, confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
     let res;
     try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }

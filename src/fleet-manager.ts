@@ -9656,6 +9656,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.launchTrackedFullRestart(target, async text => { this.recordWebNotice("fleet", text); }, null);
   }
 
+  /**
+   * S-92: a fleet (with no chat connection) that comes up from a web-only Settings restart says it is back as a fleet
+   * Notice — the restart was announced as one. Anything else (a chat restart, an update, a plain boot): nothing here.
+   */
+  private async announceWebRestartDone(pending: { progress: UpdateProgressState } | null): Promise<boolean> {
+    if (!pending || updateProgressOperation(pending.progress) !== "full-restart" || pending.progress.target.adapterId !== WEB_RESTART_TARGET) return false;
+    const { createRequire } = await import("node:module");
+    const version = createRequire(import.meta.url)("../package.json").version ?? "unknown";
+    return this.recordWebNotice("fleet", t("restart.settings_done", version));
+  }
+
   private async launchTrackedFullRestart(
     target: { adapterId: string; chatId: string; threadId?: string; messageId: string },
     fail: (text: string) => Promise<void>,
@@ -10654,11 +10665,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
-    } else if (pendingProgressOperation === "full-restart" && pendingUpdateProgress?.progress.target.adapterId === WEB_RESTART_TARGET) {
-      // S-92: a web-only fleet's Settings restart was announced as a fleet Notice — that it is back is one too.
-      const { createRequire } = await import("node:module");
-      const version = createRequire(import.meta.url)("../package.json").version ?? "unknown";
-      this.recordWebNotice("fleet", t("restart.settings_done", version));
+    } else {
+      await this.announceWebRestartDone(pendingUpdateProgress);
     }
     // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
     // quick link — Settings shows it on this computer).

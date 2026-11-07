@@ -755,6 +755,20 @@ describe("S-92: a web-only fleet restarts from Settings, its trace the dashboard
   });
 });
 
+describe("S-92: the fleet that comes up from a web-only Settings restart says it is back, as a fleet Notice", () => {
+  it("only for a full restart whose marker names the web — never a chat restart, an update, or a plain boot", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    const any = fm as any, notices: string[] = [];
+    vi.spyOn(any, "recordWebNotice").mockImplementation((_k: unknown, text: unknown) => { notices.push(String(text)); return true; });
+    const at = (operation: string, adapterId: string) => ({ progress: { operation, stage: "starting", target: { adapterId, chatId: "c", messageId: "m" } } });
+    expect(await any.announceWebRestartDone(at("full-restart", "web-settings"))).toBe(true);
+    expect(notices).toEqual([expect.stringMatching(/^✅ AgEnD is back — the restart requested from the Settings page is done \(version .+\)\.$/)]);
+    for (const other of [at("full-restart", "telegram"), at("update", "web-settings"), null]) expect(await any.announceWebRestartDone(other)).toBe(false);
+    expect(notices).toHaveLength(1);
+  });
+});
+
 describe("S-92: POST /api/settings/restart-fleet with pending: true", () => {
   it("the literal true asks for the pending changes' restart (job null); anything else still needs a job id", async () => {
     const dir = tempDir();

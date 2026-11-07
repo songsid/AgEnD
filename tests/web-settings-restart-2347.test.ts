@@ -128,6 +128,18 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     await vi.waitFor(() => expect(line()).toBeNull());
   });
 
+  it("S-92: on a fleet with no chat connection the restart's dialog says it is recorded in the dashboard's Notices, not a chat channel", async () => {
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+    const asked: string[] = [];
+    app.appStore.set({ connections: 0 });
+    await mountShell();
+    (globalThis as any).confirm = (m: string) => { asked.push(m); return false; }; p.window.confirm = (globalThis as any).confirm;
+    button("Restart now").click(); await settle(8);
+    const dialog = p.root.querySelector("dialog")?.textContent ?? asked.join("\n");
+    expect(dialog).toContain("recorded in this dashboard's Notices");
+    expect(dialog).not.toContain("chat channel");
+  });
+
   it("a page that cannot restart (no runner) says where else to — and offers no button", async () => {
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     app.appStore.set({ restartRunner: null });
