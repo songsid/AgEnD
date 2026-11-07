@@ -38,7 +38,7 @@ describe("the own-tmux notice", () => {
     fm.announceOwnTmux();
     fm.announceOwnTmux();
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(String(notify.mock.calls[0]![0])).toMatch(/agend attach/);
+    expect(String(notify.mock.calls[0]![0])).toMatch(/View panel/);
     expect(notify.mock.calls[0]![1]).toEqual({ throttle: false });
     expect(existsSync(marker(h))).toBe(true);
   });
