@@ -46,6 +46,7 @@
 .hub-chat { flex: 1; min-height: 0; display: flex; }
 .hub-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .hub-chat-head { display: flex; align-items: center; gap: var(--s-2); min-height: var(--header-h, 52px); padding: 0 var(--s-4); border-bottom: 1px solid var(--border); flex: none; }
+.hub-chat-head .skeleton { padding: 0; margin: 0; }
 .hub-chat-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .hub-chat-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-chat-title .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
