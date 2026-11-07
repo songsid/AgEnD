@@ -205,6 +205,9 @@ const usageOf = (m: Record<string, unknown>, provider: { stale?: boolean }): Acc
   return { percent: Math.max(0, Math.min(100, Math.round(m.used as number))), windowMs: m.windowMs as number, ...(resetsAt ? { resetsAt } : {}), ...(provider.stale ? { stale: true } : {}) };
 };
 
+/** A window whose reset time is already behind `now` — a reset, unlike an expiry (`resetKind: "expiry"`); an unreadable time is not one. */
+const resetElapsed = (m: Record<string, unknown>, now: number): boolean => typeof m.resetsAt === "string" && m.resetKind !== "expiry" && Date.parse(m.resetsAt) <= now;
+
 /**
  * The usage row's weekly metric: the percent metric whose window is closest to a week (at least two days). From a
  * usage payload's providers (ProviderUsage), by the provider id the usage panel gives a backend (and `:<profile>`).
@@ -223,13 +226,16 @@ export function weeklyUsage(provider: { metrics?: ReadonlyArray<Record<string, u
 /**
  * #3212: the usage row's short window ("5h"): the percent metric whose window is under two days — the shortest one when
  * there are several — as the usage panel's compact line picks it (`compactSlots`). Never a per-model quota, and never a
- * window that has reset since the read (its percent would be the old window's). Same shape as `weeklyUsage`.
+ * window that has reset since the read (its percent would be the old window's): one already marked `resetPassed`, and one whose
+ * `resetsAt` is not ahead of `now`. The usage snapshot is served unchanged inside its TTL and while it is revalidated, so a
+ * window read just before it reset must not be projected after it. An expiry (`resetKind: "expiry"`) is not a reset and a
+ * time that cannot be read says nothing, as `ageMetric` (usage-api.ts) has it. Same shape as `weeklyUsage`.
  */
-export function shortUsage(provider: { metrics?: ReadonlyArray<Record<string, unknown>>; stale?: boolean } | undefined): AccountUsage | undefined {
+export function shortUsage(provider: { metrics?: ReadonlyArray<Record<string, unknown>>; stale?: boolean } | undefined, now: number = Date.now()): AccountUsage | undefined {
   if (!provider || !Array.isArray(provider.metrics)) return undefined;
   let best: Record<string, unknown> | undefined;
   for (const m of provider.metrics) {
-    if (m.scope === "model" || m.type !== "percent" || typeof m.used !== "number" || m.resetPassed) continue;
+    if (m.scope === "model" || m.type !== "percent" || typeof m.used !== "number" || m.resetPassed || resetElapsed(m, now)) continue;
     if (typeof m.windowMs !== "number" || !(m.windowMs > 0) || m.windowMs >= TWO_DAYS) continue;
     if (!best || (m.windowMs as number) < (best.windowMs as number)) best = m;
   }
