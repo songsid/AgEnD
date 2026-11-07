@@ -34,10 +34,14 @@ export function GeneralLocation({ name, attentionOnly = false }) {
   };
   useEffect(() => { if (!guestPage()) void read(); }, [name, attentionKey]);
   if (guestPage()) return null;
-  return html`<section id="general-location" class="card general-location"><h2>${tr("label")}</h2>
+  // alpha.6 feedback (#3): the same card as the Shared agent settings below it (card s-group: a title and its note, then
+  // labelled fields in the grid, then the actions) — not a heading, a bare inline select and a full-width button. A select
+  // is as wide as its longest option unless bounded: a paired PC's long name ran the card off the right edge.
+  const rows = (data?.generals || []).filter(row => !name || row.name === name);
+  return html`<section id="general-location" class="card s-group general-location"><div><h3>${tr("label")}</h3>${!attentionOnly ? html`<p class="note">${tr("history")}</p>` : null}</div>
     ${error ? html`<p role="alert">${error}</p>` : null}
-    ${(data?.generals || []).filter(row => !name || row.name === name).map(row => html`<${LocationRow} key=${row.name + row.revision} row=${row} machines=${data.machines || []} attentionOnly=${attentionOnly} refresh=${read} />`)}
-    ${!attentionOnly ? html`<button type="button" class="btn btn-sm" onClick=${read}>${t("settings.refresh")}</button>` : null}
+    ${rows.map(row => html`<${LocationRow} key=${row.name + row.revision} row=${row} machines=${data.machines || []} attentionOnly=${attentionOnly} refresh=${read} />`)}
+    ${!attentionOnly && !rows.length ? html`<div class="general-location-actions"><button type="button" class="btn btn-sm" onClick=${read}>${t("settings.refresh")}</button></div>` : null}
   </section>`;
 }
 function LocationRow({ row, machines, attentionOnly, refresh }) {
@@ -54,18 +58,28 @@ function LocationRow({ row, machines, attentionOnly, refresh }) {
     finally { flight.current = false; if (lease.current()) setBusy(false); }
   };
   if (attentionOnly && !row.offline && !row.hold) return null;
+  const id = `gl-${row.name}`;
+  const recover = row.canSwitchBack || row.hold === "start";
   return html`<div class="general-location-row" data-general=${row.name}>
-    <strong>${row.displayName}</strong><p>${row.location === "host" ? tr("host") : `${machines.find(item => item.id === row.machineId)?.name || tr("windows")} · ${row.cli}`}</p>
+    <p class="general-location-now"><strong>${row.displayName}</strong><span>${row.location === "host" ? tr("host") : `${machines.find(item => item.id === row.machineId)?.name || tr("windows")} · ${row.cli}`}</span></p>
     ${row.offline || row.hold ? html`<p role="alert">${tr(row.hold || "offline")}</p>` : null}
-    <p class="note">${tr("history")}</p>
-    ${row.canSwitchBack ? html`<button type="button" class="btn" disabled=${busy || row.switching} onClick=${() => propose({ location: "host" })}>${tr("host")}</button>` : null}
-    ${row.hold === "start" ? html`<button type="button" class="btn" disabled=${busy || row.switching} onClick=${() => propose(row.retryTarget || (row.location === "host" ? { location: "host" } : { location: "windows", machineId: row.machineId, cli: row.cli, model: row.model }))}>${t("chat.start")}</button>` : null}
-    ${!attentionOnly ? html`<label>${tr("label")}<select value=${target} disabled=${busy || row.switching} onChange=${e => { setTarget(e.target.value); setModel(""); }}>
-      <option value="host">${tr("host")}</option>${machines.map(item => html`<option value=${item.id} disabled=${!item.online}>${item.name}</option>`)}
-    </select></label>
-    ${target !== "host" ? html`<label>${t("settings.backend")}<select value=${cli} onChange=${e => { setCli(e.target.value); setModel(""); }}>
-      ${["claude-code", "codex"].map(id => html`<option value=${id} disabled=${!machine?.clis.some(item => item.id === id)}>${id}</option>`)}
-    </select></label><${ModelSelect} value=${model} onChange=${setModel} backend=${cli} runtime="windows" machineId=${target} instance=${row.name} />` : null}
-    <button type="button" class="btn btn-primary" disabled=${busy || row.switching || target === "host" && !row.canSwitchBack || target !== "host" && (!machine?.online || !machine.clis.some(item => item.id === cli))} onClick=${() => propose(target === "host" ? { location: "host" } : { location: "windows", machineId: target, cli, model })}>${t("settings.save")}</button>` : null}
+    ${attentionOnly ? html`<p class="note">${tr("history")}</p>` : null}
+    ${recover ? html`<div class="general-location-actions">
+      ${row.canSwitchBack ? html`<button type="button" class="btn" disabled=${busy || row.switching} onClick=${() => propose({ location: "host" })}>${tr("host")}</button>` : null}
+      ${row.hold === "start" ? html`<button type="button" class="btn" disabled=${busy || row.switching} onClick=${() => propose(row.retryTarget || (row.location === "host" ? { location: "host" } : { location: "windows", machineId: row.machineId, cli: row.cli, model: row.model }))}>${t("chat.start")}</button>` : null}
+    </div>` : null}
+    ${!attentionOnly ? html`<div class="grid2">
+      <div class="field"><label for=${`${id}-target`}>${tr("label")}</label><select id=${`${id}-target`} value=${target} disabled=${busy || row.switching} onChange=${e => { setTarget(e.target.value); setModel(""); }}>
+        <option value="host">${tr("host")}</option>${machines.map(item => html`<option value=${item.id} disabled=${!item.online}>${item.name}</option>`)}
+      </select></div>
+      ${target !== "host" ? html`<div class="field"><label for=${`${id}-cli`}>${t("settings.backend")}</label><select id=${`${id}-cli`} value=${cli} onChange=${e => { setCli(e.target.value); setModel(""); }}>
+        ${["claude-code", "codex"].map(id => html`<option value=${id} disabled=${!machine?.clis.some(item => item.id === id)}>${id}</option>`)}
+      </select></div>` : null}
+    </div>
+    ${target !== "host" ? html`<${ModelSelect} value=${model} onChange=${setModel} backend=${cli} runtime="windows" machineId=${target} instance=${row.name} />` : null}
+    <div class="general-location-actions">
+      <button type="button" class="btn btn-sm" onClick=${refresh}>${t("settings.refresh")}</button>
+      <button type="button" class="btn btn-primary btn-sm" disabled=${busy || row.switching || target === "host" && !row.canSwitchBack || target !== "host" && (!machine?.online || !machine.clis.some(item => item.id === cli))} onClick=${() => propose(target === "host" ? { location: "host" } : { location: "windows", machineId: target, cli, model })}>${t("settings.save")}</button>
+    </div>` : null}
   </div>`;
 }

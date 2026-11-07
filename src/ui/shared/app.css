@@ -4088,3 +4088,19 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Quota preferences obey the panel CSP: no inline styles. */
 .p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }
+
+/* alpha.6 feedback (#3): one Settings card. Every section's top-level card has the same frame: a 1px border, the --r-md
+   corners the lists, drawers and disclosures beside it already have, and 24px inside (16px on a phone). The editor and the
+   terminal cards stay full-bleed; a card inside a drawer or a disclosure is part of that box. Nothing in a card is wider
+   than the card: a select is as wide as its longest option unless bounded (a paired PC's long name ran the General
+   location card off the right edge). */
+.p-settings .s-section-layout :is(.card, details.s-ui-disclosure, .runtime-connect-guide, .s-look-advanced):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { border: 1px solid var(--border); border-radius: var(--r-md); }
+.p-settings .s-section-layout .card:not(.s-dev, .s-access-terminal):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { padding: 24px; }
+@media (max-width: 600px) {
+  .p-settings .s-section-layout .card:not(.s-dev, .s-access-terminal):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { padding: 16px; }
+}
+.p-settings .s-section-layout :is(select, textarea, input:not([type="checkbox"], [type="radio"])) { max-width: 100%; }
+.general-location-row { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.general-location-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; }
+.general-location-now > span { color: var(--text-2); }
+.general-location-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }
