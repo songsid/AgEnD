@@ -100,8 +100,11 @@ describe("the page", () => {
     await open();
     // The lead is the page head's (settings-layout.js), not the form's own: one sentence, once.
     expect([text($(".s-page-lead")), p.root.querySelectorAll(".s-page-lead").length]).toEqual(["Changes here apply to every agent that has no setting of its own — including agents you create later.", 1]);
-    const cards = p.root.querySelectorAll(".s-group");
+    const cards = p.root.querySelectorAll(".s-shared .s-group");
     expect(cards.map((c: any) => text(c.querySelector("h3")))).toEqual(["Shared agent settings", "System & channels", "Shared agent settings", "System & channels"]);
+    // alpha.6 feedback (#3): General location above them is the same card (card s-group: its title in an h3), not a page heading.
+    const location = $("#general-location");
+    expect([location.classList.contains("card"), location.classList.contains("s-group"), !!location.querySelector("h2"), text(location.querySelector("h3"))]).toEqual([true, true, false, "Run General on"]);
     // The hang detector is the one setting of the fleet's group that an agent may also set itself: the Advanced card (where it is) says so.
     expect(cards.map((c: any) => text(c.querySelector("p.note")))).toEqual(["An individual agent can override these", "One value for the whole fleet — an agent can't change it",
       "An individual agent can override these", "One value for the whole fleet — an agent can't change it, except the hang detector, which an agent can also set for itself"]);
@@ -612,9 +615,9 @@ describe("the words", () => {
     setLang("zh-TW");
     await open();
     expect(text($(".s-page-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
-    expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
+    expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
     expect(text($("details.drawer summary"))).toBe("進階設定（10 項）");
-    expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
+    expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
       "個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改；只有卡住偵測可以另外在個別 Agent 設定"]);
     expect(pill("g-dash")).toBe("6/6 套用中 · ops 部分自訂");
     expect(pillTip("g-dash")).toContain("自己設定的：辦公室: ops。");
