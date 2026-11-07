@@ -61,6 +61,8 @@ The manual command remains available under **Manual connection command**:
 
 `run` still reconnects a saved profile. Connection defaults never replace its credential or retarget it to another server. Generic packages without `agend-server.json` keep supporting the explicit `--server` command. The connection-ready download uses an administrator POST with the existing same-origin and CSRF protections; GET download URLs cannot embed a caller-selected server.
 
+Creating a pairing code and approving a computer also take an administrator session on the directly reached dashboard (cookie and CSRF): the page's **Connect a computer** and **Approve computer** buttons. A request carrying only the `X-Agend-Token` header is refused (#3327); see the [threat model](SECURITY.md#threat-model).
+
 The ZIP download from Settings requires an administrator session on the local dashboard and is unavailable through public gateway links; the one-line install routes above are separate, public and read-only. It includes program assets, license notices and, for a connection-ready download, the administrator-selected public server origin. It excludes pairing codes, machine credentials, CLI sign-ins and workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
 
 ## One-line install (Windows PowerShell)

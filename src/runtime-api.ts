@@ -2,7 +2,7 @@
 import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
-import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, type WindowsCliApiContext } from "./windows-cli-api.js";
+import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, runtimePairingAdmin, type WindowsCliApiContext } from "./windows-cli-api.js";
 import { INSTALLABLE_CLIS, isInstallableCli, type InstallableCliId } from "./runtime-cli-install.js";
 import type { RuntimeSwitchStates } from "./runtime-protocol.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
@@ -178,9 +178,14 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     json(res, machine ? 200 : 404, machine ? route[2] === "inventory" ? { machineId: machine.id, inventory: machine.inventory ?? null, updatedAt: machine.inventoryUpdatedAt ?? null, status: machine.status } : { machine } : { error: "Runtime machine not found" }); return true;
   }
   if (method !== "POST" || url.pathname !== "/ui/runtimes/pairing" && !route) { json(res, 404, { error: "Unknown runtime operation" }); return true; }
+  // #3327: a pairing code and an approval only from an administrator signed in on this dashboard (its session and CSRF:
+  // the page's own buttons), never the bare header token — asked again after the body is read.
+  const pairingStep = url.pathname === "/ui/runtimes/pairing" || route?.[2] === "approve";
+  const allowed = (): boolean => nativeCliAuthorization(req, url, ctx) && (!pairingStep || runtimePairingAdmin(req, url, ctx));
+  if (!allowed()) { json(res, 403, { error: "Pairing a computer needs an administrator signed in on this dashboard" }); return true; }
   void (async () => {
     const raw = await readBoundedWebBody(req, 4096);
-    if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
+    if (!allowed()) { json(res, 403, { error: "Authorization expired" }); return; }
     const body: unknown = raw.length ? JSON.parse(raw.toString("utf8")) : {};
     if (!body || typeof body !== "object" || Array.isArray(body)) throw Error("Runtime operation needs an object");
     const input = body as Record<string, unknown>;
