@@ -394,7 +394,7 @@ agend access lock <name>        # Lock instance access (whitelist only)
 agend access unlock <name>      # Use the saved allowlist (legacy pairing mode)
 ```
 
-Access codes are no longer generated or confirmed. Add allowed users in **Settings → Connections → the bot → Allowed users** and apply through the existing confirmation. `unlock` retains the legacy `pairing` mode name but still admits only the effective allowlist; it does not open access. Saved and YAML grants are combined as described in [access configuration](configuration.md#channelaccess).
+Access codes are no longer generated or confirmed. Add allowed users in **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)** and apply through the existing confirmation. `unlock` retains the legacy `pairing` mode name but still admits only the effective allowlist; it does not open access. Saved and YAML grants are combined as described in [access configuration](configuration.md#channelaccess).
 
 ## Setup & installation
 

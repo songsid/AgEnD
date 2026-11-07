@@ -262,7 +262,7 @@ agend access lock <name>        # 鎖定實例存取（僅限白名單）
 agend access unlock <name>      # 使用持久化允許名單（舊 pairing 模式）
 ```
 
-不再產生或確認存取碼。請到「設定 → 連線 → 該 bot → 允許使用者」新增名單，再透過原有確認流程套用。`unlock` 保留舊的 `pairing` 模式名稱，但仍只允許有效名單中的使用者，不會開放給所有人。持久化與 YAML 授權會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
+不再產生或確認存取碼。請到「設定 → 聊天與連線 → 聊天連線 → 該 bot → 允許使用者（主 bot）」新增名單，再透過原有確認流程套用。`unlock` 保留舊的 `pairing` 模式名稱，但仍只允許有效名單中的使用者，不會開放給所有人。持久化與 YAML 授權會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
 
 ## 設定與安裝 (Setup & Installation)
 
