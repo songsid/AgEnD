@@ -1,28 +1,108 @@
-/* #3212: Settings → Agents → Accounts — linked by accounts-view.js (a page holding an older app.css still draws it). */
+/* #3212: Settings → Agents → Accounts — linked by accounts-view.js (a page holding an older app.css still draws it).
+ * Box layout: each CLI is a warm-grey card; each account is a white box inside it (a status bar on its left edge) with three layers —
+ * the title bar (name, state, default tag · the buttons), the meta bar (who, used by, week) and, for Keep sign-in alive, a foot.
+ * Nothing here is a layout the page waits on: the used-by list and the `!` hints are layers over the box (position: absolute),
+ * so opening one never moves the box or the one below it. No inline styles are used (CSP style-src 'self'). */
 .s-accounts { display: grid; gap: var(--s-3); }
-.s-account-card { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); display: grid; gap: var(--s-2); background: var(--surface); }
-.s-account-head { display: flex; align-items: center; gap: var(--s-2); }
-.s-account-rows { display: grid; gap: var(--s-1); }
-.s-account-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.s-account-who { flex: 1 1 16em; min-width: 0; display: grid; gap: 2px; }
-.s-account-who small { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+
+/* The palette: the dark theme is the default; the light theme follows tokens.css (the same two selectors, the same values). */
+.s-accounts {
+  --ac-card-bg: #262626; --ac-card-line: #3d3d3d; --ac-row-bg: #303030; --ac-row-line: #444444;
+  --ac-machine-bg: #1f1f1f; --ac-machine-line: #3a3a3a;
+  --ac-ok: #4cc38a; --ac-warn: #e3b341; --ac-idle: #8a8a8a;
+  --ac-pill-bg: #3a3a3a; --ac-pill-line: #4a4a4a; --ac-tools-bg: #262626; --ac-tools-line: #444444;
+  --ac-foot-bg: #292929; --ac-foot-line: #3f3f3f; --ac-meter-track: #4a4a4a;
+  --ac-tip-bg: #0f0f0f; --ac-tip-text: #f3f3f3; --ac-tip-line: #5a5a5a;
+  --ac-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); --ac-float: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .s-accounts {
+    --ac-card-bg: #f4f2ec; --ac-card-line: #d8d3c8; --ac-row-bg: #ffffff; --ac-row-line: #dcd7cb;
+    --ac-machine-bg: #eae6dc; --ac-machine-line: #d2cdc0;
+    --ac-ok: #2f7d4a; --ac-warn: #d99b26; --ac-idle: #8c887d;
+    --ac-pill-bg: #f3f1ea; --ac-pill-line: #dedad0; --ac-tools-bg: #f7f5ef; --ac-tools-line: #e5e1d6;
+    --ac-foot-bg: #f9f8f4; --ac-foot-line: #eae7de; --ac-meter-track: #dfe5ee;
+    --ac-tip-bg: #222222; --ac-tip-text: #ffffff; --ac-tip-line: #222222;
+    --ac-shadow: 0 1px 2px rgba(60, 50, 30, 0.08); --ac-float: 0 10px 28px rgba(40, 32, 16, 0.2);
+  }
+}
+:root[data-theme="light"] .s-accounts {
+  --ac-card-bg: #f4f2ec; --ac-card-line: #d8d3c8; --ac-row-bg: #ffffff; --ac-row-line: #dcd7cb;
+  --ac-machine-bg: #eae6dc; --ac-machine-line: #d2cdc0;
+  --ac-ok: #2f7d4a; --ac-warn: #d99b26; --ac-idle: #8c887d;
+  --ac-pill-bg: #f3f1ea; --ac-pill-line: #dedad0; --ac-tools-bg: #f7f5ef; --ac-tools-line: #e5e1d6;
+  --ac-foot-bg: #f9f8f4; --ac-foot-line: #eae7de; --ac-meter-track: #dfe5ee;
+  --ac-tip-bg: #222222; --ac-tip-text: #ffffff; --ac-tip-line: #222222;
+  --ac-shadow: 0 1px 2px rgba(60, 50, 30, 0.08); --ac-float: 0 10px 28px rgba(40, 32, 16, 0.2);
+}
+
+/* One card per CLI. */
+.s-accounts .s-account-card { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--ac-card-line); border-radius: 14px; background: var(--ac-card-bg); overflow: visible; }
+.s-account-head { display: flex; align-items: center; gap: var(--s-2); padding-bottom: 12px; border-bottom: 1px solid var(--ac-card-line); }
+.s-account-head .s-account-add { margin-left: auto; }
+.s-accounts .s-account-rows { display: grid; gap: 12px; }
+
+/* One box per account. overflow stays visible: the used-by list and the hints float out of it. */
+.s-accounts .s-account-row { display: block; position: relative; min-height: 0; padding: 13px 16px; border: 1px solid var(--ac-row-line); border-radius: 10px; background: var(--ac-row-bg); box-shadow: var(--ac-shadow); overflow: visible; }
+.s-account-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 9px 0 0 9px; background: var(--ac-ok); z-index: 2; }
+.s-account-row:has(.s-auth-state.is-not_signed_in)::before { background: var(--ac-warn); }
+.s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old))::before { background: var(--ac-idle); }
+.s-account-row details { margin-top: 10px; }
+.s-account-row .s-account-why { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--ac-row-line); border-radius: 0 8px 8px 0; background: var(--ac-foot-bg); }
+
+/* Layer 1: the title bar — name, state, default tag on the left; a compact button group on the right. */
+.s-account-title-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.s-account-title-left { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.s-account-title-left strong { font-size: var(--fs-md); line-height: 1.4; overflow-wrap: anywhere; }
+.s-account-default-tag { background: var(--accent-dim); color: var(--accent); font-weight: var(--fw-semibold); }
+.s-account-row .s-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: auto; padding: 3px; border: 1px solid var(--ac-tools-line); border-radius: 8px; background: var(--ac-tools-bg); }
+.s-account-row .s-actions:empty { display: none; }
+.s-account-row .s-actions .btn { border-radius: 6px; }
+.s-account-row .s-actions .btn-ghost { background: transparent; border-color: transparent; }
+.s-account-row .s-actions .btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
+.s-account-row .s-account-remove { color: var(--danger, var(--text-2)); }
+
+/* Layer 2: the meta bar — who it is, who uses it, its week. */
+.s-account-meta-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 10px; }
+.s-account-identity, .s-account-used, .s-account-usage { display: inline-flex; align-items: center; min-width: 0; padding: 4px 10px; border: 1px solid var(--ac-pill-line); border-radius: var(--r-full); background: var(--ac-pill-bg); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.4; }
+.s-account-identity { font-family: var(--font-mono); color: var(--text); overflow-wrap: anywhere; }
+.s-account-used { font-family: inherit; color: var(--text-3); }
+.s-account-usage { gap: 8px; font-weight: var(--fw-semibold); }
 .s-account-usage.is-stale { color: var(--text-3); }
-.s-account-row .s-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); }
-.s-account-row details { flex-basis: 100%; }
-.s-account-default { margin: var(--s-1) 0 0; }
-.s-account-machine { border-top: 1px dashed var(--border); padding-top: var(--s-2); }
+.s-account-usage.is-none { display: none; }   /* a computer reports no usage: the dash says nothing, so it is not drawn (the node stays) */
+.s-usage-meter { appearance: none; -webkit-appearance: none; flex: none; width: 84px; height: 8px; border: 0; border-radius: var(--r-full); overflow: hidden; background: var(--ac-meter-track); color: var(--accent); }
+.s-usage-meter::-webkit-progress-bar { background: var(--ac-meter-track); border-radius: var(--r-full); }
+.s-usage-meter::-webkit-progress-value { background: var(--accent); border-radius: var(--r-full); }
+.s-usage-meter::-moz-progress-bar { background: var(--accent); border-radius: var(--r-full); }
+.s-account-usage.is-stale .s-usage-meter::-webkit-progress-value { background: var(--text-3); }
+.s-account-usage.is-stale .s-usage-meter::-moz-progress-bar { background: var(--text-3); }
+
+/* "Used by N agents ▾": a button when agents use the account; its list floats under it (position: absolute — it never moves the box or the next one). */
+.s-used-wrap { position: relative; display: inline-block; }
+button.s-account-used { cursor: pointer; }
+.s-account-used.has-users { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); background: var(--accent-dim); font-weight: var(--fw-semibold); }
+.s-account-used.has-users:hover { border-color: var(--accent); }
+.s-account-used.has-users::after { content: "▾"; margin-left: 6px; font-size: 10px; }
+.s-account-used.has-users[aria-expanded="true"]::after { content: "▴"; }
+.s-used-popover { position: absolute; top: calc(100% + 5px); left: 0; z-index: 100; box-sizing: border-box; width: max-content; min-width: 240px; max-width: min(380px, calc(100vw - 96px)); padding: 8px; border: 1px solid var(--ac-row-line); border-radius: 12px; background: var(--ac-row-bg); box-shadow: var(--ac-float); }
+.s-used-popover-title { margin: 0; padding: 2px 8px 8px; border-bottom: 1px solid var(--ac-row-line); color: var(--text-2); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.s-used-popover ul { list-style: none; margin: 0; padding: 6px 0 0; display: grid; gap: 4px; }
+.s-used-popover li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px; border-radius: 8px; background: var(--ac-foot-bg); }
+.s-used-agent { min-width: 0; font-family: var(--font-mono); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.s-used-agent::before { content: "●"; margin-right: 8px; color: var(--ac-ok); font-size: 8px; vertical-align: middle; }
+.s-used-popover .s-used-go { flex: none; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); background: var(--accent-dim); }
+
+.s-account-default { margin: 0; }
+.s-accounts .s-account-default { padding: 13px 16px; border: 1px solid var(--ac-row-line); border-radius: 10px; background: var(--ac-row-bg); box-shadow: var(--ac-shadow); }
 .s-account-move { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
 .s-account-move .check small { margin-left: var(--s-2); }
-/* #3212 PR 2: + Add account at the card's end; Remove's in-use list (a tab with an older copy of this file only loses the layout). */
-.s-account-head .s-account-add { margin-left: auto; }
-.s-account-row .s-account-remove { color: var(--danger, var(--text-2)); }
+/* #3212 PR 2: Remove's in-use list (a tab with an older copy of this file only loses the layout). */
 .s-account-inuse ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
 .s-account-inuse li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .s-account-inuse li > span { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
 .s-account-inuse li > small { flex-basis: 100%; }
-/* #3190 Part 3c: a paired computer's accounts under its name (a tab with an older copy of this file only loses the layout). */
-.s-account-machine { display: grid; gap: var(--s-1); }
-.s-account-machine-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+/* #3190 Part 3c: a paired computer's accounts under its name — a darker tray holding the same account boxes. */
+.s-accounts .s-account-machine { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--ac-machine-line); border-radius: 12px; background: var(--ac-machine-bg); }
+.s-account-machine-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding-bottom: 10px; border-bottom: 1px solid var(--ac-machine-line); }
 .s-account-machine-head .s-account-add { margin-left: auto; }
 .s-account-why { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
-.s-account-usage.is-none { color: var(--text-3); }

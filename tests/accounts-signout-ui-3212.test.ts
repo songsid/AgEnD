@@ -134,7 +134,7 @@ describe("Sign out… and Switch account… (#3212 PR 3)", () => {
   it("zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
-    expect([text(rowOf("claude-code", "default").querySelector(".s-account-switch")), text(rowOf("claude-code", "work").querySelector(".s-account-signout"))]).toEqual(["切換帳號…", "登出…"]);
+    expect([text(rowOf("claude-code", "default").querySelector(".s-account-switch")), text(rowOf("claude-code", "work").querySelector(".s-account-signout"))]).toEqual(["切換帳號", "登出"]);
     rowOf("claude-code", "work").querySelector(".s-account-signout").click(); await settle(6);
     expect(text(dialog())).toContain("要登出 Claude Code 的帳號「work」嗎？");
   });
