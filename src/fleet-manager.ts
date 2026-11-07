@@ -403,7 +403,7 @@ import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSess
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, hostSessionHere, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -3195,6 +3195,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
+    // D3 (decision bcbb541f): on a fleet with a chat connection, a change no General can take a card for would wait for
+    // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
+    // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
+    // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.)
+    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && !this.settingsCardPossible(store, id)) {
+      const handle = auth.session.handle;
+      const here = (): boolean => { const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+        return now.kind === "ok" && now.session.handle === handle && hostSessionHere(now.session, req) && !this.isWebOnlyFleet(); };
+      return {
+        label: t("settings_confirm.host_operator_label"),
+        current: () => here() && !this.settingsCardPossible(store, id),
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin (no General could take it)"); },
+      };
+    }
     // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there. #3008: except
     // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
     // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
@@ -3585,6 +3600,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // switch checks plus `completed` — a completed execution can never authorize another write (mutate refuses).
         return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && (execution.completed || execution.current()), execution);
       } });
+  }
+
+  /**
+   * D3: whether a General could take this change's confirmation card now — the same authority and routes
+   * promptSettingsChange posts by. False: it would wait for the host's command (confirmation kind host_cli).
+   */
+  private settingsCardPossible(store: SettingsConfirmationStore, id: string): boolean {
+    const authority = this.settingsChatAuthority(store, id);
+    if (!authority) return false;
+    const excluded = new Set(store.affectedConnections(id));
+    return Object.keys(this.fleetConfig?.instances ?? {}).some(name => !!this.settingsGeneralRoute(name, authority.platform, excluded));
   }
 
   private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
