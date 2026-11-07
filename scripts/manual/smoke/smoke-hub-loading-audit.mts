@@ -4,6 +4,7 @@ import { createServer } from "node:https";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 const REPO = process.env.REPO!, OUT = process.env.OUT!, PW = process.env.PW_DIR!;
 mkdirSync(OUT, { recursive: true });
 const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
@@ -25,6 +26,9 @@ const room = (await rig.call(asker, "POST", "/hub/v1/rooms", { exposureId: id, g
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const results: any = { browser: browser.version(), network: { latency: 150, download: 250_000, upload: 100_000 }, cases: [] };
+const pending: Record<string, string> = { "hub-session": ".p-hub .skeleton:visible", "hub-chats": ".hub-home .skeleton:visible",
+  "hub-room-lookup": ".hub-room-loading .skeleton:visible", "hub-room-history": ".hub-scroller .skeleton:visible",
+  "hub-owner": ".hub-owner .skeleton:visible", "hub-owner-activity": ".hub-owner .skeleton:visible", "hub-admin": ".hub-admin .skeleton:visible", "hub-new-chat": "dialog .skeleton:visible" };
 const cases = [
   { device: "desk", theme: "light", lang: "en" }, { device: "desk", theme: "dark", lang: "zh-TW" },
   { device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" },
@@ -45,12 +49,16 @@ try {
     for (const s of surfaces) {
       if (process.env.ONLY && !process.env.ONLY.split(",").includes(s.name)) continue;
       const ctx = await browser.newContext({ viewport: c.device === "desk" ? { width: 1366, height: 900 } : { width: 390, height: 844 },
-        isMobile: c.device === "phone", hasTouch: c.device === "phone", locale: c.lang, colorScheme: c.theme, ignoreHTTPSErrors: true });
+        isMobile: c.device === "phone", hasTouch: c.device === "phone", locale: c.lang, colorScheme: c.theme, ignoreHTTPSErrors: true, reducedMotion: c.lang === "zh-TW" ? "reduce" : "no-preference" });
       const [name, value] = s.who.cookie.split("=");
       await ctx.addCookies([{ name, value, url: origin, httpOnly: true, secure: true }]);
       await ctx.addInitScript((v: any) => { localStorage.setItem("agend_lang", v.lang); localStorage.setItem("agend_theme", v.theme); localStorage.setItem("agend_tour_done", "1"); }, c);
       const page = await ctx.newPage(), cdp = await ctx.newCDPSession(page);
       await cdp.send("Network.enable"); await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 250_000, uploadThroughput: 100_000 });
+      for (const [env, path, url, mime] of [["OLD_CSS", "src/ui/shared/app.css", "**/assets/app.css*", "text/css"], ["OLD_STATES", "src/ui/shared/ui-states.js", "**/assets/ui-states.js*", "text/javascript"]]) {
+        if (process.env[env!]) { const body = execFileSync("git", ["-C", REPO, "show", `${process.env[env!]}:${path}`], { encoding: "utf8" });
+          await page.route(url!, (route: any) => route.fulfill({ contentType: mime, body })); }
+      }
       let release!: () => void, seen!: () => void;
       const waiting = new Promise<void>(r => { release = r; }), requested = new Promise<void>(r => { seen = r; });
       await page.route("**/hub/v1/**", async (route: any) => { if (s.match(new URL(route.request().url()))) { seen(); await waiting; }
@@ -63,9 +71,28 @@ try {
         await page.waitForTimeout(800);
         const data = await page.evaluate(() => ({ skeletons: document.querySelectorAll(".skeleton").length, busy: document.querySelectorAll('[aria-busy="true"]').length,
           text: document.body.innerText.slice(-2500), overflow: document.documentElement.scrollWidth > innerWidth }));
+        if (process.env.EXPECT_SKELETON === "1") {
+          const skeleton = page.locator(pending[s.name]).first();
+          if (!await skeleton.isVisible()) throw new Error(`${tag}/${s.name}: missing skeleton`);
+          const paint = await skeleton.evaluate((el: Element) => ({ opacity: getComputedStyle(el).opacity, animation: getComputedStyle(el).animationName,
+            reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, color: getComputedStyle(el.querySelector(".sk-line") || el).backgroundColor }));
+          if (paint.opacity === "0" || paint.color === "rgba(0, 0, 0, 0)" || paint.reduced && paint.animation !== "none") throw new Error(`${s.name}: bad paint ${JSON.stringify(paint)}`);
+          if (errors.length || data.overflow) throw new Error(`${tag}/${s.name}: errors/overflow ${errors}`);
+        }
+        const bounds = async () => page.locator(".p-hub .panel-head, .p-hub .hub-chat-head").first().evaluate((el: Element) => {
+          const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+        const frame = await bounds();
         await page.screenshot({ path: join(OUT, `${tag}-${s.name}.png`) });
         results.cases.push({ tag, name: s.name, ...data, errors });
         console.log(`${tag} ${s.name}: skeletons=${data.skeletons} busy=${data.busy}`);
+        release();
+        if (process.env.EXPECT_SKELETON === "1") {
+          await page.locator(pending[s.name]).first().waitFor({ state: "hidden", timeout: 25_000 });
+          if (errors.length) throw new Error(`${tag}/${s.name}: settled page errors ${errors}`);
+          const settled = await bounds();
+          if (Object.keys(frame).some(k => Math.abs(frame[k] - settled[k]) > 2)) throw new Error(`${tag}/${s.name}: header moved ${JSON.stringify({ frame, settled })}`);
+        }
       } finally { release(); await ctx.close(); }
     }
   }

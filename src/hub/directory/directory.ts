@@ -47,6 +47,21 @@ class InsecureTransportError extends Error {
   }
 }
 
+/** Compare base RDN boundaries, tolerating formatting after commas without splitting escaped commas. */
+function withinGroupBase(dn: string, base: string): boolean {
+  const parts = (text: string): string[] => {
+    const out: string[] = []; let part = "", escaped = false;
+    for (const c of text) {
+      if (c === "," && !escaped) { out.push(part.trimStart().toLowerCase()); part = ""; }
+      else part += c;
+      escaped = c === "\\" && !escaped;
+    }
+    out.push(part.trimStart().toLowerCase()); return out;
+  };
+  const child = parts(dn), parent = parts(base);
+  return child.length > parent.length && parent.every((rdn, i) => rdn.length > 0 && child[child.length - parent.length + i] === rdn);
+}
+
 type Ldapts = typeof import("ldapts");
 let ldaptsModule: Promise<Ldapts> | undefined;
 function loadLdapts(): Promise<Ldapts> {
@@ -251,7 +266,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       if (!groupSupport) return { ok: false, reason: "unsupported" };
       if (closed) return { ok: false, reason: "unknown" };
       if (typeof dn !== "string" || !/^[^\u0000-\u001f\u007f]{1,1024}$/.test(dn)
-        || !dn.toLowerCase().endsWith(`,${cfg.baseDn.toLowerCase()}`)) return { ok: false, reason: "invalid" };
+        || !withinGroupBase(dn, cfg.baseDn)) return { ok: false, reason: "invalid" };
       let service: Session | undefined;
       try {
         service = await openService();
@@ -260,13 +275,13 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         if (closed || found.length > 1) return { ok: false, reason: "unknown" };
         const entry = found[0];
         if (!entry) return { ok: false, reason: "not-found" };
+        if (!withinGroupBase(entry.dn, cfg.baseDn)) return { ok: false, reason: "invalid" };
         const id = groupEntry(entry);
         if (!id) return { ok: false, reason: "not-security-group" };
         const { AndFilter, EqualityFilter, FilterParser } = await loadLdapts();
         const filter = new AndFilter({ filters: [FilterParser.parseString("(objectClass=group)"), new EqualityFilter(objectIdMatch("ad", id)!)] });
         const again = await service.search(filter, attrs, ["objectGUID"], "sub", cfg.baseDn, undefined, true);
-        if (closed || again.length !== 1 || !groupEntry(again[0]!, id) || again[0]!.dn.toLowerCase() !== dn.toLowerCase()
-          || entry.dn.toLowerCase() !== dn.toLowerCase()) return { ok: false, reason: "unknown" };
+        if (closed || again.length !== 1 || !groupEntry(again[0]!, id) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
         return { ok: true, group: Object.freeze({ key: Object.freeze({ realm: cfg.realm, objectId: id }), dn: again[0]!.dn }) };
       } catch { report("group-lookup", "unknown"); return { ok: false, reason: "unknown" }; }
       finally { await service?.close(); }

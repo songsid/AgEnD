@@ -10,7 +10,7 @@ import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { lang, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
-import { Empty } from "/assets/ui-states.js";
+import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -77,13 +77,15 @@ const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConf
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
   const s = useSession();
-  useEffect(() => { linkHubCss(); }, []);
+  useEffect(() => { linkHubCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
   useEffect(() => { setTitle(hw(TITLES[tab])); }, [tab]);
-  let body = null;
+  let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
+    : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
+    : html`<${Skeleton} variant="rows" lines=${4} />`;
   if (s === null) body = html`<${HubSignIn} />`;
   else if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
-  if (s && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
+  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
   const pageTitle = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : hw(TITLES[tab]);
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
@@ -96,6 +98,7 @@ export function HubPanel({ route }) {
 export function HubSessionMenu() {
   const s = useSession();
   const [busy, setBusy] = useState(false);
+  if (s === undefined) return html`<div class="session hub-session"><${Skeleton} variant="inline" lines=${1} /></div>`;
   if (!s) return html`<div class="session hub-session"><span class="side-row"><span class="dot" aria-hidden="true"></span><span class="grow">${hw("signedOutHub")}</span></span></div>`;
   const out = async () => { setBusy(true); await hubClient().signOut(); setBusy(false); setSession(null); };
   // #3226 B: My shared agents and Administration are secondary — in this menu, not the main surface.
@@ -142,7 +145,8 @@ function HubSignIn() {
 function useRead(read) {
   const [data, setData] = useState(null);
   const live = useRef(true);
-  const reload = () => read().then((r) => { if (live.current) setData(r.ok ? r : { error: errText(r) }); }, () => { if (live.current) setData({ error: hw("errFailed") }); });
+  const failed = (error) => { if (live.current) setData((old) => ({ ...old, error })); };
+  const reload = () => read().then((r) => { if (live.current) { if (r.ok) setData(r); else failed(errText(r)); } }, () => failed(hw("errFailed")));
   useEffect(() => { live.current = true; reload(); return () => { live.current = false; }; }, []);
   return [data, reload];
 }
@@ -202,8 +206,9 @@ export function HubNav({ onPick } = {}) {
     <label class="hub-search"><${Icon} name="search" size=${14} /><input type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
       onInput=${(e) => setQ(e.target.value)} /></label>
     <div class="hub-sec">${hc("chats")}</div>
-    ${rs.error ? html`<p class="err hub-list-err" role="alert">${rs.error}</p>` : null}
-    ${rs.loaded && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
+    ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
+    ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
+    ${rs.loaded && !rs.error && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
     <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
       <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>
@@ -217,7 +222,7 @@ export function HubNav({ onPick } = {}) {
 
 /** New chat: the agents someone allowed this person to ask; Ask opens (or reopens) its room. */
 function NewChatDialog({ onClose }) {
-  const [cat] = useRead(() => hubClient().catalog());
+  const [cat, reload] = useRead(() => hubClient().catalog());
   const rs = useStore(roomsStore);
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState(null);
@@ -236,7 +241,7 @@ function NewChatDialog({ onClose }) {
   return html`<${Dialog} title=${hc("pickTitle")} onClose=${onClose}>
     <div class="hub-pick">
       <label class="field"><span class="sr-only">${hc("pickSearch")}</span><input type="search" placeholder=${hc("pickSearch")} value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
-      ${cat && cat.error ? html`<p class="err" role="alert">${cat.error}</p>` : null}
+      ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
       ${cat && !cat.error && !all.length ? html`<${Empty} icon="chat" title=${hc("pickEmpty")} hint=${hw("askHint")} />` : null}
       ${all.length && !shown.length ? html`<p class="note">${hc("pickNone")}</p>` : null}
       <ul class="hub-pick-list" role="list">${shown.map((it) => html`<li key=${it.grant.id} class="hub-pick-row">
@@ -258,11 +263,11 @@ function HubChats() {
   const id = roomParam();
   const room = id ? rs.rooms.find((r) => r.id === id) || (rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
-  if (id) return null;
+  if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class="hub-home">
     <div class="hub-home-list"><${HubNav} /></div>
-    <div class="hub-home-pick center">${rs.loaded && !rs.rooms.length
+    <div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} hint=${hc("noChatsHint")} />`
       : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>
   </div>`;
@@ -276,6 +281,18 @@ function useWide() {
   const [wide, setWide] = useState(() => !!wideQuery()?.matches);
   useEffect(() => { const q = wideQuery(); if (!q) return undefined; const on = () => setWide(!!q.matches); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
   return wide;
+}
+/** The same room frame while its metadata is unknown: reserve the saved context rail and header width. */
+function HubRoomLoading({ error } = {}) {
+  const wide = useWide(), [rail, setRail] = useState(railOpen);
+  const showRail = wide && rail;
+  return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`}>
+    <section class="hub-chat-main"><header class="hub-chat-head"><${Skeleton} variant="inline" lines=${1} /></header>
+      <div class="scroller hub-scroller hub-room-loading">${error ? html`<${ErrorState} message=${error} onRetry=${refreshRooms} />` : html`<${Skeleton} variant="rows" lines=${6} />`}</div>
+    </section>
+    ${showRail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
+      onClose=${() => { setRail(false); setRailPref(false); }}><${Skeleton} variant="rows" lines=${4} /></${RailFrame}>` : null}
+  </div>`;
 }
 /** The thread's words are the fleet chat's; its delivery marks say the Hub's stages. */
 const threadT = (key, ...a) => (key.startsWith("chat.tick_") ? hc(key.slice(5), ...a) : t(key, ...a));
@@ -293,7 +310,7 @@ function HubRoomView({ room: given }) {
   useEffect(() => {
     // The list's "waiting" follows this room: read again when a question starts or stops waiting here.
     let was = null;
-    return store.subscribe(() => {
+    const update = () => {
       tick((n) => n + 1);
       const waiting = store.entries().some((e) => ["queued", "delivered", "consumed"].includes(e.receipt && e.receipt.stage));
       if (was !== null && waiting !== was) {
@@ -302,7 +319,9 @@ function HubRoomView({ room: given }) {
         void refreshRooms();
       }
       was = waiting;
-    });
+    };
+    const off = store.subscribe(update); update();
+    return off;
   }, [store]);
   // The store's room starts as the list's and is the server's latest after each read (its quota included or withdrawn).
   const room = store.room();
@@ -427,6 +446,7 @@ function HubThread({ store, name, panelKey, threadRef }) {
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
   const th = useRef(null);
+  const loaded = typeof store.loaded === "function" ? store.loaded() : true;
   useLayoutEffect(() => {
     const doc = host.current.ownerDocument;
     const list = doc.createElement("div");
@@ -465,7 +485,9 @@ function HubThread({ store, name, panelKey, threadRef }) {
   return html`<div class="scroller hub-scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
     ${/* #3145: that every asker shares the agent's one conversation is said before anyone types. */ ""}
-    ${empty ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
+    ${!loaded && !store.error() && !store.closed() ? html`<${Skeleton} variant="rows" lines=${5} />` : null}
+    ${!loaded && store.error() ? html`<${ErrorState} message=${errText({ code: store.error() })} onRetry=${() => store.refresh()} />` : null}
+    ${empty && loaded && !store.closed() ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
@@ -537,12 +559,13 @@ function HubMine() {
   return html`<div class="col hub-owner"><${PageHead} title=${hc("mine")} scope=${ho("scopeYou")} lead=${ho("mineLead")} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
       ${pend.length ? html`<section class="card hub-pairings"><h3>${ho("pendingPairings")}</h3><p class="note">${ho("pendingLead")}</p>
         <div class="hub-rows">${pend.map((p) => html`<div key=${p.id} class="s-row hub-row">
           <span class="hub-row-text"><code class="hub-fp-groups">${compareGroups(p.fingerprint)}</code><small class="note">${hw("expires", when(p.expiresAt))}</small></span>
           ${p.ownerConfirmed ? html`<span class="tag ok">${hw("confirmed")}</span>` : html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => confirmPairing(p)}>${hw("confirmPairing")}</button>`}
         </div>`)}</div></section>` : null}
-      ${cat && cat.error ? html`<p class="err" role="alert">${cat.error}</p>` : null}
+      ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
       ${mine.length ? html`<section class="card hub-shared"><h3>${ho("sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
@@ -581,7 +604,7 @@ function HubAgentPage({ x, act, msg }) {
       </section>
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
       <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>
-        ${activity && activity.error ? html`<p class="err" role="alert">${activity.error}</p>` : null}
+        ${!activity ? html`<${Skeleton} variant="rows" lines=${3} />` : activity.error ? html`<${ErrorState} message=${activity.error} onRetry=${reloadActivity} />` : null}
         ${activity && !activity.error && !acts.length ? html`<p class="note">${ho("recentNone")}</p>` : null}
         ${acts.length ? html`<div class="hub-rows">${acts.map((a, i) => html`<div key=${i} class="s-row hub-row">
           <${Avatar} name=${a.askerName || "?"} size="sm" /><span class="hub-row-text"><strong>${a.askerName || "—"}</strong><small class="note">${when(a.askedAt)}</small></span>${stageWord(a.stage)}
@@ -650,9 +673,13 @@ function HubAdminPage() {
     if (!r.ok) setMsg(errText(r));
     reload();
   };
-  const fleets = view && view.fleets ? view.fleets : [], pairings = view && view.pairings ? view.pairings : [];
+  if (!view || (view.error && !view.fleets)) return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
+    <div class="s-section-layout">${view?.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />`
+      : html`<section class="card"><h3>${ho("pairSteps")}</h3><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section>`}</div></div>`;
+  const fleets = view.fleets || [], pairings = view.pairings || [];
   return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
     <div class="s-section-layout">
+      ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">

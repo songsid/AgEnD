@@ -22,6 +22,24 @@ export function groupPolicyMigration(hubId: string, realm: string, generation: s
     db.prepare("INSERT OR IGNORE INTO hub_group_policy VALUES(1, ?, ?)").run(hub, initial);
   } };
 }
+export type HubGroupPolicyBinding = { readonly kind: "ready" } | {
+  readonly kind: "repair-required";
+  /** Only an intact, same-Hub/same-realm never-enabled record may preserve legacy behavior. */
+  readonly legacy: boolean;
+};
+/** Read-only composition probe: a directory-generation change must not take sign-in/admin repair down. */
+export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: string, realm: string, generation: string): HubGroupPolicyBinding {
+  try {
+    const binding = initialGroupPolicy(realm, generation);
+    const row = db.prepare("SELECT hub_id, body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+    if (!row || row.hub_id !== validated(identifier, hubId)) return { kind: "repair-required", legacy: false };
+    const policy = parseGroupPolicy(parseStrictJson(row.body));
+    if (policy.realm !== binding.realm) return { kind: "repair-required", legacy: false };
+    if (policy.generation === binding.generation) return { kind: "ready" };
+    return { kind: "repair-required", legacy: policy.state === "never-enabled" };
+  } catch { return { kind: "repair-required", legacy: false }; }
+}
+
 const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional() });
 export interface GroupCheckContext {
   requestId: string;

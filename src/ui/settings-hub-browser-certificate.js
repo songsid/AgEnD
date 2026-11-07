@@ -1,5 +1,6 @@
 // Lazy host-only card. Own every string so a retained Settings shell can load this newer card.
 import { html, useEffect, useState } from "/assets/app-html.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubBrowserCertificate", {
@@ -58,6 +59,7 @@ export function HubBrowserCertificateSettings() {
   };
   const details = info => html`<dl class="s-web-ro"><dt>${copy("fingerprint")}</dt><dd>${info.fingerprint256}</dd><dt>${copy("expires")}</dt><dd>${info.validTo}</dd></dl>`;
   return html`<section class="card hub-browser-certificate"><h3>${copy("title")}</h3><p class="note">${copy("boundary")}</p>
+    ${!view && !messageKey ? html`<${Skeleton} variant="form" lines=${4} />` : null}
     ${view ? html`${details(view.selected)}${view.restartRequired ? html`<p role="status">${copy("restart")}</p>` : null}
       <form class="form" onSubmit=${prepare}><label class="field"><select aria-label=${copy("title")} value=${mode} disabled=${busy} onChange=${e => { setMode(e.target.value); setProposal(null); }}>
         <option value="generate">${copy("generate")}</option><option value="import">${copy("import")}</option></select></label>
