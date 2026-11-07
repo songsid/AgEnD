@@ -20353,8 +20353,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private keepAliveAfterSignIn(backend: string, profile: string | null): void {
     if (!isKeepAliveBackend(backend)) return;
-    this.keepAliveService().tick({ only: { backend, profile } })
-      .catch(err => this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"));
+    // Building the service can throw as well as the check, and the follow-up of a sign-in (waking its agents) must not depend on either.
+    const failed = (err: unknown) => { try { this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"); } catch { /* nothing to say it to */ } };
+    try { this.keepAliveService().tick({ only: { backend, profile } }).catch(failed); } catch (err) { failed(err); }
   }
 
   /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */

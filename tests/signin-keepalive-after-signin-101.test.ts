@@ -47,6 +47,20 @@ describe("keepAliveAfterSignIn", () => {
   });
 });
 
+describe("the check can never fail the sign-in's own follow-up", () => {
+  it("the service cannot even be built: the recovery of the account's agents still runs and answers", async () => {
+    const { fm } = fixture();
+    vi.spyOn(fm, "keepAliveService").mockImplementation(() => { throw new Error("no service"); });
+    expect(() => fm.keepAliveAfterSignIn("claude-code", "work")).not.toThrow();
+    await expect(fm.recoverBackendInstances("claude-code", undefined, "work")).resolves.toEqual({ woken: [], restarted: [], pending: [] });
+  });
+  it("and with no logger either (a bare object), it still says nothing and throws nothing", () => {
+    const bare: any = Object.create(FleetManager.prototype);
+    bare.keepAliveService = () => { throw new Error("no data dir"); };
+    expect(() => bare.keepAliveAfterSignIn("codex", null)).not.toThrow();
+  });
+});
+
 describe("a finished sign-in's recovery looks at that account's keep-alive", () => {
   it("a named profile and the default sign-in each ask for their own", async () => {
     const { fm, tick } = fixture();
