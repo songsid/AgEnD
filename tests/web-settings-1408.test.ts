@@ -1292,10 +1292,15 @@ describe("#1465 review: confirmations that outlive their view", () => {
     await settle(6);
     p.root.querySelector(".s-row .menu > button").click(); await settle(2);
     p.root.querySelectorAll(".menu-item").find((b: any) => b.textContent.includes("Delete agent")).click(); await settle(2);
-    const toastsBefore = p.root.querySelectorAll(".toast").length;
+    // Toasts are one page-wide stack and each leaves 4 s after it came (ui-toast.js): an earlier test's toast may expire
+    // during this one, so a count can drop with nothing wrong (CI run 42336278335). What must not happen is a NEW toast:
+    // every toast after the late answer was already there before it.
+    const texts = () => [...p.root.querySelectorAll(".toast")].map((t: any) => t.textContent);
+    const before = texts();
     await p.mount(h("div", {}, h(T.Toasts, {})));                     // the panel goes, the toasts stay
     await yes(); await settle(6);
-    expect(p.root.querySelectorAll(".toast").length).toBe(toastsBefore);
+    const left = [...before];
+    for (const t of texts()) { const i = left.indexOf(t); expect(i, `a toast after the panel went: ${t}`).toBeGreaterThanOrEqual(0); left.splice(i, 1); }
   });
 
   it("Apply's questions stop when the panel goes: the next one is never asked, nothing is said", async () => {
