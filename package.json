@@ -1,7 +1,7 @@
 {
   "name": "@songsid/agend",
   "version": "1.22.0",
-  "description": "Multi-agent fleet daemon — run coding CLIs (Claude, Muse, Codex, OpenCode) from Discord or Telegram",
+  "description": "Multi-agent fleet daemon \u2014 run coding CLIs (Claude, Muse, Codex, OpenCode) from Discord or Telegram",
   "type": "module",
   "bin": {
     "agend": "./launcher/agend",

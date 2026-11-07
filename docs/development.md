@@ -136,6 +136,11 @@ It prints each failing check with the elements involved, and it saves a picture 
 `$OUT/smoke-settings-ui-gate/`. A failing CI run uploads the same folder as the `ui-gate` artifact. zh-TW needs a CJK
 font to measure real widths: CI installs `fonts-noto-cjk`, and locally any Noto Sans CJK will do.
 
+`playwright-core` is pinned, but the runner image's Chrome moves with each image update. If a new image ever breaks
+the pairing (the job fails before the first check, on launching or connecting to Chrome), bump `playwright-core` to a
+release that supports that Chrome, or point the job's `CHROME` at a known-good build until it does. Never switch the
+job to `playwright install`.
+
 ## Releases and CI
 
 Regular checks and publishing workflows live in `.github/workflows/`.
