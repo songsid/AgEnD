@@ -632,7 +632,7 @@ describe("session outcome", () => {
     const text = String(adapter.sendText.mock.calls.at(-1)![1]);
     expect(text).toContain("still holds a token");
     expect(text).toContain(t("login.web_suggest_relogin"));
-    expect(text).toContain("could not be confirmed dead");
+    expect(text).toContain("the dedicated sign-in process could not be confirmed closed. Cleanup is not available here.");
   });
 
   it("/login cancel routes to the session and does not double-announce", async () => {
