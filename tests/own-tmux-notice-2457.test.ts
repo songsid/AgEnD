@@ -4,7 +4,7 @@
  * #3312 N3); a notice that could not be dispatched (no place to post yet) is tried again on the next start.
  * Isolation: a scratch AGEND_HOME; notifyFleetError is stubbed (nothing is posted anywhere).
  */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -52,5 +52,37 @@ describe("the own-tmux notice", () => {
     fm.announceOwnTmux();
     expect(notify).toHaveBeenCalledTimes(2);
     expect(existsSync(marker(h))).toBe(true);
+  });
+});
+
+// Fable #3312 N3: a cleanly stopped 2.3 fleet deletes its window ids at stop, so the normal update path (stop, install,
+// start) leaves no migration journal. The evidence is agent state from before this start with no AgEnD tmux record.
+describe("which home is an upgraded one (decided at fleet start, before any agent of this start writes)", () => {
+  const agent = (h: string, name: string, files: string[]) => { const d = join(h, "instances", name); mkdirSync(d, { recursive: true }); for (const f of files) writeFileSync(join(d, f), "x"); };
+  it("a cleanly stopped 2.3 home (output log and session id, no window-id, no server.json): upgraded → the notice", () => {
+    const h = home(false);
+    agent(h, "dev", ["output.log", "session-id"]);
+    expect(FleetManager.ownTmuxUpgraded(h, null)).toBe(true);
+    const fm = new FleetManager(h);
+    fm.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(h, null);
+    const notify = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
+    fm.announceOwnTmux();
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+  it("a fresh home (instance directories, nothing from an earlier start): not upgraded → no notice", () => {
+    const h = home(false);
+    agent(h, "dev", []);
+    expect(FleetManager.ownTmuxUpgraded(h, null)).toBe(false);
+    const fm = new FleetManager(h);
+    fm.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(h, null);
+    const notify = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
+    fm.announceOwnTmux();
+    expect(notify).not.toHaveBeenCalled();
+    expect(existsSync(marker(h))).toBe(true);
+  });
+  it("a home that already ran AgEnD's own tmux (server.json recorded): not an upgrade", () => {
+    const h = home(false);
+    agent(h, "dev", ["output.log", "session-id"]);
+    expect(FleetManager.ownTmuxUpgraded(h, { socket: "agend", serverPid: 1 })).toBe(false);
   });
 });

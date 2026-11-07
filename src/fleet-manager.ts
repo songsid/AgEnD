@@ -9903,6 +9903,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const binary = resolveTmux().binary;
       return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
     })();
+    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
+    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
+    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
+    // agent of this start writes its own.
+    this.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(getAgendHome(), bundled.previous);
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -16343,12 +16348,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
    * post it tries again next start.
    */
+  /** Set at fleet start (before any agent starts): this home ran agents on an earlier AgEnD's system tmux. */
+  ownTmuxUpgradedHome = false;
+
+  /** An upgraded home: agent state from an earlier start, and no AgEnD tmux server ever recorded (`previous`). */
+  static ownTmuxUpgraded(agendHome: string, previous: unknown): boolean {
+    return previous === null && FleetManager.priorAgentState(join(agendHome, "instances"));
+  }
+
+  /** Whether any instance directory holds state from an earlier start (its output log or a session id). */
+  static priorAgentState(instancesDir: string): boolean {
+    let names: string[] = [];
+    try { names = readdirSync(instancesDir); } catch { return false; }
+    return names.some(n => ["output.log", "session-id"].some(f => existsSync(join(instancesDir, n, f))));
+  }
+
   announceOwnTmux(): void {
     const marker = join(getAgendHome(), "tmux", "own-server-announced");
     if (existsSync(marker)) return;
-    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3): the
-    // migration journal exists exactly when 2.3 window ids were found. A fresh home is marked without a notice.
-    const upgraded = existsSync(join(getAgendHome(), "tmux-migration.json"));
+    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3):
+    // agent state from before this start and no recorded AgEnD tmux server (set at fleet start), or a migration journal
+    // (2.3 window ids found). A fresh home is marked without a notice.
+    const upgraded = this.ownTmuxUpgradedHome || existsSync(join(getAgendHome(), "tmux-migration.json"));
     if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
     try {
       mkdirSync(dirname(marker), { recursive: true });
