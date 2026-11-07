@@ -30,7 +30,9 @@ export interface StatusLineData {
 export interface AccessConfig {
   mode: "pairing" | "locked" | "open";
   allowed_users: (number | string)[];
+  /** @deprecated Retained for old configuration; people-access codes are no longer issued. */
   max_pending_codes: number;
+  /** @deprecated Retained for old configuration; people-access codes are no longer issued. */
   code_expiry_minutes: number;
 }
 

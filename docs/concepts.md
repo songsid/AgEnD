@@ -162,7 +162,7 @@ the General topic (approved by the user 2026-11-04).
 
 - Can: admin-gated commands, confirming sensitive changes, managing access.
 - Can't: anything while unlisted — an empty list grants nobody, and open
-  access or pairing approval alone does not grant the role
+  access or a saved chat grant alone does not grant the role
   (`docs/SECURITY.md:13`).
 - Code: `src/config-validator.ts:368-376`, `:677`.
 - Refs: —
@@ -317,8 +317,9 @@ shortcuts from `agend shortcuts`). The rest is alpha only
 - General can run on a Windows pane: "Run General on" moves General to an
   approved, online paired PC while the coordinator — and chat and
   administrator authority — stay on the host (#3007).
-- Pairing of people (`agend access pair`) is the separate, older mechanism:
-  per-instance access codes, unrelated to paired PCs.
+- People are allowed through **Settings → Connections → the bot → Allowed
+  users**, not runtime pairing. Legacy people-access codes are removed;
+  existing saved grants remain. This does not grant fleet-admin authority.
 - Code (alpha branch): `docs/remote-runtime.md`, `docs/windows-cli-preview.md`,
   `docs/windows-general.md`; `src/runtime-bundle.ts`.
 - Refs: 72353fdf, #2936, #3007.

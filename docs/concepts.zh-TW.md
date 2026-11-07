@@ -97,7 +97,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 agent（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
-- 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或 pairing 核准本身不授予這個角色（`docs/SECURITY.md:13`）。
+- 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或持久化聊天授權本身不授予這個角色（`docs/SECURITY.md:13`）。
 - 程式碼：`src/config-validator.ts:368-376`、`:677`。
 - 相關決議與議題：—
 
@@ -194,7 +194,7 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 - 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
 - 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
-- 人的 pairing（`agend access pair`）是另一套較舊的機制：按 instance 發的存取碼，跟配對 PC 無關。
+- 人的存取權由「設定 → 連線 → 該 bot → 允許使用者」管理，跟 Runtime 配對不同。舊的使用者存取碼已移除，既有持久化授權仍保留；它不會授予 fleet 管理員權限。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
 - 相關決議與議題：72353fdf、#2936、#3007。
 

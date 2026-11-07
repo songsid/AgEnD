@@ -1228,7 +1228,7 @@ access
 
 access
   .command("unlock")
-  .description("Unlock instance access")
+  .description("Use the saved allowlist (legacy pairing mode)")
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { AccessManager } = await import("./channel/access-manager.js");
@@ -1283,25 +1283,6 @@ access
     const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
     am.removeUser(userId);
     console.log(`${instance}: removed user ${userId}`);
-  });
-
-access
-  .command("pair")
-  .description("Generate a pairing code for a user")
-  .argument("<instance>", "Instance name")
-  .argument("<user-id>", "Telegram user ID requesting pairing")
-  .action(async (instance: string, userId: string) => {
-    const { AccessManager } = await import("./channel/access-manager.js");
-    const instanceDir = join(DATA_DIR, "instances", instance);
-    if (!existsSync(instanceDir)) {
-      console.error(`Instance "${instance}" not found`);
-      process.exit(1);
-    }
-    const statePath = await resolveAccessPath(instance);
-    const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
-    const code = am.generateCode(userId);
-    console.log(`${instance}: pairing code = ${code}`);
-    console.log("Share this code with the user. It expires in 10 minutes.");
   });
 
 // === Update + Reload ===
