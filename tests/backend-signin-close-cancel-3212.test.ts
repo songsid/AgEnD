@@ -21,7 +21,8 @@ const fetchFake = async (url: string, init: any = {}) => {
 };
 
 const CODE = "ABCDEFGHJKMNPQRSTVWX";
-const RUNNING = { id: "r1", backend: "claude-code", profile: "CHY", phase: "running", ok: null, startedOn: "Firefox on Linux", startedAt: 1, endedAt: null, mine: true, lines: [],
+const RUN_ID = "a".repeat(32);
+const RUNNING = { id: RUN_ID, backend: "claude-code", profile: "CHY", phase: "running", ok: null, startedOn: "Firefox on Linux", startedAt: 1, endedAt: null, mine: true, lines: [],
   hint: null, terminal: { url: "http://localhost:40001/t/abab/", ttlMinutes: 10, command: "claude auth login", loopback: true, public: false }, accessCode: CODE };
 const CANCEL = "/ui/backend-login/cancel";
 
@@ -59,7 +60,8 @@ describe("closing the Sign in dialog before the terminal is opened ends the back
   it("yours, running, its access code not used yet: Close posts the cancel and closes", async () => {
     const closed = await resumed(RUNNING);
     fire(btn("Close"), "click"); await settle(6);
-    expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: {} }]);
+    // For the run the dialog was showing, and only if it is still unopened and this session's (#3321 review) — not the generic `{}` ("whatever is running").
+    expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: { run: RUN_ID, ifUnopened: true } }]);
     expect(closed).toEqual([1]);
   });
   it("× and Esc (the Dialog's own close) do the same", async () => {
@@ -67,7 +69,7 @@ describe("closing the Sign in dialog before the terminal is opened ends the back
     const x = p.root.querySelector('[aria-label="Close"], .dlg-close, button.icon-btn');
     if (x) fire(x, "click"); else fire(p.document, "keydown", { key: "Escape" });
     await settle(6);
-    expect(cancels()).toHaveLength(1);
+    expect(cancels().map((c) => c.body)).toEqual([{ run: RUN_ID, ifUnopened: true }]);
     expect(closed).toEqual([1]);
   });
   it.each([
@@ -97,14 +99,14 @@ describe("“Cancel sign-in” ends it and closes the dialog (#3212)", () => {
   it("posts the cancel, says so, and closes", async () => {
     const closed = await resumed(RUNNING);
     fire(btn("Cancel sign-in"), "click"); await settle(8);
-    expect(cancels()).toHaveLength(1);                                             // once: the close that follows must not cancel a second time
+    expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: {} }]);        // once: the close that follows must not cancel a second time; the button's own cancel stays the plain one
     expect(closed).toEqual([1]);
   });
   it("in zh-TW: 關閉 ends it too", async () => {
     i18n.setLang("zh-TW", { store: false });
     const closed = await resumed(RUNNING);
     fire(btn("關閉"), "click"); await settle(6);
-    expect(cancels()).toHaveLength(1);
+    expect(cancels().map((c) => c.body)).toEqual([{ run: RUN_ID, ifUnopened: true }]);
     expect(closed).toEqual([1]);
   });
 });

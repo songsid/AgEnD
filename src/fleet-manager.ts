@@ -20228,7 +20228,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
-      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
+      cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
@@ -20564,10 +20564,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<RemoveResult | MachineAccountResult> {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor, opts?: { cancelSignIn?: true }): Promise<RemoveResult | MachineAccountResult> {
     if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
+    // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
+    if (opts?.cancelSignIn && validCredentialProfileName(name) && await this.loginController?.cancelAccount(backend, name).catch(() => false)) {
+      this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
+    }
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
     // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
     // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.

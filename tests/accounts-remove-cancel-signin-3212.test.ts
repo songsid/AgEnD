@@ -74,12 +74,13 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     expect([cr.disabled, btn(dialog(), "Remove").disabled, btn(dialog(), "Cancel").disabled]).toEqual([false, false, false]);
   });
 
-  it("it cancels the sign-in, then removes the account with the typed name, and closes", async () => {
+  it("one request bound to this account (the server ends that account's sign-in and removes it, #3321 review), with the typed name, and closes", async () => {
     await removeChy(() => SIGNING_IN);
     calls.length = 0;
-    answer = (method, url) => (method === "POST" && url === CANCEL ? { status: 200, body: {} } : method === "DELETE" ? { status: 200, body: {} } : { status: 200, body: {} });
+    answer = () => ({ status: 200, body: {} });
     btn(dialog(), "Cancel sign-in and remove").click(); await settle(14);
-    expect(calls).toEqual([{ method: "POST", url: CANCEL, body: {} }, { method: "DELETE", url: DELETE_CHY, body: { confirm: "CHY" } }]);   // in this order
+    // Never the generic cancel of whatever sign-in is running: that is the other admin's too.
+    expect(calls).toEqual([{ method: "DELETE", url: DELETE_CHY, body: { confirm: "CHY", cancelSignIn: true } }]);
     expect(dialog()?.querySelector("#acctRemoveName") ?? null).toBe(null);                                                                // closed
   });
 
@@ -87,7 +88,7 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     await removeChy(() => SIGNING_IN);
     calls.length = 0;
     btn(dialog(), "Cancel sign-in and remove").click(); await settle(14);
-    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`POST ${CANCEL}`, `DELETE ${DELETE_CHY}`]);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`DELETE ${DELETE_CHY}`]);
     expect(text(dialog().querySelector(".err"))).toContain("A sign-in for this account is running");
     expect(btn(dialog(), "Cancel sign-in and remove")).toBeTruthy();                                                                       // still there to try again
   });

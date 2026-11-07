@@ -416,7 +416,7 @@ export interface WebApiContext {
   accountsView?(): Promise<unknown>;
   /** #3212 PR 2: + Add account / Remove (accounts-profiles.ts); `by` is the session's label, for the fleet log. */
   addAccountProfile?(backend: string, name: unknown, by: string, machine?: AccountMachine): AccountWriteResult | Promise<AccountWriteResult>;
-  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
+  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine, opts?: { cancelSignIn?: true }): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
   signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
@@ -1241,8 +1241,12 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
       const result = await logins.begin(now, parsed.data.confirm, parsed.data.tunnel === true);
       json(res, "error" in result ? 409 : 200, result);
     } else {
-      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "sign_in_args" }); return; }
-      json(res, 200, { message: await logins.cancel() });
+      // `{}`: the explicit "Cancel sign-in" — whatever sign-in is running, as ever. `{ run, ifUnopened }`: the dialog's own Close (#3321 review), for
+      // that one run and only while its terminal is unopened and it is this session's own; anything else is left alone and `cancelled` is false.
+      const parsed = z.union([z.strictObject({}), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
+      if ("run" in parsed.data) json(res, 200, await logins.closeRun(now, parsed.data.run));
+      else json(res, 200, { message: await logins.cancel() });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
   return true;
@@ -1305,11 +1309,15 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
       if (r.ok) json(res, 200, { added: parsed.data.name, ...(machine ? { machine: machine.id } : {}) });
       else fail(r);
     } else if (remove) {
-      const parsed = z.strictObject({ confirm: z.string().max(200), machine: machineId }).safeParse(body);
+      // `cancelSignIn` (#3321 review): "Cancel sign-in and remove" — end the running sign-in of THIS account (and no other), then remove it, in one request.
+      // A paired computer's sign-in is cancelled from that computer's side, so it is refused there.
+      const parsed = z.strictObject({ confirm: z.string().max(200), machine: machineId, cancelSignIn: z.literal(true).optional() }).refine(a => !(a.machine && a.cancelSignIn)).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
       const machine = onMachine(parsed.data.machine);
       if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
-      const r = await (machine ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, machine) : ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label));
+      const r = await (machine ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, machine)
+        : parsed.data.cancelSignIn ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, undefined, { cancelSignIn: true })
+        : ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label));
       if (r.ok) json(res, 200, { removed: target, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
       else fail(r);
     } else {

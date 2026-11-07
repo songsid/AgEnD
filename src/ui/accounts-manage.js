@@ -187,8 +187,9 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const cancelAndRemove = async () => {
     if (busy || inUse || typed !== row.profile) return;
     setBusy(true); setErr(""); setErrCode("");
-    await send("POST", "/ui/backend-login/cancel", {});
-    const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed });
+    // #3321 review: one request, bound to this account — the server ends the sign-in of THIS account (never another one's, which a separate generic cancel would
+    // have ended) and removes it; what still signs in refuses as before.
+    const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed, cancelSignIn: true });
     if (!live.current) return;
     setBusy(false);
     finishRemove(r);

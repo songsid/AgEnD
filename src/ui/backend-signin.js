@@ -264,7 +264,9 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
   const login = s.login;
   const close = () => {
     if (step.kind === "login" && login && login.mine && login.phase === "running" && login.terminal && login.accessCode) {
-      void post("/ui/backend-login/cancel", {}).then(() => refreshSignIn());
+      // #3321 review: for the sign-in this dialog was showing, and only if the server finds it still that run, still this session's, its terminal still unopened —
+      // not "whatever is running", which a page that read two seconds ago can no longer know. A run that is gone or replaced is left alone.
+      void post("/ui/backend-login/cancel", { run: login.id, ifUnopened: true }).then(() => refreshSignIn());
     }
     dismiss();
   };

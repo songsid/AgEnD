@@ -655,10 +655,29 @@ export class LoginController {
    * tunnel still coming up included) — and nothing else: a later sign-in that took the window is never touched.
    * True when there was one to end.
    */
-  async cancelFor(sink: WebLoginSink): Promise<boolean> {
-    if (this.pendingTunnelStart?.sink === sink) { this.pendingTunnelStart.abort.abort(); return true; }
+  async cancelFor(sink: WebLoginSink, opts: { unopenedTerminalOnly?: boolean } = {}): Promise<boolean> {
+    // #3321 review: the dialog's own Close ends a sign-in only while its terminal has not been opened — there is a terminal, and its one-time access
+    // code is unredeemed. That is read here, in the same turn as the cancel starts (nothing can redeem the code between), not from what the page saw
+    // two seconds ago. A start still getting its cloudflared has no terminal to be unopened, so it is left alone.
+    if (this.pendingTunnelStart?.sink === sink) {
+      if (opts.unopenedTerminalOnly) return false;
+      this.pendingTunnelStart.abort.abort(); return true;
+    }
     const entry = this.active;
     if (!entry || entry.chat.web !== sink) return false;
+    if (opts.unopenedTerminalOnly && (!entry.http || !sink.isAdmin() || entry.session.peekAccessToken() === null)) return false;
+    await entry.session.cancel("cancelled");
+    return true;
+  }
+
+  /**
+   * #3321 review: end the running sign-in of exactly this account (`backend`, and `profile` compared as Remove compares it: case-insensitively) — what
+   * Remove's "Cancel sign-in and remove" asks for — and nothing else: another account's sign-in, or a start whose profile is not known yet, is left
+   * alone. True when there was one to end.
+   */
+  async cancelAccount(backend: string, profile: string): Promise<boolean> {
+    const entry = this.active;
+    if (!entry || entry.backend !== backend || !entry.profile || entry.profile.toLowerCase() !== profile.toLowerCase()) return false;
     await entry.session.cancel("cancelled");
     return true;
   }
