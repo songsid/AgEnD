@@ -2186,15 +2186,15 @@ export class Daemon extends EventEmitter {
       : Date.now() < pause.resetAt);
   }
 
+  /** #3186 review: the lifecycle's second opinion dropped the notice (usage has capacity): nothing was told. */
+  clearUsagePauseNotice(): void { this.usagePauseNotice = null; }
+
   /**
    * #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. `at`: when
    * Claude wrote it (its record's timestamp). One notice per pause: a reset time already past is not this pause (an old
    * note), and its repeats ("reached again") within the window — or naming the same reset, until it comes — say nothing
    * more. Claude's own "Usage limit reset" ends it.
    */
-  /** #3186 review: the lifecycle's second opinion dropped the notice (usage has capacity): nothing was told. */
-  clearUsagePauseNotice(): void { this.usagePauseNotice = null; }
-
   private noteClaudeInformational(text: string, at: number | null = null): void {
     const line = text.trim();
     if (Daemon.USAGE_LIMIT_RESET.test(line)) { this.usagePauseNotice = null; return; }
