@@ -4,7 +4,7 @@
  * Each test makes its own people (random names) as the rig admin, so the tests can run in any order and repeat.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { Attribute, Change, Client } from "ldapts";
@@ -121,6 +121,64 @@ describe.skipIf(!enabled)("hub directory sign-in against the fake directory (S-4
         expect(r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 0 });
         const pending = r.pairing.pair({ code: response.json.code }); expect(pending.owner).toEqual(ownerKey);
         expect(await r.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret })).toEqual({ status: "pending" });
+      } finally { await r.close(); await d.close(); }
+    });
+  });
+
+  describe("grant to a directory colleague before their first Hub sign-in (#3370)", () => {
+    it("creates only the exact grant, labels its recipient, and lets that person use it after signing in", async () => {
+      const ownerLogin = `grant-owner-${tag()}`, colleagueLogin = `grant-colleague-${tag()}`;
+      const owner = await addAdPerson(ownerLogin, `pw-${ownerLogin}`), colleague = await addAdPerson(colleagueLogin, `pw-${colleagueLogin}`);
+      const ownerKey = { realm: "rig", objectId: guidBytesToString(owner.guid)! };
+      const colleagueKey = { realm: "rig", objectId: guidBytesToString(colleague.guid)! };
+      const d = directory({ profile: "ad" }), r = await s3bRig({ directory: d, administrator: ownerKey });
+      try {
+        const browser = await r.signIn(ownerLogin); expect(browser.status).toBe(200);
+        const link = r.link(randomUUID(), ownerKey), exposureId = randomUUID();
+        await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId: link.fleetId, owner: ownerKey,
+          displayName: "Shared agent", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, link) as never, link);
+        const response = await r.call(browser, "POST", "/hub/v1/grants", { exposureId, exposureRevision: 1, login: `  ${colleagueLogin.toUpperCase()}  `, days: 7 });
+        expect(response.status).toBe(200);
+        expect(response.json.grant).toMatchObject({ owner: ownerKey, approvedBy: ownerKey, exposureId, exposureRevision: 1,
+          subject: { kind: "person", person: colleagueKey }, permissions: ["ask", "read-own-room"], state: "active" });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_rooms").get()).toEqual({ n: 0 });
+        const catalog = await r.call(browser, "GET", "/hub/v1/exposures");
+        expect(catalog.status).toBe(200);
+        expect(catalog.json.mine[0].grants[0]).toMatchObject({ subjectLogin: colleagueLogin });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+        const asker = await r.signIn(colleagueLogin); expect(asker.status).toBe(200);
+        const visible = await r.call(asker, "GET", "/hub/v1/exposures");
+        expect(visible.json.askable).toHaveLength(1);
+        expect((await r.call(asker, "POST", "/hub/v1/rooms", { exposureId, grantId: response.json.grant.id })).status).toBe(200);
+      } finally { await r.close(); await d.close(); }
+    });
+    it("refuses unknown, disabled, ambiguous and filter-shaped recipients without creating a Hub identity", async () => {
+      const ownerLogin = `grant-owner-${tag()}`, disabledLogin = `grant-disabled-${tag()}`, ambiguousLogin = `grant-ambiguous-${tag()}`;
+      const owner = await addAdPerson(ownerLogin, `pw-${ownerLogin}`);
+      await addAdPerson(disabledLogin, pw(), "514"); await addAdPerson(ambiguousLogin, pw());
+      await admin.add(`cn=Duplicate ${ambiguousLogin},${PEOPLE}`, { objectClass: ["inetOrgPerson", "fakeAdUser"],
+        cn: `Duplicate ${ambiguousLogin}`, sn: "Test", sAMAccountName: ambiguousLogin, userAccountControl: "512",
+        objectGUID: randomBytes(16) as unknown as string, userPassword: pw() });
+      const ownerKey = { realm: "rig", objectId: guidBytesToString(owner.guid)! };
+      const d = directory({ profile: "ad" }), r = await s3bRig({ directory: d, administrator: ownerKey });
+      try {
+        const browser = await r.signIn(ownerLogin); expect(browser.status).toBe(200);
+        const link = r.link(randomUUID(), ownerKey), exposureId = randomUUID();
+        await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId: link.fleetId, owner: ownerKey,
+          displayName: "Shared agent", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, link) as never, link);
+        const logins = [`grant-unknown-${tag()}`, disabledLogin, ambiguousLogin, "*", "alice)(sAMAccountName=*"];
+        for (const login of logins) {
+          const response = await r.call(browser, "POST", "/hub/v1/grants", { exposureId, exposureRevision: 1, login, days: 7 });
+          expect([response.status, response.json]).toEqual(login === ambiguousLogin
+            ? [503, { code: "unavailable" }] : [404, { code: "not-found" }]);
+        }
+        expect(logins).toHaveLength(5);
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 0 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual({ n: 1 });
       } finally { await r.close(); await d.close(); }
     });
   });
