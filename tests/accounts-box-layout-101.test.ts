@@ -182,7 +182,7 @@ describe("“used by N agents ▾”: a floating list that jumps to an agent's s
 });
 
 describe("the usage block: the short window and the week (AGEND-101 phase 2)", () => {
-  const short = (percent: number, extra: Record<string, unknown> = {}) => ({ percent, windowMs: 5 * 3_600_000, resetsAt: new Date(Date.now() + 3 * 3_600_000).toISOString(), ...extra });
+  const short = (percent: number, extra: Record<string, unknown> = {}) => ({ percent, windowMs: 5 * 3_600_000, resetsAt: new Date(Date.now() + 3 * 3_600_000 + 30_000).toISOString(), ...extra });
   const wins = (backend: string, acct: string) => rowOf(backend, acct).querySelectorAll(".s-usage-win");
   const winText = (w: any) => [text(w.querySelector(".s-usage-win-lbl")), text(w.querySelector(".s-usage-win-pct")), text(w.querySelector(".s-usage-win-reset"))];
 
@@ -194,7 +194,7 @@ describe("the usage block: the short window and the week (AGEND-101 phase 2)", (
     expect(ws.map((w: any) => w.className.split(" ").slice(0, 2).join(" "))).toEqual(["s-usage-win is-short", "s-usage-win is-weekly"]);
     expect(ws.map((w: any) => winText(w).slice(0, 2))).toEqual([["5h", "76%"], ["7d", "28%"]]);
     expect(ws.map((w: any) => Number(w.querySelector("progress").value ?? w.querySelector("progress").getAttribute("value")))).toEqual([76, 28]);
-    expect(ws.map((w: any) => /^resets /.test(winText(w)[2]))).toEqual([true, true]);
+    expect(ws.map((w: any) => winText(w)[2])).toEqual(["resets in 3h", expect.stringMatching(/^resets \S/)]);   // the short window resets within hours; the week at a day and time
     expect(work.querySelectorAll(".s-account-usage")).toHaveLength(1);                           // one block, holding both
     expect([...work.children].map((c: any) => String(c.className).split(" ")[0])).toEqual(["s-account-title-bar", "s-account-meta-bar", "s-account-usage", "s-account-keepalive"]);
   });
@@ -218,6 +218,23 @@ describe("the usage block: the short window and the week (AGEND-101 phase 2)", (
     expect(wins("claude-code", "personal")).toHaveLength(0);
     await p.unmount(); view = VIEW(); A.accountsStore.set({ loaded: false, failed: false, view: null }); await mount();
     expect(wins("claude-code", "work").map((w: any) => winText(w).slice(0, 2))).toEqual([["7d", "42%"]]);   // only the week, as before
+  });
+
+  it("the short window says how long until it resets (45m, 3h, 26h, 3d) and nothing once that has passed; the exact time is the tooltip", async () => {
+    const reset = async (ms: number) => { view.clis[0].rows[1].shortUsage = short(50, { resetsAt: new Date(Date.now() + ms).toISOString() }); A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
+      const el = wins("claude-code", "work")[0].querySelector(".s-usage-win-reset"); return [text(el), el.getAttribute("title")]; };
+    const MIN = 60_000, HOUR = 3_600_000;
+    view.clis[0].rows[1].usage = { percent: 42, windowMs: 7 * 86_400_000, resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() };
+    expect((await reset(44 * MIN + 30_000))[0]).toBe("resets in 45m");
+    expect((await reset(3 * HOUR + MIN))[0]).toBe("resets in 3h");
+    expect((await reset(26 * HOUR + MIN))[0]).toBe("resets in 26h");
+    expect((await reset(3 * 24 * HOUR + HOUR))[0]).toBe("resets in 3d");
+    const past = await reset(-5 * MIN);
+    expect([past[0], !!past[1]]).toEqual(["", false]);                                              // already past (stale data): nothing, no tooltip
+    const [words, title] = await reset(3 * HOUR + MIN);
+    expect(words).toBe("resets in 3h");
+    expect(title).toMatch(/\d/);                                                                     // the exact local time, in the person's own format
+    expect(wins("claude-code", "work")[1].querySelector(".s-usage-win-reset").getAttribute("title")).toBeTruthy();   // the week's too
   });
 
   it("a window is named from its length: hours, the week's word near seven days, else days; a week of unknown length is still the week", async () => {
@@ -258,7 +275,7 @@ describe("the usage block: the short window and the week (AGEND-101 phase 2)", (
     await mount();
     const ws = wins("claude-code", "work");
     expect(ws.map((w: any) => winText(w)[0])).toEqual(["5h", "本週"]);
-    expect(ws.map((w: any) => / 重置$/.test(winText(w)[2]))).toEqual([true, true]);
+    expect(ws.map((w: any) => winText(w)[2])).toEqual(["3h 後重置", expect.stringMatching(/ 重置$/)]);
     expect(text(rowOf("claude-code", "work").querySelector(".s-usage-stale"))).toBe("（未更新）");
     expect(wins("claude-code", "default").map((w: any) => winText(w)[0])).toEqual(["30天"]);
   });
@@ -324,6 +341,8 @@ describe("the stylesheets: layers float, the box does not clip them (AGEND-101)"
     expect(rule(css, ".s-account-usage")).toContain("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))");
     expect(rule(css, ".s-account-usage")).toContain("gap: 6px 16px");
     expect(rule(css, ".s-usage-win")).toContain("grid-template-columns: 36px minmax(60px, 1fr) 38px auto");
+    expect(rule(css, ".s-account-usage")).toContain("container-type: inline-size");
+    expect(css).toContain("@container (max-width: 455px) { .s-usage-win { grid-template-columns: 36px minmax(36px, 1fr) 38px 28%; } }");   // stacked rows share one set of columns
     expect(rule(css, ".s-usage-meter")).toContain("height: 6px");
     expect(rule(css, ".s-usage-meter")).toContain("width: 100%");
     for (const v of ["--ac-bar: #3b6db5", "--ac-bar-warn: #d9822b", "--ac-pct-warn: #b85d14", "--ac-bar-crit: #c93b3b", "--ac-pct-crit: #b42318", "--ac-usage-bg: #f8f7f2", "--ac-usage-line: #e5e1d6"]) expect(css, v).toContain(v);
