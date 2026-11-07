@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -21,6 +21,7 @@ import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { setLocale } from "../src/locale.js";
+import { base32Encode, base32Decode, hotp, totpStep, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 
 const dirs: string[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.restoreAllMocks(); });
@@ -213,4 +214,57 @@ describe("a link option turned on (#2453): the host operator's own session here 
       expect(h.any.settingsSelfConfirmation(plain.store, h.reqOf(host.sessionId), plain.view.id)).toBeNull();
     } finally { await h.stop(); }
   }, 20_000);
+});
+
+// ── #3366 review (Fable F1, F2): the two guards that alone keep a link opener from non-host paths ──
+describe("a link opener never reaches a web-verified admin's Apply now, nor an authenticator code (#3366 review)", () => {
+  const TOKEN = "c".repeat(48), SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));
+  function fixture(chat: boolean) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-3366-")); dirs.push(dir);
+    if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+    const fm = new FleetManager(dir), any = fm as any;
+    fm.fleetConfig = { defaults: { backend: "codex" }, ...(chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001" }] } : {}),
+      instances: { general: { working_directory: dir, general_topic: true } } } as any;
+    writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
+    const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+    // An ordinary admin session on this computer — not the host's (no `host`), as a browser signed in with a code.
+    const c = any.webSessions.create({ tier: "admin", surface: "local", label: "browser", tokenEpoch: tokenEpoch(TOKEN) });
+    const req: any = { method: "POST", socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:19280", origin: "http://127.0.0.1:19280",
+      "sec-fetch-site": "same-origin", cookie: `agend_session=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
+    const propose = (link: boolean) => {
+      // A link opener, or an ordinary held change (connecting another Telegram bot).
+      const effect = link ? prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: { named_link: true } }, { config: fm.fleetConfig, classic: {} } as any)
+        : prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ id: "b", type: "telegram", mode: "topic", group_id: "-1002", bot_token_env: "T2" }], { config: fm.fleetConfig, classic: {} } as any);
+      const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
+      const view = store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
+        fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
+        ...(effect.diff!.noSelfConfirm ? { noSelfConfirm: true as const } : {}), ...(effect.diff!.hostSessionOnly ? { hostSessionOnly: true as const } : {}),   // as the gate passes them
+        current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+      return { view, apply };
+    };
+    return { fm, any, store, req, record: c.record, propose };
+  }
+  it("F1 — chat fleet: a web-verified admin of the General's connection gets Apply now for an ordinary change, never for a link opener", () => {
+    const f = fixture(true);
+    expect(f.record.host).toBeUndefined();
+    // Web-verified as admin 1 of connection "a", which a General card could reach (the #2170 path's own inputs).
+    vi.spyOn(f.fm, "webAuthority").mockReturnValue({ authority: { kind: "web-verified", actor: { adapter_id: "a", user_id: "1" }, session: { handle: f.record.handle } } } as any);
+    vi.spyOn(f.any, "settingsChatAuthority").mockReturnValue({ platform: "telegram", current: () => true, admin: () => true });
+    vi.spyOn(f.any, "settingsNoticeGenerals").mockReturnValue([{ current: () => true, followStop: async () => {} }]);
+    vi.spyOn(f.any, "settingsCardPossible").mockReturnValue(true);
+    const ordinary = f.propose(false), link = f.propose(true);
+    expect([f.store.selfConfirmable(ordinary.view.id), f.store.hostSessionConfirmable(link.view.id)]).toEqual([true, true]);
+    expect(f.any.settingsSelfConfirmation(f.store, f.req, ordinary.view.id)?.label).toBeTruthy();   // control: the path is open
+    expect(f.any.settingsSelfConfirmation(f.store, f.req, link.view.id)).toBeNull();               // …but never for #2453
+  });
+  it("F2 — web-only fleet: a correct authenticator code with the right digest, POSTed for a link opener, is refused; nothing applied", async () => {
+    const f = fixture(false);
+    const link = f.propose(true), ordinary = f.propose(false);
+    const code = hotp(base32Decode(SECRET)!, totpStep(Date.now()));
+    expect(f.any.settingsTotpConfirm(f.store, f.req, link.view.id, code, f.store.confirmDigest(link.view.id))).toEqual({ error: "not_here" });
+    expect(link.apply).not.toHaveBeenCalled();
+    // Control: the same session and app confirm an ordinary change with a code.
+    const r = f.any.settingsTotpConfirm(f.store, f.req, ordinary.view.id, hotp(base32Decode(SECRET)!, totpStep(Date.now() + 30_000)), f.store.confirmDigest(ordinary.view.id));
+    expect(r.label).toBe("Authenticator code");
+  });
 });

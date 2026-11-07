@@ -83,7 +83,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
 - **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
-- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能用驗證碼確認，更不能透過公開連結修改。**唯一的例外**：主機操作者自己的 session，也就是在 AgEnD 電腦本機的瀏覽器上使用（在那台電腦用 `agend web` 登入，走 loopback、沒有轉送標頭）的 session，可以像確認其他變更一樣確認它。在純網頁 fleet 上是「直接套用」；在有聊天連線的 fleet 上，則是在沒有 General 能接收確認卡時套用（D3）。純網頁 fleet 上的其他 session，會被告知請到 AgEnD 電腦本機的瀏覽器操作。快速連結選項也一樣。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能用驗證碼確認，更不能透過公開連結修改。**唯一的例外**：主機操作者自己的 session，也就是在 AgEnD 電腦本機的瀏覽器上使用（在那台電腦用 `agend web` 登入，走 loopback、沒有轉送標頭）的 session，可以像確認其他變更一樣確認它。在純網頁 fleet 上是「直接套用」；在有聊天連線的 fleet 上，則是在沒有 General 能接收確認卡時套用（D3）。純網頁 fleet 上的其他 session，會被告知請到 AgEnD 電腦本機的瀏覽器操作。快速連結選項也一樣。「在 AgEnD 電腦上」指的是 loopback 請求、loopback Host、沒有轉送標頭。本機的連接埠轉送（`ssh -L`、IDE 的連接埠轉送）進來的請求正是這樣，所以會被當成這台電腦。能建立這種轉送的人本來就已經掌控主機，因此這和威脅模型一致。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟即接受的風險。** Cloudflare 終止 TLS，看得到流量，包括 session cookie。已授權的 named-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
