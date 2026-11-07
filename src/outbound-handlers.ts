@@ -1346,7 +1346,7 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
     const text = markFaintRuns(tail.text);
     if (text !== tail.text) notes.push(FAINT_NOTE);
     if (startsInsideFaint(tail.text)) notes.push(FAINT_START_NOTE);
-    if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
+    if (capped) notes.push(t("logs.capped_tail", MAX_INSTANCE_LOG_LINES));
     if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
     if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
