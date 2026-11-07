@@ -80,10 +80,12 @@ export function QuotaNoticeSettings({ ctx }) {
   const effective = { enabled: true, thresholds: [10], periods: ["weekly"], ...parsed.fleet,
     ...(selectedBackend ? parsed[`backend:${selectedBackend}`] : {}), ...(scope.startsWith("agent:") || scope.startsWith("classic:") ? parsed[scope] : {}) };
   const update = k => e => setFields(f => ({ ...f, [fieldKey(scope, k)]: e.target.value }));
-  return html`<section class="s-card" id="quota-notices"><h2>${text.heading}</h2><p>${text.hint}</p><p class="muted">${text.defaults}</p>
+  // alpha.6 feedback (#3, main twin of #3320): a Settings card like the others here (card, its h3 and notes, the fields in
+  // the grid), not a bare heading over full-width fields on the page background (class "s-card" had no style).
+  return html`<section class="card" id="quota-notices"><h3>${text.heading}</h3><p class="note">${text.hint}</p><p class="note">${text.defaults}</p>
     ${!supported ? html`<p role="status">${text.old}</p>` : null}
-    ${!invalid ? html`<p class="muted" data-quota-effective>${text.effective}: ${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.join(", ") || "—"}</p>` : null}
-    <fieldset disabled=${!supported} class="s-quota-fields">
+    ${!invalid ? html`<p class="note" data-quota-effective>${text.effective}: ${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.join(", ") || "—"}</p>` : null}
+    <fieldset disabled=${!supported} class="s-quota-fields grid2">
       <div class="field"><label for="qn-target">${text.target}</label><select id="qn-target" value=${form.target} onChange=${e => setFields(f => ({ ...f, target: e.target.value }))}>
         <option value="general">${text.general}</option>${Object.entries(instances).filter(([n]) => n !== "general").map(([n, c]) => html`<option value=${n}>${c.display_name || n}</option>`)}
         ${form.target !== "general" && !Object.hasOwn(instances, form.target) ? html`<option value=${form.target}>${form.target}</option>` : null}
@@ -94,7 +96,7 @@ export function QuotaNoticeSettings({ ctx }) {
         ${Object.entries(classic).map(([n, c]) => html`<option value=${`classic:${n}`}>${text.classic} · ${c.name || c.instanceName || n}</option>`)}
       </select></div>
       <div class="field"><label for="qn-enabled">${text.enabled}</label><select id="qn-enabled" value=${value.enabled} onChange=${update("enabled")}><option value="">${text.inherit}</option><option value="on">${text.on}</option><option value="off">${text.off}</option></select></div>
-      <div class="field"><label for="qn-thresholds">${text.thresholds}</label><input id="qn-thresholds" value=${value.thresholds} onInput=${update("thresholds")} placeholder="10" /><p class="muted">${text.thresholdHint}</p></div>
-      <div class="field"><label for="qn-periods">${text.periods}</label><input id="qn-periods" value=${value.periods} onInput=${update("periods")} placeholder=${text.periodExample} /><p class="muted">${text.periodHint}</p></div>
-    </fieldset>${invalid ? html`<p class="feedback error" role="alert">${text.error}</p>` : null}<p class="muted">${text.sources}</p></section>`;
+      <div class="field"><label for="qn-thresholds">${text.thresholds}</label><input id="qn-thresholds" value=${value.thresholds} onInput=${update("thresholds")} placeholder="10" /><p class="note">${text.thresholdHint}</p></div>
+      <div class="field"><label for="qn-periods">${text.periods}</label><input id="qn-periods" value=${value.periods} onInput=${update("periods")} placeholder=${text.periodExample} /><p class="note">${text.periodHint}</p></div>
+    </fieldset>${invalid ? html`<p class="feedback error" role="alert">${text.error}</p>` : null}<p class="note">${text.sources}</p></section>`;
 }
