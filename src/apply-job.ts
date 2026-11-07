@@ -99,6 +99,14 @@ interface JobFile {
   jobs: ApplyJob[];
 }
 
+/**
+ * When a job was last at work, for its retention: its finish, else (#3390 review N1) the restart it runs now — a restart
+ * may use a Save's job from long before, and a running restart must never age out by that Save's start — else its start.
+ */
+function lastActive(job: ApplyJob): number {
+  return job.finishedAt ?? job.restartStartedAt ?? job.startedAt;
+}
+
 function isTerminal(status: ApplyJobStatus): boolean {
   return status === "done" || status === "failed";
 }
@@ -182,7 +190,7 @@ export class ApplyJobStore {
   private prune(): void {
     const cutoff = this.now() - APPLY_JOB_RETENTION_MS;
     this.jobs = this.jobs
-      .filter(job => (job.finishedAt ?? job.startedAt) >= cutoff)
+      .filter(job => lastActive(job) >= cutoff)
       .slice(0, MAX_JOBS);
   }
 
@@ -229,7 +237,7 @@ export class ApplyJobStore {
   /** The live job for a key, if the client is retrying rather than re-applying. */
   findByKey(key: string): ApplyJob | null {
     const cutoff = this.now() - APPLY_JOB_RETENTION_MS;
-    return this.jobs.find(job => job.key === key && (job.finishedAt ?? job.startedAt) >= cutoff) ?? null;
+    return this.jobs.find(job => job.key === key && lastActive(job) >= cutoff) ?? null;
   }
 
   create(key: string, targets: Array<Pick<ApplyTarget, "target" | "kind">>, deadlineMs = APPLY_JOB_DEADLINE_MS): ApplyJob {
