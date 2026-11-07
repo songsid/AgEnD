@@ -50,7 +50,10 @@ describe("Settings → Runtime: the computer card", () => {
     expect(rows.map((row: any) => row.getAttribute("data-profile"))).toEqual(["work", "home", "old", "fresh"]);
     expect(rows.map((row: any) => row.querySelector(".runtime-cli-auth").textContent.trim())).toEqual(["Signed in", "Signed in", "Not signed in", "Not checked"]);
     expect(rows[0].querySelector(".runtime-profile-default").textContent).toBe("Default"); expect(rows[1].querySelector(".runtime-profile-default")).toBeNull();
-    expect(card.querySelector(".runtime-profiles-how").textContent).toContain("agend-runtime login claude-code NAME");
+    expect(card.querySelector(".runtime-profiles-how").textContent).toContain("Settings → Agents");
+    expect(card.querySelector(".runtime-profiles-how").textContent).toContain("Add account");
+    expect(card.querySelector(".runtime-profiles-how").textContent).not.toMatch(/agend-runtime/);
+    expect(card.querySelector(".runtime-profiles-how a").getAttribute("href")).toBe("/settings/agents");
     expect(card.textContent).not.toMatch(/[A-Za-z]:\\credential|@|token/i);
   });
   it("tells a Runtime that predates Claude accounts (or an empty one) what to do instead of listing nothing", async () => {
@@ -58,6 +61,10 @@ describe("Settings → Runtime: the computer card", () => {
     const old = p.root.querySelector(`[data-machine-id="${idB}"]`); expect(old.querySelector(".runtime-profile-list")).toBeNull();
     expect(old.querySelector(".runtime-profiles-old").textContent).toContain("Update the Runtime on that computer");
     const empty = p.root.querySelector(`[data-machine-id="${idC}"]`); expect(empty.querySelector(".runtime-profile-list")).toBeNull(); expect(empty.textContent).toContain("No Claude accounts reported yet.");
+    expect(empty.querySelector(".runtime-profiles-how").textContent).toContain("Settings → Agents → AI sign-ins and API keys → Accounts");
+    expect(empty.querySelector(".runtime-profiles-how").textContent).toContain("Add account");
+    expect(empty.querySelector(".runtime-profiles-how").textContent).not.toMatch(/agend-runtime/);
+    expect(empty.querySelector(".runtime-profiles-how a").getAttribute("href")).toBe("/settings/agents");
   });
   it("ignores a malformed report instead of rendering it", async () => {
     machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [claude], credentialProfiles: { profiles: [{ name: "work", loggedIn: true, path: "C:\\secret" }, null, { loggedIn: true }] } } })];
@@ -161,7 +168,11 @@ describe("new remote agent: Claude account", () => {
     expect(p.root.querySelector(".claude-account-old").textContent).toContain("Update the Runtime on that computer");
   });
   it("explains how to create the first account when a computer has none", async () => {
-    await open(idC); expect(p.root.querySelector(".claude-account-empty").textContent).toContain("agend-runtime login claude-code NAME");
+    await open(idC);
+    const empty = p.root.querySelector(".claude-account-empty");
+    expect(empty.textContent).toContain("Settings → Agents → AI sign-ins and API keys → Accounts");
+    expect(empty.textContent).not.toMatch(/agend-runtime/);
+    expect(empty.querySelector("a").getAttribute("href")).toBe("/settings/agents");
   });
 });
 
@@ -191,13 +202,18 @@ describe("change runtime dialog: Claude account", () => {
 describe("words", () => {
   it("every Claude-account string exists in English and zh-TW with the same placeholders", async () => {
     const read = (lang: string) => { i18n.setLang(lang, { store: false }); return lang; };
-    const keys = ["label", "none", "default", "signedOut", "unchecked", "notReported", "old", "empty", "hint", "changeNote"];
-    const machineKeys = ["profilesTitle", "profileDefault", "profilesNone", "profilesHow", "profilesOld", "profilesList", "profileSignedIn", "profileSignedOut", "profileUnchecked", "capability_credentialProfiles"];
+    const keys = ["label", "none", "default", "signedOut", "unchecked", "notReported", "old", "empty", "accountsLink", "hint", "changeNote"];
+    const machineKeys = ["profilesTitle", "profileDefault", "profilesNone", "profilesHow", "profilesHowLink", "profilesOld", "profilesList", "profileSignedIn", "profileSignedOut", "profileUnchecked", "capability_credentialProfiles"];
     const words: Record<string, Record<string, string>> = {};
     for (const lang of ["en", "zh-TW"]) { read(lang); words[lang] = {}; for (const key of keys) words[lang][`claudeAccount.${key}`] = i18n.t(`claudeAccount.${key}`, "X"); for (const key of machineKeys) words[lang][`machines.${key}`] = i18n.t(`machines.${key}`, "X"); }
     i18n.setLang("en", { store: false });
     for (const key of Object.keys(words.en)) { expect(words.en[key], key).not.toBe(key); expect(words["zh-TW"][key], key).not.toBe(key); expect(words["zh-TW"][key], key).not.toBe(words.en[key]); }
     expect(words["zh-TW"]["claudeAccount.label"]).toBe("Claude 帳號");
+    for (const key of ["claudeAccount.empty", "machines.profilesHow"]) {
+      expect(words.en[key], key).toContain("Settings → Agents");
+      expect(words.en[key], key).not.toMatch(/agend-runtime/);
+      expect(words["zh-TW"][key], key).not.toMatch(/agend-runtime/);
+    }
     expect(accounts.credentialProfileState(true)).toBe("signedIn"); expect(accounts.credentialProfileState(false)).toBe("signedOut"); expect(accounts.credentialProfileState(null)).toBe("unchecked");
   });
 });

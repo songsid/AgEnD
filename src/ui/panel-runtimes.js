@@ -13,6 +13,7 @@ import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { runtimeConnectCommand, runtimeInstallCommand, runtimeWindowsConnectCommand } from "./runtime-commands.js";
 import { RuntimeUpdateNotice, runtimeUpdateText, runtimeFreshInstallCommand } from "./runtime-update-status.js";
+import { sectionPath } from "/assets/app-route.js";
 import { credentialProfileView, credentialProfileState } from "./credential-profile-select.js";
 import { identityText } from "./account-identity.js";
 import { CliInstall, offersCliInstall } from "./runtime-cli-install.js";
@@ -142,8 +143,8 @@ register("machines", {
     zipTabHint:"不想執行指令？在這裡下載 ZIP，傳到另一台電腦並解壓縮。" },
 });
 register("machines", {
-  en: { profilesTitle:"Claude accounts", profileDefault:"Default", profilesNone:"No Claude accounts reported yet.", profilesHow:"To add one, run agend-runtime login claude-code NAME on that computer, then choose Detect again in CLI diagnostics.", profilesOld:"Update the Runtime on that computer to choose a Claude account for an agent.", profilesList:"Claude accounts on {0}", profileSignedIn:"Signed in", profileSignedOut:"Not signed in", profileUnchecked:"Not checked", capability_credentialProfiles:"Claude accounts (credential profiles)" },
-  "zh-TW": { profilesTitle:"Claude 帳號", profileDefault:"預設", profilesNone:"尚未回報任何 Claude 帳號。", profilesHow:"要新增，請在那台電腦執行 agend-runtime login claude-code 名稱，再在「CLI 診斷」按「重新偵測」。", profilesOld:"請更新那台電腦上的 Runtime，才能為 Agent 選擇 Claude 帳號。", profilesList:"{0} 上的 Claude 帳號", profileSignedIn:"已登入", profileSignedOut:"尚未登入", profileUnchecked:"未確認", capability_credentialProfiles:"Claude 帳號（credential profile）" },
+  en: { profilesTitle:"Claude accounts", profileDefault:"Default", profilesNone:"No Claude accounts reported yet.", profilesHow:"To add one, go to Settings → Agents → AI sign-ins and API keys → Accounts, then Add account on that computer.", profilesHowLink:"Open Accounts", profilesOld:"Update the Runtime on that computer to choose a Claude account for an agent.", profilesList:"Claude accounts on {0}", profileSignedIn:"Signed in", profileSignedOut:"Not signed in", profileUnchecked:"Not checked", capability_credentialProfiles:"Claude accounts (credential profiles)" },
+  "zh-TW": { profilesTitle:"Claude 帳號", profileDefault:"預設", profilesNone:"尚未回報任何 Claude 帳號。", profilesHow:"要新增，請到設定 → Agents →「AI 登入與 API 金鑰」→「帳號」，再在那台電腦上按「新增帳號」。", profilesHowLink:"開啟帳號", profilesOld:"請更新那台電腦上的 Runtime，才能為 Agent 選擇 Claude 帳號。", profilesList:"{0} 上的 Claude 帳號", profileSignedIn:"已登入", profileSignedOut:"尚未登入", profileUnchecked:"未確認", capability_credentialProfiles:"Claude 帳號（credential profile）" },
 });
 function CredentialProfiles({ machine }) {
   const view = credentialProfileView(machine);
@@ -151,7 +152,7 @@ function CredentialProfiles({ machine }) {
   if (!view.capable) return html`<p class="note runtime-profiles-old" role="status">${machineText("profilesOld")}</p>`;
   return html`<div class="runtime-profiles"><h4>${machineText("profilesTitle")}</h4>${view.profiles.length
     ? html`<ul class="runtime-profile-list" aria-label=${machineText("profilesList",machine.name)}>${view.profiles.map(row => html`<li key=${row.name} data-profile=${row.name}><code>${row.name}</code>${row.name === view.defaultName ? html`<small class="runtime-profile-default">${machineText("profileDefault")}</small>` : null}${row.loggedIn === true && identityText(row.identity) ? html`<small class="runtime-account">${identityText(row.identity)}</small>` : null}<span class=${`runtime-cli-auth ${row.loggedIn === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(`profile${credentialProfileState(row.loggedIn).replace(/^./,c=>c.toUpperCase())}`)}</span></li>`)}</ul>`
-    : html`<p class="note">${machineText("profilesNone")}</p>`}<p class="note runtime-profiles-how">${machineText("profilesHow")}</p></div>`;
+    : html`<p class="note">${machineText("profilesNone")}</p>`}<p class="note runtime-profiles-how">${machineText("profilesHow")} <a href=${sectionPath("agents")}>${machineText("profilesHowLink")}<span aria-hidden="true">→</span></a></p></div>`;
 }
 /** cc3ce4fe: a persistent-pane CLI's version AgEnD has not audited (or knows is broken), from the coordinator's label. */
 function paneVerificationTag(cli, text) {
