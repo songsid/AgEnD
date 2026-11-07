@@ -1,7 +1,7 @@
 /* The shared Skeleton's calm content shapes, including before the app's modules arrive. No shimmer or spinner. */
 .skeleton { box-sizing: border-box; width: 100%; min-width: 0; }
 .skeleton > [aria-hidden] { display: flex; flex-direction: column; gap: 14px; width: 100%; }
-.skeleton .sk-line { flex-shrink: 0; background: var(--surface-2, #e8e8eb); border-radius: 5px; }
+.skeleton .sk-line { height: 14px; flex-shrink: 0; background: var(--surface-2, #e8e8eb); border-radius: 5px; }
 .sk-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 0; }
 .sk-row .sk-thumb { width: 36px; height: 36px; border-radius: 9px; }
 .sk-row .sk-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 9px; }
