@@ -1734,6 +1734,9 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op()?.phase).not.toBe("writing"), { timeout: 5000 }); await settle(4);
     await vi.waitFor(() => expect(p.root.textContent).toContain("starts with the new token when AgEnD restarts"), { timeout: 5000 });
+    // S-91 (hmsg-77256f66): the way to restart is the page's own restart notice, never a host command.
+    expect(p.root.textContent).toContain("restart notice at the top of the page");
+    expect(p.root.textContent).not.toContain("agend restart");
     expect(op().phase, "stored, not failed").not.toBe("failed");
   }, 15_000);
 });

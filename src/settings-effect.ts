@@ -94,7 +94,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
-      affectedConnections: [], authority: HUB_AUTHORITY, noSelfConfirm: true } };
+      affectedConnections: [], authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
@@ -141,7 +141,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY, noSelfConfirm: true } };
+      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
   if (pairingStep) {
@@ -153,7 +153,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY, ...(pairingStep[1] === "disconnect" ? {} : { noSelfConfirm: true as const }) } };
+      authority: HUB_AUTHORITY, ...(pairingStep[1] === "disconnect" ? {} : { noSelfConfirm: true as const, hostLocalConfirm: true as const }) } };
   }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);

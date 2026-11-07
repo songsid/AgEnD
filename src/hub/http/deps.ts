@@ -13,6 +13,7 @@ import type { HubPollBallot } from "../types.js";
 export interface HubHttpConfig {
   readonly hubId: string;
   readonly name: string;
+  readonly memberOrigin: string;
   readonly webOrigin: string;
   readonly administrator: PersonKey;
 }
@@ -32,6 +33,8 @@ export interface HubHttpDeps {
   audit: HubAuditSink;
   directory: HubDirectory;
   pairing: HubPairingService;
+  /** Server-owned group permits; absent only in legacy injected compositions. */
+  groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
   store: HubTransportStore;
   config: HubHttpConfig;
   preview?: Readonly<import("../preview.js").HubPreviewView>;

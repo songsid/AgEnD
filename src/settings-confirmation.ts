@@ -58,6 +58,10 @@ export interface SettingsPendingView {
   can_withdraw: boolean;
   /** #2868: the browser that reads it may confirm it itself now (#2170's rule, asked at that read): "Apply now". */
   can_self_confirm?: boolean;
+  /** alpha.6 #2c (hmsg-468cc290): this page may confirm it with the authenticator's code (ready), or could once one is set up. */
+  totp?: "ready" | "not_set_up" | "on_host";
+  /** B2b: with `totp` ready, the change's digest the page sends back with the code (one code confirms only this change). */
+  confirm_digest?: string;
   outcome: SettingsChangeOutcome | null;
 }
 export interface SettingsChangeProposal {
@@ -75,6 +79,8 @@ export interface SettingsChangeProposal {
   authority?: SettingsChangeAuthority;
   /** #2453: never confirmed by its own requester (#2170) — it turns the named-link option on. */
   noSelfConfirm?: true;
+  /** B2b: noSelfConfirm, except for this computer's host operator on its own local session (see SettingsChangeDiff). */
+  hostLocalConfirm?: true;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
@@ -204,6 +210,10 @@ export class SettingsConfirmationStore {
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
   /** #2453: whether its requester may confirm it by applying it (#2170) — not a change that opens the named link. */
   selfConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm !== true; }
+  /** B2b: a noSelfConfirm change the host operator's own local session may still confirm. */
+  hostLocalConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm === true && p.hostLocalConfirm === true; }
+  /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
+  confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {
     const entry = this.records.get(id); return entry ? structuredClone(entry.authority) : null;
   }
@@ -241,7 +251,7 @@ export class SettingsConfirmationStore {
     if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", t("settings_confirm.result.withdrawn"));
     return this.snapshot(entry);
   }
-  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web";
+  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web"; audit?: Record<string, unknown>;
     followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }): Promise<SettingsPendingView> {
     const entry = this.records.get(id);
     if (entry) this.expire(entry);
@@ -254,7 +264,7 @@ export class SettingsConfirmationStore {
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     if (actor.via === "web") entry.view.confirmation = { kind: "web" };
     this.changed(entry);
-    this.audit("confirmed", entry, { decided_by: this.display(actor.label) });
+    this.audit("confirmed", entry, { decided_by: this.display(actor.label), ...(actor.audit ?? {}) });
     const current = (): boolean => !this.closed && entry.view.state === "applying"
       && this.now() < entry.deadline && actor.current() && proposal.current();
     try {

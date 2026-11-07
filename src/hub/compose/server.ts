@@ -22,8 +22,11 @@ import {
   type HubMigration,
   type HubStateSet,
 } from "../db.js";
-import type { HubDirectory, HubDirectoryConfig } from "../directory/index.js";
-import { signAsker } from "../identity.js";
+import { resolveDirectoryConfig, type HubDirectory, type HubDirectoryConfig } from "../directory/index.js";
+import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyBinding, type HubGroupPolicyStore } from "../group-policy/store.js";
+import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
+import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
+import { signAsker, canonicalArguments, sha256 } from "../identity.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -53,11 +56,12 @@ export interface HubHttpDeps {
   attachments?: HubAttachmentStore;
   directory: HubDirectory;
   pairing: HubPairingService;
+  groups?: HubGroupAuthorization;
   store: HubTransportStore;
   current(): HubMode;
   now?: () => number;
   preview?: Readonly<HubPreviewView>;
-  config: Readonly<{ hubId: string; name: string; webOrigin: string; administrator: PersonKey }>;
+  config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
   transport(): Pick<HubServerTransport, "send"> | null;
@@ -223,6 +227,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       if (!options.components.http) throw new HubStateError("hub-incomplete", "the Hub web service (S3) is not in this build");
       const httpEntry = await options.components.http();
       const settings = settingsOf(cfg);
+      const resolvedDirectory = resolveDirectoryConfig(settings.directory);
+      // Stable, non-secret authority generation. Timeouts and bind-password rotation do not
+      // retarget people/groups; changes to directory identity/search/trust do.
+      const groupGeneration = sha256(canonicalArguments({ v: 1, realm: resolvedDirectory.realm, url: resolvedDirectory.url,
+        profile: resolvedDirectory.profile, baseDn: resolvedDirectory.baseDn, bindDn: resolvedDirectory.bindDn,
+        loginAttribute: resolvedDirectory.loginAttribute, userFilter: resolvedDirectory.userFilter, caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
       const previewBoot = randomBytes(16).toString("hex");
 
       // 1. The private state set: new (create all), complete (open), anything else refused.
@@ -235,7 +245,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
-        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION]);
+        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
+        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -266,6 +277,19 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let memberServer: HubServer | null = null;
       let fenced = false;
       const live = () => !fenced && current();
+      let groupPolicy: HubGroupPolicyStore | undefined;
+      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator,
+        policy: () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+          generation: groupGeneration, directory, audit, current: live, now }),
+        binding: () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration),
+        audit, current: live, now, version: () => store.read().revocationVersion,
+        advanceAuthorization: (database, resource) => {
+          if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group authorization transaction is unavailable");
+          store.mutate({ at: now(), requestId: randomBytes(16).toString("hex"), actor: { kind: "local-host" },
+            action: "group-resource.authorization-changed", result: "completed",
+            ...(resource.kind === "fleet" ? { fleetId: resource.id } : resource.kind === "exposure" ? { exposureId: resource.id } : {}) }, state => { state.revocationVersion++; });
+        }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
+      teardown.add("group authorization", () => groups.close());
       const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
       const pairing = new HubPairingService({
         store,
@@ -285,11 +309,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         attachments,
         directory,
         pairing,
+        groups,
         store,
         current: () => mode,
         now,
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
-        config: Object.freeze({ hubId: settings.hubId, name: settings.name, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
+        config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });

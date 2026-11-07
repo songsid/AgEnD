@@ -570,11 +570,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
       // Access control
       if (!this.accessManager.isAllowed(userId)) {
-        // In pairing mode, allow /pair commands through
-        if (msg.text?.startsWith("/pair")) {
-          await this._handlePairCommand(ctx);
-          return;
-        }
         // Allow messages from non-primary chats through for classic mode
         // (classic mode has its own access control in fleet-manager)
         const chatId = String(msg.chat.id);
@@ -769,22 +764,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // (e.g. new_chat_title, pinned_message, new_chat_members, left_chat_member,
     //  forum_topic_created, forum_topic_edited, etc.)
     return true;
-  }
-
-  private async _handlePairCommand(ctx: Context): Promise<void> {
-    const msg = ctx.message;
-    if (!msg || !msg.from) return;
-    const userId = String(msg.from.id);
-    const chatId = String(msg.chat.id);
-    try {
-      const code = await this.handlePairing(chatId, userId);
-      await ctx.reply(`Your pairing code is: \`${code}\`\nShare it with the daemon owner to get access.`, {
-        parse_mode: "Markdown",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await ctx.reply(`Pairing failed: ${message}`);
-    }
   }
 
   // ── ChannelAdapter lifecycle ──────────────────────────────────────────────
@@ -1914,7 +1893,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.emit("topic_closed", { chatId: String(payload.chat_id), threadId });
   }
 
-  // ── Pairing ───────────────────────────────────────────────────────────────
+  // ── Forum topics ───────────────────────────────────────────────────────────────
 
   async closeForumTopic(threadId: number | string): Promise<void> {
     const chatId = this.getChatId();
@@ -1954,15 +1933,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return stickers
       .filter((s) => s.custom_emoji_id != null)
       .map((s) => ({ customEmojiId: s.custom_emoji_id!, emoji: s.emoji ?? "" }));
-  }
-
-  async handlePairing(chatId: string, userId: string): Promise<string> {
-    const code = this.accessManager.generateCode(userId);
-    return code;
-  }
-
-  async confirmPairing(code: string, callerUserId?: string): Promise<boolean> {
-    return this.accessManager.confirmCode(code, callerUserId);
   }
 }
 

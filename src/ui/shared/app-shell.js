@@ -688,6 +688,15 @@ register("pendingHost", {
     post_failed_do: "Check General's chat connection in Settings → Chat & connections, then make the change again.",
     unknown: "No General could take the confirm card for this change.",
     go: "Open",
+    codeLead: "Or confirm it here with the code from your authenticator app.",
+    codeLabel: "Authenticator code", codeGo: "Confirm",
+    codeWrong: "That code is not right. Use the current code in your authenticator app.",
+    codePaused: "Too many wrong codes. Try again in {0} minutes.",
+    codeNotHere: "This page can no longer confirm it with a code.",
+    codeUnavailable: "The code could not be checked. Try again.",
+    codeChanged: "This change is no longer the one shown here. Reload the page and check it again.",
+    onHost: "This change can't be confirmed over a link. Confirm it in the browser on the computer running AgEnD, or in General.",
+    codeSetUp: "To confirm changes here with a code, set up an authenticator app in Access & security.",
   },
   "zh-TW": {
     no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
@@ -704,10 +713,45 @@ register("pendingHost", {
     post_failed_do: "請到「設定 → 聊天與連線」檢查 General 的連線，再重新做一次這項變更。",
     unknown: "這項變更沒有 General 可以接收確認卡。",
     go: "前往",
+    codeLead: "也可以在這裡輸入驗證器 App 的代碼確認。",
+    codeLabel: "驗證器代碼", codeGo: "確認",
+    codeWrong: "代碼不正確，請使用驗證器 App 目前顯示的代碼。",
+    codePaused: "錯誤次數太多，請 {0} 分鐘後再試。",
+    codeNotHere: "這個頁面已無法用代碼確認這項變更。",
+    codeUnavailable: "無法檢查代碼，請再試一次。",
+    codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
+    onHost: "這項變更無法透過連結確認。請在執行 AgEnD 的那台電腦的瀏覽器中確認，或在 General 確認。",
+    codeSetUp: "若要在這裡用代碼確認變更，請先到「存取與安全」設定驗證器 App。",
   },
 });
 const PENDING_HOST_REASONS = ["no_chat", "cross_platform", "no_general", "chat_disconnected", "no_topic", "post_failed"];
 const PENDING_HOST_GO = { no_chat: "chat", no_general: "agents", chat_disconnected: "chat", post_failed: "chat" };
+/**
+ * alpha.6 feedback #2c (the user's decision hmsg-468cc290): on a web-only fleet's own page, a local admin who is not the host
+ * operator confirms a pending change with the owner's authenticator code. The server decides who may (p.confirmWithCode, from
+ * the view's `totp`) and checks the code; this only asks for it and says the answer.
+ */
+function PendingCode({ p }) {
+  const [code, setCode] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  const go = async (e) => {
+    e.preventDefault();
+    if (busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))) return;
+    setBusy(true); setMsg("");
+    const r = await p.confirmWithCode(code);
+    setBusy(false); setCode("");
+    if (r && r.ok) return;
+    const why = r && r.error;
+    setMsg(why === "wrong" ? t("pendingHost.codeWrong") : why === "paused" ? t("pendingHost.codePaused", Math.max(1, Math.ceil((r.retryAfterMs || 60000) / 60000)))
+      : why === "not_here" ? t("pendingHost.codeNotHere") : why === "changed" ? t("pendingHost.codeChanged") : t("pendingHost.codeUnavailable"));
+  };
+  return html`<form class="pending-self pending-code" onSubmit=${go}>
+    <span class="note">${t("pendingHost.codeLead")}</span>
+    <label class="field-row"><span class="sr-only">${t("pendingHost.codeLabel")}</span>
+      <input class="pending-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label=${t("pendingHost.codeLabel")}
+        value=${code} disabled=${busy} onInput=${(e) => setCode(e.target.value)} />
+      <button type="submit" class="btn btn-sm btn-primary" disabled=${busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))}>${t("pendingHost.codeGo")}</button></label>
+  </form>${msg ? html`<p class="note" role="alert">${msg}</p>` : null}`;
+}
 function PendingHow({ p }) {
   const a = useWebAuthorization();
   const [refused, setRefused] = useState(false);
@@ -722,6 +766,9 @@ function PendingHow({ p }) {
   const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
   return html`<p class="note">${lead}</p>
     ${why ? html`<p class="note pending-why">${t(`pendingHost.${why}_do`)}${go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null}</p>` : null}
+    ${p.confirmWithCode && !p.applyNow ? html`<${PendingCode} p=${p} />` : null}
+    ${p.onHost && !p.applyNow ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>` : null}
+    ${p.totpNotSetUp && !p.applyNow ? html`<p class="note pending-code-setup">${t("pendingHost.codeSetUp")} <a class="btn btn-sm" href=${settingsPath("access")}>${t("pendingHost.go")}</a></p>` : null}
     ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
       <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
     ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}

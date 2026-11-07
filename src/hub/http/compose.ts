@@ -27,7 +27,7 @@ import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
-import { HubCore, personByLogin } from "./core.js";
+import { HubCore, pairingOwnerByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
@@ -103,12 +103,12 @@ const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,
 
 /** Build S3's HTTP handler and member receiver over S5's deps. `sql` is S5's `hubTxDatabase`. */
 export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
-  const core = new HubCore(deps, sql);
+  let closed = false;
+  const core = new HubCore(deps, sql, () => !closed);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const rooms = new HubRoomsService(core, policy);
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
-  let closed = false;
   const live = () => !closed && core.live();
   /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
   const uploading = new Map<string, number>(); let uploadingTotal = 0;
@@ -290,11 +290,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/admin/pairings") {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); const login = str(b.login).trim();
-      await guard(() => ctx.requireAdmin());
-      const owner = await personByLogin(core, login);
+      const owner = await guard(() => pairingOwnerByLogin(core, ctx, login));
       if (!owner) throw new HubProtocolError("not-found");
       const offer = await guard(() => deps.pairing.create(ctx, owner));
-      return send(res, 200, offer);
+      return send(res, 200, { ...offer, memberOrigin: deps.config.memberOrigin });
     }
     if ((r = /^\/hub\/v1\/admin\/pairings\/([^/]+)\/approve$/.exec(path))) {
       if (method !== "POST") throw new HttpError(405, "method");

@@ -418,6 +418,10 @@ describe("Hub administration and pairing (S3b)", () => {
     const offer = await rig.call(ad, "POST", "/hub/v1/admin/pairings", { login: "olivia" });
     expect(offer.status).toBe(200);
     expect(offer.json.code).toMatch(/^[a-f0-9]{12}$/);
+    // #3337: hand off the member listener, never the browser address or a request Host header.
+    expect(offer.json.memberOrigin).toBe("https://127.0.0.1:9");
+    expect(offer.json.memberOrigin).not.toBe(WEB_ORIGIN);
+    expect(Object.keys(offer.json).sort()).toEqual(["code", "expiresAt", "memberOrigin", "pairingId"]);
     const pending = rig.pairing.pair({ code: offer.json.code });
     expect((await rig.call(o, "GET", "/hub/v1/pairings")).json.pairings).toEqual([expect.objectContaining({ id: pending.pairingId, fingerprint: pending.fingerprint })]);
     expect((await rig.call(ad, "POST", `/hub/v1/admin/pairings/${pending.pairingId}/approve`, { fingerprint: pending.fingerprint })).status).toBe(403);  // owner first

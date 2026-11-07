@@ -403,7 +403,7 @@ import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSess
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -2539,6 +2539,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupDashboard: FleetStartup | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private adapterRetryInFlight = new Map<string, Promise<void>>();
+  /** #3365 review P2: connections whose adapter could not be confirmed stopped — none is admitted for them until a restart. */
+  private adapterTeardownUnknown = new Set<string>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
    * and stale callbacks from the old client must not win. */
@@ -3162,6 +3164,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
+      totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       directAgentCreation: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
@@ -3195,12 +3198,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
+    // D3 (decision bcbb541f): on a fleet with a chat connection, a change no General can take a card for would wait for
+    // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
+    // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
+    // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) A change that opens a
+    // link (#2453 noSelfConfirm) is not widened here; the outward Hub changes the leader ruled on (hostLocalConfirm) are.
+    // "No card": none could be posted now, or the one tried could not be (posting failed or ran out — the view says
+    // host_cli; #3362 review N1).
+    const noCard = (): boolean => !this.settingsCardPossible(store, id) || store.inspect(id)?.confirmation.kind === "host_cli";
+    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && noCard()
+      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id))) {
+      // A card that could not be posted stays unposted (no card is attached later): fixed now, not re-read at execution,
+      // where the store has already marked the change as confirmed from the web.
+      const handle = auth.session.handle, postFailed = store.inspect(id)?.confirmation.kind === "host_cli";
+      const here = (): boolean => { const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+        return now.kind === "ok" && now.session.handle === handle && hostSessionHere(now.session, req) && !this.isWebOnlyFleet(); };
+      return {
+        label: t("settings_confirm.host_operator_label"),
+        current: () => here() && (postFailed || !this.settingsCardPossible(store, id)),
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin (no General could take it)"); },
+      };
+    }
     // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there. #3008: except
     // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
     // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
     if (gatewayRequestContext(req) && auth.session.remote !== "totp") return null;
-    // …and never a change that turns the named-link option on: that one needs a General's card or the host.
-    if (!store.selfConfirmable(id)) return null;
+    // …and never a change that turns the named-link option on: that one needs a General's card or the host. B2b (the leader's
+    // ruling on #3352 F1; threat model A 64a289a0): the outward Hub changes (hostLocalConfirm) are the one exception — for
+    // the host operator's own local session only (below).
+    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
@@ -3214,13 +3241,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ask. Asked again at execution: still the host operator now (this computer, not revoked or run out), still web-only.
     const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
       !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
-    if (hostOperator(actor)) {
+    // The host operator's own LOCAL session: its host session (the bootstrap or launch link), over loopback with no
+    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change.
+    const hostLocal = (): boolean => hostSessionHere(record, req);
+    if (hostOperator(actor) && (store.selfConfirmable(id) || hostLocal())) {
       return {
         label: t("settings_confirm.host_operator_label"),
-        current: () => hostOperator(verified()),
+        current: () => hostOperator(verified()) && (store.selfConfirmable(id) || hostLocal()),
         done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin"); },
       };
     }
+    if (!store.selfConfirmable(id)) return null;
     const chat = this.settingsChatAuthority(store, id);
     if (!chat) return null;
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
@@ -3237,6 +3268,79 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
+  }
+
+  /**
+   * alpha.6 feedback #2c — the user's decision hmsg-468cc290 (option A; decisions 28c2d3a3/0471da59 keep the second factor): on a
+   * web-only fleet, a pending change can be confirmed on THIS computer's own page with the owner's authenticator code, by a
+   * local admin session that is not the host operator (who already has "Apply now"), on this computer or the LAN. Never over
+   * a link (named or quick), never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
+   * the same store as signing in from outside (#3008): each time step once, the fleet-wide wrong-code limit. Asked again at
+   * execution (`current`): the same session, still an admin here (this computer or the LAN), the fleet still web-only, the
+   * same app still set up (not replaced, nor removed and set up again). Audited by the store under its own label; a correct and a refused use are logged.
+   */
+  private settingsTotpSession(req: IncomingMessage): { handle: string; current(): boolean } | null {
+    // Who is offered the code (the leader's ruling, (b) — Fable's view; threat model 64a289a0): on a web-only fleet, an admin
+    // session with no chat account, on this computer (loopback, no forwarding header) or on the LAN — any such session not
+    // otherwise allowed (a local non-host session may be another OS user). NEVER over a link, named or quick: "over a link" is
+    // the gateway's own context, never a peer address (both links are tunnels arriving from 127.0.0.1). Never a guest.
+    // The code is the authority; the session only carries it (#3352 security review, point 4).
+    const allowed = (): { handle: string } | null => {
+      if (!this.isWebOnlyFleet()) return null;
+      const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (auth.kind !== "ok") return null;
+      const s = auth.session, gateway = gatewayRequestContext(req);
+      if (s.tier !== "admin" || s.owner) return null;
+      if (gateway) return null;
+      const peer = webPeerOf(req);
+      return s.surface === "local" && (peer === "loopback" || peer === "lan") ? { handle: s.handle } : null;
+    };
+    const first = allowed();
+    if (!first) return null;
+    return { handle: first.handle, current: () => { const now = allowed(); return !!now && now.handle === first.handle && !!this.webRemoteAccess()?.enrolled; } };
+  }
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null {
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id))) return null;
+    // Over a link (web-only fleet): never a code here — the card says to do it in the host computer's own browser, or in General.
+    if (gatewayRequestContext(req)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "on_host" : null;
+    if (!this.settingsTotpSession(req)) return null;
+    if (this.settingsSelfConfirmation(store, req, id)) return null;          // "Apply now" already (the host operator here)
+    return this.webRemoteAccess()?.enrolled ? "ready" : "not_set_up";
+  }
+  settingsTotpConfirm(store: SettingsConfirmationStore, req: IncomingMessage, id: string, code: string, digest: string):
+    { label: string; current(): boolean; audit?: Record<string, unknown>; done?(view: SettingsPendingView): void } | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number } {
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id)) || this.settingsSelfConfirmation(store, req, id)) return { error: "not_here" };
+    const local = this.settingsTotpSession(req), access = this.webRemoteAccess();
+    if (!local || !local.current() || !access?.enrolled) return { error: "not_here" };
+    // #3352 security review, point 2: the code confirms exactly the change the page showed — checked before the code is.
+    if (digest !== store.confirmDigest(id)) return { error: "changed" };
+    const shown = store.inspectHost(id)?.view.summary ?? [];
+    // #3355 review (Prism P2): the code's authority is the app it came from. Bound to that enrollment through execution — an
+    // app replaced, or removed and set up again, while the change waits ends it, for good (a later match never revives it).
+    const enrollment = access.enrollment;
+    const v = access.verify(code);
+    if (v.kind === "ok") {
+      if (!enrollment) return { error: "not_here" };
+      this.logger.info({ id, handle: local.handle }, "Settings change confirmed on this computer with the authenticator code");
+      let lost = false;
+      const current = (): boolean => {
+        if (!lost && !(local.current() && this.webRemoteAccess()?.enrollment === enrollment)) lost = true;
+        return !lost;
+      };
+      return { label: t("settings_confirm.totp_label"), current, audit: { confirmed_with: "authenticator_code", summary: shown },
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed with the authenticator code: done"); } };
+    }
+    if (v.kind === "paused") return { error: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind === "not_enrolled") return { error: "not_here" };
+    if (v.kind === "unavailable") return { error: "unavailable" };
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    this.logger.info({ id, handle: local.handle }, "Settings change: a wrong authenticator code was refused");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Authenticator codes paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { error: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { error: "wrong" };
   }
 
   /**
@@ -3585,6 +3689,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // switch checks plus `completed` — a completed execution can never authorize another write (mutate refuses).
         return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && (execution.completed || execution.current()), execution);
       } });
+  }
+
+  /**
+   * D3: whether a General could take this change's confirmation card now — the same authority and routes
+   * promptSettingsChange posts by. False: it would wait for the host's command (confirmation kind host_cli).
+   */
+  private settingsCardPossible(store: SettingsConfirmationStore, id: string): boolean {
+    const authority = this.settingsChatAuthority(store, id);
+    if (!authority) return false;
+    const excluded = new Set(store.affectedConnections(id));
+    return Object.keys(this.fleetConfig?.instances ?? {}).some(name => !!this.settingsGeneralRoute(name, authority.platform, excluded));
   }
 
   private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void | SettingsNoCardReason> {
@@ -10922,6 +11037,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const MAX_DELAY_MS = 5 * 60_000;
     const state = this.adapterState.get(adapterId);
     if (this.shuttingDown || !state || state.retryTimer || this.adapterRetryInFlight.has(adapterId)) return;
+    if (this.adapterTeardownUnknown.has(adapterId)) return;          // #3365 review P2: held until a restart, never retried
     const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, Math.min(state.retryCount, 6)), MAX_DELAY_MS);
     this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
     const timer = setTimeout(() => {
@@ -11168,6 +11284,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -11323,6 +11440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -26226,6 +26344,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let store: SecretStore | undefined;
     const generation = this.settingsGeneration;
     let replaced = false;
+    // S-91: whether an adapter ran before. One that did not is never "restored" by starting it with the old token (the token
+    // that would not start it); a failed start goes back to the background retry instead.
+    const wasRunning = this.adapters.has(job.connectionId);
     try {
       if (!channel || !envKey || !allowed.has(envKey)) throw new Error("connection is not configured for secret rotation");
       const owners = (this.fleetConfig?.channels
@@ -26260,15 +26381,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         try {
           store!.restoreIfCurrent(before);
           if (process.env[envKey] === secret) { if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken; }
-          // Build a fresh adapter from the restored token. If the old adapter
-          // was stopped already, this is the only safe way to return to the
-          // previous runtime without claiming a disk-only rollback succeeded.
-          const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
-            if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
-          } };
-          const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
-          if (!restored) throw new Error("adapter rollback did not become connected");
-          job.result = "rolled_back";
+          if (!wasRunning) {
+            // S-91: it was not running: the new adapter that did not come up is taken down (never left half-started), and
+            // the connection is the background retry's again, as before the token was entered.
+            if (await this.dropAdapterAfterFailedStart(job.connectionId, message)) job.result = "rolled_back";
+            else { job.result = "rollback_failed"; job.error = "the new adapter could not be confirmed stopped; restart AgEnD"; }
+          } else {
+            // Build a fresh adapter from the restored token. If the old adapter
+            // was stopped already, this is the only safe way to return to the
+            // previous runtime without claiming a disk-only rollback succeeded.
+            const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
+              if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
+            } };
+            const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
+            if (!restored) throw new Error("adapter rollback did not become connected");
+            job.result = "rolled_back";
+          }
         } catch (rollbackErr) {
           this.logger.error({ connectionId: job.connectionId, reason: safeSecretError(rollbackErr, oldToken, [secret]) }, "Settings connection secret rollback failed");
           job.result = "rollback_failed";
@@ -26284,16 +26412,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * S-91: how a connection stands against what this process set up at start. "same": its adapter start ran (and failed, or
+   * found no token), so starting it now is what the background retry does. "changed": its binding waits for the restart —
+   * never started live, whatever its role (#3365 review P2). "added": #1519 P6's rule.
+   */
+  private startedWithConnection(connectionId: string, channel: ChannelConfig): "same" | "changed" | "added" {
+    const started = this.startupFleetConfig;
+    const list = started?.channels ?? (started?.channel ? [started.channel] : []);
+    const then = list.find(item => (item.id ?? item.type) === connectionId);
+    return !then ? "added" : isDeepStrictEqual(then, channel) ? "same" : "changed";
+  }
+
+  /**
+   * S-91: a token's live start for a connection that was not running did not come up. Whatever adapter it left is taken
+   * down (handlers off, stopped, unregistered), and the connection goes back to the background retry with the error.
+   */
+  private async dropAdapterAfterFailedStart(connectionId: string, error: string): Promise<boolean> {
+    const fresh = this.adapters.get(connectionId);
+    // #3365 review P3: the primary's prune interval goes with it (a later start sets it up again, once).
+    if (this.getPrimaryAdapterId() === connectionId && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+    let stopped = true;
+    if (fresh) {
+      fresh.removeAllListeners();
+      stopped = await fresh.stop().then(() => true, () => false);
+      if (this.adapters.get(connectionId) === fresh) this.adapters.delete(connectionId);
+      if (this.worlds.get(connectionId)?.adapter === fresh) this.worlds.delete(connectionId);
+      if (this.adapter === fresh) this.adapter = null;
+    }
+    const previous = this.adapterState.get(connectionId);
+    if (previous?.retryTimer) clearTimeout(previous.retryTimer);
+    if (!stopped) {
+      // #3365 review P2: a stop that failed leaves the provider client's end unknown (it may still poll the bot). Said so —
+      // never "rolled back" — and no adapter for this connection is admitted again in this process: no retry, and every
+      // start refuses it (startSingleAdapterOwned / startAdditionalAdapterOwned). A restart of AgEnD clears it.
+      this.adapterTeardownUnknown.add(connectionId);
+      this.adapterState.set(connectionId, { status: "failed", retryCount: previous?.retryCount ?? 0, lastError: "the new adapter could not be confirmed stopped — restart AgEnD" });
+      this.logger.error({ connectionId, reason: error }, "Settings connection secret: the adapter that did not start could not be confirmed stopped");
+      return false;
+    }
+    if (this.shuttingDown || !this.secureConnectionChannel(connectionId)) return true;
+    this.adapterState.set(connectionId, { status: "retrying", retryCount: previous?.retryCount ?? 0, lastError: error });
+    this.scheduleAdapterRetry(connectionId);
+    return true;
+  }
+
   /** Stop the old provider client and construct a new one from process.env. */
   private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false, execution?: Pick<SettingsExecution, "owner" | "assert">): Promise<boolean> {
     const generation = this.settingsGeneration;
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
     const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
     check();
+    // S-91: never two starts of one connection at once. A background retry in flight finishes first: it read the token
+    // before this one was stored, so it gives way (its own check), or it came up and is replaced below like any adapter.
+    const inFlight = this.adapterRetryInFlight.get(connectionId);
+    if (inFlight) { await inFlight.catch(() => {}); check(); }
     const old = this.adapters.get(connectionId);
-    // No adapter: a connection that is not the primary, in a fleet already running connections, starts now (#1519 P6);
-    // otherwise the secret is valid on disk and the next start adopts it.
-    if (!old && !force && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    // No adapter: one this process started with, unchanged since (its start failed, or it had no token), starts now — S-91,
+    // the way the background retry starts it, the primary included. One added since starts now when it is not the primary
+    // and the fleet runs connections (#1519 P6). One changed since (its binding pending) never does: the secret is valid on
+    // disk and the next start adopts it with its binding.
+    if (!old && !force) {
+      const since = this.startedWithConnection(connectionId, channel);
+      if (since === "changed") return false;
+      if (since === "added" && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    }
     if (!old) { const pending = this.adapterState.get(connectionId)?.retryTimer; if (pending) clearTimeout(pending); }
     const primary = this.getPrimaryAdapterId() === connectionId;
     const previousState = this.adapterState.get(connectionId);
@@ -26333,9 +26516,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
       return true;
     }
+    // S-91: a retry timer set while it was coming up (the in-flight retry's own, giving way) must not start it a second time.
+    const settled = (): true => { const st = this.adapterState.get(connectionId); if (st?.retryTimer) { clearTimeout(st.retryTimer); st.retryTimer = undefined; } return true; };
     while (performance.now() < deadline) {
       const health = fresh.getHealthSnapshot?.();
-      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
+      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return settled();
       await new Promise(resolve => setTimeout(resolve, 100)); check();
     }
     throw new Error("new adapter did not become connected");
