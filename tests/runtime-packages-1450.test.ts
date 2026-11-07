@@ -192,7 +192,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   const script = join(process.cwd(), "scripts", "runtime", "publish-runtime-packages.sh");
   /** `view`: which specs npm already has ("published"), what it answers for the rest ("empty": the name exists, not
    *  this version; "404": no such package; "error": a failed lookup). */
-  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" | { prints: string } } = {}, relative = false) => {
+  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" | { prints: string } } = {}, relative = false, tag?: string) => {
     const dir = mkdtempSync(join(tmpdir(), "agrt-pub-"));
     const bin = join(dir, "bin"); mkdirSync(bin);
     const log = join(dir, "npm.log"); writeFileSync(log, "");
@@ -209,7 +209,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
       writeFileSync(join(dir, "pkgs", `p-${v}`, "package.json"), JSON.stringify({ name: "@songsid/agend-node-linux-x64", version: v }));
     }
     // The workflow passes a RELATIVE directory (runtime-packages): `relative` runs it exactly so, from the parent dir.
-    const r = spawnSync("bash", [script, relative ? "pkgs" : join(dir, "pkgs"), dryRun], { encoding: "utf8", cwd: relative ? dir : undefined, env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` } });
+    const r = spawnSync("bash", [script, relative ? "pkgs" : join(dir, "pkgs"), dryRun, ...(tag === undefined ? [] : [tag])], { encoding: "utf8", cwd: relative ? dir : undefined, env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` } });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => l.split("|")[1]!);
     rmSync(dir, { recursive: true, force: true });
     return { r, calls };
@@ -220,6 +220,20 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.status, r.stderr).toBe(0);
     const publishes = calls.filter(c => c.startsWith("publish"));
     expect(publishes).toEqual([`publish ${flag}--access public --provenance --tag latest`, `publish ${flag}--access public --provenance --tag latest`]);
+  });
+
+  // M-2457: an OIDC check publishes a repack under its own tag, so `latest` stays on the real package.
+  it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: a dist-tag argument replaces latest on every publish", (dry, flag) => {
+    const { r, calls } = run(["3.8.0-agend.1", "22.23.4-agend.1"], dry, {}, false, "oidc-check");
+    expect(r.status, r.stderr).toBe(0);
+    expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag oidc-check`, `publish ${flag}--access public --provenance --tag oidc-check`]);
+  });
+
+  it.each(["Latest", "v2", "1", "oidc check", "--tag=x", "a;b"])("a dist-tag that is not a plain lowercase name (%j) is refused before npm runs", (tag) => {
+    const { r, calls } = run(["3.8.0-agend.1"], "false", {}, false, tag);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("dist-tag must be a lowercase name");
+    expect(calls).toEqual([]);
   });
 
   // #1488 / first publish: a re-run after a partial success skips what npm already has, and never guesses.
@@ -266,7 +280,19 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(yml).toContain("id-token: write");
     expect(yml).toMatch(/dry_run:[\s\S]*?default: true/);
     expect(yml).toMatch(/- name: Publish \(or dry run\)[\s\S]*NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
-    expect(readFileSync(script, "utf8")).toContain("npm publish --access public --provenance --tag latest");
+    expect(readFileSync(script, "utf8")).toContain(`npm publish --access public --provenance --tag "$TAG"`);
+    expect(readFileSync(script, "utf8")).toContain(`TAG="\${3:-latest}"`);
+    // The runtime packages name no tag: they publish to latest.
+    expect(yml).toMatch(/publish-runtime-packages\.sh runtime-packages "\$DRY_RUN"\n/);
+  });
+
+  // M-2457: publish-tmux.yml's npm_tag input defaults to latest, is validated, and reaches the script.
+  it("publish-tmux.yml: npm_tag defaults to latest and is passed to the publish", () => {
+    const yml = readFileSync(join(process.cwd(), ".github", "workflows", "publish-tmux.yml"), "utf8");
+    expect(yml).toMatch(/npm_tag:\n[\s\S]*?default: latest\n/);
+    expect(yml).toContain("NPM_TAG: ${{ inputs.npm_tag || 'latest' }}");
+    expect(yml).toContain(`npm_tag must be a lowercase name`);
+    expect(yml).toContain(`publish-runtime-packages.sh tmux-packages "$DRY_RUN" "$NPM_TAG"`);
   });
 
   it("refuses an unknown dry-run value and an empty package directory", () => {

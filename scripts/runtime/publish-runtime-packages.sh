@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Publish (or dry-run) every built @songsid/agend-node-* package under <dir> (#1450, publish-runtime.yml).
-# Usage: publish-runtime-packages.sh <dir> <true|false: dry run>
+# Usage: publish-runtime-packages.sh <dir> <true|false: dry run> [dist-tag, default latest]
 # Every publish carries an explicit dist-tag: a repack (x.y.z-agend.N) is a semver prerelease, and npm 11 refuses
-# to publish a prerelease without --tag (#1457 review). The tag is `latest` for both: AgEnD pins exact versions, so
-# the tag only says which package of this name is current.
+# to publish a prerelease without --tag (#1457 review). The tag is `latest` by default: AgEnD pins exact versions, so
+# the tag only says which package of this name is current. Another tag (M-2457: `oidc-check`, a repack published only
+# to validate trusted publishing) leaves `latest` where it is. A tag is a plain name: npm refuses one that reads as a
+# version range (`1`, `v2`), and anything else is not a tag this script means to set.
 # A version already on the registry is skipped, not an error: a run that published some packages and then failed can
 # simply be run again (npm versions are immutable, so "already there" is the outcome a re-run wants). Only that EXACT
 # version counts — a name that holds only other versions (an older pin, a placeholder) is published to. A lookup
@@ -11,8 +13,9 @@
 # Auth (publish-runtime.yml): npm trusted publishing (OIDC). npm cannot create a NEW package name through OIDC, so the
 # first publish of a runtime package uses a short-lived NPM_TOKEN secret as NODE_AUTH_TOKEN (docs/development.md).
 set -euo pipefail
-DIR="${1:?package directory}"; DRY_RUN="${2:?true|false}"
+DIR="${1:?package directory}"; DRY_RUN="${2:?true|false}"; TAG="${3:-latest}"
 case "$DRY_RUN" in true|false) ;; *) echo "dry run must be true or false" >&2; exit 2 ;; esac
+[[ "$TAG" =~ ^[a-z][a-z0-9-]*$ && ! "$TAG" =~ ^v[0-9] ]] || { echo "dist-tag must be a lowercase name such as latest (got '$TAG')" >&2; exit 2; }
 found=0
 ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT
 for pkg in "$DIR"/*/; do
@@ -38,9 +41,9 @@ for pkg in "$DIR"/*/; do
   fi
   (cd "$pkg" && npm pack --dry-run --json | node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8"))[0]; console.log(`${p.name}@${p.version}: ${p.size} bytes packed, ${p.unpackedSize} unpacked, ${p.entryCount} files`)')
   if [ "$DRY_RUN" = "true" ]; then
-    (cd "$pkg" && npm publish --dry-run --access public --provenance --tag latest)
+    (cd "$pkg" && npm publish --dry-run --access public --provenance --tag "$TAG")
   else
-    (cd "$pkg" && npm publish --access public --provenance --tag latest)
+    (cd "$pkg" && npm publish --access public --provenance --tag "$TAG")
   fi
 done
 [ "$found" -eq 1 ] || { echo "no packages under $DIR" >&2; exit 1; }
