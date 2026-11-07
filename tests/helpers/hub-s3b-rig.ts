@@ -22,7 +22,9 @@ export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() 
 
 export async function s3bRig(opts: { directory?: HubDirectory; now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean;
   /** #3226 E: what the Hub shell says about previews (hubPreviewView); the smoke serves the /frame listener itself. */
-  preview?: Readonly<import("../../src/hub/preview.js").HubPreviewView> } = {}) {
+  preview?: Readonly<import("../../src/hub/preview.js").HubPreviewView>;
+  /** #3298 S-89: the group routes' control and welcome (absent: the routes 404 and the session has no mark). */
+  groupHttp?: import("../../src/hub/group-policy/admin-api.js").GroupHttpDeps } = {}) {
   const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
   const db = new Database(":memory:");
   migrateHubTransportStore(db);
@@ -96,7 +98,7 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
     identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", memberOrigin: "https://127.0.0.1:9", webOrigin, administrator: admin });
-  const httpDeps: Parameters<typeof createHubHttp>[0] = { uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}), ...(opts.preview ? { preview: opts.preview } : {}),
+  const httpDeps: Parameters<typeof createHubHttp>[0] = { uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}), ...(opts.preview ? { preview: opts.preview } : {}), ...(opts.groupHttp ? { groupHttp: opts.groupHttp } : {}),
     transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now };
   let http = createHubHttp(httpDeps, sql);
 
