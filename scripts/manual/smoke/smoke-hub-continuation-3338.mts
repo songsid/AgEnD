@@ -54,6 +54,12 @@ async function setup(ctx:any,c:any,mode='current'){
  ctx.on('page',(p:any)=>{p.on('pageerror',(e:any)=>errors.push(String(e)));p.on('response',(r:any)=>{const u=new URL(r.url());if(u.pathname.startsWith('/hub/v1')||u.pathname.startsWith('/api/hub/'))requests.push({method:r.request().method(),path:u.pathname,status:r.status()})})});
 }
 async function hubPage(c:any,path:string,mode='current',cookies?:any[]){const ctx=await fx.browser.newContext({viewport:c.device==='phone'?{width:390,height:844}:{width:1366,height:900},colorScheme:c.theme,locale:c.lang==='zh-TW'?'zh-TW':'en-US',isMobile:c.device==='phone',hasTouch:c.device==='phone',ignoreHTTPSErrors:true});await setup(ctx,c,mode);if(cookies)await ctx.addCookies(cookies);const page=await ctx.newPage();await page.goto(webOrigin+path);return{ctx,page}}
+async function fleetPage(c:any,mode='current'){
+ fx.fm.webPrefs.write('operator',new Map([['theme',c.theme],['lang',c.lang]]));
+ const ctx=await fx.browser.newContext({viewport:c.device==='phone'?{width:390,height:844}:{width:1366,height:900},colorScheme:c.theme,locale:c.lang==='zh-TW'?'zh-TW':'en-US',isMobile:c.device==='phone',hasTouch:c.device==='phone',ignoreHTTPSErrors:true});await setup(ctx,c,mode);
+ const {tokenEpoch}=await import(repo+'/src/web-session.ts');const code=fx.fm.webLoginCodes.issue({tier:'admin',epoch:tokenEpoch(fx.fm.webToken),host:true}).display;
+ const page=await ctx.newPage();await page.goto(fx.base+'/signin');await page.locator('#code').fill(code);await page.locator('#go').click();await page.waitForURL(fx.base+'/ui');await page.goto(fx.base+'/settings/hub');return{ctx,page};
+}
 async function signIn(p:any,login:string){await p.locator('#hubLogin').fill(login);await p.locator('#hubPassword').fill('pw-'+login);await p.locator('.hub-signin button[type=submit]').click();await p.locator('.hub-signin').waitFor({state:'detached'})}
 async function approveDialog(p:any){await p.locator('[data-confirm=yes]').click()}
 async function applyPending(p:any){
@@ -67,7 +73,6 @@ const c={device:'desk',theme:'light',lang:'en'};
 try{
  await runtime.apply(yaml.load(readFileSync(join(hubHome,'fleet.yaml'),'utf8')) as any);check('Hub runtime ready',runtime.currentHolds().length===0,runtime.currentHolds());
  const {bootFixture}=await import(repo+'/scripts/manual/smoke-fixture/index.mts');fx=await bootFixture({port:hp,instances:2,classic:false});result.browser=fx.browser.version();
- const issue=fx.fm.webLoginCodes.issue.bind(fx.fm.webLoginCodes);fx.fm.webLoginCodes.issue=(input:any)=>issue({...input,host:true});
  const fm=fx.fm,cfgPath=join(fx.dir,'fleet.yaml'),cfg:any=yaml.load(readFileSync(cfgPath,'utf8'));cfg.hub_member={enabled:true};writeFileSync(cfgPath,yaml.dump(cfg));fm.hubEffectsReady=true;
  fm.hubAgentToken=()=> 'fixture-owned-lifecycle';fm.hubAgentQuota=async()=>({band:'unknown'});
  fm.deliverHubQuestion=async(input:any)=>{const ok=input.stillCurrent()&&await input.beforeInput()&&input.stillCurrent();deliveries.push({agent:input.agent,correlationId:input.correlationId,ok});return ok};
@@ -77,7 +82,7 @@ try{
  const admin=await hubPage(c,'/ui/hub/admin');await signIn(admin.page,'admin');await admin.page.locator('.hub-step-form input').fill('olivia');await admin.page.locator('.hub-step-form button').click();await admin.page.locator('.hub-code').waitFor();
  await admin.ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin:webOrigin});await admin.page.locator('.hub-offer button').click();const copied=await admin.page.evaluate(()=>navigator.clipboard.readText());check('browser copies member address and code',copied.includes(memberOrigin));await shot(admin.page,'workflow-code');
  const code=await admin.page.locator('.hub-code').innerText();check('copied exact code',copied.includes(code));check('code card supplies member origin',await admin.page.locator('.hub-offer .hub-origin').innerText()===memberOrigin);
- const fleet=await fx.page(c,{path:'/settings/hub'});await setup(fleet.ctx,c);await fleet.page.reload();await fleet.page.locator('#hubAddress').fill(memberOrigin);await fleet.page.locator('#hubCode').fill(code);await fleet.page.locator('form.hub-connect button[type=submit]').click();
+ const fleet=await fleetPage(c);await fleet.page.locator('#hubAddress').fill(memberOrigin);await fleet.page.locator('#hubCode').fill(code);await fleet.page.locator('form.hub-connect button[type=submit]').click();
  await applyPending(fleet.page);await fleet.page.locator('.hub-local-confirm').waitFor({timeout:15000});const fp=await fleet.page.locator('.hub-fp-groups').first().innerText();
  await fleet.page.locator('.hub-local-confirm').click();await applyPending(fleet.page);
  console.log('Fleet fingerprint checked');await owner.page.reload();await owner.page.locator('.hub-pairings button').click();await approveDialog(owner.page);
@@ -95,16 +100,16 @@ try{
  for(let n=0;n<100&&!deliveries.length;n++)await new Promise(r=>setTimeout(r,100));check('question reached real representative admission',deliveries.some(d=>d.ok),deliveries);
  check('workflow CSP',!(await admin.page.evaluate(()=>window.__csp)).length&&!(await fresh.page.evaluate(()=>window.__csp)).length&&!(await fleet.page.evaluate(()=>window.__csp)).length);
  const adminCookies=await admin.ctx.cookies(),ownerCookies=await owner.ctx.cookies();await fresh.page.close();await asker.ctx.close();await admin.ctx.close();await owner.ctx.close();await fleet.ctx.close();
- if(!process.env.INTEGRATED){for(const device of ['desk','phone'])for(const theme of ['light','dark'])for(const lang of ['en','zh-TW'])for(const mode of ['before','current']){
+ if(!process.env.INTEGRATED){if(!process.env.ONLY_SKEW)for(const device of ['desk','phone'])for(const theme of ['light','dark'])for(const lang of ['en','zh-TW'])for(const mode of ['before','current']){
   const c={device,theme,lang},tag=`${mode}-${device}-${theme}-${lang}`;const entry:any={tag};result.cases.push(entry);
   const a=await hubPage(c,'/ui/hub/admin',mode,adminCookies);await a.page.locator('.hub-step-form input').fill('olivia');await a.page.locator('.hub-step-form button').click();await a.page.locator('.hub-code').waitFor();await shot(a.page,tag+'-code');entry.code=await geometry(a.page,'.hub-offer');
-  const f=await fx.page(c as any,{path:'/settings/hub'});await setup(f.ctx,c,mode);await f.page.reload();await f.page.locator('.hub-exposure.is-shared').waitFor();await f.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(f.page,tag+'-share');entry.share=await geometry(f.page,'.hub-exposure.is-shared');
+  const f=await fleetPage(c,mode);await f.page.locator('.hub-exposure.is-shared').waitFor();await f.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(f.page,tag+'-share');entry.share=await geometry(f.page,'.hub-exposure.is-shared');
   if(mode==='current'){const p=await hubPage(c,new URL(href).pathname+new URL(href).search,mode,ownerCookies);await p.page.locator('.hub-grant').waitFor();await shot(p.page,tag+'-grant');entry.dialog=await geometry(p.page,'.dlg');entry.fields=await geometry(p.page,'.hub-grant .field');check(tag+' stacked form fields',entry.fields.every((b:any)=>b.width>=entry.dialog[0].width-60),entry);check(tag+' no overflow',[...entry.code,...entry.share,...entry.dialog].every((b:any)=>b.left>=-1&&b.right<=b.inner+1),entry);await p.ctx.close()}
   if(mode==='before'){const p=await hubPage(c,new URL(href).pathname+'?agent='+id,mode,ownerCookies);await p.page.locator('.hub-card-head button').click();await p.page.locator('.hub-grant').waitFor();await shot(p.page,tag+'-grant');await p.ctx.close()}await a.ctx.close();await f.ctx.close();
  }
  for(const c of [{device:'desk',theme:'dark',lang:'en'},{device:'phone',theme:'light',lang:'zh-TW'}]){
   const p=await hubPage(c,'/ui/hub/admin','skew',adminCookies);await p.page.locator('.hub-step-form input').fill('olivia');await p.page.locator('.hub-step-form button').click();await p.page.locator('.hub-code').waitFor();await shot(p.page,`skew-${c.device}-${c.lang}-code`);check('cached CSS address '+c.device,(await p.page.locator('.hub-offer').innerText()).includes(memberOrigin));await p.ctx.close();
-  const f=await fx.page(c as any,{path:'/settings/hub'});await setup(f.ctx,c,'skew');await f.page.reload();await f.page.locator('.hub-exposure.is-shared a').waitFor();await f.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(f.page,`skew-${c.device}-${c.lang}-share`);check('cached CSS link '+c.device,await f.page.locator('.hub-exposure.is-shared a').getAttribute('href')===href);await f.ctx.close();
+  const f=await fleetPage(c,'skew');await f.page.locator('.hub-exposure.is-shared a').waitFor();await f.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(f.page,`skew-${c.device}-${c.lang}-share`);check('cached CSS link '+c.device,await f.page.locator('.hub-exposure.is-shared a').getAttribute('href')===href);const [dest]=await Promise.all([f.ctx.waitForEvent('page'),f.page.locator('.hub-exposure.is-shared a').click()]);await signIn(dest,'olivia');await dest.locator('.hub-grant input').fill('alex');await shot(dest,`skew-${c.device}-${c.lang}-grant`);await dest.keyboard.press('Escape');await dest.locator('.hub-grant').waitFor({state:'detached'});check('cached shell continuation '+c.device,true);await f.ctx.close();
  }
  }check('no browser exceptions',errors.length===0,errors);if(!process.env.INTEGRATED)check('cached shell/CSS exercised',result.skewHits>0);result.status='PASS';
 }catch(e:any){result.status='FAIL';result.error=e.stack;for(const [i,p]of(fx?.browser?.contexts()??[]).flatMap((ctx:any)=>ctx.pages()).entries()){try{await shot(p,'failure-'+i);result['failure'+i]={url:p.url(),text:await p.locator('body').innerText()}}catch{}}throw e}
