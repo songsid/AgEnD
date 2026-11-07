@@ -90,16 +90,18 @@ export class QuotaNotices {
     for (const s of policy.subscriptions) if (s.rule.enabled) grouped.set(s.account, [...(grouped.get(s.account) ?? []), s]);
     for (const [account, subscriptions] of grouped) {
       if (!this.current(signature)) return;
-      const changes: Array<{ key: string; entry: Entry; line: string }> = [];
+      const changes: Array<{ key: string; entry: Entry; line: string; observed: number }> = [];
       const row = payload.providers.find(p => p.id === subscriptions[0]!.providerId);
       if (!row || row.status !== "ok" || row.stale || row.unlimited) continue;
       const observed = row.observedAt === undefined ? fetched : Date.parse(row.observedAt);
       if (!Number.isFinite(observed) || observed > now + 60_000 || now - observed > 10 * 60_000) continue;
       for (const m of row.metrics) {
         const period = quotaPeriod(m), reset = Date.parse(m.resetsAt ?? "");
-        if (!period || m.type !== "percent" || typeof m.used !== "number" || !Number.isFinite(m.used) || m.used < 0 || m.used > 100
+        const measured = m.observedAt === undefined ? observed : Date.parse(m.observedAt ?? "");
+        if (!Number.isFinite(measured) || measured > now + 60_000 || now - measured > 10 * 60_000) continue;
+        if (!period || m.type !== "percent" || typeof m.used !== "number" || !Number.isFinite(m.used) || m.used < 0
           || m.resetKind === "expiry" || m.resetPassed || !Number.isFinite(reset) || reset <= now) continue;
-        const remaining = 100 - m.used;
+        const remaining = Math.max(0, 100 - m.used);
         const thresholds = subscriptions.flatMap(s => s.rule.periods.includes(period) ? s.rule.thresholds : []);
         const threshold = Math.min(...thresholds.filter(t => remaining <= t));
         if (!Number.isFinite(threshold)) continue;
@@ -108,7 +110,7 @@ export class QuotaNotices {
         // A later real reset opens another window. Moving a reset backwards is not proof of a new one.
         const newWindow = prior && now >= prior.reset && reset > prior.reset + RESET_DRIFT;
         if (prior && !newWindow && threshold >= prior.floor) continue;
-        changes.push({ key, entry: { reset: prior && !newWindow ? prior.reset : reset, floor: threshold },
+        changes.push({ key, observed: measured, entry: { reset: prior && !newWindow ? prior.reset : reset, floor: threshold },
           line: `${m.pool?.label ? `${usageText(m.pool.label, m.pool.labelI18n)} · ` : ""}${usageText(m.label, m.labelI18n)}: ${+remaining.toFixed(1)}%${policy.locale.startsWith("zh") ? " 剩餘" : " remaining"}` });
       }
       if (!changes.length) continue;
@@ -121,7 +123,7 @@ export class QuotaNotices {
       this.state = next;
       const dispatchAt = this.opts.now?.() ?? Date.now();
       if (!this.current(signature) || dispatchAt - fetched > 10 * 60_000 || dispatchAt - observed > 10 * 60_000
-        || changes.some(c => c.entry.reset <= dispatchAt)) return;
+        || changes.some(c => c.entry.reset <= dispatchAt || dispatchAt - c.observed > 10 * 60_000)) return;
       const title = policy.locale.startsWith("zh") ? "用量提醒" : "Usage reminder";
       // No await between the current-policy fence and outbound admission. false/unknown remains reserved.
       this.opts.send(policy.target, `${title} · ${row.name}\n${[...new Set(changes.map(c => c.line))].join("\n")}`);

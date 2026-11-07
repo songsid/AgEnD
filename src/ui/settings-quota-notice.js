@@ -24,6 +24,7 @@ export const quotaNoticeText = () => COPY[lang()] || COPY.en;
 const BACKENDS = ["claude-code", "codex", "kiro-cli", "grok", "antigravity", "muse"];
 const PERIODS = ["session", "hourly", "daily", "weekly", "monthly"];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const fieldKey = (scope, field) => JSON.stringify([scope, field]);
 const ruleForm = (v = {}) => ({ enabled: v.enabled === undefined ? "" : v.enabled ? "on" : "off", thresholds: v.thresholds === undefined ? "" : v.thresholds.join(", ") || "none", periods: v.periods === undefined ? "" : v.periods.join(", ") || "none" });
 export function quotaRuleFromForm(f) {
   const rule = {};
@@ -51,7 +52,16 @@ export function QuotaNoticeSettings({ ctx }) {
       ...Object.entries(classic).map(([n, c]) => [`classic:${n}`, ruleForm(c.quota_notice)]),
     ]) };
   }, []);
-  const [form, setForm] = useDraft(ctx, "quota-notices", () => base);
+  // useDraft retains top-level edited fields. Flatten rules so an edit never
+  // freezes untouched rules (or untouched fields of the same rule) across reload.
+  const savedFields = useMemo(() => {
+    const saved = { target: base.target, ...Object.fromEntries(Object.entries(base.rules).flatMap(([scope, rule]) => Object.entries(rule).map(([field, value]) => [fieldKey(scope, field), value]))) };
+    const retained = ctx.drafts?.get("quota-notices");
+    if (retained) ctx.drafts.set("quota-notices", Object.fromEntries(Object.entries(retained).filter(([key]) => Object.hasOwn(saved, key))));
+    return saved;
+  }, []);
+  const [fields, setFields] = useDraft(ctx, "quota-notices", () => savedFields);
+  const form = useMemo(() => ({ target: fields.target, rules: Object.fromEntries(Object.entries(base.rules).map(([scope, rule]) => [scope, Object.fromEntries(Object.keys(rule).map(field => [field, fields[fieldKey(scope, field)]]))])) }), [fields]);
   const [scope, setScope] = useState("fleet");
   const parsed = Object.fromEntries(Object.entries(form.rules).map(([k, v]) => [k, quotaRuleFromForm(v)]));
   const invalid = Object.values(parsed).some(v => v === null);
@@ -69,12 +79,12 @@ export function QuotaNoticeSettings({ ctx }) {
   const selectedBackend = scope.startsWith("backend:") ? scope.slice(8) : scope.startsWith("agent:") ? instances[scope.slice(6)]?.backend || ctx.fleet.defaults?.backend || "claude-code" : scope.startsWith("classic:") ? classic[scope.slice(8)]?.backend || ctx.classic?.defaults?.backend || ctx.fleet.defaults?.backend || "claude-code" : null;
   const effective = { enabled: true, thresholds: [10], periods: ["weekly"], ...parsed.fleet,
     ...(selectedBackend ? parsed[`backend:${selectedBackend}`] : {}), ...(scope.startsWith("agent:") || scope.startsWith("classic:") ? parsed[scope] : {}) };
-  const update = k => e => setForm(f => ({ ...f, rules: { ...f.rules, [scope]: { ...f.rules[scope], [k]: e.target.value } } }));
+  const update = k => e => setFields(f => ({ ...f, [fieldKey(scope, k)]: e.target.value }));
   return html`<section class="s-card" id="quota-notices"><h2>${text.heading}</h2><p>${text.hint}</p><p class="muted">${text.defaults}</p>
     ${!supported ? html`<p role="status">${text.old}</p>` : null}
     ${!invalid ? html`<p class="muted" data-quota-effective>${text.effective}: ${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.join(", ") || "—"}</p>` : null}
     <fieldset disabled=${!supported} class="s-quota-fields">
-      <div class="field"><label for="qn-target">${text.target}</label><select id="qn-target" value=${form.target} onChange=${e => setForm(f => ({ ...f, target: e.target.value }))}>
+      <div class="field"><label for="qn-target">${text.target}</label><select id="qn-target" value=${form.target} onChange=${e => setFields(f => ({ ...f, target: e.target.value }))}>
         <option value="general">${text.general}</option>${Object.entries(instances).filter(([n]) => n !== "general").map(([n, c]) => html`<option value=${n}>${c.display_name || n}</option>`)}
         ${form.target !== "general" && !Object.hasOwn(instances, form.target) ? html`<option value=${form.target}>${form.target}</option>` : null}
       </select></div>

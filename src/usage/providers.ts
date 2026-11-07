@@ -49,6 +49,8 @@ import {
 import type { UsageI18nKey } from "./i18n-keys.js";
 
 export interface UsageMetric {
+  /** Per-window local observation; null means legacy/unknown, never fresh evidence. */
+  observedAt?: string | null;
   quotaPeriod?: import("../quota-notice-config.js").QuotaPeriod;
   label: string;
   /** Locale-neutral semantic text. Renderers translate this and keep `label` as a fallback. */
@@ -56,7 +58,7 @@ export interface UsageMetric {
   /** Vendor-reported per-model quota, rather than an account's primary window. */
   scope?: "model";
   type: "percent" | "dollars" | "count" | "text";
-  used?: number;          // percent (0-100) or dollars
+  used?: number;          // percent (including vendor overage) or dollars
   limit?: number;         // dollars, when capped
   value?: number | string; // count / text
   valueI18n?: UsageI18nRef;
@@ -1722,12 +1724,14 @@ export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name
   if (!snapshot) {
     return { status: "ok", plan: "Subscription", hint: "Muse usage unavailable — no response frame observed.", metrics: [] };
   }
-  const metric = (label: string, window: { usedPercent: number; resetsAt: number; windowMs?: number } | undefined, windowMs: number): UsageMetric | null => {
+  const metric = (label: string, window: { usedPercent: number; resetsAt: number; windowMs?: number; observedAt?: number } | undefined, windowMs: number): UsageMetric | null => {
     if (!window) return null;
     return {
       label,
       type: "percent",
       used: window.usedPercent,
+      observedAt: typeof window.observedAt === "number" && Number.isFinite(window.observedAt)
+        ? new Date(window.observedAt).toISOString() : null,
       resetsAt: new Date(window.resetsAt * 1000).toISOString(),
       windowMs: window.windowMs ?? windowMs,
     };
