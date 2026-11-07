@@ -1,8 +1,0 @@
----
-section: Added
----
-- **A web-only fleet can be used from outside, signed in with an authenticator app.** On the AgEnD computer, Settings → Access & security → **Connections from outside**: set up Authy, Google Authenticator or Microsoft Authenticator (a QR code or the key, then its 6-digit code), then turn on **Allow connections from outside**. The public link opens, and signing in through it asks for the app's code. Signed in that way you are this computer's admin: you can approve agents' requests in Needs you and apply your own settings changes.
-  - Setting up, setting up again, removing and the switch itself are changed only on the AgEnD computer. Turning it off closes the link and signs everyone out there; setting up a new app does too.
-  - Wrong codes: after 5, sign-in from outside waits 15 minutes, then 30 minutes, 1 hour and so on up to a day; a correct code resets it. Each wait and each sign-in from outside is recorded in Notices.
-  - A quick link gets a new address each time it opens, and turns the switch off when its time runs out; turn it on again on the AgEnD computer. Lost your phone? On the AgEnD computer, choose "Set up again". (#3008)
-- **A web-only fleet may have a General.** Tick **General** on one agent in Settings; there is never a second (Settings says which agent is the General). It is pinned first in the chat list. The setup page's **Web only** now names the first agent `general` and makes it the General, as the chat platforms do; a working directory you type makes it a worker (`agent-1`). If you add Telegram or Discord later, it becomes that chat's General. (#3008)

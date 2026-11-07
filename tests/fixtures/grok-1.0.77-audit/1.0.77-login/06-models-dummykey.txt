@@ -1,6 +1,0 @@
-You are using XAI_API_KEY.
-
-Default model: grok-mock
-
-Available models:
-  * grok-mock (default)

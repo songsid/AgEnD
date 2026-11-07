@@ -1,3 +1,0 @@
-format=1
-commit=$Format:%H$
-refs=$Format:%D$

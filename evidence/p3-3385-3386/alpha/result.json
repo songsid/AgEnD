@@ -1,0 +1,673 @@
+{
+  "head": "fbbbe1fa3c546525d8828fbc095fd9e5cea16234",
+  "base": "a6a682488369485b91b7b857fe855179aa682af1",
+  "browser": "156.0.8078.4",
+  "hub": true,
+  "rows": [
+    {
+      "key": "before-desk-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:neutral-pending",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:settled-hint",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:connected-controls",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    }
+  ],
+  "failed": []
+}

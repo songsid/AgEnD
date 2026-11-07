@@ -1,4 +1,0 @@
----
-section: Added
----
-- **Hub (experimental, alpha): HTML pages in a room's side panel.** When an answer contains an HTML page, the card can now open it in the room's side panel. This is the same panel the fleet chat uses, with versions, pages, Point at it, errors and Reply about this page. The page runs at the Hub's own preview address (`hub.web.preview_port`) in the isolated sandbox. Each browser allows previews for that Hub once, and the confirmation says so. While the panel is open it takes the info panel's place, and the ⓘ button brings the info panel back. On a phone the panel is a sheet over the room. Lines from the panel go into the room's composer, so you can edit them before sending. The fleet's own Files & changes and Share page stay out of the Hub. Without a preview port, the panel says the Hub doesn't offer previews.

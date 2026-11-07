@@ -1,4 +1,0 @@
----
-section: Added
----
-- **The task board's list and filters.** A project's **Display** shows it as the board or as a list: a row per main task, grouped by status, assignee or priority (or not grouped), ordered as on the board, by priority, by last change, newest first or by title, and its sub tasks as rows of their own if you like (grouped by assignee, that is every instance's work at a glance). Finished cards: the last 7 days, all, or hidden. **Filter** replaces the single assignee filter: filters on status, assignee (or nobody), priority and size stack, each saying **is** or **is not**, and a main task stays when it or one of its sub tasks matches. The project and its filters are in the page's address, so a filtered board can be sent as a link. Both are remembered on the device; an assignee filter you had becomes one of these. See [features](features.md#on-the-dashboard-fleet--tasks).

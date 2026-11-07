@@ -1,0 +1,122 @@
+{
+  "sources": {
+    "main": {
+      "head": "99edc4d60f9f1b7cf02f4bb7ee51ec723eedec61",
+      "base": "2d64beba4358c6fa28a9cc699b8dd23b7bc5323e",
+      "browser": "156.0.8078.4",
+      "checks": 126,
+      "passed": 126,
+      "pngs": 18,
+      "files": {
+        "changes/3385-legacy-access-label.md": "59330274e34774f08c4c502a13ac6e2a0cf5c6fe7d39ef7e21250b963b6a46ac",
+        "changes/3385-legacy-access-label.zh-TW.md": "5d9b333def03a8d94da6e0642abeac5d09303854fc2c22a308cdd5933557248b",
+        "src/ui/settings-dialogs.js": "9273f1c27a203782abadd71f89abab0d770ca14df53d148af36e90b188643e1a",
+        "src/ui/settings-strings.js": "32c9cb33ec6ad2f2c38a89ea7b4066ddcfad709c4d81f3507473d87d750b2b0a",
+        "tests/settings-redesign.test.ts": "939a1a957874fddc5800379f88b0f286d8280c4d22012d906c3a476432b713f7"
+      },
+      "acceptanceHead": "b2601427a2d2c353238237f92e34ef40caa766df",
+      "sinceBrowser": [
+        "changes/3385-legacy-access-label.md",
+        "changes/3385-legacy-access-label.zh-TW.md"
+      ],
+      "productionAndTestsUnchanged": true
+    },
+    "alpha": {
+      "head": "fbbbe1fa3c546525d8828fbc095fd9e5cea16234",
+      "base": "a6a682488369485b91b7b857fe855179aa682af1",
+      "browser": "156.0.8078.4",
+      "checks": 166,
+      "passed": 166,
+      "pngs": 50,
+      "files": {
+        "changes/3385-hub-settings-polish.md": "f978db868f2ce7bad09724dbb336af8e90abe1e58936de08440dac06ceeedf74",
+        "changes/3385-hub-settings-polish.zh-TW.md": "e2553c46dc41ad7e487657abf422b7fc1e903d47d9c32d8b49e859e954829972",
+        "src/ui/settings-dialogs.js": "62511af52c4088168803b7ed311787cab15592f7e2dd01a0240a562c4f54b8c7",
+        "src/ui/settings-hub.js": "c18df6f29fe9fb04921855b64c0aaebe78d899606b48ceb09c7558acbbd0b4db",
+        "src/ui/settings-strings.js": "a0fcd162eae815b61cbced3b4bd919d40634069e4855a22d5670b3523ec534b1",
+        "tests/hub-pairing-guidance-3386.test.ts": "fab5ea9dce48d28a1f222181312a0c1e90d1cbbb80811d7e0854f9fe841452e2",
+        "tests/settings-redesign.test.ts": "a59fb8359ea8630fcf0fb641d80d34367471558346e5fc33c8e0b539d93bbcc6"
+      },
+      "acceptanceHead": "bada1cddae52741dbc18ca80e6269f40e0b3fa2a",
+      "sinceBrowser": [
+        "changes/3385-hub-settings-polish.md",
+        "changes/3385-hub-settings-polish.zh-TW.md"
+      ],
+      "productionAndTestsUnchanged": true
+    }
+  },
+  "mutations": [
+    {
+      "name": "connect-progress",
+      "caught": true,
+      "failedTests": 2,
+      "passedTests": 7
+    },
+    {
+      "name": "confirm-progress",
+      "caught": true,
+      "failedTests": 2,
+      "passedTests": 7
+    },
+    {
+      "name": "fingerprint",
+      "caught": true,
+      "failedTests": 1,
+      "passedTests": 8
+    },
+    {
+      "name": "disconnect-binding",
+      "caught": true,
+      "failedTests": 1,
+      "passedTests": 8
+    },
+    {
+      "name": "disconnect-hub",
+      "caught": true,
+      "failedTests": 1,
+      "passedTests": 8
+    },
+    {
+      "name": "retire-cleared-hint",
+      "caught": true,
+      "failedTests": 2,
+      "passedTests": 7
+    },
+    {
+      "name": "keep-errors",
+      "caught": true,
+      "failedTests": 8,
+      "passedTests": 1
+    },
+    {
+      "name": "pending-copy",
+      "caught": true,
+      "failedTests": 2,
+      "passedTests": 7
+    },
+    {
+      "name": "alias-label",
+      "caught": true,
+      "failedTests": 2,
+      "passedTests": 15
+    },
+    {
+      "name": "cached-dictionary",
+      "caught": true,
+      "failedTests": 1,
+      "passedTests": 16
+    },
+    {
+      "name": "alias-value",
+      "caught": true,
+      "failedTests": 3,
+      "passedTests": 14
+    }
+  ],
+  "cleanup": {
+    "47970": true,
+    "47971": true,
+    "47960": true,
+    "47961": true
+  }
+}

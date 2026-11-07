@@ -1,4 +1,0 @@
----
-section: Added
----
-- **The Office's dialogue box (#2861, designed by hxhsandy).** Tick **Dialogue** in the Office bar (per browser, off by default) and a visual-novel style box shows at the bottom of the stage when someone messages an agent drawn there: their portrait, name and words (typed out), the agent's portrait and "Working…" while it works, then its reply. Concurrent conversations queue ("+N"); clicking the box opens the agent's card, double-clicking its chat. The dashboard shows only words the viewer can already read in the chat; a share link never shows any ("Sent Atlas a message.", "Replied."). It respects Hide paused and stopped, bedtime and reduced motion. Skin packs can add `portraits` (by instance, by a person's account, for NPCs, with per-state expressions) and a `dialogBox` look; without them agents show their avatar, else their initial. A version before this one refuses a pack with `portraits` or `dialogBox` (drawn as Desks), as for `levels`.

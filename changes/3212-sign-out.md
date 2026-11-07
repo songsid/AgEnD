@@ -1,4 +1,0 @@
----
-section: Added
----
-- **Settings → Accounts: Sign out and Switch account.** **Sign out…** on a signed-in Claude Code, Codex or Kiro account runs that CLI's own logout on the host for that account. The dialog first lists the agents, ClassicBot rooms and fleet default that stop working until it's signed in again, with **Move…** where the web can change them. Conversations stay. For Claude Code it also deletes the backups the logout leaves that still name the account. **Switch account…** on the default sign-in signs it out and then opens **Sign in** for the account you want; agents using it restart on the new account. On macOS, removing or signing out a Claude Code account now lets Claude Code delete its own Keychain item, and AgEnD says so if one is still found. Sign out is refused while a sign-in for the account is running; the fleet log records who signed out which account. Only a fleet admin on the dashboard reached directly can sign accounts out.

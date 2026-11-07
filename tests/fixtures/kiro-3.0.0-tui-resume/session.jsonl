@@ -1,2 +1,0 @@
-{"version": "v1", "kind": "Prompt", "data": {"message_id": "offline-prompt", "content": "OFFLINE-RESUME-PROMPT-3047", "meta": {"timestamp": 1793802454}}}
-{"version": "v1", "kind": "AssistantMessage", "data": {"message_id": "offline-assistant", "content": [{"kind": "text", "data": "OFFLINE-RESUME-MEMORY-3047"}]}}

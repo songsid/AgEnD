@@ -1,6 +1,0 @@
-
-  >_ OpenAI Codex (v0.167.0)
-     loading
-  Resuming session…
-
-› Ask Codex to do anything

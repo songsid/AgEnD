@@ -1,4 +1,0 @@
----
-section: Fixed
----
-- **A message sent to a busy Claude Code or Codex agent is no longer lost when AgEnD stops or restarts it (#3030).** Such a message waits in the CLI's own input queue until the running turn ends, and that queue lives only in the CLI process: an `agend stop`, a restart or an update before the turn ended dropped it, after it had already been marked ✅. Now AgEnD keeps each queued message on record until the CLI's transcript shows it was taken. After a restart, a message the old CLI never took is sent again once (a message that was taken is never sent twice), and ✅ appears when the agent actually takes the message rather than when it is queued. If the CLI goes idle without taking it, or if AgEnD cannot check after a restart, the message is marked ❌ and you are told once, so you can send it again.

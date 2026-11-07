@@ -1,8 +1,0 @@
-# Fingerprint-pinned findings in the history of PR #3257 (commit:file:rule:line). Each one is a fake lock-owner token ("0123456789abcdef",
-# "fedcba9876543210") in a test that commit ca661e66 added and that no later commit can remove from the per-commit scan. None is a credential; the
-# current tree contains none of these values. Delete this file once the PR is squash-merged (as #3237 did for #3215).
-ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-remote-accounts.test.ts:generic-api-key:900
-ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:137
-ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:146
-ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:148
-ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:158

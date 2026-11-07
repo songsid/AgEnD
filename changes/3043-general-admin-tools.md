@@ -1,4 +1,0 @@
----
-section: Changed
----
-- **General's `general` tool profile now includes all orchestration tools (#3043).** As AgEnD's administrator (fleet decision `9e3bea6c`), General can now call the full orchestration tool set (`delete_instance`, `replace_instance`, `stop_instance`, `pause_instance`, `deploy_template`, `teardown_deployment`, `create_team`, `delete_team`, `update_team`, `update_instance_config`, `update_fleet_defaults`, `migrate_kiro_instance`, `reconcile_kiro_instance` and `update_decision`) alongside `create_instance`, `start_instance`, `restart_instance`, `wake_instance`, `get_web_settings` and `set_web_settings`. Separate privilege guards remain unchanged: `create_instance` and `update_instance_config` still refuse `tool_set` and `skipPermissions` escalation (#804/#814), and sensitive Settings changes (tokens, access and admin membership) still require fleet-admin confirmation.

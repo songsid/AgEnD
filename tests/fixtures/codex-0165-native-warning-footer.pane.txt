@@ -1,6 +1,0 @@
-  >_ OpenAI Codex (v0.165.0)
-
-› Ask Codex to do anything
-
-  Context 100% left
-  ? for shortcuts                                                                              ⚠ 1 warning · f2 to view

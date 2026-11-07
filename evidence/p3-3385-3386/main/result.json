@@ -1,0 +1,513 @@
+{
+  "head": "99edc4d60f9f1b7cf02f4bb7ee51ec723eedec61",
+  "base": "2d64beba4358c6fa28a9cc699b8dd23b7bc5323e",
+  "browser": "156.0.8078.4",
+  "hub": false,
+  "rows": [
+    {
+      "key": "before-desk-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-desk-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "before-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-desk-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-light-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "after-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:saved-value",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:alias-label",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-en:no-CSP-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:saved-value",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:alias-label",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-missing-key",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-staged-write",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-horizontal-overflow",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-browser-errors",
+      "ok": true
+    },
+    {
+      "key": "cached-phone-dark-zh-TW:no-CSP-errors",
+      "ok": true
+    }
+  ],
+  "failed": []
+}

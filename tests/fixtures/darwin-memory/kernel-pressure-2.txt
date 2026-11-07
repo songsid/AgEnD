@@ -1,1 +1,0 @@
-kern.memorystatus_vm_pressure_level: 2

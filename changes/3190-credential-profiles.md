@@ -1,4 +1,0 @@
----
-section: Added
----
-- **A Windows computer can use more than one Claude account (named credential profiles).** On the paired computer, `agend-runtime login claude-code NAME` creates a named Claude Code sign-in and `profile list` / `profile default` / `connect --credential-profile` manage it. An agent (new Windows agent, or **Change runtime / CLI**) can then choose a **Claude account** by name, and Settings → Runtime lists each computer's profile names and whether each is signed in. AgEnD only ever sends the name: the Runtime maps it to its own folder under its profile and the sign-in never leaves the computer (no path, e-mail or token is reported). An unknown, signed-out or malformed profile, or a Runtime too old to support it, stops the run with a clear message instead of using the computer's own account. Claude Code only; Linux/WSL agents keep their existing `credential_profile`. Changing an agent's account starts a new conversation.
