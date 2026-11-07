@@ -3592,7 +3592,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const authority = this.settingsChatAuthority(store, view.id);
     if (!authority) {
       this.logger.info({ id: view.id }, "Settings authority is unknown or spans platforms; host CLI confirmation required");
-      return this.settingsNoCardReason(null, store.affectedConnections(view.id), false);
+      return this.settingsNoCardReason(null, [...store.affectedConnections(view.id), ...(store.authorityOf(view.id)?.connections ?? [])], false);
     }
     let attempted = false;
     const excluded = new Set(store.affectedConnections(view.id));
@@ -3642,13 +3642,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (the user's decision hmsg-77256f66: never "type a host command"). `platform` null: the authority is unknown or spans
    * platforms. `attempted`: a General route existed and posting to it failed.
    */
-  private settingsNoCardReason(platform: "telegram" | "discord" | null, affected: readonly string[], attempted: boolean): SettingsNoCardReason {
+  private settingsNoCardReason(platform: "telegram" | "discord" | null, affected: readonly string[], attempted: boolean): SettingsNoCardReason | undefined {
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
     if (!channels.length) return "no_chat";
     if (attempted) return "post_failed";
     // No General at all comes first: then there is no authority to resolve either (the primary General's is unknown).
     if (!Object.values(this.fleetConfig?.instances ?? {}).some(cfg => cfg?.general_topic === true)) return "no_general";
-    if (!platform) return "cross_platform";
+    // #3352 review N1: "spans platforms" only when it does — the connections the change touches are on more than one platform.
+    // Any other unresolved authority (a duplicated or missing connection id): no specific reason; the page says the general one.
+    if (!platform) {
+      const touched = new Set(affected);
+      const types = new Set(channels.filter(ch => touched.has(ch.id ?? ch.type)).map(ch => ch.type));
+      return types.size > 1 ? "cross_platform" : undefined;
+    }
     const excluded = new Set(affected);
     const generals = Object.keys(this.fleetConfig?.instances ?? {}).filter(name => this.fleetConfig?.instances[name]?.general_topic === true)
       .filter(name => { const id = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name); return !!id && !!adapter && adapter.type === platform && !excluded.has(id); });

@@ -346,6 +346,13 @@ describe("why no General took the confirm card (alpha.6 feedback #2c)", () => {
   it("General has no topic yet", async () => {
     expect(await reasonOf((r) => { delete (r.fm.fleetConfig as any).instances.general_a.topic_id; })).toBe("no_topic");
   });
+  it("#3352 N1: \"spans platforms\" only when the touched connections are on two platforms; otherwise no specific reason", () => {
+    const r = rig("telegram", ["a", "b"]);
+    expect(r.any.settingsNoCardReason(null, ["a", "b"], false), "both on Telegram: not cross-platform").toBeUndefined();
+    (r.fm.fleetConfig as any).channels[1].type = "discord";
+    expect(r.any.settingsNoCardReason(null, ["a", "b"], false)).toBe("cross_platform");
+    expect(r.any.settingsNoCardReason(null, ["a"], false), "one connection touched").toBeUndefined();
+  });
   it("posting the card failed", async () => {
     expect(await reasonOf((r) => { r.adapters[0]!.notifyAlert.mockRejectedValue(Error("telegram said no")); })).toBe("post_failed");
   });
