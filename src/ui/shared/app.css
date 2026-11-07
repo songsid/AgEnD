@@ -4085,3 +4085,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-cli-install code { font: var(--fs-xs)/1.5 var(--font-mono); overflow-wrap: anywhere; }
 .runtime-cli-install-others { margin-top: 8px; }
 .runtime-cli-install-others ul { list-style: none; margin: 4px 0 0; padding: 0; }
+
+/* Quota preferences obey the panel CSP: no inline styles. */
+.p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }
