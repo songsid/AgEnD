@@ -22805,7 +22805,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return {
           ok: false,
           status: 503,
-          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+          error: this.isWebOnlyFleet()
+            ? "the restart rate-limit file cannot be read"
+            : "the restart rate-limit file cannot be read — send /restart in General",
         };
       }
       return {
@@ -22837,7 +22839,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         ok: false,
         status: 409,
-        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+        error: "no chat channel is available to announce the restart",
       };
     }
 
