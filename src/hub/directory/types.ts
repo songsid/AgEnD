@@ -60,6 +60,10 @@ export type Eligibility =
   | { readonly eligible: false; readonly reason: IneligibleReason };
 
 export interface HubDirectory {
+  /** Permission lookup only. Absent on non-AD/GC endpoints; ordinary sign-in still works. */
+  readonly groupPolicy?: "ad-direct-guid";
+  resolvePolicyGroup?(dn: string): Promise<import("./groups.js").PolicyGroupLookup>;
+  readPolicyGroups?(key: PersonKey): Promise<import("./groups.js").PolicyGroupFacts>;
   readonly realm: string;
   /** Verify a login and password with the directory. The password is used for one bind and never kept. */
   signIn(login: string, password: string): Promise<SignInResult>;
