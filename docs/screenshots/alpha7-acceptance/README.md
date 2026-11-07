@@ -33,3 +33,5 @@ Audited Claude ELF SHA256: `708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7
 PNG notes: E20 Needs-you and phone preview were recaptured after content became visible. The page-context draft in `C12-06` is followed by the sent message and agent answer in `C12-07`. Some emoji use fallback boxes in this test font environment; CJK text is legible. Early captures that missed their claimed state are excluded.
 
 Harness note: the Pass 1 Hub context’s language-preference init script attempted localStorage in three opaque preview frames, producing three SecurityError events in the test collector. These came from the test init script, not the HTML answer. The preview rendered and interaction checks passed. The init script is guarded for pass 2; pass 1 does not claim an error-free application log from that collector.
+
+Runtime cleanup also exercised D8: on phone zh-TW, the mock PC’s actions → Revoke → confirm → reload removed it from the list (0 computers). No agent referenced that peer. All owned pass-1 listeners and real-CLI containers were stopped; no live fleet was changed.
