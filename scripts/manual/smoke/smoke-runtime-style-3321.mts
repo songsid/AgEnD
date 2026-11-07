@@ -34,6 +34,7 @@ try {
     const { ctx, page, csp } = await fx.page(c, { path: "/settings/agents" });
     const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
     let releaseSetup: (() => void) | null = null;
+    const renames: unknown[] = [];
     const held = new Promise<void>((done) => { releaseSetup = done; });
     const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
     await page.route(/\/ui\/runtimes(\/.*)?(\?.*)?$/, async (route: any) => {
@@ -41,6 +42,8 @@ try {
       if (url.pathname === "/ui/runtimes") return route.fulfill(json({ enabled: true, machines: [machine] }));
       if (url.pathname === "/ui/runtimes/pairing" && method === "POST") return route.fulfill(json({ pairingId: "smoke", code: "PAIR-SMOK-E123", expiresAt: Date.now() + 600_000 }));
       if (url.pathname.endsWith("/remote-setup")) { await held; return route.fulfill(json(setup)); }
+      // #3328 F1: the one write let through — a rename, recorded (the real Save must reach it through its form= attribute).
+      if (method === "POST" && url.pathname === `/ui/runtimes/machines/${ID}/rename`) { renames.push(route.request().postDataJSON()); return route.fulfill(json({ ok: true })); }
       if (method !== "GET") return route.fulfill(json({ error: "refused by the smoke" }, 409));
       return route.continue();
     });
@@ -66,7 +69,14 @@ try {
     const rename = await page.evaluate(`(() => { const d = [...document.querySelectorAll("dialog[open]")].pop(); if (!d) return null; const foot = d.querySelector(".dlg-actions, .dlg-foot, footer");
       return { footer: foot ? [...foot.querySelectorAll("button")].map((b) => b.textContent.trim()) : [], field: (${FIELD})("dialog[open] .runtime-rename input") }; })()`) as any;
     await page.screenshot({ path: shotPath(SMOKE, cn, `${LABEL}-4-rename`) });
-    const got = { loading, counts, others, address, code, rename, errs, csp: await csp(), pageX: await page.evaluate("document.documentElement.scrollWidth - innerWidth") };
+    // Save it for real: the footer's submit button, outside the form.
+    let saved: any = null;
+    if (!BASE) {
+      await page.fill("dialog[open] .runtime-rename input", "Studio PC");
+      await page.locator("dialog[open] .dlg-actions button[type=submit]").click(); await page.waitForTimeout(800);
+      saved = { renames, open: await page.evaluate(`!!document.querySelector("dialog[open] .runtime-rename")`) };
+    }
+    const got = { loading, counts, others, address, code, rename, saved, errs, csp: await csp(), pageX: await page.evaluate("document.documentElement.scrollWidth - innerWidth") };
     if (BASE) { r[cn] = got; await ctx.close(); continue; }
     const field = (f: any) => !!f && f.h >= 40 && f.radius >= 6 && f.padL >= 8;
     const en = c.lang === "en";
@@ -74,6 +84,7 @@ try {
       && (!en || counts.computers === "1 computer" && counts.card.endsWith("1 CLI"))
       && others.length >= 2 && others.every((o: any) => o.label && o.copy)
       && field(address) && field(code) && !!rename && rename.footer.length === 2 && field(rename.field)
+      && !!saved && JSON.stringify(saved.renames) === JSON.stringify([{ name: "Studio PC" }]) && saved.open === false
       && errs.length === 0 && (got.csp as string[]).length === 0 && got.pageX <= 0, got);
     await ctx.close();
   }

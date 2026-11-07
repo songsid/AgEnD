@@ -169,6 +169,9 @@ describe("Ridge #3321 S06 / S09: the install card before its read, after a faile
     expect(retry, "Retry").toBeDefined();
     fails = false; fire(retry, "click"); await settle(14);
     expect(!!card().querySelector(".runtime-cli-install-list")).toBe(true);
+    // #3328 F1b: the failed read's message is gone once a read succeeds.
+    const box2 = card().querySelector(".runtime-cli-install");
+    expect([box2.querySelectorAll("[role=alert], .runtime-error").length, box2.textContent.includes("Could not read this computer's setting.")]).toEqual([0, false]);
   });
   it("S09: the owner's switch command and the other CLIs' commands are labelled cards with Copy", async () => {
     setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };

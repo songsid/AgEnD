@@ -31,6 +31,8 @@ beforeAll(async()=>{
     if(path==="/api/settings/runtimes")return response({switches:{windows_cli:{on:false,configured:false,environment:null},remote_runtime:{on:enabled,configured:enabled,environment:null}},max_agents_per_machine:{value:4,min:1,max:16,default:4},local_origin:"http://127.0.0.1:19280"});
     if(path==="/ui/runtimes/installer"){return installerMode==="fail"?response({error:"unavailable"},503):response({version:"2.3.5-alpha.7",scriptSha256:SCRIPT_SHA,scriptBytes:13536,bundleSha256:"c".repeat(64)});}
     if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+60000});
+    const renaming=/^\/ui\/runtimes\/machines\/([^/]+)\/rename$/.exec(path);
+    if(renaming){machines=machines.map(item=>item.id===renaming[1]?{...item,name:body.name}:item);return response({ok:true});}
     const revoking=/^\/ui\/runtimes\/machines\/([^/]+)\/revoke$/.exec(path);
     if(revoking){machines=machines.map(item=>item.id===revoking[1]?{...item,status:"revoked"}:item);return response({ok:true});}
     if(path===`/ui/runtimes/machines/${idB}/approve`){machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);return response({ok:true});}
@@ -506,5 +508,22 @@ describe("machine snapshot boundary",()=>{
     const a=store.load(),b=store.load();resolve(response({enabled:true,machines}));await Promise.all([a,b]);expect(count).toBe(1);expect(store.get().data.machines).toHaveLength(2);
     mode="fail";await store.load({force:true});expect(store.get().data.machines).toHaveLength(2);expect(store.get().error).toBe("unavailable");
     mode="auth";await store.load({force:true});expect(store.get().data).toBeNull();store.clear();
+  });
+
+  it("Ridge #3321 S11 (#3328 F1a): Rename — the footer's Save submits the rename form (POST {name}) and closes; the footer's Cancel closes with no request", async()=>{
+    await p.mount(h(Panel,{navKey:"rename-s11"}));await settle(14);
+    const open=async()=>{p.root.querySelector(`[data-machine-id="${idA}"] .runtime-machine-menu button`).click();await settle();button("Rename").click();await settle(6);};
+    const footer=()=>p.root.querySelector("dialog .dlg-actions");
+    await open();
+    const input=p.root.querySelector("dialog .runtime-rename input");input.value="Studio PC";fire(input,"input");await settle(4);
+    const save=[...footer().querySelectorAll("button")].find((b:any)=>b.textContent.trim()==="Save name") as any;
+    // What a browser does with <button type="submit" form="…"> outside its form: submit the form that attribute names.
+    const named=save.getAttribute("form"), form=named ? p.document.getElementById(named) : null;
+    expect(form?.matches("form.runtime-rename"),"Save names the rename form").toBe(true);
+    requests.length=0;fire(form,"submit");await settle(12);
+    expect([requests.filter(r=>r.path.endsWith("/rename")),!!p.root.querySelector("dialog .runtime-rename")]).toEqual([[{path:`/ui/runtimes/machines/${idA}/rename`,body:{name:"Studio PC"}}],false]);
+    await open();requests.length=0;
+    fire([...footer().querySelectorAll("button")].find((b:any)=>b.textContent.trim()==="Cancel"),"click");await settle(6);
+    expect([requests.filter(r=>r.path.endsWith("/rename")),!!p.root.querySelector("dialog .runtime-rename")]).toEqual([[],false]);
   });
 });
