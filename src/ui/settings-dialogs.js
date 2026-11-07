@@ -33,6 +33,8 @@ const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
 const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+// A cached older dictionary keeps the old alias label until reload, never a missing translation key.
+const legacyPairingLabel = () => { const label = tn("legacyPairing"); return label === "settings.legacyPairing" ? "pairing" : label; };
 export const impactText = (kind) => tn(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
 /** Ask in the app's own dialog (#1408 step 5): resolves true for the confirm button, false otherwise. */
 export const ask = (message, opts = {}) => confirmDialog({ message, ...opts });
@@ -516,7 +518,7 @@ export function BotDialog({ id, ctx, onClose }) {
   if (!ch) return null;
   return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${pendingImpacts()} schema=${schema}>
     <div class="grid2">
-      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES} />
+      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES.map((value) => value === "pairing" ? { value, label: legacyPairingLabel() } : value)} />
         <${Feedback} warning=${accessWarn} /></div>
       <div class="field">${L(tn("allowedUsers"), "fleet.channel.access.allowed_users")}<${ChipList} items=${users} onChange=${setUsers} placeholder=${tn("userIdPlaceholder")} label=${tn("allowedUsers")} /></div>
     </div>
