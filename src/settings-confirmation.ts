@@ -58,6 +58,8 @@ export interface SettingsPendingView {
   can_withdraw: boolean;
   /** #2868: the browser that reads it may confirm it itself now (#2170's rule, asked at that read): "Apply now". */
   can_self_confirm?: boolean;
+  /** alpha.6 #2c (hmsg-468cc290): this page may confirm it with the authenticator's code (ready), or could once one is set up. */
+  totp?: "ready" | "not_set_up";
   outcome: SettingsChangeOutcome | null;
 }
 export interface SettingsChangeProposal {

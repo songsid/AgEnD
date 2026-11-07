@@ -3162,6 +3162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
+      totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code) => this.settingsTotpConfirm(store, req, id, code) },
       directAgentCreation: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
@@ -3237,6 +3238,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
+  }
+
+  /**
+   * alpha.6 feedback #2c — the user's decision hmsg-468cc290 (option A; decisions 28c2d3a3/0471da59 keep the second factor): on a
+   * web-only fleet, a pending change can be confirmed on THIS computer's own page with the owner's authenticator code, by a
+   * local admin session that is not the host operator (who already has "Apply now"). Never over a public link, never from the
+   * LAN, never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
+   * the same store as signing in from outside (#3008): each time step once, the fleet-wide wrong-code limit. Asked again at
+   * execution (`current`): the same session, still an admin here on this computer, the fleet still web-only, the app still
+   * set up. Audited by the store under its own label; a correct and a refused use are logged.
+   */
+  private settingsTotpLocal(req: IncomingMessage): { handle: string; current(): boolean } | null {
+    if (!this.isWebOnlyFleet() || gatewayRequestContext(req)) return null;
+    const first = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (first.kind !== "ok") return null;
+    const handle = first.session.handle;
+    const current = (): boolean => {
+      if (!this.isWebOnlyFleet() || gatewayRequestContext(req) || webPeerOf(req) !== "loopback") return false;
+      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (live.kind !== "ok" || live.session.handle !== handle) return false;
+      const s = live.session;
+      return s.tier === "admin" && !s.owner && s.surface === "local" && !!this.webRemoteAccess()?.enrolled;
+    };
+    const here = (): boolean => { const s = first.session; return webPeerOf(req) === "loopback" && s.tier === "admin" && !s.owner && s.surface === "local"; };
+    return here() ? { handle, current } : null;
+  }
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | null {
+    if (!store.selfConfirmable(id) || !this.settingsTotpLocal(req)) return null;
+    if (this.settingsSelfConfirmation(store, req, id)) return null;          // the host operator: "Apply now"
+    return this.webRemoteAccess()?.enrolled ? "ready" : "not_set_up";
+  }
+  settingsTotpConfirm(store: SettingsConfirmationStore, req: IncomingMessage, id: string, code: string):
+    { label: string; current(): boolean; done?(view: SettingsPendingView): void } | { error: "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } {
+    if (!store.selfConfirmable(id)) return { error: "not_here" };
+    const local = this.settingsTotpLocal(req), access = this.webRemoteAccess();
+    if (!local || !local.current() || !access?.enrolled) return { error: "not_here" };
+    const v = access.verify(code);
+    if (v.kind === "ok") {
+      this.logger.info({ id, handle: local.handle }, "Settings change confirmed on this computer with the authenticator code");
+      return { label: t("settings_confirm.totp_label"), current: local.current,
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed with the authenticator code: done"); } };
+    }
+    if (v.kind === "paused") return { error: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind === "not_enrolled") return { error: "not_here" };
+    if (v.kind === "unavailable") return { error: "unavailable" };
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    this.logger.info({ id, handle: local.handle }, "Settings change: a wrong authenticator code was refused");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Authenticator codes paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { error: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { error: "wrong" };
   }
 
   /**

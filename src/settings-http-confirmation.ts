@@ -23,6 +23,17 @@ export interface SettingsBaseline extends SettingsEffectContext { fingerprint: s
 export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void>;
   followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }
 export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean;
+/**
+ * alpha.6 feedback #2c, the user's decision hmsg-468cc290 (option A): a web-only fleet's pending change confirmed on this
+ * computer's own page with the owner's authenticator code — for a local admin session that is not the host operator (who has
+ * "Apply now"). `state`: whether this request may (ready), could once an authenticator is set up (not_set_up), or not (null).
+ * `confirm`: the code checked (one use per time step, the fleet-wide wrong-code limit), then a confirmation asked again at
+ * execution — or why not.
+ */
+export interface SettingsTotpConfirmation {
+  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | null;
+  confirm(req: IncomingMessage, id: string, code: string): SettingsSelfConfirmation | { error: "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number };
+}
 function json(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.headersSent) return;
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(body));
@@ -38,6 +49,8 @@ export class SettingsHttpConfirmation {
     applied?(path: string, result: unknown, execution: SettingsExecution): void | Promise<void>;
     /** #2170: this request's own confirmation, or null (the chat or host confirmation, as before). */
     selfConfirm?(req: IncomingMessage, id: string): SettingsSelfConfirmation | null;
+    /** alpha.6 #2c (hmsg-468cc290): the authenticator-code confirmation, on a web-only fleet's own page. */
+    totp?: SettingsTotpConfirmation;
     /** A running Fleet may admit an ordinary New Agent request from its current local-dashboard admin.
      * Still uses the store's exact request claim, replay and execution fences; never grants this to agent requests. */
     directAgentCreation?: boolean;
@@ -47,7 +60,12 @@ export class SettingsHttpConfirmation {
     const path = url.pathname, method = req.method ?? "GET";
     const pending = path.match(/^\/api\/settings\/pending(?:\/([0-9a-f]{32}))?$/);
     // #2868: whether this browser could confirm a pending one itself now (#2170's own checks, asked at each read).
-    const mine = (view: SettingsPendingView): SettingsPendingView => view.state === "pending" && this.options.selfConfirm?.(req, view.id) ? { ...view, can_self_confirm: true } : view;
+    const mine = (view: SettingsPendingView): SettingsPendingView => {
+      if (view.state !== "pending") return view;
+      if (this.options.selfConfirm?.(req, view.id)) return { ...view, can_self_confirm: true };
+      const totp = this.options.totp?.state(req, view.id) ?? null;
+      return totp ? { ...view, totp } : view;
+    };
     if (pending && (method === "GET" || method === "DELETE" && pending[1])) {
       const principal = this.options.principal(req);
       if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
@@ -68,6 +86,30 @@ export class SettingsHttpConfirmation {
       if (!confirm) { json(res, 403, { error: "self_confirm_unavailable" }); return true; }
       void this.store.decide(view.id, "confirm", { ...confirm, via: "web" }).then(done => confirm.done?.(done)).catch(() => {});
       json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.store.get(view.id, principal.id) ?? view }); return true;
+    }
+    // alpha.6 #2c (hmsg-468cc290): confirm a pending change with the authenticator's code, on this computer's own page.
+    const totp = path.match(/^\/api\/settings\/pending\/([0-9a-f]{32})\/confirm-totp$/);
+    if (totp && method === "POST") {
+      const principal = this.options.principal(req);
+      if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
+      if (!this.options.totp || gatewayRequestContext(req)) { json(res, 403, { error: "totp_confirm_unavailable" }); return true; }
+      void readBoundedWebBody(req, 1024).then(raw => {
+        let code: unknown; try { code = JSON.parse(raw.toString("utf8") || "{}")?.code; } catch { code = undefined; }
+        if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code_required" }); return; }
+        if (!principal.current()) { json(res, 401, { error: "session_required" }); return; }
+        const view = this.store.get(totp[1], principal.id);
+        if (!view) { json(res, 404, { error: "not_found" }); return; }
+        if (view.state !== "pending") { json(res, 409, { error: "confirmation_not_pending" }); return; }
+        const result = this.options.totp!.confirm(req, view.id, code);
+        if ("error" in result) {
+          if (result.error === "paused") { res.setHeader("Retry-After", String(Math.ceil((result.retryAfterMs ?? 60_000) / 1000))); json(res, 429, { error: "paused", retryAfterMs: result.retryAfterMs ?? null }); return; }
+          json(res, result.error === "wrong" ? 401 : result.error === "unavailable" ? 503 : 403, { error: result.error === "wrong" ? "wrong_code" : result.error === "unavailable" ? "unavailable" : "totp_confirm_unavailable" });
+          return;
+        }
+        void this.store.decide(view.id, "confirm", { ...result, via: "web" }).then(done => result.done?.(done)).catch(() => {});
+        json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.store.get(view.id, principal.id) ?? view });
+      }, () => json(res, 400, { error: "code_required" }));
+      return true;
     }
     if (!isSettingsMutation(method, path)) return false;
     // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the

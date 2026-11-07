@@ -1617,6 +1617,7 @@ const enMessages = {
     "settings_confirm.cli_interactive": "Interactive confirmation required; --yes explicitly confirms the printed diff.",
     "settings_confirm.web_verified_label": "{0} (web-verified)",
     "settings_confirm.host_operator_label": "This computer's admin",
+    "settings_confirm.totp_label": "This computer's admin, with the authenticator code",
     "settings_confirm.web_owner_required": "Only this fleet's owner, signed in on the AgEnD computer itself, can decide an agent's request here.",
     "settings_confirm.host_operator": "host operator",
 
@@ -3212,6 +3213,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "settings_confirm.cli_interactive": "需要互動確認；--yes 表示明確確認上面列出的差異。",
     "settings_confirm.web_verified_label": "{0}（網頁驗證）",
     "settings_confirm.host_operator_label": "這台電腦的管理者",
+    "settings_confirm.totp_label": "這台電腦的管理者（驗證器代碼）",
     "settings_confirm.web_owner_required": "只有在 AgEnD 這台電腦上登入的 fleet 擁有者，才能在這裡決定 agent 的請求。",
     "settings_confirm.host_operator": "主機操作者",
 
