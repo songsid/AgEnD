@@ -128,9 +128,9 @@ describe("a profile with no login", () => {
     ]);
   });
 
-  it("asked for a config dir alone (no profile name to log in from chat): Settings → Accounts", async () => {
+  it("asked for a config dir alone (no profile name to log in from chat): Settings → Agents → AI sign-ins and API keys → Accounts", async () => {
     const u = await fetchClaudeUsage(profileHome("work"));
-    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not logged in — sign in from Settings → Accounts.", { key: "usage.hint.claude_profile_signed_out" }]);
+    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not logged in — sign in from Settings → Agents → AI sign-ins and API keys → Accounts.", { key: "usage.hint.claude_profile_signed_out" }]);
   });
 
   it("its token reader gives nothing either (no shared or env fallback)", async () => {

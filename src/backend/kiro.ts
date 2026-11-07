@@ -2215,7 +2215,7 @@ export class KiroBackend implements CliBackend {
         ),
         type: "auth_error",
         action: "pause",
-        message: "Kiro login is missing or expired — sign in from Settings → Accounts, or send /login in chat",
+        message: "Kiro login is missing or expired — sign in from Settings → Agents → AI sign-ins and API keys → Accounts, or send /login in chat",
       },
       // Backend unreachable. Live 2026-09-03: runtime.us-east-1.kiro.dev stopped
       // answering for hours; every kiro instance printed
