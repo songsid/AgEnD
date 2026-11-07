@@ -381,6 +381,13 @@ export interface SettingsChangeDiff {
   /** B2b (the leader's ruling on #3352 F1): a noSelfConfirm change that this computer's host operator, on its own local
    *  session, may still Apply now (the outward Hub changes on a web-only fleet; threat model A). */
   hostLocalConfirm?: true;
+  /**
+   * The leader's ruling on D3's residual (cid-d3): a noSelfConfirm change that turns a link option on (#2453 named_link /
+   * quick_link) — confirmed only by the host operator's own session on this computer (hostSessionHere), on either fleet
+   * type. Never by an authenticator code or any other session: those keep #2453 (a General card, or "do it in the browser
+   * on the AgEnD computer").
+   */
+  hostSessionOnly?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {
