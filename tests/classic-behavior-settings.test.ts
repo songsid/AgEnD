@@ -24,6 +24,12 @@ afterEach(() => {
 });
 
 describe("Classic behavior setting fallback", () => {
+  it("retains a room quota override through an unrelated save/reload", () => {
+    const m = manager({ channels: { "123#discord": { channelId: "123", adapterId: "discord", instanceName: "classic-one", quota_notice: { enabled: false, thresholds: [5], periods: ["monthly"] } } } });
+    m.toggleCollab("123", "discord"); m.reloadFromDisk();
+    expect(m.getQuotaNoticeByInstance("classic-one")).toEqual({ enabled: false, thresholds: [5], periods: ["monthly"] });
+    expect(validateClassicBotConfig({ channels: { room: { quota_notice: { target: "elsewhere" } } } }).errors).toContainEqual(expect.objectContaining({ path: "channels.room.quota_notice" }));
+  });
   it("reply triggers default off, inherit fleet/Classic defaults and retain an explicit room false on save/reload", () => {
     expect(DEFAULT_REPLY_TRIGGERS).toBe(false);
     expect(manager({}).getReplyTriggers("missing")).toBe(false);
