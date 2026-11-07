@@ -84,6 +84,8 @@ jobs:
           [ -z "$bad" ] || { echo "::error::non-system dynamic libraries are linked: $bad"; exit 1; }
           otool -l "tmux-build/tmux-$TARGET/bin/tmux" | grep -A4 LC_BUILD_VERSION | grep -qE '^[[:space:]]*minos 11\.0$' || { echo "::error::the binary does not target macOS 11.0"; exit 1; }
       - name: Smoke-run on this runner (private socket only)
+        env:
+          SMOKE_VERBOSE: '1'
         run: sh scripts/tmux/smoke-tmux.sh "tmux-build/tmux-${{ matrix.target }}" "$(node -p 'require("./scripts/release/tmux-sources.json").tmux.version')"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

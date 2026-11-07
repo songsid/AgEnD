@@ -1,10 +1,12 @@
 /** Provider record grammar only. No filesystem, SQLite, backend construction or account access. */
 import type { TranscriptEvents } from "./transcript-sources.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
+import { claudeFollowRecords, type FollowObservation } from "./workspace-follow-records.js";
 export type TranscriptRecordEvent =
   | ["tool_use", string, unknown] | ["tool_result", string, unknown]
   | ["assistant_text", string] | ["system_informational", string, number | null]
-  | ["api_error", string, number | null, number | null, string | null] | ["user_prompt"];
+  | ["api_error", string, number | null, number | null, string | null] | ["user_prompt"]
+  | ["workspace_follow", FollowObservation];
 export interface CodexRecordState { openTurnId: string; openTurn: string | null; turnKnown: boolean }
 const CODE_MODE_HOST_SPAWN_FAILED = /^failed to spawn code-mode host (\/[^\n]*)\/bin\/codex-code-mode-host: No such file or directory \(os error 2\)$/;
 
@@ -81,6 +83,7 @@ export function codexLongHead(head: string, events: TranscriptEvents): void {
 }
 
 export function claudeTranscriptRecord(entry: any, emit: (...event: TranscriptRecordEvent) => void): void {
+    for (const observation of claudeFollowRecords(entry)) emit("workspace_follow", observation);
     // #2834: Claude's own status notes (e.g. its usage-limit auto-continue) — a system record, not model output.
     if (entry.type === "system" && entry.subtype === "informational" && typeof entry.content === "string") {
       const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;

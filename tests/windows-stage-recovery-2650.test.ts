@@ -162,7 +162,7 @@ Write-Output ('READY='+(Test-InstallerReady))`);
  }));
  it('quiet MSI/import/no-launch installs keep an absolute deadline without an output-idle deadline',()=>{
   const calls=source.split('\n').filter(line=>line.includes('Invoke-Watched -Label')&&(line.includes('-File "msiexec.exe"')||line.includes('-Arguments @("--import"')||(line.includes('-Arguments @("--install"')&&line.includes('"--no-launch"'))));
-  expect(calls).toHaveLength(4);
+  expect(calls).toHaveLength(3); // MSI, shared named/no-launch installer, and image import.
   for(const line of calls){expect(line).toContain('-TimeoutSeconds 1800');expect(line).toContain('-NoProgressSeconds 0')}
  });
  it('a failed or incomplete final handover exits nonzero',()=>{

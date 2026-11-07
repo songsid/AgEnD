@@ -111,6 +111,11 @@ export function ensureCredentialProfile(root: string, cli: unknown, name: unknow
   mkdirSync(directory, { recursive: true, mode: 0o700 }); realDirectory(directory, `Credential profile "${checked}"`);
   return directory;
 }
+/** The name of an existing profile folder that differs from this one only by letter case (the same folder on Windows), if any: such a name cannot be created. */
+export function credentialProfileCaseClash(root: string, cli: unknown, name: unknown): string | undefined {
+  const checked = assertCredentialProfileName(name);
+  return profileFolders(root, assertCredentialProfileCli(cli)).find(other => other.toLowerCase() === checked.toLowerCase() && other !== checked);
+}
 /** Names of the profile folders that exist, from the disk (the truth). Not listed: anything that is not a real folder with a valid name, and any name that is ambiguous by letter case. */
 export function listCredentialProfileNames(root: string, cli: unknown): string[] {
   const folders = profileFolders(root, assertCredentialProfileCli(cli)), ambiguous = ambiguousFolders(folders);
@@ -169,6 +174,15 @@ export function rememberCredentialStatus(root: string, cli: CredentialProfileCli
   const plain: Record<string, Record<string, StatusRow>> = {};
   for (const kind of Object.keys(file.checkedAt)) plain[kind] = Object.fromEntries(Object.entries(file.checkedAt[kind]));
   try { mkdirSync(root, { recursive: true, mode: 0o700 }); atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
+}
+/** Forgets what was cached for a profile that no longer exists (its account included), so a removed name is never reported again. */
+export function forgetCredentialStatus(root: string, cli: CredentialProfileCli, name: string): void {
+  const file = readStatusFile(root), rows = file.checkedAt[cli];
+  if (!rows || !Object.hasOwn(rows, name)) return;
+  delete rows[name];
+  const plain: Record<string, Record<string, StatusRow>> = {};
+  for (const kind of Object.keys(file.checkedAt)) plain[kind] = Object.fromEntries(Object.entries(file.checkedAt[kind]));
+  try { atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
 }
 /** What this computer tells AgEnD: names and a signed-in yes/no (null = not checked yet). No path, e-mail, account or token. */
 export function credentialProfileReport(root: string, defaultName?: string): CredentialProfileReport {

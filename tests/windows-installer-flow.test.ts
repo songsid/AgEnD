@@ -98,7 +98,7 @@ describe("the Windows installer, stages 1–5 as a script file against a fake Wi
     // The fake runs a command only in a registered Linux, through --exec as through `--` (#2733 review).
     const wsl = (args: string[]) => spawnSync(join(f.dir, "bin", "wsl.exe"), args, { env: { ...process.env, AGEND_FAKE_WSL_STATE: f.state, AGEND_FAKE_WSL_CONTAINER: f.ctr } }).status;
     expect([wsl(["-d", "MissingDistro", "-u", "root", "--exec", "true"]), wsl(["-d", "MissingDistro", "-u", "root", "--", "true"])]).toEqual([1, 1]);
-    expect([wsl(["-d", "Ubuntu-24.04", "-u", "root", "--exec", "true"]), wsl(["-d", "Ubuntu-24.04", "-u", "root", "--", "true"])]).toEqual([0, 0]);
+    expect([wsl(["-d", "Ubuntu-26.04", "-u", "root", "--exec", "true"]), wsl(["-d", "Ubuntu-26.04", "-u", "root", "--", "true"])]).toEqual([0, 0]);
   });
 
   it("caught here: the backend probe through `--` again (#2720) reads every backend as missing", async () => {

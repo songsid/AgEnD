@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -9,6 +9,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { RuntimeBundle } from "../src/runtime-bundle.js";
 import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RuntimeInstallService } from "../src/runtime-install.js";
 import { runtimeInstallCommand } from "../src/ui/runtime-commands.js";
+import { runtimeFreshInstallCommand } from "../src/ui/runtime-update-commands.js";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
+import { acquireRuntimeInstallLock, parseRuntimeInstallLock, RUNTIME_INSTALL_LOCK } from "../src/runtime-update-lock.js";
+import { readRuntimeInstallReceipt, RUNTIME_INSTALL_RECEIPT } from "../src/runtime-update-install.js";
+import { paneSystemBootId } from "../src/runtime-pane-boot.js";
 
 /**
  * The real install.ps1, as the server serves it, run by a real PowerShell against a loopback server, the way the page's command
@@ -22,6 +27,8 @@ const pwsh = probe.status === 0;
 /** Absolute, so a run whose PATH holds only a fake node still finds PowerShell itself. */
 const PWSH = probe.status === 0 ? probe.stdout.trim() : "pwsh";
 const TEMPLATE = readFileSync("templates/runtime-install/install.ps1", "utf8");
+// Linux fixture only: process/file operations are real; the Windows-only boot source is fixed and never queries the host.
+const BOOT_FIXTURE = "function global:Get-CimInstance { [pscustomobject]@{LastBootUpTime=[DateTime]::new(638980000000000000,[DateTimeKind]::Utc)} }";
 const VERSION = "2.3.5-alpha.7", NEXT = "2.3.6-alpha.1";
 const roots: string[] = [];
 let server: Server | undefined;
@@ -73,12 +80,12 @@ afterEach(() => {
 const origin = (): string => `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
 function scratch() {
   const root = mkdtempSync(join(tmpdir(), "agend-install-pwsh-")); roots.push(root);
-  const local = join(root, "local"); mkdirSync(local);
+  const local = join(root, "local"); mkdirSync(local, { mode: 0o700 });
   const harness = join(root, "harness.ps1");
   // mode "command": exactly what the page copies, run by iex in this session. mode "direct": the served script run without the page's check,
   // for what the script itself must refuse (a bad $agend, an old Node) on its own.
   writeFileSync(harness, [
-    "$global:LASTEXITCODE = 0",
+    "$global:LASTEXITCODE = 0", BOOT_FIXTURE,
     "if ($env:T_PRESET) { Invoke-Expression $env:T_PRESET }",
     "try {",
     "  if ($env:T_MODE -eq 'direct') { if ($env:T_AGEND -ne $null) { $agend = $env:T_AGEND }; $direct = (Invoke-WebRequest \"$env:T_FETCH/runtime/install.ps1\" -UseBasicParsing).Content; Invoke-Expression $direct }",
@@ -95,14 +102,31 @@ function run(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, mo
   clock += 600_000; seen.length = 0;   // each run is a new person at a new minute: the rate limit has its own tests
   // "paste": the command (after any preset line) is the whole file, so a failing statement does not stop the next one, as at a prompt
   const file = mode === "paste" ? join(s.root, "pasted.ps1") : s.harness;
-  if (mode === "paste") writeFileSync(file, `${env.T_PRESET ?? ""}\n${env.T_COMMAND ?? pageCommand()}\n'LASTEXITCODE=' + $LASTEXITCODE\n`);
+  if (mode === "paste") writeFileSync(file, `${BOOT_FIXTURE}\n${env.T_PRESET ?? ""}\n${env.T_COMMAND ?? pageCommand()}\n'LASTEXITCODE=' + $LASTEXITCODE\n`);
   return new Promise(done => {
-    const child = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-File", file],
-      { env: { PATH: process.env.PATH ?? "", HOME: s.root, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_FETCH: origin(), T_AGEND: origin(), T_MODE: "command", T_COMMAND: pageCommand(), ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    const previousMask = process.umask(0o077);
+    let child;
+    try { child = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-File", file],
+      { env: { PATH: process.env.PATH ?? "", HOME: s.root, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_FETCH: origin(), T_AGEND: origin(), T_MODE: "command", T_COMMAND: pageCommand(), ...env }, stdio: ["ignore", "pipe", "pipe"] }); } finally { process.umask(previousMask); }
     let out = ""; child.stdout.on("data", d => { out += d; }); child.stderr.on("data", d => { out += d; });
     const timer = setTimeout(() => child.kill("SIGKILL"), 45_000);
     child.on("error", error => { clearTimeout(timer); done({ out: `spawn failed: ${error.message}`, code: NaN, status: null, verifyFailed: false }); });
     child.on("close", status => { clearTimeout(timer); done({ out, status, code: Number(/LASTEXITCODE=(\d+)/.exec(out)?.[1] ?? NaN), verifyFailed: /install\.ps1 could not be verified/.test(out) }); });
+  });
+}
+const LOCK_HELPERS = ["Resolve-AgendOrigin", "Set-AgendFile", "Assert-AgendDirectory", "Read-AgendSmallFile", "Get-AgendBootProof", "Test-AgendOwnerRecord", "Get-AgendProcessMatch", "Read-AgendLock", "Assert-AgendLock", "Remove-AgendLock", "Enter-AgendInstallLock", "Register-AgendInstallOrigin"]
+  .map(name => extractPsFunction(TEMPLATE, name)).join("\n");
+function helperRun(s: ReturnType<typeof scratch>, body: string): Promise<string> {
+  const file = join(s.root, `helpers-${randomUUID()}.ps1`);
+  writeFileSync(file, `$ErrorActionPreference='Stop'\n${BOOT_FIXTURE}\n${LOCK_HELPERS}\n${body}`);
+  return new Promise((done, reject) => {
+    const previousMask = process.umask(0o077);
+    let child;
+    try { child = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-File", file], { env: { ...process.env, HOME: s.root, T_ROOT: s.install }, stdio: ["ignore", "pipe", "pipe"] }); } finally { process.umask(previousMask); }
+    let out = ""; child.stdout.on("data", d => { out += d; }); child.stderr.on("data", d => { out += d; });
+    const timer = setTimeout(() => { child.kill("SIGKILL"); }, 10_000);
+    child.once("error", error => { clearTimeout(timer); reject(error); });
+    child.once("close", code => { clearTimeout(timer); code === 0 ? done(out.trim()) : reject(Error(`Helper exited ${code}: ${out}`)); });
   });
 }
 const tree = (dir: string): string[] => existsSync(dir) ? readdirSync(dir, { recursive: true }).map(String).sort() : [];
@@ -121,6 +145,45 @@ const serveScript = (bytes: Buffer, status = 200) => (req: IncomingMessage, res:
 };
 
 describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run against a loopback server", { timeout: 180_000 }, () => {
+  it("the fresh-root repair command runs only in a new folder with the pinned script; blocked controls never fall back", async () => {
+    const s=scratch(), sentinel="Write-Output ('FRESH-RAN:' + $env:AGEND_RUNTIME_INSTALL_DIR + ':' + $env:AGEND_RUNTIME_NO_PATH + ':' + $env:AGEND_RUNTIME_REPAIR)", quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
+    const file=join(s.root,"fresh-command.ps1");writeFileSync(file,runtimeFreshInstallCommand("https://paired.example.test",sha(Buffer.from(sentinel))));
+    const out=await helperRun(s,`$ErrorActionPreference='Continue'
+      function global:Invoke-WebRequest { param($Uri,[switch]$UseBasicParsing); [pscustomobject]@{Content=$global:Sentinel} }
+      function global:Test-Path { param($LiteralPath); if($global:Collision){return $true}; Microsoft.PowerShell.Management\\Test-Path -LiteralPath $LiteralPath }
+      foreach($case in @('valid','no-home','exists','bad-download')) {
+        $env:LOCALAPPDATA=${quoted(s.local)}; $env:AGEND_RUNTIME_INSTALL_DIR=${quoted(s.install)}
+        $global:Collision=$case -eq 'exists'; $global:Sentinel=${quoted(sentinel)}
+        if($case -eq 'no-home'){$env:LOCALAPPDATA=''}
+        if($case -eq 'bad-download'){$global:Sentinel='Write-Output UNVERIFIED'}
+        Write-Output ('CASE:'+$case)
+        try { & ${quoted(file)} } catch { Write-Output ('BLOCKED:'+$case) }
+      }`);
+    expect((out.match(/FRESH-RAN:/g)??[])).toHaveLength(1);expect(out).toContain(`FRESH-RAN:${join(s.local,"agend-runtime-")}`);
+    for(const blocked of ['no-home','exists','bad-download'])expect(out).toContain(`BLOCKED:${blocked}`);
+    expect(out).not.toContain('UNVERIFIED');expect(out).toContain(':1:1');expect(readdirSync(s.local)).toEqual([]);
+  });
+  it("repair output selects the new shim over an old PATH entry and retains the supplied existing profile", async () => {
+    const s=scratch(), old=join(s.root,"old-bin"), profile=join(s.root,"existing 'profile'"), quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
+    s.local=join(s.root,"local's data");s.install=join(s.local,"agend-runtime");mkdirSync(s.local);
+    mkdirSync(old); const oldCommand=join(old,process.platform==="win32"?"agend-runtime.cmd":"agend-runtime");writeFileSync(oldCommand,process.platform==="win32"?"@echo OLD-PATH-RUNTIME\r\n":"#!/bin/sh\necho OLD-PATH-RUNTIME\n");chmodSync(oldCommand,0o700);
+    mkdirSync(profile); writeFileSync(join(profile,"connection.json"),'{"paired":"keep"}'); const before=snapshot(profile);
+    const preset=`$env:PATH=${quoted(old)}+[IO.Path]::PathSeparator+$env:PATH`;
+    const r=await run(s,{AGEND_RUNTIME_REPAIR:"1",AGEND_RUNTIME_NO_PATH:"",T_PRESET:preset});
+    expect(r.code,r.out).toBe(0); expect(r.out).not.toContain('connect --server'); expect(r.out).not.toContain('one-time pairing code');
+    const command=r.out.split(/\r?\n/).find(line=>line.includes('Read-Host')&&line.includes('run --profile'))?.trim(); expect(command,r.out).toBeTruthy();
+    const shim=join(s.install,"bin","agend-runtime.cmd");expect(command).toContain(shim.replace(/'/g,"''"));
+    const out=await helperRun(s,`${preset}
+      'OLD-RESOLVES:' + (Get-Command agend-runtime).Source
+      function global:Invoke-NewFixtureRuntime { 'NEW:' + ($args | ConvertTo-Json -Compress) }
+      Set-Alias -Name ${quoted(shim)} -Value Invoke-NewFixtureRuntime
+      function global:Read-Host { ${quoted(profile)} }
+      ${command}
+      function global:Read-Host { '' }
+      try { ${command} } catch { 'EMPTY-PROFILE-REFUSED' }`);
+    expect(out).toContain('OLD-RESOLVES:'+oldCommand);expect(out).toContain('EMPTY-PROFILE-REFUSED');expect((out.match(/NEW:/g)??[])).toHaveLength(1);
+    expect(out).toContain('NEW:'+JSON.stringify(['run','--profile',profile]));expect(out).not.toContain('OLD-PATH-RUNTIME');expect(snapshot(profile)).toEqual(before);
+  });
   it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and only prints the connect command", async () => {
     const s = scratch(), r = await run(s);
     expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
@@ -132,8 +195,9 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);   // version+build, e.g. 2.3.5-alpha.7+1a2b3c4d
     expect(r.out).toContain(`& "${join(s.install, "bin", "agend-runtime.cmd")}" connect --server "${origin()}"`);
     expect(r.out).toContain("not connected yet and nothing has been paired");
+    expect(readRuntimeInstallReceipt(s.install)).toMatchObject({ version: 1, revision: 1, origins: [origin()], shared: false });
     // It touched the install folder and nothing else: no staging folder or temporary file left, nothing beside it.
-    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual(["bin", FOLDER_A].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
+    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", FOLDER_A].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
     // Two requests, both static downloads: never a pairing endpoint.
     expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`, `GET ${RUNTIME_BUNDLE_PATH}`]);
   });
@@ -274,6 +338,96 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     });
   });
 
+  describe("shared installer ownership", () => {
+    it("keeps an existing legacy root unadopted while installing normally", async () => {
+      const s = scratch(); mkdirSync(s.install, { mode: 0o700 });
+      const r = await run(s); expect(r.code, r.out).toBe(0);
+      expect(readRuntimeInstallReceipt(s.install)).toBeUndefined();
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "utf8")).toBe(FOLDER_A);
+    });
+    it("remembers a second origin permanently, and leaves the receipt unchanged on repeated installs", async () => {
+      const s = scratch(); expect((await run(s)).code).toBe(0);
+      const initial = readRuntimeInstallReceipt(s.install)!;
+      await helperRun(s, "$l=Enter-AgendInstallLock $env:T_ROOT; try { Register-AgendInstallOrigin $env:T_ROOT 'https://second.example.test' $false $l } finally { Remove-AgendLock $l }");
+      const shared = readRuntimeInstallReceipt(s.install)!;
+      expect(shared).toMatchObject({ id: initial.id, revision: 2, origins: [origin(), "https://second.example.test"], shared: true });
+      const before = snapshot(s.install); expect((await run(s)).code).toBe(0);
+      expect(snapshot(s.install)).toEqual(before); expect(readRuntimeInstallReceipt(s.install)).toEqual(shared);
+    });
+    // Linux .NET derives StartTime from jiffies with a per-process epoch estimate, unlike Windows' stable creation timestamp.
+    it.skipIf(process.platform !== "win32")("PowerShell respects the Node owner's actual process identity without downloading or disturbing its lock", async () => {
+      const s = scratch(); mkdirSync(s.install, { mode: 0o700 });
+      const birth = await helperRun(s, `[Console]::Write([string][Diagnostics.Process]::GetProcessById(${process.pid}).StartTime.ToUniversalTime().Ticks)`);
+      const own = { pid: process.pid, birth, boot: paneSystemBootId("638980000000000000") };
+      const lock = await acquireRuntimeInstallLock(s.install, { ownProof: own });
+      try {
+        const before = snapshot(s.install), r = await run(s);
+        expect(r.code, r.out).toBe(1); expect(r.out).toContain("Another installer or Runtime owns");
+        expect(snapshot(s.install)).toEqual(before); expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+        lock.assert();
+      } finally { lock.release(); }
+    });
+    it.each(["alive", "unknown"])("the PowerShell helper preserves the Node lock on an inert %s observation", async observation => {
+      const s = scratch(); mkdirSync(s.install, { mode: 0o700 });
+      const lock = await acquireRuntimeInstallLock(s.install, { ownProof: { pid: process.pid, birth: "638980000000000000", boot: paneSystemBootId("638980000000000000") } });
+      try {
+        const before = snapshot(s.install);
+        const message = await helperRun(s, `function Get-AgendProcessMatch { return '${observation}' }; try { $null=Enter-AgendInstallLock $env:T_ROOT; throw 'Unexpected permission' } catch { [Console]::Write($_.Exception.Message) }`);
+        expect(message).toContain("Another installer or Runtime owns"); expect(snapshot(s.install)).toEqual(before); lock.assert();
+      } finally { lock.release(); }
+    });
+    it("Node respects a real in-flight PowerShell installer and it releases its own lock after completion", async () => {
+      const s = scratch(); let release!: () => void, requested!: () => void;
+      const ready = new Promise<void>(resolve => { requested = resolve; });
+      const held = new Promise<void>(resolve => { release = resolve; });
+      behaviour = (req, res) => {
+        if (req.url !== RUNTIME_BUNDLE_PATH) return false;
+        requested(); void held.then(() => { if (!res.destroyed) { res.writeHead(200); res.end(bundleA.bytes); } }); return true;
+      };
+      const running = run(s);
+      try {
+        await Promise.race([ready, running.then(result => { throw Error(`Installer ended before the held download: ${result.out}`); })]);
+        const owner = parseRuntimeInstallLock(JSON.parse(readFileSync(join(s.install, RUNTIME_INSTALL_LOCK, "owner.json"), "utf8")));
+        expect(owner.type).toBe("installer"); expect(owner.pid).not.toBe(process.pid);
+        const before = snapshot(join(s.install, RUNTIME_INSTALL_LOCK));
+        await expect(acquireRuntimeInstallLock(s.install, { ownProof: { ...owner, pid: process.pid }, observe: async pid => pid === owner.pid ? { state: "alive", proof: owner } : { state: "unknown" } })).rejects.toThrow(/held/);
+        expect(snapshot(join(s.install, RUNTIME_INSTALL_LOCK))).toEqual(before);
+      } finally { release(); }
+      const r = await running; expect(r.code, r.out).toBe(0); expect(existsSync(join(s.install, RUNTIME_INSTALL_LOCK))).toBe(false);
+    });
+    it("preserves a lockless installer's newer current.txt selection made during download", async () => {
+      const s = scratch(); expect((await run(s)).code).toBe(0);
+      const next = makeBundle(NEXT); active = serviceFor(next);
+      behaviour = (req, res) => {
+        if (req.url !== RUNTIME_BUNDLE_PATH) return false;
+        writeFileSync(join(s.install, "bin", "current.txt"), "manual-selection");
+        res.writeHead(200); res.end(next.bytes); return true;
+      };
+      const r = await run(s); expect(r.code, r.out).toBe(1); expect(r.out).toContain("selected Runtime changed during installation");
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "utf8")).toBe("manual-selection");
+      expect(existsSync(join(s.install, folderOf(next)))).toBe(true); expect(existsSync(join(s.install, FOLDER_A))).toBe(true);
+      expect(existsSync(join(s.install, RUNTIME_INSTALL_LOCK))).toBe(false);
+    });
+    it.each(["incomplete", "unknown-work", "contended-reclaim"])("keeps a %s lock and all its work untouched", async variant => {
+      const s = scratch(); mkdirSync(s.install, { mode: 0o700 }); const lock = join(s.install, RUNTIME_INSTALL_LOCK); mkdirSync(lock, { mode: 0o700 });
+      if (variant !== "incomplete") writeFileSync(join(lock, "owner.json"), JSON.stringify({ version: 1, type: "supervisor", nonce: randomUUID(), pid: process.pid, birth: "600000000000000000", boot: "a".repeat(64) }));
+      if (variant === "unknown-work") writeFileSync(join(lock, "inflight"), "uncertain physical work");
+      if (variant === "contended-reclaim") { mkdirSync(join(lock, "reclaim")); writeFileSync(join(lock, "reclaim", "claim.json"), "someone else's guard"); }
+      const before = snapshot(lock), r = await run(s);
+      expect(r.code, r.out).toBe(1); expect(snapshot(lock)).toEqual(before);
+      expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]); expect(readdirSync(s.install)).toEqual([RUNTIME_INSTALL_LOCK]);
+    });
+    // Unix .NET maps CreationTimeUtc to mutable ctime on this fixture filesystem. The production lock is Windows-only;
+    // exercise positive reclamation on native Windows, keeping all inert/live/unknown refusal controls on Linux too.
+    it.skipIf(process.platform !== "win32")("reclaims only a positively reused process identity, then installs and releases the new lease", async () => {
+      const s = scratch(); mkdirSync(s.install, { mode: 0o700 }); const lock = join(s.install, RUNTIME_INSTALL_LOCK); mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, "owner.json"), JSON.stringify({ version: 1, type: "supervisor", nonce: randomUUID(), pid: process.pid, birth: "600000000000000000", boot: "a".repeat(64) }));
+      const r = await run(s); expect(r.code, r.out).toBe(0); expect(existsSync(lock)).toBe(false);
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "utf8")).toBe(FOLDER_A);
+      expect(readRuntimeInstallReceipt(s.install)).toBeUndefined(); // reclaiming an existing root never manufactures fresh-install proof
+    });
+  });
+
   describe("version skew (M4): installing again puts the new build beside the old one and never touches a running one", () => {
     const serveNext = (bundle: RuntimeBundle) => { active = serviceFor(bundle); };
     it("installs the next version side by side, swaps current.txt, leaves the first folder byte-for-byte alone and the shim unchanged", async () => {
@@ -284,7 +438,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       expect(r.code, r.out).toBe(0);
       expect(snapshot(join(s.install, FOLDER_A))).toEqual(first);   // not deleted, not replaced, not even re-written
       expect(readFileSync(join(s.install, NEXT_FOLDER, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${NEXT}\n`);
-      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", NEXT_FOLDER, FOLDER_A].sort());
       expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(NEXT_FOLDER);
       expect(snapshot(join(s.install, "bin"))["agend-runtime.cmd"]).toBe(shim);   // the shim file was not rewritten
       expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);   // no temporary sibling left behind
@@ -299,7 +453,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       serveNext(rebuilt);
       const r = await run(s, { T_COMMAND: pageCommand(active) });
       expect(r.code, r.out).toBe(0); expect(r.out).not.toContain("exists but does not hold this build");
-      expect(readdirSync(s.install).sort()).toEqual(["bin", FOLDER_A, REBUILT].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", FOLDER_A, REBUILT].sort());
       expect(snapshot(join(s.install, FOLDER_A))).toEqual(before);
       expect(readFileSync(join(s.install, REBUILT, "dist", "runtime-cli.js"), "utf8")).toBe("// fixture runtime rebuilt with the same version\n");
       expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(REBUILT);
@@ -310,7 +464,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       const next = makeBundle(NEXT), NEXT_FOLDER = folderOf(next); serveNext(next); expect((await run(s, { T_COMMAND: pageCommand(active) })).code).toBe(0);
       active = serviceA; const back = await run(s);
       expect(back.code, back.out).toBe(0); expect(back.out).toContain("is already installed"); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);
-      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", NEXT_FOLDER, FOLDER_A].sort());
       expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);   // no archive was downloaded again
     });
     it("leaves a folder that carries this build's own name but does not hold it (changed by hand, or incomplete) completely alone", async () => {

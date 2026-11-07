@@ -39,6 +39,8 @@ const LIMITS = {
   script: { burst: 10, perMinute: 30 },
   bundle: { burst: 4, perMinute: 12 },
   total: { burst: 60, perMinute: 240 },
+  metadata: { burst: 20, perMinute: 120 },
+  metadataTotal: { burst: 240, perMinute: 1200 },
 } as const;
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/, SHA256 = /^[a-f0-9]{64}$/;
 
@@ -97,11 +99,12 @@ export class RuntimeInstallService {
    * both spent. A bucket that has refilled to full is forgotten, and a row is only created by an admitted request, so the table stays small
    * without a cap.
    */
-  private admit(peerKey: string, peerLimit: { burst: number; perMinute: number }): boolean {
+  private admit(peerKey: string, peerLimit: { burst: number; perMinute: number }, metadata = false): boolean {
     const now = (this.options.now ?? Date.now)();
     for (const [id, row] of this.buckets) if (row.tokens + (now - row.at) * row.perMs >= row.burst) this.buckets.delete(id);
-    if (this.tokens(peerKey, peerLimit, now) < 1 || this.tokens("total", LIMITS.total, now) < 1) return false;
-    this.spend("total", LIMITS.total, now); this.spend(peerKey, peerLimit, now);
+    const totalKey = metadata ? "metadataTotal" : "total", totalLimit = metadata ? LIMITS.metadataTotal : LIMITS.total;
+    if (this.tokens(peerKey, peerLimit, now) < 1 || this.tokens(totalKey, totalLimit, now) < 1) return false;
+    this.spend(totalKey, totalLimit, now); this.spend(peerKey, peerLimit, now);
     return true;
   }
   /**
@@ -134,9 +137,9 @@ export class RuntimeInstallService {
     if (method !== "GET" && method !== "HEAD") { answer(res, 405, { error: "Runtime installer files are read-only" }, { Allow: "GET, HEAD" }); return true; }
     if (url.search) { answer(res, 400, { error: "Runtime installer files do not accept options" }); return true; }
     if (!protectedTransport(req)) { answer(res, 403, { error: "The Runtime installer is served only over HTTPS or localhost" }); return true; }
-    // ZIP and metadata share an allowance, including conditional and HEAD requests.
-    const peer = req.socket.remoteAddress ?? "unknown", kind = isScript ? "script" : "bundle";
-    if (!this.admit(`${kind}:${peer}`, LIMITS[kind])) {
+    // Polling has a cheaper, independent allowance. HEAD/304 still spend it; polling cannot starve an actual install.
+    const peer = req.socket.remoteAddress ?? "unknown", kind = isMetadata ? "metadata" : isScript ? "script" : "bundle";
+    if (!this.admit(`${kind}:${peer}`, LIMITS[kind], isMetadata)) {
       answer(res, 429, { error: "Too many Runtime installer requests. Wait a minute and try again." }, { "Retry-After": "30" }); return true;
     }
     try {

@@ -240,7 +240,7 @@ Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Val
 function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 Write-Output ("FOUND=[" + ((Find-ExistingAgend) -ne $null) + "]")`, bin);
     expect(out).toContain("FOUND=[False]");
-    expect(calls(bin).trim().split("\n")).toHaveLength(5);                       // the record, then AgEnD's own and the three default Ubuntus
+    expect(calls(bin).trim().split("\n")).toHaveLength(6);                       // the record, then AgEnD's own and the four Ubuntu candidates
   });
 });
 

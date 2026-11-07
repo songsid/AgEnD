@@ -3,8 +3,10 @@ import WebSocket from "ws";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { hostname } from "node:os";
+import type { ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { probeCredentialProfileStatus, validateNativeTask, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
@@ -13,8 +15,17 @@ import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfi
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
+import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
+import { killTree } from "./runtime-signin.js";
+import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
+import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
+import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
+import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
+import { spawn as childSpawn } from "./child-process.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateClientPhase, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
+import { parseRuntimeUpdateStatus, RUNTIME_UPDATE_STATUS_CAPABILITY, type RuntimeUpdateStatus } from "./runtime-update-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -39,7 +50,8 @@ export function describeRuntimeStop(reason: RuntimeStopReason): string {
 }
 
 export interface RuntimeBridge {
-  probe(options?: { force?: boolean }): Promise<WindowsCliProbe>;
+  /** `authorized` (the requester's live check) is asked again before the Windows worker starts: authority revoked meanwhile starts nothing. */
+  probe(options?: { force?: boolean }, authorized?: () => boolean): Promise<WindowsCliProbe>;
   prepareWorkspace(agentId: string): Promise<string>;
   start(value: unknown, authorized?: () => boolean, options?: WindowsRunOptions): WindowsCliTask;
   get(id: string): WindowsCliTask | null;
@@ -58,6 +70,8 @@ export interface RuntimeClientOptions {
   reconnectMs?: number;
   disconnectGraceMs?: number;
   pollMs?: number;
+  /** Bounded diagnostics only; old servers must positively negotiate before any report is sent. */
+  updateStatus?: RuntimeUpdateStatus;
   /** Tests may use an isolated fake worker. Production always uses the Windows bridge. */
   socketFactory?: (url: string, credential: string) => WebSocket;
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
@@ -71,9 +85,17 @@ export interface RuntimeClientOptions {
   /** Test seam; production asks the CLI itself (`claude auth status` under that profile's folder). */
   credentialLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
   /** Test seam for the same check with the account in it (masked e-mail, plan). Wins over `credentialLogin`. */
-  credentialStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
+  credentialStatus?: (cli: CredentialProfileCli, directory: string, authorized?: () => boolean) => Promise<CredentialProfileAnswer>;
   /** How often to look for a sign-in made by `agend-runtime login` in another window (default 5 s). */
   credentialWatchMs?: number;
+  /**
+   * #3190 Part 3a. Production leaves this out (native Windows only). A test, or the install work (3b), supplies pieces of the remote account
+   * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
+   * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
+   */
+  /** The Runtime's installation root, where the shared install lock is taken for a CLI install. Default: the managed install root this code runs from, else the CLI folder. */
+  installRoot?: string;
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
   /** Internal supervisor seam, never a server-supplied configuration option. */
   managedUpdate?: { trialId?: string; authenticated?(value: { bootId: string; generation: number; updateProtocol?: 1; runtimeInfo: ReturnType<typeof readRuntimeInfo> }): void };
   /** Isolated tests can supply a private pane service. Production uses attach-only discovery and physical exit proof. */
@@ -107,9 +129,31 @@ function jsonBody(req: IncomingMessage): Promise<unknown> {
     req.on("end", () => { try { accept(JSON.parse(text)); } catch { reject(new Error("Invalid MCP JSON")); } });
   });
 }
+/**
+ * `claude auth logout` for a profile. Output is not read, kept or logged: only whether the command ended well. A program that never started (no pid) has
+ * ended; for one that exists, ONLY its `close` is evidence that it ended (an `error` event can also mean it could not be killed). On the 30 s limit the
+ * whole process tree is killed and `close` is waited for up to five more seconds; if it still has not come the result is a ProcessNotConfirmedEnded, whose
+ * `ended` settles when the process really ends, so that whoever owns the profile keeps it busy until then.
+ */
+export function runLogoutProcess(executable: { command: string; args: string[] }, args: string[], env: NodeJS.ProcessEnv, limitMs = 30_000, waitMs = 5_000,
+  spawnChild: typeof childSpawn = childSpawn, kill: (child: ChildProcess) => void = killTree): Promise<number | null> {
+  return new Promise((done, fail) => {
+    const child = spawnChild(executable.command, [...executable.args, ...args], { env, shell: false, stdio: "ignore", windowsHide: true });
+    let ended = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const closed = new Promise<void>(accept => { child.on("close", () => accept()); });
+    closed.then(() => { ended = true; });
+    child.on("error", () => { if (child.pid === undefined) { clearTimeout(timer); ended = true; done(null); } });
+    child.on("close", code => { clearTimeout(timer); done(code); });
+    timer = setTimeout(() => {
+      kill(child);
+      const gave = setTimeout(() => { if (!ended) fail(new ProcessNotConfirmedEnded(closed)); }, waitMs); gave.unref?.();
+    }, limitMs);
+    timer.unref?.();
+  });
+}
 export class RuntimeClient {
   readonly bootId = randomUUID();
-  private readonly runtimeInfo;
+  private readonly runtimeInfo: ReturnType<typeof readRuntimeInfo>;
   private readonly bridge: RuntimeBridge;
   private socket: WebSocket | null = null;
   private welcomed = false;
@@ -129,6 +173,15 @@ export class RuntimeClient {
   private machinePaneLimit = 4;
   private paneEpoch = randomUUID();
   private readonly active = new Set<string>();
+  /** Run id -> the credential profile it runs under, so removing or signing out a profile waits for its runs. */
+  private readonly activeProfiles = new Map<string, string>();
+  /** Terminals being opened right now, by profile (lower-case): they are not in the pane ledger until the host has answered. */
+  private readonly openingPanes = new Map<string, number>();
+  private remoteAccounts: RemoteAccounts | null = null;
+  /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
+  private readonly installAbort = new AbortController();
+  /** The Runtime's own installer (native Windows only): its closed table, its pinned versions and one install at a time. */
+  private readonly managed: RemoteInstaller | null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -140,31 +193,53 @@ export class RuntimeClient {
   private readonly stoppedListeners = new Set<() => void>();
   private activity = new RuntimeUpdateActivity();
   private stopPromise: Promise<void> | undefined;
+  /** A stop that could not finish (an account process was not confirmed gone): everything is still held, and stop() may be called again. */
+  private stopIncomplete = false;
+  /** A stop asked for the durable panes to be retired (a revocation does): that stays true across a stop that failed and is called again, a plain one included (Ctrl+C), until a stop has completed. */
+  private retirePanesRequested = false;
   private generation = 0;
   private updateProtocol = false;
+  private updateStatusProtocol = false;
+  private updateStatus: RuntimeUpdateStatus | undefined;
   private preparingUpdate = false;
   private trialFence: RuntimeUpdateFence | undefined;
+  private activatedTrialId: string | undefined;
   private updateWait: { id: string; phases: RuntimeUpdateServerPhase[]; accept(phase: RuntimeUpdateServerPhase): void; reject(error: Error): void; timer: NodeJS.Timeout } | undefined;
   /** Set only when AgEnD ended the connection and the person must act; a local stop (Ctrl+C) leaves it undefined. */
   stopReason: RuntimeStopReason | undefined;
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
-    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
+    this.managed = nativeInstallSupported() ? managedInstaller({ root: managedCliRoot(options.store.directory), ...(options.installRoot ? { installRoot: options.installRoot } : {}) }, () => this.installAbort.signal) : null;
+    this.updateStatus = options.updateStatus === undefined ? undefined : parseRuntimeUpdateStatus(options.updateStatus);
+    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.installer || nativeInstallSupported() });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
-    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
+    // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
+    const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
   online(): boolean { return !this.trialFence && this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
+  setUpdateStatus(value: RuntimeUpdateStatus): void { this.updateStatus = parseRuntimeUpdateStatus(value); this.publishUpdateStatus(); }
+  private publishUpdateStatus(): void {
+    if (this.updateStatus && this.updateStatusProtocol && this.online() && this.runtimeInfo.capabilities.includes(RUNTIME_UPDATE_STATUS_CAPABILITY))
+      this.send({ v: 1, type: "update.status", bootId: this.bootId, generation: this.generation, status: this.updateStatus });
+  }
   waitUntilStopped(): Promise<void> { return this.stopPromise ?? (this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done))); }
   async start(): Promise<void> {
     if (!this.stopped) return;
     if (this.stopPromise) { await this.stopPromise; this.stopPromise = undefined; this.activity = new RuntimeUpdateActivity(); }
+    // A previous stop that was not completed still owns a pairing lock and possibly a sign-in or logout process that was not confirmed ended: nothing starts
+    // over it, and its account module is never replaced while it holds anything.
+    if (this.stopIncomplete || this.unlock !== null || (this.remoteAccounts && !this.remoteAccounts.idle())) throw new Error("The previous stop was not completed (an account process was not confirmed ended). Call stop() again, or inspect processes, before starting");
+    this.retirePanesRequested = false;                                    // fully closed: whatever an earlier stop asked for is over
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
-    this.stopped = false; this.closed = false; this.stopReason = undefined;
+    this.stopped = false; this.closed = false; this.stopReason = undefined; this.activatedTrialId = undefined;
+    this.remoteAccounts = null;                                         // a stopped one is closed to new work for good
     try {
       const systemBootId = process.platform === "win32" ? await readPaneSystemBootId() : undefined;
       if (this.stopped) throw Error("Runtime start was cancelled");
@@ -193,12 +268,14 @@ export class RuntimeClient {
   }
   private connect(): void {
     if (this.stopped || !this.credentials) return;
+    // A previous connection's positive check cannot vouch for this server generation.
+    if (this.updateStatus?.state === "current") this.updateStatus = { state: "unknown" };
     const url = validateRuntimeServer(this.credentials.server); url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/runtime/v1/connect";
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false; this.updateProtocol = false; this.paneEpoch = randomUUID();
+    this.welcomed = false; this.updateProtocol = false; this.updateStatusProtocol = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
@@ -217,12 +294,14 @@ export class RuntimeClient {
       if (response.statusCode === 401 || response.statusCode === 403) {
         this.report("Runtime credential was refused. Re-pair after the machine is authorized.");
         this.stopReason = { kind: "refused", ...(response.statusCode === 403 ? { detail: "HTTP 403" } : {}) };
-        void this.stop();
+        void this.stop().catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed"));
       } else socket.terminate();
     });
     socket.on("close", (code,reason) => {
       if (this.socket !== socket) return;
       this.socket = null; this.welcomed = false; this.paneEpoch = randomUUID();
+      // Whatever the old connection started over account requests is over with it: a sign-in it opened is ended, and what it still has in flight may not start more.
+      this.remoteAccounts?.connectionChanged();
       if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update connection changed")); }
       if (this.paneHost && "connectionChanged" in this.paneHost) this.paneHost.connectionChanged();
       this.rejectTools();
@@ -231,7 +310,7 @@ export class RuntimeClient {
         const why = reason.toString().replace(/[^ -~]/g, "?").slice(0, 120);
         this.report(this.selfClosed === socket ? "This Runtime could not read a message from AgEnD and closed the connection." : `AgEnD closed the connection (code 1008${why ? `: ${why}` : ""}).`);
         this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : why.startsWith(RUNTIME_REINSTALL_CLOSE_PREFIX) ? "reinstall" : "rejected", ...(why ? { detail: why } : {}) };
-        void this.stop({retirePanes:why==="Machine revoked"}); return;
+        void this.stop({retirePanes:why==="Machine revoked"}).catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed")); return;
       }
       this.report("Disconnected. Existing execution is not replayed; reconnecting…");
       if (!this.graceTimer) this.graceTimer = setTimeout(() => {
@@ -260,10 +339,12 @@ export class RuntimeClient {
       if (value.machineId !== this.credentials?.machineId || !Number.isSafeInteger(value.generation)) throw new Error("Runtime machine identity mismatch");
       this.welcomed = true;
       this.generation = value.generation as number; this.updateProtocol = value.updateProtocol === 1;
+      this.updateStatusProtocol = value.updateStatusProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
       this.report("Connected to AgEnD.");
       if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
+      this.publishUpdateStatus();
       this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
       return;
     }
@@ -272,6 +353,7 @@ export class RuntimeClient {
       if (!pending || control.bootId !== this.bootId || control.generation !== this.generation || control.id !== pending.id || !pending.phases.includes(control.phase)) return;
       if (control.phase === "activated") {
         if (this.trialFence?.id !== control.id || !this.trialFence.current() || !this.locallyIdle()) throw Error("Runtime trial is no longer idle");
+        this.activatedTrialId = control.id;
         this.trialFence.release(); this.trialFence = undefined;
         // Release synchronously: the server's next ordered frame may already contain ordinary work.
         for (const job of this.options.store.list()) this.publish(job);
@@ -279,7 +361,7 @@ export class RuntimeClient {
       }
       this.updateWait = undefined; clearTimeout(pending.timer); pending.accept(control.phase); return;
     }
-    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); this.stopReason = { kind: "revoked" }; await this.stop({retirePanes:true}); return; }
+    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); this.stopReason = { kind: "revoked" }; await this.stop({retirePanes:true}).catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed")); return; }
     if (!this.welcomed) throw new Error("Runtime handshake is incomplete");
     if (value.type === "ping") { this.send({ v: 1, type: "pong" }); return; }
     if (value.type === "tool.result") {
@@ -303,9 +385,18 @@ export class RuntimeClient {
       const request = validateRuntimePaneRequest(value.request);
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
-      let leave: (() => void) | undefined;
+      let leave: (() => void) | undefined, opening: string | undefined;
       try {
         leave = this.activity.enter();
+        // A terminal that would run under a profile that AgEnD is signing out, removing or signing in right now is not started; and from here until the host
+        // has answered it counts as using its profile, because the pane ledger does not show it yet.
+        if (request.action === "open") {
+          const profile = request.launch.credentialProfile ?? this.credentialProfileFor(request.launch.cli, undefined);
+          if (profile !== undefined) {
+            if (this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
+            opening = profile.toLowerCase(); this.openingPanes.set(opening, (this.openingPanes.get(opening) ?? 0) + 1);
+          }
+        }
         const host = await this.panes();
         // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one. The default is passed
         // beside the launch, not inside it: the host decides with it only for a pane that is new, so a pane that is already running reattaches
@@ -321,6 +412,28 @@ export class RuntimeClient {
         }
         this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
+      finally {
+        if (opening !== undefined) { const left = (this.openingPanes.get(opening) ?? 1) - 1; if (left > 0) this.openingPanes.set(opening, left); else this.openingPanes.delete(opening); }
+        leave?.();
+      }
+      return;
+    }
+    if (value.type === "account.request") {
+      // Not journaled by AgEnD and not stored here: a sign-in's URL and code travel in these frames and nowhere else.
+      if (Object.keys(value).some(key => !["v", "type", "id", "operation", "payload"].includes(key)) || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
+        || !isRuntimeRemoteOperation(value.operation)) throw new Error("Invalid account request");
+      // The answer belongs to the connection that asked: it is sent only while that very connection (socket and AgEnD's generation for it) is still the live
+      // one, never to a later connection, and the request is refused outright while a managed update is holding new work.
+      const socket = this.socket, generation = this.generation, id = value.id;
+      const sameConnection = (): boolean => !this.stopped && !!socket && this.socket === socket && this.generation === generation && this.welcomed && socket.readyState === WebSocket.OPEN;
+      const current = (): boolean => sameConnection() && this.online();
+      const reply = (frame: Record<string, unknown>): void => { if (sameConnection()) this.send(frame); };
+      let leave: (() => void) | undefined;
+      try {
+        if (this.trialFence) throw new Error("Runtime update is holding new work");
+        leave = this.activity.enter();
+        reply({ v: 1, type: "account.response", id, ok: true, result: await this.remote().handle(value.operation, value.payload, current) });
+      } catch (error) { reply({ v: 1, type: "account.response", id, ok: false, error: message(error) }); }
       finally { leave?.(); }
       return;
     }
@@ -337,7 +450,7 @@ export class RuntimeClient {
     if (!this.paneOpening) {
       const output: RuntimePaneHostOptions["output"] = snapshot => { if (this.online()) this.send({ v: 1, type: "pane.output", snapshot }); };
       if (this.options.createPaneHost) this.paneOpening = import("./runtime-pane-store.js").then(({ RuntimePaneStore }) => {
-        const store = new RuntimePaneStore(join(this.options.store.directory, "panes")); store.recoverInterrupted();
+        const store = new RuntimePaneStore(join(this.options.store.directory, PANE_IN_PROCESS_DIRECTORY)); store.recoverInterrupted();
         return this.paneHost = this.options.createPaneHost!({ store, bootId: this.bootId, online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output });
       });
       else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => (this.options.openPaneLink ?? RuntimePaneLink.open.bind(RuntimePaneLink))({
@@ -368,7 +481,7 @@ export class RuntimeClient {
     if (this.snapshots.get(task.id) === serialized) return;
     try {
       const job = this.options.store.update(task); this.snapshots.set(task.id, serialized); this.publish(job);
-      if (task.finishedAt) { this.active.delete(task.id); this.closeMcp(task.id); }
+      if (task.finishedAt) { this.active.delete(task.id); this.activeProfiles.delete(task.id); this.closeMcp(task.id); }
     } catch {
       // A process whose state could not be committed must not continue accepting commands.
       this.report("Runtime execution state could not be saved. Stop and inspect the private runtime profile.");
@@ -397,10 +510,12 @@ export class RuntimeClient {
     }, this.options.credentialWatchMs ?? 5000);
     this.credentialWatch.unref?.();
   }
-  private statusOf(cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> {
-    if (this.options.credentialStatus) return this.options.credentialStatus(cli, directory);
+  private statusOf(cli: CredentialProfileCli, directory: string, authorized?: () => boolean): Promise<CredentialProfileAnswer> {
+    if (this.options.credentialStatus) return authorized ? this.options.credentialStatus(cli, directory, authorized) : this.options.credentialStatus(cli, directory);
     if (this.options.credentialLogin) return this.options.credentialLogin(cli, directory).then(loggedIn => ({ loggedIn }));
-    return probeCredentialProfileStatus(cli, directory);
+    // The lookup of the CLI is the Runtime's own (a test or the install work may supply one); production leaves it to `findCli`.
+    const find = this.options.remoteAccounts?.find;
+    return probeCredentialProfileStatus(cli, directory, find ? id => find(id as CredentialProfileCli) : undefined, undefined, authorized);
   }
   private remember(root: string, cli: CredentialProfileCli, name: string, answer: CredentialProfileAnswer): void {
     rememberCredentialStatus(root, cli, name, answer); this.credentialStamp = this.stamp();   // our own write is not "another window"
@@ -417,22 +532,86 @@ export class RuntimeClient {
     return directory;
   }
   /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
-  private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
+  private async credentialReport(force: boolean, authorized?: () => boolean): Promise<CredentialProfileReport | undefined> {
     const root = this.options.credentialProfilesRoot; if (!root) return undefined;
+    // `authorized` (an install's live consent and connection check) is asked before each profile's status is started and again before its answer is written to the cache.
+    const still = (): void => { if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery"); };
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
-      try { this.remember(root, "claude-code", name, await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name))); }
-      catch { this.remember(root, "claude-code", name, { loggedIn: null }); }
+      still();
+      try { const answer = await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name), authorized); still(); this.remember(root, "claude-code", name, answer); }
+      catch { still(); this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
+  }
+  private computerBoot: Promise<string | undefined> | undefined;
+  private computerBootValue: string | undefined;
+  /** The computer's boot identity, read once (it cannot change while this Runtime runs). Unknown is never evidence either way. */
+  private systemBoot(): Promise<string | undefined> { return this.computerBoot ??= (this.options.remoteAccounts?.systemBootId ?? readPaneSystemBootId)().catch(() => undefined).then(value => this.computerBootValue = value); }
+  /**
+   * Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). Terminals come from the
+   * pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing ledger is "none") and from
+   * the terminals this Runtime is opening right now. A row recorded under another boot of the computer is a terminal that cannot still be running (the pane
+   * store treats it the same way). A ledger that cannot be read, or a default profile that cannot be read while a terminal needs it, is `unknown`: the
+   * caller refuses with a message that says the state could not be confirmed. A Claude Code terminal that names no profile runs under this pairing's
+   * default, which the ledger does not hold.
+   */
+  private async profileInUse(name: string): Promise<"task" | "pane" | "unknown" | undefined> { await this.systemBoot(); return this.profileInUseNow(name); }
+  /** The same answer with no await, from the boot identity read earlier (before it is read, a row with a boot id is counted as running: the safe side). */
+  private profileInUseNow(name: string): "task" | "pane" | "unknown" | undefined {
+    const same = (other: unknown): boolean => typeof other === "string" && other.toLowerCase() === name.toLowerCase();
+    for (const used of this.activeProfiles.values()) if (same(used)) return "task";
+    if (this.openingPanes.has(name.toLowerCase())) return "pane";
+    let fallback: string | undefined, fallbackReadable = true; try { fallback = this.options.store.credentialDefault(); } catch { fallbackReadable = false; }
+    const boot = this.computerBootValue; let unknown = false;
+    for (const file of paneLedgerFiles(this.options.store.directory)) {
+      try {
+        const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+        for (const row of object(raw) && object(raw.panes) ? Object.values(raw.panes) : []) {
+          const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
+          if (!launch || snapshot?.state === "exited") continue;
+          if (typeof (row as { systemBootId?: unknown }).systemBootId === "string" && boot && boot !== (row as { systemBootId: string }).systemBootId) continue;
+          if (same(launch.credentialProfile)) return "pane";
+          if (launch.credentialProfile === undefined && launch.cli === "claude-code") { if (!fallbackReadable) unknown = true; else if (same(fallback)) return "pane"; }
+        }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") unknown = true; }
+    }
+    return unknown ? "unknown" : undefined;
+  }
+  /** #3190 Part 3a: the remote account operations (switches, sign-in, sign-out, remove, install), built on first use. */
+  private remote(): RemoteAccounts {
+    const root = this.options.credentialProfilesRoot, extra = this.options.remoteAccounts;
+    if (!root) throw new Error("This Runtime has no credential profile folder, so it cannot manage accounts. Update or restart the Runtime.");
+    if (process.platform !== "win32" && !extra) throw new Error("Managing accounts from AgEnD needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
+    return this.remoteAccounts ??= new RemoteAccounts({
+      pairingDirectory: this.options.store.directory, credentialRoot: root,
+      status: (cli, directory) => this.statusOf(cli, directory),
+      find: extra?.find ?? ((cli) => findCli(cli)),
+      environment: extra?.environment ?? (() => nativeCliEnvironment()),
+      runLogout: extra?.runLogout ?? ((executable, args, env) => runLogoutProcess(executable, args, env)),
+      inUse: name => this.profileInUse(name), inUseNow: name => this.profileInUseNow(name), report: text => this.report(text),
+      // Throws when `credential-default.json` cannot be read: an unreadable default is not "no default" (the remove then answers `unconfirmed`).
+      defaultProfile: () => this.options.store.credentialDefault(),
+      enter: () => this.activity.enter(),
+      changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
+      // A CLI was just installed: the cached list is stale, so detect for real and send it (this request already holds a share of the Runtime's activity).
+      installed: async authorized => { await this.readInventory(true, authorized); },
+      // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
+      ...(extra?.installer ? { installer: extra.installer } : this.managed ? { installer: this.managed } : {}),
+      ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      ...(extra?.now ? { now: extra.now } : {}),
+    });
   }
   private beginDiscovery(): void {
     void this.refreshInventory().catch(() => this.report("CLI discovery failed; refresh it from AgEnD after checking the local installation."));
     this.watchCredentialCache();
   }
   private refreshInventory(force = false): Promise<WindowsCliProbe> { return this.activity.run(() => this.readInventory(force)); }
-  private async readInventory(force: boolean): Promise<WindowsCliProbe> {
-    const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
+  private async readInventory(force: boolean, authorized?: () => boolean): Promise<WindowsCliProbe> {
+    const still = (when: string): void => { if (authorized && !authorized()) throw new Error(`Authorization expired ${when} CLI discovery`); };
+    still("before");
+    const probed = await (authorized ? this.bridge.probe({ force }, authorized) : this.bridge.probe({ force })); still("during");
+    const credentialProfiles = await this.credentialReport(force, authorized); still("during");
     const inventory = credentialProfiles ? { ...probed, credentialProfiles } : probed;
     this.inventory = inventory;
     if (this.online()) this.send({ v: 1, type: "inventory", inventory });
@@ -492,6 +671,10 @@ export class RuntimeClient {
     try {
       // Fail closed, and as a confirmed failed turn: an unknown, unsigned or unusable profile never falls back to another account.
       const profile = this.credentialProfileFor(task.cli, run.credentialProfile);
+      // Registered (or refused) in one synchronous step with the look at AgEnD's own change of that profile, so a sign-out or removal that has reserved the
+      // profile is never raced by a task, and one that has not yet reserved it finds this task in `activeProfiles`.
+      if (profile && this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
+      if (profile) this.activeProfiles.set(task.requestId, profile);
       const credentialHome = profile ? await this.credentialHome(task.cli, profile) : undefined;
       const mcp = payload.mcp ? await this.openMcp(task.requestId, (payload.mcp as { tools: string[] }).tools) : undefined;
       if (this.stopped || !this.online()) throw new Error("Runtime disconnected before native execution started");
@@ -503,7 +686,7 @@ export class RuntimeClient {
       });
       this.update(initial); return this.options.store.get(task.requestId)!.task;
     } catch (error) {
-      this.active.delete(task.requestId); this.closeMcp(task.requestId);
+      this.active.delete(task.requestId); this.activeProfiles.delete(task.requestId); this.closeMcp(task.requestId);
       const failed = { ...accepted.job.task, status: "failed" as const, error: message(error), finishedAt: Date.now(), outcomeConfirmed: true };
       this.update(failed); return failed;
     }
@@ -511,7 +694,7 @@ export class RuntimeClient {
   private locallyIdle(): boolean {
     return this.activity.pending === 0 && this.active.size === 0 && !this.options.store.blocked()
       && this.bridge.idleForUpdate?.() === true && this.pendingTools.size === 0 && this.pendingPaneTools.size === 0
-      && !(this.paneOpening && !this.paneHost) && (this.socket?.bufferedAmount ?? 1) === 0;
+      && !(this.paneOpening && !this.paneHost) && (this.socket?.bufferedAmount ?? 1) === 0 && (this.remoteAccounts?.idle() ?? true);
   }
   private updateRpc(phase: RuntimeUpdateClientPhase, id: string, phases: RuntimeUpdateServerPhase[]): Promise<RuntimeUpdateServerPhase> {
     if (!this.welcomed || !this.updateProtocol || this.socket?.readyState !== WebSocket.OPEN || this.updateWait) return Promise.reject(Error("Runtime update negotiation is unavailable"));
@@ -559,6 +742,8 @@ export class RuntimeClient {
   }
   /** The parent persists activation intent before this call; an unconfirmed answer is never rollback permission. */
   async activateTrial(id: string): Promise<boolean> {
+    // A received exact acknowledgement is a durable fact for this process lifetime, not a second admission.
+    if (this.activatedTrialId === id && this.options.managedUpdate?.trialId === id) return true;
     if (this.trialFence?.id !== id || !this.locallyIdle()) return false;
     return await this.updateRpc("activate", id, ["activated", "busy", "cancelled"]) === "activated";
   }
@@ -612,12 +797,18 @@ export class RuntimeClient {
     this.pendingPaneTools.clear();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
   stop(options:{retirePanes?:boolean}={}): Promise<void> {
+    // The request is remembered before anything else: a stop already running (it may be a plain one) picks it up when it reaches the panes, and a stop that fails
+    // before the panes (an account process not confirmed ended) keeps it for the plain stop() that tries again.
+    if (options.retirePanes) this.retirePanesRequested = true;
     if (this.stopPromise) return this.stopPromise;
-    if (this.stopped) return Promise.resolve();
-    this.stopped = true; this.welcomed = false;
+    if (this.stopped && !this.stopIncomplete) return Promise.resolve();
+    this.stopped = true; this.welcomed = false; this.stopIncomplete = false;
+    this.installAbort.abort();
     this.activity.close();
-    // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop().
-    return this.stopPromise = Promise.resolve().then(() => this.stopOwned(options));
+    // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop(). A stop that fails leaves the lock and the account module held and can be
+    // called again.
+    const stopping: Promise<void> = Promise.resolve().then(() => this.stopOwned(options)).catch(error => { if (this.stopPromise === stopping) this.stopPromise = undefined; this.stopIncomplete = true; throw error; });
+    return this.stopPromise = stopping;
   }
   private async stopOwned(options:{retirePanes?:boolean}): Promise<void> {
     if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update stopped")); }
@@ -631,8 +822,11 @@ export class RuntimeClient {
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
     // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
     await this.startupRotation?.catch(() => {});
+    // A sign-in that is open ends with the connection (its child is killed), and the folded counts of the audit log are written. A login or logout process that
+    // is not confirmed gone fails the stop HERE, before the pairing's lock is let go, so no other client can start over a process that may still be writing.
+    if (this.remoteAccounts) { await this.remoteAccounts.stop(); if (!this.remoteAccounts.idle()) throw new Error("Account process shutdown was not confirmed; inspect processes before stopping or restarting"); }
     await this.paneOpening?.then(async host=>{
-      try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
+      try{if((options.retirePanes||this.retirePanesRequested)&&"retireOwned" in host)await host.retireOwned();}
       finally{await host.stop();}
     }).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
@@ -649,7 +843,7 @@ export class RuntimeClient {
     }
     if (this.mcpServer) { const server = this.mcpServer; this.mcpServer = null; server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
     this.unlock?.(); this.unlock = null;
-    this.closed = true;
+    this.closed = true; this.retirePanesRequested = false;
     for (const done of this.stoppedListeners) done(); this.stoppedListeners.clear();
   }
 }

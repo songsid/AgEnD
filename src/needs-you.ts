@@ -9,7 +9,7 @@
 
 import type { ConfigIssue } from "./config-history.js";
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub" | "runtime";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -51,6 +51,8 @@ export interface NeedsYouItem {
   kiroChoice?: true;
   /** Member-local display only; never an approval capability or a public-link projection. */
   hubProposal?: { action: string; arguments: string; argumentsDigest: string; consequences: string };
+  /** Display only. reason=dialog remains readable in an old panel; repair is in Settings. */
+  runtimeUpdate?: true;
 }
 
 export type NeedsYouReason =
@@ -68,6 +70,7 @@ export type NeedsYouReason =
 export interface HubHoldInput {
   side: "server" | "member"; code: string; detail: string; since: number;
 }
+export interface RuntimeUpdateAttentionInput { key: string; detail: string; since: number; owner?: string }
 
 /** M-2457 §6: a tmux server (instance null: the whole fleet) or an old window (that instance) held, with why. */
 export interface TmuxHoldInput { instance: string | null; key: string; detail: string; since: number }
@@ -168,6 +171,7 @@ export interface NeedsYouInputs {
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
   hubHolds?: HubHoldInput[];
+  runtimeUpdates?: RuntimeUpdateAttentionInput[];
   tmuxHolds?: TmuxHoldInput[];
   missedOffline?: MissedOfflineInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
@@ -287,6 +291,10 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     id: `hub-hold:${hold.side}:${hold.code}:${hold.since}`, type: "hub", instance: "",
     reason: "hub_unavailable", detail: hold.detail, since: hold.since,
   });
+  for (const update of inputs.runtimeUpdates ?? []) items.push({
+    id: `runtime-update:${update.key}`, type: "runtime", instance: "", owner: update.owner,
+    reason: "dialog", detail: oneLine(update.detail, 320), since: update.since, runtimeUpdate: true,
+  });
 
   // M-2457 §6: AgEnD held a tmux server or window it could not prove its own — nothing was killed; the detail says what to do.
   for (const hold of inputs.tmuxHolds ?? []) items.push({
@@ -367,6 +375,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     i.card ? i.card.version : null,
     i.lane ?? null,
     i.hubProposal ?? null,
+    i.runtimeUpdate ?? false,
   ]));
 }
 

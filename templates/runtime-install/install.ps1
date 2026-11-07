@@ -26,6 +26,7 @@
 #      code from AgEnD Settings, which you type in the terminal, and your approval in AgEnD.
 #
 # Optional, set in the same PowerShell window before running it:
+#   $env:AGEND_RUNTIME_REPAIR = '1'               keep PATH unchanged; print run with an existing profile, never pairing steps
 #   $env:AGEND_RUNTIME_NO_PATH = '1'              leave PATH alone (the final message then shows the full path to run)
 #   $env:AGEND_RUNTIME_INSTALL_DIR = 'D:\agend'   install somewhere other than %LOCALAPPDATA%\agend-runtime
 # If it fails it says why, leaves what was installed before untouched, and sets $LASTEXITCODE to 1.
@@ -90,11 +91,12 @@
     }
     # Writes a small file by writing a sibling and swapping it in, so a reader (a shim that is starting right now) sees the old or the
     # new content, never half of it. Nothing happens when the file already says this.
-    function Set-AgendFile([string]$Path, [string]$Text) {
+    function Set-AgendFile([string]$Path, [string]$Text, [scriptblock]$BeforeRename = $null) {
         if ((Test-Path -LiteralPath $Path) -and ([IO.File]::ReadAllText($Path) -ceq $Text)) { return }
-        $new = $Path + '.new'
+        $new = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.new'
         [IO.File]::WriteAllText($new, $Text, [Text.Encoding]::ASCII)
         try {
+            if ($BeforeRename) { & $BeforeRename }
             # [NullString]::Value, not $null: PowerShell turns $null into an empty string for a string parameter, and Replace refuses that.
             if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($new, $Path, [NullString]::Value) } else { [IO.File]::Move($new, $Path) }
         } catch {
@@ -102,6 +104,132 @@
             throw ('Could not update ' + $Path + ' (' + $_.Exception.Message + '). Close any agend-runtime window that is starting, then run the install command again.')
         }
     }
+    function Assert-AgendDirectory([string]$Path) {
+        $entry = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if (-not $entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'The installation directory is unsafe or changed.' }
+    }
+    function Read-AgendSmallFile([string]$Path, [int]$Limit) {
+        try { $entry = Get-Item -LiteralPath $Path -Force -ErrorAction Stop }
+        catch [Management.Automation.ItemNotFoundException] { return $null }
+        if ($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or [string]$entry.LinkType -ne '' -or $entry.Length -gt $Limit) { throw 'Installation metadata is unsafe or too large.' }
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $bytes = New-Object byte[] ($Limit + 1); $length = 0
+            while ($length -lt $bytes.Length) { $count = $stream.Read($bytes, $length, $bytes.Length - $length); if ($count -eq 0) { break }; $length += $count }
+            if ($length -gt $Limit) { throw 'Installation metadata grew beyond its bound.' }
+            return ([Text.UTF8Encoding]::new($false, $true)).GetString($bytes, 0, $length)
+        } finally { $stream.Dispose() }
+    }
+    function Get-AgendBootProof {
+        $ticks = [string](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime.ToUniversalTime().Ticks
+        if ($ticks -notmatch '\A\d{17,20}\z') { throw 'Windows process ownership could not be verified.' }
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes('agend-windows-boot-v1:' + $ticks))) -replace '-', '').ToLowerInvariant() }
+        finally { $sha.Dispose() }
+    }
+    function Test-AgendOwnerRecord($Owner) {
+        $keys = @($Owner.PSObject.Properties.Name)
+        if ($keys.Count -ne 6 -or @($keys | Where-Object { $_ -cnotin 'version','type','nonce','pid','birth','boot' }).Count -ne 0 -or -not ($Owner.version -is [int] -or $Owner.version -is [long]) -or $Owner.version -ne 1 -or -not ($Owner.type -is [string]) -or -not ($Owner.nonce -is [string]) -or -not ($Owner.birth -is [string]) -or -not ($Owner.boot -is [string]) -or $Owner.type -cnotin 'installer','supervisor' -or
+            [string]$Owner.nonce -notmatch '\A[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\z' -or
+            -not ($Owner.pid -is [int] -or $Owner.pid -is [long]) -or $Owner.pid -lt 1 -or [string]$Owner.birth -notmatch '\A\d{17,20}\z' -or [string]$Owner.boot -notmatch '\A[a-f0-9]{64}\z') { throw 'The install lock owner is unconfirmed; use a fresh or separate installation.' }
+    }
+    function Get-AgendProcessMatch($Owner, [string]$Boot) {
+        try { $process = [Diagnostics.Process]::GetProcessById($Owner.pid) }
+        catch [ArgumentException] { return 'gone' }
+        catch { return 'unknown' }
+        try {
+            $birth = [string]$process.StartTime.ToUniversalTime().Ticks
+            if ($birth -cne [string]$Owner.birth -or $Boot -cne [string]$Owner.boot) { return 'gone' }
+            return 'alive'
+        } catch { return 'unknown' }
+        finally { $process.Dispose() }
+    }
+    function Read-AgendLock([string]$Path) {
+        Assert-AgendDirectory $Path
+        $raw = Read-AgendSmallFile (Join-Path $Path 'owner.json') 2048
+        if ($null -eq $raw) { throw 'The install lock is incomplete; use a fresh or separate installation.' }
+        $owner = $raw | ConvertFrom-Json; Test-AgendOwnerRecord $owner
+        return @{ path=$Path; raw=$raw; owner=$owner; birth=[string](Get-Item -LiteralPath $Path -Force).CreationTimeUtc.Ticks }
+    }
+    function Assert-AgendLock($Lock) {
+        $now = Read-AgendLock $Lock.path
+        if ($now.birth -cne $Lock.birth -or $now.raw -cne $Lock.raw) { throw 'Installation ownership changed; nothing was switched.' }
+    }
+    function Remove-AgendLock($Lock) {
+        Assert-AgendLock $Lock
+        if (@(Get-ChildItem -LiteralPath $Lock.path -Force | Where-Object { $_.Name -cne 'owner.json' }).Count -ne 0) { throw 'Installation cleanup is unconfirmed; its ownership was retained.' }
+        [IO.File]::Delete((Join-Path $Lock.path 'owner.json'))
+        try { [IO.Directory]::Delete($Lock.path) }
+        catch {
+            try {
+                Assert-AgendDirectory $Lock.path
+                if ([string](Get-Item -LiteralPath $Lock.path -Force).CreationTimeUtc.Ticks -ceq $Lock.birth -and $null -eq (Read-AgendSmallFile (Join-Path $Lock.path 'owner.json') 2048)) {
+                    [IO.File]::WriteAllText((Join-Path $Lock.path 'owner.json'), $Lock.raw, [Text.UTF8Encoding]::new($false))
+                }
+            } catch { }
+            throw 'Installation cleanup is unconfirmed; inspect or retry this installation.'
+        }
+    }
+    function Enter-AgendInstallLock([string]$Root) {
+        Assert-AgendDirectory $Root
+        $boot = Get-AgendBootProof; $process = [Diagnostics.Process]::GetCurrentProcess()
+        try { $birth = [string]$process.StartTime.ToUniversalTime().Ticks } finally { $process.Dispose() }
+        $owner = [pscustomobject][ordered]@{version=1;type='installer';nonce=[Guid]::NewGuid().ToString();pid=[int]$PID;birth=$birth;boot=$boot}
+        $raw = $owner | ConvertTo-Json -Compress
+        $candidate = Join-Path $Root ('.agend-lock-' + [Guid]::NewGuid().ToString('N')); $null = [IO.Directory]::CreateDirectory($candidate)
+        [IO.File]::WriteAllText((Join-Path $candidate 'owner.json'), $raw, [Text.UTF8Encoding]::new($false))
+        $created = Read-AgendLock $candidate; $path = Join-Path $Root '.agend-runtime-install.lock'
+        try {
+            try { [IO.Directory]::Move($candidate, $path); return (Read-AgendLock $path) }
+            catch { if (-not [IO.Directory]::Exists($path)) { throw } }
+            $previous = Read-AgendLock $path
+            if ((Get-AgendProcessMatch $previous.owner $boot) -cne 'gone') { throw 'Another installer or Runtime owns this installation. Retry when it is finished.' }
+            # Move an owned empty directory into the election slot: unlike CreateDirectory, Move refuses an existing slot atomically.
+            $guard = Join-Path $Root ('.agend-reclaim-' + [Guid]::NewGuid().ToString('N')); $null = [IO.Directory]::CreateDirectory($guard)
+            $claim = [Guid]::NewGuid().ToString(); [IO.File]::WriteAllText((Join-Path $guard 'claim.json'), $claim, [Text.Encoding]::ASCII)
+            $election = Join-Path $path 'reclaim'; $elected = $false
+            try {
+                [IO.Directory]::Move($guard, $election); $elected = $true
+                Assert-AgendLock $previous
+                if (@(Get-ChildItem -LiteralPath $path -Force | Where-Object { $_.Name -cnotin 'owner.json','reclaim' }).Count -ne 0) { throw 'Uncertain installation work remains; ownership was retained.' }
+                [IO.File]::Delete((Join-Path $path 'owner.json'))
+                [IO.File]::Delete((Join-Path $election 'claim.json')); [IO.Directory]::Delete($election); $elected = $false
+                [IO.Directory]::Delete($path)
+            } finally {
+                $ownedGuard = if ($elected) { $election } else { $guard }
+                if ([IO.Directory]::Exists($ownedGuard) -and (Read-AgendSmallFile (Join-Path $ownedGuard 'claim.json') 128) -ceq $claim) {
+                    [IO.File]::Delete((Join-Path $ownedGuard 'claim.json')); [IO.Directory]::Delete($ownedGuard)
+                }
+            }
+            [IO.Directory]::Move($candidate, $path); return (Read-AgendLock $path)
+        } finally { if ([IO.Directory]::Exists($candidate)) { Remove-AgendLock $created } }
+    }
+    function Register-AgendInstallOrigin([string]$Root, [string]$Origin, [bool]$Fresh, $Lock) {
+        Assert-AgendLock $Lock
+        $path = Join-Path $Root '.agend-runtime-install.json'; $raw = Read-AgendSmallFile $path 20000
+        if ($null -eq $raw) {
+            if (-not $Fresh) { return }
+            $receipt = [pscustomobject][ordered]@{version=1;id=[Guid]::NewGuid().ToString();createdAt=[long][Math]::Floor(([DateTime]::UtcNow - [DateTime]'1970-01-01T00:00:00Z').TotalMilliseconds);revision=1;origins=@($Origin);shared=$false}
+        } else {
+            $receipt = $raw | ConvertFrom-Json; $keys = @($receipt.PSObject.Properties.Name)
+            if ($keys.Count -ne 6 -or @($keys | Where-Object { $_ -cnotin 'version','id','createdAt','revision','origins','shared' }).Count -ne 0 -or -not ($receipt.version -is [int] -or $receipt.version -is [long]) -or $receipt.version -ne 1 -or -not ($receipt.id -is [string]) -or
+                [string]$receipt.id -notmatch '\A[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\z' -or
+                -not ($receipt.createdAt -is [int] -or $receipt.createdAt -is [long]) -or $receipt.createdAt -lt 1 -or $receipt.createdAt -gt 9007199254740991 -or
+                -not ($receipt.revision -is [int] -or $receipt.revision -is [long]) -or $receipt.revision -lt 1 -or $receipt.revision -ge 9007199254740991 -or
+                -not ($receipt.origins -is [Array]) -or $receipt.origins.Count -lt 1 -or $receipt.origins.Count -gt 8 -or -not ($receipt.shared -is [bool])) { throw 'The managed-install receipt is unconfirmed; use a fresh or separate installation.' }
+            $seen = @{}
+            foreach ($entry in $receipt.origins) {
+                if (-not ($entry -is [string]) -or (Resolve-AgendOrigin $entry) -cne $entry -or $seen.ContainsKey($entry)) { throw 'The managed-install origins are unconfirmed.' }
+                $seen[$entry] = $true
+            }
+            if ($receipt.origins.Count -gt 1 -and -not $receipt.shared) { throw 'The shared-install receipt is unconfirmed.' }
+            if ($receipt.origins -ccontains $Origin) { return }
+            if ($receipt.origins.Count -ge 8) { throw 'This installation has too many origins. Use a separate fresh install; pairing is kept.' }
+            $receipt.origins = @($receipt.origins) + @($Origin); $receipt.shared = $true; $receipt.revision++
+        }
+        Set-AgendFile $path ($receipt | ConvertTo-Json -Depth 4 -Compress) { Assert-AgendLock $Lock; if ((Read-AgendSmallFile $path 20000) -cne $raw) { throw 'The managed-install receipt changed; nothing was switched.' } }
+    }
+
     # Adds a folder to the USER PATH in the registry, keeping its value kind: [Environment]::SetEnvironmentVariable would turn a
     # REG_EXPAND_SZ PATH into plain REG_SZ and stop its %VARIABLES% entries expanding, and setx truncates at 1024 characters, so
     # neither is used. An entry already there (written out or with %VARIABLES%) is not added again.
@@ -146,7 +274,7 @@
         'exit /b %errorlevel%', ':agend_rt_missing', 'echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.>&2',
         'exit /b 1', '') -join "`r`n"
 
-    $tmp = $null
+    $tmp = $null; $installLock = $null
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }
 
@@ -189,6 +317,10 @@
         $marker = Join-Path $target '.agend-install-sha256'
         $createdRoot = -not (Test-Path -LiteralPath $root)
         $null = New-Item -ItemType Directory -Path $root -Force
+        $installLock = Enter-AgendInstallLock $root
+        $freshReceipt = $createdRoot -and @(Get-ChildItem -LiteralPath $root -Force | Where-Object { $_.Name -cne '.agend-runtime-install.lock' }).Count -eq 0
+        $current = Join-Path $bin 'current.txt'
+        $beforeCurrent = Read-AgendSmallFile $current 90
 
         # An existing folder is never deleted or replaced: it may be the Runtime that is running right now. A folder with this build's own name that does
         # not hold this build can only be one that was changed by hand or left incomplete, and is left alone too.
@@ -231,8 +363,9 @@
         $current = Join-Path $bin 'current.txt'
         $was = ''
         if (Test-Path -LiteralPath $current) { $was = ([IO.File]::ReadAllText($current)).Trim() }
+        Register-AgendInstallOrigin $root $origin $freshReceipt $installLock
         Set-AgendFile $shim $shimText
-        Set-AgendFile $current $folder
+        Set-AgendFile $current $folder { Assert-AgendLock $installLock; if ((Read-AgendSmallFile $current 90) -cne $beforeCurrent) { throw 'The selected Runtime changed during installation; nothing was switched.' } }
         if ($was -ne '' -and $was -ne $folder) {
             Write-Step ('agend-runtime now starts ' + $folder + ' (it was ' + $was + '). A Runtime that is already running keeps its own version until you stop it with Ctrl+C and start it again with agend-runtime run.')
         }
@@ -241,8 +374,8 @@
         if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '). This installer never removes a version; clearing old ones comes later, with the update and uninstall commands.') }
 
         $onPath = $false
-        if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1') {
-            Write-Step 'AGEND_RUNTIME_NO_PATH is set; your PATH was not changed.'
+        if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1' -or [string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+            Write-Step 'your PATH was not changed.'
         } else {
             if (Add-UserPathEntry $bin) { Write-Step ('added ' + $bin + ' to your user PATH.') } else { Write-Step ($bin + ' is already on your user PATH.') }
             $sessionHas = $false
@@ -252,18 +385,26 @@
         }
 
         Write-Host ''
-        Write-Host 'AgEnD Runtime is installed. This computer is not connected yet and nothing has been paired.'
-        Write-Host 'Next, connect it. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
-        Write-Host ''
-        if ($onPath) { Write-Host ('  agend-runtime connect --server "' + $origin + '"') }
-        else { Write-Host ('  & "' + $shim + '" connect --server "' + $origin + '"') }
-        Write-Host ''
-        Write-Host 'Type the pairing code when asked, compare the fingerprint with the one AgEnD shows, then approve this computer in AgEnD.'
+        if ([string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+            Write-Host 'AgEnD Runtime is installed. Keep your existing profile and pairing; PATH was not changed.'
+            Write-Host 'Use the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME. Run this exact new executable and enter that folder:'
+            $literalShim = $shim.Replace("'", "''")
+            Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' run --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
+        } else {
+            Write-Host 'AgEnD Runtime is installed. This computer is not connected yet and nothing has been paired.'
+            Write-Host 'Next, connect it. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
+            Write-Host ''
+            if ($onPath) { Write-Host ('  agend-runtime connect --server "' + $origin + '"') }
+            else { Write-Host ('  & "' + $shim + '" connect --server "' + $origin + '"') }
+            Write-Host ''
+            Write-Host 'Type the pairing code when asked, compare the fingerprint with the one AgEnD shows, then approve this computer in AgEnD.'
+        }
     } catch {
         Write-Problem ('install failed: ' + $_.Exception.Message)
         $global:LASTEXITCODE = 1
     } finally {
         if ($tmp -and (Test-Path -LiteralPath $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($installLock) { try { Remove-AgendLock $installLock } catch { Write-Problem 'Installation cleanup is unconfirmed; ownership was retained.'; $global:LASTEXITCODE = 1 } }
         # A run that installed nothing leaves nothing: the install folder this run created is removed again, but only while it is still empty.
         if ($createdRoot -and $root -and (Test-Path -LiteralPath $root) -and -not (Get-ChildItem -LiteralPath $root -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $root -Force -ErrorAction SilentlyContinue }
     }

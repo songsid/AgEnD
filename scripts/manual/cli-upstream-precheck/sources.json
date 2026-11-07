@@ -5,7 +5,9 @@
     "An entry is a whole file minus `exclude` (declaration names), or only the declarations named in `symbols`.",
     "`surfaces` names a declaration's surface when its name does not say it (build-manifest.ts guesses from the name).",
     "Never pane text, so never kept: AgEnD's own fields of a dialog/error entry (description, message, …), the",
-    "arguments of t(), logger calls and Error constructors."
+    "arguments of t(), logger calls and Error constructors.",
+    "`retired` maps a declaration to the last upstream release that had its text: AgEnD keeps it for hosts still on an",
+    "older release, and precheck lists it as expected-missing (RETIRED UPSTREAM) instead of a hard finding."
   ],
   "backends": {
     "claude": [
@@ -72,7 +74,8 @@
           "kiroLaunchPromptState": "onboarding", "kiroLaunchPromptDialogs": "onboarding", "KIRO_ENGINE_PROMPT_DIALOGS": "onboarding",
           "kiroModelPickerAtTail": "dialog", "getClearConfirmationDialog": "dialog", "kiroUnavailableModelPickerActive": "error",
           "LEGACY_PROMPT_ROW": "input-box", "TUI_STATUS_ROW": "input-box", "RULE_ROW": "input-box", "TUI_HINT_ROW": "input-box",
-          "readActiveKiroAgent": "input-box", "getPaneActivity": "idle-busy", "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog" } },
+          "readActiveKiroAgent": "input-box", "getPaneActivity": "idle-busy", "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog" },
+        "retired": { "KIRO_V3_EASE_IN": "3.0.0", "KIRO_V3_EASE_IN_V2_USER": "3.0.0" } },
       { "file": "src/login-flows.ts", "symbols": ["KIRO_EXPIRED_LOGIN_SCREEN", "KIRO_LOGIN_REQUIRED_SCREEN", "KIRO_LOGIN_SCREEN", "kiro-cli"],
         "surfaces": { "KIRO_EXPIRED_LOGIN_SCREEN": "onboarding", "KIRO_LOGIN_REQUIRED_SCREEN": "onboarding", "KIRO_LOGIN_SCREEN": "onboarding", "kiro-cli": "onboarding" } },
       { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },
