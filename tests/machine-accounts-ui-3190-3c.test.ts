@@ -231,3 +231,31 @@ describe("Remove and Sign out on a computer", () => {
     expect(text(d.querySelector(".err"))).toBe("That computer is offline. Start its Runtime, then try again.");
   });
 });
+
+describe("Keep sign-in alive (#3292) is drawn on the host's rows only", () => {
+  const later = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  // A hostile or mistaken payload: a computer's rows (a default, and a profile with the host's profile's name) that carry a `keepAlive` of their own.
+  const withKeepAlive = () => {
+    const v = VIEW(), rows = v.clis[0]!.rows as any[];
+    rows[0].keepAlive = { enabled: true, fallback: false, endsAt: later };                                       // the host's default
+    rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "work", state: "usable", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false }, keepAlive: { enabled: false } });
+    for (const row of rows) if (row.scope.kind === "machine" && (row.profile === null || row.profile === "work")) row.keepAlive = { enabled: true, fallback: true, endsAt: later };
+    rows.push(row("work", { keepAlive: { enabled: true } }));                                                    // a computer's profile of the same name as the host's
+    return v;
+  };
+  it.each([["en"], ["zh-TW"]])("%s: the host's rows show the control and no row of a computer does, whatever it carries", async (lang) => {
+    view = withKeepAlive(); i18n.setLang(lang, { store: false });
+    await mount();
+    const hostBox = card().querySelector(".s-account-rows");
+    expect(hostBox.querySelectorAll(".s-account-keepalive").length).toBe(2);                                    // the host's default and its "work"
+    expect(machineBox().querySelectorAll(".s-account-keepalive").length).toBe(0);
+    expect(machineBox().querySelectorAll('input[type="checkbox"]').length).toBe(0);
+    expect(text(machineBox())).not.toMatch(/keep sign-in alive|保持登入/i);
+    expect(card().querySelectorAll(".s-account-keepalive").length).toBe(2);                                     // nowhere else in the card either
+    expect([...hostBox.querySelectorAll(".s-account-row")].filter((r: any) => r.querySelector(".s-account-keepalive")).map((r: any) => r.getAttribute("data-account"))).toEqual(["default", "work"]);
+  });
+  it("a computer's row with no keepAlive of its own draws none, and a host row without one draws none", async () => {
+    await mount();
+    expect(card().querySelectorAll(".s-account-keepalive").length).toBe(0);
+  });
+});

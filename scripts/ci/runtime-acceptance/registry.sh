@@ -2,7 +2,7 @@
 # #1450 runtime acceptance: a private verdaccio on 127.0.0.1:4873 holding the candidate and its four runtime packages.
 # Usage: registry.sh <dir with candidate.json and the packed tarballs> <work dir>
 # @songsid/* is served ONLY from what is published here (never proxied, so npmjs's own @songsid packages cannot mix
-# in); everything else proxies npmjs. Nothing is published anywhere but this local registry. Writes <work>/npmrc.
+# in) — except @songsid/agend-tmux-*, AgEnD's bundled tmux, published separately; everything else proxies npmjs. Nothing is published anywhere but this local registry. Writes <work>/npmrc.
 set -euo pipefail
 PKGS="${1:?packages dir}"; WORK="${2:?work dir}"
 REG="http://127.0.0.1:4873/"
@@ -19,6 +19,12 @@ uplinks:
     url: https://registry.npmjs.org/
     timeout: 60s
 packages:
+  # M-2457: AgEnD's bundled tmux is released separately (publish-tmux.yml) and pinned exactly; the candidate needs the
+  # real published packages, so these alone come from npmjs. Every other @songsid package stays local-only.
+  '@songsid/agend-tmux-*':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
   '@songsid/*':
     access: $all
     publish: $authenticated

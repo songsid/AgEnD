@@ -11,7 +11,7 @@ import { validateFleetConfig } from "../src/config-validator.js";
 import { bypassesWebGate } from "../src/auth-api.js";
 import { isViewPath } from "../src/view-api.js";
 import { isUsagePath, setUsageFetcherForTests } from "../src/usage/usage-api.js";
-import { getTmuxSocketName } from "../src/paths.js";
+import { tmuxSocket } from "../src/tmux-binary.js";
 import { installDom } from "./helpers/mini-dom.js";
 
 // This suite starts a real listener and calls /api/ai-usage, whose default fetcher reads the host's CLI logins
@@ -36,9 +36,9 @@ vi.mock("node:child_process", async importOriginal => {
 const USAGE_FIXTURE = { fetchedAt: "2026-10-06T00:00:00.000Z", providers: [{ id: "claude", name: "Claude (fixture)", status: "ok" as const, metrics: [] }] };
 beforeEach(() => {
   outbound.calls.length = 0; outbound.expectedRefusals.length = 0;
-  outbound.tmuxSocket = getTmuxSocketName();
-  // A private socket for this run, never the live server's default one.
-  expect(outbound.tmuxSocket, "tests run on their own tmux socket").toMatch(/^agend-[0-9a-f]+$/);
+  outbound.tmuxSocket = tmuxSocket();
+  // A private socket for this run, never the live server's default one (nor 2.3's hashed name).
+  expect(outbound.tmuxSocket, "tests run on their own tmux socket").toMatch(/^agend-[0-9a-f]+-b$/);
   setUsageFetcherForTests(async () => USAGE_FIXTURE);
   vi.stubGlobal("fetch", (url: unknown) => {
     outbound.calls.push(`fetch ${String(url)}`);

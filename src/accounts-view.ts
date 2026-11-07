@@ -47,7 +47,11 @@ export interface AccountRow {
   update?: string;
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   usage?: AccountUsage;
+  /** #3292: "Keep sign-in alive" (Claude Code and Codex host rows): the setting, its last run, the dates the sign-in's file says. */
+  keepAlive?: AccountKeepAlive;
 }
+/** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
+export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
 export interface AccountsCli { backend: string; profiles: boolean; installed: boolean; fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>; rows: AccountRow[] }
 export interface AccountsView { clis: AccountsCli[] }
 
@@ -83,6 +87,11 @@ export interface AccountsInput {
   usage?: ReadonlyMap<string, AccountUsage>;
   /** #3190 Part 3c: paired computers' accounts, as rows under their own scope. Absent: no computer. */
   machines?: readonly MachineAccountsInput[];
+  /**
+   * #3292: the keep-alive part per HOST row, by the same `backend\0profile` key. Never applied to a computer's rows: the key is the same for a host profile and a
+   * computer's profile of that name (and for `claude-code\0` of the host's default and a computer's), so the one would show the other's setting.
+   */
+  keepAlive?: ReadonlyMap<string, AccountKeepAlive>;
 }
 
 const key = (backend: string, profile: string | null) => `${backend}\0${profile ?? ""}`;
@@ -137,12 +146,13 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       fleetDefault: fleetDefault === profile || (profile === null && fleetDefault === null),
     });
     const usage = (profile: string | null) => input.usage?.get(key(backend, profile));
+    const keepAlive = (profile: string | null) => { const k = input.keepAlive?.get(key(backend, profile)); return k ? { keepAlive: k } : {}; };
     // A card that is only here for a paired computer (nothing on the host uses this CLI) shows no host rows.
     if (hostRelevant) rows.push({
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
-      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}),
+      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {
       const names = new Set<string>();
@@ -158,7 +168,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
         rows.push({
           scope: { kind: "host" }, backend, profile, state: src?.state ?? "not_signed_in", signIn: !!src?.signIn,
           ...(src?.identity ? { identity: src.identity } : {}), ...(src?.hostCommand ? { hostCommand: src.hostCommand } : {}),
-          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}),
+          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}), ...keepAlive(profile),
         });
       }
     }

@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import { partsFor, readSources, srcDirName, stripCommand, TARGETS } from "../scripts/tmux/build-tmux.mjs";
-import { tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
+import { licenseFor, tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
 import { lockMismatches, parseApkInfo, toolchainEnv } from "../scripts/tmux/toolchain.mjs";
 
 const require = createRequire(import.meta.url);
@@ -38,6 +38,18 @@ describe("AgEnD's own package.json never pins a bundled tmux known to be broken"
     // The rule itself refuses the broken pin (the check is not vacuous by construction).
     const bad = { "@songsid/agend-tmux-darwin-arm64": "3.8.0" };
     expect(Object.entries(bad).some(([n, v]) => (NEVER_PIN[n] ?? []).includes(v))).toBe(true);
+  });
+});
+
+// M-2457 C-4: the bundled tmux is on, with no PATH fallback — every target is pinned, exactly, to the tmux release in
+// tmux-sources.json (`3.8.0`, or a repack `3.8.0-agend.N`).
+describe("AgEnD's own package.json pins the bundled tmux for every target", () => {
+  it("all four, exact versions of the pinned tmux release", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { optionalDependencies: Record<string, string> };
+    const pins = Object.entries(manifest.optionalDependencies).filter(([n]) => n.startsWith("@songsid/agend-tmux-"));
+    expect(pins.map(([n]) => n).sort()).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].map(t => `@songsid/agend-tmux-${t}`));
+    const [maj, min] = readSources().tmux.version.split(".");
+    for (const [n, v] of pins) expect(v, n).toMatch(new RegExp(`^${maj}\\.${min}\\.0(-agend\\.[1-9]\\d*)?$`));
   });
 });
 
@@ -122,6 +134,18 @@ describe("tmux-sources.json and the package manifest", () => {
       expect(m.agendTmux).toEqual({ tmux: "3.8", sha256: "a".repeat(64), size: 123 });
       expect(m.files).toContain("LICENSES/");
     }
+  });
+
+  // Fable #3312 F2: the licence is exactly the linked parts' (no jemalloc BSD-2-Clause left on darwin).
+  it("a package's licence is its linked parts' licences, each once", () => {
+    const s = readSources();
+    for (const target of TARGETS) {
+      const want = [...new Set(partsFor(s, target).flatMap(p => String(s[p as keyof typeof s] && (s as any)[p].license).split(" AND ")))].join(" AND ");
+      expect(tmuxManifest(target, { tmux: "3.8", sha256: "a".repeat(64), size: 1 }).license, target).toBe(want);
+      expect(licenseFor(target), target).not.toContain("BSD-2-Clause");
+    }
+    expect(licenseFor("linux-x64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
+    expect(licenseFor("darwin-arm64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
   });
 
   it("THIRD_PARTY_NOTICES names every bundled component", () => {
@@ -405,6 +429,15 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(r.answers).toBe(true);
   });
 
+  // Fable #3312 F1: the wait's own last observation decides. Runner CI saw the server reaped between two separate asks
+  // (the second one then read a vanished /proc entry): "gone", then "not gone", and the install was refused.
+  it("one observation of the server gone is the proof: it is not asked again and contradicted", async () => {
+    let asks = 0;
+    const r = await scenario({ gone: () => ++asks === 1 });   // gone at the first look; any later look says otherwise
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(asks).toBe(1);
+  });
+
   it("refused when the recorded server pid never exits — nothing unlinked", async () => {
     const r = await scenario({ gone: () => false });
     expect(r.proved.ok).toBe(false);
@@ -435,6 +468,27 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(bundle.processGone(process.pid)).toBe(false);
     const child = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
     expect(bundle.processGone(Number(child.stdout))).toBe(true);
+  });
+});
+
+// Fable #3312 F1 (runner CI): a zombie can be reaped between kill(0) and the /proc read; that read then fails, and the
+// old check called it "still running", refusing the install. Asked again, ESRCH is the proof; anything else is not.
+describe("processGone across a reap", () => {
+  const io = (kills: Array<"ok" | "ESRCH" | "EPERM">, read: string | NodeJS.ErrnoException) => ({
+    kill: () => { const k = kills.shift() ?? "ok"; if (k !== "ok") throw Object.assign(new Error(k), { code: k }); },
+    read: () => { if (typeof read !== "string") throw read; return read; },
+  });
+  const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  it.each<[string, Array<"ok" | "ESRCH" | "EPERM">, string | NodeJS.ErrnoException, boolean]>([
+    ["no such process", ["ESRCH"], "", true],
+    ["a zombie", ["ok"], "123 (tmux: server) Z 1 1", true],
+    ["running", ["ok"], "123 (tmux: server) S 1 1", false],
+    ["reaped between kill(0) and the /proc read", ["ok", "ESRCH"], enoent, true],
+    ["its /proc entry unreadable but kill(0) still answers", ["ok", "ok"], enoent, false],
+    ["a permission error is never 'gone'", ["EPERM"], "", false],
+    ["an unreadable /proc for another reason is never 'gone'", ["ok", "ESRCH"], Object.assign(new Error("EACCES"), { code: "EACCES" }), false],
+  ])("%s → %s", (_why, kills, read, want) => {
+    expect(bundle.processGone(123, "linux", io(kills, read))).toBe(want);
   });
 });
 

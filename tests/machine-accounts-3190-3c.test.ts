@@ -71,6 +71,32 @@ describe("the rows under the machine scope", () => {
   });
 });
 
+describe("Keep sign-in alive (#3292) is the host's alone", () => {
+  const on = { enabled: true, fallback: false, endsAt: "2027-01-01T00:00:00.000Z" }, off = { enabled: false };
+  // The key is `backend\0profile`: a host profile and a computer's profile of the same name, and the host's default and a computer's default ("claude-code\0"), share it.
+  const keepAlive = new Map([["claude-code\0", on], ["claude-code\0work", off]]);
+  const view = (machines: MachineAccountsInput[]) => buildAccountsView({ ...baseView, diskProfiles: new Map([["claude-code", [{ profile: "work", state: "usable" as const, signIn: true }]]]), keepAlive, machines });
+  it("a host row has its keep-alive; a computer's row of the same name, and its default, never carry the property", () => {
+    const rows = view([machine({ profiles: [{ name: "work", loggedIn: true, created: true }, { name: "other", loggedIn: false, created: true }], defaultLogin: { loggedIn: true } })]).clis.find(c => c.backend === "claude-code")!.rows;
+    const host = rows.filter(r => r.scope.kind === "host"), mine = rows.filter(r => r.scope.kind === "machine");
+    expect(host.map(r => [r.profile, (r as any).keepAlive])).toEqual([[null, on], ["work", off]]);
+    expect(mine.map(r => r.profile)).toEqual([null, "other", "work"]);               // the default, then each profile: the same keys as the host's
+    for (const row of mine) { expect(row).not.toHaveProperty("keepAlive"); expect("keepAlive" in row).toBe(false); expect(Object.keys(row)).not.toContain("keepAlive"); }
+    expect(JSON.stringify(mine)).not.toContain("endsAt");                             // nothing of the host's setting is anywhere in a computer's rows
+  });
+  it("also for a card that is only here for a computer, and for a computer whose rows are all read-only", () => {
+    const only = buildAccountsView({ targets: [{ backend: "claude-code", state: "not_installed", signIn: false } as any], diskProfiles: new Map(), agents: [], classic: [], fleetDefaults: new Map(), keepAlive,
+      machines: [machine({ readOnlyReason: "offline", online: false, profiles: [{ name: "work", loggedIn: true, created: true }] })] });
+    expect(only.clis[0]!.rows.every(r => r.scope.kind === "machine" && !("keepAlive" in r))).toBe(true);
+  });
+  it("giving the view a keep-alive map changes nothing about a computer's rows", () => {
+    const machines = [machine({ profiles: [{ name: "work", loggedIn: true, created: true }], defaultLogin: { loggedIn: true } })];
+    const without = buildAccountsView({ ...baseView, machines }).clis[0]!.rows.filter(r => r.scope.kind === "machine");
+    const withMap = view(machines).clis[0]!.rows.filter(r => r.scope.kind === "machine");
+    expect(withMap).toEqual(without);
+  });
+});
+
 describe("what a Runtime reports about its profiles", () => {
   it("`created` is a boolean when present; a path, an e-mail or a wrong type is a protocol error naming the field only", () => {
     expect(parseCredentialProfileReport({ profiles: [{ name: "work", loggedIn: true, created: true }, { name: "home", loggedIn: null }] }).profiles).toEqual([{ name: "work", loggedIn: true, created: true }, { name: "home", loggedIn: null }]);

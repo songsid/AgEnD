@@ -373,6 +373,8 @@ import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
+import { SignInKeepAlive, isKeepAliveBackend, type KeepAliveView, type SetResult as KeepAliveSetResult } from "./signin-keepalive.js";
+import { BACKEND_LABELS } from "./interaction-observation.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { GENERAL_NAME, GENERAL_PAUSE_ERROR, adoptGeneralByName, freeGeneralName, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
@@ -2486,6 +2488,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  /** #3292: "Keep sign-in alive" (signin-keepalive.ts); built at startup, stopped at shutdown. */
+  private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -4944,6 +4948,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private finishStartup(bootUpdateMarker: UpdateMarkerIdentity | null = null): void {
     this.startupComplete = true;
     this.startNeedsYou();
+    this.startSignInKeepAlive();
     // Resolve whatever a previous run — or a setup host that crashed — left
     // behind. A tunnel nobody is tracking is a public entrance nobody is
     // watching, and the fleet starting is the moment there is finally a process
@@ -9888,16 +9893,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
-    const { tmuxSocket, bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
+    // M-2457: AgEnD's own tmux socket (`agend` for the real home).
+    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
-    // M-2457 §6 rule 2 (bundled tmux only): a server from another pin still on the socket is ended by its own recorded
+    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
+    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
+    try {
+      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
+      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
+    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
+    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = bundledTmuxEnabled() ? await (async () => {
+    const bundled = await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
-      return { srv, socket: tmuxSocket()!, current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
-    })() : null;
+      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })();
+    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
+    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
+    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
+    // agent of this start writes its own.
+    this.ownTmuxUpgradedHome = FleetManager.ownTmuxUpgraded(getAgendHome(), bundled.previous);
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -9916,6 +9933,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (bundled) {
         await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
           log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
+        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
+        TmuxManager.onSessionCreated(async () => {
+          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
+        });
         // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
         const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
         if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
@@ -10472,6 +10496,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
+
+    // M-2457 §5: the first start on AgEnD's own tmux says so, once per home: `tmux attach` no longer shows the agents.
+    this.announceOwnTmux();
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -16324,6 +16351,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
 
   /**
+   * M-2457 §5: one fleet notice, the first time an upgraded home's fleet runs on AgEnD's own tmux. Marked done only once it
+   * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
+   * post it tries again next start.
+   */
+  /** Set at fleet start (before any agent starts): this home ran agents on an earlier AgEnD's system tmux. */
+  ownTmuxUpgradedHome = false;
+
+  /** An upgraded home: agent state from an earlier start, and no AgEnD tmux server ever recorded (`previous`). */
+  static ownTmuxUpgraded(agendHome: string, previous: unknown): boolean {
+    return previous === null && FleetManager.priorAgentState(join(agendHome, "instances"));
+  }
+
+  /** Whether any instance directory holds state from an earlier start (its output log or a session id). */
+  static priorAgentState(instancesDir: string): boolean {
+    let names: string[] = [];
+    try { names = readdirSync(instancesDir); } catch { return false; }
+    return names.some(n => ["output.log", "session-id"].some(f => existsSync(join(instancesDir, n, f))));
+  }
+
+  announceOwnTmux(): void {
+    const marker = join(getAgendHome(), "tmux", "own-server-announced");
+    if (existsSync(marker)) return;
+    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3):
+    // agent state from before this start and no recorded AgEnD tmux server (set at fleet start), or a migration journal
+    // (2.3 window ids found). A fresh home is marked without a notice.
+    const upgraded = this.ownTmuxUpgradedHome || existsSync(join(getAgendHome(), "tmux-migration.json"));
+    if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
+    try {
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, `${new Date().toISOString()}\n`);
+    } catch (err) { this.logger.warn({ err }, "Could not record that the own-tmux notice was posted"); }
+  }
+
+  /**
    * Post the daily summary where fleet-wide notices go.
    *
    * A named method rather than an inline closure so a test can drive the real
@@ -17233,6 +17294,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      signInKeepAlive: () => this.keepAliveAttention(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
       runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
       hubHolds: () => this.hubHolds.map(h => {
@@ -20087,10 +20149,180 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (at && w) usage.set(at, w);
       }
     } catch { /* the view without usage */ }
+    // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
+    const keepAlive = new Map<string, KeepAliveView>();
+    const ka = this.keepAliveService();
+    for (const backend of ACCOUNT_CLIS) {
+      if (!isKeepAliveBackend(backend)) continue;
+      for (const profile of [null, ...new Set([...(diskProfiles.get(backend) ?? []).map(d => d.profile), ...targets.filter(t => t.backend === backend && t.profile).map(t => t.profile!)])]) {
+        const v = ka.view(backend, profile); if (v) keepAlive.set(`${backend}\0${profile ?? ""}`, v);
+      }
+    }
     // #3190 Part 3c: each paired computer's accounts, as rows under the `machine` scope. Read from what the computers reported; the view never waits long for one.
+    // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, machines });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines });
+  }
+
+  /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
+  private keepAliveService(): SignInKeepAlive {
+    return this.signInKeepAlive ??= new SignInKeepAlive({
+      dataDir: this.dataDir,
+      log: (level, msg, fields) => this.logger[level](fields, msg),
+      homeOf: (backend, profile) => profile ? credentialProfileHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot() ?? null,
+      acquire: (backend, profile) => this.acquireKeepAliveRun(backend, profile),
+      changed: () => {
+        this.needsYou?.poke();
+        // #3313 review P2-7: the Accounts view reads itself again on `backend_login` (no details: each page reads its own
+        // view). That event, not a new one: a tab whose cached shell predates this still passes it on.
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+      },
+      claudeKeychain: process.platform === "darwin",
+    });
+  }
+  private startSignInKeepAlive(): void { this.keepAliveService().start(); }
+
+  /**
+   * #3292 review: which sign-in each host agent is starting or running on, recorded at its start (InstanceLifecycle
+   * admitCredentialUse) from the configuration it launched with — never re-resolved against today's defaults. An entry
+   * whose start ended without a daemon, or whose daemon is gone, is dropped when next read.
+   */
+  private readonly credentialLeases = new Map<string, { key: string; starting: boolean }>();
+  /** #3292 review: Keep sign-in alive runs in flight, by sign-in: a start on that sign-in waits for its end. */
+  private readonly keepAliveRenewing = new Map<string, Promise<void>>();
+  private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
+
+  /**
+   * The sign-in a start launches on, from the instance's own (defaults-expanded at load) options — exactly what the
+   * Daemon's clone of that config hands its CLI. Never today's defaults: an older config object keeps its own.
+   */
+  private launchCredentialKey(config: InstanceConfig, backend: string): string {
+    let profile: string | null = null;
+    try { profile = resolveCredentialProfile(config.backend_options?.[backend]); } catch { profile = null; }
+    return this.credentialKey(backend, profile);
+  }
+
+  /**
+   * #3313 review r2: failed starts whose CLI was not proven gone keep holding their sign-in (across a retry of the same
+   * agent too) until a check finds it ended.
+   */
+  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean> }>();
+  private orphanCheck: Promise<void> | null = null;
+  private recheckCredentialOrphans(): void {
+    if (this.orphanCheck || !this.credentialOrphans.size) return;
+    this.orphanCheck = (async () => {
+      for (const [id, o] of [...this.credentialOrphans]) {
+        let gone = false;
+        try { gone = await o.ended(); } catch { gone = false; }
+        if (gone) this.credentialOrphans.delete(id);
+      }
+    })().finally(() => { this.orphanCheck = null; });
+  }
+
+  /**
+   * LifecycleContext: hold the sign-in a start will launch on (waits while Keep sign-in alive renews it). The key is
+   * read again after every wait; `current(config)` lets the start check, with no await before it builds its Daemon,
+   * that the config still names that sign-in (a save may have changed it meanwhile: then it asks again).
+   */
+  async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void } | null> {
+    if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
+    let key = this.launchCredentialKey(config, backend);
+    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) {
+      await renewing; assertCurrent();
+      key = this.launchCredentialKey(config, backend);
+    }
+    const lease = { key, starting: true };
+    this.credentialLeases.set(name, lease);
+    const drop = () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); };
+    return {
+      published: () => { lease.starting = false; },
+      release: drop,
+      current: c => this.launchCredentialKey(c, backend) === key,
+      // A failed start whose CLI may still run: the sign-in stays held (by itself, not by the agent's name) until it is seen gone.
+      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended }); this.recheckCredentialOrphans(); },
+    };
+  }
+
+  /**
+   * #3292: a sign-in is in use when a host agent is starting or running on it (as launched), a ClassicBot room is bound
+   * to it (or the rooms cannot be read — none when there is no classicBot.yaml), or a sign-in for it is running. Codex
+   * refresh tokens are single-use: a refresh beside a live user could spend the one it holds; and use keeps it alive.
+   */
+  private keepAliveInUse(backend: string, profile: string | null): boolean {
+    const key = this.credentialKey(backend, profile);
+    for (const o of this.credentialOrphans.values()) if (o.key === key) { this.recheckCredentialOrphans(); return true; }
+    for (const [name, lease] of [...this.credentialLeases]) {
+      if (!lease.starting && !this.daemons?.has(name)) { this.credentialLeases.delete(name); continue; }
+      if (lease.key === key) return true;
+    }
+    const same = (p: string | null | undefined) => profile === null ? !p : !!p && p.toLowerCase() === profile.toLowerCase();
+    const defaults = this.fleetConfig?.defaults, defaultBackend = defaults?.backend ?? "claude-code";
+    // A running agent with no record (started some other way): only its own setting is trusted; none names an account, so it may be on any.
+    for (const [name, daemon] of this.daemons ?? []) {
+      if (this.credentialLeases.has(name)) continue;
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (snap && isWindowsInstance(snap)) continue;
+      if (!snap) return true;
+      if ((snap.backend ?? defaultBackend) !== backend) continue;
+      let own: string | null = null;
+      try { own = resolveCredentialProfile(snap.backend_options?.[backend]); } catch { return true; }
+      if (!own || same(own)) return true;
+    }
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    if (rooms.kind === "unknown") return true;
+    for (const b of rooms.kind === "ok" ? rooms.bindings : []) {
+      const cli = b.backend ?? defaultBackend;
+      if (cli === backend && same(profileName(classicProfile(b.backend_options, defaults?.backend_options, cli)))) return true;
+    }
+    return this.loginController?.signingIn(backend, profile) ?? false;
+  }
+
+  /**
+   * #3292 review: one keep-alive run's admission, decided synchronously: not in use, the shared login window taken, and the
+   * sign-in marked as renewing (a start on it waits). The run's life is an account writer: a stop waits for it, and
+   * sign-in admission reopens after a restart only once it has ended. `release()` only after its CLI has exited.
+   */
+  private acquireKeepAliveRun(backend: string, profile: string | null): { release(): void } | "in_use" | "busy" {
+    if (this.keepAliveInUse(backend, profile)) return "in_use";
+    const claim = this.loginWindow.tryClaim("keepalive", backend);
+    if (!claim) return "busy";
+    const key = this.credentialKey(backend, profile);
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.keepAliveRenewing.set(key, life);
+    this.accountWriters.add(life);
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.loginWindow.release(claim);
+        if (this.keepAliveRenewing.get(key) === life) this.keepAliveRenewing.delete(key);
+        this.accountWriters.delete(life);
+        finished();
+      },
+    };
+  }
+
+  /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
+  private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
+    const ka = this.signInKeepAlive; if (!ka) return [];
+    const day = (ms: number | undefined) => ms === undefined ? "?" : new Date(ms).toISOString().slice(0, 10);
+    const owner = this.worlds.keys().next().value;
+    return ka.attention().map(a => ({
+      backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
+      ...(owner ? { owner } : {}),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.endsAt)),
+    }));
+  }
+
+  /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
+  setAccountKeepAlive(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): KeepAliveSetResult {
+    const r = this.keepAliveService().set(backend, profile, enabled, fallback);
+    if (r.ok) this.logger.info({ backend, profile: profile ?? "(default)", enabled, by }, "Keep sign-in alive changed from Settings → Accounts");
+    return r;
   }
 
   /**
@@ -20619,6 +20851,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
+    // #3292 review: Keep sign-in alive stops asking for runs and stops its CLI; its run's life is an account writer,
+    // waited for below like an account logout.
+    void this.signInKeepAlive?.stop();
     // Completion semantics live INSIDE the sessions: each awaits its own
     // confirmed cleanup, every tmux op on that path has a hard per-op bound
     // (web: abort ≤10 s + kill ≤31 s; legacy: create/list/kill ≤10 s each,

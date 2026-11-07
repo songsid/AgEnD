@@ -212,6 +212,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
+  // #3292: Keep sign-in alive's line on an Accounts row (linked by accounts-keepalive.js; an older accounts.css lacks it).
+  "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
   "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).

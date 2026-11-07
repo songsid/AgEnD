@@ -53,6 +53,11 @@ export interface NeedsYouItem {
   hubProposal?: { action: string; arguments: string; argumentsDigest: string; consequences: string };
   /** Display only. reason=dialog remains readable in an old panel; repair is in Settings. */
   runtimeUpdate?: true;
+  /**
+   * #3292: a sign-in "Keep sign-in alive" could not keep (or one about to end anyway). Shown as reason=backend_signin,
+   * which every panel already renders with its Sign in button; the chat line adds the detail.
+   */
+  keepAlive?: true;
 }
 
 export type NeedsYouReason =
@@ -150,6 +155,9 @@ export interface TaskInput {
 
 export interface BackendSignInInput { backend: string; since: number; browser: boolean }
 
+/** #3292: one sign-in keep-alive wants the person: which sign-in, why (`kind`), the line to show, and whether the dashboard can sign it in. */
+export interface SignInKeepAliveInput { backend: string; profile: string | null; kind: string; detail: string; since: number; owner?: string; signIn: boolean }
+
 /** A Telegram message queued while AgEnD was offline, too old to auto-inject. */
 export interface MissedOfflineInput {
   id: string;
@@ -168,6 +176,7 @@ export interface NeedsYouInputs {
   deliveries: DeliveryInput[];
   tasks?: TaskInput[];
   backendSignIns?: BackendSignInInput[];
+  signInKeepAlive?: SignInKeepAliveInput[];
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
   hubHolds?: HubHoldInput[];
@@ -278,6 +287,13 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   for (const b of inputs.backendSignIns ?? []) items.push({
     id: `backend-signin:${b.backend}:${b.since}`, type: "backend", instance: "", reason: "backend_signin", detail: b.backend, since: b.since,
     ...(b.browser ? { signIn: { backend: b.backend } } : {}),
+  });
+
+  // #3292: a kept sign-in that needs signing in again, did not renew, keeps failing, or is about to end anyway.
+  for (const k of inputs.signInKeepAlive ?? []) items.push({
+    id: `keepalive:${k.kind}:${k.backend}:${k.profile ?? ""}:${k.since}`, type: "backend", instance: "", reason: "backend_signin",
+    detail: oneLine(k.detail, 320), since: k.since, keepAlive: true, ...(k.owner ? { owner: k.owner } : {}),
+    ...(k.signIn ? { signIn: { backend: k.backend, ...(k.profile ? { profile: k.profile } : {}) } } : {}),
   });
 
   for (const issue of inputs.configIssues ?? []) items.push({

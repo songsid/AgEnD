@@ -15,6 +15,7 @@ vi.mock("node:readline", () => ({
 }));
 
 import { CONTROL_SAFETY_SWEEP_MS, CONTROL_SAFETY_SWEEP_SPREAD_MS, TmuxControlClient } from "../src/tmux-control.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 
 interface FakeProc extends EventEmitter {
   stdout: EventEmitter;
@@ -89,7 +90,7 @@ describe("TmuxControlClient reconnect", () => {
     // Registered windows are preserved so resolvePane can refresh them
     expect(internal.registeredWindows.has("@5")).toBe(true);
     expect(spawnMock).toHaveBeenCalledWith(
-      "tmux",
+      tmuxBinary(),   // AgEnD's own tmux, by its resolved path (never PATH's "tmux")
       expect.arrayContaining(["-C", "attach", "-f", "ignore-size"]),
       expect.any(Object),
     );

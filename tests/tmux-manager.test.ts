@@ -10,6 +10,7 @@ import {
   resolveTmuxLogicalSize,
 } from "../src/tmux-manager.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
+import { tmuxBinary } from "../src/tmux-binary.js";   // the tmux the code under test runs (CI: the bundle, not the runner's)
 
 const exec = promisify(execFile);
 
@@ -86,16 +87,33 @@ describe("TmuxManager", () => {
     expect(await TmuxManager.sessionExists(session)).toBe(true);
   });
 
+  // M-2457 leg M: a session ensureSession creates (after a server crash: a new server) is reported, so the fleet can
+  // record that server; an existing session is not.
+  it("reports a session it created, and only that", async () => {
+    const created: string[] = [];
+    const fresh = `${session}-hook`;
+    TmuxManager.onSessionCreated(async (name) => { created.push(name); });
+    try {
+      await TmuxManager.ensureSession(fresh);
+      await TmuxManager.ensureSession(fresh);
+      await TmuxManager.ensureSession(session);   // made by the test above
+      expect(created).toEqual([fresh]);
+    } finally {
+      TmuxManager.onSessionCreated(null);
+      await TmuxManager.killSession(fresh);
+    }
+  });
+
   it("enables mouse mode for both new and existing AgEnD sessions", async () => {
     const showMouse = async (): Promise<string> => {
-      const { stdout } = await exec("tmux", ["-L", socket,
+      const { stdout } = await exec(tmuxBinary(), ["-L", socket,
         "show-options", "-v", "-t", session, "mouse",
       ]);
       return stdout.trim();
     };
 
     expect(await showMouse()).toBe("on");
-    await exec("tmux", ["-L", socket, "set-option", "-t", session, "mouse", "off"]);
+    await exec(tmuxBinary(), ["-L", socket, "set-option", "-t", session, "mouse", "off"]);
     expect(await showMouse()).toBe("off");
 
     await TmuxManager.ensureSession(session);

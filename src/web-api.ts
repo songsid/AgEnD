@@ -419,6 +419,8 @@ export interface WebApiContext {
   removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
   signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
+  /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
+  setAccountKeepAlive?(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): { ok: true } | { ok: false; error: string };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
@@ -1319,6 +1321,41 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
       if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
       else fail(r);
     }
+  })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
+ * #3292: Settings → Accounts → Keep sign-in alive — `POST /ui/accounts/keep-alive` `{ backend, profile: <name> | null,
+ * enabled, fallback? }`. The same gate as the other account writes: the fleet's local admin session only, refused before
+ * the body is read and again after it; never the gateway, a guest, a read session or the CLI's header token.
+ */
+const KEEPALIVE_STATUS: Readonly<Record<string, number>> = { backend: 400, profile: 400, fallback: 400, write: 500 };
+function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
+  if (method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  if (typeof ctx.setAccountKeepAlive !== "function") { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "accounts_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "accounts_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "accounts_json" }); return; }
+    const parsed = z.strictObject({ backend: z.string().max(32), profile: z.string().max(200).nullable(), enabled: z.boolean(), fallback: z.boolean().optional() }).safeParse(body);
+    if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
+    const r = ctx.setAccountKeepAlive!(parsed.data.backend, parsed.data.profile, parsed.data.enabled, parsed.data.fallback, now.label);
+    if (r.ok) json(res, 200, { backend: parsed.data.backend, profile: parsed.data.profile, enabled: parsed.data.enabled });
+    else json(res, KEEPALIVE_STATUS[r.error] ?? 409, { error: r.error });
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
@@ -2658,6 +2695,8 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
+  // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
+  if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header

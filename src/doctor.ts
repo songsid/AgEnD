@@ -186,13 +186,13 @@ export async function collectDoctorReport(
     for (const problem of report?.problems ?? []) add("Prerequisites", "error", t("doctor.codex_package"), codexPackageProblemMessage(report!.root, problem));
   }
 
-  // M-2457: the tmux AgEnD runs — PATH's while the bundled tmux is off; else the bundle (or AGEND_TMUX_BIN), named
-  // with its socket, and a clear reason when it cannot be used (there is no fallback to PATH).
+  // M-2457: the tmux AgEnD runs — the bundle (or AGEND_TMUX_BIN), named with its socket, and a clear reason when it
+  // cannot be used (there is no fallback to PATH).
   let tmuxBin = "tmux", tmuxWhich = "", tmuxRefused: string | null = null;
   try {
     const r = resolveTmux({ env: deps.env });
     tmuxBin = r.binary;
-    if (r.source !== "system") tmuxWhich = ` — ${r.source === "bundled" ? "AgEnD's bundled tmux" : TMUX_BIN_ENV} ${r.binary}, socket ${tmuxSocket(deps.env)}: use \`agend attach\``;
+    tmuxWhich = ` — ${r.source === "bundled" ? "AgEnD's bundled tmux" : TMUX_BIN_ENV} ${r.binary}, socket ${tmuxSocket()}: use \`agend attach\``;
   } catch (e) { tmuxRefused = (e as Error).message; }
   const tmuxVersion = tmuxRefused === null ? deps.run(tmuxBin, ["-V"]) : null;
   const tmuxAvailable = !!tmuxVersion && !tmuxVersion.error && tmuxVersion.status === 0;

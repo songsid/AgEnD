@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { AutoPauseController, Daemon, readLastInboundAt, writeLastInboundAt } from "../src/daemon.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 import pino from "pino";
 import type { Logger } from "../src/logger.js";
 
@@ -108,7 +109,7 @@ describe("Daemon auto-pause lifecycle", () => {
     await Promise.all(sessions.splice(0).map(name => TmuxManager.killSession(name)));
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
     try {
-      execFileSync("tmux", ["-L", TMUX_SOCKET, "kill-server"], { stdio: "ignore" });
+      execFileSync(tmuxBinary(), ["-L", TMUX_SOCKET, "kill-server"], { stdio: "ignore" });
     } catch { /* private server may not exist when nothing spawned */ }
     TmuxManager.setSocketName(null);
     // The global native guard rejects a default-socket call BEFORE execution,
@@ -321,7 +322,8 @@ describe("paused status visibility", () => {
     const original = native.execFileSync;
     const version = vi.spyOn(native, "execFileSync").mockImplementation((...values: unknown[]) => {
       const [file, args] = values as [string, string[]];
-      if (file === "tmux" && args.join(" ") === "-V") return "tmux 3.5 (fixture)";
+      // AgEnD's own tmux, by its resolved path (never PATH's): its version is the fixture's.
+      if (/(^|\/)tmux$/.test(file) && args.join(" ") === "-V") return "tmux 3.5 (fixture)";
       return original(...values);
     });
     syncBuiltinESMExports();
