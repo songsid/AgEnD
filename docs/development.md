@@ -104,6 +104,43 @@ npm run test:integration
 `tsc --noEmit` and `npm run build` never construct a `FleetManager`, so they are safe
 regardless of the above.
 
+### UI gate
+
+A pull request that changes the web UI needs before/after screenshots, and it must say which shared component it follows
+(fleet decision "AgEnD UI gate"). CI's required `build` check includes the `ui-gate` job. It opens every Settings section
+in a real headless Chrome on the loopback smoke fixture (no fleet start, no network) and checks:
+
+- **frame**: a section's own cards share one frame (padding, border, corner radius). A card inside a drawer or a
+  disclosure is part of that box, and the full-bleed editor and terminal are exempt;
+- **buttons**: each button kind (`.btn…`, `.icon-btn`) has one height. A list row's actions are a phone tap target on
+  purpose, and a button sized to the inputs in its own row (a filter bar's Clear) is that row's control size, so both
+  are exempt;
+- **overflow**: nothing reaches past the content column, whether the page is as drawn, has every drawer open, or has a
+  long real value in every `<select>` (a select is as wide as its longest option unless bounded);
+- no page error, no CSP report, and no horizontal scroll of the page.
+
+Run it locally before you push UI changes. It uses the exact-pinned `playwright-core` devDependency and never
+downloads a browser, so point `CHROME` at a Chrome or Chromium binary, or set `PW_DIR` to a folder whose
+playwright-core has its own browser:
+
+```bash
+# What CI runs (about 40 s): desk light en and phone dark zh-TW, every section, the long-value pass, width 1024.
+CHROME=$(command -v google-chrome) PW_DIR=$PWD REPO=$PWD OUT=/tmp/ui-gate FONTCONFIG_FILE=/etc/fonts/fonts.conf \
+  npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts
+# The whole matrix (desk/phone × light/dark × en/zh-TW) and widths 900–1280: about 10 minutes.
+GATE=full CHROME=$(command -v google-chrome) PW_DIR=$PWD REPO=$PWD OUT=/tmp/ui-gate FONTCONFIG_FILE=/etc/fonts/fonts.conf \
+  npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts
+```
+
+It prints each failing check with the elements involved, and it saves a picture of every section and `result.json` in
+`$OUT/smoke-settings-ui-gate/`. A failing CI run uploads the same folder as the `ui-gate` artifact. zh-TW needs a CJK
+font to measure real widths: CI installs `fonts-noto-cjk`, and locally any Noto Sans CJK will do.
+
+`playwright-core` is pinned, but the runner image's Chrome moves with each image update. If a new image ever breaks
+the pairing (the job fails before the first check, on launching or connecting to Chrome), bump `playwright-core` to a
+release that supports that Chrome, or point the job's `CHROME` at a known-good build until it does. Never switch the
+job to `playwright install`.
+
 ## Releases and CI
 
 Regular checks and publishing workflows live in `.github/workflows/`.
