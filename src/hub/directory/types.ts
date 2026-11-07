@@ -74,6 +74,8 @@ export interface HubDirectory {
   lookupForInitialization?(login: string): Promise<InitializationLookupResult>;
   /** Authenticated Hub-admin pairing selection only; not a public lookup, sign-in or grant. Missing keeps the existing known-person path. */
   lookupForPairing?(login: string): Promise<DirectoryLookupResult>;
+  /** Exact owner-authorized grant recipient selection, without sign-in or person/session creation. */
+  lookupForGrant?(login: string): Promise<DirectoryLookupResult>;
   /** Per-request eligibility (design §4): exists, same immutable id, enabled. No cache; unreachable = not eligible. */
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   /** Release the directory; later calls refuse (unavailable). */

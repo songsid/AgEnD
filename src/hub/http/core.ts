@@ -101,11 +101,17 @@ export class HubCore {
   revocationVersion(): number {
     try { return this.deps.store.read().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
   }
-  /** The admin pairing path's service lookup shares the eligibility concurrency budget, never an allow cache. */
+  /** These wrappers share one bounded identity selection path; their callers own the operation's authority check. */
   async lookupPairingOwner(login: string): Promise<PersonKey | null> {
-    const lookup = this.deps.directory.lookupForPairing;
+    return this.lookupSelectedPerson(login, "pairing");
+  }
+  async lookupGrantRecipient(login: string): Promise<PersonKey | null> {
+    return this.lookupSelectedPerson(login, "grant");
+  }
+  private async lookupSelectedPerson(login: string, operation: "pairing" | "grant"): Promise<PersonKey | null> {
+    const lookup = operation === "pairing" ? this.deps.directory.lookupForPairing : this.deps.directory.lookupForGrant;
     if (!lookup) return personByLogin(this, login); // Older injected drivers retain the same known-person behavior.
-    const key = `pairing-owner:${sha256(login.toLowerCase())}`, mine = this.inflight.get(key) ?? 0;
+    const key = `directory-login:${sha256(login.toLowerCase())}`, mine = this.inflight.get(key) ?? 0;
     if (mine >= DIRECTORY_PER_PERSON || this.total >= DIRECTORY_TOTAL) throw new HubProtocolError("backpressure");
     this.check(); this.inflight.set(key, mine + 1); this.total++;
     let result;
@@ -121,12 +127,12 @@ export class HubCore {
       if (result.reason === "unavailable") throw new HubProtocolError("unavailable");
       return null;
     }
-    const owner = validated(personSchema, result.person.key);
-    if (owner.realm !== this.deps.directory.realm || typeof result.person.login !== "string"
+    const selected = validated(personSchema, result.person.key);
+    if (selected.realm !== this.deps.directory.realm || typeof result.person.login !== "string"
       || result.person.login.toLowerCase() !== login.toLowerCase()) throw new HubProtocolError("unavailable");
-    // The directory's fresh immutable-id lookup, not the login or cached person rows, decides ownership.
-    const current = await this.current(owner);
-    return current && current.login.toLowerCase() === login.toLowerCase() ? owner : null;
+    // The directory's fresh immutable-id recheck, not the login or cached person rows, decides the selected identity.
+    const current = await this.current(selected);
+    return current && current.login.toLowerCase() === login.toLowerCase() ? selected : null;
   }
   /**
    * A fresh directory eligibility check (no allow-cache). Ineligible or unreachable is denied; the person's row records

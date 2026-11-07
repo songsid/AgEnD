@@ -646,7 +646,7 @@
           </article>
         <article class="tip-card" id="tip-137" data-tip-id="tip-137" data-level="intermediate">
             <a class="tip-id" href="#tip-137">tip-137</a>
-            <p>在 General 使用 `/doctor` 可檢查已設定的 Backend；更完整的服務與連線檢查需從可信任的電腦終端執行 `agend doctor`。</p>
+            <p>在 General 使用 `/doctor` 可檢查已設定的 Backend。</p>
           </article>
         <article class="tip-card" id="tip-138" data-tip-id="tip-138" data-level="intermediate">
             <a class="tip-id" href="#tip-138">tip-138</a>
@@ -930,7 +930,7 @@
           </article>
         <article class="tip-card" id="tip-205" data-tip-id="tip-205" data-level="advanced">
             <a class="tip-id" href="#tip-205">tip-205</a>
-            <p>手動修改 YAML 後、reload 前應先執行 `agend validate`；它可在不重啟 Fleet 的情況下找出 schema 錯誤。</p>
+            <p>手動修改 YAML 後、reload 前，請 General 驗證 fleet.yaml；可在不重啟 Fleet 的情況下找出 schema 錯誤。</p>
           </article>
         <article class="tip-card" id="tip-206" data-tip-id="tip-206" data-level="advanced">
             <a class="tip-id" href="#tip-206">tip-206</a>
@@ -1006,7 +1006,7 @@
           </article>
         <article class="tip-card" id="tip-224" data-tip-id="tip-224" data-level="advanced">
             <a class="tip-id" href="#tip-224">tip-224</a>
-            <p>瀏覽器登入儀表板後，Fleet 重啟也不會登出（預設最長 48 小時）。傳 `/web revoke`，或在主機上執行 `agend web-token rotate`，可一次讓所有瀏覽器登出；執行中的 Fleet 不需重啟即會生效。</p>
+            <p>瀏覽器登入儀表板後，Fleet 重啟也不會登出（預設最長 48 小時）。傳 `/web revoke` 可一次讓所有瀏覽器登出；執行中的 Fleet 不需重啟即會生效。</p>
           </article>
         <article class="tip-card" id="tip-225" data-tip-id="tip-225" data-level="advanced">
             <a class="tip-id" href="#tip-225">tip-225</a>
@@ -1286,7 +1286,7 @@
           </article>
         <article class="tip-card" id="tip-294" data-tip-id="tip-294" data-level="advanced">
             <a class="tip-id" href="#tip-294">tip-294</a>
-            <p>`agend doctor` 會分別檢查 Backend availability、service、D-Bus、Fleet、tmux 與 IPC health；不應以單一綠色項目代表整體健康。</p>
+            <p>在 General 使用 `/doctor` 檢查已設定的 Backend；應分別閱讀各段，不要把單一綠色項目當成整體健康。</p>
           </article>
         <article class="tip-card" id="tip-295" data-tip-id="tip-295" data-level="advanced">
             <a class="tip-id" href="#tip-295">tip-295</a>
