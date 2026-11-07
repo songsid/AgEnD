@@ -9893,7 +9893,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
     try {
       const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
-      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })));
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
       if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
     } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
     // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
@@ -16339,14 +16339,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
 
   /**
-   * M-2457 §5: one fleet notice, the first time this home's fleet runs on AgEnD's own tmux. Marked done only once it
+   * M-2457 §5: one fleet notice, the first time an upgraded home's fleet runs on AgEnD's own tmux. Marked done only once it
    * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
    * post it tries again next start.
    */
   announceOwnTmux(): void {
     const marker = join(getAgendHome(), "tmux", "own-server-announced");
     if (existsSync(marker)) return;
-    if (!this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
+    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3): the
+    // migration journal exists exactly when 2.3 window ids were found. A fresh home is marked without a notice.
+    const upgraded = existsSync(join(getAgendHome(), "tmux-migration.json"));
+    if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
     try {
       mkdirSync(dirname(marker), { recursive: true });
       writeFileSync(marker, `${new Date().toISOString()}\n`);

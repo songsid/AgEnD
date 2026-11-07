@@ -39,6 +39,24 @@ describe("the window-id tag", () => {
   });
 });
 
+describe("a tag counts only for the socket AgEnD runs now (Fable #3312 N1)", () => {
+  it("a tag naming another socket (an isolated home's dark-switch tag, now 2.3's name) is untagged, and swept", () => {
+    const { home, dir } = inst("@4");
+    tagWindowId(dir, "agend-1a2b3c", "@4");
+    expect(windowIdState(dir)).toEqual({ kind: "tagged", id: "@4", socket: "agend-1a2b3c" });          // no socket given: as before
+    expect(windowIdState(dir, "agend-1a2b3c-b")).toEqual({ kind: "untagged", id: "@4" });
+    expect(windowIdState(dir, "agend-1a2b3c")).toEqual({ kind: "tagged", id: "@4", socket: "agend-1a2b3c" });
+    expect(sweepLegacyWindowIds(home, [{ name: "dev", dir }], "agend-1a2b3c-b")).toEqual(["dev"]);
+    expect(readJournal(home).pending).toEqual({ dev: "@4" });
+  });
+  it("a tag for the current socket stays: nothing is swept", () => {
+    const { home, dir } = inst("@4");
+    tagWindowId(dir, "agend-1a2b3c-b", "@4");
+    expect(sweepLegacyWindowIds(home, [{ name: "dev", dir }], "agend-1a2b3c-b")).toEqual([]);
+    expect(existsSync(join(dir, "window-id"))).toBe(true);
+  });
+});
+
 describe("sweepLegacyWindowIds (fleet start)", () => {
   it("moves only untagged ids into the journal (journal first), removes their files, leaves tagged ones alone", () => {
     const home = scratch();

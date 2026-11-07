@@ -3806,8 +3806,9 @@ program
     const { instanceNameInvalid } = await import("./quickstart-api.js");
     if (instanceNameInvalid(opts.release)) { console.error(`"${opts.release}" is not an instance name.`); process.exit(1); }
     const { releaseLegacyWindow } = await import("./tmux-legacy.js");
+    const { tmuxSocket } = await import("./tmux-binary.js");
     const dir = join(DATA_DIR, "instances", opts.release);
-    const id = releaseLegacyWindow(DATA_DIR, opts.release, dir);
+    const id = releaseLegacyWindow(DATA_DIR, opts.release, dir, tmuxSocket());
     if (!id) { console.error(`${opts.release} is not held by an old tmux window.`); process.exit(1); }
     console.log(`Released ${opts.release}: AgEnD will leave the old window ${id} (system tmux) alone. Close it yourself if it still runs that agent, then start ${opts.release} again (agend fleet start ${opts.release}).`);
   });

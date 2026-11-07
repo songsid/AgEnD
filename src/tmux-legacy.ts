@@ -83,7 +83,7 @@ export function writeJournal(agendHome: string, j: Journal): void {
 }
 
 /** The window-id file's state: no file, tagged with a socket (written with the bundled tmux on), or untagged (2.3). */
-export function windowIdState(instanceDir: string): { kind: "none" } | { kind: "tagged"; id: string; socket: string } | { kind: "untagged"; id: string } {
+export function windowIdState(instanceDir: string, currentSocket?: string): { kind: "none" } | { kind: "tagged"; id: string; socket: string } | { kind: "untagged"; id: string } {
   let id = "";
   try { id = readFileSync(join(instanceDir, "window-id"), "utf8").trim(); } catch { return { kind: "none" }; }
   if (!id) return { kind: "none" };
@@ -91,7 +91,9 @@ export function windowIdState(instanceDir: string): { kind: "none" } | { kind: "
   // behind — a tag for another id is no tag.
   try {
     const [socket, taggedId] = readFileSync(join(instanceDir, WINDOW_SOCKET_TAG), "utf8").split("\n").map(x => x.trim());
-    if (socket && taggedId === id) return { kind: "tagged", id, socket };
+    // Fable #3312 N1: only a tag for the socket AgEnD runs now is ours. A tag naming another socket (an isolated home
+    // that ran the dark switch tagged `agend-<hash6>`, now 2.3's legacy name) is a window AgEnD's server doesn't hold.
+    if (socket && taggedId === id && (currentSocket === undefined || socket === currentSocket)) return { kind: "tagged", id, socket };
   } catch { /* untagged */ }
   return { kind: "untagged", id };
 }
@@ -110,11 +112,11 @@ export function dropWindowId(instanceDir: string): void {
  * before any instance does anything, and per instance by migrateLegacyWindow. The journal is written before a file is
  * removed, so a crash in between leaves the id in both places, never in neither. Returns the instances moved.
  */
-export function sweepLegacyWindowIds(agendHome: string, instances: Array<{ name: string; dir: string }>): string[] {
+export function sweepLegacyWindowIds(agendHome: string, instances: Array<{ name: string; dir: string }>, currentSocket?: string): string[] {
   const moved: Array<{ name: string; dir: string }> = [];
   const j = readJournal(agendHome);
   for (const i of instances) {
-    const state = windowIdState(i.dir);
+    const state = windowIdState(i.dir, currentSocket);
     if (state.kind !== "untagged" || !/^@\d+$/.test(state.id)) continue;
     j.pending[i.name] = state.id;
     moved.push(i);
@@ -174,6 +176,8 @@ export interface MigrateArgs {
   session: string;
   /** 2.3's socket for this home: null for the real home (tmux's default socket), else its hashed name. */
   legacySocket: string | null;
+  /** The socket AgEnD runs now (tmuxSocket()): a window-id tagged for any other socket is not one of its windows. */
+  currentSocket?: string;
   backendBinary: string;
   checkpoint: () => Promise<void> | void;
   probes?: LegacyProbes;
@@ -186,8 +190,8 @@ export interface MigrateArgs {
  */
 export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tagged" | "stale" | "migrated" | "released"> {
   const p = a.probes ?? realLegacyProbes;
-  const before = windowIdState(a.instanceDir);
-  sweepLegacyWindowIds(a.agendHome, [{ name: a.instance, dir: a.instanceDir }]);
+  const before = windowIdState(a.instanceDir, a.currentSocket);
+  sweepLegacyWindowIds(a.agendHome, [{ name: a.instance, dir: a.instanceDir }], a.currentSocket);
   const journal = readJournal(a.agendHome);
   const legacyId = journal.pending[a.instance];
   if (!legacyId) return before.kind === "tagged" ? "tagged" : "none";
@@ -257,8 +261,8 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
 }
 
 /** `agend tmux-migrate --release <name>`: leave that instance's untagged window to the user; its next start goes ahead. */
-export function releaseLegacyWindow(agendHome: string, instance: string, instanceDir: string): string | null {
-  sweepLegacyWindowIds(agendHome, [{ name: instance, dir: instanceDir }]);
+export function releaseLegacyWindow(agendHome: string, instance: string, instanceDir: string, currentSocket?: string): string | null {
+  sweepLegacyWindowIds(agendHome, [{ name: instance, dir: instanceDir }], currentSocket);
   const j = readJournal(agendHome);
   const id = j.pending[instance];
   if (!id) return null;

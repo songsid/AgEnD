@@ -3209,7 +3209,7 @@ export class Daemon extends EventEmitter {
     // M-2457 §6 rule 3: a window-id 2.3 wrote names a window of the SYSTEM tmux's default server.
     // That window is proven ours, checkpointed and closed (or this instance is held) — and the id is dropped, as it
     // means nothing on AgEnD's own server — before the fresh-start below can look at it.
-    await migrateLegacyWindow({ agendHome: getAgendHome(), instance: this.name, instanceDir: this.instanceDir, session: this.tmuxSessionName, legacySocket: legacyTmuxSocket(),
+    await migrateLegacyWindow({ agendHome: getAgendHome(), instance: this.name, instanceDir: this.instanceDir, session: this.tmuxSessionName, legacySocket: legacyTmuxSocket(), currentSocket: tmuxSocket(),
       backendBinary: this.backend?.binaryName ?? "", checkpoint: () => this.checkpointSessionId(),
       log: (msg, data) => this.logger.info(data ?? {}, msg) });
     this.startupAdmission?.();
