@@ -111,24 +111,25 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
   });
 
   it("with no Settings job to carry it (a hand edit) it says how to restart from General", async () => {
+    app.appStore.set({ connections: 1 });
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     await mountShell();
-    expect([!!button("Restart now"), line()?.textContent.includes("/restart")]).toEqual([false, true]);
+    expect([!!button("Restart now"), line()?.textContent.includes("Send /restart in General to use them.")]).toEqual([false, true]);
   });
 
-  it("a web-only fleet names Restart now and does not mention General", async () => {
+  it("a web-only fleet with a Settings job offers Restart now and does not mention General", async () => {
     app.appStore.set({ connections: 0 });
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
     await mountShell();
     expect([!!button("Restart now"), /General|\/restart/.test(line()?.textContent ?? "")]).toEqual([true, false]);
-    expect(line()?.textContent).toContain("Use Restart now to apply them");
   });
 
-  it("a web-only hand edit does not name General or a host command", async () => {
+  it("a web-only hand edit says to restart AgEnD and does not name General or a host command", async () => {
     app.appStore.set({ connections: 0 });
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     await mountShell();
-    expect([!!button("Restart now"), /General|\/restart/.test(line()?.textContent ?? "")]).toEqual([false, false]);
+    expect([!!button("Restart now"), /General|\/restart|agend restart/.test(line()?.textContent ?? "")]).toEqual([false, false]);
+    expect(line()?.textContent).toContain("Restart AgEnD to use them.");
   });
 
   it("a refused restart says why and keeps the line", async () => {

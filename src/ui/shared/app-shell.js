@@ -816,9 +816,9 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing. Restart now is the in-page action; the muted hint names it, and mentions /restart in General only
- * when the fleet has chat. Web-only fleets have no General. With no Settings job (a hand edit) Restart now is absent:
- * chat fleets are told to send /restart in General.
+ * offers nothing. Restart now is a separate button when a Settings job exists. This muted hint is the no-job case
+ * only (a hand edit of fleet.yaml): chat fleets send /restart in General; web-only fleets are told to restart AgEnD,
+ * with no command. web-claude will add a button for that case separately.
  */
 function RestartLine() {
   const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
@@ -831,10 +831,10 @@ function RestartLine() {
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
   const canRestart = !!pending.jobId && typeof restartRunner === "function";
-  // connections === 0 is web-only; null is unknown (prefer the in-page button, or General when that button is absent).
-  const hint = canRestart
+  // connections === 0 is web-only; null is unknown — do not name General.
+  const hint = !pending.jobId
     ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost")
-    : connections === 0 ? null : t("app.restartOnHostNoJob");
+    : null;
   const restart = async () => {
     if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
