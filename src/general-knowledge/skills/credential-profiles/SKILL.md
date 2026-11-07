@@ -45,21 +45,22 @@ For codex the variable and the path are different:
 CODEX_HOME="${AGEND_HOME:-$HOME/.agend}/credential-profiles/codex/<profile>" codex login
 ```
 
-For claude-code a fleet admin can do it **from chat**, no host access needed:
+A fleet admin can do it **from chat**, no host access needed (claude-code,
+codex and kiro-cli alike, #3212):
 
 ```
 /login claude-code <profile>
+/login codex <profile>
+/login kiro-cli <profile>
 ```
 
-It opens the same browser-terminal login as `/login claude-code`, for that
-profile only. Or on the host:
+It opens the same login as `/login <backend>`, for that profile only (codex: a
+device code; kiro: its login picker), and the web dashboard's Settings →
+Accounts offers the same **Sign in** per account. Or on the host:
 
 ```
 CLAUDE_CONFIG_DIR="${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>" claude auth login
 ```
-
-Kiro and codex profiles cannot be signed in from chat yet: `/login kiro-cli <profile>`
-answers with the host command to run.
 
 A Claude Code profile keeps its own login, trust and conversations, and a
 `settings.json` that starts as a copy of the user's; the user's `CLAUDE.md`,
@@ -72,7 +73,7 @@ anywhere: on macOS the login is stored under a Keychain item named after that
 path string, so a login under a differently spelled path (a relative
 `AGEND_HOME`, a trailing slash, a `~` that was never expanded) lands in another
 item, and the agent still finds no login.
-For claude-code the refusal also names `/login claude-code <profile>`: offer that first, since it works from chat.
+The refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.
 
 ## Create a worker on another subscription
 

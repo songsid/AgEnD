@@ -93,15 +93,12 @@ describe.each(BACKENDS)("#1699 follow-up — $backend: an instance on a profile 
     await vi.waitFor(() => expect(r.daemons.w1!.requestPauseWhenIdle).toHaveBeenCalled());
     expect(r.daemons.w1!.clearSuspectedAuthFailure).not.toHaveBeenCalled();
     await new Promise(res => setTimeout(res, 20));
-    if (b.backend === "claude-code") {
-      // #1699 part 2: a claude-code profile signs in from chat — the remedy names it, the button carries it.
-      expect(text).toContain(`Use \`/login claude-code work\` to sign that profile in remotely (or run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host)`);
-      expect(r.offerBackendLogin).toHaveBeenCalledWith("w1", "claude-code", "work");
-    } else {
-      expect(text).toContain(`Run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host`);
-      expect(text).not.toContain(`/login ${b.backend}`);
-      expect(r.offerBackendLogin, "the plain /login button signs the DEFAULT login in").not.toHaveBeenCalled();
-    }
+    // #1699 part 2 (claude-code), #3212 PR 4 (codex, kiro-cli): a profile signs in from chat — the remedy names it, with
+    // the host line as the alternative, and the button carries the profile (the plain one would sign the DEFAULT login in).
+    // 721ca0c3: the /login way only — no host command in the alert.
+    expect(text).toContain(`Use \`/login ${b.backend} work\` to sign that profile in remotely.`);
+    expect(text).not.toContain("on the host");
+    expect(r.offerBackendLogin).toHaveBeenCalledWith("w1", b.backend, "work");
   });
 
   it("the reverse: the default login expired while the profile's is fine — the profile's instance is cleared, the default one alerted", async () => {

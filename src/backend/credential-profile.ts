@@ -273,8 +273,11 @@ export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
  * Backends whose credential profile can be signed in from chat — `/login <backend> <profile>` runs the backend's own
  * login in the browser terminal with the profile's variable (#1699 part 2). Only those whose login TUI was checked
  * under a relocated home; the others' profiles are signed in on the host with credentialProfileLoginCommand.
+ * #3212 PR 4: Codex and Kiro too — checked on 2026-11-07 (issue #3212): `XDG_DATA_HOME=<profile> kiro-cli login` reaches
+ * its "Select login method" picker with its store in `<profile>/kiro-cli/`; `CODEX_HOME=<profile> codex login
+ * --device-auth` writes only under the profile (its device sign-in run once on a real account with the user's OK).
  */
-export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(["claude-code"]);
+export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(["claude-code", "codex", "kiro-cli"]);
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
   return CREDENTIAL_HOMES[backendName] ?? null;

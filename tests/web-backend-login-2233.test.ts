@@ -353,12 +353,12 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     expect(f.terminals).toHaveLength(1);
   });
 
-  it("not installed, unsupported (agy) and a profile on a host-only backend are answered with words, and nothing runs", async () => {
+  it("not installed and unsupported (agy) are answered with words, and nothing runs; a codex profile (#3212 PR 4) is asked like any sign-in", async () => {
     const g = await fixture({ installed: false }), ga = g.session();
     expect((await g.check(ga, "codex")).body).toEqual({ message: t("login.web_dashboard_not_installed", "codex", "curl …") });
     const f = await fixture(), a = f.session();
     expect((await f.check(a, "agy")).body.message).toBe(t("login.remote_unsupported_agent_cli", "antigravity", "agy"));
-    expect((await f.check(a, "codex", "work")).body.message).toMatch(/codex/);
+    expect((await f.check(a, "codex", "work")).body.confirm).toMatchObject({ backend: "codex", profile: "work" });
     expect(f.terminals).toHaveLength(0);
   });
 });
