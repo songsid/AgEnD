@@ -4,9 +4,9 @@
  */
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { HubProtocolError } from "../validation.js";
-import { personKeyString } from "../identity.js";
-import type { HubAuditRecord, HubTx, PersonKey } from "../types.js";
+import { HubProtocolError, person as personSchema, validated } from "../validation.js";
+import { personKeyString, sha256 } from "../identity.js";
+import type { HubAuditRecord, HubRequestContext, HubTx, PersonKey } from "../types.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
@@ -42,6 +42,33 @@ export class HubCore {
   }
   revocationVersion(): number {
     try { return this.deps.store.read().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
+  }
+  /** The admin pairing path's service lookup shares the eligibility concurrency budget, never an allow cache. */
+  async lookupPairingOwner(login: string): Promise<PersonKey | null> {
+    const lookup = this.deps.directory.lookupForPairing;
+    if (!lookup) return personByLogin(this, login); // Older injected drivers retain the same known-person behavior.
+    const key = `pairing-owner:${sha256(login.toLowerCase())}`, mine = this.inflight.get(key) ?? 0;
+    if (mine >= DIRECTORY_PER_PERSON || this.total >= DIRECTORY_TOTAL) throw new HubProtocolError("backpressure");
+    this.check(); this.inflight.set(key, mine + 1); this.total++;
+    let result;
+    try { result = await lookup.call(this.deps.directory, login); }
+    catch { throw new HubProtocolError("unavailable"); }
+    finally {
+      const n = (this.inflight.get(key) ?? 1) - 1;
+      if (n > 0) this.inflight.set(key, n); else this.inflight.delete(key);
+      this.total--;
+    }
+    this.check();
+    if (!result.ok) {
+      if (result.reason === "unavailable") throw new HubProtocolError("unavailable");
+      return null;
+    }
+    const owner = validated(personSchema, result.person.key);
+    if (owner.realm !== this.deps.directory.realm || typeof result.person.login !== "string"
+      || result.person.login.toLowerCase() !== login.toLowerCase()) throw new HubProtocolError("unavailable");
+    // The directory's fresh immutable-id lookup, not the login or cached person rows, decides ownership.
+    const current = await this.current(owner);
+    return current && current.login.toLowerCase() === login.toLowerCase() ? owner : null;
   }
   /**
    * A fresh directory eligibility check (no allow-cache). Ineligible or unreachable is denied; the person's row records
@@ -97,4 +124,14 @@ export async function personByLogin(core: HubCore, login: string): Promise<Perso
   if (!id) return null;
   const person = personFromString(id), now = await core.current(person);
   return now && now.login.toLowerCase() === label.toLowerCase() ? person : null;
+}
+
+/** Only the existing authenticated Hub-admin pairing operation may select an unsigned-in directory owner. */
+export async function pairingOwnerByLogin(core: HubCore, ctx: HubRequestContext, input: string): Promise<PersonKey | null> {
+  await ctx.requireAdmin();
+  const login = input.trim();
+  if (!login || login.length > 256) return null;
+  const owner = await core.lookupPairingOwner(login);
+  await ctx.current(); // No stale admin session may use a lookup completed after it was signed out.
+  return owner;
 }
