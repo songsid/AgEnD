@@ -27,6 +27,20 @@ const PIN = "3.8.0";
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
+// A bundled tmux package found broken after publish can never be pinned again (design §3: darwin-arm64 3.8.0 linked
+// jemalloc, and its server crashed on the real Mac). Checks AgEnD's own package.json — vacuous until it pins the tmux.
+const NEVER_PIN: Record<string, string[]> = { "@songsid/agend-tmux-darwin-arm64": ["3.8.0"] };
+describe("AgEnD's own package.json never pins a bundled tmux known to be broken", () => {
+  it("no pinned @songsid/agend-tmux-* version is on the NEVER_PIN list", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { optionalDependencies?: Record<string, string> };
+    const pins = Object.entries(manifest.optionalDependencies ?? {}).filter(([n]) => n.startsWith("@songsid/agend-tmux-"));
+    for (const [n, v] of pins) expect(NEVER_PIN[n] ?? [], `${n}@${v}`).not.toContain(v);
+    // The rule itself refuses the broken pin (the check is not vacuous by construction).
+    const bad = { "@songsid/agend-tmux-darwin-arm64": "3.8.0" };
+    expect(Object.entries(bad).some(([n, v]) => (NEVER_PIN[n] ?? []).includes(v))).toBe(true);
+  });
+});
+
 describe("tmux-sources.json and the package manifest", () => {
   it("pins every source by https url and sha256; no jemalloc anywhere (§3)", () => {
     const s = readSources();

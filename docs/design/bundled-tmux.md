@@ -109,13 +109,13 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
     smoke passes on darwin-x64 (dry run 42280510117), so the cause is jemalloc on x86_64, not the build. The cost:
     darwin-x64 keeps macOS's own `calloc`, which upstream works around with jemalloc (tmux #5385).
   - *darwin-arm64.* The first packages (`@songsid/agend-tmux-darwin-arm64@3.8.0`) still linked jemalloc: its dry-run
-    smoke passed. On the real Mac (macOS 15.3.1 arm64, launchd; C-4 rehearsal leg M) the private server crashed after
+    smoke passed. On the real Mac (macOS 15 arm64, launchd; C-4 rehearsal leg M) the private server crashed after
     about seven minutes of ordinary use, with no update or restart in progress. The crash report: `EXC_BAD_ACCESS`
     (`SIGSEGV`, `KERN_INVALID_ADDRESS` at `0x0`), faulting thread `je_tcache_bin_flush_large` ←
     `je_free_default` ← `server_client_lost` ← `event_base_loop` ← `proc_loop` ← `server_start`, with the annotation
     "crashed on child side of fork pre-exec". The fleet recovered (storm window, a new server, agents respawned), but a
     server that dies when a client leaves is not shippable. So darwin-arm64 drops jemalloc as darwin-x64 did, and is
-    repacked as `3.8.0-agend.2`. `3.8.0` for darwin-arm64 must never be pinned (a test in the AgEnD package checks it).
+    repacked as `3.8.0-agend.2`. `3.8.0` for darwin-arm64 must never be pinned (`NEVER_PIN` in `tests/tmux-bundle-2457.test.ts` refuses it in `package.json`).
   - The cost on both Macs: macOS's own `calloc` (tmux #5385). Pinned by `tests/tmux-bundle-2457.test.ts` (no jemalloc
     part, `--disable-jemalloc`, never `--enable-jemalloc`).
   - **Reproducible link:** ld64 records each object's absolute path in the debug map and hashes the output into
