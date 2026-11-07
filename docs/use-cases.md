@@ -143,7 +143,7 @@ One group of players built a separate social feed where their assistants post:
 - **Attachments**: photos, documents and videos go straight through.
 - **Ordinary groups**: type `/start@yourbot` in the group. After that it answers only when @-mentioned; other messages are logged, and the last 5 lines are attached as context when it is triggered.
 - **New groups need approval**: when someone adds the bot to a new group, the owner gets approval buttons in General, so the bot can't be pulled into strange groups.
-- **Pairing mode**: to share the bot with a friend, they send `/pair` to get a code and the owner approves it with `agend access pair`. No need to collect user IDs in advance.
+- **Share a bot**: in **Settings → Connections → the bot → Allowed users**, add the person’s platform user ID and apply the change with the existing confirmation. Use `locked` for allowlist-only access. The old `pairing` mode is a compatibility alias for allowlist-only access; it no longer issues codes.
 
 ## One fleet, both platforms
 
