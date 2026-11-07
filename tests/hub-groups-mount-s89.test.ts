@@ -58,6 +58,31 @@ describe("store.describe: the welcome's one display read", () => {
   });
 });
 
+describe("store.describe: bounded and never stale (Fable #3372 F2)", () => {
+  // The welcome is open to every signed-in person and does one directory read per call: the same in-flight bounds as check().
+  it("a 5th concurrent describe for one person, and a 33rd overall, are refused while reads are held", async () => {
+    const pending: Array<(v: PolicyGroupFacts) => void> = [];
+    const f = storeFixture(() => new Promise(r => { pending.push(r); })); f.enable();
+    const mine = Array.from({ length: 4 }, () => f.store.describe(user, f.ctx));
+    await expect(f.store.describe(user, f.ctx)).rejects.toThrow("group_policy_unavailable");
+    const others = Array.from({ length: 28 }, (_, i) => f.store.describe({ realm: "example", objectId: `33333333-3333-4333-8333-${String(i).padStart(12, "0")}` }, f.ctx));
+    await expect(f.store.describe(other, f.ctx)).rejects.toThrow("group_policy_unavailable");
+    expect(f.read).toHaveBeenCalledTimes(32);
+    for (const r of pending.splice(0)) r({ kind: "unknown" });
+    await Promise.all([...mine, ...others]);
+    expect((await (async () => { const p = f.store.describe(user, f.ctx); pending.splice(0).forEach(r => r({ kind: "unknown" })); return p; })())).toBeTruthy();   // freed again
+  });
+  it("a policy change during the held read: the decisions come back unknown, never the old read applied to the new policy", async () => {
+    let release!: (v: PolicyGroupFacts) => void;
+    const f = storeFixture(() => new Promise(r => { release = r; })); f.enable();
+    const d = f.store.describe(user, f.ctx);
+    await vi.waitFor(() => expect(f.read).toHaveBeenCalledTimes(1));
+    f.enable(["ask_agents", "publish_agents", "pair_fleet"], 3);                    // revision moves while LDAP answers
+    release({ kind: "complete", person: { ...user }, groups: [group], observedAt: 100 });
+    expect(Object.values((await d).decisions).map(x => x.outcome)).toEqual(["unknown", "unknown", "unknown"]);
+  });
+});
+
 describe("the welcome projection", () => {
   const fleets = [{ id: "f1", owner: user, status: "active", label: "Desk" }, { id: "f2", owner: other, status: "active", label: "Someone else's" }, { id: "f3", owner: user, status: "revoked" }];
   it("is about the session's own person only, with only outcome, reason, limit and own fleets — no GUID or DN", async () => {
@@ -74,6 +99,11 @@ describe("the welcome projection", () => {
       const w = await createHubGroupWelcome({ policy: () => f.store, ready: () => ready, fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
       expect(w.mode).toBe("legacy"); expect(f.read).not.toHaveBeenCalled();
     }
+  });
+  it("a binding that needs repair: legacy, and the strict store is never constructed (Fable #3372 F2 E2)", async () => {
+    const policy = vi.fn(() => { throw new Error("constructed a mismatched strict store"); });
+    const w = await createHubGroupWelcome({ policy, ready: () => false, fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
+    expect(w.mode).toBe("legacy"); expect(policy).not.toHaveBeenCalled();
   });
   it("a session that ended during the read answers nothing", async () => {
     const f = storeFixture(); f.enable(); let live = true;

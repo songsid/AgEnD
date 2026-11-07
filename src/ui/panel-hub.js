@@ -7,7 +7,7 @@
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { PanelHeader, closeDrawer, setTitle } from "/assets/app-shell.js";
-import { lang, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -33,6 +33,11 @@ import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpe
 import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
+// The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
+register("hubGroupsNote", {
+  en: { unavailable: "Group permissions aren't available on this Hub yet. Update the Hub, then try again." },
+  "zh-TW": { unavailable: "這個 Hub 還沒有群組權限。請更新 Hub 後再試。" },
+});
 const groupPolicyOn = (session, client) => !!session && Array.isArray(session.features) && session.features.includes("group-policy-v1")
   && !!client && client.groupPolicyV1 === true;
 function LazyGroups({ pick, props }) {
@@ -699,7 +704,7 @@ function HubAdmin({ admin }) {
   if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
   const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
-  return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${lang() === "zh-TW" ? "這個 Hub 還沒有群組權限。請更新 Hub 後再試。" : "Group permissions aren't available on this Hub yet. Update the Hub, then try again."}</p>` : null}
+  return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
     <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} />`;
 }
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */

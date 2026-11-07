@@ -16,7 +16,7 @@ register("settingsHubSection", {
   "zh-TW": {
     publicLink: "Hub 設定只在這個 Fleet 自己的儀表板上提供，公開連結上沒有。",
     relatedTitle: "Hub", relatedHint: "將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
-    groupsTitle: "群組權限", groupsHint: "讓指定目錄群組的成員與代理對話、分享代理或連接自己的艦隊。在 Hub 上以管理員身分登入後設定。",
+    groupsTitle: "群組權限", groupsHint: "讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet。在 Hub 上以管理員身分登入後設定。",
     groupsOpen: "在 Hub 上開啟", experimental: "實驗性",
   },
 });
