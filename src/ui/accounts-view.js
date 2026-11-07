@@ -31,7 +31,8 @@ register("accounts", {
     def: "Default sign-in", profile: "Account “{0}”", state_usable: "signed in", state_not_signed_in: "not signed in", state_unknown: "not checked",
     state_not_installed: "not installed", state_too_old: "too old",
     usedBy: "used by {0}", usedByNone: "used by no agent", agents: "{0} agents", agent: "1 agent", channels: "{0} ClassicBot rooms", channel: "1 ClassicBot room",
-    fleetDefaultTag: "fleet default", weekly: "{0}% of the week", resets: "resets {0}", stale: "last known",
+    fleetDefaultTag: "fleet default", resets: "resets {0}",
+    usageLabel: "Usage", winHours: "{0}h", winDays: "{0}d", winWeek: "7d", winStale: "(stale)",
     signIn: "Sign in", signInAgain: "Sign in again", hostCommand: "Sign in from chat", hostCommandHint: "This row cannot sign in from the dashboard. Send /login in chat, or ask General.",
     moveHere: "Move agents here", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
     carry_claude: "Claude Code carries its conversation over.", carry_codex: "Codex keeps its conversation.", carry_kiro: "Kiro starts a new conversation, with a handover.",
@@ -58,7 +59,8 @@ register("accounts", {
     def: "預設登入", profile: "帳號「{0}」", state_usable: "已登入", state_not_signed_in: "尚未登入", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
     usedBy: "使用者：{0}", usedByNone: "沒有 Agent 使用", agents: "{0} 個 Agent", agent: "1 個 Agent", channels: "{0} 個 ClassicBot 房間", channel: "1 個 ClassicBot 房間",
-    fleetDefaultTag: "Fleet 預設", weekly: "本週已用 {0}%", resets: "{0} 重置", stale: "最後已知",
+    fleetDefaultTag: "Fleet 預設", resets: "{0} 重置",
+    usageLabel: "用量", winHours: "{0}h", winDays: "{0}天", winWeek: "本週", winStale: "（未更新）",
     signIn: "登入", signInAgain: "重新登入", hostCommand: "從聊天登入", hostCommandHint: "這一列無法從儀表板登入。請在聊天傳 /login，或請 General。",
     moveHere: "移入 Agent", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
     carry_claude: "Claude Code 會帶著對話過去。", carry_codex: "Codex 保留原本的對話。", carry_kiro: "Kiro 會開新對話並附上交接。",
@@ -134,7 +136,33 @@ const usedText = (row) => {
   if (c) parts.push(c === 1 ? tx("channel") : tx("channels", c));
   return parts.length ? tx("usedBy", parts.join(" · ")) : tx("usedByNone");
 };
-const when = (iso) => { try { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : ""; } catch { return ""; } };
+/** A reset time as the person reads it: the time alone when it is today, else the weekday and the time. */
+const when = (iso, now = new Date()) => {
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    return d.toLocaleString(undefined, d.toDateString() === now.toDateString() ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
+  } catch { return ""; }
+};
+/** A usage window's name, from its length: "5h" for hours, the week's own word near seven days, else "30d". `fallback`: what a window of unknown length is. */
+const winLabel = (u, fallback = "") => {
+  const ms = Number(u && u.windowMs);
+  if (!(ms > 0)) return fallback;
+  const h = ms / 3_600_000;
+  if (h < 48) return tx("winHours", Math.max(1, Math.round(h)));
+  const d = Math.round(h / 24);
+  return d >= 6 && d <= 8 ? tx("winWeek") : tx("winDays", d);
+};
+/** One window of the usage block: its name, a meter, the percent (amber from 70%, red from 90%) and when it resets. A grid row of four fixed columns, so rows stack aligned. */
+function UsageWindow({ u, kind }) {
+  const p = Math.max(0, Math.min(100, Math.round(Number(u.percent) || 0)));
+  const level = p >= 90 ? " is-crit" : p >= 70 ? " is-warn" : "";
+  const reset = u.resetsAt ? tx("resets", when(u.resetsAt)) : "";
+  // The spaces between the cells are not drawn (a grid ignores whitespace between its items); they keep the text readable where it is copied or read as text.
+  return html`<div class=${`s-usage-win is-${kind}${level}`}><span class="s-usage-win-lbl">${winLabel(u, kind === "weekly" ? tx("winWeek") : "")}</span>${" "}
+    <progress class="s-usage-meter" max="100" value=${p} aria-hidden="true"></progress>${" "}
+    <span class="s-usage-win-pct">${p}%</span>${" "}<span class="s-usage-win-reset">${reset}</span>${" "}</div>`;
+}
 
 /**
  * The fleet default's `backend_options` after choosing `profile` (null: none) for `backend`: the whole map, because the
@@ -333,9 +361,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   const manageable = !machine || (row.signIn && !!row.profile);
   const canSignOut = manageable && typeof onSignOut === "function" && row.state === "usable" && SIGN_OUT_CLIS.has(row.backend);
   const who = identityText(row.identity);
-  const u = row.usage;
+  // The week's usage and the short window's (the "5h"), as the server gives them; a CLI that reports one shows one.
+  const windows = [row.shortUsage ? ["short", row.shortUsage] : null, row.usage ? ["weekly", row.usage] : null].filter(Boolean);
+  const stale = windows.some(([, w]) => w.stale);
   const why = machine && machine.readOnlyReason && !MACHINE_LEVEL.has(machine.readOnlyReason) ? reasonText(machine.readOnlyReason, machine.name) : "";
-  // Three layers in one box: the title bar (name, state, default tag · the buttons), the meta bar (who, used by, week), and Keep sign-in alive as the box's foot.
+  // Four layers in one box: the title bar (name, state, default tag · the buttons), the meta bar (who, used by), the usage block (5h and the week) and Keep sign-in alive as the box's foot.
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
@@ -353,8 +383,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
       ${who ? html`<small class="s-account-identity">${who}</small>` : null}
       <${UsedBy} row=${row} label=${usedText(row)} openAgent=${openAgent} />
       ${machine ? html`<small class="s-account-usage is-none" title=${tx("machineNoUsageHint")}>${tx("machineNoUsage")}</small>` : null}
-      ${u ? html`<small class=${`s-account-usage${u.stale ? " is-stale" : ""}`}><progress class="s-usage-meter" max="100" value=${Math.max(0, Math.min(100, Number(u.percent) || 0))} aria-hidden="true"></progress>${tx("weekly", u.percent)}${u.resetsAt ? ` · ${tx("resets", when(u.resetsAt))}` : ""}${u.stale ? ` · ${tx("stale")}` : ""}</small>` : null}
     </div>
+    ${windows.length ? html`<div class=${`s-account-usage${stale ? " is-stale" : ""}`} role="group" aria-label=${tx("usageLabel")}>
+      ${windows.map(([kind, w]) => html`<${UsageWindow} key=${kind} u=${w} kind=${kind} />`)}
+      ${stale ? html`<small class="s-usage-stale">${tx("winStale")}</small>` : null}
+    </div>` : null}
     ${why ? html`<p class="note s-account-why">${why}</p>` : null}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${machine ? tx("machineCommand") : tx("hostCommand")}</summary><p class="note">${machine ? tx("machineCommandHint", machine.name) : tx("hostCommandHint")}</p>${machine ? html`<p class="s-host-cli-command"><code>${row.hostCommand}</code></p>` : null}</details>` : null}
     ${!readOnly && row.keepAlive && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}

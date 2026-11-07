@@ -1,6 +1,7 @@
 /* #3212: Settings → Agents → Accounts — linked by accounts-view.js (a page holding an older app.css still draws it).
  * Box layout: each CLI is a warm-grey card; each account is a white box inside it (a status bar on its left edge) with three layers —
- * the title bar (name, state, default tag · the buttons), the meta bar (who, used by, week) and, for Keep sign-in alive, a foot.
+ * the title bar (name, state, default tag · the buttons), the meta bar (who, used by), the usage block (5h and the week: two columns when wide, two
+ * stacked rows on a phone) and, for Keep sign-in alive, a foot.
  * Nothing here is a layout the page waits on: the used-by list and the `!` hints are layers over the box (position: absolute),
  * so opening one never moves the box or the one below it. No inline styles are used (CSP style-src 'self'). */
 .s-accounts { display: grid; gap: var(--s-3); }
@@ -13,6 +14,7 @@
   --ac-pill-bg: #3a3a3a; --ac-pill-line: #4a4a4a; --ac-tools-bg: #262626; --ac-tools-line: #444444;
   --ac-foot-bg: #292929; --ac-foot-line: #3f3f3f; --ac-meter-track: #4a4a4a;
   --ac-tip-bg: #0f0f0f; --ac-tip-text: #f3f3f3; --ac-tip-line: #5a5a5a;
+  --ac-usage-bg: #292929; --ac-usage-line: #3f3f3f; --ac-bar: #7ab7ff; --ac-bar-warn: #e3a04a; --ac-bar-crit: #ff6b6b; --ac-pct-warn: #f0b266; --ac-pct-crit: #ff8a80;
   --ac-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); --ac-float: 0 10px 28px rgba(0, 0, 0, 0.55);
 }
 @media (prefers-color-scheme: light) {
@@ -23,6 +25,7 @@
     --ac-pill-bg: #f3f1ea; --ac-pill-line: #dedad0; --ac-tools-bg: #f7f5ef; --ac-tools-line: #e5e1d6;
     --ac-foot-bg: #f9f8f4; --ac-foot-line: #eae7de; --ac-meter-track: #dfe5ee;
     --ac-tip-bg: #222222; --ac-tip-text: #ffffff; --ac-tip-line: #222222;
+    --ac-usage-bg: #f8f7f2; --ac-usage-line: #e5e1d6; --ac-bar: #3b6db5; --ac-bar-warn: #d9822b; --ac-bar-crit: #c93b3b; --ac-pct-warn: #b85d14; --ac-pct-crit: #b42318;
     --ac-shadow: 0 1px 2px rgba(60, 50, 30, 0.08); --ac-float: 0 10px 28px rgba(40, 32, 16, 0.2);
   }
 }
@@ -33,6 +36,7 @@
   --ac-pill-bg: #f3f1ea; --ac-pill-line: #dedad0; --ac-tools-bg: #f7f5ef; --ac-tools-line: #e5e1d6;
   --ac-foot-bg: #f9f8f4; --ac-foot-line: #eae7de; --ac-meter-track: #dfe5ee;
   --ac-tip-bg: #222222; --ac-tip-text: #ffffff; --ac-tip-line: #222222;
+  --ac-usage-bg: #f8f7f2; --ac-usage-line: #e5e1d6; --ac-bar: #3b6db5; --ac-bar-warn: #d9822b; --ac-bar-crit: #c93b3b; --ac-pct-warn: #b85d14; --ac-pct-crit: #b42318;
   --ac-shadow: 0 1px 2px rgba(60, 50, 30, 0.08); --ac-float: 0 10px 28px rgba(40, 32, 16, 0.2);
 }
 
@@ -62,20 +66,38 @@
 .s-account-row .s-actions .btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
 .s-account-row .s-account-remove { color: var(--danger, var(--text-2)); }
 
-/* Layer 2: the meta bar — who it is, who uses it, its week. */
+/* Layer 2: the meta bar — who it is, who uses it. */
 .s-account-meta-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 10px; }
-.s-account-identity, .s-account-used, .s-account-usage { display: inline-flex; align-items: center; min-width: 0; padding: 4px 10px; border: 1px solid var(--ac-pill-line); border-radius: var(--r-full); background: var(--ac-pill-bg); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.4; }
+.s-account-identity, .s-account-used { display: inline-flex; align-items: center; min-width: 0; padding: 4px 10px; border: 1px solid var(--ac-pill-line); border-radius: var(--r-full); background: var(--ac-pill-bg); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.4; }
 .s-account-identity { font-family: var(--font-mono); color: var(--text); overflow-wrap: anywhere; }
 .s-account-used { font-family: inherit; color: var(--text-3); }
-.s-account-usage { gap: 8px; font-weight: var(--fw-semibold); }
-.s-account-usage.is-stale { color: var(--text-3); }
+/* Layer 3: the usage block — the short window ("5h") and the week. Wide: two columns side by side; narrow: two rows stacked. Each window is a row of
+ * four fixed columns (name · meter · percent · reset), so stacked rows line up. */
+.s-account-usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 16px; margin-top: 10px; padding: 7px 11px; border: 1px solid var(--ac-usage-line); border-radius: 8px; background: var(--ac-usage-bg); font-size: var(--fs-xs); line-height: 1.4; }
 .s-account-usage.is-none { display: none; }   /* a computer reports no usage: the dash says nothing, so it is not drawn (the node stays) */
-.s-usage-meter { appearance: none; -webkit-appearance: none; flex: none; width: 84px; height: 8px; border: 0; border-radius: var(--r-full); overflow: hidden; background: var(--ac-meter-track); color: var(--accent); }
+.s-usage-win { display: grid; grid-template-columns: 36px minmax(60px, 1fr) 38px auto; align-items: center; gap: 8px; min-width: 0; }
+.s-usage-win-lbl { color: var(--text-2); font-weight: var(--fw-semibold); white-space: nowrap; }
+.s-usage-win-pct { color: var(--text); font-weight: var(--fw-bold); text-align: right; font-variant-numeric: tabular-nums; }
+.s-usage-win-reset { color: var(--text-3); text-align: right; white-space: nowrap; }
+.s-usage-meter { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 6px; border: 0; border-radius: var(--r-full); overflow: hidden; background: var(--ac-meter-track); color: var(--ac-bar); }
 .s-usage-meter::-webkit-progress-bar { background: var(--ac-meter-track); border-radius: var(--r-full); }
-.s-usage-meter::-webkit-progress-value { background: var(--accent); border-radius: var(--r-full); }
-.s-usage-meter::-moz-progress-bar { background: var(--accent); border-radius: var(--r-full); }
-.s-account-usage.is-stale .s-usage-meter::-webkit-progress-value { background: var(--text-3); }
-.s-account-usage.is-stale .s-usage-meter::-moz-progress-bar { background: var(--text-3); }
+.s-usage-meter::-webkit-progress-value { background: var(--ac-bar); border-radius: var(--r-full); }
+.s-usage-meter::-moz-progress-bar { background: var(--ac-bar); border-radius: var(--r-full); }
+/* 70–89%: amber; from 90%: red (the meter and the percent). */
+.s-usage-win.is-warn .s-usage-meter { color: var(--ac-bar-warn); }
+.s-usage-win.is-warn .s-usage-meter::-webkit-progress-value { background: var(--ac-bar-warn); }
+.s-usage-win.is-warn .s-usage-meter::-moz-progress-bar { background: var(--ac-bar-warn); }
+.s-usage-win.is-warn .s-usage-win-pct { color: var(--ac-pct-warn); }
+.s-usage-win.is-crit .s-usage-meter { color: var(--ac-bar-crit); }
+.s-usage-win.is-crit .s-usage-meter::-webkit-progress-value { background: var(--ac-bar-crit); }
+.s-usage-win.is-crit .s-usage-meter::-moz-progress-bar { background: var(--ac-bar-crit); }
+.s-usage-win.is-crit .s-usage-win-pct { color: var(--ac-pct-crit); }
+/* Stale (last known, not read again): greyed, and said once. */
+.s-account-usage.is-stale .s-usage-win .s-usage-meter { color: var(--text-3); }
+.s-account-usage.is-stale .s-usage-win .s-usage-meter::-webkit-progress-value { background: var(--text-3); }
+.s-account-usage.is-stale .s-usage-win .s-usage-meter::-moz-progress-bar { background: var(--text-3); }
+.s-account-usage.is-stale .s-usage-win .s-usage-win-pct { color: var(--text-3); }
+.s-usage-stale { grid-column: 1 / -1; color: var(--text-3); }
 
 /* "Used by N agents ▾": a button when agents use the account; its list floats under it (position: absolute — it never moves the box or the next one). */
 .s-used-wrap { position: relative; display: inline-block; }
