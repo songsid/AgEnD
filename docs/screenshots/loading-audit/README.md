@@ -5,3 +5,5 @@ Before: alpha `9f91511e2` (common fleet sources also audited against main `65356
 The scripts are `scripts/manual/smoke/smoke-loading-audit.mts` (normal, `MODE=extras`, `MODE=readiness`) and `smoke-hub-loading-audit.mts` (normal and `ONLY=hub-new-chat`). They import the checkout named by `REPO`; Playwright is supplied through `PW_DIR`. The pending search-context fixture is synthetic. Other initial reads use the real fixture listener; screenshot timing does not claim real backend latency.
 
 Agent Details is a passing control: its existing skeleton is retained. Needs/Notices captures wait for their actual panels to mount, so the shell's earlier module-loading skeleton is not mistaken for the page's own state.
+
+Alpha fleet comparisons: `before` (9f91511e2) against `after-alpha`; `after-alpha-skew` uses that alpha base's app.css and ui-states.js. These are 56 held-read cases per variant, plus 4 settled sign-in portraits and 2 phone landscapes with expanded help. Sign-in intentionally never loads dashboard app.css. Access captures scroll the pending authority card into view. Profile preserves alpha's avatar and embedded Preferences layout.
