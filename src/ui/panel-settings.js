@@ -715,8 +715,9 @@ export function ProfileCard({ embedded = false } = {}) {
   };
   const busy = state.phase !== "ready";
   const changed = draft.trim() !== state.name;
+  const loading = state.phase === "loading";
   const initial = [...(state.shown || state.name || "web-user")][0]?.toUpperCase() || "W";
-  const fields = html`<div class="s-pref-profile-layout">
+  const fields = html`<div class=${`s-pref-profile-layout${loading ? " sk-reserve" : ""}`} aria-hidden=${loading ? "true" : undefined} inert=${loading || undefined}>
     ${embedded ? html`<span class="s-pref-avatar" aria-hidden="true">${initial}</span>` : null}
     <div class="s-pref-profile-main"><div class="field"><label for="profile-name">${tn("profileName")}</label>
       <div class="s-pref-name-action"><input id="profile-name" type="text" maxlength="200" autocomplete="nickname" value=${draft} disabled=${busy}
@@ -729,8 +730,10 @@ export function ProfileCard({ embedded = false } = {}) {
     ${state.name ? html`<div class="s-device-row"><button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => save(true)}>${state.bound ? tn("profileUseAccount", state.platform || "web-user") : tn("profileClear")}</button></div>` : null}
     <details class="s-pref-identity-details"><summary>${layoutText("profileIdentityDetails")}</summary><p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p></details>
     </div></div>`;
-  return embedded ? html`<div class="s-profile s-pref-profile-fields">${fields}</div>`
-    : html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>${fields}</section>`;
+  const content = html`${loading ? html`<div class="sk-profile-cover"><${Skeleton} variant="form" lines=${4} /></div>` : null}
+    ${fields}`;
+  return embedded ? html`<div class="s-profile s-pref-profile-fields">${content}</div>`
+    : html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>${content}</section>`;
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */

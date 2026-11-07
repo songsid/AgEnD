@@ -85,6 +85,8 @@
   const deviceLogin = webOnly && !outside && document.body.getAttribute("data-device-login") === "1";
   // #3061 (P2b): …and, when `web.login_qr` is on (<body data-login-qr="1">), it also draws the QR code of the approve link.
   const loginQr = deviceLogin && document.body.getAttribute("data-login-qr") === "1";
+  // Reserve the gated action while the form is still hidden, so ending the session read does not resize the card.
+  if (deviceLogin) $("another").hidden = false;
   const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
@@ -96,6 +98,7 @@
   // …and no "No chat bot?" help: the hint above already is it.
   if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
+  $("checking").setAttribute?.("aria-label", t("checking"));
   if (outside) {
     const input = $("code");
     input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");
@@ -171,7 +174,6 @@
     } catch { /* private mode */ }
     $("code").focus();
     offerResend();
-    if (deviceLogin) $("another").hidden = false;
   }
 
   // Only a returning device gets the button; the answer is a boolean and asking has no side effect. Never from outside
@@ -241,6 +243,7 @@
   const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   function devStop() {
     hideQr();
+    if ($("devLoading")) $("devLoading").hidden = true;
     if (!dev) return;
     dev.stopped = true;
     clearTimeout(dev.poll); clearInterval(dev.tick);
@@ -288,13 +291,15 @@
     devStop();
     $("form").hidden = true; $("device").hidden = false; $("devNew").hidden = true;
     hideQr();
-    $("devCode").textContent = "XXXX-XXXX";
+    $("devCode").textContent = "";
+    if ($("devLoading")) { $("devLoading").hidden = false; $("devLoading").setAttribute?.("aria-label", t("dev_title")); }
     devSay("", false, true);
     const mine = { stopped: false, poll: 0, tick: 0, deadline: 0, lost: 0 };
     dev = mine;
     let made;
     try { made = await devCall("", mine); } catch { if (!mine.stopped) devEnded(t("dev_failed"), true); return; }
     if (mine.stopped || !made) return;
+    if ($("devLoading")) $("devLoading").hidden = true;
     const { r, body } = made;
     if (!r.ok || !body || typeof body.code !== "string") {
       if (r.status === 429) {

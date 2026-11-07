@@ -15,6 +15,7 @@ import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
+import { Dialog } from "./ui-dialog.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
@@ -84,12 +85,18 @@ export function searchOffered(admin) {
   return (guestPage() ? guestTrusted() : !!admin) && !offLink;
 }
 let searchModule = null;
+let searchOpen = 0;
+function SearchLoading({ onClose }) {
+  return html`<${Dialog} title=${t("app.search")} onClose=${onClose} wide=${true}><${Skeleton} variant="rows" lines=${4} /></${Dialog}>`;
+}
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
 export function openSearch(preset = {}) {
   closeDrawer();
+  const mine = ++searchOpen;
+  showDialog(SearchLoading, { onClose: () => { searchOpen++; closeDialog(); } });
   (searchModule ??= import("/ui/js/search-dialog.js")).then(
-    (m) => showDialog(m.SearchDialog, { preset }),
-    () => { searchModule = null; toast(t("app.loadFailed"), false); });
+    (m) => { if (mine === searchOpen && shellStore.get().dialog?.Component === SearchLoading) showDialog(m.SearchDialog, { preset }); },
+    () => { searchModule = null; if (mine === searchOpen && shellStore.get().dialog?.Component === SearchLoading) { closeDialog(); toast(t("app.loadFailed"), false); } });
 }
 /**
  * Ctrl+K (⌘K) anywhere opens search; Ctrl+F (⌘F) in an agent's chat opens it narrowed to that agent — elsewhere the
@@ -914,4 +921,3 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${Toasts} />
   </div>`;
 }
-

@@ -13,6 +13,7 @@
 <!--/app-icon-->
 <script src="/assets/theme.js"></script>
 <link rel="stylesheet" href="/assets/tokens.css">
+<link rel="stylesheet" href="/assets/loading.css">
 <style>
   /* #1408 step 5: the app's tokens (tokens.css), light and dark like every page (theme.js before paint). */
   * { box-sizing: border-box; }
@@ -53,9 +54,11 @@
 </style>
 </head>
 <body>
-<main>
+<main class="signin-card">
   <div class="brand">AgEnD</div>
-  <div id="checking" data-i18n="checking">Checking your session…</div>
+  <div id="checking" class="skeleton sk-signin" role="status" aria-busy="true" aria-label="Checking your session…">
+    <div aria-hidden="true"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div>
+  </div>
   <form id="form" hidden autocomplete="off">
     <h1 data-i18n="title">Sign in to AgEnD</h1>
     <p data-i18n="lead">Enter your sign-in code.</p>
@@ -74,7 +77,8 @@
   <div id="device" hidden>
     <h1 data-i18n="dev_title">Sign in with another device</h1>
     <p data-i18n="dev_lead">On a device that is already signed in to AgEnD as the owner, open Settings → Access &amp; security, choose Add device under Devices &amp; sign-in, and enter this code.</p>
-    <div id="devCode" class="devcode" aria-live="polite" aria-label="Code">XXXX-XXXX</div>
+    <div id="devLoading" class="skeleton sk-inline" role="status" aria-busy="true" aria-label="Loading…" hidden><div class="sk-line" aria-hidden="true"></div></div>
+    <div id="devCode" class="devcode" aria-live="polite" aria-label="Code"></div>
     <div id="devStatus" role="status" aria-live="polite"></div>
     <div id="devQr" class="devqr" hidden><svg id="devQrSvg" viewBox="0 0 1 1" role="img" aria-label="QR code" focusable="false"></svg><p data-i18n="dev_qr">Or scan this QR code with a device that is already signed in as the owner. It holds this page's address and the code above, nothing else.</p></div>
     <button id="devNew" type="button" hidden data-i18n="dev_new">Get a new code</button>

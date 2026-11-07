@@ -133,6 +133,7 @@ export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask f
 
 /** The only files `/assets/` will serve. A map, not a directory: nothing else can be named into it. */
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
+  "loading.css": { file: join("shared", "loading.css"), type: "text/css; charset=utf-8" },
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
   "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },

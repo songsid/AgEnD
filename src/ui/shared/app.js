@@ -65,7 +65,8 @@ if (hubPage) {
   // A chat that loaded late catches up on what is open now; the shell shows that while it is not done, with Retry.
   stream.on("hydration", (hydration) => appStore.set({ hydration }));
   appStore.set({ retryHydration: () => stream.catchUp() });
-  stream.on("needs", (d) => appStore.set({ needs: Array.isArray(d && d.items) ? d.items : [] }));
+  appStore.set({ needsLoaded: false });
+  stream.on("needs", (d) => appStore.set({ needsLoaded: true, needs: Array.isArray(d && d.items) ? d.items : [] }));
   // #1218: a panel's way to hear one stream event (the Log's steps_tick), unsubscribed by its lease.
   appStore.set({ streamOn: (name, fn) => stream.on(name, fn) });
   appStore.set({ connection: stream.connection() });

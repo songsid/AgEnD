@@ -12,6 +12,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
@@ -122,7 +123,9 @@ export function AccountsView({ instances, stageAgent, stageDefault }) {
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
   const active = structured && structured.login;
   const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)));
-  if (!loaded) return html`<p class="note" role="status">${tx("loading")}</p>`;
+  if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
+    <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
+    <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
   if (failed && !view) return html`<p class="note" role="alert">${tx("failed")}</p>`;
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
