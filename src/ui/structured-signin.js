@@ -22,6 +22,8 @@ export const SIGNIN_STRINGS = {
     error_backend_signin_local_only: "Backend sign-in is available only on this computer. Use the local setup page, or sign in later.",
     error_signin_session_expired: "This setup session has ended. Reopen setup on the host.",
     error_expired: "This login attempt expired. Start a new attempt.",
+    error_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
+    error_signin_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
     error_auth_unconfirmed: "The CLI exited, but credentials could not be verified. Retry or sign in later.",
     error_provider_rejected: "The provider rejected this sign-in. Retry or sign in later.",
     // #3190 Part 3c: a profile on a paired computer (the dashboard's Accounts view).
@@ -56,6 +58,8 @@ export const SIGNIN_STRINGS = {
     error_backend_signin_local_only: "後端登入只能在這台電腦上進行。請使用本機的設定頁，或稍後登入。",
     error_signin_session_expired: "這個設定工作階段已結束。請在主機上重新開啟設定。",
     error_expired: "這次登入已過期。請重新開始。",
+    error_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
+    error_signin_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
     error_auth_unconfirmed: "CLI 已結束，但無法確認憑證。請重試或稍後登入。",
     error_provider_rejected: "平台拒絕了這次登入。請重試或稍後登入。",
     // #3190 Part 3c：配對電腦上的憑證設定檔（儀表板的「帳號」頁）。
@@ -79,8 +83,16 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * `machine` (#3190 Part 3c): these cards are for ONE credential profile on a paired computer (the endpoint carries `?machine=&profile=`). The dialog around them says
  * so, so the setup page's heading and lead are not repeated; there is no "sign in later" (this is an explicit request); and a sign-in again asks nothing about
  * Kiro (Claude Code's own sign-in replaces the login; it signs nothing out first).
+ *
+ * `dashboard` (#3321 S01, S12): the cards are inside the dashboard, where the dialog's own title names the CLI and the question "Sign in again?" is asked in the dashboard's
+ * own confirmation (`ask`) — the setup page's heading, lead and "You can continue setup" are not repeated, and the browser's `confirm()` is not used.
+ *
+ * `dialog: true` (#3212, named accounts on this host): the cards are inside Settings → Accounts' sign-in dialog for ONE account, which says WHICH account in its title; it
+ * is the same screen for the default account and a named one. So the rest of what the first-install page needs is left out too: no "Check sign-ins" button (the cards read
+ * themselves every second) and no "Sign in later" (nothing would remember it). `focus` (a backend id) then shows only that backend's card: the default account's checklist may
+ * hold others. The setup page and the installer's `?backend_signins=` list do not pass `dialog`, and look as they did.
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -114,8 +126,8 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     // "continue setup" are not repeated there.
     if (!machine && !dashboard) { el("h2", tr("heading")); el("p", tr("lead")); }
     if (message) { const alert = el("p", errorText(message)); alert.setAttribute("role", "alert"); }
-    if (!view) { button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
-    for (const backend of view.selected) {
+    if (!view) { if (!dialog) button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
+    for (const backend of dialog && focus ? view.selected.filter(b => b === focus) : view.selected) {
       const card = el("section"); card.dataset.backend = backend;
       el("h3", name(backend), card);
       const state = view.states[backend], pending = view.pending.includes(backend), skipped = view.skipped.includes(backend);
@@ -158,9 +170,9 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
           await perform({ operation: "start", backend, relogin });
         });
       }
-      if (pending && !skipped && !machine) button(card, tr("later"), () => perform({ operation: "skip", backend }));
+      if (pending && !skipped && !machine && !dialog) button(card, tr("later"), () => perform({ operation: "skip", backend }));
     }
-    button(root, tr("check"), () => perform({ operation: "refresh" }));
+    if (!dialog) button(root, tr("check"), () => perform({ operation: "refresh" }));
     if (view.ready && !machine && !dashboard) el("p", tr("ready"));
   }
   async function poll() {
