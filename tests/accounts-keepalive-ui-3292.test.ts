@@ -100,6 +100,24 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     expect(posts.length).toBe(1);
     expect(reads).toBe(before);
   });
+  it("an answer after the row is gone (the page left) shows no toast and reads nothing again (#3313 review P3)", async () => {
+    const T = await import("/assets/ui-toast.js");
+    const K = await import("/ui/js/accounts-keepalive.js");
+    const { useState } = await import("/assets/app-html.js");
+    let hide: () => void = () => {}, saved = 0, release: (v: unknown) => void = () => {};
+    (globalThis as any).fetch = (url: string, init?: { method?: string }) => init?.method === "POST" ? new Promise(r => { release = r; }) : fetchFake(url, init as never);
+    const row = { backend: "codex", profile: null, scope: { kind: "host" }, keepAlive: { enabled: false } };
+    function Host() { const [shown, set] = useState(true); hide = () => set(false); return h("div", {}, shown ? h(K.KeepAliveControl, { row, onSaved: () => { saved++; } }) : null, h(T.Toasts, {})); }
+    await p.mount(h(Host, {})); await settle(4);
+    const box = p.root.querySelector(".s-account-keepalive input"); box.checked = true; fire(box, "change"); await settle(2);
+    const texts = () => [...p.root.querySelectorAll(".toast")].map((t: any) => t.textContent);
+    const before = texts();
+    hide(); await settle(2);
+    release({ ok: true, status: 200, json: async () => ({}) }); await settle(6);
+    expect(texts().filter(x => !before.includes(x))).toEqual([]);
+    expect(saved).toBe(0);
+    (globalThis as any).fetch = fetchFake;
+  });
   it("Traditional Chinese, and its stylesheet linked once", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();

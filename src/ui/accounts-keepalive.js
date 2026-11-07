@@ -5,7 +5,7 @@
 //   app-server, no model request.
 // - Claude Code only, once switched on: allow one tiny request on the smallest model when that check did not renew it.
 // - What it knows: when the sign-in ends (Claude Code: a fixed date renewing cannot move), and the last check's result.
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 
@@ -64,12 +64,16 @@ export async function saveKeepAlive(row, enabled, fallback, fetchImpl = fetch) {
 export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
   const k = row && row.keepAlive;
   const [busy, setBusy] = useState(false);
-  useEffect(() => { linkKeepAliveCss(); }, []);
+  // #3313 review (web-claude P3): an answer that arrives after the row is gone (the person left the page) says nothing
+  // and reads nothing again.
+  const live = useRef(true);
+  useEffect(() => { live.current = true; linkKeepAliveCss(); return () => { live.current = false; }; }, []);
   if (!k) return null;
   const save = async (enabled, fallback) => {
     if (busy) return;
     setBusy(true);
     const ok = await saveKeepAlive(row, enabled, fallback);
+    if (!live.current) return;
     setBusy(false);
     toast(ok ? tk(enabled ? "on" : "off") : tk("failed"), ok);
     if (ok && typeof onSaved === "function") await onSaved();
