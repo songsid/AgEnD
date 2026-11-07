@@ -38,7 +38,7 @@ export function hubGroupsHref(webOrigin) {
   try { const u = new URL(String(webOrigin || "")); return u.protocol === "https:" && u.origin === String(webOrigin).replace(/\/$/, "") ? `${u.origin}/ui/hub/admin?view=groups` : null; } catch { return null; }
 }
 function GroupPermissionsRow({ href }) {
-  return html`<section class="card s-group" id="hub-group-permissions"><h3>${hubSectionText("groupsTitle")} <span class="tag">${hubSectionText("experimental")}</span></h3>
+  return html`<section class="card s-group" id="hub-group-permissions"><h3>${hubSectionText("groupsTitle")} <span class="tag warn">${hubSectionText("experimental")}</span></h3>
     <p class="note">${hubSectionText("groupsHint")}</p>
     <div class="s-row"><a class="btn btn-sm" href=${href} target="_blank" rel="noopener noreferrer">${hubSectionText("groupsOpen")}</a></div></section>`;
 }

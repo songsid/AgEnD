@@ -127,7 +127,9 @@ try {
     await d.page.screenshot({ path: shot(`${tag}-editor`), fullPage: true });
     await d.page.locator(".hub-group-row").first().locator("input[type=checkbox]").nth(1).check();
     await d.page.waitForSelector(".hub-groups-preview .btn-primary", { timeout: 10000 });
-    await d.page.screenshot({ path: shot(`${tag}-editor-preview`), fullPage: true });
+    // The panel scrolls inside itself (a full-page capture stops at the window): bring the preview and its Save into view.
+    await d.page.evaluate(`document.querySelector(".hub-groups-preview .btn-primary").scrollIntoView({ block: "end" })`); await d.page.waitForTimeout(200);
+    await d.page.screenshot({ path: shot(`${tag}-editor-preview`) });
     const ed = await d.page.evaluate(`({ rows: document.querySelectorAll(".hub-group-row").length, url: location.pathname + location.search,
       preview: document.querySelector(".hub-groups-preview")?.textContent || "" })`);
     check(`${tag}-editor`, ed.rows === 2 && ed.url === "/ui/hub/admin?view=groups" && /Bo Wu/.test(ed.preview) && /Sales numbers/.test(ed.preview) && !(await overflow(d.page)) && await clean(d),
@@ -157,13 +159,15 @@ try {
     const oldPanel = await b.page.evaluate(`({ welcome: !!document.querySelector(".hub-welcome-page") })`);
     check(`${tag}-old-panel`, !oldPanel.welcome && await clean(b), { oldPanel, errs: b.errs, foreign: b.foreign });
     await b.ctx.close();
-    // 3. An older hub-chat.css with these modules: the welcome is still laid out (its own hub-groups.css).
-    const s = await open(c, "/ui/hub", async (p) => { await contract(p, "full"); await serveOld(["hub-chat.css"])(p); });
+    // 3. Its own stylesheet doesn't arrive (an interrupted load): the welcome still works, plainer — both entries there, chat usable.
+    const s = await open(c, "/ui/hub", async (p) => { await contract(p, "full"); await p.route((u: URL) => u.pathname === "/assets/hub-groups.css", (route: any) => route.fulfill({ status: 404, body: "" })); });
     await signIn(s.page, "bo");
-    await s.page.waitForSelector(".hub-welcome-card", { timeout: 10000 }); await s.page.waitForTimeout(300);
-    const vis = await s.page.evaluate(`[...document.querySelectorAll(".hub-welcome-card")].every((x) => { const r = x.getBoundingClientRect(); return r.width > 200 && r.height > 100; })`);
-    await s.page.screenshot({ path: shot(`${tag}-old-chat-css-welcome`), fullPage: true });
-    check(`${tag}-old-chat-css`, vis && await clean(s), { vis, errs: s.errs, foreign: s.foreign });
+    // Without it a phone keeps hub-chat.css's own landing (the chat list; the side pane hidden): the welcome is there but not drawn.
+    await s.page.waitForSelector(".hub-welcome-card", { timeout: 10000, state: "attached" }); await s.page.waitForTimeout(300);
+    const vis = await s.page.evaluate(`document.querySelectorAll(".hub-welcome-card").length === 2 && !!document.querySelector('.hub-welcome-card[data-entry="chat"] .btn')
+      && (innerWidth >= 900 || !!document.querySelector(".hub-new"))`);
+    await s.page.screenshot({ path: shot(`${tag}-no-groups-css-welcome`), fullPage: true });
+    check(`${tag}-no-groups-css`, vis && s.errs.length === 0 && (await s.csp()).length === 0, { vis, errs: s.errs });
     await s.ctx.close();
   }
 } catch (e) { fail.push(`exception: ${(e as Error).message}`); r.exception = String((e as Error).stack || e).slice(0, 1200); }

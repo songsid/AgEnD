@@ -24,9 +24,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /** #3298 S-89: the prominent entry to Group permissions at the top of Administration (discovery without docs). */
 export function GroupPermissionsCard() {
   const go = (e) => { e.preventDefault(); navigate("/ui/hub/admin?view=groups"); };
-  return html`<section class="card hub-groups-entry" data-entry="group-permissions"><h3>${hg("entryTitle")} <span class="tag">${hg("experimental")}</span></h3>
+  return html`<section class="card hub-groups-entry" data-entry="group-permissions"><h3>${hg("entryTitle")} <span class="tag warn">${hg("experimental")}</span></h3>
     <p class="note">${hg("entryHint")}</p>
-    <div class="s-row"><a class="btn btn-primary" href="/ui/hub/admin?view=groups" onClick=${go}>${hg("entryOpen")}</a></div></section>`;
+    <div class="hub-groups-actions"><a class="btn btn-primary" href="/ui/hub/admin?view=groups" onClick=${go}>${hg("entryOpen")}</a></div></section>`;
 }
 
 export function HubGroupPolicyPage() {
@@ -100,7 +100,7 @@ export function HubGroupPolicyPage() {
     setMsg(r.ok ? { ok: true, text: hg("resumed") } : { ok: false, text: hg(r.code === "conflict" ? "conflict" : "failed") });
     await load();
   };
-  const head = html`<${PageHead} title=${hg("title")} scope=${html`<span class="tag">${hg("experimental")}</span>`} lead=${hg("lead")} />`;
+  const head = html`<${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
   if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><${ErrorState} message=${error} onRetry=${load} /></div></div>`;
   if (!view) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><section class="card"><${Skeleton} variant="rows" lines=${4} /></section></div></div>`;
   const stateKey = state === "enabled" ? "Enabled" : state === "suspended" ? "Suspended" : "Never";
@@ -114,7 +114,7 @@ export function HubGroupPolicyPage() {
       ${view.binding === "repair-required" ? html`<p class="err" role="alert" data-reason="repair">${hg("repair")}</p>` : null}
       ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
       ${!policy ? null : html`<section class="card hub-groups-state"><h3>${hg(`state${stateKey}`)}</h3><p class="note">${hg(`state${stateKey}Hint`)}</p>
-        ${editable ? html`<div class="s-row">${state === "enabled"
+        ${editable ? html`<div class="hub-groups-actions">${state === "enabled"
           ? html`<button type="button" class="btn btn-sm" onClick=${() => setState("suspended")}>${hg("turnOff")}</button>`
           : html`<button type="button" class="btn btn-sm" onClick=${() => setState("enabled")}>${hg("turnOn")}</button>`}</div>` : null}
       </section>
@@ -139,7 +139,7 @@ export function HubGroupPolicyPage() {
           : html`${pv.adminLosesChat ? html`<p class="err" role="alert">${hg("adminLosesChat")}</p>` : null}
             ${list(pv.losingActions, hg("losingActions"))}${list(pv.losingPublication, hg("losingPublication"))}${list(pv.grandfathered, hg("grandfathered"))}${list(pv.suspendedOnSave || pv.suspended, hg("suspended"))}
             ${!(pv.losingActions || []).length && !(pv.losingPublication || []).length && !(pv.suspendedOnSave || pv.suspended || []).length && !pv.adminLosesChat ? html`<p class="note">${hg("noImpact")}</p>` : null}
-            <div class="s-row"><button type="button" class="btn btn-primary" disabled=${saving} onClick=${save}>${state === "enabled" && policy.state !== "enabled" ? hg("saveOn") : hg("save")}</button></div>`}
+            <div class="hub-groups-actions"><button type="button" class="btn btn-primary" disabled=${saving} onClick=${save}>${state === "enabled" && policy.state !== "enabled" ? hg("saveOn") : hg("save")}</button></div>`}
       </section>` : null}
       ${paused.length ? html`<section class="card hub-groups-paused"><h3>${hg("pausedTitle")}</h3><p class="note">${hg("pausedHint")}</p>
         <div class="hub-rows">${paused.map((row) => html`<div key=${`${row.resource.kind}:${row.resource.id}`} class="s-row hub-row" data-paused=${row.resource.id}>

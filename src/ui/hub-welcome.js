@@ -8,7 +8,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { PageHead } from "/assets/page-head.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
-import { hubClient } from "./hub-client.js";
+import { hubClient, hubName } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
 
 /** Why an entry is unavailable, in the person's words. */
@@ -36,7 +36,7 @@ export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }
     setW(r); setAskable(cat && cat.ok && Array.isArray(cat.askable) ? cat.askable.length : null);
   };
   useEffect(() => { void load(); }, []);
-  const head = html`<${PageHead} title=${hg("welcomeTitle", name || "")} lead=${hg("welcomeLead")} />`;
+  const head = html`<${PageHead} title=${hg("welcomeTitle", name || "")} scope=${hubName() || "Hub"} lead=${hg("welcomeLead")} />`;
   if (error) return html`<div class="col hub-welcome-page">${head}<${ErrorState} message=${hg("unknown")} onRetry=${load} /></div>`;
   if (!w) return html`<div class="col hub-welcome-page">${head}<div class="hub-welcome"><section class="card"><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section></div></div>`;
   const legacy = w.mode === "legacy";
@@ -53,7 +53,7 @@ export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }
       <section class=${`card hub-welcome-card${chatOk ? "" : " is-off"}`} data-entry="chat" aria-disabled=${chatOk ? "false" : "true"}>
         <h3>${hg("chatTitle")}</h3><p class="note">${hg("chatHint")}</p>
         ${chatOk ? html`${askable === 0 ? html`<p class="note" data-welcome="nothing-shared">${hg("chatNone")}</p>` : null}
-            <div class="s-row"><button type="button" class="btn btn-primary" onClick=${onChats}>${hg("chatGo")}</button></div>`
+            <div class="hub-welcome-actions"><button type="button" class="btn btn-primary" onClick=${onChats}>${hg("chatGo")}</button></div>`
           : html`<p class="note">${reasonText(chat, "contactAdmin")}</p>`}
       </section>
       <section class=${`card hub-welcome-card${connectOk ? "" : " is-off"}`} data-entry="connect" aria-disabled=${connectOk ? "false" : "true"}>
