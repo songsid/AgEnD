@@ -20193,7 +20193,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
-        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, null);   // its file changed, whoever is watching: a "needs sign-in" left from before is no longer the answer
+        }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -20352,6 +20355,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
     return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+  }
+
+  /**
+   * A sign-in just finished for this account: look at its Keep sign-in alive setting once now (when it is on), so what the Accounts row says about
+   * "the last check" is not the one from before the sign-in. Never awaited, and never allowed to fail the sign-in's own follow-up.
+   */
+  private keepAliveAfterSignIn(backend: string, profile: string | null): void {
+    if (!isKeepAliveBackend(backend)) return;
+    this.keepAliveService().tick({ only: { backend, profile } })
+      .catch(err => this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"));
   }
 
   /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
@@ -21129,6 +21142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** #1699 part 2: the login just signed in — a profile, or null for the backend's default one. */
     profile: string | null = null,
   ): Promise<PostLoginRecovery> {
+    this.keepAliveAfterSignIn(backend, profile ?? null);
     const woken: string[] = [];
     const restarted: string[] = [];
     const pending: string[] = [];
