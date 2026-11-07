@@ -82,6 +82,29 @@ describe("group permits at message effects", () => {
     w.facts.set(w.asker.objectId, "deny"); expect((await w.ask()).status).toBe(200);
     expect(w.read).not.toHaveBeenCalled(); expect(w.r.db.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
   });
+  it("refuses a fleet/exposure owner mismatch even while groups have never been enabled", async () => {
+    const w = await world({ enable: false });
+    expect((await w.ask()).status).toBe(200);
+    w.r.store.mutate({ at: 100_000, requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.owner-changed", result: "completed" }, s => {
+      s.fleets.find(f => f.id === w.fleetId)!.owner = w.r.admin;
+    });
+    await expect(w.core.groupExposure(w.exposure.id, w.asker, { requestId: randomUUID(), current: () => true })).rejects.toMatchObject({ code: "revoked" });
+    expect((await w.ask()).status).toBe(403);
+    expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_messages").get()).toEqual({ n: 1 });
+    expect(w.read).not.toHaveBeenCalled();
+  });
+  it("refuses an inactive fleet under enabled policy despite active group provenance", async () => {
+    const w = await world();
+    expect((await w.ask()).status).toBe(200);
+    expect(w.resources.read({ kind: "fleet", id: w.fleetId, revision: 1, owner: w.owner })).toMatchObject({ state: "active" });
+    w.r.store.mutate({ at: 100_000, requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.fleet-inactive", result: "completed" }, s => {
+      s.fleets.find(f => f.id === w.fleetId)!.status = "revoked";
+    });
+    await expect(w.core.groupExposure(w.exposure.id, w.asker, { requestId: randomUUID(), current: () => true })).rejects.toMatchObject({ code: "revoked" });
+    expect((await w.ask()).status).toBe(403);
+    expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_messages").get()).toEqual({ n: 1 });
+    expect(w.policy.read().state).toBe("enabled");
+  });
   it("denies an existing grant to a group-less asker, while sign-in and narrowing stay available", async () => {
     const w = await world(); w.facts.set(w.asker.objectId, "deny");
     expect((await w.r.signIn("asker")).status).toBe(200);

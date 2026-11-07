@@ -14,6 +14,7 @@ import type { HubBrowserCertificateControl } from "../../src/hub/browser-certifi
 import type { HubDirectory, HubMemberFrame } from "../../src/hub/types.js";
 import type { DirectoryPerson } from "../../src/hub/directory/index.js";
 import type { HubLinkContext } from "../../src/hub/server.js";
+import type { HubPairingService } from "../../src/hub/pairing.js";
 import { ADMIN, makeTestCerts } from "../support/hub-init-fixtures.js";
 
 export interface PreviewBrowser { cookie: string; csrf: string }
@@ -52,10 +53,10 @@ export async function hubPreviewRig(opts: { preview?: boolean; start?: boolean }
       return p?.eligible ? { eligible: true, person: p.person } : { eligible: false, reason: "disabled" };
     }, close: async () => {},
   };
-  let http!: HubHttp, certificate: HubBrowserCertificateControl | null = null, alive = true;
+  let http!: HubHttp, pairing!: HubPairingService, certificate: HubBrowserCertificateControl | null = null, alive = true;
   const webRequests: string[] = [];
   const factory = createHubServerFactory({ home, components: { http: async () => ({ migrations: HUB_HTTP_MIGRATIONS,
-    createHubHttp: deps => { const entry = http = createHubHttp(deps, hubTxDatabase); return { ...entry,
+    createHubHttp: deps => { pairing = deps.pairing; const entry = http = createHubHttp(deps, hubTxDatabase); return { ...entry,
       handle: (req, res) => { webRequests.push(req.url ?? ""); return entry.handle(req, res); } }; } }) },
     createDirectory: () => directory, report: () => {}, log: () => {},
     browserCertificateReady: control => { certificate = control; return () => { certificate = null; }; } });
@@ -85,9 +86,19 @@ export async function hubPreviewRig(opts: { preview?: boolean; start?: boolean }
   };
   const htmlWorld = async (html: string) => {
     const owner = await signIn("owner"), asker = await signIn("asker"), other = await signIn("other");
-    const ownerKey = people.get("owner")!.person.key, fleetId = randomUUID();
-    const link: HubLinkContext = { fleetId, owner: ownerKey, linkEpoch: 1, features: new Set(["welcome-caps-v1", "attachments-v1"]), current: () => alive };
-    const frame = <T extends string, P>(type: T, payload: P) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: 1, payload });
+    const admin = await signIn("admin"), offer = await call(admin, "POST", "/hub/v1/admin/pairings", { login: "owner" });
+    if (offer.status !== 200) throw Error(`pairing offer failed: ${offer.status} ${offer.text}`);
+    const pending = pairing.pair({ code: offer.json.code });
+    for (const [browser, path] of [[owner, `/hub/v1/pairings/${pending.pairingId}/confirm`], [admin, `/hub/v1/admin/pairings/${pending.pairingId}/approve`]] as const) {
+      const confirmed = await call(browser, "POST", path, { fingerprint: pending.fingerprint });
+      if (confirmed.status !== 200) throw Error(`pairing confirmation failed: ${confirmed.status} ${confirmed.text}`);
+    }
+    const claimed = await pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret });
+    if (claimed.status !== "approved") throw Error("paired fixture fleet not approved");
+    const binding = await pairing.connect(claimed.credential), fleetId = binding.fleetId, ownerKey = binding.owner;
+    const link: HubLinkContext = { fleetId, owner: ownerKey, linkEpoch: binding.linkEpoch, features: new Set(["welcome-caps-v1", "attachments-v1"]),
+      current: () => alive && pairing.bindingCurrent(fleetId, binding.generation, binding.revocationVersion) };
+    const frame = <T extends string, P>(type: T, payload: P) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: link.linkEpoch, payload });
     const exposureId = randomUUID();
     await http.receive(frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId, owner: ownerKey, displayName: "Atlas", revision: 1,
       state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }) as HubMemberFrame & { type: "exposure.snapshot" }, link);
