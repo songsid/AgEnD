@@ -68,6 +68,9 @@ describe("group-policy real LDAPS listener smoke", () => {
       expect(await resources.check(r, ctx)).toMatchObject({ outcome: "held" }); expect(resources.read(r)).toEqual(before);
       peer.state.memberships = Array.from({ length: 257 }, (_, n) => `${String(n).padStart(8, "0")}-1111-4111-8111-111111111111`);
       expect(await resources.check(r, ctx)).toMatchObject({ outcome: "held" }); expect(resources.read(r)).toEqual(before);
+      // Last-group removal was unknown, so no suspension/resume obligation existed on rejoin.
+      peer.state.memberships = [GROUP_A];
+      expect(await resources.check(r, ctx)).toMatchObject({ outcome: "allow" }); expect(resources.read(r)).toEqual(before);
       peer.state.memberships = [GROUP_B];
       expect(await resources.check(r, ctx)).toMatchObject({ outcome: "deny", decision: { authoritative: true } });
       expect(resources.read(r)).toMatchObject({ state: "suspended" });
