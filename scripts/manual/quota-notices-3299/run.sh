@@ -36,7 +36,7 @@ unshare -Urn bash -eu -c '
     HOME="$RIG_ROOT/home" CODEX_HOME="$RIG_ROOT/codex" MOCK_KEY=fixture AGEND_HOME="$RIG_ROOT/home" timeout 60 "$CODEX_BIN" exec --skip-git-repo-check "Read get_usage and summarize the remaining weekly quota." </dev/null > "$OUT/$leg.log" 2>&1
   done
 '
-cp "$RIG_ROOT/dispatch.jsonl" "$RIG_ROOT/calls.jsonl" "$RIG_ROOT/api.jsonl" "$RIG_ROOT/quota-notices.json" "$OUT/"
+cp "$RIG_ROOT/dispatch.jsonl" "$RIG_ROOT/calls.jsonl" "$RIG_ROOT/api.jsonl" "$RIG_ROOT/tools.jsonl" "$RIG_ROOT/quota-notices.json" "$OUT/"
 test ! -s "$RIG_ROOT/errors.log"
 test "$(wc -l < "$OUT/dispatch.jsonl")" -eq 1
 test "$(wc -l < "$OUT/calls.jsonl")" -eq 2
