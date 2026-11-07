@@ -326,6 +326,15 @@ export class LoginController {
   /** A session, or a public-link start still getting its cloudflared (cancellable either way). */
   isActive(): boolean { return this.active !== null || this.pendingTunnelStart !== null; }
   get activeBackend(): string | null { return this.active?.backend ?? null; }
+  /**
+   * #3212 PR 2: whether a sign-in for this backend's `profile` (null: its default login) is running — or one for this
+   * backend is still starting (its public link coming) and its profile is not known yet. Remove refuses while it is.
+   */
+  signingIn(backend: string, profile: string | null): boolean {
+    if (this.pendingTunnelStart?.backend === backend) return true;
+    const a = this.active;
+    return !!a && a.backend === backend && (a.profile ?? null) === profile;
+  }
 
   /**
    * Start a web-terminal login. Returns a status line, or null when the

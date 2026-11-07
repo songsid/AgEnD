@@ -265,7 +265,7 @@ import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_C
 import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeInstallService } from "./runtime-install.js";
-import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY, validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
@@ -471,6 +471,7 @@ import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome,
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -19962,8 +19963,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * usage is the usage panel's cached read (never forced), given at most `usageWaitMs` before the view is sent without it.
    */
   async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
-    const fleet = this.fleetConfig;
-    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
     this.refreshSignInIdentities();
     const targets = this.backendSignInTargets();
     const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
@@ -19980,15 +19979,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       diskProfiles.set(backend, rows);
     }
-    // Host agents only: an agent on a paired Windows computer runs on that computer's accounts (its own scope, later).
-    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
-      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
-    const classic = readClassicBindings(this.dataDir).map(b => {
-      const backend = b.backend ?? defaultBackend;
-      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
-    });
-    const fleetDefaults = new Map<string, string>();
-    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    const { agents, classic, fleetDefaults } = this.accountUses();
     // Weekly usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
@@ -20005,6 +19996,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     } catch { /* the view without usage */ }
     return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+  }
+
+  /**
+   * Who uses which account: host agents (an agent on a paired Windows computer runs on that computer's accounts — its
+   * own scope), ClassicBot rooms and the fleet default per CLI, each with its effective profile (null: the default sign-in).
+   */
+  private accountUses(): { agents: Array<{ name: string; backend: string; profile: string | null }>; classic: Array<{ key: string; backend: string; profile: string | null }>; fleetDefaults: Map<string, string> } {
+    const fleet = this.fleetConfig;
+    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
+    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
+      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
+    const classic = readClassicBindings(this.dataDir).map(b => {
+      const backend = b.backend ?? defaultBackend;
+      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
+    });
+    const fleetDefaults = new Map<string, string>();
+    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    return { agents, classic, fleetDefaults };
+  }
+
+  /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
+  addAccountProfile(backend: string, name: unknown, by: string): AddResult {
+    const { agents, classic, fleetDefaults } = this.accountUses();
+    const configured = new Set<string>();
+    for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
+    const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
+    const result = addAccountProfile(this.dataDir, backend, name, configured);
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /**
+   * #3212 PR 2: Settings → Accounts → Remove. Refused while anything uses it or a sign-in for it runs (the login controller,
+   * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
+   * The fleet log records who removed which backend's profile — never what was in it.
+   */
+  removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): RemoveResult {
+    const profile = typeof name === "string" ? name : "";
+    const { agents, classic, fleetDefaults } = this.accountUses();
+    const users = {
+      agents: agents.filter(a => a.backend === backend && a.profile === profile).map(a => a.name),
+      classic: classic.filter(c => c.backend === backend && c.profile === profile).map(c => c.key),
+      fleetDefault: fleetDefaults.get(backend) === profile,
+    };
+    const held = this.loginWindow.current;
+    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
+      || (held?.backend === backend && !this.loginController?.activeBackend);
+    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn });
+    if (result.ok) this.logger.info({ backend, profile, by }, "Credential profile removed from Settings → Accounts");
+    else this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: result.error }, "Credential profile removal refused");
+    return result;
   }
 
   backendSignInTargets(): SignInTarget[] {

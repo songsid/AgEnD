@@ -404,6 +404,9 @@ export interface WebApiContext {
   readonly daemons: Map<string, unknown>;
   /** #3212: the Accounts view (accounts-view.ts), for the local admin session only. */
   accountsView?(): Promise<unknown>;
+  /** #3212 PR 2: + Add account / Remove (accounts-profiles.ts); `by` is the session's label, for the fleet log. */
+  addAccountProfile?(backend: string, name: unknown, by: string): { ok: true } | { ok: false; error: string; clash?: string };
+  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string): { ok: true } | { ok: false; error: string; users?: unknown };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
@@ -1194,6 +1197,57 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
       json(res, 200, { message: await logins.cancel() });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
+ * #3212 PR 2: Settings → Accounts — `POST /ui/accounts/<backend>` `{ name }` adds a named account (a credential profile's
+ * folder); `DELETE /ui/accounts/<backend>/<name>` `{ confirm: <name> }` removes one (accounts-profiles.ts: every refusal
+ * deletes nothing). The fleet's local admin session only, as the sign-in routes: never the CLI's header token, a guest,
+ * a read session, the public link or the gateway — refused before the body is read, and again after it.
+ */
+const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
+  backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, signing_in: 409, missing: 404,
+  unsafe: 409, default_home: 409, failed: 500,
+};
+function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  const add = method === "POST" ? /^\/ui\/accounts\/([a-z][a-z0-9-]{0,31})$/.exec(path) : null;
+  const remove = method === "DELETE" ? /^\/ui\/accounts\/([a-z][a-z0-9-]{0,31})\/([^/]{1,200})$/.exec(path) : null;
+  if (!add && !remove) { json(res, 404, { error: "not_found" }); return true; }
+  if (add ? typeof ctx.addAccountProfile !== "function" : typeof ctx.removeAccountProfile !== "function") { json(res, 404, { error: "not_found" }); return true; }
+  let target = "";
+  if (remove) { try { target = decodeURIComponent(remove[2]!); } catch { json(res, 400, { error: "name" }); return true; } }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "accounts_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "accounts_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "accounts_json" }); return; }
+    if (add) {
+      const parsed = z.strictObject({ name: z.string().max(200) }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
+      const r = ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label);
+      if (r.ok) json(res, 200, { added: parsed.data.name });
+      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}) });
+    } else {
+      const parsed = z.strictObject({ confirm: z.string().max(200) }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
+      const r = ctx.removeAccountProfile!(remove![1]!, target, parsed.data.confirm, now.label);
+      if (r.ok) json(res, 200, { removed: target });
+      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.users ? { users: r.users } : {}) });
+    }
+  })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
 
@@ -2504,6 +2558,7 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
+  if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.

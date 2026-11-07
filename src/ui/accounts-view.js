@@ -15,6 +15,8 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
+import { toast } from "/assets/ui-toast.js";
+import { AddAccountDialog, RemoveAccountDialog, manageWords } from "./accounts-manage.js";   // #3212 PR 2
 
 register("accounts", {
   en: {
@@ -108,13 +110,18 @@ export function accountChoices(view, backend) {
   return { fleetDefault: cli.fleetDefault, rows: cli.rows.filter((r) => r.scope && r.scope.kind === "host" && r.profile) };
 }
 
-/** Settings → Agents → Accounts. `stageAgent(name, inst, patch)` and `stageDefault(backend, profile | null)` stage changes. */
-export function AccountsView({ instances, stageAgent, stageDefault }) {
+/**
+ * Settings → Agents → Accounts. `stageAgent(name, inst, patch)` and `stageDefault(backend, profile | null)` stage changes;
+ * `openAgent(name)` (#3212 PR 2) opens an agent's own dialog, where its Account is chosen (Remove's Move…).
+ */
+export function AccountsView({ instances, stageAgent, stageDefault, openAgent }) {
   const { loaded, failed, view } = useStore(accountsStore);
   // Settings read its data again (after a Save): so does this view.
   useEffect(() => { if (loaded) void refreshAccounts(); }, [instances]);
   const { structured, login } = useStore(signInStore);
   const [move, setMove] = useState(null);           // { cli, row }
+  const [adding, setAdding] = useState(null);       // #3212 PR 2: the card whose + Add account is open
+  const [removing, setRemoving] = useState(null);   // { cli, row }
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
   useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
@@ -127,12 +134,33 @@ export function AccountsView({ instances, stageAgent, stageDefault }) {
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
-    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${(row) => setMove({ cli, row })} stageDefault=${stageDefault} />`)}
+    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${(row) => setMove({ cli, row })} stageDefault=${stageDefault}
+      onAdd=${() => setAdding(cli)} onRemove=${(row) => setRemoving({ cli, row })} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
+    ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => void accountAdded(adding.backend, name)} />` : null}
+    ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
+      onRemoved=${() => void refreshAccounts()} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
   </section>`;
 }
 
-function Card({ cli, running, onMove, stageDefault }) {
+/** After + Add account: the view read again, then Sign in at once where the dashboard can sign it in (else its row shows the host command). */
+async function accountAdded(backend, name) {
+  await refreshAccounts();
+  const v = accountsStore.get().view, cli = v && Array.isArray(v.clis) ? v.clis.find((c) => c.backend === backend) : null;
+  const row = cli ? cli.rows.find((r) => r.scope && r.scope.kind === "host" && r.profile === name) : null;
+  if (row && row.signIn) { toast(manageWords.added(name), true); openSignIn({ backend, profile: name }); }
+  else toast(manageWords.addedHost(name), true);
+}
+/** Remove's Move…: an agent's own dialog (its Account field), or the card's fleet-default selector. */
+function moveUser(backend, user, openAgent) {
+  if (user.kind === "agent" && typeof openAgent === "function") { openAgent(user.name); return; }
+  if (user.kind === "default" && typeof document !== "undefined") {
+    const sel = document.querySelector(`.s-account-card[data-backend="${backend}"] .s-account-default select`);
+    if (sel) { sel.scrollIntoView?.({ block: "center" }); sel.focus(); }
+  }
+}
+
+function Card({ cli, running, onMove, stageDefault, onAdd, onRemove }) {
   const [picked, setPicked] = useState(undefined);   // a staged fleet default, shown until Save reads it back
   useEffect(() => setPicked(undefined), [cli.fleetDefault]);
   const host = cli.rows.filter((r) => r.scope && r.scope.kind === "host");
@@ -140,8 +168,9 @@ function Card({ cli, running, onMove, stageDefault }) {
   for (const r of cli.rows) if (r.scope && r.scope.kind === "machine") { const k = r.scope.id; if (!machines.has(k)) machines.set(k, { scope: r.scope, rows: [] }); machines.get(k).rows.push(r); }
   const signedIn = host.filter((r) => r.profile && r.state !== "not_signed_in");
   return html`<div class="s-account-card" data-backend=${cli.backend}>
-    <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong></div>
-    <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} />`)}</div>
+    <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
+      ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${onAdd}>${manageWords.add()}</button>` : null}</div>
+    <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} onRemove=${onRemove} />`)}</div>
     ${[...machines.values()].map((m) => html`<div class="s-account-machine"><p class="note">${tx("machine", m.scope.name)}${m.scope.readOnlyReason ? ` — ${m.scope.readOnlyReason}` : ` — ${tx("machineReadOnly")}`}</p>
       ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} readOnly=${true} />`)}</div>`)}
     ${cli.profiles && typeof stageDefault === "function" ? html`<label class="field s-account-default"><span>${tx("fleetDefault", cliLabel(cli.backend))}</span>
@@ -153,7 +182,7 @@ function Card({ cli, running, onMove, stageDefault }) {
   </div>`;
 }
 
-function Row({ cli, row, onMove, running = false, readOnly = false }) {
+function Row({ cli, row, onMove, onRemove, running = false, readOnly = false }) {
   const who = identityText(row.identity);
   const u = row.usage;
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
@@ -166,6 +195,7 @@ function Row({ cli, row, onMove, running = false, readOnly = false }) {
     ${readOnly ? null : html`<span class="s-actions">
       ${row.signIn ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => openSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
       ${cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
+      ${row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
     </span>`}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${tx("hostCommand")}</summary><p class="note">${tx("hostCommandHint")}</p><p class="s-host-cli-command"><code>${row.hostCommand}</code></p></details>` : null}
   </div>`;
