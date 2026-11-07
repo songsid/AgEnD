@@ -11,6 +11,8 @@ import { navigate } from "/assets/app-nav.js";
 import { hubClient, hubName } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
 
+const FLEET_STATUS = { active: "fleetActive", suspended: "fleetPaused", revoked: "fleetRevoked", unknown: "fleetUnknown" };
+
 /** Why an entry is unavailable, in the person's words. */
 export function reasonText(entry, fallback) {
   if (!entry) return hg(fallback);
@@ -59,7 +61,7 @@ export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }
       <section class=${`card hub-welcome-card${connectOk ? "" : " is-off"}`} data-entry="connect" aria-disabled=${connectOk ? "false" : "true"}>
         <h3>${hg("connectTitle")}</h3><p class="note">${hg("connectHint")}</p>
         ${connectOk && max > 0 ? html`<p class="note" data-welcome="fleets">${hg("connectFleets", fleets.filter((f) => f.status !== "revoked").length, max)}</p>` : null}
-        ${fleets.length ? html`<ul class="hub-welcome-fleets">${fleets.map((f) => html`<li key=${f.id}>${f.label || f.id} <span class=${`tag${f.status === "active" ? " ok" : ""}`}>${f.status}</span></li>`)}</ul>` : null}
+        ${fleets.length ? html`<ul class="hub-welcome-fleets">${fleets.map((f) => html`<li key=${f.id}>${f.label || f.id} <span class=${`tag${f.status === "active" ? " ok" : f.status === "suspended" || f.status === "unknown" ? " warn" : ""}`} data-fleet-status=${f.status}>${hg(FLEET_STATUS[f.status] || "fleetUnknown")}</span></li>`)}</ul>` : null}
         ${legacy ? html`<p class="note">${hg("connectManual")}</p>`
           : !connectOk ? html`<p class="note">${chat.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
           : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`

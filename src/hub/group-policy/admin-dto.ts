@@ -106,7 +106,7 @@ export type WelcomeEntry = { readonly state: "allow" | "deny" | "unknown"; reado
 export type GroupWelcomeResponse = {
   readonly ok: true; readonly v: 1; readonly mode: "legacy" | "enabled" | "suspended";
   readonly chat: WelcomeEntry; readonly publish: WelcomeEntry;
-  readonly connect: WelcomeEntry & { readonly maxFleets: number; readonly fleets: readonly { readonly id: string; readonly label: string | null; readonly status: "active" | "suspended" | "revoked" }[] };
+  readonly connect: WelcomeEntry & { readonly maxFleets: number; readonly fleets: readonly { readonly id: string; readonly label: string | null; readonly status: "active" | "suspended" | "revoked" | "unknown" }[] };
 };
 
 /** Server-bound context of an admin call: the control itself calls `requireAdmin` (a supplied actor alone cannot re-authenticate). */

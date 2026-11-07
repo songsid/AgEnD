@@ -87,27 +87,56 @@ describe("the welcome projection", () => {
   const fleets = [{ id: "f1", owner: user, status: "active", label: "Desk" }, { id: "f2", owner: other, status: "active", label: "Someone else's" }, { id: "f3", owner: user, status: "revoked" }];
   it("is about the session's own person only, with only outcome, reason, limit and own fleets — no GUID or DN", async () => {
     const f = storeFixture(); f.enable();
-    const welcome = createHubGroupWelcome({ policy: () => f.store, ready: () => true, fleets: () => fleets });
+    const welcome = createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => fleets });
     const w = await welcome({ requestId: "r", current: () => true, requirePerson: async () => user });
     expect(w).toEqual({ ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "deny", reason: "no-group" },
       connect: { state: "allow", reason: "group", maxFleets: 2, fleets: [{ id: "f1", label: "Desk", status: "active" }, { id: "f3", label: null, status: "revoked" }] } });
     expect(JSON.stringify(w)).not.toMatch(new RegExp(`${group}|CN=`));
   });
-  it("never enabled, or a binding that needs repair: legacy (today's behaviour), no directory read", async () => {
-    for (const ready of [true, false]) {
+  it("never enabled (an intact binding, or a ready store that says so): legacy (today's behaviour), no directory read", async () => {
+    for (const readiness of ["ready", "never-enabled"] as const) {
       const f = storeFixture();
-      const w = await createHubGroupWelcome({ policy: () => f.store, ready: () => ready, fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
+      const w = await createHubGroupWelcome({ policy: () => f.store, readiness: () => readiness, fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
       expect(w.mode).toBe("legacy"); expect(f.read).not.toHaveBeenCalled();
     }
   });
-  it("a binding that needs repair: legacy, and the strict store is never constructed (Fable #3372 F2 E2)", async () => {
+  it("a binding that needs repair or can't be read: unavailable (503), never a legacy allow, and the strict store is never constructed (Cairn #3372; Fable F2 E2)", async () => {
     const policy = vi.fn(() => { throw new Error("constructed a mismatched strict store"); });
-    const w = await createHubGroupWelcome({ policy, ready: () => false, fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
-    expect(w.mode).toBe("legacy"); expect(policy).not.toHaveBeenCalled();
+    const p = createHubGroupWelcome({ policy, readiness: () => "unavailable", fleets: () => [] })({ requestId: "r", current: () => true, requirePerson: async () => user });
+    await expect(p).rejects.toMatchObject({ code: "unavailable" }); expect(policy).not.toHaveBeenCalled();
+  });
+  describe("each own active fleet's paused state (S-88 resourceState)", () => {
+    const mine = [{ id: "f1", owner: user, status: "active", label: "Desk", generation: 4 }, { id: "f2", owner: user, status: "active", label: "Lab", generation: 7 },
+      { id: "f3", owner: user, status: "active", label: "Old", generation: 2 }, { id: "f4", owner: user, status: "revoked", generation: 1 },
+      { id: "f5", owner: user, status: "active", label: "No generation" }, { id: "f6", owner: other, status: "active", generation: 9 }];
+    const states: Record<string, () => Promise<{ state: string } | null>> = {
+      f1: async () => ({ state: "suspended" }), f2: async () => null, f3: async () => { throw new Error("unavailable"); }, f5: async () => ({ state: "active" }), f6: async () => ({ state: "suspended" }) };
+    it("suspended → paused, null (not enrolled) → active, unreadable → unknown; asks the exact resource; never a revoked or someone else's fleet", async () => {
+      const f = storeFixture(); f.enable();
+      const fleetState = vi.fn((r: any) => states[r.id]!());
+      const w = await createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => mine, fleetState })({ requestId: "r", current: () => true, requirePerson: async () => user });
+      expect(w.connect.fleets.map((x) => [x.id, x.status])).toEqual([["f1", "suspended"], ["f2", "active"], ["f3", "unknown"], ["f4", "revoked"], ["f5", "unknown"]]);
+      expect(fleetState.mock.calls.map((c) => c[0])).toEqual([{ kind: "fleet", id: "f1", revision: 4, owner: user }, { kind: "fleet", id: "f2", revision: 7, owner: user }, { kind: "fleet", id: "f3", revision: 2, owner: user }]);
+    });
+    it("a state it doesn't know is unknown, never active", async () => {
+      const f = storeFixture(); f.enable();
+      const w = await createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => [mine[0]!], fleetState: async () => ({ state: "repairing" }) })({ requestId: "r", current: () => true, requirePerson: async () => user });
+      expect(w.connect.fleets[0]!.status).toBe("unknown");
+    });
+    it("legacy asks nothing (nothing is paused by a policy that was never on)", async () => {
+      const f = storeFixture(); const fleetState = vi.fn(async () => ({ state: "suspended" }));
+      const w = await createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => mine, fleetState })({ requestId: "r", current: () => true, requirePerson: async () => user });
+      expect(w.mode).toBe("legacy"); expect(fleetState).not.toHaveBeenCalled(); expect(w.connect.fleets.find((x) => x.id === "f1")!.status).toBe("active");
+    });
+    it("a session that ended during a fleet's read answers nothing", async () => {
+      const f = storeFixture(); f.enable(); let live = true;
+      const p = createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => [mine[0]!], fleetState: async () => { live = false; return null; } })({ requestId: "r", current: () => live, requirePerson: async () => user });
+      await expect(p).rejects.toMatchObject({ code: "unavailable" });
+    });
   });
   it("a session that ended during the read answers nothing", async () => {
     const f = storeFixture(); f.enable(); let live = true;
-    const welcome = createHubGroupWelcome({ policy: () => f.store, ready: () => true, fleets: () => [] });
+    const welcome = createHubGroupWelcome({ policy: () => f.store, readiness: () => "ready", fleets: () => [] });
     await expect(welcome({ requestId: "r", current: () => live, requirePerson: async () => { live = false; return user; } })).rejects.toThrow();
   });
 });

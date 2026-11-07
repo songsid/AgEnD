@@ -84,6 +84,13 @@ describe("the welcome: shaped by what the person may do now", () => {
     const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
     expect(pg.root.querySelector('[data-welcome="limit"]')).not.toBe(null);
   });
+  it("each fleet's state in words: paused and can't-be-checked are marked, never shown as active", async () => {
+    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 4, fleets: [
+      { id: "f1", label: "Desk", status: "active" }, { id: "f2", label: "Lab", status: "suspended" }, { id: "f3", label: "Old", status: "revoked" }, { id: "f4", label: "Far", status: "unknown" }] } }) });
+    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+    const tags = [...pg.root.querySelectorAll("[data-fleet-status]")].map((t: any) => [t.getAttribute("data-fleet-status"), text(t), t.getAttribute("class")]);
+    expect(tags).toEqual([["active", "Active", "tag ok"], ["suspended", "Paused", "tag warn"], ["revoked", "Revoked", "tag"], ["unknown", "Can't be checked right now", "tag warn"]]);
+  });
   it("the directory didn't answer: 'can't be checked right now' with Retry — never a cached yes", async () => {
     let n = 0;
     const f = fake({ welcome: async () => { n++; return { ok: true, v: 1, mode: "enabled", chat: { state: "unknown" }, publish: { state: "unknown" }, connect: { state: "unknown", maxFleets: 0, fleets: [] } }; } });
