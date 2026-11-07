@@ -80,7 +80,7 @@ describe("CI admission and cancellation", () => {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
       encoding: "utf8", env: { PATH: process.env.PATH, CHANGELOG: "success",
         ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
-        HUB_DIRECTORY: "success", PWSH: "success", DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
+        HUB_DIRECTORY: "success", PWSH: "success", DOCS_TESTS: "success", UI_GATE: "success", SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
   }
@@ -95,6 +95,11 @@ describe("CI admission and cancellation", () => {
   });
   it.each(["failure", "cancelled", "skipped", "", "unknown"])("a %s Linux smoke cannot make build green", result => {
     expect(() => runAggregate(result)).toThrow();
+  });
+  // Fleet decision "AgEnD UI gate": the UI gate is part of the required build check.
+  it("requires the UI gate: build needs ui-gate, and a failed, cancelled or skipped gate cannot make build green", () => {
+    expect(ci.jobs.build.needs).toContain("ui-gate");
+    for (const r of ["failure", "cancelled", "skipped", ""]) expect(() => runAggregate("success", { UI_GATE: r }), r || "(empty)").toThrow();
   });
   it("a failed SHA-pin guard cannot make build green, even for docs-only", () => {
     expect(() => runAggregate("success", { DOCS_ONLY: "true", ACTIONS_PINNED: "failure" })).toThrow();
