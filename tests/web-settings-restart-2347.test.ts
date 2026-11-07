@@ -110,10 +110,29 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect([!!line(), !!button("Restart now"), line()?.textContent.includes("public link")]).toEqual([true, true, false]);
   });
 
-  it("with no Settings job to carry it (a hand edit) it says how to restart on the host", async () => {
-    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+  it("S-92: with no Settings job to carry it (a hand edit) it offers Restart now too: one click and the restart's own dialog; the server makes the job, which is followed", async () => {
+    let restarted = false;
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: restarted ? { pending: false } : { ...PENDING, job_id: null } } : undefined));
+    routes.push(r => (r.url === "/api/settings/apply/made1" ? { body: { ...JOB(restarted ? "done" : "running"), id: "made1" } } : undefined));
+    routes.push(r => (r.method === "POST" && r.url === "/api/settings/restart-fleet" ? (restarted = true, { status: 202, body: { job_id: "made1", restarting: true } }) : undefined));
     await mountShell();
-    expect([!!button("Restart now"), line()?.textContent.includes("agend restart")]).toEqual([false, true]);
+    expect([!!button("Restart now"), /agend restart|on the host/.test(line()?.textContent ?? "")]).toEqual([true, false]);
+    await pressAndAnswer("Restart now", false);
+    expect(posts()).toEqual([]);                                          // Cancel restarts nothing
+    await pressAndAnswer("Restart now", true);
+    await vi.waitFor(() => expect(posts()).toEqual(["/api/settings/restart-fleet"]));
+    const sent = reqs.find(r => r.url === "/api/settings/restart-fleet")!;
+    // The confirmation is the request's value — the person typed nothing; no job id: the pending changes' own restart.
+    expect([sent.body.pending, sent.body.job_id, sent.body.confirm, typeof sent.key]).toEqual([true, undefined, "restart-agend", "string"]);
+    await vi.waitFor(() => expect(app.appStore.get().settingsOp?.job?.id).toBe("made1"));
+    await vi.waitFor(() => expect(line()).toBeNull());
+  });
+
+  it("a page that cannot restart (no runner) says where else to — and offers no button", async () => {
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+    app.appStore.set({ restartRunner: null });
+    await mountShell();
+    expect([!!button("Restart now"), !!line()?.querySelector(".muted:not(.restart-keys)")]).toEqual([false, true]);
   });
 
   it("a refused restart says why and keeps the line", async () => {

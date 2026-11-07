@@ -816,7 +816,8 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ * offers nothing. S-92 (#3326 D1): with no Settings job to carry the restart (a hand edit) it offers Restart now too —
+ * the server makes the job (`restartRunner(null)`); the line saying where else to restart is for a page that cannot.
  */
 function RestartLine() {
   const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
@@ -828,7 +829,7 @@ function RestartLine() {
   if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
-  const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  const canRestart = typeof restartRunner === "function";
   const restart = async () => {
     if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
@@ -844,7 +845,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${!canRestart ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }

@@ -694,6 +694,8 @@ const CANCEL_BTN_MAX_LIFETIME_MS = 24 * 60 * 60_000;
 const STALE_CANCEL_CLICK_COOLDOWN_MS = 10_000;
 /** Orphaned-button ledger, swept at startup. Lives in the fleet data dir. */
 const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
+/** S-92: the restart marker's target for a web-only fleet's Settings restart (no chat message carries its progress). */
+const WEB_RESTART_TARGET = "web-settings";
 /**
  * How often the cancel button's text is refreshed with elapsed working time.
  *
@@ -9641,37 +9643,55 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(threadId ? { threadId } : {}),
       messageId,
     };
+    return this.launchTrackedFullRestart(target, text => this.reportFullRestartFailure(adapter, chatId, threadId, messageId, text),
+      () => this.startUpdateProgressMonitor(adapter));
+  }
+
+  /**
+   * S-92: the same tracked reload for a web-only fleet's Settings restart — no chat message to carry its progress: the
+   * marker names the web (WEB_RESTART_TARGET), a refusal is a fleet Notice, and the next fleet says it is back as one.
+   */
+  private async requestWebFullRestart(): Promise<boolean> {
+    const target = { adapterId: WEB_RESTART_TARGET, chatId: WEB_RESTART_TARGET, messageId: `settings-${Date.now()}` };
+    return this.launchTrackedFullRestart(target, async text => { this.recordWebNotice("fleet", text); }, null);
+  }
+
+  private async launchTrackedFullRestart(
+    target: { adapterId: string; chatId: string; threadId?: string; messageId: string },
+    fail: (text: string) => Promise<void>,
+    startMonitor: (() => void) | null,
+  ): Promise<boolean> {
     // This check is synchronous with the marker write below. A second command
     // cannot slip through between them on Node's event loop and replace the
     // first command's delivery target or launch a competing restart helper.
     if (this.shuttingDown || isUpdateInProgress(this.dataDir)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart refused because another planned restart is active");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart refused because another planned restart is active");
+      await fail(t("restart.full_busy"));
       return false;
     }
     if (!persistFullRestartProgress(this.dataDir, target)) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker could not be persisted — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker could not be persisted — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     const ownedMarker = readUpdateProgress(this.dataDir);
     if (!ownedMarker) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker disappeared after persistence — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker disappeared after persistence — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     this.lastUpdateProgressText = null;
-    this.startUpdateProgressMonitor(adapter);
+    startMonitor?.();
     await this.waitForFullRestartIdleGrace();
 
     // An update can begin while the idle wait yields. Never launch a second
     // process replacement against a marker we no longer own.
     if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart superseded during idle wait — reload refused");
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart superseded during idle wait — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      await fail(t("restart.full_busy"));
       return false;
     }
 
@@ -9681,7 +9701,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Full restart helper failed to spawn — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
@@ -10441,7 +10461,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
-        if (pendingUpdateProgress) {
+        if (pendingUpdateProgress && pendingUpdateProgress.progress.target.adapterId !== WEB_RESTART_TARGET) {
           const saved = pendingUpdateProgress.progress.target;
           const target: RestartProgressTarget = {
             adapter: this.adapters.get(saved.adapterId),
@@ -10634,6 +10654,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
+    } else if (pendingProgressOperation === "full-restart" && pendingUpdateProgress?.progress.target.adapterId === WEB_RESTART_TARGET) {
+      // S-92: a web-only fleet's Settings restart was announced as a fleet Notice — that it is back is one too.
+      const { createRequire } = await import("node:module");
+      const version = createRequire(import.meta.url)("../package.json").version ?? "unknown";
+      this.recordWebNotice("fleet", t("restart.settings_done", version));
     }
     // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
     // quick link — Settings shows it on this computer).
@@ -25501,7 +25526,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * audit notice — and only once all of that holds is the attempt written to
    * disk and fsynced, before anything spawns.
    */
-  async requestSettingsSelfRestart(jobId: string, key: string): Promise<SelfRestartResult> {
+  async requestSettingsSelfRestart(requestedJobId: string | null, key: string): Promise<SelfRestartResult> {
     // A retry after a lost response must not restart a second time. The key is
     // recorded on the job, which survives the restart it triggers.
     const already = this.applyJobs.findByRestartKey(key);
@@ -25519,6 +25544,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
     }
 
+    // S-92 (#3326 D1): a restart asked for the pending changes themselves (`requestedJobId` null) — the restart notice
+    // with no Settings job behind it (a hand edit of fleet.yaml). Only when a fleet-level restart is pending
+    // (settingsRestartPending, the notice's own test): its newest job carries it, else one is made here to carry it, once
+    // (the next ask finds that one). Everything below is the same path as a Save's restart.
+    let jobId = requestedJobId;
+    if (jobId === null) {
+      // One already asked for is in flight (its row "running"): never a second job, nor a second restart.
+      if (this.applyJobs.all().some(item => item.restart_key && item.targets.some(r => r.target === APPLY_FLEET_TARGET && r.status === "running"))) {
+        return { ok: false, status: 409, error: "a restart is already running" };
+      }
+      const pending = this.settingsRestartPending();
+      if (!pending) return { ok: false, status: 409, error: "no fleet-level change is pending any more" };
+      if (pending.job_id) jobId = pending.job_id;
+      else {
+        const made = this.applyJobs.create(`restart-pending:${key}`, [{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+        this.applyJobs.setTargetStatus(made.id, APPLY_FLEET_TARGET, "restart-required");
+        this.applyJobs.finish(made.id);
+        this.logger.info({ jobId: made.id, keys: pending.keys }, "Settings restart for pending changes with no Settings job: a job now carries it");
+        jobId = made.id;
+      }
+    }
     const job = this.applyJobs.get(jobId);
     const row = job?.targets.find(item => item.target === APPLY_FLEET_TARGET);
     if (!job || !row || row.status !== "restart-required") {
@@ -25567,8 +25613,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the admins are. Refusing when it cannot be posted is the same rule as
     // refusing when the progress marker cannot be written: no untraceable
     // restarts.
-    const notice = await this.postSelfRestartNotice();
-    if (!notice) {
+    // S-92 (leader's ruling, cid-a6-ui-feedback): a web-only fleet has no General to announce it in — its trace is the
+    // dashboard's own fleet Notice (where its admins are) plus the log line below. Every other guard above and below is
+    // the same. A chat fleet is unchanged: General is the trace.
+    const webOnly = this.isWebOnlyFleet();
+    const notice = webOnly ? null : await this.postSelfRestartNotice();
+    if (webOnly) {
+      if (!this.recordWebNotice("fleet", t("restart.settings_triggered"))) {
+        this.logger.error({ jobId }, "Could not record the Settings-triggered restart as a fleet Notice — refusing to restart silently");
+        return { ok: false, status: 503, error: "couldn't record the restart; try again" };
+      }
+      this.logger.info({ jobId, trace: "web-notice" }, "Settings-triggered restart announced as a fleet Notice (web-only fleet)");
+    } else if (!notice) {
       return {
         ok: false,
         status: 409,
@@ -25586,7 +25642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
 
-    const launched = await this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId)
+    const launched = await (notice ? this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId) : this.requestWebFullRestart())
       .catch(err => {
         this.logger.error({ err }, "Settings-triggered self restart failed to launch");
         return false;
