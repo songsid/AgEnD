@@ -10,6 +10,7 @@ import { t, register, lang, onLang } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { closeDialog, shellStore, showDialog } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { toast } from "/assets/ui-toast.js";
 import { mountStructuredSignIns } from "./structured-signin.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
@@ -219,7 +220,9 @@ export function BrowserSignInDialog({ backend, backends, onClose }) {
   const root = useRef(null), close = onClose || closeDialog;
   useEffect(() => {
     let cards, last = "";
-    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", lang, changed: next => {
+    // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
+    const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
+    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", lang, ask, changed: next => {
       if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
       else if (!next.selected.includes(backend)) void cards.addBackend(backend);
       const signature = JSON.stringify([next.login, next.pending]);
@@ -370,3 +373,9 @@ export function SignInList() {
     })}</div>`}
   </section>`;
 }
+
+// Ridge #3321 S01: "Sign in again" — the dashboard's confirmation, titled with the CLI it is for.
+register("signin", {
+  en: { reloginTitle: "Sign in to {0} again", reloginGo: "Sign in again" },
+  "zh-TW": { reloginTitle: "重新登入 {0}", reloginGo: "重新登入" },
+});

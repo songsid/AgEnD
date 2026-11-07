@@ -8,7 +8,7 @@ export const SIGNIN_STRINGS = {
     consoleOnly: "Use the explicit console fallback, or sign in later.", needed: "Sign-in needed", waiting: "Waiting for the CLI…", login: "Login: {0}",
     openProvider: "Open provider sign-in", deviceCode: "Device code:", answerSent: "Answer sent. Waiting for the next screen; it will not be sent twice.",
     cancel: "Cancel sign-in", signIn: "Sign in", signInAgain: "Sign in again", later: "Sign in later", submit: "Submit {0}",
-    relogin: "Sign in again? Kiro will sign out its existing account first.", ready: "You can continue setup.",
+    relogin: "Sign in to {0} again? It signs out its current account first.", reloginReplace: "Sign in to {0} again? The new sign-in replaces the account it uses now.", ready: "You can continue setup.",
     field_code: "Paste the returned code", field_start_url: "Organization Start URL", field_region: "AWS region",
     phase_method: "method", phase_code: "code", phase_start_url: "start URL", phase_region: "region", phase_authorization: "authorization",
     choice_organization: "Your organization", choice_subscription: "Claude subscription",
@@ -42,7 +42,7 @@ export const SIGNIN_STRINGS = {
     consoleOnly: "請改用主控台備援，或稍後登入。", needed: "需要登入", waiting: "等待 CLI 回應…", login: "登入：{0}",
     openProvider: "開啟登入頁", deviceCode: "裝置代碼：", answerSent: "已送出。等待下一個畫面；不會重複送出。",
     cancel: "取消登入", signIn: "登入", signInAgain: "重新登入", later: "稍後登入", submit: "送出{0}",
-    relogin: "要重新登入嗎？Kiro 會先登出目前的帳號。", ready: "可以繼續設定了。",
+    relogin: "要重新登入 {0} 嗎？會先登出目前的帳號。", reloginReplace: "要重新登入 {0} 嗎？新的登入會取代目前使用的帳號。", ready: "可以繼續設定了。",
     field_code: "貼上取得的代碼", field_start_url: "組織的 Start URL", field_region: "AWS 區域",
     phase_method: "選擇方式", phase_code: "代碼", phase_start_url: "Start URL", phase_region: "區域", phase_authorization: "授權",
     choice_organization: "你的組織", choice_subscription: "Claude 訂閱",
@@ -80,7 +80,7 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * so, so the setup page's heading and lead are not repeated; there is no "sign in later" (this is an explicit request); and a sign-in again asks nothing about
  * Kiro (Claude Code's own sign-in replaces the login; it signs nothing out first).
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -144,10 +144,16 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
       } else {
         if (login?.reason && login.reason !== "cancelled") el("p", errorText(login.reason), card);
         const usable = !["antigravity"].includes(backend) && state !== "not_installed";
-        if (usable) button(card, tr(state === "valid" ? "signInAgain" : "signIn"), () => {
+        // Ridge #3321 S01: the question names THIS card's CLI, and says what a sign-in again does to it — only Kiro signs out
+        // first (logoutArgv); Claude Code and Codex sign in again over the account they have. The dashboard passes its own
+        // in-app confirmation (`ask`); the setup page, which loads nothing else, keeps the browser's.
+        if (usable) button(card, tr(state === "valid" ? "signInAgain" : "signIn"), async () => {
           const relogin = state === "valid";
-          if (relogin && !machine && !globalThis.confirm(tr("relogin"))) return;
-          void perform({ operation: "start", backend, relogin });
+          if (relogin && !machine) {
+            const question = tr(backend === "kiro-cli" ? "relogin" : "reloginReplace", name(backend));
+            if (!(await (ask ? ask(question, name(backend)) : globalThis.confirm(question)))) return;
+          }
+          await perform({ operation: "start", backend, relogin });
         });
       }
       if (pending && !skipped && !machine) button(card, tr("later"), () => perform({ operation: "skip", backend }));
