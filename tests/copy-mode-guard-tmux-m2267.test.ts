@@ -18,14 +18,16 @@ import { MockBackend } from "../src/backend/mock.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { readFileSync } from "node:fs";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 
 const roots: string[] = [];
 let haveTmux = true;
-try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
+// AgEnD's tmux (the binary TmuxManager runs), so the server this file starts and the reads it makes are one binary.
+try { execFileSync(tmuxBinary(), ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
 // Its own private socket: another file's real-tmux test ends its server with kill-server.
 const socket = `agend-test-copy-mode-${process.pid}`;
 TmuxManager.setSocketName(socket);                                           // this file's TmuxManagers: never the live server
-const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args], { encoding: "utf8" });
+const tmux = (...args: string[]) => execFileSync(tmuxBinary(), ["-L", socket, ...args], { encoding: "utf8" });
 afterEach(() => {
   vi.restoreAllMocks();
   try { tmux("kill-server"); } catch { /* none */ }

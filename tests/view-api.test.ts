@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { parsePaneSize, handleViewRequest, type ViewApiContext } from "../src/view-api.js";
 import { getAgendHome } from "../src/paths.js";
-import { tmuxSocket } from "../src/tmux-binary.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 import { getTmuxSession } from "../src/config.js";
 
 describe("parsePaneSize", () => {
@@ -88,9 +88,11 @@ describe("GET /api/pane/:instance", () => {
     const socket = tmuxSocket();
     expect(socket, "isolated AGEND_HOME should yield a private tmux socket").toBeTruthy();
     const session = getTmuxSession();
+    // The server this test starts is the one the view API reads (TmuxManager): AgEnD's tmux, not the runner's PATH tmux.
+    let bin = "";
+    try { bin = tmuxBinary(); execFileSync(bin, ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
     const tmux = (...args: string[]) =>
-      execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf-8" });
-    try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
+      execFileSync(bin, ["-L", socket!, ...args], { encoding: "utf-8" });
 
     try {
       tmux("new-session", "-d", "-s", session, "-x", "120", "-y", "36", "sleep 60");

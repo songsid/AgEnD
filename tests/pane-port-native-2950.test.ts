@@ -12,11 +12,11 @@ vi.mock("../src/paths.js", async original => ({
 import { TmuxManager } from "../src/tmux-manager.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxPaneHost } from "../src/tmux-pane-host.js";
-import { tmuxSocket } from "../src/tmux-binary.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 import type { Pane, PaneObservation } from "../src/pane-port.js";
 
 const exec = promisify(execFile);
-const native = (args: string[]) => exec("tmux", ["-L", tmuxSocket(), ...args], { timeout: 5_000 });
+const native = (args: string[]) => exec(tmuxBinary(), ["-L", tmuxSocket(), ...args], { timeout: 5_000 });
 const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 const host = new TmuxPaneHost();
 const root = mkdtempSync(join(tmpdir(), "agend-pane-port-"));

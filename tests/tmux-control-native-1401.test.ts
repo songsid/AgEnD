@@ -8,9 +8,10 @@ vi.mock("../src/paths.js", async importOriginal => ({
 }));
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
-import { tmuxSocket } from "../src/tmux-binary.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 const exec = promisify(execFile);
-const native = (args: string[]) => exec("tmux", ["-L", tmuxSocket(), ...args], { timeout: 3_000 });
+// The server is the one production attaches to: AgEnD's tmux (the bundle), never the runner's older PATH tmux.
+const native = (args: string[]) => exec(tmuxBinary(), ["-L", tmuxSocket(), ...args], { timeout: 3_000 });
 let client: TmuxControlClient;
 let manager: TmuxManager;
 

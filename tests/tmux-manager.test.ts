@@ -10,6 +10,7 @@ import {
   resolveTmuxLogicalSize,
 } from "../src/tmux-manager.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
+import { tmuxBinary } from "../src/tmux-binary.js";   // the tmux the code under test runs (CI: the bundle, not the runner's)
 
 const exec = promisify(execFile);
 
@@ -105,14 +106,14 @@ describe("TmuxManager", () => {
 
   it("enables mouse mode for both new and existing AgEnD sessions", async () => {
     const showMouse = async (): Promise<string> => {
-      const { stdout } = await exec("tmux", ["-L", socket,
+      const { stdout } = await exec(tmuxBinary(), ["-L", socket,
         "show-options", "-v", "-t", session, "mouse",
       ]);
       return stdout.trim();
     };
 
     expect(await showMouse()).toBe("on");
-    await exec("tmux", ["-L", socket, "set-option", "-t", session, "mouse", "off"]);
+    await exec(tmuxBinary(), ["-L", socket, "set-option", "-t", session, "mouse", "off"]);
     expect(await showMouse()).toBe("off");
 
     await TmuxManager.ensureSession(session);
