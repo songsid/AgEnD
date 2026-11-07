@@ -178,7 +178,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
 
     // S3's deps: the sealed config (frozen), exact bind secret, live transport, issuer that really signs.
     const deps = http.state.deps!;
-    expect(deps.config).toEqual({ hubId: hub.config.hub.hubId, name: "Compose Hub", webOrigin: hub.plan.webOrigin, administrator: ADMIN.key });
+    expect(deps.config).toEqual({ hubId: hub.config.hub.hubId, name: "Compose Hub", memberOrigin: hub.plan.memberOrigin, webOrigin: hub.plan.webOrigin, administrator: ADMIN.key });
     expect(Object.isFrozen(deps.config)).toBe(true);
     expect(f.directories).toEqual([{ bindPassword: BIND }]);
     expect(deps.transport()).not.toBeNull();

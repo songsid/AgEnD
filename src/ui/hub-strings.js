@@ -5,6 +5,7 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hub", {
   en: {
+    allowOnHub: "Allow someone to ask…",
     preview: "Preview: the Hub connection isn't available in this build yet, so nothing here leaves this page.",
     // The member's switcher
     myFleet: "My fleet", hub: "Hub", openHubTab: "Open {0} in a new tab", switcher: "Workspace",
@@ -79,6 +80,7 @@ register("hub", {
     errNotPaired: "Connect to a Hub first.", withdrawPending: "Withdrawn here. The Hub will be told when it can be reached.",
   },
   "zh-TW": {
+    allowOnHub: "允許他人提問…",
     preview: "預覽：這個版本還不能真正連線到 Hub，這裡的操作不會離開這個頁面。",
     myFleet: "我的 Fleet", hub: "Hub", openHubTab: "在新分頁開啟 {0}", switcher: "工作區",
     askTitle: "提問", askEmpty: "目前還沒有你可以提問的 Agent", askHint: "有人把 Agent 開放給你之後，它會出現在這裡，並註明是誰授權的。",

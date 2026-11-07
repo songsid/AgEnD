@@ -147,7 +147,7 @@ export function HubConnectCard() {
     ${client.stub ? html`<p class="note hub-preview" role="note">${hw("preview")}</p>` : null}
     ${body}
     ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
-    ${p && p.state === "paired" ? html`<${HubExposures} client=${client} />` : null}
+    ${p && p.state === "paired" ? html`<${HubExposures} key=${`${p.binding}|${p.hub.hubId}|${p.hub.fingerprint?.digest}|${safeWebOrigin(p)}`} client=${client} pairing=${p} />` : null}
   </section>`;
 }
 
@@ -156,7 +156,7 @@ export function HubConnectCard() {
  * itself (docs/design/hub-representative-agent.md): switching on sends AGENT_CHOICE for the owner's confirmation; a row
  * shared under the older restricted mode says so and offers "Share again" (a new, confirmed revision).
  */
-function HubExposures({ client }) {
+function HubExposures({ client, pairing }) {
   const [rows, setRows] = useState(null);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(null);
@@ -198,6 +198,8 @@ function HubExposures({ client }) {
         : row.policy ? html`<small class="hub-exposure-why">${hw("policy", row.policy.dataView, row.policy.tools.join(", ") || "—")}</small>` : null}
       ${!row.enforceable && row.state !== "frozen" && guidanceFor(row.reason)
         ? html`<small class="hub-exposure-why hub-provider-guidance">${hw(guidanceFor(row.reason))}</small>` : null}
+      ${row.state === "published" && !row.pending && /^[a-f0-9-]{36}$/.test(row.exposureId || "") && safeWebOrigin(pairing)
+        ? html`<div class="field-row"><a class="btn btn-sm" href=${`${safeWebOrigin(pairing)}/ui/hub/exposures?agent=${encodeURIComponent(row.exposureId)}&grant=1`} target="_blank" rel="noopener noreferrer">${hw("allowOnHub")}</a></div>` : null}
     </li>`)}</ul>` : null}
     ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
   </div>`;

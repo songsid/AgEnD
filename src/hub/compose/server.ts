@@ -57,7 +57,7 @@ export interface HubHttpDeps {
   current(): HubMode;
   now?: () => number;
   preview?: Readonly<HubPreviewView>;
-  config: Readonly<{ hubId: string; name: string; webOrigin: string; administrator: PersonKey }>;
+  config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
   transport(): Pick<HubServerTransport, "send"> | null;
@@ -289,7 +289,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: () => mode,
         now,
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
-        config: Object.freeze({ hubId: settings.hubId, name: settings.name, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
+        config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });
