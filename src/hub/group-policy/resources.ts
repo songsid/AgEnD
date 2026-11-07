@@ -20,6 +20,10 @@ export interface HubGroupResourceDecision {
   outcome: "allow" | "deny" | "held" | "resume-required";
   decision?: HubGroupDecision;
 }
+/** Enrollment has no row to suspend; preserve authoritative deny versus uncertain read for its caller. */
+export class HubGroupEnrollmentRefusal extends HubGroupPolicyError {
+  constructor(readonly outcome: "denied" | "held") { super("unavailable"); }
+}
 export const HUB_GROUP_RESOURCES_MIGRATION: HubMigration = Object.freeze({ component: "s5-group-resources", version: 1, up(db: Database.Database) {
   db.exec(`CREATE TABLE hub_group_resources(resource_key TEXT PRIMARY KEY, body TEXT NOT NULL,
     source TEXT NOT NULL CHECK(source IN ('manual','group')), state TEXT NOT NULL CHECK(state IN ('active','suspended')),
@@ -137,7 +141,7 @@ export function createHubGroupResources(options: {
       ...(r.kind === "fleet" ? { fleetId: r.id } : r.kind === "exposure" ? { exposureId: r.id } : {}) } });
       db.transaction(() => {
         assert(ctx); if (policy.read().revision !== p.revision) throw new HubGroupPolicyError("conflict");
-        if (decision.outcome !== "allow") throw new HubGroupPolicyError("unavailable");
+        if (decision.outcome !== "allow") throw new HubGroupEnrollmentRefusal(decision.outcome === "unknown" ? "held" : "denied");
         if (row(r)) throw new HubGroupPolicyError("conflict");
         record(r, r.owner, "group-resource.registered", ctx, { source: "group" });
         db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'group','active',1)").run(keyOf(r), JSON.stringify(r));

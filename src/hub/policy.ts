@@ -15,7 +15,7 @@ import { validateAuthorization } from "./protocol.js";
 import type { HubAuthorizationLease, HubAuthorizationRequest, HubAuthorizationResult, HubExposure, HubGrant } from "./types.js";
 import type { HubLinkContext } from "./server.js";
 import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./catalog.js";
-import { personFromString, type HubCore } from "./http/core.js";
+import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 
 export const LEASE_MS = 5_000;
 /** P1 question lifetime (hub.md §2: at most 24 hours). */
@@ -55,6 +55,15 @@ export class HubPolicyService {
     return (await this.core.eligible(personFromString(msg.asker))) && (await this.core.eligible(personFromString(msg.owner)));
   }
 
+  /** Group authority is re-resolved for this exact message, never borrowed from its admission lease. */
+  async operation(msg: MessageRow, link: HubLinkContext): Promise<HubOperationPermit> {
+    if (!(await this.peopleEligible(msg))) throw new HubProtocolError("revoked");
+    const permit = await this.core.groupExposure(msg.exposure_id, personFromString(msg.asker),
+      { requestId: randomUUID(), current: () => link.current() });
+    if (!link.current()) throw new HubProtocolError("stale");
+    return permit;
+  }
+
   /** A member's `authorize.request` on its current link → a lease for exactly that operation, or a bounded refusal. */
   async authorize(input: HubAuthorizationRequest, link: HubLinkContext): Promise<HubAuthorizationResult> {
     let request: HubAuthorizationRequest;
@@ -71,9 +80,9 @@ export class HubPolicyService {
     // Another fleet's message is "not-found": a member never learns what it was not sent.
     if (!first || first.fleet_id !== link.fleetId) return refuse("not-found");
     if (request.exposureRevision !== first.exposure_revision) return refuse("stale", first);
-    let eligible: boolean;
-    try { eligible = await this.peopleEligible(first); } catch (e) { return refuse(e instanceof HubProtocolError && e.code === "backpressure" ? "unavailable" : "unavailable", first); }
-    if (!eligible) return refuse("revoked", first);
+    let permit: HubOperationPermit;
+    try { permit = await this.operation(first, link); }
+    catch (e) { return refuse(e instanceof HubProtocolError && (e.code === "revoked" || e.code === "denied") ? e.code : "unavailable", first); }
     if (!link.current()) return { ok: false, reasonCode: "stale" };
     const now = this.core.now();
     try {
@@ -97,7 +106,7 @@ export class HubPolicyService {
           messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner),
           grantId: msg.grant_id, grantRevision: msg.grant_revision });
         return { ok: true as const, lease };
-      });
+      }, permit);
     } catch (e) {
       const code = e instanceof HubProtocolError ? e.code : "unavailable";
       return refuse((["denied", "stale", "revoked", "expired", "conflict"] as const).find((c) => c === code) ?? "unavailable", first);

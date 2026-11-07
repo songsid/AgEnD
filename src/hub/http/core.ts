@@ -7,6 +7,9 @@ import type Database from "better-sqlite3";
 import { HubProtocolError, person as personSchema, validated } from "../validation.js";
 import { personKeyString, sha256 } from "../identity.js";
 import type { HubAuditRecord, HubRequestContext, HubTx, PersonKey } from "../types.js";
+import { exposureOf, readExposure } from "../catalog.js";
+import { HubGroupAuthorizationError, type HubGroupPermit } from "../group-policy/authorization.js";
+import { HubGroupPolicyError, type GroupCheckContext } from "../group-policy/store.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
@@ -15,23 +18,78 @@ export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "pol
 export const DIRECTORY_PER_PERSON = 4;
 export const DIRECTORY_TOTAL = 32;
 
+export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]; assertCurrent(): void }
+const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", assertCurrent() {} });
+
 export class HubCore {
   private readonly inflight = new Map<string, number>();
   private total = 0;
-  constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase) {}
+  constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase, private readonly lifetime: () => boolean = () => true) {}
   now(): number { return this.deps.now?.() ?? Date.now(); }
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
-  live(): boolean { try { return this.deps.current().serverEnabled() === true; } catch { return false; } }
+  live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
   /** One synchronous unit of work on the Hub DB; a promise returned from `work` is refused. */
-  atomic<T>(work: (db: Database.Database, tx: HubTx) => T): T {
+  atomic<T>(work: (db: Database.Database, tx: HubTx) => T, permit?: HubOperationPermit): T {
     this.check();
     return this.deps.uow.atomic((tx) => {
       this.check();
+      permit?.assertCurrent();
       const out = work(this.sql(tx), tx);
       if (out && typeof (out as { then?: unknown }).then === "function") throw new HubProtocolError("invalid");
+      permit?.assertCurrent();
       return out;
     });
+  }
+  /** A group refusal is bounded protocol data, never a directory exception or DN. */
+  private async group(work: () => Promise<HubGroupPermit>): Promise<HubOperationPermit> {
+    try {
+      const permit = await work();
+      return { source: permit.source, assertCurrent() {
+        try { permit.assertCurrent(); } catch { throw new HubProtocolError("unavailable"); }
+      } };
+    } catch (error) {
+      if (error instanceof HubGroupAuthorizationError && (error.reason === "denied" || error.reason === "resume-required")) throw new HubProtocolError("denied");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
+    }
+  }
+  /** A synchronous session fence is mandatory when group checks can await LDAP. */
+  groupContext(ctx: HubRequestContext): GroupCheckContext {
+    const fence = ctx.isCurrent?.bind(ctx);
+    return { requestId: ctx.requestId, current: () => this.live() && fence?.() === true };
+  }
+  async groupAsker(person: PersonKey, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    const groups = this.deps.groups;
+    if (!groups) return LEGACY_OPERATION;
+    const permit = await this.group(() => groups.asker(person, ctx));
+    return { source: permit.source, assertCurrent: () => {
+      if (this.deps.groups !== groups) throw new HubProtocolError("unavailable");
+      permit.assertCurrent();
+    } };
+  }
+  /** Fresh asker + exact fleet/exposure provenance. An allow is for this operation only. */
+  async groupExposure(exposureId: string, asker: PersonKey | null, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    const groups = this.deps.groups;
+    if (!groups) return LEGACY_OPERATION;
+    const exposure = this.atomic(db => { const row = readExposure(db, exposureId); return row && exposureOf(row); });
+    if (!exposure) throw new HubProtocolError("not-found");
+    const fleet = this.deps.store.read().fleets.find(f => f.id === exposure.fleetId);
+    if (!fleet || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) throw new HubProtocolError("revoked");
+    const serializedExposure = JSON.stringify(exposure), serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
+    if (asker) permits.push(await this.groupAsker(asker, ctx));
+    const fleetPermit = await this.group(() => groups.check({ kind: "fleet", id: fleet.id, revision: fleet.generation, owner: fleet.owner }, ctx));
+    permits.push(fleetPermit);
+    if (fleet.status !== "active" && fleetPermit.source !== "legacy") throw new HubProtocolError("revoked");
+    permits.push(await this.group(() => groups.check({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx)));
+    const permit = { assertCurrent: () => {
+      if (!this.live() || ctx.current() !== true || this.deps.groups !== groups) throw new HubProtocolError("unavailable");
+      for (const proof of permits) proof.assertCurrent();
+      const row = this.atomic(db => readExposure(db, exposure.id));
+      if (!row || JSON.stringify(exposureOf(row)) !== serializedExposure
+        || JSON.stringify(this.deps.store.read().fleets.find(f => f.id === fleet.id)) !== serializedFleet) throw new HubProtocolError("stale");
+    } };
+    permit.assertCurrent(); return permit;
   }
   /** Audit inside the caller's transaction: a failed append aborts the whole unit (hub.md §4). */
   audit(tx: HubTx, event: HubAuditEvent): void {

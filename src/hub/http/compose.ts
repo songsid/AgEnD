@@ -103,12 +103,12 @@ const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,
 
 /** Build S3's HTTP handler and member receiver over S5's deps. `sql` is S5's `hubTxDatabase`. */
 export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
-  const core = new HubCore(deps, sql);
+  let closed = false;
+  const core = new HubCore(deps, sql, () => !closed);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const rooms = new HubRoomsService(core, policy);
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
-  let closed = false;
   const live = () => !closed && core.live();
   /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
   const uploading = new Map<string, number>(); let uploadingTotal = 0;

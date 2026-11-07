@@ -172,6 +172,7 @@ export class HubSessions {
       if (!this.isAdmin(person)) throw new HubProtocolError("denied");
       return current();
     };
-    return { requestId, token, current, requirePerson, requireAdmin };
+    const isCurrent = () => this.session(token) !== null;
+    return { requestId, token, current, isCurrent, requirePerson, requireAdmin };
   }
 }

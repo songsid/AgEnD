@@ -33,6 +33,8 @@ export interface HubHttpDeps {
   audit: HubAuditSink;
   directory: HubDirectory;
   pairing: HubPairingService;
+  /** Server-owned group permits; absent only in legacy injected compositions. */
+  groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
   store: HubTransportStore;
   config: HubHttpConfig;
   preview?: Readonly<import("../preview.js").HubPreviewView>;

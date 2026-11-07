@@ -130,7 +130,7 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
   const frame = <T extends string, P>(type: T, payload: P, l: HubLinkContext) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
 
   return {
-    db, get http() { return http; }, base, hubId, admin, addPerson, people, directory, issuer, keys, store, pairing, audits, contents, sent, signIn, call, link, frame, config,
+    db, httpDeps, sql, get http() { return http; }, base, hubId, admin, addPerson, people, directory, issuer, keys, store, pairing, audits, contents, sent, signIn, call, link, frame, config,
     restartHttp: async () => { await http.close(); http = createHubHttp(httpDeps, sql); },
     get directoryCalls() { return directoryCalls; },
     setEligible: (login: string, v: boolean) => { people.get(login)!.eligible = v; },
