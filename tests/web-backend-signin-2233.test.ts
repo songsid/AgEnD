@@ -237,7 +237,8 @@ describe("#2599 shared browser controls", () => {
     const snapshot = { selected: ["codex"], pending: ["codex"], skipped: [], states: { codex: "invalid" }, login: null, ready: false };
     answer = r => r.url === "/ui/browser-backend-signins" ? snapshot : {};
     await p.mount(h(S.BrowserSignInDialog, { backend: "codex" })); await settle(8);
-    expect(text()).toContain("Sign in your AI backends"); expect(text()).toContain("Sign in later"); expect(text()).not.toContain("Open the sign-in terminal");
+    // Ridge #3321 S12: in the dashboard the dialog's title names the CLI; the setup page's heading and lead are not repeated.
+    expect(text()).not.toContain("Sign in your AI backends"); expect(text()).not.toContain("You can sign in later from the dashboard"); expect(text()).toContain("Sign in later"); expect(text()).not.toContain("Open the sign-in terminal");
     const start = p.root.querySelectorAll("section button").find((b: any) => b.textContent === "Sign in") as any;
     expect(start).toBeDefined(); await start.onclick(); await settle(4);
     expect(reqs.some(r => r.url === "/ui/browser-backend-signins" && r.body?.operation === "start" && r.body.backend === "codex")).toBe(true);
