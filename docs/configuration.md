@@ -764,4 +764,6 @@ Only fresh measured percentages with a known quota period and future reset quali
 
 A private `quota-notices.json` reserves account/window/threshold dispatches before posting. It survives restarts and destination changes; a failed or unknown external delivery is not automatically resent. Invalid or unwritable state holds optional reminders. Keep this file when backing up the fleet. A real new quota window permits new reminders; small reset drift does not. This is at-most-once dispatch, not confirmed delivery. Notices go to the selected existing topic (or Notices on a web-only fleet); a missing target does not silently select another agent.
 
+Reminders need a readable fresh usage row and a ready General/Notices or selected topic target. The old CLI running-low line is not a fallback when those are unavailable. If dispatch state is corrupt or unreadable, restore a valid backup and restart AgEnD; do not delete it to retry a possibly submitted reminder. The warning is logged and reminders remain held until recovery.
+
 Only low-quota reminders are configurable. Hard exhausted/blocked CLI messages, per-agent pause and auto-continue state, and the existing quota verification/history fences remain active.

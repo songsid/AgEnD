@@ -86,6 +86,16 @@ describe("account quota reminders", () => {
     const p = r.payload(); p.providers.push({ ...p.providers[0]!, id: "codex:other", name: "Other profile" });
     await r.service().observe(p); expect(r.send).toHaveBeenCalledTimes(2);
   });
+  it("never reserves or sends a refreshing snapshot, then accepts its completed reading", async () => {
+    const r = await rig(), service = r.service();
+    const pending = r.payload(); pending.refreshing = true;
+    await service.observe(pending);
+    expect(r.send).not.toHaveBeenCalled();
+    await expect(readFile(r.file, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await service.observe(r.payload());
+    expect(r.send).toHaveBeenCalledTimes(1);
+    expect(Object.keys(JSON.parse(await readFile(r.file, "utf8")).entries)).toHaveLength(1);
+  });
   it("does not replay for reset drift or a premature forward reset; announces after an actual reset", async () => {
     const r = await rig(), s = r.service(); await s.observe(r.payload());
     await s.observe(r.payload(92, START + WEEK + 5 * 60_000));
