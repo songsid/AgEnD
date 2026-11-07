@@ -62,7 +62,7 @@ beforeEach(async () => {
   vi.useRealTimers();
   await p.unmount();
   reqs = []; answer = () => ({});
-  app.appStore.set({ needs: ITEMS.map(i => ({ ...i })), instances: [] });
+  app.appStore.set({ ready: true, needsLoaded: true, needs: ITEMS.map(i => ({ ...i })), instances: [] });
 });
 const mount = (key = "needs:|1|en") => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: key }));
 const btn = (scope: any, text: string) => scope.querySelectorAll("button, a").find((b: any) => b.textContent.includes(text));
