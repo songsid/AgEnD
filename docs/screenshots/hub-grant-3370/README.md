@@ -27,12 +27,14 @@ Run the owned fake directory with `scripts/manual/hub-directory/run.sh`, then:
 ```sh
 AGEND_HUB_RIG_ENV=<owned-directory/rig.env> npx vitest run \
   tests/hub-directory-rig.test.ts tests/hub-grant-recipient-3370.test.ts \
+  tests/hub-init-rig.test.ts tests/hub-compose-rig.test.ts tests/hub-directory-unit.test.ts \
   tests/hub-directory-init-lookup.test.ts tests/hub-pairing-owner.test.ts \
   tests/hub-continuation-3338.test.ts tests/hub-s3b-server.test.ts \
   tests/hub-s3b-flow.test.ts tests/hub-owner-admin-c.test.ts \
   tests/hub-ui-s3-server.test.ts tests/hub-group-message-boundaries.test.ts \
   tests/hub-group-authorization.test.ts tests/hub-group-resources.test.ts \
-  tests/hub-shared-modules-a.test.ts tests/changelog-fragments.test.ts
+  tests/hub-shared-modules-a.test.ts tests/changelog-fragments.test.ts \
+  tests/web-settings-search-2347.test.ts tests/settings-hub-section-a7b.test.ts
 npm run typecheck
 npm run typecheck:tests
 ```
@@ -54,6 +56,18 @@ Selection now settles into a value or bounded error. Server/session checks run f
 The corrected code passes **382/382 tests across 14 suites with zero skips**, both typechecks and the diff check. All **18/18 mutants** fail assertions with source restored, including early negative disclosure, early error disclosure and missing server fencing. Import/build errors are not counted.
 
 The correction changes server ordering and tests only. The inspected 28-PNG UI/cached-shell matrix above carries unchanged; no UI, dictionary or CSS files changed during this review correction.
+
+## CI fixture isolation
+
+The R2 CI `hub-directory` job failed the relay's shared `alice` positive sign-in (43 passed, 1 failed). The concurrent compose test temporarily disabled that same seed user. A deterministic control added during the lock fails with the original fixture; on the pre-feature base `46b036679b51492f590796d7cb7d9c4c8040eddb`, the control explicitly reports `not-eligible`. The base file was restored after that probe. This proves the fixture interference; the original CI log does not contain the directory refusal reason, so it does not establish the exact scheduling cause of that run.
+
+The compose suite now creates a unique administrator, uses its immutable ID throughout initialization/sign-in/disable, and removes only that entry afterwards. While that administrator is disabled, its own web request is still refused and the shared Alice control must remain eligible. No timeout, delay, worker setting, serialization, skip or production code changed. Reintroducing the old shared-seed fixture fails that positive control; the source is restored after the mutation.
+
+Both directory CI commands pass locally against the owned strict-LDAPS container: the four-file command passes 44 tests; the second three-file JSON check passes 27 with zero pending. The original grant tests and inspected PNG matrix carry unchanged.
+
+The same CI run also found registry coverage collecting the Hub section before its lazy membership card finished loading (`hub.membership (#hubMemberEnabled)` absent). That fixture now awaits the actual module import and supplies the normal disabled-membership response. It still checks the same registry IDs and keeps the same timer flush count; no timeout increase or absent-field exemption.
+
+An initial combined local run alongside two typechecks hit the continuation suite's 10-second cold-import hook limit (381 passed, 22 pending, one failed suite), so it was not counted as green. The isolated settings/section/continuation rerun passed 48 tests; the final combined check passes **429/429 tests across 19 suites with zero skips**, without competing typecheck processes. No timeout setting was changed. The previous 18 source mutants carry unchanged; the shared-seed fixture mutation provides an additional assertion-detected regression control. Both typechecks pass.
 
 ## Limits and rollback
 
