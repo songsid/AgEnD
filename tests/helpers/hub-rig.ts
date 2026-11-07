@@ -27,7 +27,7 @@ export async function hubRig(options: { serverCapabilities?: readonly string[]; 
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: n => { floor = n; } }, appendAudit: (value, tx) => { tx.prepare("INSERT INTO audit VALUES(?)").run(JSON.stringify(value)); } }); store.initialize();
   const received: HubMemberFrame[] = [], holds: Array<{ fleet: string | null; code: string }> = [];
   let server!: HubServer;
-  const pairing = new HubPairingService({ store, directory, identity: { ...identity, memberOrigin, webOrigin: `https://127.0.0.1:${port + 1}` }, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason) });
+  const pairing = new HubPairingService({ store, directory, identity: { ...identity, memberOrigin, webOrigin: `https://127.0.0.1:${port + 1}` }, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason), refreshAuthorization: () => server?.refreshAuthorization() });
   let serverGate: (() => Promise<void>) | undefined;
   let receiver: HubServerOptions["receive"] | undefined;
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing, capabilities: options.serverCapabilities,
@@ -40,17 +40,17 @@ export async function hubRig(options: { serverCapabilities?: readonly string[]; 
         operationDigest: operationDigest(frame.payload), exposureRevision: frame.payload.exposureRevision, revocationVersion: store.read().revocationVersion, linkEpoch: link.linkEpoch, expiresAt: Date.now() + 5_000 } } };
     } }); await server.start();
   const clients: HubMemberClient[] = [];
-  const pair = async () => {
+  const pair = async (home = memberHome) => {
     const offer = await pairing.create(ctx, owner);
-    const pending = await beginHubPairing({ home: memberHome, memberOrigin, code: offer.code, current: () => enabled });
+    const pending = await beginHubPairing({ home, memberOrigin, code: offer.code, current: () => enabled });
     await pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint); await pairing.approve(ctx, pending.pairingId, pending.fingerprint);
-    await claimHubPairing({ home: memberHome, hubId: identity.hubId, approvedFingerprint: pending.fingerprint, expectedProfileDigest: null, current: () => enabled });
-    return new HubMemberProfileStore(memberHome, identity.hubId).readProfile();
+    await claimHubPairing({ home, hubId: identity.hubId, approvedFingerprint: pending.fingerprint, expectedProfileDigest: null, current: () => enabled });
+    return new HubMemberProfileStore(home, identity.hubId).readProfile();
   };
   /** `capabilities`: the optional features this member offers ([] stands in for an older member). */
-  const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[]) => {
+  const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[], home = memberHome) => {
     const state: { link: HubMemberLink | null; holds: string[]; syncs: number } = { link: null, holds: [], syncs: 0 };
-    const value = new HubMemberClient({ home: memberHome, hubId: identity.hubId, memberOrigin, current: () => enabled, capabilities: capabilities ?? options.clientCapabilities,
+    const value = new HubMemberClient({ home, hubId: identity.hubId, memberOrigin, current: () => enabled, capabilities: capabilities ?? options.clientCapabilities,
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };

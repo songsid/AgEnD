@@ -1,9 +1,11 @@
 /** Real local TLS/WSS with fake directory, no running fleet or external service. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createPrivateKey, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { hubRig } from "./helpers/hub-rig.js";
 import { HubServer } from "../src/hub/server.js";
-import { verifyLease } from "../src/hub/identity.js";
+import { sha256, signAsker, verifyLease } from "../src/hub/identity.js";
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { for (const r of rigs.splice(0)) await r.close(); vi.restoreAllMocks(); });
 const start = async () => { const r = await hubRig(); rigs.push(r); await r.pair(); return r; };
@@ -39,6 +41,41 @@ describe("non-retiring Hub authorization refresh", () => {
       expect(await c.value.authorize(request())).toMatchObject({ revocationVersion: 1, linkEpoch: c.state.link!.linkEpoch });
       expect(r.received.filter(f => f.type === "authorize.request" && f.payload.operationId === operation.operationId)).toHaveLength(1);
     } finally { r.setServerGate(); gate.release(); await refused; }
+  });
+  it("revokes only A and immediately reconnects B at the committed global version before a fresh question", async () => {
+    const r = await start(), homeB = join(r.root, "member-b"); mkdirSync(homeB, { mode: 0o700 });
+    const profileB = await r.pair(homeB), reconnected = held(), delivered = held(), questions: string[] = [];
+    const a = r.client();
+    const b = r.client(async frame => {
+      if (frame.type !== "question") return;
+      const lease = await b.value.authorize({ messageId: frame.payload.identity.messageId, operationId: randomUUID(), exposureRevision: 1, phase: "admit" });
+      expect(lease.revocationVersion).toBe(1); questions.push(frame.payload.text); delivered.release();
+    }, async () => { if (b.state.syncs === 2) reconnected.release(); }, undefined, homeB);
+    await a.value.start(); await b.value.start();
+    const oldA = a.state.link!, oldB = b.state.link!, address = r.server.address();
+    const fleetB = r.store.read().fleets.find(f => f.id === profileB.fleetId);
+    const serverB = (r.server as any).connections.get(profileB.fleetId), endedB = vi.spyOn(serverB.link, "end");
+    const retiredA = new Promise<{ code: number; reason: string }>(resolve => (a.value as any).link.ws.once("close", (code: number, reason: Buffer) => resolve({ code, reason: reason.toString() })));
+    await r.pairing.revoke(r.ctx, oldA.profile.fleetId);
+    // This must happen in revoke(), without waiting for a heartbeat or a manual refresh in the test.
+    expect(endedB).toHaveBeenCalledExactlyOnceWith("unavailable");
+    expect(r.store.read().revocationVersion).toBe(1); expect(r.server.address()).toEqual(address);
+    expect(await retiredA).toEqual({ code: 1008, reason: "revoked" });
+    await reconnected.promise; await new Promise<void>(resolve => setImmediate(resolve));
+    expect(oldA.current()).toBe(false); expect(oldB.current()).toBe(false);
+    expect(a.state.holds).toContain("revoked"); expect(a.state.syncs).toBe(1);
+    expect(() => r.pairing.authenticate(oldA.profile.credential)).toThrow("denied");
+    await expect(a.value.authorize(request())).rejects.toThrow("unavailable");
+    expect(r.store.read().fleets.find(f => f.id === profileB.fleetId)).toEqual(fleetB);
+    expect(b.state.holds).toContain("unavailable"); expect(b.state.holds).not.toContain("revoked"); expect(b.state.holds).not.toContain("replaced");
+    expect(b.state.link!.revocationVersion).toBe(1); expect(b.state.link!.linkEpoch).toBeGreaterThan(oldB.linkEpoch);
+    const text = "A separate fleet remains available", now = Date.now();
+    const identity = signAsker({ v: 1, issuer: r.identity.hubId, issuerKeyId: r.identity.issuerKeyId, messageId: randomUUID(), asker: r.owner, owner: r.owner,
+      destinationFleetId: profileB.fleetId, exposureId: randomUUID(), roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
+      exposureRevision: 1, revocationVersion: 1, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 60_000, nonce: "c".repeat(64)
+    }, createPrivateKey(readFileSync(join(r.root, "hub/keys/issuer-key.pem"))));
+    await r.server.send(profileB.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: b.state.link!.linkEpoch, payload: { text, identity } });
+    await delivered.promise; expect(questions).toEqual([text]); expect(b.state.link!.current()).toBe(true);
   });
   it("refuses a handshake whose already-authenticated binding waited across the committed version change", async () => {
     const r = await start(), gate = held(), entered = held(), connect = r.pairing.connect.bind(r.pairing);
