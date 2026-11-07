@@ -169,7 +169,9 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     async prepareEnrollment(input: HubGroupResource, incoming: GroupCheckContext): Promise<HubGroupEnrollmentPermit> {
       const resource = parseHubGroupResource(input), ctx = capture(incoming);
       if (resource.kind === "asker") throw new HubGroupPolicyError("invalid"); // Canonical first-use askers use asker().
-      assert(ctx.current); const epoch = version();
+      assert(ctx.current);
+      if (resource.owner.realm !== administrator.realm) throw new HubGroupAuthorizationError("denied");
+      const epoch = version();
       if (db.inTransaction) throw new HubGroupPolicyError("invalid");
       // Legacy/repair behavior is identical to current action permits and creates no provenance.
       const selectedBinding = bindingOf();
@@ -182,6 +184,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
         } });
       }
       const policy = policyOf(), before = policy.read(), serialized = JSON.stringify(before);
+      if (before.realm !== administrator.realm) throw new HubGroupPolicyError("unavailable");
       const assertPreparation = () => {
         assert(ctx.current);
         if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== serialized || version() !== epoch) throw new HubGroupPolicyError("conflict");

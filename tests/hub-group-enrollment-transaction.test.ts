@@ -38,6 +38,28 @@ function fixture() {
     advance: () => { epoch++; }, signOut: () => { caller = false; }, stop: () => { live = false; }, generation: () => { generation = "generation-2"; } };
 }
 describe("prepared group enrollment at the actual-resource transaction", () => {
+  it.each([false, true])("prepared and ordinary enrollment preserve the resource/administrator realm boundary (mismatch=%s)", async mismatch => {
+    const w = fixture(); w.enable();
+    const authorization = createHubGroupAuthorization({ ...w.options, administrator: { realm: mismatch ? "other" : w.owner.realm, objectId: randomUUID() } });
+    const ordinary = { ...w.resource, id: randomUUID() };
+    if (mismatch) {
+      await expect(authorization.enroll(ordinary, w.ctx)).rejects.toMatchObject({ reason: "denied" });
+      await expect(authorization.prepareEnrollment(w.resource, w.ctx)).rejects.toMatchObject({ reason: "denied" });
+      expect(w.lookup).not.toHaveBeenCalled(); expect(w.count("hub_group_resources")).toBe(0);
+    } else {
+      expect((await authorization.enroll(ordinary, w.ctx)).source).toBe("group");
+      const prepared = await authorization.prepareEnrollment(w.resource, w.ctx);
+      w.db.transaction(() => { w.write(); prepared.commit(w.db); prepared.assertCurrent(); }).immediate();
+      expect(w.resources.read(w.resource)).toMatchObject({ source: "group", state: "active" }); expect(w.count("hub_group_resources")).toBe(2);
+    }
+  });
+  it("refuses a selected policy from another administrator realm before membership I/O, just like ordinary enrollment", async () => {
+    const w = fixture(); w.enable(); const selected = { ...w.policy, read: () => ({ ...w.policy.read(), realm: "other", groups: [] }) };
+    const authorization = createHubGroupAuthorization({ ...w.options, policy: () => selected });
+    await expect(authorization.enroll(w.resource, w.ctx)).rejects.toMatchObject({ code: "unavailable" });
+    await expect(authorization.prepareEnrollment(w.resource, w.ctx)).rejects.toMatchObject({ code: "unavailable" });
+    expect(w.lookup).not.toHaveBeenCalled(); expect(w.count("hub_group_resources")).toBe(0);
+  });
   it("legacy preserves ordinary writes without membership or provenance and still requires the owning transaction", async () => {
     const w = fixture(), permit = await w.authorization.prepareEnrollment(w.resource, w.ctx);
     expect(permit.source).toBe("legacy"); expect(permit.maxFleets).toBe(0); permit.assertCurrent();
