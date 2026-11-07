@@ -97,6 +97,12 @@ describe("the switches and the page's mark (this fleet's listener)", () => {
       expect(bodyTag((await get(sid, "/settings/hub")).body)).toContain(' data-hub-groups="1"');
       fm.fleetConfig.web = { guests: { enabled: true, grants: { [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["a"] } } } };
       try { expect(bodyTag((await get(session("guest", ALICE), "/ui/chat/a")).body)).not.toContain("data-hub-groups"); } finally { delete fm.fleetConfig.web; }
+      // Never over the public link (Fable G1): the mark itself would tell public visitors this Hub has group permissions.
+      let pub = "";
+      const req = { url: "/settings/hub", headers: { host: "x.trycloudflare.com" }, socket: { remoteAddress: "127.0.0.1" } };
+      bindGatewayRequest(req, { surface: "gateway", exposureId: "e1", expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+      serveAppShell(req as never, { setHeader() {}, writeHead() {}, end(b?: string) { pub = String(b ?? ""); }, headersSent: false } as never, fm, "full");
+      expect(bodyTag(pub)).toContain('data-public-link="1"'); expect(bodyTag(pub)).not.toContain("data-hub-groups");
       spy.mockReturnValue("yes" as never);                                  // only exactly true marks
       expect(bodyTag((await get(sid, "/settings/hub")).body)).not.toContain("data-hub-groups");
       spy.mockImplementation(() => { throw new Error("runtime gone"); });     // a failing runtime: the page still renders, unmarked

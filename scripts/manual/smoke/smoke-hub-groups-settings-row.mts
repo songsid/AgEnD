@@ -1,6 +1,7 @@
 // #3298 S-89: fleet Settings → Hub on a Hub host shows "Group permissions" with a link to the Hub's own editor — on the shared
 // Settings fixture (the product's web server from an in-process FleetManager, scratch home, loopback only). The fixture has no
-// Hub, so this page's read of fleet.yaml is given a `hub:` block (hubId + webOrigin) in the browser; nothing else is changed.
+// Hub, so this page's read of fleet.yaml is given a `hub:` block (hubId + webOrigin) in the browser, and the fixture's fleet
+// reports that its Hub offers group permissions (data-hub-groups); nothing else is changed.
 // Checks: the row is there with the Hub's HTTPS link (new tab, noopener), no page error, no CSP report; a picture per case.
 //   PW_DIR=<dir> REPO=<checkout> OUT=<dir> [MATRIX=desk-light-zh-TW,…] FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-hub-groups-settings-row.mts
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -13,6 +14,8 @@ const CASES = matrix(process.env.MATRIX ?? "desk-light-zh-TW,desk-light-en,phone
 const HUB = { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", webOrigin: "https://hub.example.test", enabled: true };
 const r: Record<string, unknown> = {}, fail: string[] = [];
 const fx = await bootFixture({ port: 19460, instances: 4, classic: false });
+// The row needs this fleet's own Hub to offer group permissions (the page mark, #3372 N2): the fixture has no Hub, so it says yes.
+fx.fm.hubGroupPermissions = () => true;
 try {
   for (const c of CASES) {
     const name = caseName(c);
