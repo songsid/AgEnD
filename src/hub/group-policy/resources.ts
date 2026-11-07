@@ -32,7 +32,7 @@ export const HUB_GROUP_RESOURCES_MIGRATION: HubMigration = Object.freeze({ compo
 } });
 const capability = (r: HubGroupResource): GroupCapability => r.kind === "fleet" ? "pair_fleet" : r.kind === "exposure" ? "publish_agents" : "ask_agents";
 const keyOf = (r: HubGroupResource) => JSON.stringify([r.kind, r.id, r.revision]);
-const snapshotContext = (ctx: GroupCheckContext) => ({ requestId: validated(identifier, ctx.requestId), current: ctx.current });
+const snapshotContext = (ctx: GroupCheckContext) => ({ requestId: validated(identifier, ctx.requestId), current: ctx.current.bind(ctx) });
 
 export function createHubGroupResources(options: {
   db: Database.Database; policy: HubGroupPolicyStore; audit: Pick<HubAuditStore, "appendInTransaction">;
@@ -120,6 +120,27 @@ export function createHubGroupResources(options: {
       return { outcome: "allow" as const, decision };
     }).immediate();
   };
+  /** Directory work outside SQL; publish provenance only inside the actual resource's transaction. */
+  const prepareRegistration = async (input: HubGroupResource, incoming: GroupCheckContext) => {
+    const r = capture(input), ctx = snapshotContext(incoming); assert(ctx); const p = policy.read();
+    if (p.state !== "enabled" || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+    const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: { ...incoming.resource, revision: r.revision,
+      ...(r.kind === "fleet" ? { fleetId: r.id } : r.kind === "exposure" ? { exposureId: r.id } : {}) } });
+    assert(ctx);
+    if (policy.read().revision !== p.revision) throw new HubGroupPolicyError("conflict");
+    if (decision.outcome !== "allow") throw new HubGroupEnrollmentRefusal(decision.outcome === "unknown" ? "held" : "denied");
+    let used = false;
+    return { decision,
+      commit(database: Database.Database): void {
+        if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
+        used = true; // A rolled-back attempt needs another fresh preparation, never replay this allowance.
+        assert(ctx); if (policy.read().revision !== p.revision || row(r)) throw new HubGroupPolicyError("conflict");
+        record(r, r.owner, "group-resource.registered", ctx, { source: "group" });
+        db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'group','active',1)").run(keyOf(r), JSON.stringify(r));
+        assert(ctx);
+      },
+    };
+  };
   return {
     read(input: HubGroupResource) { assert({ requestId: "read", current: () => true }); policy.read(); return row(capture(input)); },
     /** Only the pre-enable inventory may be grandfathered; no typed person/HTTP path may call this. */
@@ -135,18 +156,10 @@ export function createHubGroupResources(options: {
     },
     /** Registers provenance after a fresh allowance. Caller still owes normal local consent/owner grant and quota checks. */
     async register(input: HubGroupResource, incoming: GroupCheckContext): Promise<void> {
-      const r = capture(input), ctx = snapshotContext(incoming); assert(ctx); const p = policy.read();
-      if (p.state !== "enabled" || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
-      const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: { ...incoming.resource, revision: r.revision,
-      ...(r.kind === "fleet" ? { fleetId: r.id } : r.kind === "exposure" ? { exposureId: r.id } : {}) } });
-      db.transaction(() => {
-        assert(ctx); if (policy.read().revision !== p.revision) throw new HubGroupPolicyError("conflict");
-        if (decision.outcome !== "allow") throw new HubGroupEnrollmentRefusal(decision.outcome === "unknown" ? "held" : "denied");
-        if (row(r)) throw new HubGroupPolicyError("conflict");
-        record(r, r.owner, "group-resource.registered", ctx, { source: "group" });
-        db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'group','active',1)").run(keyOf(r), JSON.stringify(r));
-      }).immediate();
+      const prepared = await prepareRegistration(input, incoming);
+      db.transaction(() => prepared.commit(db)).immediate();
     },
+    prepareRegistration,
     check(input: HubGroupResource, incoming: GroupCheckContext) { return check(input, incoming); },
     /** Caller must freshly authenticate the configured administrator and confirm the exact resource. */
     resume(input: HubGroupResource, actor: PersonKey, incoming: GroupCheckContext) { return check(input, incoming, actor); },
