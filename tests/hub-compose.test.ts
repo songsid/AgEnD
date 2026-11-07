@@ -141,9 +141,11 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
     // A valid public CA bundle may exceed canonicalArguments' request-body bound.
     // Hash trust material before including it in the small authority-generation record.
-    (hub.config.hub.directory as Record<string, unknown>).caPem = hub.caPem.repeat(100);
-    expect(hub.caPem.repeat(100).length).toBeGreaterThan(64 * 1024);
-    const service = await f.create(hub.config.hub, () => true);
+    (hub.config.hub.directory as Record<string, unknown>).caPem = hub.caPem.repeat(200);
+    expect(hub.caPem.repeat(200).length).toBeGreaterThan(64 * 1024);
+    const created = f.create(hub.config.hub, () => true);
+    await expect(created).resolves.toBeDefined();
+    const service = await created;
     const context = { requestId: randomUUID(), current: () => true };
     expect(http.state.deps!.groups).toBeDefined();
     const permit = await http.state.deps!.groups!.asker(ADMIN.key, context);
