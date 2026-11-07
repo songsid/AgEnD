@@ -25,10 +25,16 @@ vi.mock("node:child_process", async (importOriginal) => ({
 const { TmuxManager } = await import("../src/tmux-manager.js");
 const { Daemon } = await import("../src/daemon.js");
 
+type TmuxCallback = (e: Error | null, out: string, stderr?: string) => void;
+/** TmuxManager runs execFile(binary, args, options, callback): the callback is the last argument. */
+function tmuxMock(impl: (args: string[], cb: TmuxCallback) => void): void {
+  execFile.mockImplementation((_cmd: string, args: string[], ...rest: unknown[]) => impl(args, rest.at(-1) as TmuxCallback));
+}
+
 /** Record the tmux verbs a paste issues, in order. */
 function recordTmux(): string[] {
   const calls: string[] = [];
-  execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string) => void) => {
+  tmuxMock((args, cb) => {
     const verb = args.find(a => ["load-buffer", "paste-buffer", "send-keys"].includes(a));
     if (verb) calls.push(verb === "send-keys" ? `send-keys ${args[args.length - 1]}` : verb);
     cb(null, "");
@@ -41,7 +47,7 @@ beforeEach(() => { execFile.mockReset(); });
 describe("pasteText Enter retry", () => {
   it("retries a transient EAGAIN load-buffer failure without recovering the window", async () => {
     let loadAttempts = 0;
-    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+    tmuxMock((args, cb) => {
       if (args.includes("load-buffer")) {
         loadAttempts++;
         if (loadAttempts === 1) cb(Object.assign(new Error("spawn failed"), { code: "EAGAIN" }), "");
@@ -57,7 +63,7 @@ describe("pasteText Enter retry", () => {
 
   it("retries a transient EMFILE load-buffer failure and preserves the final error", async () => {
     let loadAttempts = 0;
-    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+    tmuxMock((args, cb) => {
       if (args.includes("load-buffer")) {
         loadAttempts++;
         cb(Object.assign(new Error("fd table exhausted"), { code: "EMFILE" }), "");
@@ -73,7 +79,7 @@ describe("pasteText Enter retry", () => {
 
   it("does not retry a permanent load-buffer error", async () => {
     let loadAttempts = 0;
-    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+    tmuxMock((args, cb) => {
       if (args.includes("load-buffer")) {
         loadAttempts++;
         cb(Object.assign(new Error("argument list too long"), { code: "E2BIG", stderr: "E2BIG" }), "", "E2BIG");
@@ -88,7 +94,7 @@ describe("pasteText Enter retry", () => {
   });
 
   it("preserves tmux stderr and classifies load failures as non-retryable", async () => {
-    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+    tmuxMock((args, cb) => {
       if (args.includes("load-buffer")) cb(new Error("tmux exited 1"), "", "buffer storage unavailable");
       else cb(null, "");
     });
@@ -99,7 +105,7 @@ describe("pasteText Enter retry", () => {
   });
 
   it("classifies a paste target failure as recoverable and preserves its reason", async () => {
-    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+    tmuxMock((args, cb) => {
       if (args.includes("paste-buffer")) {
         const err = Object.assign(new Error("tmux exited 1"), { stderr: "can't find pane: @1", code: 1 });
         cb(err, "", err.stderr);

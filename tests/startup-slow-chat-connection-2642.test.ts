@@ -20,6 +20,14 @@ vi.mock("../src/logger.js", async original => {
 });
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: (s: string) => { calls.notify.push(s); }, sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 vi.mock("../src/tmux-exec-helper.js", () => ({ tmuxExecHelper: { reopen() {}, start() {}, maintain() {}, async stop() {} } }));
+// The fleet's tmux server boundary (M-2457 §6): inert too. The real module stays; its probes and its record never run.
+vi.mock("../src/tmux-server.js", async original => ({
+  ...await original<typeof import("../src/tmux-server.js")>(),
+  reconcileServer: async () => null,
+  recordServer: async () => ({ socket: "agend-test", binary: "", version: "", sha256: "0".repeat(64), serverPid: 1, serverStart: 1 }),
+  readServerRecord: () => null,
+  sha256File: () => "0".repeat(64),
+}));
 // startInstance now awaits resolveBackendBinary before lifecycle.start (#3029). The probe is a child; this suite forbids those.
 vi.mock("../src/binary-probe.js", async original => {
   const real = await original<typeof import("../src/binary-probe.js")>();

@@ -1,12 +1,6 @@
 /**
- * M-2457 PR B (docs/design/bundled-tmux.md §5): which tmux AgEnD runs, on which socket, with which environment — one
- * place for every call site.
- *
- * Dark: the switch `AGEND_BUNDLED_TMUX=1` turns it on, and nothing sets it in this release. While it is off, every
- * answer is exactly what each call site did before: the `tmux` on PATH, `getTmuxSocketName()` (tmux's default socket
- * for the real home, an isolated one for any other), the caller's environment.
- *
- * On (PR C activates it with the transitions):
+ * M-2457 (docs/design/bundled-tmux.md §5): which tmux AgEnD runs, on which socket, with which environment — one
+ * place for every call site. Always AgEnD's own tmux (C-4 turned it on; there is no switch back to PATH's):
  *  - the binary is `AGEND_TMUX_BIN` (an absolute path to an executable file; anything else is refused with what to do),
  *    else the bundled tmux this package's postinstall verified (its receipt, launcher/tmux-bundle.cjs), copied once to
  *    `<AGEND_HOME>/tmux/<version>-<sha12>/` so the server never runs from a package an update replaces. There is no
@@ -22,26 +16,20 @@ import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, getTmuxSocketName, isDefaultAgendHome } from "./paths.js";
 
-export const BUNDLED_TMUX_ENV = "AGEND_BUNDLED_TMUX";
 export const TMUX_BIN_ENV = "AGEND_TMUX_BIN";
 /** The real home's socket once the bundled tmux is on: AgEnD's own, never tmux's default. */
 export const BUNDLED_TMUX_SOCKET = "agend";
-
-/** The switch: exactly "1" (as AGEND_FLEET_START_DIRECT). Anything else — unset included — is off. */
-export function bundledTmuxEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env[BUNDLED_TMUX_ENV] === "1";
-}
 
 export class TmuxUnavailableError extends Error {
   constructor(message: string) { super(message); this.name = "TmuxUnavailableError"; }
 }
 
 export interface TmuxResolution {
-  /** What to execute: "tmux" (PATH) while off; an absolute path while on. */
+  /** What to execute: always an absolute path. */
   binary: string;
   /** The bundled terminfo directory, when the binary is the bundle. */
   terminfo: string | null;
-  source: "system" | "override" | "bundled";
+  source: "override" | "bundled";
   /** The bundle's tmux release ("3.8"), when known. */
   version: string | null;
 }
@@ -68,10 +56,9 @@ let cache: { key: string; value: TmuxResolution } | null = null;
 /** Tests: forget the cached answers. */
 export function resetTmuxResolution(): void { cache = null; confWritten = null; }
 
-/** Which tmux to run. Cached per (switch, override, home): a launch never re-copies. */
+/** Which tmux to run. Cached per (override, home): a launch never re-copies. */
 export function resolveTmux(deps: TmuxResolveDeps = {}): TmuxResolution {
   const env = deps.env ?? process.env;
-  if (!bundledTmuxEnabled(env)) return { binary: "tmux", terminfo: null, source: "system", version: null };
   const home = deps.agendHome ?? getAgendHome();
   const key = JSON.stringify([env[TMUX_BIN_ENV] ?? null, home, deps.packageDir ?? null, deps.hostId ?? null]);
   if (cache && cache.key === key) return cache.value;
@@ -131,27 +118,28 @@ export function tmuxBinary(deps?: TmuxResolveDeps): string {
 }
 
 /**
- * The -L socket: while off, getTmuxSocketName() as before (null — tmux's default socket — only for the real home);
- * while on, the real home's is `agend`, and any other home keeps its isolated name.
+ * The -L socket: the real home's is `agend` (never tmux's default socket), and any other home keeps its isolated name
+ * (getTmuxSocketName()).
  */
-export function tmuxSocket(env: NodeJS.ProcessEnv = process.env): string | null {
-  return socketFor(bundledTmuxEnabled(env), isDefaultAgendHome(), getTmuxSocketName());
+export function tmuxSocket(): string {
+  return socketFor(isDefaultAgendHome(), getTmuxSocketName());
 }
 
-/** The socket rule, pure: off → `before` as is; on → `agend` for the real home, `before` (its isolated name) otherwise. */
-export function socketFor(enabled: boolean, realHome: boolean, before: string | null): string | null {
-  if (!enabled) return before;
-  return realHome ? BUNDLED_TMUX_SOCKET : before;
+/** The socket rule, pure: `agend` for the real home, `isolated` (getTmuxSocketName()'s name) otherwise. */
+export function socketFor(realHome: boolean, isolated: string | null): string {
+  if (realHome) return BUNDLED_TMUX_SOCKET;
+  // Another home without its own name would share the real home's live server: never.
+  if (!isolated) throw new TmuxUnavailableError("This AgEnD home has no tmux socket of its own, and AgEnD will not use the real home's.");
+  return isolated;
 }
 
 /**
- * Whether `agend attach` runs inside THIS fleet's tmux (then it switches the client instead of attaching). Off: any
- * $TMUX, as before. On: only a $TMUX whose socket (its first field, a path) is this fleet's — the user's own tmux on
- * another socket is not "inside", and attaching from it is an ordinary (nested) attach.
+ * Whether `agend attach` runs inside THIS fleet's tmux (then it switches the client instead of attaching): only a
+ * $TMUX whose socket (its first field, a path) is this fleet's — the user's own tmux on another socket is not
+ * "inside", and attaching from it is an ordinary (nested) attach.
  */
-export function insideFleetTmux(tmuxVar: string | undefined, enabled: boolean, socket: string | null): boolean {
+export function insideFleetTmux(tmuxVar: string | undefined, socket: string | null): boolean {
   if (!tmuxVar) return false;
-  if (!enabled) return true;
   const path = tmuxVar.split(",")[0] ?? "";
   return socket !== null && path.slice(path.lastIndexOf("/") + 1) === socket;
 }
@@ -165,9 +153,8 @@ export const AGEND_TMUX_CONF = [
 ].join("\n");
 
 let confWritten: string | null = null;
-/** The -f config arguments: none while off; `-f <AGEND_HOME>/tmux/agend-tmux.conf` (written when missing) while on. */
-export function tmuxConfArgs(env: NodeJS.ProcessEnv = process.env, home: string = getAgendHome()): string[] {
-  if (!bundledTmuxEnabled(env)) return [];
+/** The -f config arguments: `-f <AGEND_HOME>/tmux/agend-tmux.conf` (written when missing). */
+export function tmuxConfArgs(home: string = getAgendHome()): string[] {
   const file = join(home, "tmux", "agend-tmux.conf");
   if (confWritten !== file) {
     let current: string | null = null;
@@ -182,18 +169,16 @@ export function tmuxConfArgs(env: NodeJS.ProcessEnv = process.env, home: string 
   return ["-f", file];
 }
 
-/** `args` with this fleet's -L socket (none for tmux's default socket while off) and, on, the -f config in front. */
-export function tmuxArgs(args: readonly string[], env: NodeJS.ProcessEnv = process.env): string[] {
-  const socket = tmuxSocket(env);
-  return [...(socket ? ["-L", socket] : []), ...tmuxConfArgs(env), ...args];
+/** `args` with this fleet's -L socket and AgEnD's -f config in front. */
+export function tmuxArgs(args: readonly string[]): string[] {
+  return ["-L", tmuxSocket(), ...tmuxConfArgs(), ...args];
 }
 
 /**
- * The environment a tmux client runs with. Off: `base` as it is. On: the bundled terminfo first in TERMINFO_DIRS,
- * COLORTERM=truecolor, and no $TMUX / $TMUX_PANE (a client must never read another server's from its caller).
+ * The environment a tmux client runs with: the bundled terminfo first in TERMINFO_DIRS, COLORTERM=truecolor, and no
+ * $TMUX / $TMUX_PANE (a client must never read another server's from its caller).
  */
 export function tmuxEnv(base: NodeJS.ProcessEnv = process.env, deps?: TmuxResolveDeps): NodeJS.ProcessEnv {
-  if (!bundledTmuxEnabled(deps?.env ?? base)) return base;
   const r = resolveTmux({ ...deps, env: deps?.env ?? base });
   const out: NodeJS.ProcessEnv = { ...base };
   delete out.TMUX;
@@ -206,7 +191,7 @@ export function tmuxEnv(base: NodeJS.ProcessEnv = process.env, deps?: TmuxResolv
   return out;
 }
 
-/** For spreading into a child's options: `{ env }` with the bundled tmux's environment while on; `{}` while off. */
-export function tmuxEnvOption(): { env?: NodeJS.ProcessEnv } {
-  return bundledTmuxEnabled() ? { env: tmuxEnv() } : {};
+/** For spreading into a child's options: `{ env }` with the bundled tmux's environment. */
+export function tmuxEnvOption(): { env: NodeJS.ProcessEnv } {
+  return { env: tmuxEnv() };
 }

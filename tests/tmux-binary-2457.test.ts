@@ -1,8 +1,7 @@
 /**
- * M-2457 PR B (docs/design/bundled-tmux.md §5): which tmux AgEnD runs, on which socket, with which environment.
- *  - Off (this release: nothing sets AGEND_BUNDLED_TMUX=1): every answer is what each call site used before — "tmux"
- *    on PATH, getTmuxSocketName(), the caller's environment, no -f.
- *  - On: AGEND_TMUX_BIN (absolute + executable, else refused with the fix), else the receipt-verified bundle copied to
+ * M-2457 (docs/design/bundled-tmux.md §5): which tmux AgEnD runs, on which socket, with which environment. Always
+ * AgEnD's own tmux (C-4); there is no PATH fallback and no switch back.
+ *  - AGEND_TMUX_BIN (absolute + executable, else refused with the fix), else the receipt-verified bundle copied to
  *    <AGEND_HOME>/tmux/<version>-<sha12>/ (never a PATH fallback); the `agend` socket for the real home; the bundled
  *    terminfo first, true colour, AGEND_TMUX for panes, never a caller's $TMUX; AgEnD's own -f config.
  * Isolation: temp dirs; no tmux runs.
@@ -10,48 +9,28 @@
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { getTmuxSocketName } from "../src/paths.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AGEND_TMUX_CONF, BUNDLED_TMUX_ENV, BUNDLED_TMUX_SOCKET, TMUX_BIN_ENV, TmuxUnavailableError, bundledTmuxEnabled, insideFleetTmux,
+  AGEND_TMUX_CONF, BUNDLED_TMUX_SOCKET, TMUX_BIN_ENV, TmuxUnavailableError, insideFleetTmux,
   resetTmuxResolution, resolveTmux, socketFor, tmuxArgs, tmuxConfArgs, tmuxEnv, tmuxEnvOption, tmuxSocket,
 } from "../src/tmux-binary.js";
 
 const require = createRequire(import.meta.url);
-const ON = { [BUNDLED_TMUX_ENV]: "1" } as NodeJS.ProcessEnv;
 const roots: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-tmuxbin-")); roots.push(d); return d; };
-afterEach(() => { resetTmuxResolution(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
-
-describe("off (this release): every answer is what the call sites used before", () => {
-  it("tmux on PATH, getTmuxSocketName(), the caller's own environment, no -f", () => {
-    const env = { PATH: "/usr/bin", TMUX: "/tmp/tmux-1/default,1,0" } as NodeJS.ProcessEnv;
-    expect(bundledTmuxEnabled(env)).toBe(false);
-    expect(resolveTmux({ env })).toEqual({ binary: "tmux", terminfo: null, source: "system", version: null });
-    expect(tmuxSocket(env)).toBe(getTmuxSocketName());
-    const socket = getTmuxSocketName();
-    expect(tmuxArgs(["ls"], env)).toEqual(socket ? ["-L", socket, "ls"] : ["ls"]);
-    expect(tmuxConfArgs(env)).toEqual([]);
-    expect(tmuxEnv(env)).toBe(env);                       // the very object: nothing added, nothing removed
-  });
-
-  it.each(["", "0", "true", "yes", " 1", "1 "])("the switch is exactly \"1\": %j is off", (v) => {
-    expect(bundledTmuxEnabled({ [BUNDLED_TMUX_ENV]: v })).toBe(false);
-  });
-
-  it("tmuxEnvOption() spreads nothing while off (the process's switch is unset here)", () => {
-    expect(process.env[BUNDLED_TMUX_ENV]).toBeUndefined();
-    expect(tmuxEnvOption()).toEqual({});
-  });
+afterEach(() => {
+  resetTmuxResolution();
+  vi.unstubAllEnvs();
+  for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
 });
 
 describe("on: AGEND_TMUX_BIN", () => {
   it("an absolute path to an executable file is used as is", () => {
     const d = scratch();
     const bin = join(d, "tmux"); writeFileSync(bin, "#!/bin/sh\n"); chmodSync(bin, 0o755);
-    expect(resolveTmux({ env: { ...ON, [TMUX_BIN_ENV]: bin }, agendHome: d })).toEqual({ binary: bin, terminfo: null, source: "override", version: null });
+    expect(resolveTmux({ env: { [TMUX_BIN_ENV]: bin }, agendHome: d })).toEqual({ binary: bin, terminfo: null, source: "override", version: null });
   });
 
   it.each([
@@ -61,8 +40,8 @@ describe("on: AGEND_TMUX_BIN", () => {
     ["a file that is not executable", (d: string) => { const f = join(d, "tmux"); writeFileSync(f, "x"); chmodSync(f, 0o644); return f; }, /is not executable/],
   ])("%s is refused with what to do", (_why, make, reason) => {
     const d = scratch();
-    expect(() => resolveTmux({ env: { ...ON, [TMUX_BIN_ENV]: make(d) }, agendHome: d })).toThrow(TmuxUnavailableError);
-    try { resolveTmux({ env: { ...ON, [TMUX_BIN_ENV]: make(d) }, agendHome: d }); } catch (e) {
+    expect(() => resolveTmux({ env: { [TMUX_BIN_ENV]: make(d) }, agendHome: d })).toThrow(TmuxUnavailableError);
+    try { resolveTmux({ env: { [TMUX_BIN_ENV]: make(d) }, agendHome: d }); } catch (e) {
       expect((e as Error).message).toMatch(reason);
       expect((e as Error).message).toMatch(/absolute path of a tmux 3\.6a or newer, or unset it/);
     }
@@ -96,7 +75,7 @@ function pkg(opts: { pin?: boolean; installed?: boolean; receipt?: boolean; rece
 describe("on: the bundled tmux", () => {
   it("is copied once to <AGEND_HOME>/tmux/<version>-<sha12>/ with its terminfo, and run from there", () => {
     const p = pkg();
-    const r = resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
+    const r = resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
     const sha = createHash("sha256").update(readFileSync(p.bin)).digest("hex");
     expect(r).toEqual({ source: "bundled", version: "3.8", binary: join(p.agendHome, "tmux", `3.8-${sha.slice(0, 12)}`, "bin", "tmux"),
       terminfo: join(p.agendHome, "tmux", `3.8-${sha.slice(0, 12)}`, "share", "terminfo") });
@@ -106,11 +85,11 @@ describe("on: the bundled tmux", () => {
     // A good copy is reused, not copied again; a copy that no longer matches the receipt is replaced.
     const before = statSync(r.binary).mtimeMs;
     resetTmuxResolution();
-    expect(resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome }).binary).toBe(r.binary);
+    expect(resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome }).binary).toBe(r.binary);
     expect(statSync(r.binary).mtimeMs).toBe(before);
     writeFileSync(r.binary, "#!/bin/sh\necho tampered\n");
     resetTmuxResolution();
-    resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
+    resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
     expect(createHash("sha256").update(readFileSync(r.binary)).digest("hex")).toBe(sha);
   });
 
@@ -120,7 +99,7 @@ describe("on: the bundled tmux", () => {
     ["the package has no receipt (not verified)", { receipt: false }, /is not installed or not verified/],
   ])("is refused, never PATH's tmux instead, when %s", (_why, opts, reason) => {
     const p = pkg(opts);
-    expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(reason);
+    expect(() => resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(reason);
     expect(existsSync(join(p.agendHome, "tmux"))).toBe(false);
   });
 
@@ -128,27 +107,36 @@ describe("on: the bundled tmux", () => {
     // The receipt is checked by size + mtime before the copy; its sha256 is checked on the copy. A receipt sha that the
     // file does not have stands for a file that changed between the two.
     const p = pkg({ receiptSha: "0".repeat(64) });
-    expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome }))
+    expect(() => resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome }))
       .toThrow(/changed while it was being copied/);
-    expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(TmuxUnavailableError);
+    expect(() => resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(TmuxUnavailableError);
     const dir = join(p.agendHome, "tmux");
     expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);   // neither the destination nor a .tmp
   });
 });
 
 describe("on: socket, environment, config, attach", () => {
-  it("the real home's socket is agend (never tmux's default); any other home keeps its isolated name; off is as before", () => {
-    expect(socketFor(true, true, null)).toBe(BUNDLED_TMUX_SOCKET);
-    expect(socketFor(true, false, "agend-1a2b3c")).toBe("agend-1a2b3c");
-    expect(socketFor(false, true, null)).toBeNull();
-    expect(socketFor(false, false, "agend-1a2b3c")).toBe("agend-1a2b3c");
+  it("the real home's socket is agend (never tmux's default); any other home keeps its isolated name", () => {
+    expect(socketFor(true, null)).toBe(BUNDLED_TMUX_SOCKET);
+    expect(socketFor(true, "agend-1a2b3c")).toBe(BUNDLED_TMUX_SOCKET);
+    expect(socketFor(false, "agend-1a2b3c")).toBe("agend-1a2b3c");
+    // Another home without a name of its own never falls back to the real home's (live) socket.
+    expect(() => socketFor(false, null)).toThrow(TmuxUnavailableError);
+  });
+
+  it("tmuxSocket() is agend for the real home, never null; another home gets its isolated name", () => {
+    // The real home is the one the password database names (paths.ts), so the answer is read from it; nothing runs.
+    vi.stubEnv("AGEND_HOME", join(userInfo().homedir, ".agend"));
+    expect(tmuxSocket()).toBe("agend");
+    vi.stubEnv("AGEND_HOME", scratch());
+    expect(tmuxSocket()).toMatch(/^agend-[0-9a-f]{6}$/);
   });
 
   it("the environment: bundled terminfo first, true colour, AGEND_TMUX for panes, no caller $TMUX / $TMUX_PANE", () => {
     const p = pkg();
-    const env = tmuxEnv({ ...ON, TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%3", TERMINFO_DIRS: "/opt/ti", PATH: "/usr/bin" },
-      { env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
-    const r = resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
+    const env = tmuxEnv({ TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%3", TERMINFO_DIRS: "/opt/ti", PATH: "/usr/bin" },
+      { env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
+    const r = resolveTmux({ env: {}, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome });
     expect(env.TMUX).toBeUndefined();
     expect(env.TMUX_PANE).toBeUndefined();
     expect(env.TERMINFO_DIRS).toBe(`${r.terminfo}:/opt/ti`);
@@ -157,23 +145,39 @@ describe("on: socket, environment, config, attach", () => {
     expect(env.PATH).toBe("/usr/bin");
   });
 
+  it("tmuxEnvOption() is always { env } carrying the same environment", () => {
+    const opt = tmuxEnvOption();
+    expect(Object.keys(opt)).toEqual(["env"]);
+    expect(opt.env.COLORTERM).toBe("truecolor");
+    expect(opt.env.TMUX).toBeUndefined();
+  });
+
   it("AgEnD's own config is written once and passed with -f (the user's ~/.tmux.conf is never read)", () => {
     const d = scratch();
-    expect(tmuxConfArgs(ON, d)).toEqual(["-f", join(d, "tmux", "agend-tmux.conf")]);
+    expect(tmuxConfArgs(d)).toEqual(["-f", join(d, "tmux", "agend-tmux.conf")]);
     expect(readFileSync(join(d, "tmux", "agend-tmux.conf"), "utf8")).toBe(AGEND_TMUX_CONF);
     expect(AGEND_TMUX_CONF).toMatch(/set -g default-terminal "tmux-256color"/);
     // A changed file is put back to AgEnD's.
     writeFileSync(join(d, "tmux", "agend-tmux.conf"), "set -g mouse off\n");
     resetTmuxResolution();
-    tmuxConfArgs(ON, d);
+    tmuxConfArgs(d);
     expect(readFileSync(join(d, "tmux", "agend-tmux.conf"), "utf8")).toBe(AGEND_TMUX_CONF);
   });
 
-  it("agend attach is 'inside' only this fleet's tmux when on; any $TMUX as before when off", () => {
-    expect(insideFleetTmux(undefined, true, "agend")).toBe(false);
-    expect(insideFleetTmux("/tmp/tmux-1000/agend,123,0", true, "agend")).toBe(true);
-    expect(insideFleetTmux("/tmp/tmux-1000/default,123,0", true, "agend")).toBe(false);   // the user's own tmux
-    expect(insideFleetTmux("/tmp/tmux-1000/default,123,0", false, null)).toBe(true);
-    expect(insideFleetTmux("/tmp/tmux-1000/agend-1a2b3c,9,1", true, "agend-1a2b3c")).toBe(true);
+  it("tmuxArgs() always prefixes this fleet's -L socket and AgEnD's -f config, ahead of the arguments", () => {
+    const home = scratch();
+    vi.stubEnv("AGEND_HOME", home);
+    expect(tmuxArgs(["ls"])).toEqual(["-L", tmuxSocket(), "-f", join(home, "tmux", "agend-tmux.conf"), "ls"]);
+  });
+
+  it("agend attach is 'inside' only this fleet's tmux", () => {
+    expect(insideFleetTmux(undefined, "agend")).toBe(false);
+    expect(insideFleetTmux("/tmp/tmux-1000/agend,123,0", "agend")).toBe(true);
+    expect(insideFleetTmux("/tmp/tmux-1000/agend-1a2b3c,9,1", "agend-1a2b3c")).toBe(true);
+  });
+
+  it("a $TMUX on another socket (the user's own tmux) is not inside: attaching from it is an ordinary attach", () => {
+    expect(insideFleetTmux("/tmp/tmux-1000/default,123,0", "agend")).toBe(false);
+    expect(insideFleetTmux("/tmp/tmux-1000/agend-1a2b3c,9,1", "agend")).toBe(false);
   });
 });

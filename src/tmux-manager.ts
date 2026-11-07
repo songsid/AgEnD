@@ -5,7 +5,7 @@ import type { TerminalConfig } from "./types.js";
 import { tmuxWindowTarget, tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
 import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
-import { bundledTmuxEnabled, tmuxBinary, tmuxConfArgs, tmuxEnv } from "./tmux-binary.js";
+import { tmuxBinary, tmuxConfArgs, tmuxEnv, tmuxSocket } from "./tmux-binary.js";
 
 const execAsync = promisify(execFile);
 /**
@@ -14,12 +14,12 @@ const execAsync = promisify(execFile);
  * is the direct call, attributed as "tmux.spawn" as before. Either way: the same command, once; the same result.
  */
 const exec = ((file: string, args: string[], given?: { timeout?: number; maxBuffer?: number }) => {
-  // M-2457: the bundled tmux runs with its own environment (tmux-binary.ts); off, the call is exactly as before.
-  const opts = bundledTmuxEnabled() ? { ...(given ?? {}), env: tmuxEnv() } : given;
-  return tmuxExecHelper.exec(file, args, opts ?? {}, () => measureSyncWork("tmux.spawn", () => opts === undefined ? execAsync(file, args) : execAsync(file, args, opts)));
+  // M-2457: the bundled tmux runs with its own environment (tmux-binary.ts).
+  const opts = { ...(given ?? {}), env: tmuxEnv() };
+  return tmuxExecHelper.exec(file, args, opts, () => measureSyncWork("tmux.spawn", () => execAsync(file, args, opts)));
 }) as unknown as typeof execAsync;
-/** The bundled tmux's environment for a call, or nothing (off): spread into the options. */
-const bundledEnv = (): { env?: NodeJS.ProcessEnv } => (bundledTmuxEnabled() ? { env: tmuxEnv() } : {});
+/** The bundled tmux's environment for a call: spread into the options. */
+const bundledEnv = (): { env: NodeJS.ProcessEnv } => ({ env: tmuxEnv() });
 /** `exec`, bounded when a timeout is given — and in exactly the old (file, args) form when it is not. */
 const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec(tmuxBinary(), args, { timeout: timeoutMs }) : exec(tmuxBinary(), args);
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
@@ -118,11 +118,9 @@ export class TmuxManager implements Pane {
     TmuxManager.socketName = name;
   }
 
-  /** Prefix tmux args with -L when socket isolation is active (and, with the bundled tmux, its -f config). */
+  /** Prefix tmux args with -L (the socket set by the fleet, else this home's: never tmux's default) and the -f config. */
   private static tmuxArgs(args: string[]): string[] {
-    const conf = tmuxConfArgs();
-    if (!TmuxManager.socketName) return conf.length ? [...conf, ...args] : args;
-    return ["-L", TmuxManager.socketName, ...conf, ...args];
+    return ["-L", TmuxManager.socketName ?? tmuxSocket(), ...tmuxConfArgs(), ...args];
   }
 
   constructor(

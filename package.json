@@ -84,7 +84,11 @@
     "@songsid/agend-node-darwin-arm64": "22.23.4",
     "@songsid/agend-node-darwin-x64": "22.23.4",
     "@songsid/agend-node-linux-arm64": "22.23.4",
-    "@songsid/agend-node-linux-x64": "22.23.4"
+    "@songsid/agend-node-linux-x64": "22.23.4",
+    "@songsid/agend-tmux-darwin-arm64": "3.8.0",
+    "@songsid/agend-tmux-darwin-x64": "3.8.0",
+    "@songsid/agend-tmux-linux-arm64": "3.8.0",
+    "@songsid/agend-tmux-linux-x64": "3.8.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

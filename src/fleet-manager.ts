@@ -9871,16 +9871,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
-    const { tmuxSocket, bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
+    // M-2457: AgEnD's own tmux socket (`agend` for the real home).
+    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
-    // M-2457 §6 rule 2 (bundled tmux only): a server from another pin still on the socket is ended by its own recorded
+    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = bundledTmuxEnabled() ? await (async () => {
+    const bundled = await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
-      return { srv, socket: tmuxSocket()!, current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
-    })() : null;
+      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })();
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -10455,6 +10455,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
+
+    // M-2457 §5: the first start on AgEnD's own tmux says so, once per home: `tmux attach` no longer shows the agents.
+    this.announceOwnTmux();
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -16265,6 +16268,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
 
+
+  /**
+   * M-2457 §5: one fleet notice, the first time this home's fleet runs on AgEnD's own tmux. Marked done only once it
+   * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
+   * post it tries again next start.
+   */
+  announceOwnTmux(): void {
+    const marker = join(getAgendHome(), "tmux", "own-server-announced");
+    if (existsSync(marker)) return;
+    if (!this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
+    try {
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, `${new Date().toISOString()}\n`);
+    } catch (err) { this.logger.warn({ err }, "Could not record that the own-tmux notice was posted"); }
+  }
 
   /**
    * Post the daily summary where fleet-wide notices go.
