@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import { partsFor, readSources, srcDirName, stripCommand, TARGETS } from "../scripts/tmux/build-tmux.mjs";
-import { tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
+import { licenseFor, tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
 import { lockMismatches, parseApkInfo, toolchainEnv } from "../scripts/tmux/toolchain.mjs";
 
 const require = createRequire(import.meta.url);
@@ -134,6 +134,18 @@ describe("tmux-sources.json and the package manifest", () => {
       expect(m.agendTmux).toEqual({ tmux: "3.8", sha256: "a".repeat(64), size: 123 });
       expect(m.files).toContain("LICENSES/");
     }
+  });
+
+  // Fable #3312 F2: the licence is exactly the linked parts' (no jemalloc BSD-2-Clause left on darwin).
+  it("a package's licence is its linked parts' licences, each once", () => {
+    const s = readSources();
+    for (const target of TARGETS) {
+      const want = [...new Set(partsFor(s, target).flatMap(p => String(s[p as keyof typeof s] && (s as any)[p].license).split(" AND ")))].join(" AND ");
+      expect(tmuxManifest(target, { tmux: "3.8", sha256: "a".repeat(64), size: 1 }).license, target).toBe(want);
+      expect(licenseFor(target), target).not.toContain("BSD-2-Clause");
+    }
+    expect(licenseFor("linux-x64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
+    expect(licenseFor("darwin-arm64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
   });
 
   it("THIRD_PARTY_NOTICES names every bundled component", () => {
