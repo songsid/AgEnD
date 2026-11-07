@@ -80,13 +80,14 @@ export class HubServer {
     if (++this.handshakes > HUB_LIMITS.pending) { this.handshakes--; socket.destroy(); return; }
     try {
       const binding = await this.options.pairing.connect(req.headers.authorization!.slice(7));
-      if (!this.current() || socket.destroyed) { socket.destroy(); return; }
+      if (!this.current() || socket.destroyed || !this.options.pairing.bindingCurrent(binding.fleetId, binding.generation, binding.revocationVersion)) { socket.destroy(); return; }
       // The pairing service fences any old connection before committing the new epoch.
       this.fenceFleet(binding.fleetId);
       this.wss!.handleUpgrade(req, socket, head, ws => {
+        if (!this.current() || !this.options.pairing.bindingCurrent(binding.fleetId, binding.generation, binding.revocationVersion)) { ws.terminate(); return; }
         let connection!: Connection;
         const context: HubLinkContext = { fleetId: binding.fleetId, owner: binding.owner, linkEpoch: binding.linkEpoch, features: new Set<string>(),
-          current: () => this.current() && this.connections.get(binding.fleetId) === connection && this.options.pairing.bindingCurrent(binding.fleetId, binding.generation) };
+          current: () => this.current() && this.connections.get(binding.fleetId) === connection && this.options.pairing.bindingCurrent(binding.fleetId, binding.generation, binding.revocationVersion) };
         const link = new HubSocket(ws, { current: context.current, parse: parseMemberFrame, encode: encodeServerFrame,
           receive: frame => this.receive(frame, connection, binding.revocationVersion), closed: code => {
             clearTimeout(connection?.timer); if (this.connections.get(binding.fleetId) === connection) this.connections.delete(binding.fleetId);
@@ -131,6 +132,11 @@ export class HubServer {
   features(fleetId: string): ReadonlySet<string> | null {
     const connection = this.connections.get(fleetId);
     return connection?.ready && connection.context.current() ? connection.context.features : null;
+  }
+  /** After a committed authorization-version change: reconnect, without retiring the member or stopping the listener. */
+  refreshAuthorization(): void {
+    const captured = [...this.connections.values()];
+    for (const connection of captured) connection.link.end("unavailable");
   }
   fenceFleet(fleetId: string, reason: "replaced" | "revoked" = "replaced"): void { this.connections.get(fleetId)?.link.retire(reason); }
   fence(): void { this.stopped = true; for (const connection of [...this.connections.values()]) connection.link.end(); for (const socket of this.sockets) socket.destroy(); }
