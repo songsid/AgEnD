@@ -1,7 +1,8 @@
 /**
  * M-2457 §7: the 2.3 line refuses to start agents beside 2.4's own tmux server (a raw `npm install -g` downgrade that
- * skipped `agend rollback`). The real home: anything on the `agend` socket. Another home: only the server 2.4 recorded
- * on the shared hashed socket, or one this version's tmux can't talk to — never this version's own server.
+ * skipped `agend rollback`). The real home: anything on the `agend` socket. Another home: anything on 2.4's own name
+ * (`<hashed>-b`) or the socket server.json records; on a shared hashed socket only the server 2.4 recorded, or one this
+ * version's tmux can't talk to — never this version's own server.
  * Isolation: temp dirs; the real-socket case uses a private TMUX_TMPDIR and -S under it.
  */
 import { execFileSync } from "node:child_process";
@@ -15,9 +16,12 @@ const roots: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-guard-")); roots.push(d); return d; };
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 
-function deps(o: Partial<GuardDeps> & { record?: number; up?: string[] } = {}): GuardDeps {
+function deps(o: Partial<GuardDeps> & { record?: number; recordSocket?: string; up?: string[] } = {}): GuardDeps {
   const home = scratch();
-  if (o.record !== undefined) { mkdirSync(join(home, "tmux")); writeFileSync(join(home, "tmux", "server.json"), JSON.stringify({ serverPid: o.record })); }
+  if (o.record !== undefined) {
+    mkdirSync(join(home, "tmux"));
+    writeFileSync(join(home, "tmux", "server.json"), JSON.stringify({ serverPid: o.record, ...(o.recordSocket !== undefined ? { socket: o.recordSocket } : {}) }));
+  }
   return { agendHome: home, realHome: false, socket: "agend-1a2b3c", accepts: async (l) => (o.up ?? []).includes(l), serverPid: async () => 4242, ...o };
 }
 
@@ -37,6 +41,24 @@ describe("newerTmuxServer", () => {
     ["the record left behind, nothing running", { record: 4242, up: [] }, null],
   ])("another home: %s", async (_why, o, want) => {
     expect(await newerTmuxServer(deps(o))).toEqual(want);
+  });
+
+  // Leg I (M-2457 C-4): 2.4 gives an isolated home's bundled tmux its own socket, `<hashed>-b`, so it never shares 2.3's.
+  it.each<[string, Parameters<typeof deps>[0], object | null]>([
+    ["2.4's known name answers, no record (server.json lost)", { up: ["agend-1a2b3c-b"] }, { socket: "agend-1a2b3c-b", confirmed: true }],
+    ["2.4's known name answers, recorded", { record: 4242, recordSocket: "agend-1a2b3c-b", up: ["agend-1a2b3c-b", "agend-1a2b3c"] }, { socket: "agend-1a2b3c-b", confirmed: true }],
+    ["the recorded socket (another name) answers", { record: 4242, recordSocket: "agend-zz", up: ["agend-zz"] }, { socket: "agend-zz", confirmed: true }],
+    ["2.4's record, nothing on its socket; this version's own server runs", { record: 4242, recordSocket: "agend-1a2b3c-b", up: ["agend-1a2b3c"] }, null],
+    ["a recorded socket that is a path is ignored", { record: 4242, recordSocket: "../../tmp/x", up: ["../../tmp/x"] }, null],
+  ])("another home, 2.4 on its own socket: %s", async (_why, o, want) => {
+    let asked = 0;
+    expect(await newerTmuxServer(deps({ ...o, serverPid: async () => { asked++; return 4242; } }))).toEqual(want);
+    expect(asked).toBe(0);   // none of these asks this version's own server anything
+  });
+
+  it("the real home: a recorded socket other than `agend` counts too", async () => {
+    expect(await newerTmuxServer(deps({ realHome: true, socket: null, record: 1, recordSocket: "agend-x", up: ["agend-x"] }))).toEqual({ socket: "agend-x", confirmed: true });
+    expect(await newerTmuxServer(deps({ realHome: true, socket: null, record: 1, recordSocket: "agend", up: [] }))).toBeNull();
   });
 
   it("another home where 2.4 never ran: this version's own server is not even asked (no tmux runs)", async () => {
