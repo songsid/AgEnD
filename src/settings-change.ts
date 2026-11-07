@@ -11,6 +11,7 @@ import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
 import { isCodexSpeed } from "./backend/codex-speed.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
+import { CREDENTIAL_HOMES, isCredentialProfileName } from "./backend/credential-profile.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -251,6 +252,18 @@ function codexSpeedPath(path: readonly string[], old: unknown, next: unknown): b
   const allowed = (v: unknown) => v === undefined || v === null || isCodexSpeed(v);
   return allowed(old) && allowed(next);
 }
+/**
+ * #3335: Accounts selects an existing CLI sign-in by name; it does not install a credential or grant web authority.
+ * The existing admin/CSRF gate and signed-out-profile check still apply. Save is the person's action, without an
+ * additional confirmation (721ca0c3). Only this schema-owned leaf is immediate, never arbitrary credential fields.
+ */
+function accountProfilePath(path: readonly string[], old: unknown, next: unknown): boolean {
+  if (path[0] !== "fleet" || path.at(-1) !== "credential_profile" || path.at(-3) !== "backend_options") return false;
+  if (!(path.length === 5 && path[1] === "defaults") && !(path.length === 6 && path[1] === "instances")) return false;
+  if (!Object.hasOwn(CREDENTIAL_HOMES, path.at(-2)!)) return false;
+  const allowed = (v: unknown) => v === undefined || v === null || typeof v === "string" && isCredentialProfileName(v);
+  return allowed(old) && allowed(next);
+}
 function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
   if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
   // Only an agent's own list or the defaults' (#2346 review: never a child of an immediate key, e.g. startup.tags).
@@ -428,7 +441,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       if ([old, next].every(v => v === undefined || v === null || !quotaNoticeProblem(v, fleet))) return;
       throw new SettingsConfirmationError(400, "unsupported_quota_notice");
     }
-    if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next)) return;
+    if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next) || accountProfilePath(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Native creation projects a strictly validated request at this exact root. These fields affect where code

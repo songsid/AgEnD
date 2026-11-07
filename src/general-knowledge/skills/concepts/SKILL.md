@@ -159,6 +159,10 @@ owner too, with the same authority, checked on every request.
 - Can't: act as operator from another machine, except the owner signed in from
   outside with the authenticator; or after the session was revoked or ran out.
   Setting up, re-binding or removing the authenticator is this computer only.
+- Threat model (64a289a0): a process running as the fleet's OS user is
+  treated as the owner. It can read `web.token` and mint this session, and it
+  can edit `fleet.yaml` anyway. AgEnD defends against remote parties, other OS
+  users, links, guests and CSRF; see `docs/SECURITY.md#threat-model`.
 - Confirming a held Settings change on a web-only fleet (alpha.7, the user's
   decision hmsg-468cc290; threat model 64a289a0): the host operator's own
   session on this computer (its host session, a loopback request with no
@@ -170,10 +174,10 @@ owner too, with the same authority, checked on every request.
   outside, and audited as "Authenticator code". Never over a link (named or
   quick): there the page says to confirm on the host computer's own browser,
   or in General. On a chat-connected fleet the primary General's card decides.
-- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`);
+- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`, `hostSessionHere`);
   `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`;
   `src/fleet-manager.ts` (`settingsTotpSession`, `settingsTotpConfirm`).
-- Refs: 28c2d3a3, #3165, #3352.
+- Refs: 28c2d3a3, 64a289a0, #3165, #3327, #3352.
 
 ## fleet admin (`admin_users`)
 

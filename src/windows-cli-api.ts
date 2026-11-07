@@ -43,6 +43,16 @@ export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: Wind
  * answer is the same without the account (`withoutAccountIdentity`). No public link or gateway, no read or guest session, no header token,
  * no replayed confirmation.
  */
+/**
+ * #3327: who may create a pairing code or approve a computer — an administrator SESSION on the directly reached dashboard
+ * (cookie and CSRF: the page's own Connect a computer and Approve computer buttons). Never the bare header token, a replayed
+ * confirmation, the public link or gateway, a guest or a read session. The threat model (fleet decision 64a289a0): a
+ * process running as this fleet's OS user is its owner, so this is defence in depth — a raw API call cannot pair a
+ * computer; the person's existing click on the page can, with no step added.
+ */
+export function runtimePairingAdmin(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
+  return accountIdentityVisible(req, url, ctx);
+}
 export function accountIdentityVisible(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
   if (gatewayRequestContext(req) || isSettingsReplay(req)) return false;
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
