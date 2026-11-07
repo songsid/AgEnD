@@ -22209,7 +22209,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      if (!strippedText && !msg.attachments?.length) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY: then the replied-to message
+      // is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape ("/chat @bot (you)").
+      if (!strippedText && !msg.attachments?.length && !msg.replyToText) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 
