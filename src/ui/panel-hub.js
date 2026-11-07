@@ -6,7 +6,7 @@
 // What people see is what the server says now: every list is read fresh, every change is checked again by the server
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
-import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { PanelHeader, closeDrawer, setTitle } from "/assets/app-shell.js";
 import { lang, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
@@ -82,8 +82,9 @@ export function HubPanel({ route }) {
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
-  if (s === null) body = html`<${HubSignIn} />`;
-  else if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
+  // Signed out: the sign-in page alone (no panel header, no chat chrome).
+  if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
+  if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
@@ -113,13 +114,44 @@ export function HubSessionMenu() {
   </div>`;
 }
 
+/**
+ * alpha.6 feedback: the signed-out Hub is a sign-in page, in AgEnD's own sign-in style (signin.html: one centred card
+ * on the page's background, the brand, the fields, a primary button) — none of the chat app around it: while it is on
+ * screen the shell's sidebar and tabs are hidden (not just covered, so focus and screen readers skip them too).
+ * Its stylesheet is its own (/assets/hub-signin.css): a tab holding an older hub.css still draws it.
+ */
+function linkHubSigninCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-hub-signin-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-signin.css"); link.setAttribute("data-hub-signin-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the page still works without it */ }
+}
 function HubSignIn() {
+  useEffect(() => {
+    linkHubSigninCss();
+    // #3318 review F1: signed out from the phone drawer's session menu (or a session that ended while it was open), the
+    // drawer would stay open with <main> inert under it — and this page, inside <main>, would take no input while the
+    // sidebar and scrim that used to close it are hidden or covered. The sign-in page closes it.
+    closeDrawer();
+    const body = typeof document !== "undefined" ? document.body : null;
+    if (body) body.classList.add("hub-signed-out");
+    return () => { if (body) body.classList.remove("hub-signed-out"); };
+  }, []);
+  const name = typeof document !== "undefined" ? (document.body.dataset.hubName || "") : "";
   const [form, setForm] = useState({ login: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const submit = async (e) => {
     e.preventDefault();
-    if (busy || !form.login.trim() || !form.password) return;
+    if (busy) return;
+    // The button is always ready (a disabled one reads as grey, "broken"): an empty field just takes the focus.
+    if (!form.login.trim() || !form.password) {
+      const doc = typeof document !== "undefined" ? document : null;
+      doc?.getElementById(!form.login.trim() ? "hubLogin" : "hubPassword")?.focus();
+      return;
+    }
     setBusy(true); setMsg(null);
     const r = await hubClient().signIn(form.login.trim(), form.password);
     setBusy(false);
@@ -127,18 +159,21 @@ function HubSignIn() {
     setForm((f) => ({ ...f, password: "" }));
     setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw("errSignIn"));
   };
-  return html`<section class="card hub-signin">
-    <h2>${hw("signInTitle")}</h2>
-    <p class="note">${hw("signInLead")}</p>
-    <form class="form" onSubmit=${submit}>
-      <label class="field"><span>${hw("login")}</span><input id="hubLogin" autocomplete="username" spellcheck=${false} autocapitalize="none"
-        value=${form.login} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} /></label>
-      <label class="field"><span>${hw("password")}</span><input id="hubPassword" type="password" autocomplete="current-password"
-        value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} /></label>
-      <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !form.login.trim() || !form.password}>${hw("signIn")}</button></div>
+  return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
+    <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
+    <h1 id="hubSignInTitle">${hw("signInTitle")}</h1>
+    <p class="hub-signin-lead">${hw("signInLead")}</p>
+    <form class="hub-signin-form" onSubmit=${submit}>
+      <label for="hubLogin">${hw("login")}</label>
+      <input id="hubLogin" autocomplete="username" spellcheck=${false} autocapitalize="none"
+        value=${form.login} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} />
+      <label for="hubPassword">${hw("password")}</label>
+      <input id="hubPassword" type="password" autocomplete="current-password"
+        value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
+      <button type="submit" class="hub-signin-go" disabled=${busy}>${hw("signIn")}</button>
     </form>
-    ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-  </section>`;
+    <p class="hub-signin-msg" role=${msg ? "alert" : undefined}>${msg || ""}</p>
+  </section></main>`;
 }
 
 /** Load a list from the client; `reload` reads it again. null while loading, { error } on failure. */

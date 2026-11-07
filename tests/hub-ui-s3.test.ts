@@ -280,8 +280,8 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     await until(() => pg.root.querySelector(".hub-signin"));
     input(pg, "#hubLogin", "alex"); input(pg, "#hubPassword", "pw"); await settle(5);
     fire(pg.root.querySelector(".hub-signin form")!, "submit");
-    await until(() => pg.root.querySelector(".hub-signin .err"));
-    expect(pg.root.querySelector(".hub-signin .err")!.textContent).toBe("That account and password didn't work.");
+    await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
+    expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work.");
     expect((pg.root.querySelector("#hubPassword") as any).value).toBe("");
     input(pg, "#hubPassword", "pw"); await settle(5);
     fire(pg.root.querySelector(".hub-signin form")!, "submit");
@@ -454,5 +454,61 @@ describe("Settings → Connect to a Hub: a conflict reloads the list (Fable on #
     await until(() => pg.root.querySelector(".hub-exposures .err"));
     expect(pg.root.querySelector(".hub-exposures .err")!.textContent).toBe("This list changed in another tab. It has been reloaded; try again.");
     expect(reads).toBe(before + 1);
+  });
+});
+
+describe("alpha.6 feedback: the Hub's signed-out page", () => {
+  it("is the sign-in page alone: no panel header, the shell's chrome hidden while it shows, the button always ready; signing in brings it all back", async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } });
+    pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub");
+    mounted.push(pg);
+    let ok = false;
+    const c = client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
+      const key = `${init.method || "GET"} ${path.split("?")[0]}`;
+      const signed = { signedIn: true, displayName: "Alex", login: "alex", admin: false, csrf: "c".repeat(64), hub: { name: "Team Hub" } };
+      const json = key === "GET /hub/v1/session" ? (ok ? signed : { signedIn: false, hub: { name: "Team Hub" } })
+        : key === "POST /hub/v1/session" ? (ok = true, signed) : key === "GET /hub/v1/rooms" ? { rooms: [] } : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : {};
+      return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
+    } });
+    client.setHubClient(c); hubPanel.resetHubSession();
+    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "ask" }, navKey: "hub:ask|1|en" }));
+    await until(() => pg.root.querySelector(".hub-signin-page"));
+    expect([pg.root.querySelector(".panel-head"), pg.document.body.classList.contains("hub-signed-out")]).toEqual([null, true]);
+    expect(pg.root.querySelector(".hub-signin-brand")!.textContent).toBe("AgEnD HubTeam Hub");
+    const go = pg.root.querySelector(".hub-signin-go") as any;
+    expect(go.disabled, "ready before anything is typed").toBe(false);
+    fire(pg.root.querySelector(".hub-signin form")!, "submit"); await settle(4);
+    expect(pg.document.activeElement?.id, "an empty field takes the focus; nothing is sent").toBe("hubLogin");
+    expect(ok).toBe(false);
+    const input = (sel: string, v: string) => { const el = pg.root.querySelector(sel) as any; el.value = v; fire(el, "input"); };
+    input("#hubLogin", "alex"); input("#hubPassword", "pw"); await settle(4);
+    fire(pg.root.querySelector(".hub-signin form")!, "submit");
+    await until(() => !pg.root.querySelector(".hub-signin-page"));
+    expect(pg.document.body.classList.contains("hub-signed-out"), "the chrome is back once signed in").toBe(false);
+  });
+  it("#3318 review F1: signed out from the phone drawer's session menu, the drawer closes and <main> is not inert — the sign-in page takes input", async () => {
+    let signedIn = true;
+    const signed = { signedIn: true, displayName: "Alex", login: "alex", admin: false, csrf: "c".repeat(64), hub: { name: "Team Hub" } };
+    client.setHubClient(client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
+      const key = `${init.method || "GET"} ${path.split("?")[0]}`;
+      const json = key === "GET /hub/v1/session" ? (signedIn ? signed : { signedIn: false, hub: { name: "Team Hub" } })
+        : key === "DELETE /hub/v1/session" ? (signedIn = false, {}) : key === "GET /hub/v1/rooms" ? { rooms: [] } : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : {};
+      return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
+    } }));
+    hubPanel.resetHubSession();
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" }, matchNarrow: true });
+    pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub");
+    mounted.push(pg);
+    router.startRouter(pg.window);
+    await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel }]]), onNewInstance() {} }));
+    await until(() => pg.root.querySelector(".side-foot .hub-session button"));
+    shell.openDrawer(); await settle(5);
+    expect([shell.shellStore.get().drawer, pg.root.querySelector("#main")!.hasAttribute("inert")], "the drawer is open over an inert <main>").toEqual([true, true]);
+    (pg.root.querySelector(".side-foot .hub-session button") as any).click(); await settle(5);
+    const out = [...pg.root.querySelectorAll(".side-foot [role=menuitem]")].find((b: any) => b.textContent.trim() === "Sign out") as any;
+    out.click();
+    await until(() => pg.root.querySelector(".hub-signin-page"));
+    await settle(5);
+    expect([signedIn, shell.shellStore.get().drawer, pg.root.querySelector("#main")!.hasAttribute("inert")]).toEqual([false, false, false]);
   });
 });

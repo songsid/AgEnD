@@ -4166,6 +4166,11 @@ export interface AppShellContext {
   guestBadge?(owner: WebAccount): { name: string; platform: string };
   /** #2855: whether this guest's access is Trusted (its page offers View and search). */
   guestTrusted?(owner: WebAccount): boolean;
+  /**
+   * The configuration as written (fleet.yaml, re-read on every save): the Hub switches live only there — the parsed
+   * FleetConfig carries no `hub`/`hub_member` — and the Hub runtime already follows it (FleetManager.applyHubSwitches).
+   */
+  getRawFleetConfig?(): unknown;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4320,7 +4325,11 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
  * `hub_member.enabled`, never over the public link. `hub` is only the Hub listener's own workspace page
  * (serveHubWorkspaceShell). Nothing otherwise: no Hub UI is drawn and no Hub module loads.
  */
-function hubBodyAttrs(req: IncomingMessage, config: HubSwitches): string {
+function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
+  // alpha.6 user report: the mark read the parsed FleetConfig, which never has `hub_member` — a saved switch (or one in the
+  // file at start) never marked the page, so Connect to a Hub never loaded. It reads what the runtime reads: the raw file.
+  let config: HubSwitches = null;
+  try { config = (ctx.getRawFleetConfig?.() ?? null) as HubSwitches; } catch { config = null; }
   // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
   return hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
 }
@@ -4360,7 +4369,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
-    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(req, ctx.fleetConfig) : ""}`
+    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(req, ctx) : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }

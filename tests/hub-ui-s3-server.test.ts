@@ -60,9 +60,10 @@ afterAll(async () => {
   await new Promise<void>((r) => fm.healthServer?.close(() => r()));
   rmSync(dir, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true });
 });
+// The switches live in the configuration as written (the raw fleet.yaml): the parsed FleetConfig has no `hub`/`hub_member`.
 const setSwitches = (hub?: unknown, member?: unknown) => {
-  if (hub === undefined) delete fm.fleetConfig.hub; else fm.fleetConfig.hub = hub;
-  if (member === undefined) delete fm.fleetConfig.hub_member; else fm.fleetConfig.hub_member = member;
+  if (hub === undefined) delete fm.rawFleetConfig.hub; else fm.rawFleetConfig.hub = hub;
+  if (member === undefined) delete fm.rawFleetConfig.hub_member; else fm.rawFleetConfig.hub_member = member;
 };
 
 describe("the switches and the page's mark (this fleet's listener)", () => {
@@ -86,6 +87,31 @@ describe("the switches and the page's mark (this fleet's listener)", () => {
       const guest = await get(session("guest", ALICE), "/ui/chat/a");
       expect([guest.status, bodyTag(guest.body).includes("data-hub")]).toEqual([200, false]);
     } finally { delete fm.fleetConfig.web; }
+  });
+  it("alpha.6 user report: Hub membership switched on and saved, then a reload — the page says member (Connect to a Hub loads), no restart", async () => {
+    setSwitches();
+    const sid = session("admin");
+    expect(bodyTag((await get(sid, "/settings/access")).body).includes("data-hub")).toBe(false);
+    // The write PUT /api/settings/hub/membership commits (settings-api.ts), on the real fleet.yaml.
+    fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
+    expect(bodyTag((await get(sid, "/settings/access")).body)).toContain(' data-hub="member"');
+    fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: false }]);
+    expect(bodyTag((await get(sid, "/settings/access")).body).includes("data-hub")).toBe(false);
+    setSwitches();
+  });
+  it("alpha.6 user report: a fleet that starts with hub_member.enabled in fleet.yaml marks its pages (the parsed config has no hub_member)", async () => {
+    const d = mkdtempSync(join(tmpdir(), "agend-hub3-start-"));
+    try {
+      writeFileSync(join(d, "fleet.yaml"), `health_port: 0\nhub_member:\n  enabled: true\ninstances:\n  a:\n    working_directory: ${d}\n    backend: claude-code\n`);
+      const other: any = new FleetManager(d);
+      other.logger = fm.logger; other.loadConfig(join(d, "fleet.yaml"));
+      expect(other.fleetConfig.hub_member, "the parsed config never carries it").toBeUndefined();
+      let body = "";
+      const req = { url: "/ui", headers: { host: "127.0.0.1" }, socket: { remoteAddress: "127.0.0.1" } };
+      const res = { setHeader() {}, writeHead() {}, end(b?: string) { body = String(b ?? ""); }, headersSent: false };
+      serveAppShell(req as never, res as never, other, "full");
+      expect(bodyTag(body)).toContain(' data-hub="member"');
+    } finally { rmSync(d, { recursive: true, force: true }); }
   });
   it("hub_member.enabled: never marked over the public link (member handlers are local-owner-only — hub.md §1)", () => {
     setSwitches(undefined, { enabled: true });

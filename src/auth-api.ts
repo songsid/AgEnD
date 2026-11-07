@@ -203,6 +203,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
   // AgEnD Hub P1: the Hub pages' own stylesheet (linked by their lazy modules only; static, no data).
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
+  // alpha.6 feedback: the Hub's signed-out page (linked by panel-hub.js's HubSignIn; an older hub.css lacks it).
+  "hub-signin.css": { file: join("shared", "hub-signin.css"), type: "text/css; charset=utf-8" },
   // #3226 B: the Hub chat's stylesheet (linked by hub-chat-strings.js; an older hub.css lacks it).
   "hub-chat.css": { file: join("shared", "hub-chat.css"), type: "text/css; charset=utf-8" },
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
