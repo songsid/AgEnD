@@ -29,7 +29,6 @@ import {
   CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
   credentialProfileHome,
-  credentialProfileLoginCommand,
   credentialProfileStoreHome,
   instanceCredentialProfile,
   isCredentialProfileName,
@@ -489,15 +488,13 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // #2236: a profile on the host that no instance uses, signed out: not set up here — no row.
     if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
-      // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback: from chat
-      // (`/login claude-code <profile>`, #1699 part 2), or the exact line on the host — the same words as the auth alert.
-      const host = (scope.profile && credentialProfileLoginCommand(getAgendHome(), "claude-code", scope.profile))
-        || `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome)} claude auth login`;
+      // On screen (`ok`, as kiro's signed-out row): chat `/login` when that path
+      // exists (#1699 part 2), otherwise Settings → Agents → Sign-ins. Never a host command.
       if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
-        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\` (or run \`${host}\` on the host).`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat, host), metrics: [] };
+        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
-      return { status: "ok", hint: `Not logged in — sign in with: ${host}`, hintI18n: i18n("usage.hint.claude_profile_signed_out", host), metrics: [] };
+      return { status: "ok", hint: "Not logged in — sign in from Settings → Agents → Sign-ins.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."

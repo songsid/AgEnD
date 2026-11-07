@@ -56,7 +56,7 @@ describe("kiro auth failure is not a rate limit (#440)", () => {
     const match = classify(NO_TOKEN_PANE);
     expect(match).toMatchObject({ type: "auth_error", action: "pause" });
     // The whole point: pause is what stops the instance burning turns.
-    expect(match?.message).toMatch(/kiro-cli login/);
+    expect(match?.message).toMatch(/Settings → Agents → Sign-ins|\/login/);
   });
 
   it("does not report it as a rate limit", () => {
