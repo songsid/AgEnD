@@ -1,4 +1,4 @@
-/** The local-init and authenticated pairing lookup driver: inert LDAP/TLS seams, no listener or directory/account access. */
+/** The local-init, authenticated pairing and owner-authorized grant lookup driver: inert LDAP/TLS seams, no listener or directory/account access. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ searches: [] as any[], binds: [] as any[], tls: [] as any[], responses: [] as any[], close: 0, afterSearch: undefined as (() => void) | undefined }));
 vi.mock("node:tls", async original => ({ ...await original<typeof import("node:tls")>(),
@@ -22,7 +22,7 @@ const entry = { dn: "uid=alice,dc=example,dc=test", entryUUID: id, uid: "alice",
 const dir = () => createHubDirectory(config, { bindPassword: password });
 beforeEach(() => { f.searches.length = f.binds.length = f.tls.length = f.responses.length = 0; f.close = 0; f.afterSearch = undefined; });
 
-describe.each(["lookupForInitialization", "lookupForPairing"] as const)("%s service-account directory lookup", method => {
+describe.each(["lookupForInitialization", "lookupForPairing", "lookupForGrant"] as const)("%s service-account directory lookup", method => {
   it("looks up and rechecks one identity with only a service bind and strict TLS", async () => {
     f.responses.push([entry], [entry]);
     expect(await dir()[method]!("alice")).toMatchObject({ ok: true, person: { key: { realm: "demo", objectId: id }, login: "alice" } });
@@ -67,6 +67,6 @@ describe.each(["lookupForInitialization", "lookupForPairing"] as const)("%s serv
     f.responses.push(new Error("untrusted LDAP reply: alice uid=alice,dc=example,dc=test"));
     const d = createHubDirectory(config,{bindPassword:password},{onDiagnostic:e=>events.push(e)});
     expect(await d[method]!("alice")).toEqual({ok:false,reason:"unavailable"});
-    expect(events).toEqual([{op:method === "lookupForPairing" ? "pairing-owner-lookup" : "initialization-lookup",outcome:"unavailable",error:"directory lookup failed"}]);
+    expect(events).toEqual([{op:method === "lookupForPairing" ? "pairing-owner-lookup" : method === "lookupForGrant" ? "grant-recipient-lookup" : "initialization-lookup",outcome:"unavailable",error:"directory lookup failed"}]);
   });
 });
