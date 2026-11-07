@@ -477,7 +477,7 @@ import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
-import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
 import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
@@ -20250,7 +20250,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
-        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, null);   // its file changed, whoever is watching: a "needs sign-in" left from before is no longer the answer
+        }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -20282,7 +20285,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
-      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
+      cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
@@ -20378,8 +20381,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       diskProfiles.set(backend, rows);
     }
     const { agents, classic, fleetDefaults } = this.accountUses();
-    // Weekly usage, from the usage panel's own (cached, never forced) read.
+    // Weekly and short-window (5h) usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
+    const shortWindow = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
     for (const backend of ACCOUNT_CLIS) {
       const pid = usageProviderIdForBackend(backend); if (!pid) continue;
@@ -20389,8 +20393,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
       for (const provider of payload?.providers ?? []) {
-        const at = ids.get(provider.id); const w = at ? weeklyUsage(provider as never) : undefined;
-        if (at && w) usage.set(at, w);
+        const at = ids.get(provider.id); if (!at) continue;
+        const w = weeklyUsage(provider as never); if (w) usage.set(at, w);
+        const sh = shortUsage(provider as never); if (sh) shortWindow.set(at, sh);
       }
     } catch { /* the view without usage */ }
     // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
@@ -20406,7 +20411,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+  }
+
+  /**
+   * A sign-in just finished for this account: look at its Keep sign-in alive setting once now (when it is on), so what the Accounts row says about
+   * "the last check" is not the one from before the sign-in. Never awaited, and never allowed to fail the sign-in's own follow-up.
+   */
+  private keepAliveAfterSignIn(backend: string, profile: string | null): void {
+    if (!isKeepAliveBackend(backend)) return;
+    // Building the service can throw as well as the check, and the follow-up of a sign-in (waking its agents) must not depend on either.
+    const failed = (err: unknown) => { try { this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"); } catch { /* nothing to say it to */ } };
+    try { this.keepAliveService().tick({ only: { backend, profile } }).catch(failed); } catch (err) { failed(err); }
   }
 
   /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
@@ -20605,10 +20621,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<RemoveResult | MachineAccountResult> {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor, opts?: { cancelSignIn?: true }): Promise<RemoveResult | MachineAccountResult> {
     if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
+    // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
+    if (opts?.cancelSignIn && validCredentialProfileName(name) && await this.loginController?.cancelAccount(backend, name).catch(() => false)) {
+      this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
+    }
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
     // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
     // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
@@ -21184,6 +21205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** #1699 part 2: the login just signed in — a profile, or null for the backend's default one. */
     profile: string | null = null,
   ): Promise<PostLoginRecovery> {
+    this.keepAliveAfterSignIn(backend, profile ?? null);
     const woken: string[] = [];
     const restarted: string[] = [];
     const pending: string[] = [];

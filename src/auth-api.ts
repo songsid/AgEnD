@@ -163,7 +163,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
     "instance-switch.js",
     // #1523 N3: every page's header tools (text size, usage), the usage dialog they open, and the read stream it shares with View.
-    "header-tools.js", "usage-dialog.js", "read-stream.js",
+    "header-tools.js", "usage-dialog.js", "usage-meter.js", "read-stream.js",
     // #2585: the docked side panel in the usage rail's place (the shell's right-hand column).
     "side-panel.js",
     // #1665: the host-kept preferences and their browser cache.

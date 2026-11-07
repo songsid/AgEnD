@@ -985,7 +985,15 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 277,
+     "line": 279,
+     "symbol": "LOGIN_FLOWS.claude-code.failures.pattern"
+    },
+    {
+     "text": "Login failed: That code wasn't accepted",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 279,
      "symbol": "LOGIN_FLOWS.claude-code.failures.pattern"
     }
    ]
@@ -4198,7 +4206,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 295,
+     "line": 297,
      "symbol": "LOGIN_FLOWS.antigravity.loginScreenPattern"
     }
    ]

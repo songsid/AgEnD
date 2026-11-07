@@ -61,6 +61,13 @@ describe("#2599 structured login: parser", () => {
       expect(structuredSignInPrompt("codex", pane)).toEqual({ phase: "waiting" });
     }
   });
+  it("a code the server refuses is `provider_rejected` in both of claude's wordings — never `auth_unconfirmed` (claude 2.1.319 says it in words)", () => {
+    const pane = (said: string) => ["Opening browser to sign in…", "Paste code here if prompted > " + said, "Pane is dead (status 1)"].join("\n");
+    for (const said of ["Login failed: Request failed with status code 400", "Login failed: That code wasn't accepted. It may be incomplete, expired, already used, or from an earlier sign-in attempt. Sign in again to get a new code."]) {
+      expect(structuredSignInPrompt("claude-code", pane(said)), said).toEqual({ phase: "failed", reason: "provider_rejected" });
+    }
+    expect(structuredSignInPrompt("claude-code", pane("")).phase).not.toBe("failed");                      // the bare prompt is not a failure
+  });
   it("Claude's code field requires the live bottom prompt; no URL is linked on an untrusted host", () => {
     expect(structuredSignInPrompt("claude-code", CLAUDE_CODE)).toEqual({ phase: "code", url: "https://claude.com/cai/oauth/authorize?state=test" });
     expect(structuredSignInPrompt("claude-code", CLAUDE_CODE + "Now do my task\n").phase).not.toBe("code");

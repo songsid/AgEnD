@@ -67,8 +67,11 @@ export interface WebBackendLoginDeps {
   start(backend: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null>;
   accessToken(sink: WebLoginSink): string | null;
   isActiveFor(sink: WebLoginSink): boolean;
-  /** End the sign-in this sink started (pending or running) and nothing else; true when there was one. */
-  cancelFor(sink: WebLoginSink): Promise<boolean>;
+  /**
+   * End the sign-in this sink started (pending or running) and nothing else; true when there was one. `unopenedTerminalOnly`: only while its
+   * terminal has not been opened (the controller reads that as it cancels).
+   */
+  cancelFor(sink: WebLoginSink, opts?: { unopenedTerminalOnly?: boolean }): Promise<boolean>;
   /** `/login cancel`: whatever sign-in or install is running. */
   cancel(): Promise<string>;
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
@@ -237,6 +240,19 @@ export class WebBackendLogins {
 
   /** Any local admin may stop it (it only takes something away); a chat-started sign-in or install included. */
   cancel(): Promise<string> { return this.deps.cancel(); }
+
+  /**
+   * #3321 review: the dialog's own Close, for the one sign-in it was closed on — never "whatever is current". It ends run `runId` only when that run is
+   * still running, was started by this very session (still a local admin), and its terminal has not been opened (its access code is unredeemed, read as the
+   * cancel starts). A run that ended, or was replaced by another admin's, or whose terminal someone opened since the page read it, is left alone and
+   * the answer says nothing was cancelled. The explicit "Cancel sign-in" button is `cancel()` above, unchanged.
+   */
+  async closeRun(who: WebLoginRequester, runId: string): Promise<{ cancelled: boolean }> {
+    const run = [...this.live].find(r => r.id === runId);
+    if (!run || run.phase !== "running") return { cancelled: false };
+    if (run.handle !== who.handle || !this.deps.isLocalAdmin(who.handle)) return { cancelled: false };
+    return { cancelled: await this.deps.cancelFor(run.sink, { unopenedTerminalOnly: true }) };
+  }
 
   dispose(): void { this.stopWatch(); this.pending.clear(); this.live.clear(); }
 

@@ -48,7 +48,8 @@ describe("usage i18n key parity", () => {
       dom.restore();
     }
     // The page's usage renderer (usage-dialog.js since #1523 N3) names these keys with the same fallbacks the server sends.
-    const panel = readFileSync(join(process.cwd(), "src/ui/shared/usage-dialog.js"), "utf8");
+    // The reset and duration words moved with the meter into usage-meter.js (#3321), so both files are read.
+    const panel = ["usage-dialog.js", "usage-meter.js"].map((f) => readFileSync(join(process.cwd(), "src/ui/shared", f), "utf8")).join("\n");
     expect(panel).toContain("usageText(m.label, m.labelI18n)");
     expect(panel).toContain('usageText(m.value ?? "", m.valueI18n)');
     expect(panel).toContain("usageText(p.hint, p.hintI18n)");
