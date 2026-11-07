@@ -18099,7 +18099,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const r = store.confirmEnrollment(owner.handle, code);
     if (r === "ok") {
       this.logger.info({ again: had }, "Authenticator app set up for connections from outside");
-      if (had) this.endOutsideSessions();
+      if (had) {
+        this.endOutsideSessions();
+        // #3327: an authenticator set up again is announced where the owner looks (web Notices on a web-only fleet), so a
+        // set-up they did not make is noticed.
+        this.notifyFleetError(t("outside.reenrolled_notice"));
+      }
     }
     return r;
   }
@@ -18109,8 +18114,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
     // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
+    const had = store.enrolled;
     const saved = store.remove();
     this.closeOutsideLink("outside removed");
+    if (had) this.notifyFleetError(t("outside.removed_notice"));                 // #3327: as above
     this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
     return saved ? "ok" : "unsaved";
   }
@@ -22239,7 +22246,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      if (!strippedText && !msg.attachments?.length) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY that carries the mention: then the
+      // replied-to message is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape
+      // ("/chat @bot (you)"). Only with the mention in the text: an empty reply to one of our own messages (addressed through #2551, a
+      // sticker or embed only) stays dropped, never an empty turn quoting our own answer (Fable #3342 F1).
+      if (!strippedText && !msg.attachments?.length && !(msg.replyToText && mentionTag && addressText.includes(mentionTag))) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 

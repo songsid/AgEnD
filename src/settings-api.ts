@@ -1672,9 +1672,10 @@ export function handleSettingsRequest(
     // refuses it — the agent would wait at a sign-in prompt instead of working. Unknown (cannot tell) is let through.
     if (!(mergedInst as { machine_id?: unknown }).machine_id && mergedInst.runtime !== "windows") {
       const backendAfter = String(mergedInst.backend ?? cfg!.defaults?.backend ?? "claude-code");
+      const backendBefore = String(base.backend ?? cfg!.defaults?.backend ?? "claude-code");
       const profileAfter = instanceCredentialProfile(mergedInst, cfg!.defaults, backendAfter);
-      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, String((base as { backend?: unknown }).backend ?? cfg!.defaults?.backend ?? "claude-code")) : null;
-      if (profileAfter && profileAfter !== profileBefore) {
+      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, backendBefore) : null;
+      if (profileAfter && (profileAfter !== profileBefore || backendAfter !== backendBefore)) {
         let login: ReturnType<typeof credentialProfileLogin> | null = null;
         try { login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter); } catch { login = null; }
         if (login?.state === "signed-out") { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }

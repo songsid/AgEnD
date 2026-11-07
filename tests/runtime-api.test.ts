@@ -28,6 +28,14 @@ class Response extends ServerResponse {
   override writeHead(code: number, headers?: unknown): this { this.status = code; this.sentHeaders = headers && typeof headers === "object" && !Array.isArray(headers) ? headers as import("node:http").OutgoingHttpHeaders : {}; return this; }
   override end(chunk?: unknown): this { this.body += String(chunk ?? ""); if (chunk !== undefined) this.bytes = Buffer.concat([this.bytes, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))]); return this; }
 }
+/** #3327: a local administrator SESSION (cookie + CSRF, no header token) — the only one that may create a pairing code or approve. */
+function adminSession(ctx: RuntimeApiContext) {
+  const store = new WebSessionStore(); (ctx as { webSessions?: WebSessionStore }).webSessions = store;
+  const { sessionId, record } = store.create({ tier: "admin", surface: "local", label: "test", tokenEpoch: tokenEpoch(token) });
+  const as = (req: IncomingMessage) => { delete req.headers["x-agend-token"]; req.headers.cookie = `${WEB_SESSION_COOKIE}=${sessionId}`; req.headers.origin = "http://localhost"; req.headers["x-agend-csrf"] = csrfTokenFor(sessionId); return req; };
+  const run = (path: string, method = "GET", body: unknown = {}) => { const req = as(request(path, method, body)), res = new Response(req); const handled = handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx); return { req, res, handled }; };
+  return { store, record, sessionId, run };
+}
 function run(ctx: RuntimeApiContext, path: string, method = "GET", body: unknown = {}) {
   const req = request(path, method, body), res = new Response(req); const handled = handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx); return { req, res, handled };
 }
@@ -101,14 +109,16 @@ describe("runtime administration API", () => {
     }
   });
   it("rechecks authorization after reading a mutation body", async () => {
-    const { ctx, hub } = context(), create = vi.spyOn(hub, "createPairing"), { res } = run(ctx, "/ui/runtimes/pairing", "POST");
-    (ctx as { webToken: string | null }).webToken = null; await vi.waitFor(() => expect(res.status).toBe(403)); expect(create).not.toHaveBeenCalled();
+    const { ctx, hub } = context(), admin = adminSession(ctx), create = vi.spyOn(hub, "createPairing"), { res } = admin.run("/ui/runtimes/pairing", "POST");
+    admin.store.revokeByHandle(admin.record.handle); await vi.waitFor(() => expect(res.status).toBe(403)); expect(create).not.toHaveBeenCalled();
   });
-  it("creates a single-use pairing code, lists pending machines, and approves/renames/revokes them", async () => {
-    const { ctx, hub } = context(), create = run(ctx, "/ui/runtimes/pairing", "POST"); await vi.waitFor(() => expect(create.res.status).toBe(201));
+  it("creates a single-use pairing code and approves (a local admin session), lists pending machines, renames and revokes them", async () => {
+    const { ctx, hub } = context(), admin = adminSession(ctx), create = admin.run("/ui/runtimes/pairing", "POST"); await vi.waitFor(() => expect(create.res.status).toBe(201));
     const p = JSON.parse(create.res.body), pending = hub.pair({ code: p.code, name: "Desk", platform: "win32" });
     const list = JSON.parse(run(ctx, "/ui/runtimes").res.body); expect(list.machines[0].status).toBe("pending"); expect(JSON.stringify(list)).not.toMatch(/Hash|credential|claimSecret/);
-    for (const [op, body, expected] of [["approve", { fingerprint: hub.machine(pending.machineId)?.pairingFingerprint }, "offline"], ["rename", { name: "Work PC" }, "Work PC"], ["revoke", {}, "revoked"]] as const) {
+    const approved = admin.run(`/ui/runtimes/machines/${pending.machineId}/approve`, "POST", { fingerprint: hub.machine(pending.machineId)?.pairingFingerprint });
+    await vi.waitFor(() => expect(approved.res.status).toBe(200)); expect(JSON.parse(approved.res.body).machine.status).toBe("offline");
+    for (const [op, body, expected] of [["rename", { name: "Work PC" }, "Work PC"], ["revoke", {}, "revoked"]] as const) {
       const result = run(ctx, `/ui/runtimes/machines/${pending.machineId}/${op}`, "POST", body); await vi.waitFor(() => expect(result.res.status).toBe(200)); const machine = JSON.parse(result.res.body).machine; expect(op === "rename" ? machine.name : machine.status).toBe(expected);
     }
   });
@@ -117,7 +127,7 @@ describe("runtime administration API", () => {
     const response = run(ctx, `/ui/runtimes/machines/${pending.machineId}/inventory`); expect(response.res.status).toBe(200); expect(JSON.parse(response.res.body)).toEqual({ machineId: pending.machineId, inventory: null, updatedAt: null, status: "pending" });
   });
   it.each([null, [], { unexpected: true }])("rejects malformed pairing input %j", async body => {
-    const { ctx, hub } = context(), create = vi.spyOn(hub, "createPairing"), { res } = run(ctx, "/ui/runtimes/pairing", "POST", body);
+    const { ctx, hub } = context(), admin = adminSession(ctx), create = vi.spyOn(hub, "createPairing"), { res } = admin.run("/ui/runtimes/pairing", "POST", body);
     await vi.waitFor(() => expect(res.status).toBe(400)); expect(create).not.toHaveBeenCalled();
   });
 });
