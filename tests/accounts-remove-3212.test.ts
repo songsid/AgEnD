@@ -35,8 +35,8 @@ function withProfile(name = "spare") {
   mkdirSync(home, { recursive: true }); writeFileSync(join(home, ".credentials.json"), "{}");
   return { data, home };
 }
-const remove = (data: string, over: Partial<Parameters<typeof removeAccountProfile>[1]> = {}, fs = me()) =>
-  removeAccountProfile(data, { backend: "claude-code", name: "spare", confirm: "spare", users: NOBODY, signingIn: false, ...over }, fs);
+const remove = (data: string, over: Partial<Parameters<typeof removeAccountProfile>[1]> = {}, fs = me(), opts: Parameters<typeof removeAccountProfile>[3] = {}) =>
+  removeAccountProfile(data, { backend: "claude-code", name: "spare", confirm: "spare", users: NOBODY, signingIn: false, ...over }, fs, opts);
 
 describe("Remove: every refusal deletes nothing", () => {
   it("in use by an agent, a ClassicBot room or the fleet default: refused, and who uses it is named", () => {
@@ -110,6 +110,18 @@ describe("Remove: every refusal deletes nothing", () => {
   });
 });
 
+describe("Remove after a wait (#3305 review P2-2)", () => {
+  it("a dry run proves everything and changes nothing; the real removal must find the same folder", () => {
+    const { data, home } = withProfile();
+    const dry = remove(data, {}, me(), { dryRun: true });
+    expect([dry.ok, existsSync(home)]).toEqual([true, true]);
+    const identity = (dry as any).identity;
+    expect(remove(data, {}, me(), { expect: { ...identity, ino: identity.ino + 1 } })).toEqual({ ok: false, error: "unsafe" });
+    expect(existsSync(home)).toBe(true);
+    expect(remove(data, {}, me(), { expect: identity })).toEqual({ ok: true });
+  });
+});
+
 describe("Remove: the positive case", () => {
   it("an unused profile's folder is gone; a link inside is removed, never followed; nothing hidden is left", () => {
     const { data, home } = withProfile();
@@ -120,7 +132,7 @@ describe("Remove: the positive case", () => {
     expect(readdirSync(join(data, "credential-profiles", "claude-code"))).toEqual([]);
     expect(existsSync(join(shared, "projects.jsonl"))).toBe(true);
   });
-  it("FleetManager: who uses it comes from the configuration; the fleet log names who removed which profile", () => {
+  it("FleetManager: who uses it comes from the configuration; the fleet log names who removed which profile", async () => {
     const { data } = withProfile();
     const info = vi.fn();
     const self: any = {
@@ -128,33 +140,35 @@ describe("Remove: the positive case", () => {
       accountUses: () => ({ agents: [{ name: "dev", backend: "claude-code", profile: "spare" }, { name: "ops", backend: "codex", profile: "spare" }],
         classic: [], fleetDefaults: new Map([["codex", "spare"]]) }),
       loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+      removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
     };
-    const call = (fm: any, ...a: unknown[]) => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
-    expect(call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: false, error: "in_use", users: { agents: ["dev"], classic: [], fleetDefault: false } });
+    const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
+    expect(await call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: false, error: "in_use", users: { agents: ["dev"], classic: [], fleetDefault: false } });
     // A sign-in for this backend whose profile is not known yet (the window held, no active entry): refused too.
     self.accountUses = () => ({ agents: [], classic: [], fleetDefaults: new Map() });
     self.loginWindow = { current: { id: 1, kind: "web", backend: "claude-code" } };
-    expect(call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
+    expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
     self.loginWindow = { current: null };
     self.loginController = { signingIn: (b: string, p: string) => b === "claude-code" && p === "spare", activeBackend: "claude-code" };
-    expect(call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
+    expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
     self.loginController = { signingIn: () => false, activeBackend: null };
     info.mockClear();
-    expect(call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: true });
+    expect(await call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: true });
     expect(info).toHaveBeenCalledWith({ backend: "claude-code", profile: "spare", by: "Firefox on Linux" }, "Credential profile removed from Settings → Accounts");
     expect(JSON.stringify(info.mock.calls)).not.toContain(data);        // never a path
   });
 });
 
 describe("#3291 review (Prism): who uses it is never under-counted", () => {
-  const call = (fm: any, ...a: unknown[]) => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
+  const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
   const fm = (data: string, over: Record<string, unknown> = {}) => ({
     dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
     accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null }, ...over,
+    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+    removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), ...over,
   });
   const daemon = (cfg: Record<string, unknown>) => ({ getConfigSnapshot: () => cfg });
-  it("P2-1: a running CLI launched on it is a user, though the configuration has moved off it", () => {
+  it("P2-1: a running CLI launched on it is a user, though the configuration has moved off it", async () => {
     const { data, home } = withProfile();
     const daemons = new Map<string, unknown>([
       ["moved", daemon({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "spare" } } })],
@@ -162,36 +176,36 @@ describe("#3291 review (Prism): who uses it is never under-counted", () => {
       ["win", daemon({ backend: "claude-code", runtime: "windows", backend_options: { "claude-code": { credential_profile: "spare" } } })],
       ["cx", daemon({ backend: "codex", backend_options: { codex: { credential_profile: "spare" } } })],
     ]);
-    expect(call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: ["moved"], classic: [], fleetDefault: false } });
+    expect(await call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: ["moved"], classic: [], fleetDefault: false } });
     expect(existsSync(home)).toBe(true);
     daemons.delete("moved");                                             // it stopped: nothing launched on it is left
-    expect(call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(await call(fm(data, { daemons }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
   });
-  it("P2-2: an unreadable or malformed classicBot.yaml refuses (nothing proves no room uses it); an absent one does not", () => {
+  it("P2-2: an unreadable or malformed classicBot.yaml refuses (nothing proves no room uses it); an absent one does not", async () => {
     for (const body of ["channels: [1, 2]\n", "channels:\n  a: [\n", "- a list\n"]) {
       const { data, home } = withProfile();
       writeFileSync(join(data, "classicBot.yaml"), body);
-      expect(call(fm(data), "claude-code", "spare", "spare", "x"), body).toEqual({ ok: false, error: "users_unknown" });
+      expect(await call(fm(data), "claude-code", "spare", "spare", "x"), body).toEqual({ ok: false, error: "users_unknown" });
       expect(existsSync(home)).toBe(true);
     }
     const { data, home } = withProfile();
     writeFileSync(join(data, "classicBot.yaml"), "channels: {}\n"); chmodSync(join(data, "classicBot.yaml"), 0o000);
-    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "users_unknown" });
+    expect(await call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "users_unknown" });
     chmodSync(join(data, "classicBot.yaml"), 0o600);
     // A room that uses it, read from the file, is named; with no file there are no rooms.
     writeFileSync(join(data, "classicBot.yaml"), "channels:\n  room1:\n    backend: claude-code\n    backend_options:\n      claude-code:\n        credential_profile: Spare\n");
-    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: [], classic: ["room1"], fleetDefault: false } });
+    expect(await call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "in_use", users: { agents: [], classic: ["room1"], fleetDefault: false } });
     rmSync(join(data, "classicBot.yaml"));
-    expect(call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(await call(fm(data), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
     expect(existsSync(home)).toBe(false);
   });
-  it("P2-3: a case variant is the same account — configured, launched, the fleet default, and a sign-in", () => {
+  it("P2-3: a case variant is the same account — configured, launched, the fleet default, and a sign-in", async () => {
     const { data } = withProfile("Work");
     const uses = (agents: unknown[], fd?: string) => () => ({ agents, classic: [], fleetDefaults: new Map(fd ? [["claude-code", fd]] : []) });
-    expect(call(fm(data, { accountUses: uses([{ name: "dev", backend: "claude-code", profile: "work" }]) }), "claude-code", "Work", "Work", "x").error).toBe("in_use");
-    expect(call(fm(data, { accountUses: uses([], "WORK") }), "claude-code", "Work", "Work", "x").users.fleetDefault).toBe(true);
+    expect((await call(fm(data, { accountUses: uses([{ name: "dev", backend: "claude-code", profile: "work" }]) }), "claude-code", "Work", "Work", "x")).error).toBe("in_use");
+    expect((await call(fm(data, { accountUses: uses([], "WORK") }), "claude-code", "Work", "Work", "x")).users.fleetDefault).toBe(true);
     const daemons = new Map([["d", daemon({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } })]]);
-    expect(call(fm(data, { daemons }), "claude-code", "Work", "Work", "x").users.agents).toEqual(["d"]);
+    expect((await call(fm(data, { daemons }), "claude-code", "Work", "Work", "x")).users.agents).toEqual(["d"]);
     const signingIn = (LoginController.prototype as any).signingIn;
     expect(signingIn.call({ active: { backend: "claude-code", profile: "work" }, pendingTunnelStart: null }, "claude-code", "Work")).toBe(true);
     expect(signingIn.call({ active: { backend: "claude-code", profile: "other" }, pendingTunnelStart: null }, "claude-code", "Work")).toBe(false);

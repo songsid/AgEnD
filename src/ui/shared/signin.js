@@ -17,6 +17,8 @@
       nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
       safe: "Page looks wrong after signing in?", safe_body: "Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Look.",
       refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
+      // #3270: the code in the opened link did not work (expired, used, or the fleet restarted). It is never put back in the box.
+      autofail: "The automatic sign-in did not work — its code has expired or was already used. Run agend web on the AgEnD computer for a new one.",
       unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
@@ -50,6 +52,7 @@
       nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
       safe: "登入後畫面不對勁？", safe_body: "可能是你的自訂 CSS 把東西藏起來了。在網址最後加上 ?safe=1，就會不套用它地載入；再到「設定 → 外觀」修正或關閉。",
       refused: "登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+      autofail: "自動登入沒有成功：登入碼已過期或已使用過。請在 AgEnD 電腦上執行 agend web 取得新的登入碼。",
       unconfirmed: "登入暫時無法確認。請重新取碼再試；若仍失敗，請聯絡管理員。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
@@ -104,6 +107,30 @@
     input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");
     input.setAttribute("pattern", "[0-9 ]*");
   }
+
+  // #3270: `agend web` opens this page on this computer as /signin#code=XXXX-XXXX. A fragment is never sent to the server, a
+  // log or a Referer; it is read here and taken out of the address bar and the history entry BEFORE anything else runs —
+  // before any request this script makes — so it cannot be copied, bookmarked or shared from the address bar. It is
+  // cleared wherever the page is (a link pasted from the terminal must not leave a code behind), but it is only ever
+  // exchanged on this computer's own loopback name: a page reached by any other name never spends it on its own. It is
+  // also only exchanged on a fresh navigation by a browser with no session yet (below) — a reload or a history entry that
+  // still carried a code must not sign a different session in over the one the person has.
+  const LOOPBACK_NAMES = /^(localhost|127\.0\.0\.1|::1|\[::1\])$/i;
+  let fragmentCode = null;
+  try {
+    const params = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+    if (params.has("code")) {
+      const raw = params.get("code") || "";
+      history.replaceState(null, "", location.pathname + location.search);
+      if (/^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/.test(raw)) fragmentCode = raw;
+    }
+  } catch { /* nothing to clean */ }
+  let freshNavigation = true;
+  try {
+    const nav = typeof performance === "object" && performance && typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation")[0] : null;
+    if (nav && nav.type && nav.type !== "navigate") freshNavigation = false;
+  } catch { /* no navigation timing: treat as fresh */ }
+  const autoCode = fragmentCode && freshNavigation && !outside && LOOPBACK_NAMES.test(location.hostname || "") ? fragmentCode : null;
 
   // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and
   // answered with this page), but it is still the fleet's token: take it out of the address bar and
@@ -369,6 +396,28 @@
     } catch { return false; }
   }
 
+  // What a refused POST /auth/login says (the form's and the fragment's exchange alike): 429 and 5xx are not a wrong code.
+  const failureText = (status) => (status === 429 ? t("paused") : status >= 500 ? t("unconfirmed") : t("refused"));
+
+  // #3270: the exchange of the code `agend web` put in the fragment. Resolves null once the browser is on its way into the
+  // app, else the words for why not — the form then shows them, so an expired or used code never leaves a blank page. The
+  // code itself is never shown or put in the box: whatever it was, it is spent or useless now.
+  async function autoSignIn(code) {
+    $("checking").textContent = t("working");
+    try {
+      const r = await fetch("/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (r.ok) { clearBounce(); location.replace(nextTarget()); return null; }
+      return r.status === 429 || r.status >= 500 ? failureText(r.status) : t("autofail");
+    } catch {
+      return t("network");
+    }
+  }
+
   $("form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = $("go");
@@ -393,7 +442,7 @@
       }
       // #1854: a 5xx is the server failing to confirm the sign-in (503: a public link's notice did not go out), not a
       // wrong code — say so. The code is spent either way: the way on is a new one.
-      msg.textContent = r.status === 429 ? t("paused") : r.status >= 500 ? t("unconfirmed") : t("refused");
+      msg.textContent = failureText(r.status);
     } catch (err) {
       if (err !== "shown") msg.textContent = t("network");
     }
@@ -402,8 +451,16 @@
     $("code").select();
   });
 
-  probe().then((signedIn) => {
-    if (signedIn) { markBounce(); location.replace(nextTarget()); return; }
+  (async () => {
+    // Someone who already has a session is simply let in: the code in the link is not exchanged over it (it stays unspent
+    // and, being from a link, short-lived anyway).
+    if (await probe()) { markBounce(); location.replace(nextTarget()); return; }
+    let failure = null;
+    if (autoCode) {
+      failure = await autoSignIn(autoCode);
+      if (failure === null) return;
+    }
     showForm();
-  });
+    if (failure) $("msg").textContent = failure;
+  })();
 })();

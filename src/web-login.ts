@@ -35,6 +35,19 @@ import { randomBytes } from "node:crypto";
 import type { SessionTier } from "./web-session.js";
 
 export const LOGIN_CODE_TTL_MS = 5 * 60 * 1000;
+/**
+ * #3270: the first code this computer's own shell asks for, before any host session has EVER been authorized on this
+ * fleet (WebSessionStore.hostEverAuthorized — a fresh install, never "no session right now"), outlives the person
+ * walking away from the install: sixty minutes instead of five (the maintainer's ruling on the upstream issue). It is
+ * as strong as any other: only the web token's holder can ask for it, it is redeemed from this computer only (never over
+ * a gateway or from a LAN peer), it dies the moment the first host session exists, and the usual attempt budget and
+ * breaker still apply. Three more bounds, set where the code is issued (auth-api.ts /auth/issue-code): it is asked for
+ * by an interactive terminal only (`X-Agend-Code-Delivery: tty` — never a code going into a URL, a pipe, a redirect or an
+ * install log, and never a fleet log line), and never on WSL, where a Windows process counts as loopback and can read the
+ * distro's files. The hour starts with the first such code (a re-run inside it shares its end); after it, every code is
+ * the ordinary 5 minutes, and `agend web` prints a new one.
+ */
+export const BOOTSTRAP_LOGIN_CODE_TTL_MS = 60 * 60 * 1000;
 /** Same reasoning as setup: eight characters on a phone get mistyped. */
 export const MAX_LOGIN_CODE_ATTEMPTS = 5;
 export const LOGIN_BREAKER_WINDOW_MS = 15 * 60 * 1000;
@@ -66,6 +79,8 @@ export interface LoginCodeRecipient {
 }
 export interface IssuedLoginCode {
   readonly issuanceId: string;
+  /** #3270: a first-install host code with the long lifetime (see BOOTSTRAP_LOGIN_CODE_TTL_MS). */
+  readonly bootstrap?: true;
   /** As typed: `ABCD-EFGH`. */
   readonly display: string;
   readonly expiresAt: number;
@@ -86,12 +101,22 @@ interface Outstanding {
   readonly recipient?: LoginCodeRecipient;
   /** #2910 D1: issued to the host's own shell (`agend web --code`, the web token in a header) — never inferred from no owner. */
   readonly host?: true;
+  /** #3270: a host code issued while no host session existed — long-lived, redeemable from this computer only, only while none exists. */
+  readonly bootstrap?: true;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
   /** The web token's epoch when the code was issued: a code dies with the token it was issued under. */
   readonly epoch: string;
   failures: number;
+}
+
+/** #3270: what the caller knows about this redemption that the code store cannot: where it came from, and who is already signed in here. */
+export interface RedeemContext {
+  /** The request came from this computer (classifyWebPeer "loopback") over the local listener — never a gateway, LAN or forwarded request. */
+  readonly loopbackPeer: boolean;
+  /** A host session has ever been authorized on this fleet (WebSessionStore.hostEverAuthorized): a bootstrap code is then withdrawn, whatever has been signed out since. */
+  readonly hostEverAuthorized: boolean;
 }
 
 export interface WebLoginCodesOptions {
@@ -103,6 +128,13 @@ export interface WebLoginCodesOptions {
 
 export class WebLoginCodes {
   private outstanding: Outstanding | null = null;
+  /**
+   * #3270: when the first-install hour ends — one hour after the first bootstrap code this process issued. A bootstrap code
+   * never outlives it, and once it has passed every code is the ordinary 5 minutes ("after that, the normal 5-minute code
+   * applies"). Kept in memory on purpose: the codes themselves are, so a restart simply starts a new hour for a fleet that
+   * still has never had a host session.
+   */
+  private bootstrapWindowEnd: number | null = null;
   /** Per-audience wrong-try times. A public guesser must not pause or burn a local code. */
   private readonly failuresByAudience = new Map<string, number[]>();
   private readonly pausedUntilByAudience = new Map<string, number>();
@@ -121,18 +153,26 @@ export class WebLoginCodes {
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true; bootstrap?: true }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
-    const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
+    // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
+    const host = !!opts.host && !opts.owner && !opts.recipient && tier === "admin" && (opts.audience ?? "local") === "local";
+    // #3270: only a host code can be a bootstrap code; the caller says no host session exists (it holds the session store)
+    // and that the code goes to an interactive terminal off WSL. It lives until the end of the first-install hour — an hour
+    // from the first one issued, shared by a re-run inside it — and not at all once that hour is over.
+    const now = this.now();
+    if (host && opts.bootstrap === true && this.bootstrapWindowEnd === null) this.bootstrapWindowEnd = now + BOOTSTRAP_LOGIN_CODE_TTL_MS;
+    const bootstrap = host && opts.bootstrap === true && this.bootstrapWindowEnd !== null && now < this.bootstrapWindowEnd;
+    const expiresAt = bootstrap ? this.bootstrapWindowEnd! : now + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
     this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
-      // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
-      ...(opts.host && !opts.owner && !opts.recipient && tier === "admin" && (opts.audience ?? "local") === "local" ? { host: true as const } : {}),
+      ...(host ? { host: true as const } : {}),
+      ...(bootstrap ? { bootstrap: true as const } : {}),
       // #1827: an owner is also who the code went to; a recipient alone is recognition only.
       ...(opts.owner || opts.recipient ? { recipient: opts.recipient ?? { adapterId: opts.owner!.adapterId, userId: opts.owner!.userId, ...(opts.owner!.username ? { username: opts.owner!.username } : {}) } } : {}) };
     this.onEvent("issued");
-    return { display: formatOneTimeCode(code), expiresAt, tier, issuanceId };
+    return { display: formatOneTimeCode(code), expiresAt, tier, issuanceId, ...(bootstrap ? { bootstrap: true as const } : {}) };
   }
 
   /** #1570: how long redemption stays paused by the breaker (0 when it is closed). A code request is refused meanwhile. */
@@ -159,7 +199,11 @@ export class WebLoginCodes {
     if (this.outstanding?.audience === audience) this.outstanding = null;
   }
 
-  redeem(input: string, currentEpoch: string, audience = "local"): LoginRedeemResult {
+  /**
+   * `context` (#3270) is only read for a bootstrap code: without it (or with `loopbackPeer: false`) such a code is never
+   * spent — it fails closed, and a code that is not a bootstrap code behaves exactly as before.
+   */
+  redeem(input: string, currentEpoch: string, audience = "local", context?: RedeemContext): LoginRedeemResult {
     const now = this.now();
     const pausedUntil = this.pausedUntilByAudience.get(audience) ?? 0;
     if (now < pausedUntil) return { kind: "paused", retryAfterMs: pausedUntil - now };
@@ -174,8 +218,21 @@ export class WebLoginCodes {
       this.outstanding = null;
       active = null;
     }
+    if (active?.bootstrap && context?.hostEverAuthorized) {
+      // #3270: the first host session was made: the long-lived code was only for getting that one in. Withdrawn, not spent.
+      this.outstanding = null;
+      active = null;
+    }
     if (!active) {
       constantTimeMatches(provided, NO_CODE_PLACEHOLDER);
+      return { kind: "invalid" };
+    }
+    if (active.bootstrap && !context?.loopbackPeer) {
+      // #3270: from anywhere but this computer the long-lived code is not a door at all. Compared in constant time like
+      // any guess, counted by the breaker, but never spent and never burned — nobody off this computer can use it, so
+      // letting them burn it would only be a way to take it away from the person who can.
+      constantTimeMatches(provided, active.code);
+      this.recordFailure(now, audience);
       return { kind: "invalid" };
     }
 
