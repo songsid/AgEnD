@@ -13,14 +13,17 @@
  */
 import { z } from "zod";
 import { identifier, person } from "../validation.js";
-import { parseGroupPolicy, type HubGroupPolicy } from "./model.js";
+import { parseGroupPolicy, type GroupCapability, type HubGroupPolicy } from "./model.js";
 import type { HubActor } from "../types.js";
 
 const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const dn = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 
-/** POST /hub/v1/admin/group-policy/resolve — input feedback only, never authority. */
+/**
+ * POST /hub/v1/admin/group-policy/resolve — input feedback only, never authority. The control uses the DN only as the base of a
+ * scope-base read of that one object, never interpolated into an LDAP filter (so it needs no filter escaping).
+ */
 export const resolveRequest = z.strictObject({ dn });
 export type GroupResolveRequest = z.infer<typeof resolveRequest>;
 export type GroupResolveResponse =
@@ -40,7 +43,7 @@ const policyField = z.unknown().transform((value, ctx): HubGroupPolicy => {
 export const previewRequest = z.strictObject({ policy: policyField });
 export type GroupPreviewRequest = { readonly policy: HubGroupPolicy };
 /** A person in an impact list. `personId` is the canonical realm/objectId; name and login are display only, null if never signed in. */
-export interface GroupImpactPerson { readonly personId: z.infer<typeof person>; readonly name: string | null; readonly login: string | null; readonly capabilities?: readonly string[] }
+export interface GroupImpactPerson { readonly personId: z.infer<typeof person>; readonly name: string | null; readonly login: string | null; readonly capabilities?: readonly GroupCapability[] }
 export interface GroupImpactResource { readonly kind: "fleet" | "exposure" | "asker"; readonly id: string; readonly revision: number; readonly label: string | null; readonly owner: { readonly name: string | null } | null }
 /** Typed by the S-88 control; the editor shows each list. */
 export interface GroupImpact {
@@ -103,8 +106,11 @@ export type GroupWelcomeResponse = {
 
 /** Server-bound context of an admin call: the control itself calls `requireAdmin` (a supplied actor alone cannot re-authenticate). */
 export interface GroupAdminContext { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> }
-/** Context of a welcome read (S-89): the signed-in person, never an admin check. */
-export interface GroupWelcomeContext { readonly requestId: string; readonly person: z.infer<typeof person>; current(): boolean }
+/**
+ * Context of a welcome read (S-89): the welcome reveals one person's allow/deny per capability, so its subject is never a value
+ * passed in. The projection calls `requirePerson()` itself: the request's own current session's person, fresh (Fable #3356 N1).
+ */
+export interface GroupWelcomeContext { readonly requestId: string; current(): boolean; requirePerson(): Promise<z.infer<typeof person>> }
 
 /**
  * Implemented by S-88 (preview/apply/resume are the authoritative control). The HTTP layer validates the request shapes above
