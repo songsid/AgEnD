@@ -741,3 +741,33 @@ Canvas Worker 特效（上傳後在隔離 Worker 中執行的特效，#2275）�
 `agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。Windows 安裝程式只有在版本 1 的 setup、dashboard、installer 能力旗標都成立時才使用新流程：先安裝 AgEnD，再於 setup 頁面登入後端。舊版套件保留主控台備援。已有設定的安裝會用 `agend web --code --backend-signins kiro-cli,claude-code,codex` 開啟儀表板清單，單純導覽不會啟動登入。安裝進度 ID 維持相容；最後狀態會重新檢查登入，略過的後端不會被說成已登入。Antigravity 仍為明確的主控台備援，尚未啟用被動裝置驗證橋接。
 
 直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。
+
+### 用量提醒
+
+「設定 → 通知」可即時編輯 `defaults.quota_notice`，不需重新啟動 Agent：
+
+```yaml
+defaults:
+  quota_notice:
+    enabled: true
+    thresholds: [10]       # 剩餘百分比，不是已用百分比
+    periods: [weekly]     # session、hourly、daily、weekly、monthly
+    target: general       # General 或已設定的 Fleet Agent topic
+    backends:
+      kiro-cli:
+        periods: [monthly]
+instances:
+  worker:
+    quota_notice:
+      enabled: false      # 這個 Agent 不提供提醒規則
+```
+
+省略時也採用上述內建預設。規則依全隊、後端、Agent 的順序繼承；陣列整組取代。百分比最多 8 個，須為 1–99 的相異有限數值。空的 thresholds 或 periods 表示不提醒。Fleet Agent 與 ClassicBot 房間可覆寫 enabled、thresholds、periods；傳送對象由全隊共用。同一後端與登入設定的啟用 Agent 合併規則；關閉其中一個，不會關掉其他 Agent 的提醒。
+
+只採用已知週期、有未來重設時間的最新實測百分比。session 與 hourly 分開計算。過期、無上限、到期而非重設，或不支援的資料不會產生提醒。CLI 狀態列與轉送資料也須為最新觀測值。Muse 分別檢查各額度週期的觀測時間；方案或其他週期更新不會刷新保留的舊讀值。舊格式的 Muse 讀值須等到新的實測資料才會恢復提醒。供應商回報的超額用量以剩餘 0% 計算。不增加供應商輪詢。帳號依後端與執行主機上的憑證來源／登入設定辨識，不靠電子郵件或顯示名稱合併。遠端主機必須提供自己的用量資料，不能套用 Fleet 主機的讀值。
+
+私有的 `quota-notices.json` 會在送出前保留帳號、週期與門檻的傳送紀錄，跨重啟與改換目的地仍有效。失敗或結果不明的傳送不自動重送；狀態檔損壞或無法寫入時暫停選用提醒。備份 Fleet 時請保留此檔。真正的新週期會重新允許提醒，小幅重設時間漂移則不會。這是「最多提交一次」，不是平台已送達的保證。提醒送往指定的現有 topic，純網頁 Fleet 則使用 Notices；目的地不存在時不會自行改送其他 Agent。
+
+提醒需要可讀取的最新用量資料，以及可用的 General／Notices 或指定 topic。資料或目的地不可用時，不會退回原本的 CLI 用量不足提示。傳送狀態檔損壞或無法讀取時，請還原有效備份後重啟 AgEnD；不要刪檔來重試可能已提交的提醒。系統會記錄警告，修復前持續暫停選用提醒。
+
+只有用量不足提醒可設定。CLI 顯示已耗盡或受阻的訊息、各 Agent 的暫停與自動繼續狀態，以及既有的額度驗證、歷史文字防重播機制，一律保留。

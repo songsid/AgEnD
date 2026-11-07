@@ -1455,6 +1455,7 @@ export class InstanceLifecycle {
       message: string;
       fleetWide?: boolean;
       verifyQuota?: boolean;
+      quotaAdvisory?: true;
       skipUsageVerify?: boolean;
       /** #2872: the person's whole one-line notice, localised (posted instead of inst.notification); `message` stays for logs and webhooks. */
       notice?: string;
@@ -1592,7 +1593,7 @@ export class InstanceLifecycle {
         this.noteBackendOutage(name, data.message, notificationTarget);
       } else if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
-      } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
+      } else if (notificationTarget && !data.quotaAdvisory && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
         // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
