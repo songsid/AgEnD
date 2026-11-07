@@ -26,6 +26,7 @@ import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
+import { hg } from "./hub-grant-strings.js";
 import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
@@ -574,10 +575,10 @@ function HubMine() {
   const [pairings, reloadPairings] = useRead(() => hubClient().pairings());
   const [msg, setMsg] = useState(null);
   useEffect(() => { linkHubChatCss(); linkHubOwnerCss(); }, []);
-  const act = async (fn, after = reload) => {
+  const act = async (fn, after = reload, refused = (r) => setMsg(errText(r))) => {
     setMsg(null);
     const r = await fn();
-    if (!r.ok) setMsg(errText(r));
+    if (!r.ok) refused(r);
     await after();
     return r;
   };
@@ -658,19 +659,23 @@ function HubAgentPage({ x, act, msg }) {
 function AllowDialog({ x, act, onClose }) {
   const [form, setForm] = useState({ login: "", days: 7 });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   const submit = async (e) => {
     e && e.preventDefault && e.preventDefault();
     if (busy || !form.login.trim()) return;
+    setError(null);
     setBusy(true);
-    const r = await act(() => hubClient().grant({ exposureId: x.id, exposureRevision: x.revision, login: form.login.trim(), days: form.days }));
+    const r = await act(() => hubClient().grant({ exposureId: x.id, exposureRevision: x.revision, login: form.login.trim(), days: form.days }), undefined,
+      (r) => setError(r.code === "not-found" ? hg("recipientRefused") : r.code === "unavailable" ? hg("directoryUnavailable") : errText(r)));
     setBusy(false);
     if (r && r.ok) onClose();
   };
   return html`<${Dialog} title=${ho("allowTitle", x.displayName)} onClose=${onClose}
     actions=${html`<button type="button" class="btn" onClick=${onClose}>${hw("pickCancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !form.login.trim()} onClick=${submit}>${ho("allowGo")}</button>`}>
     <form class="form hub-grant" onSubmit=${submit}>
+      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
       <label class="field"><span>${ho("allowLogin")}</span><input autocomplete="off" spellcheck=${false} autocapitalize="none" value=${form.login}
-        onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} /><small class="note">${ho("allowLoginHint")}</small></label>
+        onInput=${(e) => { const v = e.target.value; setError(null); setForm((f) => ({ ...f, login: v })); }} /><small class="note">${ho("allowLoginHint")}</small></label>
       <label class="field"><span>${ho("allowDays")}</span><select value=${String(form.days)} onChange=${(e) => { const v = Number(e.target.value); setForm((f) => ({ ...f, days: v })); }}>
         ${DAYS.map((d) => html`<option value=${String(d)}>${hw("days", d)}</option>`)}</select></label>
     </form>
