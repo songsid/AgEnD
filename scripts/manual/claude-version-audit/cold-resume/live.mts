@@ -8,12 +8,12 @@
 // IS_SANDBOX=1 only because the namespace maps us to uid 0 and Claude refuses --dangerously-skip-permissions as root.
 //
 //   RIG=<dir with sock, envs3, h1-aged-backup, w1, proxy.port, ca.pem, flags.json> BIN=<dir with 2.1.318/2.1.319> \
-//     npx tsx scripts/manual/claude-version-audit/cold-resume-live.mts [case ...]
+//     npx tsx scripts/manual/claude-version-audit/cold-resume/live.mts [case ...]
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { ClaudeCodeBackend } from "../../../src/backend/claude-code.js";
-import { Daemon } from "../../../src/daemon.js";
+import { ClaudeCodeBackend } from "../../../../src/backend/claude-code.js";
+import { Daemon } from "../../../../src/daemon.js";
 
 const RIG = process.env.RIG!, BIN = process.env.BIN!, SOCK = join(RIG, "sock");
 const tmux = (...a: string[]) => execFileSync("tmux", ["-S", SOCK, ...a], { encoding: "utf8" });

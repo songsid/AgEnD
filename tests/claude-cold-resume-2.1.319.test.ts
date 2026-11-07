@@ -1,7 +1,7 @@
 /**
  * Claude Code's cold-cache resume prompt, LIVE-captured for the first time (2.1.319 audit, 2026-11-07): real 2.1.318 and
  * 2.1.319 binaries, the production writeConfig + buildCommand with --continue on a backdated 180k-token session, the
- * server flags served offline (scripts/manual/claude-version-audit/cold-resume-live.mts).
+ * server flags served offline (scripts/manual/claude-version-audit/cold-resume/live.mts).
  *
  * Two findings the binary-derived 2.1.295/2.1.304 fixtures missed:
  * - an option's description is painted BESIDE its label (after two or more spaces), wrapping inside that column —
