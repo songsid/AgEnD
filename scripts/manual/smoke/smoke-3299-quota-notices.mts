@@ -24,8 +24,12 @@ const failures: string[] = [], results: unknown[] = [];
 const check = (name: string, value: boolean) => { if (!value) failures.push(name); };
 const old = (f: string) => execFileSync("git", ["show", `5a45a0259:src/ui/${f}`], { encoding: "utf8" });
 async function page(c: any, skew?: "strings" | "schema" | "panel" | "route") {
-  const p = await freshPage(fx, c), errors: string[] = [];
-  p.page.on("pageerror", (e: unknown) => errors.push(String(e)));
+  const p = await freshPage(fx, c);
+  const errors = p.errors;
+  await p.page.addInitScript(() => {
+    (window as any).__quotaCsp = [];
+    document.addEventListener("securitypolicyviolation", e => (window as any).__quotaCsp.push(e.violatedDirective + " " + e.blockedURI));
+  });
   if (skew === "strings") await p.page.route("**/ui/js/settings-strings.js*", (r: any) => r.fulfill({ contentType: "text/javascript", body: old("settings-strings.js") }));
   if (skew === "route") await p.page.route("**/assets/app-route.js*", (r: any) => r.fulfill({ contentType: "text/javascript", body: old("shared/app-route.js") }));
   if (skew === "panel") await p.page.route("**/ui/js/panel-settings.js*", (r: any) => r.fulfill({ contentType: "text/javascript", body: old("panel-settings.js") }));
@@ -69,6 +73,7 @@ try {
     check(`${tag}: classic saved`, (yaml.load(readFileSync(classicFile, "utf8")) as any).channels.fixture.quota_notice?.enabled === false);
     check(`${tag}: backend preserved`, disk().defaults.quota_notice.backends["kiro-cli"].periods[0] === "monthly");
     check(`${tag}: no page errors`, !p.errors.length);
+    check(`${tag}: no CSP violations`, !(await p.page.evaluate(() => (window as any).__quotaCsp)).length);
     results.push({ tag, errors: p.errors }); await p.ctx.close();
   }
   seed();
