@@ -72,6 +72,32 @@ try {
       && errs.length === 0 && (got.csp as string[]).length === 0 && got.pageX <= 0, got);
     await ctx.close();
   }
+  // SKEW (a tab kept across the upgrade), desk light en: the OLD /assets with these modules, and this shell with the OLD
+  // changed Accounts modules. The Accounts section still draws its cards, with no error.
+  if (!BASE) {
+    const { execFileSync } = await import("node:child_process");
+    const REPO = process.env.REPO!, OLD = process.env.OLD_REF ?? "songsid/release/2.3.5-alpha";
+    const old = (f: string) => { try { return execFileSync("git", ["-C", REPO, "show", `${OLD}:src/ui/${f}`], { encoding: "utf8", maxBuffer: 64 << 20 }); } catch { return null; } };
+    const MODS = ["accounts-view.js", "accounts-keepalive.js", "settings-outside.js", "structured-signin.js", "backend-signin.js", "settings-layout.js"];
+    for (const way of ["old-shell", "old-modules"]) {
+      const c = matrix("desk-light-en")[0]!;
+      const { ctx, page } = await fx.page(c, { path: "/settings/runtimes" });
+      const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+      const served = new Set<string>();
+      const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+      await page.route(/\/ui\/accounts(\?.*)?$/, (route: any) => route.request().method() !== "GET" ? route.fulfill(json({}, 409)) : route.fulfill(json(VIEW)));
+      if (way === "old-shell") await page.route("**/assets/**", (route: any) => { const f = new URL(route.request().url()).pathname.replace(/^\/assets\//, ""); const body = old(`shared/${f}`);
+        if (body === null) return route.continue(); served.add(f); return route.fulfill({ status: 200, contentType: f.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8", body }); });
+      else await page.route(/\/ui\/js\/([a-z0-9-]+\.js)(\?.*)?$/, (route: any) => { const f = /\/ui\/js\/([a-z0-9-]+\.js)/.exec(route.request().url())![1]!;
+        if (!MODS.includes(f)) return route.continue(); served.add(f); return route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: old(f)! }); });
+      await page.goto(`${fx.base}/settings/agents`); await page.waitForSelector(".s-ai-accounts", { timeout: 15000 });
+      await page.evaluate(`document.querySelector("details.s-ai-accounts").open = true`);
+      const drawn = await page.waitForSelector(".s-account-card", { timeout: 10000 }).then(() => true, () => false);
+      await page.waitForTimeout(500); await page.locator(".s-ai-accounts").screenshot({ path: shotPath(SMOKE, `skew-${way}`, `${LABEL}-accounts`) });
+      check(`skew-${way}`, drawn && served.size > 0 && errs.length === 0, { drawn, served: [...served], errs });
+      await ctx.close();
+    }
+  }
 } catch (e) { fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500); }
 finally {
   mkdirSync(join(process.env.OUT ?? "/tmp/smoke-out", SMOKE), { recursive: true });
