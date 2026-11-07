@@ -160,7 +160,7 @@ function HubSignIn() {
     setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw("errSignIn"));
   };
   return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
-    <div class="hub-signin-brand"><strong>AgEnD Hub</strong>${name ? html`<span>${name}</span>` : null}</div>
+    <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
     <h1 id="hubSignInTitle">${hw("signInTitle")}</h1>
     <p class="hub-signin-lead">${hw("signInLead")}</p>
     <form class="hub-signin-form" onSubmit=${submit}>
