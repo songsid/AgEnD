@@ -1,6 +1,6 @@
-import { Skeleton } from "/assets/ui-states.js";
 // Lazy host-only card. Own every string so a retained Settings shell can load this newer card.
 import { html, useEffect, useState } from "/assets/app-html.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubBrowserCertificate", {

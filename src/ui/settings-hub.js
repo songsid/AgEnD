@@ -1,4 +1,3 @@
-import { Skeleton, ErrorState } from "/assets/ui-states.js";
 // AgEnD Hub P1, slice 3 (docs/design/hub-ui-client.md): Settings → Access & security → "Connect to a Hub", on a member
 // fleet (the page's mark; never drawn or loaded while hub_member is off). The address and one-time code, then each
 // pairing state as it is — waiting (the pairing fingerprint to compare, both confirmations), connected (the approved
@@ -6,6 +5,7 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 // this fleet's own agents with a Share switch each, against the revision shown (a stale tab gets a conflict, never a
 // silent widening). Everything goes through hubClient(); until slice 1 that is a stub, and the card says so.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from "./hub-client.js";

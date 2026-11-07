@@ -51,7 +51,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
 
 /**
  * The store of one room: `subscribe(fn)` (fn() on any change) → unsubscribe; `messages()`, `room()`, `working()` (the
- * question being worked on, if any: { since }), `closed()`; `refresh()` (a read now); `send(text, extras)`;
+ * question being worked on, if any: { since }), `closed()`, `loaded()` (first successful history read); `refresh()` (a read now); `send(text, extras)`;
  * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)`; `stop()`.
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {

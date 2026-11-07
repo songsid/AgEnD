@@ -79,6 +79,10 @@ try {
           if (paint.opacity === "0" || paint.color === "rgba(0, 0, 0, 0)" || paint.reduced && paint.animation !== "none") throw new Error(`${s.name}: bad paint ${JSON.stringify(paint)}`);
           if (errors.length || data.overflow) throw new Error(`${tag}/${s.name}: errors/overflow ${errors}`);
         }
+        const bounds = async () => page.locator(".p-hub .panel-head, .p-hub .hub-chat-head").first().evaluate((el: Element) => {
+          const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+        const frame = await bounds();
         await page.screenshot({ path: join(OUT, `${tag}-${s.name}.png`) });
         results.cases.push({ tag, name: s.name, ...data, errors });
         console.log(`${tag} ${s.name}: skeletons=${data.skeletons} busy=${data.busy}`);
@@ -86,6 +90,8 @@ try {
         if (process.env.EXPECT_SKELETON === "1") {
           await page.locator(pending[s.name]).first().waitFor({ state: "hidden", timeout: 25_000 });
           if (errors.length) throw new Error(`${tag}/${s.name}: settled page errors ${errors}`);
+          const settled = await bounds();
+          if (["y", "height"].some(k => Math.abs(frame[k] - settled[k]) > 2)) throw new Error(`${tag}/${s.name}: header moved ${JSON.stringify({ frame, settled })}`);
         }
       } finally { release(); await ctx.close(); }
     }

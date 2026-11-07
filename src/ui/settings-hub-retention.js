@@ -1,6 +1,6 @@
-import { Skeleton } from "/assets/ui-states.js";
 // Host-owner Settings only. Own the copy here so an open tab's older Settings strings still work.
 import { html, useEffect, useState } from "/assets/app-html.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubRetention", {

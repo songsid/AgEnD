@@ -1,6 +1,6 @@
-import { Skeleton, ErrorState } from "/assets/ui-states.js";
 // Pure lazy owner Settings while off. Hub clients/pairing UI load only after a saved on state and a member page mark.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubMembership", {
