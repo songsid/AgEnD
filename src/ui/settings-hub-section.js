@@ -37,6 +37,10 @@ function Lazy({ load, pick }) {
 export function hubGroupsHref(webOrigin) {
   try { const u = new URL(String(webOrigin || "")); return u.protocol === "https:" && u.origin === String(webOrigin).replace(/\/$/, "") ? `${u.origin}/ui/hub/admin?view=groups` : null; } catch { return null; }
 }
+/** The page mark the fleet's server sets when its own Hub has group permissions composed (#3372 N2). */
+export function hubGroupsMarked(doc = typeof document !== "undefined" ? document : null) {
+  try { return !!doc && !!doc.body && doc.body.dataset.hubGroups === "1"; } catch { return false; }
+}
 function GroupPermissionsRow({ href }) {
   return html`<section class="card s-group" id="hub-group-permissions"><h3>${hubSectionText("groupsTitle")} <span class="tag warn">${hubSectionText("experimental")}</span></h3>
     <p class="note">${hubSectionText("groupsHint")}</p>
@@ -44,7 +48,8 @@ function GroupPermissionsRow({ href }) {
 }
 
 export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
-  const groupsHref = hubHost ? hubGroupsHref(hubOrigin) : null;
+  // Only when this fleet's own Hub offers group permissions (the server's page mark), the same gate as the Hub's editor.
+  const groupsHref = hubHost && hubGroupsMarked() ? hubGroupsHref(hubOrigin) : null;
   if (overPublicLink) return html`<section class="card s-group" id="hub-public-link"><p class="note">${hubSectionText("publicLink")}</p></section>`;
   return html`<div class="s-hub-section">
     <${Lazy} load=${() => import("./settings-hub-membership.js")} pick=${(m) => m.HubMembershipSettings} />

@@ -54,6 +54,8 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
+  readonly features: readonly string[];
 }
 
 class SignedOut extends Error {}
@@ -394,7 +396,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
   rooms.buttons.start();
   return {
-    handle, receive,
+    handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE] : []),
     async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

@@ -142,6 +142,10 @@ describe("the group routes on the real Hub HTTP", () => {
     for (const [m, p] of [["GET", "/hub/v1/admin/group-policy"], ["GET", "/hub/v1/me/welcome"], ["POST", "/hub/v1/admin/group-policy/preview"]] as const)
       expect((await rigOff.call(a, m, p, m === "POST" ? { policy: POLICY } : undefined)).status, p).toBe(404);
   });
+  it("the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)", () => {
+    expect(rigOff.http.features).toEqual([]);
+    expect(rig.http.features).toEqual(["group-policy-v1"]);
+  });
   it("with it: the mark on both the sign-in answer and the session read", async () => {
     expect(admin.body.features).toEqual(["group-policy-v1"]);
     expect((await rig.call(bo, "GET", "/hub/v1/session")).json.features).toEqual(["group-policy-v1"]);

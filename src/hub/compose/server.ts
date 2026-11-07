@@ -72,6 +72,8 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
+  readonly features?: readonly string[];
 }
 
 export interface HubHttpEntry {
@@ -96,6 +98,8 @@ export interface HubServerFactoryOptions {
   retentionEveryMs?: number;
   /** Host Settings only; the disposer removes this exact generation's control. */
   retentionReady?(control: HubRetentionControl): () => void;
+  /** #3298 S-89: this Hub offers group permissions (its HTTP has "group-policy-v1"); the returned function withdraws it. */
+  groupPermissionsReady?(): () => void;
   browserCertificateReady?(control: HubBrowserCertificateControl): () => void;
 }
 
@@ -406,6 +410,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             teardown.add("the retention timer", () => clearInterval(timer));
             const detach = options.retentionReady?.(retention);
             if (detach) teardown.add("the host retention Settings", detach);
+            if (http.features?.includes("group-policy-v1")) {
+              const withdraw = options.groupPermissionsReady?.();
+              if (withdraw) teardown.add("the host's group permissions mark", withdraw);
+            }
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;

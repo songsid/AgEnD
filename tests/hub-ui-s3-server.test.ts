@@ -88,6 +88,22 @@ describe("the switches and the page's mark (this fleet's listener)", () => {
       expect([guest.status, bodyTag(guest.body).includes("data-hub")]).toEqual([200, false]);
     } finally { delete fm.fleetConfig.web; }
   });
+  it("#3372 N2: data-hub-groups only while this fleet's own Hub offers group permissions; never on a guest's page", async () => {
+    setSwitches();
+    const sid = session("admin");
+    expect(bodyTag((await get(sid, "/settings/hub")).body)).not.toContain("data-hub-groups");
+    const spy = vi.spyOn(fm, "hubGroupPermissions").mockReturnValue(true);
+    try {
+      expect(bodyTag((await get(sid, "/settings/hub")).body)).toContain(' data-hub-groups="1"');
+      fm.fleetConfig.web = { guests: { enabled: true, grants: { [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["a"] } } } };
+      try { expect(bodyTag((await get(session("guest", ALICE), "/ui/chat/a")).body)).not.toContain("data-hub-groups"); } finally { delete fm.fleetConfig.web; }
+      spy.mockReturnValue("yes" as never);                                  // only exactly true marks
+      expect(bodyTag((await get(sid, "/settings/hub")).body)).not.toContain("data-hub-groups");
+      spy.mockImplementation(() => { throw new Error("runtime gone"); });     // a failing runtime: the page still renders, unmarked
+      const failed = await get(sid, "/settings/hub");
+      expect([failed.status, bodyTag(failed.body).includes("data-hub-groups")]).toEqual([200, false]);
+    } finally { spy.mockRestore(); }
+  });
   it("alpha.6 user report: Hub membership switched on and saved, then a reload — the page says member (Connect to a Hub loads), no restart", async () => {
     setSwitches();
     const sid = session("admin");

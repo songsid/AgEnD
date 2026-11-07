@@ -214,13 +214,21 @@ describe("discovery and gating", () => {
     expect(section.hubGroupsHref("https://hub.example.test")).toBe("https://hub.example.test/ui/hub/admin?view=groups");
     expect(section.hubGroupsHref("https://hub.example.test:8443/")).toBe("https://hub.example.test:8443/ui/hub/admin?view=groups");
     for (const bad of ["http://hub.example.test", "https://hub.example.test/x", "javascript:alert(1)", "", undefined, "https://u:p@hub.example.test"]) expect(section.hubGroupsHref(bad), String(bad)).toBe(null);
-    const pg = await mountWith(fake().c, h(section.HubSection, { hubHost: true, hubOrigin: "https://hub.example.test" }), "http://127.0.0.1:19280/settings/hub");
+    // Leader, #3372 N2: hidden until this fleet's own Hub offers group permissions (the server's page mark).
+    const unmarked = await mountWith(fake().c, h(section.HubSection, { hubHost: true, hubOrigin: "https://hub.example.test" }), "http://127.0.0.1:19280/settings/hub");
+    expect(unmarked.root.querySelector("#hub-group-permissions")).toBe(null);
+    await unmarked.unmount(); mounted.splice(mounted.indexOf(unmarked), 1); unmarked.restore();
+    client.setHubClient(fake().c);
+    const pg = page({ url: "http://127.0.0.1:19280/settings/hub", storage: { agend_tour_done: "1", agend_lang: "en" } }); mounted.push(pg);
+    pg.document.body.setAttribute("data-hub-groups", "1");
+    await pg.mount(h(section.HubSection, { hubHost: true, hubOrigin: "https://hub.example.test" })); await settle(20);
     const link = pg.root.querySelector("#hub-group-permissions a");
     expect(link.getAttribute("href")).toBe("https://hub.example.test/ui/hub/admin?view=groups");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
   it("a fleet that isn't the Hub host gets no Group permissions row", async () => {
     const member = await mountWith(fake().c, h(section.HubSection, { hubHost: false, hubOrigin: "https://hub.example.test" }), "http://127.0.0.1:19280/settings/hub");
+    member.document.body.setAttribute("data-hub-groups", "1");
     expect(member.root.querySelector("#hub-group-permissions")).toBe(null);
   });
 });
