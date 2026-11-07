@@ -1,6 +1,6 @@
 // #2347 restart flow: saved changes that wait for an AgEnD restart are one app-wide line, in every panel, until AgEnD
 // restarts — Restart now (asked first, never automatic) or Later. Over the temporary public link it offers nothing; with
-// no Settings job to carry the restart it says how to restart on the host; a guest's page never asks.
+// no Settings job to carry the restart it says how to restart from General when the fleet has chat; a guest's page never asks.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
@@ -38,7 +38,7 @@ beforeEach(async () => {
   await p.unmount();
   apply.resetOperation();
   reqs = []; routes = [];
-  app.appStore.set({ restartPending: null, restartRunner: (jobId: string) => apply.restartPendingChanges(jobId) });
+  app.appStore.set({ restartPending: null, connections: null, restartRunner: (jobId: string) => apply.restartPendingChanges(jobId) });
   nav.navigate("/ui/fleet");
 });
 afterEach(() => { p.document.body.removeAttribute("data-public-link"); p.document.body.removeAttribute("data-tier"); });
@@ -114,6 +114,21 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     await mountShell();
     expect([!!button("Restart now"), line()?.textContent.includes("/restart")]).toEqual([false, true]);
+  });
+
+  it("a web-only fleet names Restart now and does not mention General", async () => {
+    app.appStore.set({ connections: 0 });
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
+    await mountShell();
+    expect([!!button("Restart now"), /General|\/restart/.test(line()?.textContent ?? "")]).toEqual([true, false]);
+    expect(line()?.textContent).toContain("Use Restart now to apply them");
+  });
+
+  it("a web-only hand edit does not name General or a host command", async () => {
+    app.appStore.set({ connections: 0 });
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+    await mountShell();
+    expect([!!button("Restart now"), /General|\/restart/.test(line()?.textContent ?? "")]).toEqual([false, false]);
   });
 
   it("a refused restart says why and keeps the line", async () => {

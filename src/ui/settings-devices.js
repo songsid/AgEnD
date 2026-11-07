@@ -12,9 +12,9 @@
 // with the authenticator's code. Anyone else sees the card, the explanation and a disabled button. The server decides
 // that on every request and refuses everything else regardless (POST /ui/devices/{lookup,approve,deny} → 403).
 // Refs #3061 (review of P2b): with web authorization off nobody is an owner, so nobody can add a device or sign another out —
-// the card says so and points to `/web revoke` in General, or the computer's owner (which ends every session); and the
-// confirm screen leads with where the request is from and its address (the device name is the browser's own word and can be
-// faked) and says to allow only when the new device shows the same code.
+// this card is web-only (the reader is on the AgEnD computer's dashboard), so it explains that and does not name General
+// or ask the computer's owner; and the confirm screen leads with where the request is from and its address (the device
+// name is the browser's own word and can be faked) and says to allow only when the new device shows the same code.
 // The words are English and 繁體中文, as everything in src/ui (tests/i18n-ui-literals-2390.test.ts).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
@@ -46,7 +46,7 @@ register("devices", {
     signOutTitle: "Sign out this device?", signOutLead: "{0} will have to sign in again.", signOutGo: "Sign out",
     signedOut: "{0} was signed out.", alreadyGone: "That device is already signed out.",
     notSaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign it out again.",
-    authorityOff: "Web authorization is off, so no device is the owner: none can add a device or sign another one out. To sign every browser out, send /web revoke in General, or ask the computer's owner.",
+    authorityOff: "Web authorization is off, so no device is the owner: none can add a device or sign another one out.",
   },
   "zh-TW": {
     title: "裝置與登入", lead: "用 8 碼代碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
@@ -72,7 +72,7 @@ register("devices", {
     signOutTitle: "登出這台裝置？", signOutLead: "{0} 需要重新登入。", signOutGo: "登出",
     signedOut: "已登出 {0}。", alreadyGone: "這台裝置已經登出了。",
     notSaved: "暫時登出了，但變更沒能存檔：重新啟動後這個工作階段可能會回來。請修正 ~/.agend/web-sessions.json 的權限，再登出一次。",
-    authorityOff: "網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。要登出所有瀏覽器，請在 General 傳 /web revoke，或請這台電腦的擁有者處理。",
+    authorityOff: "網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。",
   },
 });
 const td = (k, ...v) => t(`devices.${k}`, ...v);

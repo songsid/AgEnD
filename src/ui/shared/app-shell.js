@@ -816,10 +816,12 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ * offers nothing. Restart now is the in-page action; the muted hint names it, and mentions /restart in General only
+ * when the fleet has chat. Web-only fleets have no General. With no Settings job (a hand edit) Restart now is absent:
+ * chat fleets are told to send /restart in General.
  */
 function RestartLine() {
-  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
   const [later, setLater] = useState(null);
   const [busy, setBusy] = useState(false);
   const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
@@ -829,6 +831,10 @@ function RestartLine() {
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
   const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  // connections === 0 is web-only; null is unknown (prefer the in-page button, or General when that button is absent).
+  const hint = canRestart
+    ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost")
+    : connections === 0 ? null : t("app.restartOnHostNoJob");
   const restart = async () => {
     if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
@@ -844,7 +850,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${hint ? html`<span class="muted">${hint}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }
