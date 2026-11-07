@@ -47,6 +47,16 @@ describe("hubEntryToMessages", () => {
     expect([q.attachments, q.quote, a.attachments, a.buttons]).toEqual([drawn, { kind: "page", fileId: "f", label: "p.html" }, drawn, buttons]);
     expect(S.hubEntryToMessages({ messageId: "m", sequence: 1, receipt: { stage: "queued", at: 1 }, question: "Q" }, room, {})[0]).not.toHaveProperty("attachments");
   });
+  it("does not attribute automatic poll results to the asker, but retains the agent reply and terminal status", () => {
+    const entry = { messageId: "result", sequence: 2, pollResult: true, receipt: { stage: "queued", at: 1 } };
+    expect(S.hubEntryToMessages(entry, room, { me: "Alex", reason })).toEqual([]);
+    expect(S.hubEntryToMessages({ ...entry, answer: "Thanks for voting.", receipt: { stage: "answered", at: 1 } }, room))
+      .toMatchObject([{ role: "agent", text: "Thanks for voting." }]);
+    expect(S.hubEntryToMessages({ ...entry, receipt: { stage: "failed", at: 1, reasonCode: "expired" } }, room, { reason }))
+      .toMatchObject([{ role: "status", text: "failed:expired" }]);
+    expect(S.hubEntryToMessages({ ...entry, pollResult: undefined, question: "[poll results] typed by me" }, room))
+      .toMatchObject([{ role: "user", text: "[poll results] typed by me" }]);
+  });
   it("nothing for an entry without a sequence", () => {
     expect([S.hubEntryToMessages(null, room), S.hubEntryToMessages({ messageId: "m" }, room)]).toEqual([[], []]);
   });
@@ -86,6 +96,19 @@ describe("createHubChatStore", () => {
     expect(s.messages().map((m: any) => [m.text, m.delivery])).toEqual([["Q?", "processing"]]);
     // G's quota is the server's to give: a room without it withdraws it (the owner hid it); the other fields stay.
     expect([s.room().quota, s.room().exposureState, s.room().exposureName]).toEqual([undefined, "published", "Sales numbers"]);
+    s.stop();
+  });
+  it("a refreshed result clears an older tab's cached prompt without losing the agent answer", async () => {
+    const t = fakeTimers();
+    const entry = { messageId: "result", sequence: 1, receipt: { stage: "queued", at: 1 }, question: "[poll results] old internal prompt" };
+    const c = client([{ ok: true, entries: [entry] },
+      { ok: true, entries: [{ ...entry, pollResult: true, question: "", answer: "Result received.", receipt: { stage: "answered", at: 2 } }] }]);
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    expect(s.messages()).toMatchObject([{ role: "user", text: entry.question }]);
+    t.run(); await flush();
+    expect(s.entries()[0].question).toBe("");
+    expect(s.messages()).toMatchObject([{ role: "agent", text: "Result received." }]);
+    expect(s.messages()).toHaveLength(1);
     s.stop();
   });
   it("an answer with no room object at all (an older Hub) keeps what is known, quota included", async () => {

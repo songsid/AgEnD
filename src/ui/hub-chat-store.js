@@ -37,7 +37,8 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
   const id = entry.sequence * 2, out = [];
   // D: a Hub file in the shared thread's shape (hub-attachments.js); one the renderer cannot take is left out.
   const files = (list) => { const a = Array.isArray(list) ? list.map(hubFileAttachment).filter(Boolean) : []; return a.length ? { attachments: a } : {}; };
-  out.push({ boot: "hub", id, role: "user", sender: me, ts: iso(entry.askedAt) ?? iso(at),
+  // A closed poll's tally is already in its widget. Its automatic agent prompt was not typed by the asker.
+  if (entry.pollResult !== true) out.push({ boot: "hub", id, role: "user", sender: me, ts: iso(entry.askedAt) ?? iso(at),
     text: entry.expired && entry.question === undefined ? "" : String(entry.question ?? ""), delivery: stageMark(stage),
     ...files(entry.questionFiles), ...(entry.quote ? { quote: entry.quote } : {}) });
   if (entry.answer !== undefined) {

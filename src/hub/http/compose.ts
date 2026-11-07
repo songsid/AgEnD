@@ -27,7 +27,7 @@ import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
-import { HubCore, personByLogin } from "./core.js";
+import { HubCore, pairingOwnerByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
@@ -290,8 +290,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/admin/pairings") {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); const login = str(b.login).trim();
-      await guard(() => ctx.requireAdmin());
-      const owner = await personByLogin(core, login);
+      const owner = await guard(() => pairingOwnerByLogin(core, ctx, login));
       if (!owner) throw new HubProtocolError("not-found");
       const offer = await guard(() => deps.pairing.create(ctx, owner));
       return send(res, 200, { ...offer, memberOrigin: deps.config.memberOrigin });

@@ -19,7 +19,7 @@ import * as tls from "node:tls";
 import type { Client as LdapClient, Control, Entry, Filter } from "ldapts";
 import { HubDirectoryConfigError, resolveDirectoryConfig, type ResolvedDirectoryConfig } from "./config.js";
 import { PROFILES, escapeFilterValue, isDisabled, objectIdMatch, readObjectId, readText, readTextList } from "./profiles.js";
-import type { DirectoryPerson, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult } from "./types.js";
+import type { DirectoryPerson, DirectoryLookupResult, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult } from "./types.js";
 
 export interface HubDirectorySecrets {
   /** The service account's password (resolved by the caller from the Hub's secret store). */
@@ -27,7 +27,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "group-lookup" | "group-membership";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "group-lookup" | "group-membership";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -247,6 +247,24 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     return { ok: true, person: toPerson(current, objectId) };
   };
 
+  const lookup = async (login: string, operation: "initialization-lookup" | "pairing-owner-lookup"): Promise<DirectoryLookupResult> => {
+    if (closed) return { ok: false, reason: "unavailable" };
+    if (!validLogin(login)) return { ok: false, reason: "bad-input" };
+    let service: Session | undefined;
+    try {
+      service = await openService();
+      const selected = await selectLogin(service, login);
+      if (!selected.ok) return { ok: false, reason: selected.reason };
+      // Re-read by immutable id; a rename, deletion or replacement never retargets the selected identity.
+      return await recheck(service, selected.entry, selected.objectId, login);
+    } catch (err) {
+      // Server-supplied exception text can repeat a login or DN; diagnostics stay bounded.
+      const certificate = err instanceof Error && /certificate|self.signed|verify/i.test(err.message);
+      report(operation, "unavailable", certificate ? "directory certificate verification failed" : "directory lookup failed");
+      return { ok: false, reason: "unavailable" };
+    } finally { await service?.close(); }
+  };
+
   const groupSupport = cfg.profile === "ad" && cfg.port === 636;
   const securityGroup = (entry: Entry): boolean => {
     const raw = readText(entry, "groupType");
@@ -321,22 +339,11 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       closed = true;
     },
 
-    async lookupForInitialization(login: string): Promise<InitializationLookupResult> {
-      if (closed) return { ok: false, reason: "unavailable" };
-      if (!validLogin(login)) return { ok: false, reason: "bad-input" };
-      let service: Session | undefined;
-      try {
-        service = await openService();
-        const selected = await selectLogin(service, login);
-        if (!selected.ok) return { ok: false, reason: selected.reason };
-        // Re-read by immutable id; a rename, deletion or replacement while selecting never retargets the plan.
-        return await recheck(service, selected.entry, selected.objectId, login);
-      } catch (err) {
-        // Init diagnostics are local, but server-supplied exception text can repeat a login or DN.
-        const certificate = err instanceof Error && /certificate|self.signed|verify/i.test(err.message);
-        report("initialization-lookup", "unavailable", certificate ? "directory certificate verification failed" : "directory lookup failed");
-        return { ok: false, reason: "unavailable" };
-      } finally { await service?.close(); }
+    lookupForInitialization(login: string): Promise<InitializationLookupResult> {
+      return lookup(login, "initialization-lookup");
+    },
+    lookupForPairing(login: string): Promise<DirectoryLookupResult> {
+      return lookup(login, "pairing-owner-lookup");
     },
 
     async signIn(login: string, password: string): Promise<SignInResult> {
