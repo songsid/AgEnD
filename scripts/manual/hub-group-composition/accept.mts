@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, chmodSync, readFileSync, writeFileSync, rmSync 
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import yaml from "js-yaml";
+const regression=process.env.REGRESSION??"";
 const repo=process.env.REPO!,out=process.env.OUT!,oldRef=process.env.OLD_REF??"ae9c91e255e3e1e459e108ea8944bff795786076";
 if(!repo||!out||!process.env.PW_DIR)throw Error("REPO, OUT and PW_DIR required");mkdirSync(out,{recursive:true});
 const home=mkdtempSync(join(out,"private-home-"));chmodSync(home,0o700);
@@ -29,30 +30,31 @@ const cfg=(yaml.load(readFileSync(join(home,"fleet.yaml"),"utf8"))as any).hub;
 const {createHubServerFactory}=await import(repo+"/src/hub/compose/server.ts"),{S3B_HTTP_ENTRY}=await import(repo+"/src/hub/runtime.ts");
 const service=await createHubServerFactory({home,components:{http:S3B_HTTP_ENTRY},createDirectory:()=>directory,report:()=>{},log:()=>{}})(cfg,()=>true);await service.start();
 const pw=createRequire(process.env.PW_DIR+"/")("playwright"),browser=await pw.chromium.launch({args:["--no-sandbox","--no-proxy-server","--host-resolver-rules=MAP hub.example.test 127.0.0.1"]});
-const result:any={source:execFileSync("git",["-C",repo,"rev-parse","HEAD"],{encoding:"utf8"}).trim(),browser:browser.version(),boundary:"Actual sealed S5/S3 HTTPS and group control. Inert directory. No real accounts, LDAP, CLIs, native manager, pilot or deployment.",checks:[],shots:[],errors:[],csp:[],foreign:[],api:[]};
+const result:any={regression,source:execFileSync("git",["-C",repo,"rev-parse","HEAD"],{encoding:"utf8"}).trim(),browser:browser.version(),boundary:"Actual sealed S5/S3 HTTPS and group control. Inert directory. No real accounts, LDAP, CLIs, native manager, pilot or deployment.",checks:[],shots:[],errors:[],csp:[],foreign:[],api:[]};
 const check=(name:string,ok:any)=>{result.checks.push({name,ok:!!ok});if(!ok)throw Error(name)};
 const shot=async(page:any,name:string)=>{await page.screenshot({path:join(out,name+".png"),fullPage:true});result.shots.push(name+".png")};
 const cases=[{device:"desk",lang:"en",theme:"light"},{device:"desk",lang:"zh-TW",theme:"dark"},{device:"phone",lang:"en",theme:"dark"},{device:"phone",lang:"zh-TW",theme:"light"}];
 async function context(c:any,oldFile?:string){const ctx=await browser.newContext({viewport:c.device==="phone"?{width:390,height:844}:{width:1366,height:900},isMobile:c.device==="phone",hasTouch:c.device==="phone",locale:c.lang==="en"?"en-US":"zh-TW",colorScheme:c.theme,ignoreHTTPSErrors:true});
  await ctx.addInitScript({content:`window.__name=fn=>fn;try{localStorage.setItem('agend_lang',${JSON.stringify(c.lang)});localStorage.setItem('agend_theme',${JSON.stringify(c.theme)});localStorage.setItem('agend_tour_done','1');localStorage.setItem('agend_firstrun_dismissed','1')}catch{};window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.violatedDirective));`});
  await ctx.route("**/*",(route:any)=>{const url=new URL(route.request().url());if(url.origin!==origin){result.foreign.push(url.origin);return route.abort()};
+  if(regression&&url.pathname===`/ui/js/${regression==="draft"?"hub-group-policy.js":"panel-hub.js"}`){result.regressionHits=(result.regressionHits??0)+1;const file=regression==="draft"?"hub-group-policy.js":"panel-hub.js";return route.fulfill({contentType:"text/javascript",body:execFileSync("git",["-C",repo,"show",`38d198e081dd1cbb3a17c5e6acc59b3a38620647:src/ui/${file}`],{encoding:"utf8"})})}
   if(oldFile&&url.pathname===`/ui/js/${oldFile}`){result.skewHits=(result.skewHits??0)+1;return route.fulfill({contentType:"text/javascript",body:execFileSync("git",["-C",repo,"show",`${oldRef}:src/ui/${oldFile}`],{encoding:"utf8"})})}return route.continue()});
  const page=await ctx.newPage();page.on("pageerror",(e:any)=>result.errors.push(String(e)));page.on("response",(r:any)=>{if(r.url().includes("/group-policy"))result.api.push({method:r.request().method(),status:r.status()})});return {ctx,page};}
 async function signin(page:any,login:string,path="/ui/hub"){await page.goto(origin+path);await page.fill("#hubLogin",login);await page.fill("#hubPassword",`test-${login}`);await page.locator(".hub-signin button[type=submit]").click()}
 async function inspect(page:any,tag:string){check(tag+" no horizontal overflow",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));result.csp.push(...await page.evaluate("window.__csp"))}
 try{
- for(const [i,c]of cases.entries()){
+ for(const [i,c]of (regression?cases.slice(0,1):cases).entries()){
   const tag=`${c.device}-${c.lang}-${c.theme}`,a=await context(c);
   try{await signin(a.page,ADMIN.login,"/ui/hub/admin");await a.page.locator('[data-entry="group-permissions"]').waitFor();await a.page.locator('[data-entry="group-permissions"] .btn').click();await a.page.locator('.hub-groups-list').waitFor();
    if(i===0){await a.page.locator('.hub-step-form input').fill(dn);await a.page.locator('.hub-step-form button').click();await a.page.locator('.hub-group-row').waitFor();
     await a.page.locator('.hub-group-row input[type=checkbox]').nth(1).check();await a.page.locator('.hub-group-row input[type=checkbox]').nth(2).check();await a.page.locator('.hub-groups-state button').click();
     await a.page.locator('.hub-step-form input').fill(askDn);await a.page.locator('.hub-step-form button').click();await a.page.locator('.hub-group-row').nth(1).waitFor();
    }else{await a.page.locator('.hub-group-row input[type=number]').first().fill(String(i%2+1))}
-   await a.page.locator('.hub-groups-preview .btn-primary').waitFor();await a.page.locator('.hub-groups-preview .btn-primary').scrollIntoViewIfNeeded();await shot(a.page,tag+"-confirmed-preview");await inspect(a.page,tag+" preview");
+   await a.page.locator('.hub-groups-preview .btn-primary').waitFor();if(i===0&&regression!=="welcome")check(tag+" unsaved enable remains off",await a.page.locator('.hub-groups-state [data-pending="on"]').count()===1&&/Off|關閉/.test(await a.page.locator('.hub-groups-state h3').innerText()));await a.page.locator('.hub-groups-preview .btn-primary').scrollIntoViewIfNeeded();await shot(a.page,tag+"-confirmed-preview");await inspect(a.page,tag+" preview");
    const put=a.page.waitForResponse((r:any)=>r.url().endsWith('/hub/v1/admin/group-policy')&&r.request().method()==='PUT');await a.page.locator('.hub-groups-preview .btn-primary').click();check(tag+" actual save",(await put).status()===200);await a.page.locator('.hub-groups-preview').waitFor({state:"detached"});await shot(a.page,tag+"-saved-editor");
   }finally{await a.ctx.close()}
   for(const [login,state]of [["riley","none"],["morgan","ask"],[ADMIN.login,"full"]]){const o=await context(c);try{await signin(o.page,login);await o.page.locator('.hub-welcome-card').first().waitFor();const flags=await o.page.locator('.hub-welcome-card').evaluateAll((rows:any[])=>rows.map(x=>x.getAttribute('aria-disabled')));
-    check(tag+" welcome "+state,JSON.stringify(flags)===JSON.stringify(state==="none"?["true","true"]:state==="ask"?["false","true"]:["false","false"]));await inspect(o.page,tag+state);await shot(o.page,tag+"-welcome-"+state);
+    check(tag+" welcome "+state,JSON.stringify(flags)===JSON.stringify(state==="none"?["true","true"]:state==="ask"?["false","true"]:["false","false"]));if(state==="none")check(tag+" no-actions is not an error",await o.page.locator('.error-state[role="alert"]').count()===0);await inspect(o.page,tag+state);await shot(o.page,tag+"-welcome-"+state);
    }finally{await o.ctx.close()}}
  }
  for(const file of ["hub-client.js","panel-hub.js"]){const c=cases[file==="hub-client.js"?0:3],o=await context(c,file);try{await signin(o.page,ADMIN.login,"/ui/hub/admin");await o.page.locator('.hub-steps').waitFor();check("retained "+file+" hides feature",await o.page.locator('[data-entry="group-permissions"]').count()===0);await shot(o.page,"skew-"+c.device+"-"+c.lang+"-"+file.replace('.js',''));await inspect(o.page,"skew "+file)}finally{await o.ctx.close()}}
