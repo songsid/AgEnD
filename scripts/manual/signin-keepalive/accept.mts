@@ -45,8 +45,8 @@ async function runCase(name: string, backend: KeepAliveBackend, setup: (home: st
   const before = hits().length;
   const logs: unknown[] = [];
   const ka = new SignInKeepAlive({
-    dataDir: data, log: (l, m, f) => { logs.push([l, m, f]); }, homeOf: () => home, inUse: () => false,
-    claim: () => ({ release() {} }), changed: () => {},
+    dataDir: data, log: (l, m, f) => { logs.push([l, m, f]); }, homeOf: () => home,
+    acquire: () => ({ release() {} }), changed: () => {},
   });
   ka.set(backend, "work", true, fallback);
   await ka.tick({ force: true });

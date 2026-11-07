@@ -10,7 +10,7 @@
 // Words are registered here (a new module: an older cached strings file never leaves a raw key).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
-import { createStore, useStore } from "/assets/app-store.js";
+import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
@@ -70,6 +70,18 @@ function linkAccountsCss(doc = typeof document !== "undefined" ? document : null
 const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };
 
 export const accountsStore = createStore({ loaded: false, failed: false, view: null });
+/**
+ * #3313 review P2-7: the server says sign-ins changed (`backend_login`: a sign-in moved, an account was learned, a Keep
+ * sign-in alive check finished): a page showing the accounts reads them again, fresh. Listened to once per page. The
+ * existing event, so a tab whose cached shell (app-stream.js) predates this still delivers it.
+ */
+let accountsEventOff = null;
+export function listenAccountsEvent() {
+  if (accountsEventOff) return;
+  const on = appStore.get().streamOn;
+  if (typeof on !== "function") return;
+  accountsEventOff = on("backend_login", () => { if (accountsStore.get().loaded) void refreshAccounts({ fresh: true }); }) || (() => {});
+}
 let reading = null, started = 0, applied = 0;
 /**
  * Read GET /ui/accounts. A read already running is joined — unless `fresh` (#3291 review, Prism P2-4: after a write, the
@@ -141,7 +153,7 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const interaction = useRef(0);
   const begin = (fn) => (...a) => { interaction.current++; fn(...a); };
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
-  useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
+  useEffect(() => { linkAccountsCss(); listenAccountsEvent(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
   const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}`;
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);

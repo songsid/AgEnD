@@ -20075,10 +20075,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       dataDir: this.dataDir,
       log: (level, msg, fields) => this.logger[level](fields, msg),
       homeOf: (backend, profile) => profile ? credentialProfileHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot() ?? null,
-      inUse: (backend, profile) => this.keepAliveInUse(backend, profile),
-      claim: backend => { const c = this.loginWindow.tryClaim("keepalive", backend); return c ? { release: () => { this.loginWindow.release(c); } } : null; },
+      acquire: (backend, profile) => this.acquireKeepAliveRun(backend, profile),
       changed: () => {
         this.needsYou?.poke();
+        // #3313 review P2-7: the Accounts view reads itself again on `backend_login` (no details: each page reads its own
+        // view). That event, not a new one: a tab whose cached shell predates this still passes it on.
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
       },
       claudeKeychain: process.platform === "darwin",
@@ -20087,28 +20088,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startSignInKeepAlive(): void { this.keepAliveService().start(); }
 
   /**
-   * #3292: a sign-in is in use when a running host agent was launched on it, a ClassicBot room is bound to it (or the rooms
-   * cannot be read), or a sign-in for it is running. Codex refresh tokens are single-use: a refresh beside a live user could
-   * spend the one it holds; and a sign-in in use is kept alive by that use.
+   * #3292 review: which sign-in each host agent is starting or running on, recorded at its start (InstanceLifecycle
+   * admitCredentialUse) from the configuration it launched with — never re-resolved against today's defaults. An entry
+   * whose start ended without a daemon, or whose daemon is gone, is dropped when next read.
+   */
+  private readonly credentialLeases = new Map<string, { key: string; starting: boolean }>();
+  /** #3292 review: Keep sign-in alive runs in flight, by sign-in: a start on that sign-in waits for its end. */
+  private readonly keepAliveRenewing = new Map<string, Promise<void>>();
+  private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
+
+  /** LifecycleContext: hold the sign-in a start will launch on (waits while Keep sign-in alive renews it). */
+  async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void } | null> {
+    if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
+    let profile: string | null = null;
+    try { profile = instanceCredentialProfile(config, this.fleetConfig?.defaults, backend); } catch { profile = null; }
+    const key = this.credentialKey(backend, profile);
+    // Wait out a renewal of this sign-in; the check and the record below run with no await between them.
+    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) { await renewing; assertCurrent(); }
+    const lease = { key, starting: true };
+    this.credentialLeases.set(name, lease);
+    return {
+      published: () => { lease.starting = false; },
+      release: () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); },
+    };
+  }
+
+  /**
+   * #3292: a sign-in is in use when a host agent is starting or running on it (as launched), a ClassicBot room is bound
+   * to it (or the rooms cannot be read — none when there is no classicBot.yaml), or a sign-in for it is running. Codex
+   * refresh tokens are single-use: a refresh beside a live user could spend the one it holds; and use keeps it alive.
    */
   private keepAliveInUse(backend: string, profile: string | null): boolean {
+    const key = this.credentialKey(backend, profile);
+    for (const [name, lease] of [...this.credentialLeases]) {
+      if (!lease.starting && !this.daemons?.has(name)) { this.credentialLeases.delete(name); continue; }
+      if (lease.key === key) return true;
+    }
     const same = (p: string | null | undefined) => profile === null ? !p : !!p && p.toLowerCase() === profile.toLowerCase();
     const defaults = this.fleetConfig?.defaults, defaultBackend = defaults?.backend ?? "claude-code";
-    for (const [, daemon] of this.daemons ?? []) {
+    // A running agent with no record (started some other way): only its own setting is trusted; none names an account, so it may be on any.
+    for (const [name, daemon] of this.daemons ?? []) {
+      if (this.credentialLeases.has(name)) continue;
       let snap: InstanceConfig | undefined;
       try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
-      if (!snap || isWindowsInstance(snap) || (snap.backend ?? defaultBackend) !== backend) continue;
-      let launched: string | null = null;
-      try { launched = instanceCredentialProfile(snap, defaults, backend); } catch { return true; }
-      if (same(launched)) return true;
+      if (snap && isWindowsInstance(snap)) continue;
+      if (!snap) return true;
+      if ((snap.backend ?? defaultBackend) !== backend) continue;
+      let own: string | null = null;
+      try { own = resolveCredentialProfile(snap.backend_options?.[backend]); } catch { return true; }
+      if (!own || same(own)) return true;
     }
     const rooms = readClassicBindingsStrict(this.dataDir);
-    if (rooms.kind !== "ok") return true;
-    for (const b of rooms.bindings) {
+    if (rooms.kind === "unknown") return true;
+    for (const b of rooms.kind === "ok" ? rooms.bindings : []) {
       const cli = b.backend ?? defaultBackend;
       if (cli === backend && same(profileName(classicProfile(b.backend_options, defaults?.backend_options, cli)))) return true;
     }
     return this.loginController?.signingIn(backend, profile) ?? false;
+  }
+
+  /**
+   * #3292 review: one keep-alive run's admission, decided synchronously: not in use, the shared login window taken, and the
+   * sign-in marked as renewing (a start on it waits). The run's life is an account writer: a stop waits for it, and
+   * sign-in admission reopens after a restart only once it has ended. `release()` only after its CLI has exited.
+   */
+  private acquireKeepAliveRun(backend: string, profile: string | null): { release(): void } | "in_use" | "busy" {
+    if (this.keepAliveInUse(backend, profile)) return "in_use";
+    const claim = this.loginWindow.tryClaim("keepalive", backend);
+    if (!claim) return "busy";
+    const key = this.credentialKey(backend, profile);
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.keepAliveRenewing.set(key, life);
+    this.accountWriters.add(life);
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.loginWindow.release(claim);
+        if (this.keepAliveRenewing.get(key) === life) this.keepAliveRenewing.delete(key);
+        this.accountWriters.delete(life);
+        finished();
+      },
+    };
   }
 
   /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
@@ -20652,6 +20715,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
+    // #3292 review: Keep sign-in alive stops asking for runs and stops its CLI; its run's life is an account writer,
+    // waited for below like an account logout.
+    void this.signInKeepAlive?.stop();
     // Completion semantics live INSIDE the sessions: each awaits its own
     // confirmed cleanup, every tmux op on that path has a hard per-op bound
     // (web: abort ≤10 s + kill ≤31 s; legacy: create/list/kill ≤10 s each,
@@ -24416,7 +24482,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.configHistoryTimer) clearInterval(this.configHistoryTimer);
     this.configHistoryTimer = null;
     const needsStopped = this.stopNeedsYou();
-    this.signInKeepAlive?.stop();
     // #1490 P3: stop() now returns a Promise; await it so the final
     // ledger flush completes before process.exit(0) in doStopAll's caller.
     const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();

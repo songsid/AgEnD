@@ -92,10 +92,8 @@ try {
     // Switch "work" on: it runs at once (a couple of seconds), on its own folder.
     await o.page.click(`.s-account-card[data-backend="claude-code"] .s-account-row[data-account="work"] .s-account-keepalive input[type="checkbox"]`);
     const ran = await (async () => { for (let i = 0; i < 40 && !runs.includes("claude:work"); i++) await o.page.waitForTimeout(250); return runs.includes("claude:work"); })();
-    await o.page.waitForTimeout(500);
-    // The view is read again (as after any write) to show the result.
-    await o.page.evaluate(`import("/ui/js/accounts-view.js").then((m) => m.refreshAccounts({ fresh: true }))`);
-    await o.page.waitForTimeout(800);
+    // #3313 review P2-7: no refresh of the smoke's own — the server's backend_login event makes the page read the view again.
+    const renewedShown = await (async () => { for (let i = 0; i < 40; i++) { const k = await o.page.evaluate(info("claude-code", "work")); if (k && k.last.includes(W[c.lang].renewed)) return true; await o.page.waitForTimeout(200); } return false; })();
     const workOn = await o.page.evaluate(info("claude-code", "work"));
     await o.page.locator(`.s-account-card[data-backend="claude-code"] .s-account-row[data-account="work"]`).scrollIntoViewIfNeeded();
     await shotSection(o.page, shotPath(SMOKE, tag, "2-work-on-renewed"));
@@ -108,10 +106,10 @@ try {
     const workOffAgain = await o.page.evaluate(info("claude-code", "work"));
     const text = await o.page.evaluate("document.body.innerText");
     const overflowX = await o.page.evaluate("document.documentElement.scrollWidth - innerWidth");
-    const got = { lines, workOff, codexDefault, ran, runs: [...runs], workOn, settings1, workOffAgain, errs: o.errs, csp: await o.csp(), overflowX };
+    const got = { lines, workOff, codexDefault, ran, renewedShown, runs: [...runs], workOn, settings1, workOffAgain, errs: o.errs, csp: await o.csp(), overflowX };
     check(tag, JSON.stringify(lines) === JSON.stringify(["claude-code:default", "claude-code:personal", "claude-code:work", "codex:default"])
       && workOff?.on === "off" && workOff.warn && workOff.warnColor && !workOff.fallback && codexDefault?.plan.includes("plus") && !codexDefault.fallback
-      && ran && JSON.stringify(runs) === JSON.stringify(["claude:work"]) && workOn?.on === "on" && workOn.fallback && workOn.last.includes(W[c.lang].renewed)
+      && ran && renewedShown && JSON.stringify(runs) === JSON.stringify(["claude:work"]) && workOn?.on === "on" && workOn.fallback && workOn.last.includes(W[c.lang].renewed)
       && settings1.some((e: any) => e.backend === "claude-code" && e.profile === "work" && e.enabled && e.fallback)
       && workOffAgain?.on === "off" && !workOffAgain.fallback
       && !/\baccountsKeepAlive\.[a-zA-Z_]+\b/.test(text) && o.errs.length === 0 && (got.csp as string[]).length === 0 && overflowX <= 0, got);

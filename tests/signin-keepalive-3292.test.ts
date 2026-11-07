@@ -111,8 +111,9 @@ function fixture(backend: "claude-code" | "codex", opts: { profile?: string | nu
   const runners = { claudeStatus: vi.fn(async () => ({ code: 0, loggedIn: true })), claudeFallback: vi.fn(async () => ({ code: 0 })), codexRefresh: vi.fn(async () => ({ answered: true, accountNull: false })) };
   const logs: Fx["logs"] = [], inUse = { v: false }, claim = { v: true }, released: number[] = [];
   const deps: KeepAliveDeps = {
-    dataDir: data, now: () => NOW, log: (l, m, f) => { logs.push([l, m, f]); }, homeOf: () => home, inUse: () => inUse.v,
-    claim: () => claim.v ? { release: () => { released.push(1); } } : null, changed: () => {}, runners: runners as unknown as KeepAliveRunners, claudeKeychain: opts.keychain,
+    dataDir: data, now: () => NOW, log: (l, m, f) => { logs.push([l, m, f]); }, homeOf: () => home,
+    acquire: () => inUse.v ? "in_use" : claim.v ? { release: () => { released.push(1); } } : "busy",
+    changed: () => {}, runners: runners as unknown as KeepAliveRunners, claudeKeychain: opts.keychain,
   };
   const ka = new SignInKeepAlive(deps);
   expect(ka.set(backend, profile, true, opts.fallback)).toEqual({ ok: true });
@@ -309,4 +310,110 @@ describe("the service", () => {
     expect(f.ka.view("kiro-cli", "work")).toBeUndefined();
     expect(f.ka.view("claude-code", "other")).toMatchObject({ enabled: false });
   });
+});
+
+// ── #3313 review: consent is asked before every CLI; a run's hold ends only once its CLI has exited ─────────────────
+
+const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
+
+describe("#3313 review P1: a withdrawn setting or a stop starts nothing more and records nothing", () => {
+  async function heldStatus(change: (f: Fx) => unknown) {
+    const f = fixture("claude-code", { fallback: true });
+    claudeCreds(f.home, { expiresAt: NOW - 3600e3 });
+    const gate = deferred<void>();
+    let signal: AbortSignal | undefined;
+    f.runners.claudeStatus.mockImplementation(async (_d: unknown, _c: unknown, s: AbortSignal) => { signal = s; await gate.promise; return { code: 0, loggedIn: true }; });  // not renewed
+    const run = f.ka.tick({ force: true });
+    await vi.waitFor(() => expect(f.runners.claudeStatus).toHaveBeenCalledTimes(1));
+    const changed = change(f);
+    gate.resolve();
+    await run; await changed;
+    return { f, signal: signal! };
+  }
+  it("switched off while the status check runs: its CLI is told to stop, no fallback (no model request), nothing recorded", async () => {
+    const { f, signal } = await heldStatus(f => f.ka.set("claude-code", "work", false));
+    expect(signal.aborted).toBe(true);
+    expect(f.runners.claudeFallback).not.toHaveBeenCalled();
+    expect(f.ka.list()[0]).toEqual({ backend: "claude-code", profile: "work", enabled: false, fallback: true });
+    expect(f.released).toEqual([1]);
+  });
+  it("the fallback withdrawn while the status check runs: no fallback", async () => {
+    const { f } = await heldStatus(f => f.ka.set("claude-code", "work", true, false));
+    expect(f.runners.claudeFallback).not.toHaveBeenCalled();
+  });
+  it("the service stopped while the status check runs: no fallback; stop() resolves once the run has ended", async () => {
+    let stopped: Promise<void> | undefined;
+    const { f, signal } = await heldStatus(f => { stopped = f.ka.stop(); });
+    await stopped;
+    expect(signal.aborted).toBe(true);
+    expect(f.runners.claudeFallback).not.toHaveBeenCalled();
+    expect(recordOf(f)).toBeUndefined();
+  });
+  it("control: nothing changed → the fallback runs (it is allowed)", async () => {
+    const { f } = await heldStatus(() => undefined);
+    expect(f.runners.claudeFallback).toHaveBeenCalledTimes(1);
+  });
+  it("a sign-in switched off while an earlier one runs is never started", async () => {
+    const data = scratch(), homes = { a: join(data, "a"), b: join(data, "b") };
+    for (const h of Object.values(homes)) { mkdirSync(h); claudeCreds(h, { expiresAt: NOW - 1 }); }
+    const gate = deferred<void>(), calls: Array<string | null> = [];
+    const runners = {
+      claudeStatus: vi.fn(async (dir: string | null) => { calls.push(dir); if (dir === homes.a) await gate.promise; return { code: 0, loggedIn: true }; }),
+      claudeFallback: vi.fn(async () => ({ code: 0 })), codexRefresh: vi.fn(async () => ({ answered: true, accountNull: false })),
+    };
+    const ka = new SignInKeepAlive({ dataDir: data, now: () => NOW, log: () => {}, homeOf: (_b, p) => (p === "a" ? homes.a : homes.b), acquire: () => ({ release() {} }), changed: () => {}, runners: runners as never });
+    ka.set("claude-code", "a", true); ka.set("claude-code", "b", true);
+    const run = ka.tick({ force: true });
+    await vi.waitFor(() => expect(calls).toEqual([homes.a]));
+    ka.set("claude-code", "b", false);
+    gate.resolve(); await run;
+    expect(calls).toEqual([homes.a]);
+  });
+});
+
+describe("#3313 review P2: the real runners resolve only once their CLI has exited", () => {
+  // A fake CLI on PATH (scratch): it answers, then lingers after stdin closes / SIGINT, and writes a marker as it exits.
+  function fakeBin(body: string) {
+    const path = join(scratch(), "fake-keepalive-cli");
+    writeFileSync(path, `#!/usr/bin/env node\n${body}\n`, { mode: 0o755 });
+    return path;
+  }
+  it("codex app-server: the answer comes first, the run resolves only after the process exits", async () => {
+    const out = scratch(), marker = join(out, "exited");
+    const bin = fakeBin(`
+const fs = require("fs"); let buf = "";
+process.stdin.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+  if (m.id === 1) process.stdout.write(JSON.stringify({ id: 1, result: {} }) + "\\n");
+  if (m.id === 2) process.stdout.write(JSON.stringify({ id: 2, result: { account: null, requiresOpenaiAuth: true } }) + "\\n"); } });
+process.stdin.on("end", () => setTimeout(() => { fs.writeFileSync(${JSON.stringify(marker)}, "x"); process.exit(0); }, 700));`);
+    const { makeRunners } = await import("../src/signin-keepalive.js");
+    const r = await makeRunners({ claude: bin, codex: bin }).codexRefresh(scratch(), new AbortController().signal);
+    expect(r).toEqual({ answered: true, accountNull: true });
+    expect(existsSync(marker)).toBe(true);
+  });
+  it("claude: stopped by the signal (SIGINT), it resolves only after the process has exited", async () => {
+    const out = scratch(), marker = join(out, "exited");
+    const bin = fakeBin(`
+const fs = require("fs");
+process.on("SIGINT", () => setTimeout(() => { fs.writeFileSync(${JSON.stringify(marker)}, "x"); process.exit(0); }, 600));
+setInterval(() => {}, 1000);`);
+    const { makeRunners } = await import("../src/signin-keepalive.js");
+    const c = new AbortController();
+    const p = makeRunners({ claude: bin, codex: bin }).claudeStatus(null, scratch(), c.signal);
+    await new Promise(r => setTimeout(r, 300));
+    c.abort();
+    const r = await p;
+    expect(r.code).toBeNull();
+    expect(existsSync(marker)).toBe(true);
+  });
+  it("a CLI that ignores SIGINT is killed (SIGKILL after 5 s), and only then does the run resolve", async () => {
+    const bin = fakeBin(`process.on("SIGINT", () => {}); process.stdout.write("started\\n"); setInterval(() => {}, 1000);`);
+    const { makeRunners } = await import("../src/signin-keepalive.js");
+    const c = new AbortController(), t0 = Date.now();
+    const p = makeRunners({ claude: bin, codex: bin }).claudeStatus(null, scratch(), c.signal);
+    await new Promise(r => setTimeout(r, 300));
+    c.abort();
+    expect((await p).code).toBeNull();
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(5_000);
+  }, 15_000);
 });

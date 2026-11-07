@@ -62,21 +62,34 @@ export async function saveKeepAlive(row, enabled, fallback, fetchImpl = fetch) {
 
 /** The row's keep-alive line. `onSaved`: read the view again (accounts-view.js passes a fresh read). */
 export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
-  const k = row && row.keepAlive;
+  const given = row && row.keepAlive;
   const [busy, setBusy] = useState(false);
+  const busyNow = useRef(false);
+  // #3313 review P2-6: what the server acknowledged, shown (and built on) until a read of the view brings a newer row —
+  // a read that fails leaves it standing, so a later switch never sends back a setting the person already withdrew.
+  const [ack, setAck] = useState(null);
+  useEffect(() => { setAck(null); }, [given]);
   // #3313 review (web-claude P3): an answer that arrives after the row is gone (the person left the page) says nothing
   // and reads nothing again.
   const live = useRef(true);
   useEffect(() => { live.current = true; linkKeepAliveCss(); return () => { live.current = false; }; }, []);
-  if (!k) return null;
+  if (!given) return null;
+  const k = ack ? { ...given, ...ack } : given;
+  // One change at a time, held until the view has been read again after it.
   const save = async (enabled, fallback) => {
-    if (busy) return;
-    setBusy(true);
-    const ok = await saveKeepAlive(row, enabled, fallback);
-    if (!live.current) return;
-    setBusy(false);
-    toast(ok ? tk(enabled ? "on" : "off") : tk("failed"), ok);
-    if (ok && typeof onSaved === "function") await onSaved();
+    if (busyNow.current) return;
+    busyNow.current = true; setBusy(true);
+    try {
+      const ok = await saveKeepAlive(row, enabled, fallback);
+      if (!live.current) return;
+      toast(ok ? tk(enabled ? "on" : "off") : tk("failed"), ok);
+      if (!ok) return;
+      setAck({ enabled: !!enabled, fallback: !!fallback });
+      if (typeof onSaved === "function") { try { await onSaved(); } catch { /* the acknowledged setting stays shown */ } }
+    } finally {
+      busyNow.current = false;
+      if (live.current) setBusy(false);
+    }
   };
   const ends = k.endsAt ? new Date(k.endsAt).getTime() : NaN;
   const endLine = Number.isNaN(ends) ? null : ends <= now ? tk("ended", day(k.endsAt)) : ends - now <= WARN_MS ? tk("endsSoon", day(k.endsAt)) : tk("endsAt", day(k.endsAt));

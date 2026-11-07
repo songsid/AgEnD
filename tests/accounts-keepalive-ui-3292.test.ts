@@ -40,8 +40,12 @@ beforeAll(async () => {
   (globalThis as any).fetch = fetchFake;
   shell = await import("/assets/app-shell.js"); i18n = await import("/assets/app-i18n.js");
   S = await import("/ui/js/backend-signin.js");
+  // #3313 review P2-7: the page's event stream, faked: the view listens for "backend_login".
+  const store = await import("/assets/app-store.js");
+  store.appStore.set({ streamOn: (name: string, fn: () => void) => { (streamHandlers[name] ??= []).push(fn); return () => {}; } });
   A = await import("/ui/js/accounts-view.js");
 });
+const streamHandlers: Record<string, Array<() => void>> = {};
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount(); i18n.setLang("en", { store: false }); view = VIEW(); posts = []; reads = 0; postOk = true;
@@ -117,6 +121,43 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     expect(texts().filter(x => !before.includes(x))).toEqual([]);
     expect(saved).toBe(0);
     (globalThis as any).fetch = fetchFake;
+  });
+  it("#3313 review P2-7: a finished check (the server's backend_login event) reads the view again — no refresh call of the test's own", async () => {
+    await mount();
+    expect(streamHandlers.backend_login?.length).toBe(1);
+    const before = reads;
+    view = VIEW(); view.clis[1].rows[0].keepAlive = { enabled: true, planType: "pro", lastAt: new Date().toISOString(), lastOutcome: "refreshed" };
+    streamHandlers.backend_login![0]!();
+    await settle(8);
+    expect(reads).toBe(before + 1);
+    expect(text(ka("codex", "default").querySelector(".s-keepalive-plan"))).toBe("Plan: pro");
+  });
+  it("#3313 review P2-6: locked until the view is read again after a change (a withdrawn fallback is never sent back from a stale row)", async () => {
+    view = VIEW(); view.clis[0].rows[1].keepAlive = { enabled: true, fallback: true };
+    await mount();
+    let releaseRead: ((ok: boolean) => void) | null = null;
+    (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") { posts.push({ url: String(url), body: JSON.parse(init.body!) }); return { ok: true, status: 200, json: async () => ({}) }; }
+      if (String(url).startsWith("/ui/accounts")) return new Promise(r => { releaseRead = ok => r(ok ? { ok: true, status: 200, json: async () => view } : { ok: false, status: 500, json: async () => ({}) }); });
+      return { ok: true, status: 200, json: async () => ({ login: null, targets: [] }) };
+    };
+    // Withdraw the fallback: acknowledged, then the view is being read (held).
+    { const box = ka("claude-code", "work").querySelector(".s-keepalive-fallback input"); box.checked = false; fire(box, "change"); }
+    await settle(6);
+    expect(posts).toEqual([{ url: "/ui/accounts/keep-alive", body: { backend: "claude-code", profile: "work", enabled: true, fallback: false } }]);
+    // While the read is held, the switch is locked: nothing is sent.
+    { const box = ka("claude-code", "work").querySelector('input[type="checkbox"]'); expect(box.disabled).toBe(true); box.checked = false; fire(box, "change"); }
+    await settle(4);
+    expect(posts.length).toBe(1);
+    // The read answers (the server's state: fallback withdrawn); the switch is free again and builds on it.
+    view = VIEW(); view.clis[0].rows[1].keepAlive = { enabled: true, fallback: false };
+    releaseRead!(true); await settle(8);
+    expect(ka("claude-code", "work").querySelector('input[type="checkbox"]').disabled).toBe(false);
+    expect(ka("claude-code", "work").querySelector(".s-keepalive-fallback input").checked).toBe(false);
+    (globalThis as any).fetch = fetchFake;
+    { const box = ka("claude-code", "work").querySelector('input[type="checkbox"]'); box.checked = false; fire(box, "change"); }
+    await settle(8);
+    expect(posts[1]).toEqual({ url: "/ui/accounts/keep-alive", body: { backend: "claude-code", profile: "work", enabled: false, fallback: false } });
   });
   it("Traditional Chinese, and its stylesheet linked once", async () => {
     i18n.setLang("zh-TW", { store: false });
