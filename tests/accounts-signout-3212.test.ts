@@ -139,6 +139,7 @@ describe("FleetManager", () => {
       accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
       loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null },
       removalRequest: (FleetManager.prototype as any).removalRequest,
+      withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
       forgetSignInIdentities: () => events.push("forget"), backendAvailability: { refresh: async (b: string[]) => { events.push(["refresh", b]); } },
       accountSignOutDeps: { platform: "linux", run: runner().run, keychainHas: noKeychain }, ...over,
     } };
@@ -263,6 +264,8 @@ describe("#3305 review: what can change while a logout runs", () => {
     accountUses: () => ({ agents: [] as any[], classic: [], fleetDefaults: new Map() }),
     loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null } as any,
     removalRequest: (FleetManager.prototype as any).removalRequest,
+    withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
+    reopenLoginWindow: (FleetManager.prototype as any).reopenLoginWindow, loginReopenGen: 0, structuredLoginCleanupFailed: false,
     forgetSignInIdentities: () => {}, backendAvailability: { refresh: async () => {} },
     accountSignOutDeps: { platform, run, keychainHas: async () => false },
   } as any);
@@ -307,5 +310,65 @@ describe("#3305 review: what can change while a logout runs", () => {
     fm.accountSignOutDeps = { platform: "linux", run: async () => { throw new Error("boom"); }, keychainHas: noKeychain };
     expect(await signOut(fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "failed" });
     expect(fm.loginWindow.tryClaim("web", "claude-code"), "released after an error too").not.toBe(null);
+  });
+});
+
+describe("#3305 review r1 remainders", () => {
+  const deferred = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
+  const fmSelf = (data: string, run: any) => ({
+    dataDir: data, logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(),
+    accountUses: () => ({ agents: [] as any[], classic: [], fleetDefaults: new Map() }),
+    loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null } as any,
+    removalRequest: (FleetManager.prototype as any).removalRequest,
+    withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
+    reopenLoginWindow: (FleetManager.prototype as any).reopenLoginWindow, loginReopenGen: 0, structuredLoginCleanupFailed: false,
+    forgetSignInIdentities: () => {}, backendAvailability: { refresh: async () => {} },
+    accountSignOutDeps: { platform: "linux", run, keychainHas: noKeychain },
+  } as any);
+  const signOut = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).signOutAccount.call(fm, ...a);
+
+  it("P1: the default folder swapped for a link during the logout — refused, the other folder's backups kept", async () => {
+    const parent = scratch(), cfg = join(parent, "claude"); mkdirSync(join(cfg, "backups"), { recursive: true });
+    const other = scratch(); mkdirSync(join(other, "backups")); writeFileSync(join(other, "backups", ".claude.json.backup.77"), "{}");
+    const saved = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = cfg;
+    try {
+      const gate = deferred(); let began!: () => void; const started = new Promise<void>((r) => { began = r; });
+      const run = async () => { began(); await gate.p; return { code: 0 }; };
+      const p = signOutAccount(scratch(), { backend: "claude-code", profile: null, confirm: true, signingIn: false }, { run, keychainHas: noKeychain, platform: "linux", fs: fsMine });
+      await started; renameSync(cfg, cfg + ".aside"); symlinkSync(other, cfg); gate.release();
+      expect(await p).toEqual({ ok: false, error: "unsafe" });
+      expect(existsSync(join(other, "backups", ".claude.json.backup.77"))).toBe(true);
+    } finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
+  });
+  it("P2-3: a logout whose window was closed and reopened meanwhile cleans nothing and is not a success; the new owner is untouched", async () => {
+    const { data, home } = profileDir();
+    const gate = deferred(); let began!: () => void; const started = new Promise<void>((r) => { began = r; });
+    let ended!: () => void; const gone = new Promise<void>((r) => { ended = r; });
+    const fm = fmSelf(data, async () => { began(); await gate.p; return { code: 0, gone }; });
+    const p = signOut(fm, "claude-code", "work", true, "x");
+    await started;
+    fm.loginWindow.close();                                                  // the fleet stops …
+    fm.reopenLoginWindow();                                                  // … and starts again while the old logout's CLI runs
+    expect(fm.loginWindow.tryClaim("web", "claude-code"), "no new sign-in while the old logout's CLI is alive").toBe(null);
+    mkdirSync(join(home, "backups")); writeFileSync(join(home, "backups", ".claude.json.backup.new-owner"), "{}");
+    gate.release();
+    expect(await p).toEqual({ ok: false, error: "failed" });
+    expect(existsSync(join(home, "backups", ".claude.json.backup.new-owner")), "nothing cleaned after losing the writer").toBe(true);
+    ended(); await new Promise((r) => setTimeout(r, 5));
+    const fresh = fm.loginWindow.tryClaim("web", "claude-code");
+    expect(fresh, "admission reopens once the old CLI is gone").not.toBe(null);
+  });
+  it("P2-5: a child whose end is unknown keeps sign-in closed after the failed answer; its exit reopens it; a confirmed exit releases at once", async () => {
+    const { data } = profileDir();
+    let ended!: () => void; const gone = new Promise<void>((r) => { ended = r; });
+    const fm = fmSelf(data, async () => ({ code: null, timedOut: true, gone }));
+    expect(await signOut(fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "failed" });
+    expect(fm.loginWindow.tryClaim("web", "codex"), "held while the child may still write").toBe(null);
+    ended(); await new Promise((r) => setTimeout(r, 5));
+    const after = fm.loginWindow.tryClaim("web", "codex"); expect(after).not.toBe(null); fm.loginWindow.release(after);
+    const ok = fmSelf(data, async () => ({ code: 0, gone: Promise.resolve() }));
+    expect(await signOut(ok, "claude-code", "work", true, "x")).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ok.loginWindow.tryClaim("web", "codex"), "a confirmed end releases").not.toBe(null);
   });
 });

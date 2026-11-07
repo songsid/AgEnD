@@ -15,7 +15,7 @@
  * Refused (nothing run): a CLI with no logout; no confirmation; an invalid name; a named profile's folder that is not
  * AgEnD's own (ownProfileFolder: Remove's checks); a sign-in for it running. No output of the CLI is kept or sent.
  */
-import { lstatSync, readdirSync, rmSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { credentialProfileEnv, credentialProfileHome } from "./backend/credential-profile.js";
 import { claudeConfigDirFor, claudeKeychainService } from "./backend/claude-code.js";
@@ -47,6 +47,12 @@ export interface SignOutRequest {
 export interface SignOutDeps {
   /** Run the CLI (no shell, no input); its exit code. */
   run(binary: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<{ code: number | null }>;
+  /**
+   * #3305 review P2-3: whether this logout still owns the credential writer (its login-window claim is current). Asked
+   * after the CLI ran, before anything is cleaned or reported: a fleet that stopped meanwhile (and perhaps started a
+   * new sign-in) is not cleaned up after.
+   */
+  stillOwner?(): boolean;
   /** macOS: whether a Keychain item with this service name is reachable. */
   keychainHas(service: string): Promise<boolean>;
   platform: NodeJS.Platform;
@@ -90,6 +96,11 @@ export function removeClaudeBackups(configDir: string, which: { all: true } | { 
   return n;
 }
 
+/** A directory's real path and identity, or null (missing, not a directory). */
+function dirIdentity(path: string): { real: string; dev: number; ino: number } | null {
+  try { const real = realpathSync(path), st = lstatSync(real); return st.isDirectory() ? { real, dev: st.dev, ino: st.ino } : null; } catch { return null; }
+}
+
 export async function signOutAccount(dataDir: string, req: SignOutRequest, deps: Partial<SignOutDeps> & Pick<SignOutDeps, "run" | "keychainHas">): Promise<SignOutResult> {
   const d: SignOutDeps = { platform: process.platform, env: process.env, fs: realFs(), ...deps };
   const how = Object.hasOwn(SIGN_OUT, req.backend) ? SIGN_OUT[req.backend]! : null;
@@ -106,10 +117,14 @@ export async function signOutAccount(dataDir: string, req: SignOutRequest, deps:
   if (req.signingIn) return { ok: false, error: "signing_in" };
   const env: NodeJS.ProcessEnv = { ...d.env, ...(profile !== null ? credentialProfileEnv(dataDir, req.backend, profile) ?? {} : {}) };
   const configDir = profile !== null ? credentialProfileHome(dataDir, "claude-code", profile) : claudeConfigDirFor(null);
-  const before = req.backend === "claude-code" && profile === null ? claudeBackups(configDir) : null;
+  // #3305 review P1 (default folder): the folder is the one seen before the logout — its real path and identity — and
+  // its backups then are the person's own. Cleanup happens in that directory only, never in one put at its path meanwhile.
+  const seen = req.backend === "claude-code" && profile === null ? dirIdentity(configDir) : null;
+  const before = seen ? claudeBackups(seen.real) : null;
   let code: number | null;
   try { ({ code } = await d.run(how.binary, how.args, env)); } catch { return { ok: false, error: "failed" }; }
   if (code !== 0) return { ok: false, error: "failed" };
+  if (d.stillOwner && !d.stillOwner()) return { ok: false, error: "failed" };
   // #3305 review P1: the folder checked before the wait must be the one cleaned after it — the same directory (device
   // and inode), still AgEnD's own with no link on the way. A folder swapped meanwhile is refused and left alone.
   if (profile !== null) {
@@ -117,7 +132,15 @@ export async function signOutAccount(dataDir: string, req: SignOutRequest, deps:
     if (!again.ok || again.st.dev !== identity!.dev || again.st.ino !== identity!.ino) return { ok: false, error: "unsafe" };
   }
   if (req.backend !== "claude-code") return { ok: true };
-  removeClaudeBackups(configDir, profile !== null ? { all: true } : { except: before! });
+  if (profile !== null) removeClaudeBackups(configDir, { all: true });
+  else {
+    // No folder before the logout: no backup of the person's to keep apart, and none bound to clean — nothing is deleted.
+    if (seen) {
+      const now = dirIdentity(configDir);
+      if (!now || now.real !== seen.real || now.dev !== seen.dev || now.ino !== seen.ino) return { ok: false, error: "unsafe" };
+      removeClaudeBackups(seen.real, { except: before! });
+    }
+  }
   if (d.platform === "darwin") {
     const service = profile !== null ? claudeKeychainService(configDir) : CLAUDE_DEFAULT_KEYCHAIN_SERVICE;
     let left = false;

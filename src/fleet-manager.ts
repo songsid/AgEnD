@@ -478,8 +478,9 @@ import { runQuiet } from "./quiet-run.js";
 
 const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
   platform: process.platform,
-  run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),
-  // #3305 review P2-5: a deadline is a failure (runQuiet), for the Keychain query too.
+  run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),   // its `gone` is kept by withAccountWriter
+  // #3305 review P2-5: a deadline is a failure (runQuiet), for the Keychain query too; it only reads, so its child is not
+  // held as a credential writer (its answer is a failure until it exits 0 in time).
   keychainHas: async (service: string) => (await runQuiet("security", ["find-generic-password", "-s", service], process.env, { timeoutMs: 15_000 })).code === 0,
 };
 import {
@@ -9827,7 +9828,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async startAllWithinDeadline(configPath: string, deadline: StartupMemoryDeadline): Promise<void> {
-    if (!this.structuredLoginCleanupFailed) this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
+    if (!this.structuredLoginCleanupFailed) this.reopenLoginWindow();                           // a stopAll → startAll restart must accept login windows again
     this.loginController?.reopen();
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
@@ -20059,13 +20060,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!dry.ok) return refused(dry);
       const claim = this.loginWindow.tryClaim("web", backend);
       if (!claim) return refused({ ok: false, error: "signing_in" });
-      try {
-        const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, signOutDeps);
-        if (!out.ok) return refused({ ok: false, error: out.error === "unsafe" ? "unsafe" : "failed" });
-        if (!this.loginWindow.isCurrent(claim)) return refused({ ok: false, error: "failed" });   // the fleet is stopping
+      const step = await this.withAccountWriter(claim, async deps => {
+        const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, deps);
+        if (!out.ok) return { ok: false, error: out.error === "unsafe" ? "unsafe" : "failed" } as RemoveResult;
+        if (!this.loginWindow.isCurrent(claim)) return { ok: false, error: "failed" } as RemoveResult;   // the fleet is stopping
         keychainLeft = out.keychainLeft === true;
-        removed = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, claim), undefined, { expect: dry.identity });
-      } finally { this.loginWindow.release(claim); }
+        return removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, claim), undefined, { expect: dry.identity });
+      });
+      if (!step.ok) return refused(step);
+      removed = step;
     } else removed = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null));
     if (!removed.ok) return refused(removed);
     this.logger.info({ backend, profile, by, ...(keychainLeft ? { keychainLeft } : {}) }, "Credential profile removed from Settings → Accounts");
@@ -20121,6 +20124,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** How a CLI's logout is run and the Keychain asked (a test's stand-in; the platform with it). */
   accountSignOutDeps = ACCOUNT_SIGN_OUT_DEPS;
+  /** #3305 review: every account logout's whole life — its CLI children until positively gone (shutdown drains them). */
+  private readonly accountWriters = new Set<Promise<void>>();
+
+  /**
+   * #3305 review P2-3/P2-5: run `work` as the owner of the credential writer (`claim`). Its CLIs run through a runner
+   * that records each child's positive end; the work is told whether it still owns the writer (`stillOwner`) before it
+   * cleans anything; and the claim is released only once every child it started is positively gone — a child whose end
+   * is unknown keeps sign-in admission closed (logged). Shutdown waits for these (shutdownLoginWindows), and a restart
+   * reopens admission only after they are gone.
+   */
+  private async withAccountWriter<T>(claim: import("./login-window-lock.js").LoginWindowClaim, work: (deps: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform" | "stillOwner">) => Promise<T>): Promise<T> {
+    const base = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    const children: Promise<void>[] = [];
+    const watch = async (r: { code: number | null; gone?: Promise<void> }) => { if (r.gone) children.push(r.gone); return r; };
+    const deps = {
+      platform: base.platform,
+      run: async (b: string, a: readonly string[], e: NodeJS.ProcessEnv) => watch(await base.run(b, a, e)),
+      keychainHas: base.keychainHas,
+      stillOwner: () => this.loginWindow.isCurrent(claim),
+    };
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.accountWriters.add(life);
+    try { return await work(deps); }
+    finally {
+      const settle = () => { this.loginWindow.release(claim); this.accountWriters.delete(life); finished(); };
+      if (!children.length) settle();
+      else {
+        let warned = false;
+        const t = setTimeout(() => { warned = true; this.logger.error("An account logout's CLI has not ended: sign-in stays closed until it does"); }, 30_000);
+        t.unref?.();
+        void Promise.all(children).then(() => { clearTimeout(t); if (warned) this.logger.info("The account logout's CLI ended: sign-in is open again"); settle(); });
+      }
+    }
+  }
   async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
     const named = typeof profile === "string" ? profile : null;
     const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
@@ -20130,11 +20168,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
-    else {
-      try {
-        result = await signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS);
-      } finally { this.loginWindow.release(claim); }
-    }
+    else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));
     if (result.ok) {
       this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}) }, "Account signed out from Settings → Accounts");
       this.forgetSignInIdentities();
@@ -20478,6 +20512,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Fleet shutdown: end any web login or install window and wait for its confirmed teardown. */
+  /**
+   * #3305 review P2-3: reopen sign-in admission after a restart — only once no account logout's CLI from before is still
+   * alive (a fresh sign-in must never overlap it). Each reopen supersedes a deferred one.
+   */
+  private loginReopenGen = 0;
+  private reopenLoginWindow(): void {
+    const gen = ++this.loginReopenGen;
+    const pending = [...this.accountWriters];
+    if (!pending.length) { this.loginWindow.reopen(); return; }
+    this.logger.warn({ pending: pending.length }, "Sign-in admission reopens once an account logout from before the restart has ended");
+    void Promise.all(pending).then(() => { if (gen === this.loginReopenGen && !this.structuredLoginCleanupFailed) this.loginWindow.reopen(); });
+  }
+
   private async shutdownLoginWindows(): Promise<void> {
     // Close the lock FIRST: in-flight starts parked in a pre-check or
     // ensureSession observe !isCurrent when they resume and stop; no new
@@ -20515,6 +20562,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }), "browser-controls"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
+      // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.
+      bounded(this.accountWriters.size ? Promise.all([...this.accountWriters]).then(() => undefined) : undefined, "account-logout"),
     ]);
   }
 
