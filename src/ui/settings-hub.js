@@ -17,6 +17,8 @@ const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy"
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
 const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "agentNotShareable",
   unknown_view: "agentNotShareable", limit: "errLimit", unavailable: "notAvailable" };
+// The switcher may have cached hub-strings before this action existed. Its original Allow word is still available.
+const allowOnHubLabel = () => { const label = hw("allowOnHub"); return label === "hub.allowOnHub" ? `${hw("allow")}…` : label; };
 
 /** A fingerprint: its first 128 bits in groups people compare, the whole digest on request. */
 function Fingerprint({ label, fp }) {
@@ -199,7 +201,7 @@ function HubExposures({ client, pairing }) {
       ${!row.enforceable && row.state !== "frozen" && guidanceFor(row.reason)
         ? html`<small class="hub-exposure-why hub-provider-guidance">${hw(guidanceFor(row.reason))}</small>` : null}
       ${row.state === "published" && !row.pending && /^[a-f0-9-]{36}$/.test(row.exposureId || "") && safeWebOrigin(pairing)
-        ? html`<div class="field-row"><a class="btn btn-sm" href=${`${safeWebOrigin(pairing)}/ui/hub/exposures?agent=${encodeURIComponent(row.exposureId)}&grant=1`} target="_blank" rel="noopener noreferrer">${hw("allowOnHub")}</a></div>` : null}
+        ? html`<div class="field-row"><a class="btn btn-sm" href=${`${safeWebOrigin(pairing)}/ui/hub/exposures?agent=${encodeURIComponent(row.exposureId)}&grant=1`} target="_blank" rel="noopener noreferrer">${allowOnHubLabel()}</a></div>` : null}
     </li>`)}</ul>` : null}
     ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
   </div>`;

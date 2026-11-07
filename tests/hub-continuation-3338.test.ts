@@ -69,6 +69,21 @@ describe("#3337 the administrator's code handoff", () => {
   });
 });
 describe("#3338 exact-agent continuation", () => {
+  it.each(["en", "zh-TW"])("a switcher-cached dictionary without the new key retains a translated Allow action in %s", async lang => {
+    const original = { en: i18n.tIn("en", "hub.allowOnHub"), "zh-TW": i18n.tIn("zh-TW", "hub.allowOnHub") };
+    i18n.register("hub", { en: { allowOnHub: undefined }, "zh-TW": { allowOnHub: undefined } });
+    try {
+      i18n.setLang(lang, { store: false });
+      const c = client.createStubClient(); client.setHubClient(c);
+      await c.connect({ address: "https://members.example.test:9443", code: "ABCD-EFGH" }); c.control.approve({ webOrigin: "https://hub.example.test" });
+      c.exposures = async () => [{ agent: "worker", display: "Worker", exposureId: ID, revision: 7, state: "published", enforceable: true }];
+      const pg = await mount("/ui/settings/hub", card.HubConnectCard); await until(() => pg.root.querySelector(".hub-exposure a"));
+      const a = pg.root.querySelector(".hub-exposure a")!;
+      expect(a.textContent).toBe(lang === "en" ? "Allow…" : "允許…");
+      expect(a.getAttribute("href")).toBe(`https://hub.example.test/ui/hub/exposures?agent=${ID}&grant=1`);
+      expect(pg.root.textContent).not.toContain("hub.allowOnHub");
+    } finally { i18n.register("hub", { en: { allowOnHub: original.en }, "zh-TW": { allowOnHub: original["zh-TW"] } }); }
+  });
   it("only committed, published rows get a link on the approved paired browser origin", async () => {
     const c = client.createStubClient({ agents: () => [{ name: "worker" }] }); client.setHubClient(c);
     await c.connect({ address: "https://members.example.test:9443", code: "ABCD-EFGH" }); c.control.approve({ webOrigin: "https://hub.example.test" });
