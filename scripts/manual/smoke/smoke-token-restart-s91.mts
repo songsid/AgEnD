@@ -18,8 +18,16 @@ const fail: string[] = [];
 const check = (n: string, ok: boolean, d?: unknown) => { r[n] = ok ? "PASS" : { FAIL: d ?? true }; if (!ok) fail.push(n); };
 const oldStrings = BASE ? execFileSync("git", ["-C", process.env.REPO!, "show", `${process.env.OLD_REF ?? "songsid/release/2.3.5-alpha~1"}:src/ui/settings-strings.js`], { encoding: "utf8", maxBuffer: 16 << 20 }) : "";
 const fx = await bootFixture({ port: 47570, instances: 4 });
-// A connection in fleet.yaml for the Bots tab to list (its token env is unset: nothing can start, nothing calls a provider).
+// The case this note is for: a connection added since AgEnD started. What it started with is recorded first (as a real start
+// does), then the connection is added to fleet.yaml — so a restart is pending and the page shows its restart notice.
+// (Its token env is unset: nothing can start, nothing calls a provider.)
+{ const fm = fx.fm as any; fm.startupFleetConfig = structuredClone(fm.fleetConfig); fm.appliedFleetLevel = fm.fleetLevelSignature(); }
 (fx.fm as any).saveFleetConfig([{ path: ["channels"], value: [{ id: "main", type: "telegram", mode: "topic", group_id: "-1001", bot_token_env: "AGEND_SMOKE_S91_UNSET" }] }]);
+// …added through Settings, as a person does: its Save's apply job carries the restart (its fleet row), so the notice offers
+// Restart now. (A hand edit of fleet.yaml has no such job: that notice's own wording is outside this change.)
+{ const fm = fx.fm as any, { APPLY_FLEET_TARGET } = await import(process.env.REPO + "/src/apply-job.ts");
+  const job = fm.applyJobs.create("smoke-s91-add", [{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+  fm.applyJobs.setTargetStatus(job.id, APPLY_FLEET_TARGET, "restart-required"); fm.applyJobs.finish(job.id); }
 const json = (route: any, body: unknown) => route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) });
 try {
   for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {
@@ -56,9 +64,10 @@ try {
     await page.screenshot({ path: shotPath(SMOKE, cn, `${LABEL}-token-saved`) });
     const text = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
     const note = text.slice(Math.max(0, text.indexOf(zh ? "已儲存 token" : "Token saved")), text.indexOf(zh ? "已儲存 token" : "Token saved") + 220);
+    const notice = await page.evaluate(() => (document.querySelector(".restart-line") as HTMLElement | null)?.innerText.replace(/\s+/g, " ") ?? null);
     const cspNow = await csp();
-    if (BASE) { r[cn] = { served, shown, note, errs, csp: cspNow }; if (!served) fail.push(`${cn}:old strings not served`); await ctx.close(); continue; }
-    check(cn, shown && !/agend restart/.test(text) && note.includes(zh ? "重新啟動提示" : "restart notice") && errs.length === 0 && cspNow.length === 0, { shown, note, errs, csp: cspNow });
+    if (BASE) { r[cn] = { served, shown, note, notice, errs, csp: cspNow }; if (!served) fail.push(`${cn}:old strings not served`); await ctx.close(); continue; }
+    check(cn, shown && !/agend restart/.test(text) && note.includes(zh ? "重新啟動提示" : "restart notice") && !!notice && errs.length === 0 && cspNow.length === 0, { shown, note, notice, errs, csp: cspNow });
     await ctx.close();
   }
 } catch (e) { fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500); }
