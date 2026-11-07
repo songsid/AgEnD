@@ -126,12 +126,23 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     await type(dialog().querySelector("#acctAddName"), "late");
     btn(dialog(), "Add").click(); await settle(4);
     expect(btn(dialog(), "Cancel").disabled).toBe(true);
-    fire(p.document, "keydown", { key: "Escape" }); await settle(4);
+    fire(dialog(), "cancel"); dialog().querySelector(".dlg-x").click(); await settle(4);   // Esc and × while it runs
     expect(dialog()?.querySelector("#acctAddName")).toBeTruthy();         // still here, still running
     await p.unmount();                                                   // the person navigated away
     view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "late", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
     post.release(); await settle(12);
     expect(shell.shellStore.get().dialog).toBe(null);                    // no sign-in opened for a page that left
+  });
+  it("P2-5: an Add whose view left while the read after it ran opens nothing", async () => {
+    await mount();
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "late2");
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "late2", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    const read = deferred(); holdGet = read.p;                           // the read after the write is held
+    btn(dialog(), "Add").click(); await settle(8);
+    await p.unmount();                                                   // the person navigated away meanwhile
+    read.release(); await settle(12);
+    expect(shell.shellStore.get().dialog).toBe(null);
   });
   it("P2-5: while Remove runs its dialog can't be dismissed, and Move… waits too", async () => {
     await mount();
@@ -141,7 +152,7 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     await type(dialog().querySelector("#acctRemoveName"), "personal");
     btn(dialog(), "Remove").click(); await settle(4);
     expect(btn(dialog(), "Cancel").disabled).toBe(true);
-    fire(p.document, "keydown", { key: "Escape" }); await settle(4);
+    fire(dialog(), "cancel"); dialog().querySelector(".dlg-x").click(); await settle(4);   // Esc and × while it runs
     expect(dialog()?.querySelector("#acctRemoveName")).toBeTruthy();
     del.release(); await settle(12);
     expect(dialog()?.querySelector("#acctRemoveName") ?? null).toBe(null);

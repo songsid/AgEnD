@@ -74,7 +74,7 @@ const errText = (r) => {
 
 /** `cli`: the Accounts view's card; `label`: the CLI's name; `onAdded(name)`: after the server made it. */
 /**
- * #3291 review (Prism P2-5): while its request runs a dialog can't be dismissed (Cancel, ×, Esc), and an answer that
+ * #3291 review (Prism P2-5): while its request runs a dialog can't be dismissed (Cancel disabled; Dialog's `busy` holds ×, Esc and the backdrop), and an answer that
  * comes after the dialog left the page (navigation) does nothing — it never closes or opens what replaced it.
  */
 function useLive() {
@@ -88,7 +88,6 @@ export function AddAccountDialog({ cli, label, onClose, onAdded }) {
   const [err, setErr] = useState("");
   const input = useRef(null);
   const live = useLive();
-  const close = () => { if (!busy) onClose(); };
   useEffect(() => { input.current && input.current.focus(); }, []);
   const trimmed = name.trim();
   const shownErr = err || (trimmed && !validAccountName(trimmed) ? tm("err_name") : "");
@@ -101,7 +100,7 @@ export function AddAccountDialog({ cli, label, onClose, onAdded }) {
     if (!r.ok) { setErr(errText(r)); return; }
     onClose(); onAdded(trimmed);
   };
-  return html`<${Dialog} title=${tm("addTitle", label)} onClose=${close} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tm("cancel")}</button>
+  return html`<${Dialog} title=${tm("addTitle", label)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class="btn btn-primary" disabled=${busy || !validAccountName(trimmed)} onClick=${go}>${busy ? tm("adding") : tm("addGo")}</button>`}>
     <p>${tm("addLead")}</p>
     <div class="field"><label for="acctAddName">${tm("nameLabel")}</label>
@@ -122,7 +121,6 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const [err, setErr] = useState("");
   const [users, setUsers] = useState(row.usedBy);    // the server's answer replaces it when it knows better
   const live = useLive();
-  const close = () => { if (!busy) onClose(); };
   const inUse = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
   const go = async () => {
     if (busy || inUse || typed !== row.profile) return;
@@ -135,7 +133,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
     setErr(errText(r));
   };
   const moveBtn = (user) => html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
-  return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${close} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tm("cancel")}</button>
+  return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class="btn btn-danger" disabled=${busy || inUse || typed !== row.profile} onClick=${go}>${busy ? tm("removing") : tm("removeGo")}</button>`}>
     <p>${cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
