@@ -12,6 +12,7 @@ import type { GroupCapability, HubGroupDecision } from "./model.js";
 const resourceSchema = z.strictObject({ kind: z.enum(["fleet", "exposure", "asker"]), id: identifier,
   revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), owner: person });
 export type HubGroupResource = z.infer<typeof resourceSchema>;
+export function parseHubGroupResource(input: unknown): HubGroupResource { return validated(resourceSchema, input); }
 export interface HubGroupResourceView {
   resource: HubGroupResource; source: "manual" | "group"; state: "active" | "suspended"; revision: number;
 }
@@ -32,12 +33,14 @@ const snapshotContext = (ctx: GroupCheckContext) => ({ requestId: validated(iden
 export function createHubGroupResources(options: {
   db: Database.Database; policy: HubGroupPolicyStore; audit: Pick<HubAuditStore, "appendInTransaction">;
   current(): boolean; now?: () => number;
+  /** Synchronous same-DB authorization-version advance inside the lifecycle transaction, never socket I/O. */
+  invalidate?(db: Database.Database, resource: HubGroupResource): void;
 }) {
-  const { db, policy, audit, current } = options, now = options.now ?? Date.now;
+  const { db, policy, audit, current, invalidate } = options, now = options.now ?? Date.now;
   const assert = (ctx: ReturnType<typeof snapshotContext>) => {
     if (current() !== true || ctx.current() !== true) throw new HubGroupPolicyError("unavailable");
   };
-  const capture = (input: HubGroupResource) => validated(resourceSchema, input);
+  const capture = parseHubGroupResource;
   const row = (r: HubGroupResource): HubGroupResourceView | null => {
     const raw = db.prepare("SELECT body, source, state, revision FROM hub_group_resources WHERE resource_key=?").get(keyOf(r)) as
       { body: string; source: "manual" | "group"; state: "active" | "suspended"; revision: number } | undefined;
@@ -62,10 +65,20 @@ export function createHubGroupResources(options: {
   const update = (before: HubGroupResourceView, state: "active" | "suspended", actor: PersonKey, ctx: ReturnType<typeof snapshotContext>) => {
     if (before.state === state) return;
     if (before.revision === Number.MAX_SAFE_INTEGER) throw new HubGroupPolicyError("conflict");
+    const policyRevision = policy.read().revision;
     record(before.resource, actor, `group-resource.${state === "active" ? "resumed" : "suspended"}`, ctx, { from: before.state, to: state });
     const changed = db.prepare("UPDATE hub_group_resources SET state=?, revision=revision+1 WHERE resource_key=? AND body=? AND revision=? AND source=? AND state=?")
       .run(state, keyOf(before.resource), JSON.stringify(before.resource), before.revision, before.source, before.state);
     if (changed.changes !== 1) throw new HubGroupPolicyError("conflict");
+    const invalidated: unknown = invalidate?.(db, before.resource);
+    if (invalidated && typeof (invalidated as { then?: unknown }).then === "function") {
+      void Promise.resolve(invalidated).catch(() => undefined); throw new HubGroupPolicyError("audit");
+    }
+    // Suspending an old-version link deliberately makes its caller fence false. A resumption
+    // broadens access, so its independent administrator/session fence must still hold.
+    if (current() !== true) throw new HubGroupPolicyError("unavailable");
+    if (policy.read().revision !== policyRevision) throw new HubGroupPolicyError("conflict");
+    if (state === "active") assert(ctx);
   };
   /** Caller must use this result before every protected action, dispatch and release; it creates no underlying resource. */
   const check = async (input: HubGroupResource, incoming: GroupCheckContext, resumeActor?: PersonKey): Promise<HubGroupResourceDecision> => {
@@ -85,7 +98,8 @@ export function createHubGroupResources(options: {
       }
       return { outcome: "allow" }; // Exactly the captured revision; never another revision or a new publication.
     }).immediate();
-    const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: incoming.resource ? { ...incoming.resource } : undefined });
+    const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: { ...incoming.resource, revision: r.revision,
+      ...(r.kind === "fleet" ? { fleetId: r.id } : r.kind === "exposure" ? { exposureId: r.id } : {}) } });
     return db.transaction(() => {
       assert(ctx);
       const current = row(r);
@@ -119,7 +133,8 @@ export function createHubGroupResources(options: {
     async register(input: HubGroupResource, incoming: GroupCheckContext): Promise<void> {
       const r = capture(input), ctx = snapshotContext(incoming); assert(ctx); const p = policy.read();
       if (p.state !== "enabled" || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
-      const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: incoming.resource ? { ...incoming.resource } : undefined });
+      const decision = await policy.check(r.owner, capability(r), { ...ctx, resource: { ...incoming.resource, revision: r.revision,
+      ...(r.kind === "fleet" ? { fleetId: r.id } : r.kind === "exposure" ? { exposureId: r.id } : {}) } });
       db.transaction(() => {
         assert(ctx); if (policy.read().revision !== p.revision) throw new HubGroupPolicyError("conflict");
         if (decision.outcome !== "allow") throw new HubGroupPolicyError("unavailable");

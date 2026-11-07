@@ -40,7 +40,8 @@ export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: strin
   } catch { return { kind: "repair-required", legacy: false }; }
 }
 
-const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional() });
+const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional(),
+  revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional() });
 export interface GroupCheckContext {
   requestId: string;
   resource?: z.infer<typeof resources>;
@@ -76,8 +77,9 @@ export function createHubGroupPolicyStore(options: {
     resource: validated(resources, input.resource ?? {}), current: input.current });
   const record = (actor: HubAuditRecord["actor"], action: string, result: HubAuditRecord["result"], p: HubGroupPolicy, ctx: ReturnType<typeof context>, payload: unknown) => {
     const id = randomUUID(), at = now(), body = JSON.stringify({ ...ctx.resource, generation: binding.generation, policyRevision: p.revision, payload });
+    const { revision: _resourceRevision, ...resourceIds } = ctx.resource;
     const output: unknown = audit.appendInTransaction({ id, sequence: 0, at, requestId: ctx.requestId, actor, action, result, policyVersion: p.revision,
-      ...ctx.resource, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
+      ...resourceIds, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
     if (output && (typeof output === "object" || typeof output === "function") && typeof (output as { then?: unknown }).then === "function") {
       try { (output as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused either way */ }
       throw new HubGroupPolicyError("audit");
