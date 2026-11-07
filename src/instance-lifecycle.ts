@@ -2166,10 +2166,11 @@ export class InstanceLifecycle {
     }catch(error){
       if (!credentialPublished && credentialHold) {
         // #3313 review r2: released only when this start's CLI is positively gone (or never existed); else held until it is.
-        const d = launched as (Daemon & { startupCliEnded?(): Promise<boolean> }) | null;
+        const d = launched as (Daemon & { startupCliEnded?(): Promise<boolean>; startupIncarnationEnded?(): Promise<boolean> }) | null;
         const ended = d?.startupCliEnded ? await d.startupCliEnded().catch(() => false) : true;
         if (ended) credentialHold.release();
-        else credentialHold.unknownEnd(() => d!.startupCliEnded!());
+        // Later re-checks are read-only (#3313 review r3): a retry may already run in a window with the same id.
+        else credentialHold.unknownEnd(() => d?.startupIncarnationEnded ? d.startupIncarnationEnded() : Promise.resolve(false));
       }
       // The factory registered helper authority before acquire(). A superseded pre-window start must release it too.
       if(native&&!nativePublished)await native.release("detach").catch(err=>this.ctx.logger.warn({name,err},"Prepared native authority could not detach"));

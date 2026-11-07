@@ -14,12 +14,14 @@ vi.mock("../src/logger.js", async original => {
 });
 const order: string[] = [];
 let failStart = false, cliEnded: boolean | "throws" = true;
+const ownCleanups: string[] = [], readOnlyChecks: string[] = [];
 vi.mock("../src/daemon.js", async importOriginal => {
   const mod = await importOriginal<typeof import("../src/daemon.js")>();
   class LaunchlessDaemon extends mod.Daemon {
     override async start(): Promise<void> { order.push("daemon.start"); if (failStart) throw new Error("launch failed"); }
     override async abortStartup(): Promise<void> {}
-    override async startupCliEnded(): Promise<boolean> { if (cliEnded === "throws") throw new Error("tmux could not list"); return cliEnded; }
+    override async startupCliEnded(): Promise<boolean> { ownCleanups.push("kill+confirm"); if (cliEnded === "throws") throw new Error("tmux could not list"); return cliEnded; }
+    override async startupIncarnationEnded(): Promise<boolean> { readOnlyChecks.push("list"); return false; }
   }
   return { ...mod, Daemon: LaunchlessDaemon };
 });
@@ -192,10 +194,11 @@ describe("the real InstanceLifecycle start waits for the hold before its CLI sta
     expect(order).toEqual(["daemon.start"]);
     expect(calls).toEqual(["published:true"]);
   });
+  let recheck: (() => Promise<boolean>) | null = null;
   const failing = async (ended: boolean | "throws") => {
     order.length = 0; failStart = true; cliEnded = ended;
     const calls: string[] = [];
-    const { lc, root } = lifecycle(async () => ({ published: () => calls.push("published"), release: () => calls.push("release"), current: () => true, unknownEnd: () => calls.push("unknownEnd") }));
+    const { lc, root } = lifecycle(async () => ({ published: () => calls.push("published"), release: () => calls.push("release"), current: () => true, unknownEnd: (r: () => Promise<boolean>) => { recheck = r; calls.push("unknownEnd"); } }));
     await expect(lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false)).rejects.toThrow();
     failStart = false; cliEnded = true;
     return calls;
@@ -206,6 +209,15 @@ describe("the real InstanceLifecycle start waits for the hold before its CLI sta
   it("#3313 review r2: a failed start whose CLI was not proven gone keeps the sign-in held (unknownEnd), never released", async () => {
     expect(await failing(false)).toEqual(["unknownEnd"]);
     expect(await failing("throws")).toEqual(["unknownEnd"]);
+  });
+  it("#3313 review r3: its own cleanup (kill + confirm) runs once, in the failed start; every later re-check is the read-only one", async () => {
+    ownCleanups.length = 0; readOnlyChecks.length = 0; recheck = null;
+    await failing(false);
+    expect(ownCleanups).toEqual(["kill+confirm"]);
+    expect(await recheck!()).toBe(false);
+    await recheck!();
+    expect(ownCleanups).toEqual(["kill+confirm"]);                         // never killed again
+    expect(readOnlyChecks).toEqual(["list", "list"]);
   });
   it("#3313 review r2: a config whose account changed while it waited asks again (the Daemon clones what was admitted)", async () => {
     order.length = 0;

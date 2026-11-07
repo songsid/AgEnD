@@ -29,7 +29,7 @@ import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, Sessio
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
-import { resolveTmuxLogicalSize } from "./tmux-manager.js";
+import { resolveTmuxLogicalSize, TmuxManager } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { FollowLog } from "./workspace-follow.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
@@ -13088,12 +13088,39 @@ export class Daemon extends EventEmitter {
   /**
    * #3313 review r2: after a failed start (abortStartup), whether this start's CLI is positively gone — no window was ever
    * asked for, or its window (by id, or by name while its creation was pending) is positively absent after another kill.
-   * False when that cannot be told (tmux could not list).
+   * False when that cannot be told (tmux could not list). The failed start's OWN cleanup: called once, by that start,
+   * while the window is still its own. When it cannot tell, the window and its pane process are remembered for
+   * `startupIncarnationEnded()`.
    */
   async startupCliEnded(): Promise<boolean> {
     if (this.nativePaneLifecycle) return true;
     if (!this.tmux) return true;
-    try { return await this.tmux.killWindowConfirmed(); } catch { return false; }
+    const windowId = this.tmux.getWindowId();
+    let pid: number | null = null;
+    if (windowId?.trim()) { try { pid = await this.paneHost.getPanePid(this.tmuxSessionName, windowId); } catch { pid = null; } }
+    let gone = false;
+    try { gone = await this.tmux.killWindowConfirmed(); } catch { gone = false; }
+    if (!gone) this.failedStartupIncarnation = windowId?.trim() ? { windowId, pid } : { windowId: null, pid: null };
+    return gone;
+  }
+  private failedStartupIncarnation: { windowId: string | null; pid: number | null } | null = null;
+
+  /**
+   * #3313 review r3: the later re-checks of a failed start whose end was not proven — READ-ONLY (never kills: a retry of
+   * the same agent may already run in a window with the same id). Ended when that window is gone, or when it now runs a
+   * different pane process (it was respawned: the one this start left has been replaced). False when it cannot be told.
+   */
+  async startupIncarnationEnded(): Promise<boolean> {
+    const inc = this.failedStartupIncarnation;
+    if (!inc) return true;
+    if (!inc.windowId) return false;                                   // its window was never learned: nothing proves it gone
+    let windows: Array<{ id: string }>;
+    try { windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName); } catch { return false; }
+    if (!windows.some(w => w.id === inc.windowId)) return true;
+    if (inc.pid === null) return false;
+    let now: number | null;
+    try { now = await this.paneHost.getPanePid(this.tmuxSessionName, inc.windowId); } catch { return false; }
+    return now !== null && now !== inc.pid;
   }
 
   async abortStartup(): Promise<void> {
