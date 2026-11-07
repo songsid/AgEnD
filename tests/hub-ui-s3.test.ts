@@ -486,4 +486,29 @@ describe("alpha.6 feedback: the Hub's signed-out page", () => {
     await until(() => !pg.root.querySelector(".hub-signin-page"));
     expect(pg.document.body.classList.contains("hub-signed-out"), "the chrome is back once signed in").toBe(false);
   });
+  it("#3318 review F1: signed out from the phone drawer's session menu, the drawer closes and <main> is not inert — the sign-in page takes input", async () => {
+    let signedIn = true;
+    const signed = { signedIn: true, displayName: "Alex", login: "alex", admin: false, csrf: "c".repeat(64), hub: { name: "Team Hub" } };
+    client.setHubClient(client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
+      const key = `${init.method || "GET"} ${path.split("?")[0]}`;
+      const json = key === "GET /hub/v1/session" ? (signedIn ? signed : { signedIn: false, hub: { name: "Team Hub" } })
+        : key === "DELETE /hub/v1/session" ? (signedIn = false, {}) : key === "GET /hub/v1/rooms" ? { rooms: [] } : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : {};
+      return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
+    } }));
+    hubPanel.resetHubSession();
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" }, matchNarrow: true });
+    pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub");
+    mounted.push(pg);
+    router.startRouter(pg.window);
+    await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel }]]), onNewInstance() {} }));
+    await until(() => pg.root.querySelector(".side-foot .hub-session button"));
+    shell.openDrawer(); await settle(5);
+    expect([shell.shellStore.get().drawer, pg.root.querySelector("#main")!.hasAttribute("inert")], "the drawer is open over an inert <main>").toEqual([true, true]);
+    (pg.root.querySelector(".side-foot .hub-session button") as any).click(); await settle(5);
+    const out = [...pg.root.querySelectorAll(".side-foot [role=menuitem]")].find((b: any) => b.textContent.trim() === "Sign out") as any;
+    out.click();
+    await until(() => pg.root.querySelector(".hub-signin-page"));
+    await settle(5);
+    expect([signedIn, shell.shellStore.get().drawer, pg.root.querySelector("#main")!.hasAttribute("inert")]).toEqual([false, false, false]);
+  });
 });

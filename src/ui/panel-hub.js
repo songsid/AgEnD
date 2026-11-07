@@ -6,7 +6,7 @@
 // What people see is what the server says now: every list is read fresh, every change is checked again by the server
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
-import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { PanelHeader, closeDrawer, setTitle } from "/assets/app-shell.js";
 import { lang, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
@@ -131,6 +131,10 @@ function linkHubSigninCss(doc = typeof document !== "undefined" ? document : nul
 function HubSignIn() {
   useEffect(() => {
     linkHubSigninCss();
+    // #3318 review F1: signed out from the phone drawer's session menu (or a session that ended while it was open), the
+    // drawer would stay open with <main> inert under it — and this page, inside <main>, would take no input while the
+    // sidebar and scrim that used to close it are hidden or covered. The sign-in page closes it.
+    closeDrawer();
     const body = typeof document !== "undefined" ? document.body : null;
     if (body) body.classList.add("hub-signed-out");
     return () => { if (body) body.classList.remove("hub-signed-out"); };

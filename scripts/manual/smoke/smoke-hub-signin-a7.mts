@@ -100,6 +100,24 @@ try {
     await o.ctx.close();
   }
   if (!BASE) {
+    // #3318 review F1: on a phone, Sign out from the drawer's session menu (the drawer open, <main> inert under it): the
+    // sign-in page that follows must take input — the drawer closes, <main> is not inert, and the account field types.
+    {
+      const o = await open(CASES[2]);
+      await o.page.fill("#hubLogin", "alex"); await o.page.fill("#hubPassword", "pw-alex"); await o.page.click("button[type=submit]");
+      await o.page.waitForSelector(".hub-home, .hub-chat-main", { timeout: 10000 });
+      await o.page.click("#sbOpen");
+      await o.page.waitForSelector(".shell.sb-open", { timeout: 5000 });
+      await o.page.click(".hub-menu > button");
+      await o.page.click(".hub-menu [role=menuitem]:last-child");
+      await o.page.waitForSelector("#hubLogin", { timeout: 10000 });
+      await o.page.waitForTimeout(400);
+      const state = await o.page.evaluate(`({ drawer: !!document.querySelector(".shell.sb-open"), inert: !!document.querySelector("#main[inert]") })`) as { drawer: boolean; inert: boolean };
+      const typed = await o.page.fill("#hubLogin", "alex", { timeout: 3000 }).then(() => o.page.inputValue("#hubLogin"), (e: Error) => `fill failed: ${String(e).slice(0, 120)}`);
+      await o.page.screenshot({ path: shot("phone-dark-en-4-signed-out-from-drawer") });
+      check("phone-drawer-sign-out", !state.drawer && !state.inert && typed === "alex" && o.errs.length === 0, { ...state, typed, errs: o.errs });
+      await o.ctx.close();
+    }
     // The stale-tab skew, both ways.
     const oldShell = async (page: any) => page.route("**/assets/**", (route: any) => {
       const file = new URL(route.request().url()).pathname.replace(/^\/assets\//, "");
