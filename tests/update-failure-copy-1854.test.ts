@@ -14,7 +14,7 @@ let dir: string;
 let priorLocale: Locale;
 beforeEach(() => { priorLocale = getLocale(); dir = mkdtempSync(join(tmpdir(), "agend-1854-update-")); });
 afterEach(() => { setLocale(priorLocale); rmSync(dir, { recursive: true, force: true }); });
-const shell = (locale: Locale) => locale === "en" ? "Run `agend update` from a host shell." : "請在主機終端機執行 `agend update`。";
+const genericFailure = (locale: Locale) => locale === "en" ? "AgEnD could not finish the update automatically. Manual repair is not available here." : "AgEnD 無法自動完成更新。這裡尚無手動修復功能。";
 const childOf = (child: EventEmitter) => child as unknown as Pick<ChildProcess, "once">;
 
 describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
@@ -28,7 +28,7 @@ describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
     const reason = locale === "en"
       ? event === "error" ? "updater launch failed" : event === "signal" ? "updater was interrupted" : event === "exit" ? "updater exited 7" : "updater exited without a status"
       : event === "error" ? "更新程序啟動失敗" : event === "signal" ? "更新程序遭中斷" : event === "exit" ? "更新程序以代碼 7 結束" : "更新程序未提供結束代碼";
-    expect(messages).toEqual([`${shell(locale)} ${locale === "en" ? `/update could not complete (${reason}).` : `/update 未完成（${reason}）。`}`]);
+    expect(messages).toEqual([`${genericFailure(locale)} ${locale === "en" ? `/update could not complete (${reason}).` : `/update 未完成（${reason}）。`}`]);
     expect(messages[0]).not.toContain("private manager detail");
   });
 
@@ -58,7 +58,7 @@ describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
     const message = messages[0]!;
     const logLabel = locale === "en" ? `Full log: ${path}.` : `完整日誌：${path}。`;
     const causeLabel = locale === "en" ? "Cause: npm error code EACCES" : "原因：npm error code EACCES";
-    expect(message.startsWith(shell(locale))).toBe(true);
+    expect(message.startsWith(genericFailure(locale))).toBe(true);
     expect(message).toContain(logLabel);
     expect(message).toContain(causeLabel);
     expect(message.indexOf(logLabel)).toBeLessThan(message.indexOf(causeLabel));
@@ -69,7 +69,7 @@ describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
     expect(marker.progress).toMatchObject({ stage: "failed", failedStage: "downloading", target });
     expect(marker.progress.error).toBe(message.replace(/\s+/g, " ").trim().slice(0, 300));
     expect(marker.progress.error).toHaveLength(300);
-    expect(marker.progress.error).toContain(shell(locale));
+    expect(marker.progress.error).toContain(genericFailure(locale));
     expect(marker.progress.error).toContain(logLabel);
     expect(formatUpdateProgress(marker, 4000)).toContain(locale === "en" ? "Update failed during download/install" : "更新在「下載／安裝」階段失敗");
   });
