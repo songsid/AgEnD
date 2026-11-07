@@ -83,7 +83,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
 - **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
-- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能用驗證碼確認，更不能透過公開連結修改。**唯一的例外**：主機操作者自己的 session，也就是在 AgEnD 電腦本機的瀏覽器上使用（在那台電腦用 `agend web` 登入，走 loopback、沒有轉送標頭）的 session，可以像確認其他變更一樣確認它。在純網頁 fleet 上是「直接套用」；在有聊天連線的 fleet 上，則是在沒有 General 能接收確認卡時套用（D3）。純網頁 fleet 上的其他 session，會被告知請到 AgEnD 電腦本機的瀏覽器操作。快速連結選項也一樣。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟即接受的風險。** Cloudflare 終止 TLS，看得到流量，包括 session cookie。已授權的 named-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
@@ -96,7 +96,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過臨時公開連結的網頁授權（#1939 §0.3），自 #2819 起預設開啟。** `/web` 開出的臨時公開連結（quick tunnel，`*.trycloudflare.com`）上的 session 也能透過帳號的確認卡授權，除非設定 `web.verified_authority.quick_link: false`。預設值本身不會授予任何權限：每個 session 仍須由帳號在私訊中確認。
 - **哪些請求算數。** 所有不是 named 的 gateway 請求，只依監聽端判定；任何 header 都無法設定或改變。session 必須屬於目前這次開放，而每個 quick 網址都是新的一次。
-- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。判斷依生效中的值（沒設定就是預設值：開啟；`true`、`false` 以外的值視為關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
+- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。和上面的命名連結一樣，AgEnD 電腦本機上主機操作者自己的 session 是唯一的例外。判斷依生效中的值（沒設定就是預設值：開啟；`true`、`false` 以外的值視為關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
 - **關閉**立即生效，所有 quick-link session 的回執都會視為無（`downgraded: quick_link_off`），那些 session 的授權也會被刪除。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟期間接受的風險。** quick 網址是網際網路上的公開位址：任何拿到它的人都能到登入頁。屏障和固定網域相同：私下傳給允許帳號的登入碼，以及該帳號對這個 session 的確認。Cloudflare 的 quick tunnel 服務終止 TLS，看得到流量，包括 session cookie；AgEnD 啟動 quick tunnel 時前面沒有任何驗證。已授權的 quick-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：

@@ -63,11 +63,11 @@ async function startFleet(config: Record<string, unknown> = {}) {
   };
   const reqOf = (sessionId: string, extra: Record<string, string> = {}) => ({ method: "PUT", socket: { remoteAddress: "127.0.0.1" },
     headers: { host: `127.0.0.1:${port}`, origin, "sec-fetch-site": "same-origin", cookie: `agend_session=${sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(sessionId), ...extra } });
-  return { fm, any, stop, signIn, reqOf };
+  return { fm, any, port, stop, signIn, reqOf };
 }
 type Fleet = Awaited<ReturnType<typeof startFleet>>;
 /** A held change (connecting a Telegram bot — it needs confirming) with an apply that only records it ran. */
-function held(h: Fleet, opts: { noSelfConfirm?: true; hostLocalConfirm?: true } = {}) {
+function held(h: Fleet, opts: { noSelfConfirm?: true; hostLocalConfirm?: true; hostSessionOnly?: true } = {}) {
   const store = new SettingsConfirmationStore({ audit: vi.fn(), notify: vi.fn() }); stores.push(store);
   const effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ ...CHAT.channel, id: "tg" }], { config: h.fm.fleetConfig, classic: {} });
   const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
@@ -104,7 +104,7 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
       expect(h.any.settingsSelfConfirmation(a.store, gw, a.view.id)).toBeNull();
       expect(a.apply).not.toHaveBeenCalled();
-      // A change that opens a link (#2453 noSelfConfirm) is not widened by D3: it still waits (residual, for the leader).
+      // A noSelfConfirm change with no host exception (neither a Hub change nor a link option) is not widened by D3.
       const link = held(h, { noSelfConfirm: true });
       expect(h.any.settingsSelfConfirmation(link.store, h.reqOf(host.sessionId), link.view.id)).toBeNull();
       // …while an outward Hub change the leader ruled on (noSelfConfirm + hostLocalConfirm, #3355) is (#3362 review F1).
@@ -153,6 +153,64 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       const channel = (h.fm.fleetConfig as any).channel; delete (h.fm.fleetConfig as any).channel;
       expect(late?.current()).toBe(false);
       (h.fm.fleetConfig as any).channel = channel;
+    } finally { await h.stop(); }
+  }, 20_000);
+});
+
+// ── The leader's ruling on D3's residual (cid-d3): a link option turned on (#2453), by the host's own session here only ──
+describe("a link option turned on (#2453): the host operator's own session here confirms it, on either fleet type; nobody else", () => {
+  const link = { noSelfConfirm: true as const, hostSessionOnly: true as const };
+  it("the effect marks only turning a link option on: named_link or quick_link on → noSelfConfirm + hostSessionOnly; off → neither", () => {
+    const fleet = (va?: Record<string, unknown>) => ({ defaults: {}, instances: {}, ...CHAT, web: va ? { verified_authority: va } : {} }) as never;
+    const judge = (va: unknown, current?: Record<string, unknown>) => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: fleet(current), classic: {} }).diff;
+    for (const on of [judge({ named_link: true }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.noSelfConfirm, on?.hostSessionOnly]).toEqual([true, true]);
+    expect(judge({ named_link: null }, { named_link: true })).toBeNull();
+    const other = judge({ max_session_hours: 6 }, { max_session_hours: 1 });
+    expect(other?.hostSessionOnly).toBeUndefined();
+  });
+  it("chat fleet: the host's session here confirms it (no General can take it, D3); a forwarded request or another code's session cannot; no authenticator code", async () => {
+    setLocale("en");
+    const h = await startFleet(CHAT);
+    try {
+      const host = await h.signIn(), chatCode = await h.signIn(h.fm.issueDashboardLogin()!.display);
+      const a = held(h, link);
+      expect(h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" }), a.view.id)).toBeNull();
+      expect(h.any.settingsSelfConfirmation(a.store, h.reqOf(chatCode.sessionId), a.view.id)).toBeNull();
+      expect(h.any.settingsTotpState(a.store, h.reqOf(chatCode.sessionId), a.view.id)).toBeNull();     // a chat fleet: General's card
+      const self = h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId), a.view.id);
+      expect(self?.label).toBe("This computer's admin");
+      expect((await a.store.decide(a.view.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
+      // A General can take it: its card, as every other change (D1).
+      vi.spyOn(h.any, "settingsCardPossible").mockReturnValue(true);
+      const b = held(h, link);
+      expect(h.any.settingsSelfConfirmation(b.store, h.reqOf(host.sessionId), b.view.id)).toBeNull();
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("web-only fleet: Apply now for the host operator here; any other session — forwarded, another code's, the outside sign-in — is told to use the AgEnD computer's browser, and a code is refused", async () => {
+    setLocale("en");
+    const h = await startFleet();
+    try {
+      const host = await h.signIn();
+      const a = held(h, link);
+      const away = h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" });
+      expect(h.any.settingsSelfConfirmation(a.store, away, a.view.id)).toBeNull();
+      expect(h.any.settingsTotpState(a.store, away, a.view.id)).toBe("host_browser");
+      expect(h.any.settingsTotpConfirm(a.store, away, a.view.id, "123456", "x")).toEqual({ error: "not_here" });
+      const gw = h.reqOf(host.sessionId);
+      bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
+      expect([h.any.settingsSelfConfirmation(a.store, gw, a.view.id), h.any.settingsTotpState(a.store, gw, a.view.id)]).toEqual([null, "host_browser"]);
+      const self = h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId), a.view.id);
+      expect([self?.label, h.any.settingsTotpState(a.store, h.reqOf(host.sessionId), a.view.id)]).toEqual(["This computer's admin", null]);
+      expect((await a.store.decide(a.view.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
+      // Over HTTP, through the Settings gate: the flag reaches the held change (a forwarded Save waits, and its page says why).
+      const put = await raw(h.port, "PUT", "/api/settings/fleet/web", { ...h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" }).headers,
+        "content-type": "application/json", "idempotency-key": `k${Math.random()}` }, JSON.stringify({ verified_authority: { named_link: true } }));
+      expect(put.status).toBe(202);
+      const pending = JSON.parse(put.body).pending_change;
+      expect([pending.state, pending.totp]).toEqual(["pending", "host_browser"]);
+      // An ordinary noSelfConfirm change without the link flag keeps #2453 for the host operator too.
+      const plain = held(h, { noSelfConfirm: true });
+      expect(h.any.settingsSelfConfirmation(plain.store, h.reqOf(host.sessionId), plain.view.id)).toBeNull();
     } finally { await h.stop(); }
   }, 20_000);
 });
