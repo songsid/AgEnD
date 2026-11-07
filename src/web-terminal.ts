@@ -728,7 +728,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
       await new Promise<void>((resolve, reject) => execFile("mkfifo", ["-m", "600", fifo], { timeout: TMUX_EXEC_TIMEOUT_MS },
         err => err ? reject(new Error("mkfifo failed")) : resolve()));
       // O_RDWR: we are always a writer too, so the FIFO never reports EOF when
-      // tmux's `cat` closes. A net.Socket over the fd gives event-driven reads
+      // tmux's `dd` closes. A net.Socket over the fd gives event-driven reads
       // (fs.ReadStream would abort with EAGAIN on a non-blocking pipe).
       const fd = openSync(fifo, fsConstants.O_RDWR | fsConstants.O_NONBLOCK);
       stream = new NetSocket({ fd, readable: true, writable: false });
@@ -746,7 +746,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
       this.streams.set(socket, { dir, stop });
 
       if (signal?.aborted) throw aborted();
-      await this.tmux(socket, "pipe-pane", ["-o", "-t", "main", `cat >> ${shellQuote(fifo)}`]);
+      // `dd`, not `cat`: with a FIFO as its output GNU cat uses splice(). On Linux 6.6 its second splice() takes the FIFO's lock and then waits on tmux's
+      // socket for more output while still holding it, so our own read() of the FIFO blocks in the kernel (state D, wchan pipe_read) and the whole
+      // process freezes the moment a login prints its first lines and then waits for input. dd copies with plain read() + write() and never holds it.
+      await this.tmux(socket, "pipe-pane", ["-o", "-t", "main", `dd bs=65536 status=none >> ${shellQuote(fifo)}`]);
       if (signal?.aborted) throw aborted();
       await this.tmux(socket, "respawn-pane", ["-k", "-t", "main", "-c", opts.cwd, `sh -c ${shellQuote(opts.command)}`]);
       if (signal?.aborted) throw aborted();
