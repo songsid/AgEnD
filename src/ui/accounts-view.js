@@ -14,7 +14,10 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { Icon } from "/assets/ui-icons.js";
+import { Menu } from "/assets/ui-menu.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { CompactMeter } from "/assets/usage-dialog.js";   // AGEND-105: the Usage panel's meter, not a second one
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
@@ -31,7 +34,7 @@ register("accounts", {
     def: "Default sign-in", profile: "Account “{0}”", state_usable: "signed in", state_not_signed_in: "not signed in", state_unknown: "not checked",
     state_not_installed: "not installed", state_too_old: "too old",
     usedBy: "used by {0}", usedByNone: "used by no agent", agents: "{0} agents", agent: "1 agent", channels: "{0} ClassicBot rooms", channel: "1 ClassicBot room",
-    fleetDefaultTag: "fleet default", resets: "resets {0}", resetsIn: "resets in {0}",
+    fleetDefaultTag: "fleet default",
     usageLabel: "Usage", winHours: "{0}h", winDays: "{0}d", winWeek: "7d", winStale: "(stale)",
     signIn: "Sign in", signInAgain: "Sign in again", hostCommand: "Sign in from chat", hostCommandHint: "This row cannot sign in from the dashboard. Send /login in chat, or ask General.",
     moveHere: "Move agents here", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
@@ -51,7 +54,7 @@ register("accounts", {
     acctLabel: "Account", acctInherit: "Fleet default ({0})", acctInheritDefault: "Fleet default (default sign-in)", acctNotSignedIn: "{0} — not signed in",
     acctHint: "Changing the account restarts the agent. A signed-out account can't be chosen: sign it in under Accounts first.",
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
-    usedPopTitle: "Agents using this account", usedGo: "Open settings →", usedGoFor: "Open the settings of {0}",
+    usedPopTitle: "Agents using this account — choose one to open its settings",
   },
   "zh-TW": {
     title: "帳號", hint: "這台 AgEnD 主機與已配對電腦上各 CLI 的登入：預設登入與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
@@ -59,7 +62,7 @@ register("accounts", {
     def: "預設登入", profile: "帳號「{0}」", state_usable: "已登入", state_not_signed_in: "尚未登入", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
     usedBy: "使用者：{0}", usedByNone: "沒有 Agent 使用", agents: "{0} 個 Agent", agent: "1 個 Agent", channels: "{0} 個 ClassicBot 房間", channel: "1 個 ClassicBot 房間",
-    fleetDefaultTag: "Fleet 預設", resets: "{0} 重置", resetsIn: "{0} 後重置",
+    fleetDefaultTag: "Fleet 預設",
     usageLabel: "用量", winHours: "{0}h", winDays: "{0}天", winWeek: "本週", winStale: "（未更新）",
     signIn: "登入", signInAgain: "重新登入", hostCommand: "從聊天登入", hostCommandHint: "這一列無法從儀表板登入。請在聊天傳 /login，或請 General。",
     moveHere: "移入 Agent", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
@@ -79,7 +82,7 @@ register("accounts", {
     acctLabel: "帳號", acctInherit: "Fleet 預設（{0}）", acctInheritDefault: "Fleet 預設（預設登入）", acctNotSignedIn: "{0}——尚未登入",
     acctHint: "更換帳號會重新啟動 Agent。尚未登入的帳號不能選，請先在「帳號」登入。",
     acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
-    usedPopTitle: "使用此帳號的 Agent（點擊跳轉設定）", usedGo: "前往設定 →", usedGoFor: "前往 {0} 的設定",
+    usedPopTitle: "使用此帳號的 Agent（點擊跳轉設定）",
   },
 });
 const tx = (k, ...v) => t(`accounts.${k}`, ...v);
@@ -136,23 +139,6 @@ const usedText = (row) => {
   if (c) parts.push(c === 1 ? tx("channel") : tx("channels", c));
   return parts.length ? tx("usedBy", parts.join(" · ")) : tx("usedByNone");
 };
-/** A reset time as the person reads it: the time alone when it is today, else the weekday and the time. */
-const when = (iso, now = new Date()) => {
-  try {
-    const d = new Date(iso);
-    if (!Number.isFinite(d.getTime())) return "";
-    return d.toLocaleString(undefined, d.toDateString() === now.toDateString() ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
-  } catch { return ""; }
-};
-/** How long until `iso`, in the coarsest unit that still says something: "45m", "3h" (hours up to two days), "3d". "" when it is not ahead. */
-const until = (iso, now = Date.now()) => {
-  const ms = new Date(iso).getTime() - now;
-  if (!(ms > 0)) return "";
-  const min = Math.ceil(ms / 60_000);
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
-};
 /** A usage window's name, from its length: "5h" for hours, the week's own word near seven days, else "30d". `fallback`: what a window of unknown length is. */
 const winLabel = (u, fallback = "") => {
   const ms = Number(u && u.windowMs);
@@ -162,18 +148,14 @@ const winLabel = (u, fallback = "") => {
   const d = Math.round(h / 24);
   return d >= 6 && d <= 8 ? tx("winWeek") : tx("winDays", d);
 };
-/** One window of the usage block: its name, a meter, the percent (amber from 70%, red from 90%) and when it resets. A grid row of four fixed columns, so rows stack aligned. */
+/**
+ * One window of the usage block: the Usage panel's own meter (`CompactMeter`, usage-dialog.js) — its name ("5h", "本週"), the bar, the percent
+ * (amber from 70%, red from 90%: the theme's --warn / --danger) and when the window resets. The server's window ({ percent, windowMs, resetsAt }) is
+ * given in the meter's shape.
+ */
 function UsageWindow({ u, kind }) {
-  const p = Math.max(0, Math.min(100, Math.round(Number(u.percent) || 0)));
-  const level = p >= 90 ? " is-crit" : p >= 70 ? " is-warn" : "";
-  // The short window resets within hours: "resets in 3h" says more than a clock time. The week's reset is a day and time. The exact time is the tooltip.
-  const t = u.resetsAt ? (kind === "short" ? until(u.resetsAt) : when(u.resetsAt)) : "";
-  const reset = t ? tx(kind === "short" ? "resetsIn" : "resets", t) : "";
-  const exact = reset && new Date(u.resetsAt).toLocaleString();
-  // The spaces between the cells are not drawn (a grid ignores whitespace between its items); they keep the text readable where it is copied or read as text.
-  return html`<div class=${`s-usage-win is-${kind}${level}`}><span class="s-usage-win-lbl">${winLabel(u, kind === "weekly" ? tx("winWeek") : "")}</span>${" "}
-    <progress class="s-usage-meter" max="100" value=${p} aria-hidden="true"></progress>${" "}
-    <span class="s-usage-win-pct">${p}%</span>${" "}<span class="s-usage-win-reset" title=${exact || null}>${reset}</span>${" "}</div>`;
+  const name = winLabel(u, kind === "weekly" ? tx("winWeek") : "");
+  return html`<${CompactMeter} m=${{ used: Number(u.percent) || 0, windowMs: u.windowMs, resetsAt: u.resetsAt, label: name }} tag=${name} />`;
 }
 
 /**
@@ -306,7 +288,7 @@ function Card({ cli, running, openAgent, onMove, stageDefault, onAdd, onRemove, 
   const machines = new Map();
   for (const r of cli.rows) if (r.scope && r.scope.kind === "machine") { const k = r.scope.id; if (!machines.has(k)) machines.set(k, { scope: r.scope, rows: [] }); machines.get(k).rows.push(r); }
   const signedIn = host.filter((r) => r.profile && r.state !== "not_signed_in");
-  return html`<div class="s-account-card" data-backend=${cli.backend}>
+  return html`<div class="card s-account-card" data-backend=${cli.backend}>
     <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
       ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${() => onAdd()}>${manageWords.add()}</button>` : null}</div>
     ${/* Ridge #3321 S08: beside paired computers' "On <computer>" groups, the host's rows are named as the host's too. */ ""}
@@ -339,31 +321,16 @@ function MachineSection({ cli, m, running, openAgent, onAdd, onSignIn, onSignOut
 }
 
 /**
- * "used by …" (#3212 box layout): a pill. When agents use the account it is a button, and its list opens as a floating
- * layer (`.s-used-popover`, position: absolute: it covers what is below and never moves the card or the next one): each agent
- * with a jump to its own settings (`openAgent`). A click outside or Esc closes it. Closed, the list is not in the page at all.
+ * "used by …" (#3212 box layout): a pill. When agents use the account it is a `Menu` (ui-menu.js: arrow keys, Enter, Esc, closes on a click outside,
+ * placed clear of the window's edge): one item per agent, and choosing one opens that agent's own settings (`openAgent`). Nobody using it: just the pill.
  */
 function UsedBy({ row, label, openAgent }) {
   const agents = row.usedBy.agents;
-  const [open, setOpen] = useState(false);
-  const wrap = useRef(null), pill = useRef(null);
-  useEffect(() => {
-    if (!open || typeof document === "undefined") return undefined;
-    const away = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
-    const esc = (e) => { if (e.key === "Escape") { setOpen(false); if (pill.current && pill.current.focus) pill.current.focus(); } };
-    document.addEventListener("click", away); document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("click", away); document.removeEventListener("keydown", esc); };
-  }, [open]);
-  useEffect(() => { if (open && !agents.length) setOpen(false); }, [agents.length]);   // read again: nobody uses it any more
-  if (!agents.length) return html`<small class="s-account-used">${label}</small>`;
-  return html`<span class="s-used-wrap" ref=${wrap}>
-    <button type="button" class=${`s-account-used has-users${open ? " is-open" : ""}`} ref=${pill} aria-haspopup="true" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${label}</button>
-    ${open ? html`<div class="s-used-popover" role="group" aria-label=${tx("usedPopTitle")}>
-      <p class="s-used-popover-title">${tx("usedPopTitle")}</p>
-      <ul>${agents.map((name) => html`<li key=${name}><span class="s-used-agent">${name}</span>
-        ${typeof openAgent === "function" ? html`<button type="button" class="btn btn-sm s-used-go" aria-label=${tx("usedGoFor", name)} onClick=${() => { setOpen(false); openAgent(name); }}>${tx("usedGo")}</button>` : null}</li>`)}</ul>
-    </div>` : null}
-  </span>`;
+  if (!agents.length) return html`<span class="tag s-account-used">${label}</span>`;
+  const items = [{ key: "title", heading: true, label: tx("usedPopTitle") },
+    ...agents.map((name) => ({ key: name, label: name, disabled: typeof openAgent !== "function", onSelect: () => openAgent(name) }))];
+  return html`<${Menu} cls="s-account-used-menu" items=${items} label=${label} fit=${true} triggerClass="tag s-account-used has-users"
+    trigger=${html`<span>${label}</span><${Icon} name="chevron" size=${12} />`} />`;
 }
 
 function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, openAgent, running = false, readOnly = false }) {
@@ -388,11 +355,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
         ${!machine && cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
         ${canSignOut && !machine && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
         ${canSignOut ? html`<button type="button" class="btn btn-sm btn-ghost s-account-signout" disabled=${running} onClick=${() => onSignOut(row, "signout")}>${manageWords.signOut()}</button>` : null}
-        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
+        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
       </span>`}
     </div>
     <div class="s-account-meta-bar">
-      ${who ? html`<small class="s-account-identity">${who}</small>` : null}
+      ${who ? html`<span class="tag s-account-identity">${who}</span>` : null}
       <${UsedBy} row=${row} label=${usedText(row)} openAgent=${openAgent} />
       ${machine ? html`<small class="s-account-usage is-none" title=${tx("machineNoUsageHint")}>${tx("machineNoUsage")}</small>` : null}
     </div>
