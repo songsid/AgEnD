@@ -15,6 +15,11 @@ export interface HubGroupPermit {
   readonly source: "legacy" | "manual" | "group";
   assertCurrent(): void;
 }
+/** Commit in the same transaction as the actual new fleet/publication, after ordinary consent/quota checks. */
+export interface HubGroupEnrollmentPermit extends HubGroupPermit {
+  readonly maxFleets: number;
+  commit(database: Database.Database): void;
+}
 export interface HubGroupAuthorizationOptions {
   db: Database.Database;
   administrator: PersonKey;
@@ -146,6 +151,13 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     } });
   };
   return {
+    /** Display-only exact lifecycle projection: no directory read, allowance, audit or provenance mutation. */
+    resourceState(input: HubGroupResource) {
+      const resource = parseHubGroupResource(input); assert(() => true);
+      if (resource.owner.realm !== administrator.realm || bindingOf().kind !== "ready") throw new HubGroupPolicyError("unavailable");
+      const resources = createHubGroupResources({ db, policy: policyOf(), audit, current: alive, now }), row = resources.read(resource);
+      return row ? Object.freeze({ source: row.source, state: row.state, revision: row.revision }) : null;
+    },
     asker(input: PersonKey, ctx: GroupCheckContext) {
       const owner = validated(person, input);
       return run({ kind: "asker", id: owner.objectId, revision: 1, owner }, ctx, "asker");
@@ -153,6 +165,45 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     check(resource: HubGroupResource, ctx: GroupCheckContext) { return run(resource, ctx, "check"); },
     /** Only after ordinary owner/local-consent/grant/quota checks; this creates provenance, not the actual resource. */
     enroll(resource: HubGroupResource, ctx: GroupCheckContext) { return run(resource, ctx, "enroll"); },
+    /** No provenance before the actual-resource transaction. A commit attempt is consumed even if its transaction rolls back. */
+    async prepareEnrollment(input: HubGroupResource, incoming: GroupCheckContext): Promise<HubGroupEnrollmentPermit> {
+      const resource = parseHubGroupResource(input), ctx = capture(incoming);
+      if (resource.kind === "asker") throw new HubGroupPolicyError("invalid"); // Canonical first-use askers use asker().
+      assert(ctx.current); const epoch = version();
+      if (db.inTransaction) throw new HubGroupPolicyError("invalid");
+      // Legacy/repair behavior is identical to current action permits and creates no provenance.
+      const selectedBinding = bindingOf();
+      if (selectedBinding.kind !== "ready" || policyOf().read().state === "never-enabled") {
+        const legacy = await run(resource, ctx, "enroll");
+        let used = false;
+        return Object.freeze({ ...legacy, maxFleets: 0, commit(database: Database.Database) {
+          if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
+          used = true; legacy.assertCurrent();
+        } });
+      }
+      const policy = policyOf(), before = policy.read(), serialized = JSON.stringify(before);
+      const assertPreparation = () => {
+        assert(ctx.current);
+        if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== serialized || version() !== epoch) throw new HubGroupPolicyError("conflict");
+      };
+      assertPreparation();
+      const resources = createHubGroupResources({ db, policy, audit, current: alive, now });
+      const prepared = await resources.prepareRegistration(resource, { ...ctx, current: () => {
+        try { assertPreparation(); return true; } catch { return false; }
+      } });
+      assertPreparation(); let committed: HubGroupResourceView | null = null;
+      return Object.freeze({ source: "group", maxFleets: prepared.decision.maxFleets,
+        assertCurrent() {
+          assertPreparation(); const row = resources.read(resource);
+          if (committed ? !sameRow(row, committed) : row !== null) throw new HubGroupPolicyError("conflict");
+        },
+        commit(database: Database.Database) {
+          assertPreparation(); prepared.commit(database); committed = resources.read(resource);
+          if (!committed || committed.state !== "active") throw new HubGroupPolicyError("conflict");
+          assertPreparation();
+        },
+      });
+    },
     resume(resource: HubGroupResource, ctx: GroupCheckContext & { requireAdmin(): Promise<HubActor> }) {
       const authenticate = ctx.requireAdmin.bind(ctx);
       return run(resource, ctx, "resume", authenticate);
