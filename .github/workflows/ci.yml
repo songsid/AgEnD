@@ -243,6 +243,59 @@ jobs:
           fi
           npx vitest run "${files[@]}"
 
+  # ── UI gate (fleet decision "AgEnD UI gate") ─────────────────────────────────
+  # Every Settings section in a real headless Chrome on the loopback smoke fixture (no fleet start, no network): one card
+  # frame per section, one height per button kind, nothing past the content column (as drawn, drawers open, long real values),
+  # no page error or CSP report. The runner image's own Google Chrome — this job never downloads a browser (no
+  # `playwright install`); playwright-core is an exact-pinned devDependency. Always runs; skips on a text-only PR.
+  # Locally, the whole matrix: docs/development.md → "UI gate".
+  ui-gate:
+    runs-on: ubuntu-24.04
+    needs: detect-changes
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip the UI gate on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — UI gate skipped."
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Chrome from the runner image (never downloaded)
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [ -z "$chrome" ] || [ ! -x "$chrome" ]; then
+            echo "::error::The UI gate needs the runner image's Google Chrome and found none. It does not download a browser; use an image that has one." >&2
+            exit 1
+          fi
+          "$chrome" --version
+          echo "CHROME=$chrome" >> "$GITHUB_ENV"
+      - name: CJK fonts (zh-TW cases are measured with real glyph widths)
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends fonts-noto-cjk
+      - name: Run the UI gate
+        if: needs.detect-changes.outputs.text-only != 'true'
+        env:
+          GATE: ci
+          OUT: ${{ runner.temp }}/ui-gate
+          FONTCONFIG_FILE: /etc/fonts/fonts.conf
+        run: |
+          npm ci
+          PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts
+      - name: Pictures of every section (on failure)
+        if: failure() && needs.detect-changes.outputs.text-only != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ui-gate
+          path: ${{ runner.temp }}/ui-gate
+          retention-days: 7
+
   # ── aggregate ────────────────────────────────────────────────────────────────
   # The gate requires a check named exactly "build". This job aggregates every
   # upstream job; it fails when any upstream job fails. All upstream jobs always
@@ -250,7 +303,7 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-24.04
-    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, test-pwsh, docs-tests, install-smoke, release-rollback-smoke]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, test-pwsh, docs-tests, ui-gate, install-smoke, release-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -262,6 +315,7 @@ jobs:
           INTEGRATION: ${{ needs.test-integration.result }}
           PWSH: ${{ needs.test-pwsh.result }}
           DOCS_TESTS: ${{ needs.docs-tests.result }}
+          UI_GATE: ${{ needs.ui-gate.result }}
           SMOKE: ${{ needs.install-smoke.result }}
           ROLLBACK: ${{ needs.release-rollback-smoke.result }}
         run: |
@@ -276,7 +330,7 @@ jobs:
             exit 1
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "test-pwsh:$PWSH" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "release-rollback-smoke:$ROLLBACK"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "test-pwsh:$PWSH" "docs-tests:$DOCS_TESTS" "ui-gate:$UI_GATE" "install-smoke:$SMOKE" "release-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then
