@@ -25502,7 +25502,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return {
           ok: false,
           status: 503,
-          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+          error: "the restart rate-limit file cannot be read — send /restart in General",
         };
       }
       return {
@@ -25534,7 +25534,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return {
         ok: false,
         status: 409,
-        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+        error: "no chat channel is available to announce the restart — ask the computer's owner to restart AgEnD",
       };
     }
 

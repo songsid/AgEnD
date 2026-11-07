@@ -3777,10 +3777,10 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string; limi
   // M-2297: the per-PC agent limit — say so, with the agents holding its slots (names only: no path, no id).
   if (err instanceof MachineSlotLimitError) return { reason: "machine_limit", error: message, limit: err.limit, holders: err.holders.map(h => ({ name: h.name, unknown: h.unknown })) };
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
-  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
-  if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
-  if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it on the host before retrying." };
-  return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status on the host, then retry." };
+  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Sign it in from Settings → Accounts, or send /login in chat, then retry." };
+  if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status in Fleet." };
+  if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it from Fleet, then retry." };
+  return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status in Fleet, then retry." };
 }
 
 /** Handle POST /ui/send — extracted for readability. */

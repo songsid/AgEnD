@@ -120,7 +120,7 @@ describe("#2910 D2 the fleet: what would have gone to General is a Notice", () =
     await f.any.notifyNormalExit?.("agent-1");
     expect(f.notices().filter(n => /General/.test(String(n.text)))).toEqual([]);
   });
-  it("an available update: once per version, worded for this computer (agend update), not /update", async () => {
+  it("an available update: once per version, worded for this computer's owner, not /update", async () => {
     setLocale("en");
     const f = fleet();
     registry.tags = { "@songsid/agend": "2.3.4" };
@@ -128,8 +128,8 @@ describe("#2910 D2 the fleet: what would have gone to General is a Notice", () =
     registry.tags = { "@songsid/agend": "2.3.5" };
     await f.any.checkForUpdates();
     expect(f.notices().map(n => [n.kind, n.text])).toEqual([
-      ["update", "🆕 AgEnD v2.3.5 available (current: v2.3.3). Install it on this computer: agend update"],
-      ["update", "🆕 AgEnD v2.3.4 available (current: v2.3.3). Install it on this computer: agend update"]]);
+      ["update", "🆕 AgEnD v2.3.5 available (current: v2.3.3). Ask the computer's owner to install it."],
+      ["update", "🆕 AgEnD v2.3.4 available (current: v2.3.3). Ask the computer's owner to install it."]]);
   });
   it("a fleet with a chat connection: unchanged — nothing kept or pushed, no feed (General says them)", async () => {
     const f = fleet(CHAT);
@@ -180,7 +180,7 @@ describe("#2910 D2 the routes", () => {
       h.fm.notifyFleetError("one"); h.fm.notifyFleetError("two");
       const list = JSON.parse((await raw(h.port, "GET", "/ui/notices/list", { cookie: h.S.cookie })).body);
       // The sign-in itself was the first notice (web.login_notice: a sign-in General would have been told of).
-      expect([list.enabled, list.items.map((n: any) => n.text).slice(0, 2), /^🔐 New web sign-in: .* If this was not you, run agend web-token rotate on this computer/.test(list.items[2].text), list.unread]).toEqual([true, ["two", "one"], true, 3]);
+      expect([list.enabled, list.items.map((n: any) => n.text).slice(0, 2), /^🔐 New web sign-in: .* If this was not you, use Sign out everywhere in the session menu/.test(list.items[2].text), list.unread]).toEqual([true, ["two", "one"], true, 3]);
       const seen = await raw(h.port, "POST", "/ui/notices/seen", h.S, JSON.stringify({ id: list.items[1].id }));
       expect([seen.status, JSON.parse(seen.body)]).toEqual([200, { seen: 2, unread: 1 }]);
       expect((await raw(h.port, "POST", "/ui/notices/seen", h.S, JSON.stringify({ id: "2" }))).status).toBe(400);
@@ -330,6 +330,6 @@ describe("#2925 review P3-2: a web-only fleet with a General instance still gets
     vi.spyOn(f.any, "findGeneralInstance").mockReturnValue("general");
     registry.tags = { "@songsid/agend": "2.3.4" };
     await f.any.checkForUpdates(); await f.any.checkForUpdates();
-    expect(f.notices().map(n => [n.kind, n.text])).toEqual([["update", "🆕 AgEnD v2.3.4 available (current: v2.3.3). Install it on this computer: agend update"]]);
+    expect(f.notices().map(n => [n.kind, n.text])).toEqual([["update", "🆕 AgEnD v2.3.4 available (current: v2.3.3). Ask the computer's owner to install it."]]);
   });
 });

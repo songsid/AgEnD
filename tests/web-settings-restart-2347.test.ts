@@ -110,10 +110,10 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect([!!line(), !!button("Restart now"), line()?.textContent.includes("public link")]).toEqual([true, true, false]);
   });
 
-  it("with no Settings job to carry it (a hand edit) it says how to restart on the host", async () => {
+  it("with no Settings job to carry it (a hand edit) it says how to restart from General", async () => {
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     await mountShell();
-    expect([!!button("Restart now"), line()?.textContent.includes("agend restart")]).toEqual([false, true]);
+    expect([!!button("Restart now"), line()?.textContent.includes("/restart")]).toEqual([false, true]);
   });
 
   it("a refused restart says why and keeps the line", async () => {
