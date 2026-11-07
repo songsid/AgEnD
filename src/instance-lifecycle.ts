@@ -835,7 +835,8 @@ export class InstanceLifecycle {
       ? `${affected.length} instances on ${on}: ${affected.join(", ")}`
       : profile ? `\`${name}\` (${backend}, profile \`${profile}\`)` : `\`${name}\` (${backend})`;
     // A profile is signed in with its own variable: `/login <backend>` would sign the DEFAULT login in. claude-code's
-    // can be signed in from chat (`/login <backend> <profile>`, #1699 part 2); the others' on the host.
+    // (#1699 part 2), codex's and kiro-cli's (#3212 PR 4) are signed in from chat (`/login <backend> <profile>`); any
+    // other backend's on the host.
     const profileLogin = profile ? credentialProfileLoginCommand(getAgendHome(), backend, profile) : null;
     const chatLogin = !!profileLogin && CHAT_PROFILE_LOGIN_BACKENDS.has(backend);
     const remedy = chatLogin
