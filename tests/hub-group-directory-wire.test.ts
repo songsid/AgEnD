@@ -13,6 +13,7 @@ import { createHubDirectory } from "../src/hub/directory/directory.js";
 import { applyHubMigrations } from "../src/hub/db.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { createHubGroupPolicyStore, groupPolicyMigration } from "../src/hub/group-policy/store.js";
+import { createHubGroupResources, HUB_GROUP_RESOURCES_MIGRATION } from "../src/hub/group-policy/resources.js";
 import { evaluateGroupPolicy, initialGroupPolicy } from "../src/hub/group-policy/model.js";
 const who = { realm: "example", objectId: PERSON_ID };
 let certs: ReturnType<typeof directoryCertificates> | undefined, peer: Awaited<ReturnType<typeof groupWirePeer>>;
@@ -47,6 +48,33 @@ describe("group-policy real LDAPS listener smoke", () => {
   it.each(["unsupported", "referral", "plain", "missing", "ranged"] as const)("refuses %s wire results as unknown", async mode => {
     await start(); peer.state.mode = mode; expect(await directory().readPolicyGroups!(who)).toEqual({ kind: "unknown" });
     expect(peer.searches).toHaveLength(1);
+  });
+  it("last-group omission stays held without suspension; a complete other-group result suspends until explicit resume", async () => {
+    await start(); const d = directory(), db = new Database(":memory:"); db.pragma("foreign_keys=ON");
+    try {
+      applyHubMigrations(db, [HUB_AUDIT_MIGRATION, groupPolicyMigration("hub-1", "example", "generation-1"), HUB_GROUP_RESOURCES_MIGRATION]);
+      const audit = createHubAudit({ db, contentKey: randomBytes(32) });
+      const policy = createHubGroupPolicyStore({ db, hubId: "hub-1", realm: "example", generation: "generation-1", directory: d, audit, current: () => true });
+      const resources = createHubGroupResources({ db, policy, audit, current: () => true });
+      const ctx = { requestId: "last-group-wire", current: () => true }, r = { kind: "exposure" as const, id: "exposure-1", revision: 1, owner: who };
+      policy.replace({ ...policy.read(), state: "enabled", groups: [{ group: { realm: "example", objectId: GROUP_A }, dn: GROUP_DN, allow: ["publish_agents"], maxFleets: 1 }] }, who, ctx);
+      await resources.register(r, ctx); const before = resources.read(r);
+      for (const mode of ["missing", "ranged", "outage"] as const) {
+        peer.state.mode = mode;
+        expect(await resources.check(r, ctx)).toMatchObject({ outcome: "held", decision: { authoritative: false } });
+        expect(resources.read(r)).toEqual(before);
+      }
+      peer.state.mode = "ok"; peer.state.memberships = [];
+      expect(await resources.check(r, ctx)).toMatchObject({ outcome: "held" }); expect(resources.read(r)).toEqual(before);
+      peer.state.memberships = Array.from({ length: 257 }, (_, n) => `${String(n).padStart(8, "0")}-1111-4111-8111-111111111111`);
+      expect(await resources.check(r, ctx)).toMatchObject({ outcome: "held" }); expect(resources.read(r)).toEqual(before);
+      peer.state.memberships = [GROUP_B];
+      expect(await resources.check(r, ctx)).toMatchObject({ outcome: "deny", decision: { authoritative: true } });
+      expect(resources.read(r)).toMatchObject({ state: "suspended" });
+      peer.state.memberships = [GROUP_A]; expect(await resources.check(r, ctx)).toMatchObject({ outcome: "resume-required" });
+      expect(await resources.resume(r, who, ctx)).toMatchObject({ outcome: "allow" });
+      expect(resources.read(r)).toMatchObject({ state: "active", revision: 3 }); expect(audit.verifyChain()).toMatchObject({ ok: true });
+    } finally { db.close(); }
   });
   it("rejects an unrelated CA before any service bind", async () => {
     await start(); expect(await directory(certs!.unrelated.cert).readPolicyGroups!(who)).toEqual({ kind: "unknown" }); expect(peer.binds).toEqual([]);

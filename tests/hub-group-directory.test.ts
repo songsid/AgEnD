@@ -37,6 +37,22 @@ describe("AD-only group permission reader", () => {
     expect(f.searches[1].filter.filters[1]).toMatchObject({ attribute: "objectGUID", value: guidStringToBytes(a) });
     expect(f.binds).toEqual([{ dn: config.bindDn, password: "Dummy-service-password" }]);
   });
+  it("uses the server DN for identity recheck, tolerating admin formatting and escaping", async () => {
+    for (const typed of ["CN=Owners, DC=example, DC=test", "CN=Ow\\6eers,DC=example,DC=test"]) {
+      f.responses.push([group()], [group()]);
+      expect(await directory().resolvePolicyGroup!(typed)).toEqual({ ok: true, group: { key: { realm: "example", objectId: a }, dn } });
+    }
+  });
+  it("keeps the configured group base closed across escaped separator tricks and server redirects", async () => {
+    for (const typed of ["CN=Other,OU=Groups,DC=elsewhere,DC=test", "CN=Other\\,DC=example,DC=test"]) {
+      expect(await directory().resolvePolicyGroup!(typed)).toEqual({ ok: false, reason: "invalid" });
+    }
+    expect(f.searches).toEqual([]);
+    f.responses.push([{ ...group(), dn: "CN=Outside,DC=elsewhere,DC=test" }]);
+    expect(await directory().resolvePolicyGroup!(dn)).toEqual({ ok: false, reason: "invalid" });
+    expect(f.searches).toHaveLength(1);
+    expect(await directory({ baseDn: "OU=People,DC=example,DC=test" }).resolvePolicyGroup!("CN=Group,OU=Groups,DC=example,DC=test")).toEqual({ ok: false, reason: "invalid" });
+  });
   it.each([
     ["distribution group", [{ ...group(), groupType: "2" }], [], "not-security-group"],
     ["no GUID", [{ ...group(), objectGUID: undefined }], [], "not-security-group"],
