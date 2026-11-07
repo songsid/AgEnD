@@ -1540,7 +1540,7 @@ const enMessages = {
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "logs.capped_tail": "最多顯示 {0} 行；這裡僅提供最近的日誌末段。",
-    "config.general_missing": "連線「{0}」沒有 general_topic agent，因此不在 agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
+    "config.general_missing": "連線「{0}」沒有 general_topic Agent，因此不在 Agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 Agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
     "setup.admin.cancelled": "設定已取消，未選取管理員。",
     "setup.discord_admin.connecting": "正在連線到 Discord，以偵測你的帳號…",
     "setup.platform_general.ask": "也替 {0} 建立 General「{1}」嗎？它會接收那裡不在任何 agent 主題裡的訊息。它是第二個一直在執行的 agent，會用掉 token，也有自己的終端機。[Y/n]：",
