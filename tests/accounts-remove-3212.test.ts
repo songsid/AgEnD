@@ -128,6 +128,7 @@ describe("Remove: the positive case", () => {
       accountUses: () => ({ agents: [{ name: "dev", backend: "claude-code", profile: "spare" }, { name: "ops", backend: "codex", profile: "spare" }],
         classic: [], fleetDefaults: new Map([["codex", "spare"]]) }),
       loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+      removalRequest: (FleetManager.prototype as any).removalRequest,
     };
     const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
     expect(await call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: false, error: "in_use", users: { agents: ["dev"], classic: [], fleetDefault: false } });
@@ -151,7 +152,8 @@ describe("#3291 review (Prism): who uses it is never under-counted", () => {
   const fm = (data: string, over: Record<string, unknown> = {}) => ({
     dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
     accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null }, ...over,
+    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+    removalRequest: (FleetManager.prototype as any).removalRequest, ...over,
   });
   const daemon = (cfg: Record<string, unknown>) => ({ getConfigSnapshot: () => cfg });
   it("P2-1: a running CLI launched on it is a user, though the configuration has moved off it", async () => {

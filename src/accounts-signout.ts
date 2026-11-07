@@ -5,8 +5,8 @@
  * Checked offline per CLI (issuecomment-6700440777, -6700591696):
  * - Claude Code `auth logout` removes `.credentials.json` (macOS: its own Keychain item, named after the config dir) and
  *   the account block of `.claude.json`, but writes `backups/.claude.json.backup.<ms>` that still names the account —
- *   so those are deleted too: every one in a named profile's folder (AgEnD's own), only the ones this logout wrote in the
- *   default sign-in's folder (older backups there are the person's own files);
+ *   so those are deleted too: every one in a named profile's folder (AgEnD's own, re-checked to be the same folder after
+ *   the logout), only the ones that were not there before it in the default sign-in's folder (the person's own files);
  * - Codex `logout` removes `auth.json`; Kiro `logout` clears its token rows. All three are idempotent and need no network.
  *
  * AgEnD never deletes a Keychain item itself: on macOS, an item with the account's service name still there after the
@@ -51,13 +51,28 @@ export interface SignOutDeps {
   keychainHas(service: string): Promise<boolean>;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
-  /** Wall clock (ms), to tell the backups this logout wrote. */
-  now(): number;
   fs: ProfileFs;
 }
 
-/** The backups `claude auth logout` leaves that still name the account: all of them (`all`), or those written since `since`. */
-export function removeClaudeBackups(configDir: string, which: { all: true } | { since: number }): number {
+/** The `.claude.json` backups in a config dir, as `<name>\0<inode>` (a file replaced under the same name is another one). */
+export function claudeBackups(configDir: string): Set<string> {
+  const dir = join(configDir, "backups"), out = new Set<string>();
+  try {
+    const st = lstatSync(dir); if (!st.isDirectory() || st.isSymbolicLink()) return out;
+    for (const name of readdirSync(dir)) {
+      if (!name.startsWith(".claude.json.backup")) continue;
+      try { out.add(`${name}\0${lstatSync(join(dir, name)).ino}`); } catch { /* gone */ }
+    }
+  } catch { /* none */ }
+  return out;
+}
+
+/**
+ * The backups `claude auth logout` leaves that still name the account: all of them (`all`: a named profile's folder,
+ * AgEnD's own), or only those not in `except` (the default sign-in's folder: what was there before the logout is the
+ * person's own — #3305 review P2-4: by identity, never by time).
+ */
+export function removeClaudeBackups(configDir: string, which: { all: true } | { except: ReadonlySet<string> }): number {
   const dir = join(configDir, "backups");
   let names: string[];
   try { const st = lstatSync(dir); if (!st.isDirectory() || st.isSymbolicLink()) return 0; names = readdirSync(dir); } catch { return 0; }
@@ -68,7 +83,7 @@ export function removeClaudeBackups(configDir: string, which: { all: true } | { 
     try {
       const st = lstatSync(path);
       if (!st.isFile()) continue;                                  // never a link or a folder
-      if (!("all" in which) && st.mtimeMs < which.since) continue;
+      if (!("all" in which) && which.except.has(`${name}\0${st.ino}`)) continue;
       rmSync(path); n++;
     } catch { /* gone already */ }
   }
@@ -76,25 +91,33 @@ export function removeClaudeBackups(configDir: string, which: { all: true } | { 
 }
 
 export async function signOutAccount(dataDir: string, req: SignOutRequest, deps: Partial<SignOutDeps> & Pick<SignOutDeps, "run" | "keychainHas">): Promise<SignOutResult> {
-  const d: SignOutDeps = { platform: process.platform, env: process.env, now: Date.now, fs: realFs(), ...deps };
+  const d: SignOutDeps = { platform: process.platform, env: process.env, fs: realFs(), ...deps };
   const how = Object.hasOwn(SIGN_OUT, req.backend) ? SIGN_OUT[req.backend]! : null;
   if (!how) return { ok: false, error: "unsupported" };
   if (req.confirm !== true) return { ok: false, error: "confirm" };
   const profile = req.profile ?? null;
   if (profile !== null && !validCredentialProfileName(profile)) return { ok: false, error: "name" };
+  let identity: { dev: number; ino: number } | null = null;
   if (profile !== null) {
     const own = ownProfileFolder(dataDir, req.backend, profile, d.fs);
     if (!own.ok) return own;
+    identity = { dev: own.st.dev, ino: own.st.ino };
   }
   if (req.signingIn) return { ok: false, error: "signing_in" };
   const env: NodeJS.ProcessEnv = { ...d.env, ...(profile !== null ? credentialProfileEnv(dataDir, req.backend, profile) ?? {} : {}) };
-  const started = d.now() - 2_000;
+  const configDir = profile !== null ? credentialProfileHome(dataDir, "claude-code", profile) : claudeConfigDirFor(null);
+  const before = req.backend === "claude-code" && profile === null ? claudeBackups(configDir) : null;
   let code: number | null;
   try { ({ code } = await d.run(how.binary, how.args, env)); } catch { return { ok: false, error: "failed" }; }
   if (code !== 0) return { ok: false, error: "failed" };
+  // #3305 review P1: the folder checked before the wait must be the one cleaned after it — the same directory (device
+  // and inode), still AgEnD's own with no link on the way. A folder swapped meanwhile is refused and left alone.
+  if (profile !== null) {
+    const again = ownProfileFolder(dataDir, req.backend, profile, d.fs);
+    if (!again.ok || again.st.dev !== identity!.dev || again.st.ino !== identity!.ino) return { ok: false, error: "unsafe" };
+  }
   if (req.backend !== "claude-code") return { ok: true };
-  const configDir = profile !== null ? credentialProfileHome(dataDir, "claude-code", profile) : claudeConfigDirFor(null);
-  removeClaudeBackups(configDir, profile !== null ? { all: true } : { since: started });
+  removeClaudeBackups(configDir, profile !== null ? { all: true } : { except: before! });
   if (d.platform === "darwin") {
     const service = profile !== null ? claudeKeychainService(configDir) : CLAUDE_DEFAULT_KEYCHAIN_SERVICE;
     let left = false;

@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, request, type Server } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { signOutAccount, removeClaudeBackups, SIGN_OUT, CLAUDE_DEFAULT_KEYCHAIN_SERVICE } from "../src/accounts-signout.js";
@@ -24,6 +24,7 @@ import { credentialProfileHome } from "../src/backend/credential-profile.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { LoginWindowLock } from "../src/login-window-lock.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -136,7 +137,8 @@ describe("FleetManager", () => {
     return { info, events, fm: <any>{
       dataDir: data, logger: { info, debug: vi.fn() }, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(),
       accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-      loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+      loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null },
+      removalRequest: (FleetManager.prototype as any).removalRequest,
       forgetSignInIdentities: () => events.push("forget"), backendAvailability: { refresh: async (b: string[]) => { events.push(["refresh", b]); } },
       accountSignOutDeps: { platform: "linux", run: runner().run, keychainHas: noKeychain }, ...over,
     } };
@@ -158,8 +160,9 @@ describe("FleetManager", () => {
       accountSignOutDeps: { platform: "linux", run: r.run, keychainHas: noKeychain } });
     expect(await signOut(s.fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "signing_in" });
     s.fm.loginController = { signingIn: () => false, activeBackend: null };
-    s.fm.loginWindow = { current: { id: 1, kind: "web", backend: "claude-code" } };
+    const held = s.fm.loginWindow.tryClaim("web", "codex");               // any sign-in or install holds the one window
     expect(await signOut(s.fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "signing_in" });
+    s.fm.loginWindow.release(held);
     expect(r.runs).toEqual([]);
   });
   it("Remove on macOS: Claude Code's own logout first — only once every Remove check passed; an item left is reported", async () => {
@@ -217,5 +220,92 @@ describe("the route", () => {
       out.mockResolvedValueOnce({ ok: false, error });
       expect(await call(as("admin"), { profile: "work", confirm: true }), error).toEqual({ status, body: { error } });
     }
+  });
+});
+
+describe("#3305 review: what can change while a logout runs", () => {
+  const deferred = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
+  /** A logout held until released; `during` runs once it has started. */
+  const held = (during: () => void | Promise<void>, code: number | null = 0) => {
+    const gate = deferred(); let started!: () => void; const began = new Promise<void>((r) => { started = r; });
+    return { gate, began, run: async () => { started(); await gate.p; return { code }; }, during };
+  };
+  it("P1: a profile folder swapped for a link (or another folder) during the logout is refused, and nothing outside is touched", async () => {
+    for (const swap of ["link", "folder"] as const) {
+      const { data, home } = profileDir();
+      const outside = scratch(); mkdirSync(join(outside, "backups")); writeFileSync(join(outside, "backups", ".claude.json.backup.123"), "{}");
+      const h = held(() => {});
+      const p = signOutAccount(data, { backend: "claude-code", profile: "work", confirm: true, signingIn: false }, { run: h.run, keychainHas: noKeychain, platform: "linux", fs: fsMine });
+      await h.began;
+      renameSync(home, home + ".aside");
+      if (swap === "link") symlinkSync(outside, home); else { mkdirSync(join(home, "backups"), { recursive: true }); writeFileSync(join(home, "backups", ".claude.json.backup.9"), "{}"); }
+      h.gate.release();
+      expect(await p, swap).toEqual({ ok: false, error: "unsafe" });
+      expect(existsSync(join(outside, "backups", ".claude.json.backup.123")), swap).toBe(true);
+      if (swap === "folder") expect(existsSync(join(home, "backups", ".claude.json.backup.9"))).toBe(true);
+    }
+  });
+  it("P2-4: a backup that was in the default folder before the logout stays, however recent; only the new one goes", async () => {
+    const cfg = scratch(), backups = join(cfg, "backups"); mkdirSync(backups);
+    writeFileSync(join(backups, ".claude.json.backup.recent"), "{}");          // written a moment before: still the person's
+    const saved = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = cfg;
+    try {
+      expect(await signOutAccount(scratch(), { backend: "claude-code", profile: null, confirm: true, signingIn: false }, { run: runner().run, keychainHas: noKeychain, platform: "linux", fs: fsMine })).toEqual({ ok: true });
+      expect(readdirSync(backups)).toEqual([".claude.json.backup.recent"]);    // a logout that wrote nothing deletes nothing
+      const r = runner(0, () => writeFileSync(join(backups, ".claude.json.backup.new"), "{}"));
+      await signOutAccount(scratch(), { backend: "claude-code", profile: null, confirm: true, signingIn: false }, { run: r.run, keychainHas: noKeychain, platform: "linux", fs: fsMine });
+      expect(readdirSync(backups)).toEqual([".claude.json.backup.recent"]);
+    } finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
+  });
+
+  const fmSelf = (data: string, run: any, platform = "darwin") => ({
+    dataDir: data, logger: { info: vi.fn(), debug: vi.fn() }, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(),
+    accountUses: () => ({ agents: [] as any[], classic: [], fleetDefaults: new Map() }),
+    loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null } as any,
+    removalRequest: (FleetManager.prototype as any).removalRequest,
+    forgetSignInIdentities: () => {}, backendAvailability: { refresh: async () => {} },
+    accountSignOutDeps: { platform, run, keychainHas: async () => false },
+  } as any);
+  const remove = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
+  const signOut = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).signOutAccount.call(fm, ...a);
+  it("P2-2: Remove on macOS proves it all again after the logout — a new user, a sign-in, unreadable rooms, another folder: kept", async () => {
+    const cases: Array<[string, (fm: any, data: string, home: string) => void, unknown]> = [
+      ["a new user", (fm) => { fm.accountUses = () => ({ agents: [{ name: "late", backend: "claude-code", profile: "spare" }], classic: [], fleetDefaults: new Map() }); }, "in_use"],
+      ["a sign-in", (fm) => { fm.loginController = { signingIn: (_b: string, p: string) => p === "spare", activeBackend: "claude-code" }; }, "signing_in"],
+      ["unreadable rooms", (_fm, data) => { writeFileSync(join(data, "classicBot.yaml"), "channels: [1]\n"); }, "users_unknown"],
+      ["another folder", (_fm, _d, home) => { renameSync(home, home + ".aside"); mkdirSync(home); }, "unsafe"],
+    ];
+    for (const [what, change, error] of cases) {
+      const { data, home } = profileDir("claude-code", "spare");
+      let fm: any;
+      const h = held(() => {});
+      fm = fmSelf(data, h.run);
+      const p = remove(fm, "claude-code", "spare", "spare", "x");
+      await h.began; change(fm, data, home); h.gate.release();
+      expect((await p).error, what).toBe(error);
+      expect(existsSync(home), what).toBe(true);
+    }
+    const { data, home } = profileDir("claude-code", "spare");                // control: nothing changed
+    expect(await remove(fmSelf(data, runner().run), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(existsSync(home)).toBe(false);
+  });
+  it("P2-3: a logout holds the login window until its cleanup is done — no sign-in or second logout meanwhile, either order", async () => {
+    const { data } = profileDir();
+    const h = held(() => {});
+    const fm = fmSelf(data, h.run, "linux");
+    const p = signOut(fm, "claude-code", "work", true, "x");
+    await h.began;
+    expect(fm.loginWindow.tryClaim("web", "claude-code"), "a sign-in can't start").toBe(null);
+    expect(await signOut(fm, "codex", null, true, "x"), "nor a second logout").toEqual({ ok: false, error: "signing_in" });
+    h.gate.release(); expect(await p).toEqual({ ok: true });
+    const after = fm.loginWindow.tryClaim("web", "claude-code");
+    expect(after, "released once done").not.toBe(null);
+    const r = runner(); fm.accountSignOutDeps = { platform: "linux", run: r.run, keychainHas: noKeychain };
+    expect(await signOut(fm, "claude-code", "work", true, "x"), "a sign-in first refuses the logout").toEqual({ ok: false, error: "signing_in" });
+    expect(r.runs).toEqual([]);
+    fm.loginWindow.release(after);
+    fm.accountSignOutDeps = { platform: "linux", run: async () => { throw new Error("boom"); }, keychainHas: noKeychain };
+    expect(await signOut(fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "failed" });
+    expect(fm.loginWindow.tryClaim("web", "claude-code"), "released after an error too").not.toBe(null);
   });
 });
