@@ -556,7 +556,7 @@ describe("a revocation that could not be saved is reported as a failure, never a
     await tc.handleDashboardCommand({ text: "/dashboard revoke", chatId: "c", userId: "admin", adapterId: "tg", source: "telegram" });
     const { t } = await import("../src/locale.js");
     expect(sent).toEqual([t("dashboard.revoked_not_durable", 1)]);
-    expect(sent[0]).toMatch(/could NOT be saved/);
+    expect(sent[0]).toMatch(/sessions file couldn't be updated/);
     expect(sent[0]).not.toBe(t("dashboard.revoked", 1));
     await stop(h.fm);
   }, 20_000);

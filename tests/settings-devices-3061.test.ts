@@ -361,11 +361,13 @@ describe("#3061 P2b review: web authorization off — the card says why nobody c
   pinClock();
   const OFF = { webOnly: true, owner: false, authority: false, devices: ROWS };
 
-  it("authority off: one line replaces the two 'owner not verified' lines — nobody is the owner; run `agend web-token rotate` on the AgEnD computer, which ends every session", async () => {
+  it("authority off: one line replaces the two 'owner not verified' lines — nobody is the owner (web-only: no General, no ask-the-owner)", async () => {
     const w = await open(OFF);
-    expect(w.text(w.$("#devicesAuthorityOff"))).toBe("Web authorization is off, so no device is the owner: none can add a device or sign another one out. To sign the other devices out, run agend web-token rotate on the AgEnD computer. It ends every session, this one included, and every device has to sign in again.");
-    expect(w.text(w.$("#devicesRotate"))).toBe("agend web-token rotate");                    // the command, as code, to copy
-    expect(w.$("#devicesRotate").tagName.toLowerCase()).toBe("code");
+    expect(w.text(w.$("#devicesAuthorityOff"))).toBe("Web authorization is off, so no device is the owner: none can add a device or sign another one out.");
+    expect(w.$("#devicesRotate")).toBeNull();
+    expect(p.root.textContent).not.toContain("agend web-token rotate");
+    expect(p.root.textContent).not.toContain("computer's owner");
+    expect(p.root.textContent).not.toContain("/web revoke");
     // The advice that would not help ("use the AgEnD computer") is not given.
     expect([w.$("#devicesOwnerOnly"), w.$("#devicesSignOutOwnerOnly")]).toEqual([null, null]);
     expect(p.root.textContent).not.toContain("Use the AgEnD computer");
@@ -396,8 +398,8 @@ describe("#3061 P2b review: web authorization off — the card says why nobody c
     i18n.setLang("zh-TW");
     try {
       const w = await open(OFF);
-      expect(w.text(w.$("#devicesAuthorityOff"))).toBe("網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。要登出其他裝置，請在 AgEnD 電腦上執行 agend web-token rotate。這個指令會結束所有工作階段（包括目前這個），每台裝置都要重新登入。");
-      expect(w.text(w.$("#devicesRotate"))).toBe("agend web-token rotate");
+      expect(w.text(w.$("#devicesAuthorityOff"))).toBe("網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。");
+      expect(w.$("#devicesRotate")).toBeNull();
     } finally { i18n.setLang("en"); }
   });
 });
