@@ -12,7 +12,7 @@ createServer((req, res) => {
     const flat = request.tools?.find(t => t.type === "function" && t.name === "mcp__quota__get_usage");
     const group = request.tools?.find(t => t.type === "namespace" && t.name === "mcp__quota" && t.tools?.some(tool => tool.name === "get_usage"));
     appendFileSync(process.env.RIG_ROOT + "/tools.jsonl", JSON.stringify(request.tools ?? []) + "\n");
-    if (!done && !flat && !group) { res.writeHead(400); res.end("fixture usage tool was not advertised"); return; }
+    if (!done && !flat && !group) { console.error("fixture tool catalog:", JSON.stringify(request.tools)); res.writeHead(400); res.end("fixture usage tool was not advertised"); return; }
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.write(sse("response.created", { response: { id: "resp_quota" } }));
     const item = done

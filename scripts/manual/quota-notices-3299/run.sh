@@ -22,6 +22,8 @@ base_url = "http://127.0.0.1:18791/v1"
 wire_api = "responses"
 env_key = "MOCK_KEY"
 [mcp_servers.quota]
+required = true
+startup_timeout_sec = 30
 command = "$NODE"
 args = ["--import", "$REPO/node_modules/tsx/dist/loader.mjs", "$REPO/scripts/manual/quota-notices-3299/mcp.mts"]
 env = { AGEND_HOME = "$RIG_ROOT/home", RIG_ROOT = "$RIG_ROOT", RIG_RESET = "$RIG_RESET" }
