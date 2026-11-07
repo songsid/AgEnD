@@ -520,7 +520,7 @@ describe("machine snapshot boundary",()=>{
     // What a browser does with <button type="submit" form="…"> outside its form: submit the form that attribute names.
     const named=save.getAttribute("form"), form=named ? p.document.getElementById(named) : null;
     expect(form?.matches("form.runtime-rename"),"Save names the rename form").toBe(true);
-    requests.length=0;fire(form,"submit");await settle(12);
+    requests.length=0;fire(form!,"submit");await settle(12);
     expect([requests.filter(r=>r.path.endsWith("/rename")),!!p.root.querySelector("dialog .runtime-rename")]).toEqual([[{path:`/ui/runtimes/machines/${idA}/rename`,body:{name:"Studio PC"}}],false]);
     await open();requests.length=0;
     fire([...footer().querySelectorAll("button")].find((b:any)=>b.textContent.trim()==="Cancel"),"click");await settle(6);
