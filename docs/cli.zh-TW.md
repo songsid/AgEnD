@@ -276,6 +276,8 @@ agend install --no-activate     # 只寫入/更新 service 檔案
 agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
 agend export --full [path]      # 匯出配置＋所有實例資料
+                                # （2.3.4）檔案只有自己能讀（0600）；預設檔名含時間，
+                                # 指定的路徑已存在時拒絕，不會覆蓋
 agend import <file>             # 從匯出檔案匯入配置
 agend shortcuts                 # WSL：建立或更新 Windows 桌面捷徑
 ```

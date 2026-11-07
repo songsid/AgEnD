@@ -590,6 +590,8 @@ handover or return those fields.
 CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
 ```
 
+A Codex agent can also set `backend_options.codex.speed: fast | standard` (2.3.4): see **Codex speed** in [features](features.md).
+
 A Codex profile changes **only the source of `auth.json`**. The instance keeps its
 own CODEX_HOME and private `config.toml`; conversation and thread/state/memory
 stores remain shared. A profile switch does not deliberately force a fresh
@@ -720,11 +722,12 @@ Ambient effects (falling petals, click stars and other data-only presets, `set_w
 ## Data directory permissions
 
 AgEnD creates its home (`~/.agend`, or `AGEND_HOME`) with mode `0700`, including on hosts with umask `0002`.
-If an existing real directory belongs to the current user and permits group/other writes, AgEnD tightens that
-root to `0700` and logs one line. Existing files and non-writable roots are left unchanged. A foreign-owned home
+If an existing real directory belongs to the current user and gives the group or others any access (for example
+`0755` or `0750`), AgEnD tightens that root to `0700` and logs one line. Files inside are not changed recursively. A foreign-owned home
 or a path containing a symlink is refused; use a real directory owned by the account running AgEnD. The local
 operator directory and sockets retain their separate private-permission checks. The live shell/WSL installer
-prepares this boundary before running older releases' setup code too.
+prepares this boundary before running older releases' setup code too. From 2.3.4 (#3083) `daemon.log` and its
+rotated files are written `0600`, and an existing home is tightened on the first start after the update.
 
 ### Browser backend sign-in during first setup
 

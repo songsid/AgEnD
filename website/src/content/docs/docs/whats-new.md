@@ -8,7 +8,29 @@ description: "What changes for people coming from AgEnD 2.2.x: how to update and
   <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
 </p>
 
-AgEnD 2.3 is the stable line, and 2.3.2 is its current release. This page is for people coming from 2.2.x (2.2.5 and 2.2.6 in particular). It starts with what to do when you upgrade, then lists the command changes, then the new features grouped by area. Already on 2.3.1 or a 2.3.2 beta? Start with [New in 2.3.2](#new-in-232). For what 2.2 added, see [What's new in 2.2](/AgEnD/docs/whats-new-2-2/).
+AgEnD 2.3 is the stable line, and 2.3.4 is its current release. This page is for people coming from 2.2.x (2.2.5 and 2.2.6 in particular). It starts with what to do when you upgrade, then lists the command changes, then the new features grouped by area. Already on 2.3.3 or a 2.3.4 beta? Start with [New in 2.3.4](#new-in-234). On 2.3.1 or 2.3.2? Read [New in 2.3.2](#new-in-232) too; 2.3.3's changes are in the [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.md). For what 2.2 added, see [What's new in 2.2](/AgEnD/docs/whats-new-2-2/).
+
+## New in 2.3.4
+
+2.3.4 gathers everything from 2.3.4-beta.1 to beta.11. The full list is in the [release notes](https://github.com/songsid/AgEnD/releases).
+
+**Upgrading from 2.3.3:**
+
+- Send `/update` in General, or run `agend update` on the host. Reload (F5) dashboard tabs that were already open.
+- **On the first start:** `~/.agend` is tightened to your account only (folder `0700`, logs `0600`); a home that is a symlink or belongs to another account is refused. Claude speeds recorded by the betas are cleared once (token counts are kept).
+- **Permission cards left unanswered** across the update must be answered again: they are now matched by the whole command.
+- **Kiro:** kiro-cli 3.0 removed the classic interface. A kiro agent still on classic is held on kiro-cli 3.x with instructions; stay on 2.x, or move it with `migrate_kiro_instance` while still on 2.x. `kiro_engine_status` lists who isn't ready.
+- **Windows one-click install** (the website's installer, already live): new installs use Ubuntu 26.04 (24.04 as a fallback), and a network that blocks `*.github.io` is served from GitHub instead.
+
+**What's new:**
+
+- **Web only:** `agend quickstart` defaults to a web-only fleet with no bot token; schedules, the task board and agent messages all run without a chat connection; the browser signed in on the AgEnD computer is **This computer's admin**; a **Notices** page keeps what General would have said; CLI questions become buttons in the chat and **Needs you**.
+- **Usage page:** each weekly bar shows "100% ≈ …" (the account's measured capacity); a **Speed** column and **Speed by model**, timed over the whole response; weekly quota history; Codex split by account; a tidier table.
+- **View, previews and chat:** scroll back in View (earlier output for Codex, Kiro and Muse; Claude Code's earlier conversation from its transcript); HTML previews with **Reply about this page**, **Point at it**, error chips, versions and their changes, phone/tablet widths and full screen, **Pages (N)**, opt-in CDN libraries and one-page **Share page** links; Markdown files open in the side panel; messages between agents fold to two lines; the Log shows what a dialog said.
+- **Agents and backends:** Codex **Speed** per agent (Fast / Standard); Codex picks up an older conversation missing from its list; `/login` streams the CLI install into the chat; deleting an agent deletes its topic; General is AgEnD's admin with the full management tools; Office styles Guild and School.
+- **Messages kept:** a message to a busy agent is ✅ only once the CLI has taken it and is re-sent or flagged after a restart; Telegram messages sent while AgEnD is stopped or restarting arrive once afterwards (over 2 hours old, they wait in **Needs you**).
+- **Safety:** Enter is never pressed on a permission, dangerous-command or file-send question that comes up while a message is sent (they go to **Needs you**); permission cards show and match the whole command; a pane left in scroll mode is waited for; `agend export` files are owner-only and never overwrite.
+- **Also:** [Concepts](https://github.com/songsid/AgEnD/blob/main/docs/concepts.md) explains AgEnD's terms (and agents can read it); Claude Code 2.1.318 and kiro-cli 3.0.0 checked; many stability fixes (sign-in no longer blocks the fleet, tabs left open for hours catch up, Claude `/exit` is not a crash, Muse 1.4.14 idles quietly).
 
 ## New in 2.3.2
 

@@ -204,7 +204,7 @@ A **template** deploys several instances in one command, optionally registering 
 |---|---|
 | Claude Code | The most complete integration |
 | OpenAI Codex | Native input queue; resumes sessions |
-| Kiro CLI | `kiro_ui` chooses legacy or tui; v3 is not supported yet |
+| Kiro CLI | `kiro_ui` chooses legacy or tui. On kiro-cli 3.x only tui agents run: a classic one is held in Needs you with how to move it (`migrate_kiro_instance`, on 2.x) |
 | Antigravity CLI | MCP by default; `agent_mode: cli` to use agend-agent commands |
 | Grok Build | Needs Grok CLI 1.0.13 or later (`grok update`) |
 | Meta Muse Code | Escape cancels; Ctrl+C quits |
