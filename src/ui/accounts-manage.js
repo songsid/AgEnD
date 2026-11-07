@@ -23,7 +23,7 @@ register("accountsManage", {
     added: "Account “{0}” added.", addedHostSignIn: "Account “{0}” added. Sign it in on the host with the command on its row.",
     remove: "Remove…", removeTitle: "Remove the {0} account “{1}”?",
     removeLead: "This deletes the account's folder on this host: its sign-in.", removeLeadClaude: "This deletes the account's folder on this host: its sign-in and its own copies of conversations.",
-    removeAfter: "Agents can't use it afterwards; signing in with the same name later starts empty.",
+    removeAfter: "Agents can't use it afterwards; signing in with the same name later starts empty.", sep: " ",
     inUse: "Still used by — move each to another account first:", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot room {0}", inUseDefault: "The fleet default for {0} agents",
     move: "Move…", roomHow: "Change it in that room's ClassicBot settings (its credential_profile).",
     typeLabel: "Type {0} to confirm", removeGo: "Remove", removing: "Removing…", removed: "Account “{0}” removed.",
@@ -42,7 +42,7 @@ register("accountsManage", {
     added: "已新增帳號「{0}」。", addedHostSignIn: "已新增帳號「{0}」。請用它那一列的指令在主機上登入。",
     remove: "移除…", removeTitle: "要移除 {0} 帳號「{1}」嗎？",
     removeLead: "這會刪除這台主機上該帳號的資料夾：它的登入。", removeLeadClaude: "這會刪除這台主機上該帳號的資料夾：它的登入，以及它自己的對話副本。",
-    removeAfter: "之後 Agent 就不能使用它；日後用同一個名稱登入會是空的。",
+    removeAfter: "之後 Agent 就不能使用它；日後用同一個名稱登入會是空的。", sep: "",
     inUse: "仍在使用中，請先把每一項移到其他帳號：", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot 房間 {0}", inUseDefault: "{0} Agent 的 Fleet 預設帳號",
     move: "移動…", roomHow: "請在該房間的 ClassicBot 設定（credential_profile）中更改。",
     typeLabel: "輸入 {0} 以確認", removeGo: "移除", removing: "正在移除…", removed: "已移除帳號「{0}」。",
@@ -120,7 +120,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const moveBtn = (user) => html`<button type="button" class="btn btn-sm" onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
   return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class="btn btn-danger" disabled=${busy || inUse || typed !== row.profile} onClick=${go}>${busy ? tm("removing") : tm("removeGo")}</button>`}>
-    <p>${cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")} ${tm("removeAfter")}</p>
+    <p>${cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
       ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${moveBtn({ kind: "agent", name })}</li>`)}
       ${users.fleetDefault ? html`<li><span>${tm("inUseDefault", label)}</span>${moveBtn({ kind: "default" })}</li>` : null}

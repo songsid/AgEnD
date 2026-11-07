@@ -228,8 +228,10 @@ describe("the routes", () => {
       const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; return this; }, end() {} };
       const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
       bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+      let sent = "";
+      res.end = (chunk?: unknown) => { sent = String(chunk ?? ""); };
       expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.ctx)).toBe(true);
-      expect(status).toBe(403);
+      expect([status, JSON.parse(sent).error]).toEqual([403, "accounts_not_over_public_link"]);
     }
     expect([f.add.mock.calls.length, f.rm.mock.calls.length]).toEqual([0, 0]);
   });

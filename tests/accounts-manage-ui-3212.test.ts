@@ -122,7 +122,11 @@ describe("Remove (#3212 PR 2)", () => {
     rowOf("claude-code", "personal").querySelector(".s-account-remove").click(); await settle(6);
     const d = dialog(), input = d.querySelector("#acctRemoveName"), go = btn(d, "Remove");
     expect(text(d.querySelector("label"))).toBe("Type personal to confirm");
-    for (const v of ["", "Personal", "persona", "personal "]) { await type(input, v); expect(go.disabled, v).toBe(true); }
+    for (const v of ["", "Personal", "persona", "personal "]) {
+      await type(input, v); expect(go.disabled, v).toBe(true);
+      fire(input, "keydown", { key: "Enter" }); await settle(4);           // Enter in the field is no way around it
+    }
+    expect(calls).toEqual([]);
     await type(input, "personal");
     expect(go.disabled).toBe(false);
     view.clis[0].rows = view.clis[0].rows.filter((r: any) => r.profile !== "personal");
@@ -148,6 +152,6 @@ describe("Remove (#3212 PR 2)", () => {
     expect(text(card("codex").querySelector(".s-account-add"))).toBe("＋ 新增帳號");
     rowOf("claude-code", "personal").querySelector(".s-account-remove").click(); await settle(6);
     expect(text(dialog().querySelector("label"))).toBe("輸入 personal 以確認");
-    expect(text(dialog())).toContain("這會刪除這台主機上該帳號的資料夾");
+    expect(text(dialog())).toContain("這會刪除這台主機上該帳號的資料夾：它的登入，以及它自己的對話副本。之後 Agent 就不能使用它");
   });
 });
