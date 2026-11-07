@@ -38,7 +38,7 @@ register("accountsManage", {
     signOutGo: "Sign out", switchGo: "Sign out and sign in", signingOut: "Signing out…", signedOut: "Signed out.",
     keychainLeft: "Signed out, but a Keychain item for this account is still on this Mac. Remove it in Keychain Access.",
     removedKeychainLeft: "Account “{0}” removed, but a Keychain item for it is still on this Mac. Remove it in Keychain Access.",
-    err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout didn't succeed. Try again, or run it on the host.",
+    err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout did not succeed. Try again here.",
     defName: "default sign-in", acctName: "account “{0}”",
     // #3190 Part 3c: an account on a paired computer (its Runtime does the work; the computer's owner has to allow it there).
     addTitleMachine: "Add a {0} account on {1}", addLeadMachine: "A named account is a separate sign-in kept on {0}. Name it, then sign it in here. Its folder is made by that computer's Runtime.",
@@ -79,7 +79,7 @@ register("accountsManage", {
     signOutGo: "登出", switchGo: "登出並登入", signingOut: "正在登出…", signedOut: "已登出。",
     keychainLeft: "已登出，但這台 Mac 上仍有這個帳號的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
     removedKeychainLeft: "已移除帳號「{0}」，但這台 Mac 上仍有它的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
-    err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請再試一次，或在主機上執行。",
+    err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請在這裡再試一次。",
     defName: "預設登入", acctName: "帳號「{0}」",
     // #3190 Part 3c：配對電腦上的帳號（由那台電腦的 Runtime 執行；需要電腦的擁有者在那裡允許）。
     addTitleMachine: "在 {1} 新增 {0} 帳號", addLeadMachine: "具名帳號是保存在 {0} 上的另一組登入。先取名，再在這裡登入。它的資料夾由那台電腦的 Runtime 建立。",
