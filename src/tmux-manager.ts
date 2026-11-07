@@ -138,16 +138,22 @@ export class TmuxManager implements Pane {
   private static heldReason: string | null = null;
   static setHold(reason: string | null): void { TmuxManager.heldReason = reason; }
 
+  /** M-2457 §6 rule 2: called after ensureSession created the session — after a server crash, that is a new server. */
+  private static sessionCreated: ((name: string) => Promise<void>) | null = null;
+  static onSessionCreated(fn: ((name: string) => Promise<void>) | null): void { TmuxManager.sessionCreated = fn; }
+
   static async ensureSession(name: string): Promise<void> {
     if (TmuxManager.heldReason) throw new Error(TmuxManager.heldReason);
     const existing = TmuxManager.ensureSessionInFlight.get(name);
     if (existing) return existing;
     const operation = (async () => {
+      let created = false;
       // Strict: only a POSITIVE "no such session" leads to creating one. A
       // timeout or spawn failure rejects instead of being read as "absent".
       if (!(await TmuxManager.sessionExistsStrict(name))) {
         try {
           await exec(tmuxBinary(), TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+          created = true;
         } catch (err) {
           if (!String(err).includes("duplicate session")) throw err;
         }
@@ -158,6 +164,8 @@ export class TmuxManager implements Pane {
       await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "set-option", "-t", name, "mouse", "on",
       ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      // The fleet records the server it now runs on (server.json): a rollback or a handover must know it.
+      if (created && TmuxManager.sessionCreated) await TmuxManager.sessionCreated(name).catch(() => { /* logged by the hook */ });
     })().finally(() => {
       if (TmuxManager.ensureSessionInFlight.get(name) === operation) {
         TmuxManager.ensureSessionInFlight.delete(name);

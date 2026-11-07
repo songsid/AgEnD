@@ -9906,6 +9906,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (bundled) {
         await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
           log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
+        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
+        TmuxManager.onSessionCreated(async () => {
+          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
+        });
         // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
         const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
         if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
