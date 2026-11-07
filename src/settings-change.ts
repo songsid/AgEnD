@@ -1,3 +1,4 @@
+import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { createHash } from "node:crypto";
 import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
@@ -397,6 +398,12 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
     if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
     if (dashboardPath(path)) return;                                 // likewise: the dashboard switches, by direction
+    // Exactly this validated preference subtree. No credential/access field can hide inside it.
+    if (path.at(-1) === "quota_notice" && ((path.length === 3 && path[0] === "fleet" && path[1] === "defaults") || (path.length === 4 && ((path[0] === "fleet" && path[1] === "instances") || (path[0] === "classic" && path[1] === "channels"))))) {
+      const fleet = path[1] === "defaults";
+      if ([old, next].every(v => v === undefined || v === null || !quotaNoticeProblem(v, fleet))) return;
+      throw new SettingsConfirmationError(400, "unsupported_quota_notice");
+    }
     if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));

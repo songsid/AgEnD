@@ -2709,3 +2709,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .os-none { margin: 0; }
 .os-form .os-err { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--danger); border-radius: var(--r-sm); }
 @media (max-width: 480px) { .os-form { grid-template-columns: 1fr; } }
+
+/* Quota preferences obey the panel CSP: no inline styles. */
+.p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }

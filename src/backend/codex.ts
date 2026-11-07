@@ -2123,6 +2123,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "notify",
         message: "Codex usage limit running low",
+        quotaAdvisory: true,
         formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
         notice: (m) => (m ? quotaLowLine(m[2]!, m[1]!) : quotaLine("Codex", "usage")),
       },
