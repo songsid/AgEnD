@@ -265,7 +265,7 @@ import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_C
 import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeInstallService } from "./runtime-install.js";
-import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY, validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -468,10 +468,11 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
+import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -19964,8 +19965,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * usage is the usage panel's cached read (never forced), given at most `usageWaitMs` before the view is sent without it.
    */
   async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
-    const fleet = this.fleetConfig;
-    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
     this.refreshSignInIdentities();
     const targets = this.backendSignInTargets();
     const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
@@ -19982,15 +19981,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       diskProfiles.set(backend, rows);
     }
-    // Host agents only: an agent on a paired Windows computer runs on that computer's accounts (its own scope, later).
-    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
-      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
-    const classic = readClassicBindings(this.dataDir).map(b => {
-      const backend = b.backend ?? defaultBackend;
-      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
-    });
-    const fleetDefaults = new Map<string, string>();
-    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    const { agents, classic, fleetDefaults } = this.accountUses();
     // Weekly usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
@@ -20007,6 +19998,80 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     } catch { /* the view without usage */ }
     return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+  }
+
+  /**
+   * Who uses which account: host agents (an agent on a paired Windows computer runs on that computer's accounts — its
+   * own scope), ClassicBot rooms and the fleet default per CLI, each with its effective profile (null: the default sign-in).
+   */
+  private accountUses(): { agents: Array<{ name: string; backend: string; profile: string | null }>; classic: Array<{ key: string; backend: string; profile: string | null }>; fleetDefaults: Map<string, string> } {
+    const fleet = this.fleetConfig;
+    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
+    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
+      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
+    const classic = readClassicBindings(this.dataDir).map(b => {
+      const backend = b.backend ?? defaultBackend;
+      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
+    });
+    const fleetDefaults = new Map<string, string>();
+    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    return { agents, classic, fleetDefaults };
+  }
+
+  /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
+  addAccountProfile(backend: string, name: unknown, by: string): AddResult {
+    const { agents, classic, fleetDefaults } = this.accountUses();
+    const configured = new Set<string>();
+    for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
+    const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
+    const result = addAccountProfile(this.dataDir, backend, name, configured);
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /**
+   * #3212 PR 2: Settings → Accounts → Remove. Refused while anything uses it or a sign-in for it runs (the login controller,
+   * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
+   * The fleet log records who removed which backend's profile — never what was in it.
+   */
+  removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): RemoveResult {
+    const profile = typeof name === "string" ? name : "";
+    // #3291 review (Prism P2-3): one folder on a case-insensitive disk (Windows, default macOS) — `Work` and `work` are the
+    // same account for every safety check here.
+    const same = (p: string | null | undefined) => !!p && p.toLowerCase() === profile.toLowerCase();
+    const { agents, fleetDefaults } = this.accountUses();
+    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
+    // #3291 review (Prism P2-2): ClassicBot rooms read strictly — an unreadable or malformed classicBot.yaml is not "no rooms".
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    const classic = rooms.kind === "ok" ? rooms.bindings.map(b => {
+      const cli = b.backend ?? defaultBackend;
+      return { key: b.key, backend: cli, profile: profileName(classicProfile(b.backend_options, this.fleetConfig?.defaults?.backend_options, cli)) };
+    }) : [];
+    // #3291 review (Prism P2-1): what a running CLI was launched with. An agent or room moved off this account keeps
+    // running on it until its process stops (the configuration changes first): it is still a user until then.
+    const live: string[] = [];
+    for (const [instance, daemon] of this.daemons ?? []) {
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap)) continue;
+      const cli = snap.backend ?? defaultBackend;
+      if (cli !== backend) continue;
+      let launched: string | null = null;
+      try { launched = resolveCredentialProfile(snap.backend_options?.[cli]); } catch { launched = null; }
+      if (same(launched)) live.push(instance);
+    }
+    const users = {
+      agents: [...new Set([...agents.filter(a => a.backend === backend && same(a.profile)).map(a => a.name), ...live])].sort(),
+      classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
+      fleetDefault: same(fleetDefaults.get(backend)),
+    };
+    const held = this.loginWindow.current;
+    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
+      || (held?.backend === backend && !this.loginController?.activeBackend);
+    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" });
+    if (result.ok) this.logger.info({ backend, profile, by }, "Credential profile removed from Settings → Accounts");
+    else this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: result.error }, "Credential profile removal refused");
+    return result;
   }
 
   backendSignInTargets(): SignInTarget[] {

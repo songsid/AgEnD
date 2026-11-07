@@ -131,12 +131,30 @@ export interface ClassicBinding {
 
 /** Every channel in classicBot.yaml, read-only. Never throws: unreadable is "no classic channels". */
 export function readClassicBindings(dataDir: string): ClassicBinding[] {
-  let raw: unknown;
-  try {
-    raw = yaml.load(readFileSync(join(dataDir, "classicBot.yaml"), "utf8"));
-  } catch {
-    return [];
+  const read = readClassicBindingsStrict(dataDir);
+  return read.kind === "ok" ? read.bindings : [];
+}
+
+/**
+ * #3212 PR 2 (Prism P2-2): the same bindings for a decision that must not read "unknown" as "none" — Remove may only
+ * conclude that no room uses an account when the file is absent (no rooms) or read and understood. An unreadable file,
+ * YAML that does not parse, or a document whose `channels` is not a map is `unknown`.
+ */
+export function readClassicBindingsStrict(dataDir: string): { kind: "ok"; bindings: ClassicBinding[] } | { kind: "absent" } | { kind: "unknown" } {
+  let text: string;
+  try { text = readFileSync(join(dataDir, "classicBot.yaml"), "utf8"); } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "absent" } : { kind: "unknown" };
   }
+  let raw: unknown;
+  try { raw = yaml.load(text); } catch { return { kind: "unknown" }; }
+  if (raw === null || raw === undefined) return { kind: "ok", bindings: [] };
+  if (typeof raw !== "object" || Array.isArray(raw)) return { kind: "unknown" };
+  const channels = (raw as { channels?: unknown }).channels;
+  if (channels !== undefined && channels !== null && (typeof channels !== "object" || Array.isArray(channels))) return { kind: "unknown" };
+  return { kind: "ok", bindings: classicBindingsOf(raw) };
+}
+
+function classicBindingsOf(raw: unknown): ClassicBinding[] {
   const doc = raw as { defaults?: { backend?: unknown }; channels?: Record<string, unknown> } | null;
   const defaultBackend = typeof doc?.defaults?.backend === "string" && doc.defaults.backend ? doc.defaults.backend : undefined;
   const out: ClassicBinding[] = [];
