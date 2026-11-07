@@ -139,6 +139,10 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
 
   it("composes group permits off by default, preserves intact never-enabled repair, and fences them on close", async () => {
     const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    // A valid public CA bundle may exceed canonicalArguments' request-body bound.
+    // Hash trust material before including it in the small authority-generation record.
+    (hub.config.hub.directory as Record<string, unknown>).caPem = hub.caPem.repeat(100);
+    expect(hub.caPem.repeat(100).length).toBeGreaterThan(64 * 1024);
     const service = await f.create(hub.config.hub, () => true);
     const context = { requestId: randomUUID(), current: () => true };
     expect(http.state.deps!.groups).toBeDefined();
