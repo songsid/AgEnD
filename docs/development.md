@@ -113,7 +113,8 @@ in a real headless Chrome on the loopback smoke fixture (no fleet start, no netw
 - **frame**: a section's own cards share one frame (padding, border, corner radius). A card inside a drawer or a
   disclosure is part of that box, and the full-bleed editor and terminal are exempt;
 - **buttons**: each button kind (`.btn…`, `.icon-btn`) has one height. A list row's actions are a phone tap target on
-  purpose and are exempt;
+  purpose, and a button sized to the inputs in its own row (a filter bar's Clear) is that row's control size, so both
+  are exempt;
 - **overflow**: nothing reaches past the content column, whether the page is as drawn, has every drawer open, or has a
   long real value in every `<select>` (a select is as wide as its longest option unless bounded);
 - no page error, no CSP report, and no horizontal scroll of the page.

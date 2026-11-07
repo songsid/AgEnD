@@ -3,7 +3,8 @@
 // fleet start, no network). Per case and section:
 //   - frame:    the section's own cards (not one inside a drawer or disclosure; not a full-bleed editor/terminal) share one
 //               frame — padding, border and corner radius;
-//   - buttons:  each button kind (.btn…, .icon-btn) has one height (a list row's actions are a phone tap target on purpose);
+//   - buttons:  each button kind (.btn…, .icon-btn) has one height (a list row's actions are a phone tap target on purpose,
+//               and a button sized to the input controls of its own row is that row's control size);
 //   - overflow: nothing reaches past the content column — as drawn, with every drawer open, and with a long real value in every
 //               select (a long model / computer / agent name: a select is as wide as its longest option unless bounded);
 //   - no page error, no CSP report, no horizontal scroll of the page.
@@ -56,6 +57,10 @@ const MEASURE = `(() => {
     const cls = String(el.className || "").split(/\\s+/).filter((c) => /^(btn|icon-btn)/.test(c)).sort().join(".");
     if (!cls) continue;
     const h = Math.round(el.getBoundingClientRect().height);
+    // A button sized to the input controls of its own row (a filter bar's Clear beside its 40 px selects) is that row's
+    // control size, not a second button style.
+    const row = el.parentElement, peers = row ? [...row.querySelectorAll(":scope > select, :scope > input, :scope > label select, :scope > label input, :scope > * > select")] : [];
+    if (peers.some((f) => vis(f) && Math.abs(Math.round(f.getBoundingClientRect().height) - h) <= 1)) continue;
     (kinds[cls] ||= {})[h] = (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 24);
   }
   return { over: over.slice(0, 8), overCount: over.length, cards, kinds, pageX: document.documentElement.scrollWidth - innerWidth };
