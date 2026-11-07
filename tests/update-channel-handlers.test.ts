@@ -143,7 +143,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
       await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
       expect(spawned).toEqual([]);
       expect(failed).toEqual([expect.stringContaining(reason)]);
-      expect(failed[0]).toContain("Run `agend update` from a host shell");
+      expect(failed[0]).toContain("AgEnD could not finish the update automatically. Manual repair is not available here.");
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
   });
 
@@ -193,11 +193,12 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     expect(posted[0]).toContain("v2.2.0-alpha.2");
   });
 
-  it("an alpha install hears about a stable that passed it (with --stable), and nothing about an older beta", async () => {
+  it("an alpha install hears about a newer stable without offering an unsupported chat switch", async () => {
     const newer = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.1", "@songsid/agend@alpha": "2.2.0-alpha.3" });
     expect(newer.posted).toHaveLength(1);
     expect(newer.posted[0]).toContain("v2.2.1");
-    expect(newer.posted[0]).toContain("--stable");
+    expect(newer.posted[0]).toContain("Switching to stable is not available in this chat.");
+    expect(newer.posted[0]).not.toContain("agend update --stable");
     // The rule beta installs already have: a stable of the SAME core is not offered (a prerelease may continue
     // after it). So when 2.2.0 ships, the release moves @alpha to it (see docs/cli.md).
     const sameCore = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.3" });
