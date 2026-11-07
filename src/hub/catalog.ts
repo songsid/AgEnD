@@ -168,7 +168,7 @@ export class HubCatalogService {
     const login = input.login.trim();
     if (!login || login.length > 256) throw new HubProtocolError("invalid");
     // A signed-in person may resolve a recipient only for their own exact published exposure.
-    // Repeat these checks after every directory await, in the transaction that creates the grant.
+    // Repeat these checks after selection settles, in the transaction handling any result.
     const ownedExposure = (db: Database.Database) => {
       const row = readExposure(db, input.exposureId);
       if (!row || row.owner !== me) throw new HubProtocolError("not-found");
@@ -178,25 +178,29 @@ export class HubCatalogService {
       return exposure;
     };
     this.core.atomic(ownedExposure);
-    const subject = await this.core.lookupGrantRecipient(login);
-    const subjectId = subject ? personKeyString(subject) : null;
-    if (!subject || !subjectId || subjectId === me) throw new HubProtocolError("not-found");
+    // Settle every outcome first: even a refusal or lookup error must not disclose a result after authority ends.
+    const selection = await this.core.lookupGrantRecipient(login).then(
+      subject => ({ ok: true as const, subject }), error => ({ ok: false as const, error }));
+    this.core.check();
     await ctx.current();
-    const now = this.core.now();
-    const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: input.exposureId, exposureRevision: input.exposureRevision,
-      approvedBy: owner, approvedAt: now, subject: { kind: "person", person: subject }, permissions: [...PERMISSIONS],
-      startsAt: now, expiresAt: now + input.days * 86_400_000, state: "active" };
-    this.core.atomic((db, tx) => {
+    return this.core.atomic((db, tx) => {
       if (ctx.isCurrent?.() === false) throw new HubProtocolError("revoked");
       const exposure = ownedExposure(db);
+      if (!selection.ok) throw selection.error;
+      const subject = selection.subject, subjectId = subject ? personKeyString(subject) : null;
+      if (!subject || !subjectId || subjectId === me) throw new HubProtocolError("not-found");
+      const now = this.core.now();
+      const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: exposure.id, exposureRevision: exposure.revision,
+        approvedBy: owner, approvedAt: now, subject: { kind: "person", person: subject }, permissions: [...PERMISSIONS],
+        startsAt: now, expiresAt: now + input.days * 86_400_000, state: "active" };
       for (const g of db.prepare("SELECT id FROM hub_grants WHERE exposure_id=? AND subject=? AND state='active' AND exposure_revision=?").all(exposure.id, subjectId, exposure.revision) as { id: string }[])
         db.prepare("UPDATE hub_grants SET state='revoked', revision=revision+1 WHERE id=?").run(g.id);   // one live grant per person and revision
       db.prepare(`INSERT INTO hub_grants(id, revision, owner, exposure_id, exposure_revision, approved_by, approved_at, subject, permissions, starts_at, expires_at, state)
         VALUES(?,?,?,?,?,?,?,?,?,?,?, 'active')`).run(grant.id, 1, me, exposure.id, exposure.revision, me, now, subjectId, JSON.stringify(grant.permissions), grant.startsAt, grant.expiresAt);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: owner }, action: "grant.created", result: "completed",
         fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: owner, grantId: grant.id, grantRevision: 1 });
+      return grant;
     });
-    return grant;
   }
 
   /** The owner withdraws a grant (narrowing: always allowed) against the revision they saw; its rooms close. */

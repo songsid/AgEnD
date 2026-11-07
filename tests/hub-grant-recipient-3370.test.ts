@@ -103,10 +103,12 @@ describe("#3370 directory grant recipients", () => {
     const response = await w.grant(); expect(response.status).toBe(200);
     expect(response.json.grant.subject.person).toEqual(replacement); expect(replacement).not.toEqual(w.recipient);
   });
-  it.each(["session", "owner", "revision", "withdrawn", "frozen", "server"] as const)("rechecks %s after a held directory selection", async change => {
+  const transitions = ["session", "owner", "revision", "withdrawn", "frozen", "server"] as const;
+  const outcomes = ["eligible", "unknown", "ineligible", "self", "unavailable"] as const;
+  it.each(outcomes.flatMap(outcome => transitions.map(change => [outcome, change] as const)))("fences held %s selection after %s changes", async (outcome, change) => {
     const w = await world(), entered = held<void>(), gate = held<DirectoryLookupResult>();
     w.lookup.mockImplementationOnce(() => { entered.resolve(); return gate.promise; });
-    const pending = w.grant(); await entered.promise;
+    const pending = w.grant({ login: outcome === "self" ? "olivia" : "alex" }); await entered.promise;
     if (change === "session") await w.r.call(w.browser, "DELETE", "/hub/v1/session");
     else if (change === "server") w.r.disable();
     else {
@@ -114,9 +116,14 @@ describe("#3370 directory grant recipients", () => {
         : change === "revision" ? ["revision", 2] : change === "frozen" ? ["frozen_through", 1] : ["state", "withdrawn"];
       w.r.db.prepare(`UPDATE hub_exposures SET ${column}=? WHERE id=?`).run(value, w.exposureId);
     }
-    gate.resolve(w.selected); const response = await pending;
+    gate.resolve(outcome === "eligible" ? w.selected : outcome === "self"
+      ? { ok: true, person: { key: w.owner, login: "olivia", dn: "private", groups: [] } }
+      : { ok: false, reason: outcome === "unknown" ? "not-found" : outcome === "ineligible" ? "not-eligible" : "unavailable" });
+    const response = await pending;
     expect(response.status).toBe(change === "session" ? 401 : change === "owner" ? 404 : change === "revision" ? 409 : change === "server" ? 503 : 403);
+    expect(response.text).not.toContain("private"); expect(w.lookup).toHaveBeenCalledTimes(1);
     expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 0 });
+    expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
   });
   it("shares the selection concurrency bound and releases slots after refusal", async () => {
     const w = await world(), entered = held<void>(), gates = Array.from({ length: 4 }, () => held<DirectoryLookupResult>()); let count = 0;
