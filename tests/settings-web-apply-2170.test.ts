@@ -447,3 +447,42 @@ describe("#2868: where it is confirmed, and Apply now", () => {
     expect((await h.call("POST", `/api/settings/pending/${"0".repeat(32)}/confirm`, { cookie: false })).status).toBe(401);
   });
 });
+
+// #3352 review F1 (security): once the Hub changes are the primary General's (#3326 finding 1), the ones that open the fleet
+// outward must not become "Apply now" for a web-verified browser (#2453 §0.2's line): pairing connect / confirm, publishing an
+// agent, replacing the Hub's browser certificate. They still reach the primary General's card. Membership, retention and
+// disconnecting widen nothing and stay self-confirmable.
+describe("#3352 F1: Hub changes that open the fleet outward are never confirmed by their asker's browser", () => {
+  const cert = { fingerprint256: "AA:".repeat(31) + "AA", validTo: "2027-01-01T00:00:00.000Z", selfSigned: true };
+  const hub = (f: ReturnType<typeof fleet>, method: string, path: string, body: unknown, extra: Record<string, unknown>, binding?: string) => {
+    const effect = prepareSettingsEffect(method, path, body, { config: f.fm.fleetConfig, classic: {}, ...extra } as any, binding);
+    const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
+    const view = f.store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
+      fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
+      ...(effect.diff!.noSelfConfirm ? { noSelfConfirm: true as const } : {}),
+      current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+    return { view, apply, noSelfConfirm: effect.diff!.noSelfConfirm === true };
+  };
+  const pairing = { hubPairing: () => ({ summary: ["Hub pairing step"] }) };
+  it.each([
+    ["pairing connect", "POST", "/api/hub/member/pairing/connect", { address: "https://hub.example.test", code: "ABCD-EFGH" }, pairing, undefined],
+    ["pairing confirm", "POST", "/api/hub/member/pairing/confirm", { digest: "d".repeat(64) }, pairing, undefined],
+    ["publish an agent", "POST", "/api/hub/member/exposures", { agent: "builder" }, { hubExposure: () => ({ summary: ["Publish builder"] }) }, undefined],
+    ["browser certificate", "POST", "/api/settings/hub/browser-certificate/apply", { reference: "12345678-1234-4321-8abc-123456789012", revision: "c".repeat(64) },
+      { hubBrowserCertificate: () => ({ certificate: cert }) }, "owner"],
+  ] as Array<[string, string, string, unknown, Record<string, unknown>, string | undefined]>)("%s: no Apply now for the primary General's verified admin; the General's card still goes", async (_n, method, path, body, extra, binding) => {
+    const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = hub(f, method, path, body, extra, binding);
+    expect([p.noSelfConfirm, f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)]).toEqual([true, null]);
+    await vi.waitFor(() => expect(f.adapters[0]!.notifyAlert).toHaveBeenCalled());
+    expect(p.apply).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["membership", "PUT", "/api/settings/hub/membership", { enabled: true }, { hubMembership: () => ({ enabled: false }) }],
+    ["retention", "PUT", "/api/settings/hub/retention", { contentDays: 14, eventDays: 60, revision: 1 }, {}],
+    ["pairing disconnect", "POST", "/api/hub/member/pairing/disconnect", { hubId: "h", binding: "b" }, pairing],
+  ] as Array<[string, string, string, unknown, Record<string, unknown>]>)("control — %s widens nothing: still Apply now for the same admin", (_n, method, path, body, extra) => {
+    const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = hub(f, method, path, body, extra);
+    expect(p.noSelfConfirm).toBe(false);
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)?.label).toMatch(/\(web-verified\)$/);
+  });
+});

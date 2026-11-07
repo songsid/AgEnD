@@ -73,6 +73,11 @@ function record(body: unknown): Record<string, any> {
  * General, no card was ever posted and "Apply now" never showed, while the page said to confirm in General.
  */
 const HUB_AUTHORITY = { connections: [] as string[], primaryGeneral: true, unknown: false };
+// #3352 review F1 (security): of these, the ones that open the fleet outward — trusting a Hub (pairing connect / confirm),
+// publishing an agent to it, replacing the Hub's browser certificate — are never confirmed by their asker's own browser
+// ("Apply now", #2170), as #2453 §0.2 drew for the named link: a hijacked or left-open verified browser must not pair with a
+// Hub of its choosing and publish an agent there. They take the primary General's card (or the host). Membership on/off,
+// retention and disconnecting widen nothing and stay self-confirmable.
 /** A pure projection. Original handler validation still runs against the admitted baseline. */
 export function prepareSettingsEffect(method: string, path: string, body: unknown, context: SettingsEffectContext, binding?: string, key?: string): {
   diff: SettingsChangeDiff | null; proof?: SettingsSecretProof;
@@ -89,7 +94,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
-      affectedConnections: [], authority: HUB_AUTHORITY } };
+      affectedConnections: [], authority: HUB_AUTHORITY, noSelfConfirm: true } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
@@ -136,7 +141,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY } };
+      authority: HUB_AUTHORITY, noSelfConfirm: true } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
   if (pairingStep) {
@@ -148,7 +153,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY } };
+      authority: HUB_AUTHORITY, ...(pairingStep[1] === "disconnect" ? {} : { noSelfConfirm: true as const }) } };
   }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);
