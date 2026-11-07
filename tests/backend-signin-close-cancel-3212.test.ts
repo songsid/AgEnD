@@ -1,5 +1,5 @@
 /**
- * AGEND-101: closing the Sign in dialog (src/ui/backend-signin.js) before the sign-in terminal has been opened.
+ * #3212: closing the Sign in dialog (src/ui/backend-signin.js) before the sign-in terminal has been opened.
  * Adding a named account opens this dialog and starts a background sign-in (a terminal session that lives 10 minutes). Closing the dialog only
  * hid it: the sign-in kept running, and for those minutes the server refused to remove the account ("a sign-in for this account is running").
  * Now closing it (Close, ×, Esc) ends the sign-in — but ONLY when it is yours, running, and its one-time access code has not been used yet
@@ -55,7 +55,7 @@ async function resumed(login: Record<string, unknown> | null) {
   return closed;
 }
 
-describe("closing the Sign in dialog before the terminal is opened ends the background sign-in (AGEND-101)", () => {
+describe("closing the Sign in dialog before the terminal is opened ends the background sign-in (#3212)", () => {
   it("yours, running, its access code not used yet: Close posts the cancel and closes", async () => {
     const closed = await resumed(RUNNING);
     fire(btn("Close"), "click"); await settle(6);
@@ -93,7 +93,7 @@ describe("closing the Sign in dialog before the terminal is opened ends the back
   });
 });
 
-describe("“Cancel sign-in” ends it and closes the dialog (AGEND-101)", () => {
+describe("“Cancel sign-in” ends it and closes the dialog (#3212)", () => {
   it("posts the cancel, says so, and closes", async () => {
     const closed = await resumed(RUNNING);
     fire(btn("Cancel sign-in"), "click"); await settle(8);

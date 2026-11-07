@@ -1,5 +1,5 @@
 /**
- * AGEND-101, the usage block of Settings → Accounts: the short window ("5h") beside the week's.
+ * #3212, the usage block of Settings → Accounts: the short window ("5h") beside the week's.
  * - shortUsage(provider): the percent metric under two days (the shortest when several), never a per-model quota, never a window that has
  *   reset since the read; same shape as weeklyUsage, which is unchanged (the week's window, the row's `usage`).
  * - buildAccountsView: `shortUsage` reaches the host rows (default and named); a computer's rows get none; `usage` stays the week's.
@@ -19,7 +19,7 @@ import { buildAccountsView, shortUsage, weeklyUsage, type AccountsInput } from "
 const H = 3_600_000, DAY = 86_400_000;
 const m = (windowMs: number, used: number, extra: Record<string, unknown> = {}) => ({ type: "percent", used, windowMs, resetsAt: `r${windowMs}`, ...extra });
 
-describe("shortUsage (AGEND-101)", () => {
+describe("shortUsage (#3212)", () => {
   it("the percent metric under two days; the shortest of several; rounded and kept within 0–100", () => {
     expect(shortUsage({ metrics: [m(7 * DAY, 41.6), m(5 * H, 75.6)] })).toEqual({ percent: 76, windowMs: 5 * H, resetsAt: `r${5 * H}` });
     expect(shortUsage({ metrics: [m(24 * H, 10), m(5 * H, 20), m(12 * H, 30)] })?.windowMs).toBe(5 * H);
@@ -57,7 +57,7 @@ const base: AccountsInput = {
   shortUsage: new Map([["claude-code\0", { percent: 76, windowMs: 5 * H, resetsAt: "2026-11-07T16:00:00Z" }]]),
 };
 
-describe("buildAccountsView with the short window (AGEND-101)", () => {
+describe("buildAccountsView with the short window (#3212)", () => {
   it("the row carries both windows; `usage` stays the week's; a row without a short window has none", () => {
     const rows = buildAccountsView(base).clis[0]!.rows;
     const def = rows.find((r) => r.profile === null)!, work = rows.find((r) => r.profile === "work")!;
@@ -81,7 +81,7 @@ describe("buildAccountsView with the short window (AGEND-101)", () => {
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.mocked(getUsageSnapshot).mockReset(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-describe("FleetManager.accountsView takes both windows from one usage snapshot (AGEND-101)", () => {
+describe("FleetManager.accountsView takes both windows from one usage snapshot (#3212)", () => {
   it("the default and a named account each get their own 5h and week; a model quota and a reset-passed window are left out", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-accounts-win-")); dirs.push(dir);
     const work = join(dir, "w"); mkdirSync(work);

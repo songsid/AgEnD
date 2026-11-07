@@ -1,5 +1,5 @@
 /**
- * AGEND-101: Keep sign-in alive after the person signs in again (src/signin-keepalive.ts).
+ * #3292: Keep sign-in alive after the person signs in again (src/signin-keepalive.ts).
  * A check that found the account signed out is recorded (`needs_sign_in` / `not_renewed`). When the person then signs in, the Accounts row said "signed in"
  * while its foot still said, in red, "last check: needs signing in again" — until the next daily check. Now:
  * - view() and attention() ignore such a record once the sign-in's own file holds a fresh valid token newer than the one the record saw (Claude Code: the
