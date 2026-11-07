@@ -12,7 +12,7 @@ register("hub", {
     // The Hub's own pages
     askTitle: "Ask", askEmpty: "No agents you can ask yet", askHint: "When an owner shares an agent with you, it appears here with who allowed it.",
     exposuresTitle: "My exposures", exposuresEmpty: "You don't share any agents yet",
-    exposuresHint: "Share an agent from your own fleet: Settings → Access & security → Connect to a Hub.",
+    exposuresHint: "Share an agent from your own fleet: Settings → Hub → Connect to a Hub.",
     adminTitle: "Administration",
     // The Hub workspace (S3b): sign-in, Ask, My exposures, Administration
     signedOutHub: "Not signed in", signOut: "Sign out", signInTitle: "Sign in to the Hub",
@@ -85,7 +85,7 @@ register("hub", {
     myFleet: "我的 Fleet", hub: "Hub", openHubTab: "在新分頁開啟 {0}", switcher: "工作區",
     askTitle: "提問", askEmpty: "目前還沒有你可以提問的 Agent", askHint: "有人把 Agent 開放給你之後，它會出現在這裡，並註明是誰授權的。",
     exposuresTitle: "我的公開 Agent", exposuresEmpty: "你還沒有公開任何 Agent",
-    exposuresHint: "請在自己的 Fleet 公開 Agent：設定 → 存取與安全 → 連線到 Hub。",
+    exposuresHint: "請在自己的 Fleet 公開 Agent：設定 → Hub → 連線到 Hub。",
     adminTitle: "管理",
     signedOutHub: "尚未登入", signOut: "登出", signInTitle: "登入 Hub",
     signInLead: "請使用組織帳號登入。密碼只送給目錄服務驗證，不會被保存。",
