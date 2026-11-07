@@ -41,6 +41,18 @@ describe("AgEnD's own package.json never pins a bundled tmux known to be broken"
   });
 });
 
+// M-2457 C-4: the bundled tmux is on, with no PATH fallback — every target is pinned, exactly, to the tmux release in
+// tmux-sources.json (`3.8.0`, or a repack `3.8.0-agend.N`).
+describe("AgEnD's own package.json pins the bundled tmux for every target", () => {
+  it("all four, exact versions of the pinned tmux release", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { optionalDependencies: Record<string, string> };
+    const pins = Object.entries(manifest.optionalDependencies).filter(([n]) => n.startsWith("@songsid/agend-tmux-"));
+    expect(pins.map(([n]) => n).sort()).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].map(t => `@songsid/agend-tmux-${t}`));
+    const [maj, min] = readSources().tmux.version.split(".");
+    for (const [n, v] of pins) expect(v, n).toMatch(new RegExp(`^${maj}\\.${min}\\.0(-agend\\.[1-9]\\d*)?$`));
+  });
+});
+
 describe("tmux-sources.json and the package manifest", () => {
   it("pins every source by https url and sha256; no jemalloc anywhere (§3)", () => {
     const s = readSources();
