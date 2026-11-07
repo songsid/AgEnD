@@ -42,8 +42,8 @@ const policyField = z.unknown().transform((value, ctx): HubGroupPolicy => {
 });
 export const previewRequest = z.strictObject({ policy: policyField });
 export type GroupPreviewRequest = { readonly policy: HubGroupPolicy };
-/** A person in an impact list. `personId` is the canonical realm/objectId; name and login are display only, null if never signed in. */
-export interface GroupImpactPerson { readonly personId: z.infer<typeof person>; readonly name: string | null; readonly login: string | null; readonly capabilities?: readonly GroupCapability[] }
+/** A person in an impact list. `personId` is the canonical "realm/objectId" string; name and login are display only, null if never signed in. */
+export interface GroupImpactPerson { readonly personId: string; readonly name: string | null; readonly login: string | null; readonly capabilities?: readonly GroupCapability[] }
 export interface GroupImpactResource { readonly kind: "fleet" | "exposure" | "asker"; readonly id: string; readonly revision: number; readonly label: string | null; readonly owner: { readonly name: string | null } | null }
 /** Typed by the S-88 control; the editor shows each list. */
 export interface GroupImpact {
@@ -71,7 +71,7 @@ export const applyRequest = z.strictObject({ policy: policyField, previewDigest:
 export type GroupApplyRequest = { readonly policy: HubGroupPolicy; readonly previewDigest: string };
 export type GroupApplyResponse =
   | { readonly ok: true; readonly policyRevision: number; readonly state: HubGroupPolicy["state"] }
-  | { readonly ok: false; readonly code: "conflict" | "stale-preview" | "expired" | "unknown" | "repair-required" | "group-mismatch" };
+  | { readonly ok: false; readonly code: "conflict" | "stale-preview" | "expired" | "unknown" | "unsupported" | "repair-required" | "group-mismatch" };
 
 /**
  * POST /hub/v1/admin/group-policy/resources/resume — one exact paused resource and the revisions the admin was shown: the
