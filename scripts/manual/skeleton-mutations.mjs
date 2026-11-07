@@ -9,6 +9,7 @@ const mutations = [
   ["decorative-bars", "src/ui/shared/ui-states.js", '<div aria-hidden="true">', "<div>"],
   ["content-rows", "src/ui/shared/ui-states.js", 'variant === "rows" || variant === "cards"', "false"],
   ["needs-first-read", "src/ui/panel-needs.js", "(!ready || needsLoaded === false) && !items.length", "false"],
+  ["pending-profile-controls", "src/ui/panel-settings.js", 'inert=${loading || undefined}', 'inert=${undefined}'],
   ["notice-read-failure", "src/ui/shared/app-store.js", '.catch(() => { store.set({ noticesError: true }); return false; })', ".catch(() => false)"],
   ["cancelled-search", "src/ui/shared/app-shell.js", '(m) => { if (mine === searchOpen && shellStore.get().dialog?.Component === SearchLoading) showDialog', '(m) => { if (true) showDialog'],
 ];

@@ -62,6 +62,21 @@ describe("#3290 shared loading states", () => {
     expect(p.document.querySelector(".p-notices .empty")).not.toBeNull();
   });
 
+  it("reserves the Profile form without exposing pending controls, then reveals the loaded form", async () => {
+    p = page();
+    let answer!: (value: unknown) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(r => { answer = r; })));
+    const { ProfileCard } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(ProfileCard, {}));
+    expect(p.document.querySelector(".s-profile .skeleton")).not.toBeNull();
+    expect(p.document.querySelector('.s-profile [aria-hidden="true"][inert] #profile-name')).not.toBeNull();
+    answer({ ok: true, json: async () => ({ name: "Ridge", shown: "Ridge", id: "fixture", bound: false }) });
+    await settle();
+    expect(p.document.querySelector(".s-profile .skeleton")).toBeNull();
+    expect(p.document.querySelector(".s-profile [inert]")).toBeNull();
+    expect(p.document.querySelector("#profile-name")?.value).toBe("Ridge");
+  });
+
   it("records a first Notice read failure and clears it when Retry succeeds", async () => {
     p = page();
     const { createStore, createNoticesSync } = await import("/assets/app-store.js");

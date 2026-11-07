@@ -650,8 +650,10 @@ export function ProfileCard() {
   };
   const busy = state.phase !== "ready";
   const changed = draft.trim() !== state.name;
-  if (state.phase === "loading") return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3><${Skeleton} lines=${4} /></section>`;
+  const loading = state.phase === "loading";
   return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>
+    ${loading ? html`<div class="sk-profile-cover"><${Skeleton} variant="form" lines=${4} /></div>` : null}
+    <div class=${`s-profile-fields${loading ? " sk-reserve" : ""}`} aria-hidden=${loading ? "true" : undefined} inert=${loading || undefined}>
     <p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p>
     <div class="field"><label for="profile-name">${tn("profileName")}</label>
       <input id="profile-name" type="text" maxlength="200" autocomplete="nickname" value=${draft} disabled=${busy}
@@ -660,7 +662,7 @@ export function ProfileCard() {
       <p class="sub" id="profile-help">${state.error ? html`<span class="err" role="alert">${state.error}</span>` : tn("profileHelp", state.shown || "web-user", state.id)}</p></div>
     <div class="s-device-row"><button type="button" class="btn primary" disabled=${busy || !changed || !draft.trim()} onClick=${() => save(false)}>${tn("profileSave")}</button>
       ${state.name ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => save(true)}>${state.bound ? tn("profileUseAccount", state.platform || "web-user") : tn("profileClear")}</button>` : null}</div>
-  </section>`;
+  </div></section>`;
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */

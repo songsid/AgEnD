@@ -67,12 +67,12 @@ async function navigateHold(page: any, tag: string, name: string, path: string, 
   let frame: any = null;
   try {
     await page.goto(fx.base + path, { waitUntil: "commit" }); await h.requested(); if (during) await during(); await shot(page, tag, name);
-    frame = await page.evaluate(() => { const el = document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; });
+    frame = await page.evaluate((profile: boolean) => { const el = profile ? document.querySelector(".s-profile") : document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; }, name === "profile");
   } finally { await h.release(); }
   await page.waitForTimeout(800);
   if (process.env.EXPECT_SKELETON === "1") {
     await page.locator(pending[name]).first().waitFor({ state: "hidden", timeout: 25_000 });
-    const next = await page.evaluate(() => { const el = document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; });
+    const next = await page.evaluate((profile: boolean) => { const el = profile ? document.querySelector(".s-profile") : document.querySelector(".signin-card") || document.querySelector(".panel-head"); const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; }, name === "profile");
     if (frame && next && Object.keys(frame).some(k => Math.abs(frame[k] - next[k]) > 2)) throw new Error(`${tag}/${name}: frame moved ${JSON.stringify({ frame, next })}`);
   }
 }
@@ -82,6 +82,10 @@ try {
     const { ctx, page } = await fx.page(c, { path: `/ui/chat/${agent}` });
     await page.emulateMedia({ reducedMotion: c.lang === "zh-TW" ? "reduce" : "no-preference" });
     await throttle(page);
+    if (process.env.MODE === "profile") {
+      await navigateHold(page, tag, "profile", "/settings/preferences", u => u.pathname === "/ui/profile");
+      await ctx.close(); continue;
+    }
     if (process.env.MODE === "accounts") {
       await navigateHold(page, tag, "accounts", "/settings/agents", u => u.pathname === "/ui/accounts", async () => {
         await page.locator(".s-ai-accounts > summary").click();
@@ -113,6 +117,7 @@ try {
       await navigateHold(page, tag, "access", "/settings/access", u => u.pathname === "/api/settings/web-authority" || u.pathname === "/api/settings/guests");
       await ctx.close(); continue;
     }
+    if (process.env.MODE !== "signin") {
     await navigateHold(page, tag, "boot", `/ui/chat/${agent}`, u => u.pathname === "/assets/app.js");
     await page.waitForSelector(".shell", { timeout: 30_000 });
     await navigateHold(page, tag, "agent-details", `/ui/fleet/agent/${agent}`, u => u.pathname === `/ui/instance/${agent}`);
@@ -138,8 +143,10 @@ try {
         await workspace.requested(); await shot(page, tag, "files-changes");
       } finally { await workspace.release(); }
     }
+    }
     await ctx.close();
-    const signedOut = await fx.browser.newContext({ viewport: c.device === "desk" ? { width: 1366, height: 900 } : { width: 390, height: 844 }, colorScheme: c.theme, locale: c.lang });
+    const signedOut = await fx.browser.newContext({ viewport: c.device === "desk" ? { width: 1366, height: 900 } : { width: 390, height: 844 }, colorScheme: c.theme, locale: c.lang,
+      reducedMotion: c.lang === "zh-TW" ? "reduce" : "no-preference" });
     await signedOut.addInitScript((lang: string) => localStorage.setItem("agend_lang", lang), c.lang);
     const signin = await signedOut.newPage(); await throttle(signin);
     await navigateHold(signin, tag, "signin", "/signin", u => u.pathname === "/auth/session");

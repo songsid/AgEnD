@@ -7,3 +7,5 @@ The scripts are `scripts/manual/smoke/smoke-loading-audit.mts` (normal, `MODE=ex
 Agent Details is a passing control: its existing skeleton is retained. Needs/Notices captures wait for their actual panels to mount, so the shell's earlier module-loading skeleton is not mistaken for the page's own state.
 
 `before-main` is an additional matching baseline from main `6535679d9`; use it with `after-main`. Alpha's newer Settings layout differs from main, so the original `before` folder is reserved for alpha comparisons. `after-main-skew` serves main's old app.css **and** ui-states.js with current panels. It checks visible fallback bars, reduced motion, a stable surrounding frame and termination after the held read is released. zh-TW cases use reduced motion. No new skeleton export is required by a lazy panel.
+
+The browser also compares the full Profile card and sign-in card bounds during the held read and after it completes (2 px tolerance); the form stays reserved and inaccessible during loading. Profile retains its original field spacing.
