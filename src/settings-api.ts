@@ -1177,6 +1177,7 @@ export function handleSettingsRequest(
         "tool_progress",
         "reply_completion_guard",
         "web_echo",
+        "quota_notice",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -1221,6 +1222,7 @@ export function handleSettingsRequest(
       if (body.tool_progress === null) delete merged.tool_progress;
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       if (body.reply_triggers === null) delete merged.reply_triggers;
+      if (body.quota_notice === null) delete merged.quota_notice;
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);

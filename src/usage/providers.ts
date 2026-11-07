@@ -48,6 +48,7 @@ import {
 import type { UsageI18nKey } from "./i18n-keys.js";
 
 export interface UsageMetric {
+  quotaPeriod?: import("../quota-notice-config.js").QuotaPeriod;
   label: string;
   /** Locale-neutral semantic text. Renderers translate this and keep `label` as a fallback. */
   labelI18n?: UsageI18nRef;
@@ -90,6 +91,8 @@ export interface UsageMetric {
 export type UsageStaleCause = "expired" | "transient" | "error";
 
 export interface ProviderUsage {
+  /** Real observation time for local CLI/relay readings (not the time the API served them). */
+  observedAt?: string;
   id: string;
   name: string;
   /** #2014: the credential profile this row reads (its `name` ends in ` (<profile>)`); the page shows it on its own line. */
@@ -319,6 +322,7 @@ export function statuslineUsage(
   return {
     status: "ok",
     plan,
+    observedAt: new Date(reading.observedAtMs).toISOString(),
     // Say what is missing as well as where it came from: someone comparing this
     // against claude.ai should not have to guess why per-model rows vanished.
     hint: `from ${reading.instance}'s statusline, ${age} — no API call; plan and per-model limits need a CLI login`,
@@ -1621,6 +1625,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
     if (used !== null && limit !== null && limit > 0) {
       metrics.push({
         label: `${displayName || "Usage"} (monthly)`,
+        quotaPeriod: "monthly",
         labelI18n: displayName
           ? i18n("usage.metric.named_monthly", displayName)
           : i18n("usage.metric.usage_monthly"),
@@ -1739,6 +1744,7 @@ export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name
   return {
     status: "ok",
     plan: snapshot.plan || "Subscription",
+    observedAt: new Date(snapshot.observedAt).toISOString(),
     hint: metrics.length
       ? (stale ? `cached ${ageMin}m ago — idle, no new response frame` : undefined)
       : "Muse usage unavailable — no response frame observed.",

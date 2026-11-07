@@ -1,3 +1,4 @@
+import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
@@ -7438,6 +7439,8 @@ export class Daemon extends EventEmitter {
     } else if (update.reply_completion_guard === null) {
       delete this.config.reply_completion_guard;
     }
+    if (update.quota_notice === null) delete this.config.quota_notice;
+    else if (update.quota_notice !== undefined && !quotaNoticeProblem(update.quota_notice)) this.config.quota_notice = structuredClone(update.quota_notice) as import("./quota-notice-config.js").QuotaNoticeRule;
     if (typeof update.mcp_proxy_reply === "boolean") this.config.mcp_proxy_reply = update.mcp_proxy_reply;
     else if (update.mcp_proxy_reply === null) delete this.config.mcp_proxy_reply;
     if (typeof update.warm_cap === "number" && Number.isInteger(update.warm_cap) && update.warm_cap >= 0) this.config.warm_cap = update.warm_cap;

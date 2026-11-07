@@ -156,6 +156,8 @@ export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "bac
 export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error" | "outdated_cli";
 
 export interface ErrorPattern {
+  /** Optional low-usage reminder; delivered once per account by the usage evaluator instead. */
+  quotaAdvisory?: true;
   pattern: RegExp;
   type: ErrorType;
   action: ErrorActionType;

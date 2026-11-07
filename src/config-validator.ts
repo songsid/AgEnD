@@ -1,3 +1,4 @@
+import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { adaptersWithoutGeneral, type ChannelLike } from "./platform-general.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
@@ -140,6 +141,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
+    if (value.quota_notice !== undefined) { const problem = quotaNoticeProblem(value.quota_notice, path === "defaults"); if (problem) err(`${path}.quota_notice`, problem); }
     if (value.resume_interrupted_work !== undefined && typeof value.resume_interrupted_work !== "boolean") err(`${path}.resume_interrupted_work`, "must be a boolean");
     // `v3` is refused rather than merely undocumented. Measured on kiro-cli
     // 2.23.0: `--v3` stops at two dialogs AgEnD does not answer — a config
@@ -706,6 +708,7 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
       if (backendIssue) err(`channels.${key}.backend`, backendIssue);
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
+      if (channel.quota_notice !== undefined) { const problem = quotaNoticeProblem(channel.quota_notice); if (problem) err(`channels.${key}.quota_notice`, problem); }
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
         err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");
       }

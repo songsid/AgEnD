@@ -97,7 +97,10 @@ export function resolveDeliveryWorkerMode(
   return DEFAULT_DELIVERY_WORKER_MODE;
 }
 
+import type { QuotaNoticeRule, QuotaNoticeSettings } from "./quota-notice-config.js";
+
 export interface InstanceConfig {
+  quota_notice?: QuotaNoticeRule;
   /** Proactive interrupted-work continuation; defaults true, inherited from fleet defaults. */
   resume_interrupted_work?: boolean;
   working_directory: string;
@@ -271,6 +274,7 @@ export interface WebhookConfig {
 }
 
 export interface FleetDefaults extends Partial<InstanceConfig> {
+  quota_notice?: QuotaNoticeSettings;
   /** UI/notification language for user-facing text: "en" or "zh-TW". Auto-detects from timezone if unset. */
   locale?: string;
   /** Seconds before the cancel button starts showing elapsed time (default 30). */
