@@ -67,7 +67,7 @@ async function startFleet(config: Record<string, unknown> = {}) {
 }
 type Fleet = Awaited<ReturnType<typeof startFleet>>;
 /** A held change (connecting a Telegram bot — it needs confirming) with an apply that only records it ran. */
-function held(h: Fleet, opts: { noSelfConfirm?: true } = {}) {
+function held(h: Fleet, opts: { noSelfConfirm?: true; hostLocalConfirm?: true } = {}) {
   const store = new SettingsConfirmationStore({ audit: vi.fn(), notify: vi.fn() }); stores.push(store);
   const effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ ...CHAT.channel, id: "tg" }], { config: h.fm.fleetConfig, classic: {} });
   const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
@@ -107,6 +107,24 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       // A change that opens a link (#2453 noSelfConfirm) is not widened by D3: it still waits (residual, for the leader).
       const link = held(h, { noSelfConfirm: true });
       expect(h.any.settingsSelfConfirmation(link.store, h.reqOf(host.sessionId), link.view.id)).toBeNull();
+      // …while an outward Hub change the leader ruled on (noSelfConfirm + hostLocalConfirm, #3355) is (#3362 review F1).
+      const hub = held(h, { noSelfConfirm: true, hostLocalConfirm: true });
+      const hubSelf = h.any.settingsSelfConfirmation(hub.store, h.reqOf(host.sessionId), hub.view.id);
+      expect(hubSelf?.label).toBe("This computer's admin");
+      expect((await hub.store.decide(hub.view.id, "confirm", { ...hubSelf, via: "web" })).state).toBe("applied");
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("a card that was tried but could not be posted (the view says host_cli) counts as no card (#3362 review N1)", async () => {
+    const h = await startFleet(CHAT);
+    try {
+      const s = await h.signIn();
+      vi.spyOn(h.any, "settingsCardPossible").mockReturnValue(true);                 // a route exists…
+      const a = held(h);
+      expect(h.any.settingsSelfConfirmation(a.store, h.reqOf(s.sessionId), a.view.id)).toBeNull();
+      await vi.waitFor(() => expect(a.store.inspect(a.view.id)?.confirmation.kind).toBe("host_cli"));   // …but no card attached
+      const self = h.any.settingsSelfConfirmation(a.store, h.reqOf(s.sessionId), a.view.id);
+      expect(self?.label).toBe("This computer's admin");
+      expect((await a.store.decide(a.view.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
     } finally { await h.stop(); }
   }, 20_000);
   it("a change a General can take keeps its card (D1); asked again when it is confirmed: a General come up, or the session signed out, refuses it", async () => {
@@ -128,6 +146,13 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       h.any.webSessions.revokeByHandle(s.record.handle);                                 // signed out before it ran
       await expect(c.store.decide(c.view.id, "confirm", { ...again, via: "web" })).rejects.toMatchObject({ code: "admin_required" });
       expect([b.store.inspect(b.view.id)?.state, c.store.inspect(c.view.id)?.state, b.apply.mock.calls.length, c.apply.mock.calls.length]).toEqual(["pending", "pending", 0, 0]);
+      // #3362 review N2: the fleet becoming web-only before it runs ends it here too (#2910's own rule takes over).
+      const d = held(h), s2 = await h.signIn();
+      const late = h.any.settingsSelfConfirmation(d.store, h.reqOf(s2.sessionId), d.view.id);
+      expect(late?.current()).toBe(true);
+      const channel = (h.fm.fleetConfig as any).channel; delete (h.fm.fleetConfig as any).channel;
+      expect(late?.current()).toBe(false);
+      (h.fm.fleetConfig as any).channel = channel;
     } finally { await h.stop(); }
   }, 20_000);
 });

@@ -3202,14 +3202,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
     // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) A change that opens a
     // link (#2453 noSelfConfirm) is not widened here; the outward Hub changes the leader ruled on (hostLocalConfirm) are.
-    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && !this.settingsCardPossible(store, id)
+    // "No card": none could be posted now, or the one tried could not be (posting failed or ran out — the view says
+    // host_cli; #3362 review N1).
+    const noCard = (): boolean => !this.settingsCardPossible(store, id) || store.inspect(id)?.confirmation.kind === "host_cli";
+    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && noCard()
       && (store.selfConfirmable(id) || store.hostLocalConfirmable(id))) {
-      const handle = auth.session.handle;
+      // A card that could not be posted stays unposted (no card is attached later): fixed now, not re-read at execution,
+      // where the store has already marked the change as confirmed from the web.
+      const handle = auth.session.handle, postFailed = store.inspect(id)?.confirmation.kind === "host_cli";
       const here = (): boolean => { const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         return now.kind === "ok" && now.session.handle === handle && hostSessionHere(now.session, req) && !this.isWebOnlyFleet(); };
       return {
         label: t("settings_confirm.host_operator_label"),
-        current: () => here() && !this.settingsCardPossible(store, id),
+        current: () => here() && (postFailed || !this.settingsCardPossible(store, id)),
         done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin (no General could take it)"); },
       };
     }
