@@ -77,13 +77,15 @@ const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConf
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
   const s = useSession();
-  useEffect(() => { linkHubCss(); }, []);
+  useEffect(() => { linkHubCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
   useEffect(() => { setTitle(hw(TITLES[tab])); }, [tab]);
-  let body = html`<${Skeleton} variant="rows" lines=${4} />`;
+  let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
+    : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
+    : html`<${Skeleton} variant="rows" lines=${4} />`;
   if (s === null) body = html`<${HubSignIn} />`;
   else if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
-  if (s && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
+  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
   const pageTitle = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : hw(TITLES[tab]);
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
@@ -261,7 +263,7 @@ function HubChats() {
   const id = roomParam();
   const room = id ? rs.rooms.find((r) => r.id === id) || (rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
-  if (id) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-room-loading">${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : html`<${Skeleton} variant="rows" lines=${6} />`}</div>`;
+  if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class="hub-home">
     <div class="hub-home-list"><${HubNav} /></div>
@@ -279,6 +281,18 @@ function useWide() {
   const [wide, setWide] = useState(() => !!wideQuery()?.matches);
   useEffect(() => { const q = wideQuery(); if (!q) return undefined; const on = () => setWide(!!q.matches); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
   return wide;
+}
+/** The same room frame while its metadata is unknown: reserve the saved context rail and header width. */
+function HubRoomLoading({ error } = {}) {
+  const wide = useWide(), [rail, setRail] = useState(railOpen);
+  const showRail = wide && rail;
+  return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`}>
+    <section class="hub-chat-main"><header class="hub-chat-head"><${Skeleton} variant="inline" lines=${1} /></header>
+      <div class="scroller hub-scroller hub-room-loading">${error ? html`<${ErrorState} message=${error} onRetry=${refreshRooms} />` : html`<${Skeleton} variant="rows" lines=${6} />`}</div>
+    </section>
+    ${showRail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
+      onClose=${() => { setRail(false); setRailPref(false); }}><${Skeleton} variant="rows" lines=${4} /></${RailFrame}>` : null}
+  </div>`;
 }
 /** The thread's words are the fleet chat's; its delivery marks say the Hub's stages. */
 const threadT = (key, ...a) => (key.startsWith("chat.tick_") ? hc(key.slice(5), ...a) : t(key, ...a));

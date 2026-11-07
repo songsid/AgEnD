@@ -91,7 +91,7 @@ try {
           await page.locator(pending[s.name]).first().waitFor({ state: "hidden", timeout: 25_000 });
           if (errors.length) throw new Error(`${tag}/${s.name}: settled page errors ${errors}`);
           const settled = await bounds();
-          if (["y", "height"].some(k => Math.abs(frame[k] - settled[k]) > 2)) throw new Error(`${tag}/${s.name}: header moved ${JSON.stringify({ frame, settled })}`);
+          if (Object.keys(frame).some(k => Math.abs(frame[k] - settled[k]) > 2)) throw new Error(`${tag}/${s.name}: header moved ${JSON.stringify({ frame, settled })}`);
         }
       } finally { release(); await ctx.close(); }
     }

@@ -6,7 +6,7 @@ const repo = resolve(process.env.REPO || "");
 if (!process.env.REPO || spawnSync("git", ["diff", "--quiet"], { cwd: repo }).status !== 0) throw new Error("set REPO to a clean owned scratch checkout");
 const out = join(repo, ".artifacts/skeleton-mutations"); mkdirSync(out, { recursive: true });
 const mutations = [
-  ["hub-session-first-read", "src/ui/panel-hub.js", 'let body = html`<${Skeleton} variant="rows" lines=${4} />`;', 'let body = null;'],
+  ["hub-session-first-read", "src/ui/panel-hub.js", "let body = tab === \"ask\" ? roomParam() ? html`<${HubRoomLoading} />`\n    : html`<${PanelHeader} title=${hc(\"chats\")} /><div class=\"hub-home\"><${Skeleton} variant=\"rows\" lines=${4} /></div>`\n    : html`<${Skeleton} variant=\"rows\" lines=${4} />`;", "let body = null;"],
   ["room-history-first-read", "src/ui/hub-chat-store.js", 'loaded: false, error: null, pending:', 'loaded: true, error: null, pending:'],
   ["refresh-keeps-activity", "src/ui/panel-hub.js", 'setData((old) => ({ ...old, error }))', 'setData({ error })'],
   ["unknown-membership", "src/ui/settings-hub-membership.js", 'html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />`', 'html`<p>Loading</p>`'],
