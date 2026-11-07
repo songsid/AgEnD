@@ -131,7 +131,7 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 `access` is optional. **Omitting the entire block uses an `open` runtime fallback**, not `locked`; an existing persisted mode can still override it. To restrict chat access, explicitly set `mode: locked` and `allowed_users`.
 
-The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode` and an `allowed_users` array explicitly. Manage the bot’s allowed users in **Settings → Connections → the bot → Allowed users**.
+The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode` and an `allowed_users` array explicitly. Manage the bot’s allowed users in **Settings → Chat & connections → the bot → Allowed users (primary bot)**.
 
 | Field | Type | Whole-block fallback | Description |
 |-------|------|----------------------|-------------|

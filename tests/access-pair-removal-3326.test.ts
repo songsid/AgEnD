@@ -34,8 +34,12 @@ describe("D8 removes the legacy people-access code surface", () => {
     for (const path of paths) {
       const text = read(path);
       expect(text, path).not.toMatch(/\/pair\b|agend access pair/);
-      expect(text, path).toMatch(/Settings → Connections|設定 → 連線/);
+      expect(text, path).toMatch(/Settings → Chat & connections → the bot → Allowed users \(primary bot\)|設定 → 聊天與連線 → 該 bot → 允許使用者（主 bot）/);
     }
     expect(paths).toHaveLength(10);
+  });
+
+  it("does not advertise removed adapter methods to plugin authors", () => {
+    expect(read("docs/plugin-development.md")).not.toMatch(/handlePairing|confirmPairing/);
   });
 });
