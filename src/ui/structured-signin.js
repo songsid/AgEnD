@@ -80,7 +80,7 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * so, so the setup page's heading and lead are not repeated; there is no "sign in later" (this is an explicit request); and a sign-in again asks nothing about
  * Kiro (Claude Code's own sign-in replaces the login; it signs nothing out first).
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, confirm } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -146,12 +146,12 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
         const usable = !["antigravity"].includes(backend) && state !== "not_installed";
         // Ridge #3321 S01: the question names THIS card's CLI, and says what a sign-in again does to it — only Kiro signs out
         // first (logoutArgv); Claude Code and Codex sign in again over the account they have. The dashboard passes its own
-        // in-app confirmation (`confirm`); the setup page, which loads nothing else, keeps the browser's.
+        // in-app confirmation (`ask`); the setup page, which loads nothing else, keeps the browser's.
         if (usable) button(card, tr(state === "valid" ? "signInAgain" : "signIn"), async () => {
           const relogin = state === "valid";
           if (relogin && !machine) {
             const question = tr(backend === "kiro-cli" ? "relogin" : "reloginReplace", name(backend));
-            if (!(await (confirm ? confirm(question, name(backend)) : globalThis.confirm(question)))) return;
+            if (!(await (ask ? ask(question, name(backend)) : globalThis.confirm(question)))) return;
           }
           await perform({ operation: "start", backend, relogin });
         });

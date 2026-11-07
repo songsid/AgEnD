@@ -55,7 +55,7 @@ it("returned code is submitted literally to the closed API and cleared from the 
 // Ridge #3321 S01 (P1): Accounts → Claude Code → "Sign in again" asked "Kiro will sign out its existing account first".
 // The question names the card's own CLI and says what a sign-in again does to it: only Kiro signs out first (its
 // logoutArgv); Claude Code and Codex sign in again over the account they have. Declining sends nothing.
-function relogin(backend: string, opts: { lang?: string; confirm?: (q: string, cli: string) => Promise<boolean> | boolean; answer?: boolean } = {}) {
+function relogin(backend: string, opts: { lang?: string; ask?: (q: string, cli: string) => Promise<boolean> | boolean; answer?: boolean } = {}) {
   const asked: string[] = [];
   const state = { selected: [backend], pending: [], skipped: [], states: { [backend]: "valid" }, login: null as any, ready: true };
   const fetcher = vi.fn(async (_url: string, options: any) => ({ ok: true, json: async () => structuredClone(state) }));
@@ -68,7 +68,7 @@ function relogin(backend: string, opts: { lang?: string; confirm?: (q: string, c
   const ctx = createContext({ document: doc, fetch: fetcher, setTimeout: () => 1, clearTimeout() {}, URL,
     confirm: (q: string) => { asked.push(q); return opts.answer ?? false; } });
   runInContext(source, ctx);
-  const cards = ctx.mountStructuredSignIns(root, { endpoint: "setup/signins", fetcher, ...(opts.confirm ? { confirm: opts.confirm } : {}) });
+  const cards = ctx.mountStructuredSignIns(root, { endpoint: "setup/signins", fetcher, ...(opts.ask ? { ask: opts.ask } : {}) });
   const nodes = (): any[] => { const all: any[] = []; const visit = (n: any) => { all.push(n); n.children.forEach(visit); }; visit(root); return all; };
   const flush = async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); };
   const starts = () => fetcher.mock.calls.map(([, o]) => (o.body ? JSON.parse(o.body) : null)).filter((b) => b?.operation === "start");
@@ -89,7 +89,7 @@ it.each([
 });
 it("Ridge #3321 S01: the dashboard's own confirmation is used when given (with the CLI's name); yes starts the re-login", async () => {
   const calls: [string, string][] = [];
-  const h = relogin("claude-code", { confirm: async (q, cli) => { calls.push([q, cli]); return true; } }); await h.flush();
+  const h = relogin("claude-code", { ask: async (q, cli) => { calls.push([q, cli]); return true; } }); await h.flush();
   await h.nodes().find((n) => n.tag === "button" && n.textContent === "Sign in again").onclick(); await h.flush();
   expect([calls, h.asked, h.starts()]).toEqual([[["Sign in to Claude Code again? The new sign-in replaces the account it uses now.", "Claude Code"]], [],
     [{ operation: "start", backend: "claude-code", relogin: true }]]);
