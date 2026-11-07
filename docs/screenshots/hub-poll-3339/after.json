@@ -1,0 +1,66 @@
+[
+  {
+    "tag": "after-desktop-en-light",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-desktop-en-dark",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-desktop-zh-TW-light",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-desktop-zh-TW-dark",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-phone-en-light",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-phone-en-dark",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-phone-zh-TW-light",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "tag": "after-phone-zh-TW-dark",
+    "leaked": false,
+    "agentResultDelivered": true,
+    "replyVisible": true,
+    "overflow": false,
+    "errors": []
+  }
+]

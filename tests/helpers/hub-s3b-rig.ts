@@ -20,7 +20,7 @@ import type { HubLinkContext } from "../../src/hub/server.js";
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean;
+export async function s3bRig(opts: { directory?: HubDirectory; now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean;
   /** #3226 E: what the Hub shell says about previews (hubPreviewView); the smoke serves the /frame listener itself. */
   preview?: Readonly<import("../../src/hub/preview.js").HubPreviewView> } = {}) {
   const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
@@ -66,7 +66,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
   // The directory: people by login with a password; eligibility switchable per person.
   const people = new Map<string, { key: PersonKey; login: string; password: string; name: string; eligible: boolean }>();
   let directoryCalls = 0;
-  const directory: HubDirectory = {
+  const directory: HubDirectory = opts.directory ?? {
     realm: "corp",
     async signIn(login, password) {
       const p = [...people.values()].find((x) => x.login.toLowerCase() === login.toLowerCase());

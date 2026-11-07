@@ -633,6 +633,15 @@ export function handleAuthRequest(
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }
+    // #3327 (#3345 review): the host's own code is asked for on this computer only — a direct loopback peer, a loopback
+    // Host and no forwarding header (classifyWebPeer). Its one caller is `agend web` here; the web token alone, from a
+    // remote peer or through a proxy, must not mint an admin session (threat model 64a289a0: remote parties are not the
+    // owner). Redeeming the code it prints still works from wherever the owner types it.
+    if (classifyWebPeer(req) !== "loopback") {
+      ctx.logger.info({ source: "cli" }, "Web login code refused: not asked from this computer");
+      json(res, 403, { error: "A sign-in code can only be asked for on the AgEnD computer itself." });
+      return true;
+    }
     // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
     // #3270: the first host code on a fresh install (no host session EVER authorized — not "none right now") may live for an
     // hour instead of five minutes, redeemable from this computer only and only until the first host session exists. Every

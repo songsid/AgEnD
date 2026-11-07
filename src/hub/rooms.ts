@@ -62,7 +62,7 @@ const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDige
 /** A file as the asker's browser sees it: always fetched through the room's own route. */
 export interface HubFileView { id: string; name: string; size: number; mime: string; url: string }
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
-export interface HubRoomEntryView extends HubRoomEntry { buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
+export interface HubRoomEntryView extends HubRoomEntry { buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -314,13 +314,21 @@ export class HubRoomsService {
     const store = this.core.deps.attachments;
     const files = store ? this.core.atomic((db) => new Map(rows.map(m => [m.id, { question: store.forMessage(db, m.id, "question"), answer: store.forMessage(db, m.id, "answer") }]))) : null;
     const views = this.core.atomic(db => new Map(rows.map(m => [m.id, this.buttons.view(db, m.id)])));
+    // The exact agent prompt stays in durable delivery, not in the asker's prose. Use the server-owned result
+    // binding (including pre-existing rows), never a text prefix a person could also type. Bound the projection
+    // query to this authorized page; no schema or delivery/digest change is needed.
+    const pollResults = rows.length ? this.core.atomic(db => new Set((db.prepare(`SELECT result_message_id FROM hub_answer_buttons
+      WHERE room_id=? AND result_message_id IN (${rows.map(() => "?").join(",")})`).all(roomId, ...rows.map(m => m.id)) as { result_message_id: string }[])
+      .map(row => row.result_message_id))) : new Set<string>();
     const entries = rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
       // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
       const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
       return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at, ...(views.get(m.id) ? { buttons: views.get(m.id) } : {}),
-        ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
+        // Explicit blank also replaces the old prompt in a cached tab's merged entry; old renderers show no text.
+        ...(pollResults.has(m.id) ? { pollResult: true as const, question: "" } : q?.question !== undefined ? { question: q.question } : {}),
+        ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
         ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
     permit.assertCurrent(); return entries;
