@@ -5,3 +5,4 @@ export type { DirectoryProfile, HubDirectoryConfig } from "./config.js";
 export { HubDirectoryConfigError, resolveDirectoryConfig } from "./config.js";
 export type { HubDirectoryDiagnostic, HubDirectoryOptions, HubDirectorySecrets } from "./directory.js";
 export { createHubDirectory } from "./directory.js";
+export type { DirectoryPolicyGroup, PolicyGroupFacts, PolicyGroupLookup } from "./groups.js";
