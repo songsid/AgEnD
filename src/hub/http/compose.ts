@@ -359,7 +359,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     quota.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
-      case "exposure.snapshot": catalog.receiveSnapshot(frame.payload, link); quota.prune(); return;
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "receipt": return { ...reply, type: "receipt", payload: rooms.receipt(frame.payload, link) };
       case "answer": return { ...reply, type: "receipt", payload: await rooms.answer(frame.payload, link) };
