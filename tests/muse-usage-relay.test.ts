@@ -365,7 +365,12 @@ describe("Muse usage relay protocol", () => {
     await new Promise<void>(resolve => upstream.close(() => resolve()));
   });
 
-  it.each(["plan", "session"])("does not rejuvenate an old Weekly window on a %s-only frame", async kind => {
+  it.each([
+    { retained: "Weekly", field: "weekly", other: "plan", seconds: 7 * 86400 },
+    { retained: "Weekly", field: "weekly", other: "window", seconds: 7 * 86400 },
+    { retained: "Session", field: "window", other: "plan", seconds: 18000 },
+    { retained: "Session", field: "window", other: "weekly", seconds: 18000 },
+  ])("does not rejuvenate old $retained usage on a $other-only frame", async ({ retained, field, other, seconds }) => {
     const home = mkdtempSync(join(tmpdir(), "agend-muse-window-age-")); dirs.push(home);
     process.env.AGEND_HOME = home;
     writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
@@ -375,16 +380,16 @@ describe("Muse usage relay protocol", () => {
     const record = (frame: object) => (relay as any).record(parseMuseSubscriptionUsage(JSON.stringify({ type: "response.subscription_usage", subscription: frame })));
     const send = vi.fn(() => true), warn = vi.fn();
     const notices = new QuotaNotices({ file: join(home, "quota.json"), now: () => now, send, warn,
-      policy: () => ({ target: "general", locale: "en", subscriptions: [{ account: "muse:host:", providerId: "muse", rule: quotaNoticeRule(undefined, "muse") }] }) });
+      policy: () => ({ target: "general", locale: "en", subscriptions: [{ account: "muse:host:", providerId: "muse", rule: quotaNoticeRule(undefined, "muse", { periods: ["session", "weekly"] }) }] }) });
     const observe = async () => notices.observe({ fetchedAt: new Date(now).toISOString(), providers: [{ id: "muse", name: "Muse", ...await fetchMuseUsage() }] });
     try {
-      const weekly = { used_percent: 92, resets_at: now / 1000 + 7 * 86400 };
-      record({ weekly });
+      const window = { used_percent: 92, resets_at: now / 1000 + seconds };
+      record({ [field]: window });
       now += 3600000;
-      record(kind === "plan" ? { tier: "pro" } : { window: { used_percent: 97, resets_at: now / 1000 + 18000 } });
+      record(other === "plan" ? { tier: "pro" } : { [other]: { used_percent: 12, resets_at: now / 1000 + 18000 } });
       await observe(); expect(send).not.toHaveBeenCalled();
-      record({ weekly }); await observe();
-      expect(send).toHaveBeenCalledExactlyOnceWith("general", expect.stringContaining("Weekly: 8% remaining"));
+      record({ [field]: window }); await observe();
+      expect(send).toHaveBeenCalledExactlyOnceWith("general", expect.stringContaining(`${retained}: 8% remaining`));
       expect(warn).not.toHaveBeenCalled();
     } finally { await notices.stop(); clock.mockRestore(); await relay.stop(); }
   });
