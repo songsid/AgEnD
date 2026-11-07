@@ -4,6 +4,8 @@
 // - The switch: once a day AgEnD renews this sign-in when no agent or room is using it — `claude auth status` / Codex's
 //   app-server, no model request.
 // - Claude Code only, once switched on: allow one tiny request on the smallest model when that check did not renew it.
+// - One line at the foot of the account's box. What each switch does is a small `!` after it, shown only while the pointer is on it
+//   or it has the keyboard focus (a layer over the box, never in the flow: it moves nothing).
 // - What it knows: when the sign-in ends (Claude Code: a fixed date renewing cannot move), and the last check's result.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -14,7 +16,9 @@ register("accountsKeepAlive", {
     label: "Keep sign-in alive",
     hint_claude: "Once a day, if no agent is using it, AgEnD renews this sign-in with Claude Code's own status check. No model request.",
     hint_codex: "Once a day, if no agent is using it, AgEnD renews this sign-in through Codex's own refresh. No model request.",
-    fallback: "If that doesn't renew it, allow one tiny request on the smallest model (a few dozen tokens)",
+    fallback: "Backup renewal (a tiny request if the status check doesn't renew)",
+    fallbackHint: "When the regular status check can't extend the sign-in, allow one very short request on the smallest model (a few dozen tokens) to keep it signed in.",
+    tip: "What is this?",
     endsAt: "Sign-in ends {0}", endsSoon: "Sign-in ends {0}. Renewing can't move this date: sign in again before then.", ended: "Sign-in ended {0}. Sign in again.",
     plan: "Plan: {0}", last: "Last check {0}: {1}",
     o_refreshed: "renewed", o_fallback_refreshed: "renewed with the small request", o_not_needed: "still valid", o_checked: "signed in",
@@ -26,7 +30,9 @@ register("accountsKeepAlive", {
     label: "保持登入",
     hint_claude: "沒有 Agent 使用時，AgEnD 每天用 Claude Code 自己的狀態檢查續期這個登入一次。不會呼叫模型。",
     hint_codex: "沒有 Agent 使用時，AgEnD 每天透過 Codex 自己的刷新續期這個登入一次。不會呼叫模型。",
-    fallback: "如果那樣沒有續期，允許用最小的模型送一次很小的請求（幾十個 token）",
+    fallback: "備援續期（狀態檢查未續期時改送極小請求）",
+    fallbackHint: "當一般狀態檢查未能延長登入效期時，允許改用最小模型送一次極短請求（約數十 token）來維持登入。",
+    tip: "這是什麼？",
     endsAt: "登入到期：{0}", endsSoon: "登入到期：{0}。續期無法延後這個日期，請在那之前重新登入。", ended: "登入已於 {0} 到期。請重新登入。",
     plan: "方案：{0}", last: "上次檢查 {0}：{1}",
     o_refreshed: "已續期", o_fallback_refreshed: "已用小請求續期", o_not_needed: "仍有效", o_checked: "已登入",
@@ -99,13 +105,17 @@ export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
   const warn = !Number.isNaN(ends) && ends - now <= WARN_MS;
   const last = k.enabled && k.lastAt && k.lastOutcome ? tk("last", stamp(k.lastAt), tk(`o_${k.lastOutcome}`)) : null;
   const bad = k.lastOutcome === "needs_sign_in" || k.lastOutcome === "not_renewed";
+  const id = `ka-tip-${row.backend}-${row.profile || "default"}`;
+  // The `!`: focusable, so the keyboard reaches it; its words are the hint next to it (CSS shows that only on hover or focus).
+  const tip = (tipId, words, extra = "") => html`<span class="s-keepalive-tip-wrap"><span class="s-keepalive-tip-icon" tabindex="0" role="img" aria-label=${tk("tip")} aria-describedby=${tipId}>!</span>
+    <small class=${`s-keepalive-hint${extra}`} id=${tipId}>${words}</small></span>`;
   return html`<div class="s-account-keepalive" data-keepalive=${k.enabled ? "on" : "off"}>
     ${/* Ridge #3321 S10: an on/off feature is the shared switch (s-ui-toggle), as Hub membership and web authority; the paid fallback stays a checkbox. */ ""}
     <label class="check"><input class="s-ui-toggle" type="checkbox" role="switch" checked=${!!k.enabled} disabled=${busy} onChange=${(e) => save(e.currentTarget.checked, k.fallback)} />
       <span>${tk("label")}</span></label>
-    <small class="s-keepalive-hint">${tk(row.backend === "claude-code" ? "hint_claude" : "hint_codex")}</small>
-    ${row.backend === "claude-code" && k.enabled ? html`<label class="check s-keepalive-fallback"><input type="checkbox" checked=${!!k.fallback} disabled=${busy} onChange=${(e) => save(true, e.currentTarget.checked)} />
-      <span>${tk("fallback")}</span></label>` : null}
+    ${tip(id, tk(row.backend === "claude-code" ? "hint_claude" : "hint_codex"))}
+    ${row.backend === "claude-code" && k.enabled ? html`<span class="s-keepalive-fallback"><label class="check"><input type="checkbox" checked=${!!k.fallback} disabled=${busy} onChange=${(e) => save(true, e.currentTarget.checked)} />
+      <span>${tk("fallback")}</span></label>${tip(`${id}-fallback`, tk("fallbackHint"), " is-end")}</span>` : null}
     ${endLine ? html`<small class=${`s-keepalive-ends${warn ? " is-warn" : ""}`}>${endLine}</small>` : null}
     ${k.planType ? html`<small class="s-keepalive-plan">${tk("plan", k.planType)}</small>` : null}
     ${last ? html`<small class=${`s-keepalive-last${bad ? " is-bad" : ""}`}>${last}</small>` : null}
