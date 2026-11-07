@@ -9874,6 +9874,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // M-2457: AgEnD's own tmux socket (`agend` for the real home).
     const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
+    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
+    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
+    try {
+      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })));
+      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
+    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
     // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
     const bundled = await (async () => {

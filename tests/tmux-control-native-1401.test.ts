@@ -8,8 +8,9 @@ vi.mock("../src/paths.js", async importOriginal => ({
 }));
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { tmuxSocket } from "../src/tmux-binary.js";
 const exec = promisify(execFile);
-const native = (args: string[]) => exec("tmux", ["-L", fixture.socket, ...args], { timeout: 3_000 });
+const native = (args: string[]) => exec("tmux", ["-L", tmuxSocket(), ...args], { timeout: 3_000 });
 let client: TmuxControlClient;
 let manager: TmuxManager;
 
@@ -19,7 +20,7 @@ beforeAll(async () => {
   // tmux 3.4 vis-escapes '$' in session names; newer versions preserve it.
   // Keep the special-character fixture, but target tmux's actual created name.
   fixture.session = created.stdout.trim();
-  TmuxManager.setSocketName(fixture.socket);
+  TmuxManager.setSocketName(tmuxSocket());
   const { stdout } = await native(["list-windows", "-t", fixture.session, "-F", "#{window_id}"]);
   const window = stdout.trim();
   client = new TmuxControlClient(fixture.session); client.start();

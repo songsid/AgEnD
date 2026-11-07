@@ -14,9 +14,9 @@ import { basename, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { VIEW_HISTORY, handleViewRequest, parsePaneScrollback, type ViewApiContext } from "../src/view-api.js";
 import { tmuxExecHelper } from "../src/tmux-exec-helper.js";
-import { getAgendHome, getTmuxSocketName } from "../src/paths.js";
+import { getAgendHome } from "../src/paths.js";
 import { getTmuxSession } from "../src/config.js";
-import { tmuxBinary } from "../src/tmux-binary.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 
 const ctx = (): ViewApiContext => ({
   webToken: "wt", dataDir: getAgendHome(),
@@ -44,7 +44,7 @@ function subcommand(args: string[]): string {
 
 let tmux: (...args: string[]) => string, haveTmux = true;
 beforeAll(() => {
-  const socket = getTmuxSocketName();
+  const socket = tmuxSocket();
   expect(socket, "isolated AGEND_HOME should yield a private tmux socket").toBeTruthy();
   try { execFileSync(tmuxBinary(), ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
   tmux = (...args: string[]) => execFileSync(tmuxBinary(), ["-L", socket!, ...args], { encoding: "utf-8" });

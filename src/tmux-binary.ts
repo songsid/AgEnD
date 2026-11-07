@@ -5,7 +5,8 @@
  *    else the bundled tmux this package's postinstall verified (its receipt, launcher/tmux-bundle.cjs), copied once to
  *    `<AGEND_HOME>/tmux/<version>-<sha12>/` so the server never runs from a package an update replaces. There is no
  *    PATH fallback: a missing or unverified bundle refuses with the fix.
- *  - the socket is `agend` for the real home (never the default socket), the isolated name for any other home;
+ *  - the socket is `agend` for the real home (never the default socket), the isolated name with `-b` for any other home
+ *    (the isolated name itself is 2.3's: a legacy server, tmux-legacy.ts);
  *  - the environment puts the bundled terminfo first (TERMINFO_DIRS), says the terminal has true colour, and never
  *    passes a caller's $TMUX / $TMUX_PANE to a tmux client.
  */
@@ -118,19 +119,25 @@ export function tmuxBinary(deps?: TmuxResolveDeps): string {
 }
 
 /**
- * The -L socket: the real home's is `agend` (never tmux's default socket), and any other home keeps its isolated name
- * (getTmuxSocketName()).
+ * The -L socket: the real home's is `agend` (never tmux's default socket); any other home's is its hashed name with
+ * `-b` (`agend-<hash6>-b`), never the hashed name itself — that one is 2.3's (the system tmux), and a 2.3 server that
+ * survived the upgrade there is a legacy server, migrated window by window (tmux-legacy.ts), not a server of ours.
  */
 export function tmuxSocket(): string {
   return socketFor(isDefaultAgendHome(), getTmuxSocketName());
 }
 
-/** The socket rule, pure: `agend` for the real home, `isolated` (getTmuxSocketName()'s name) otherwise. */
+/** The socket rule, pure: `agend` for the real home, `<isolated>-b` otherwise (`isolated` = getTmuxSocketName()). */
 export function socketFor(realHome: boolean, isolated: string | null): string {
   if (realHome) return BUNDLED_TMUX_SOCKET;
   // Another home without its own name would share the real home's live server: never.
   if (!isolated) throw new TmuxUnavailableError("This AgEnD home has no tmux socket of its own, and AgEnD will not use the real home's.");
-  return isolated;
+  return `${isolated}-b`;
+}
+
+/** 2.3's socket for this home, where a surviving 2.3 server holds its windows: null (tmux's default) for the real home. */
+export function legacyTmuxSocket(): string | null {
+  return isDefaultAgendHome() ? null : getTmuxSocketName();
 }
 
 /**

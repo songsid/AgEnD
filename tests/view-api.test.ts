@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { parsePaneSize, handleViewRequest, type ViewApiContext } from "../src/view-api.js";
-import { getAgendHome, getTmuxSocketName } from "../src/paths.js";
+import { getAgendHome } from "../src/paths.js";
+import { tmuxSocket } from "../src/tmux-binary.js";
 import { getTmuxSession } from "../src/config.js";
 
 describe("parsePaneSize", () => {
@@ -80,11 +81,11 @@ describe("GET /api/pane/:instance", () => {
   });
 
   // End-to-end against a real tmux server. Safe to run anywhere: the isolated
-  // AGEND_HOME vitest injects gives getTmuxSocketName() a private socket, so
+  // AGEND_HOME vitest injects gives tmuxSocket() a private socket, so
   // this never touches an operator's live fleet.
   it("reports the pane's real grid size in the response headers", async () => {
     const home = getAgendHome();
-    const socket = getTmuxSocketName();
+    const socket = tmuxSocket();
     expect(socket, "isolated AGEND_HOME should yield a private tmux socket").toBeTruthy();
     const session = getTmuxSession();
     const tmux = (...args: string[]) =>

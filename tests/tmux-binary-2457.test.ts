@@ -13,13 +13,15 @@ import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AGEND_TMUX_CONF, BUNDLED_TMUX_SOCKET, TMUX_BIN_ENV, TmuxUnavailableError, insideFleetTmux,
+  AGEND_TMUX_CONF, BUNDLED_TMUX_SOCKET, TMUX_BIN_ENV, TmuxUnavailableError, insideFleetTmux, legacyTmuxSocket,
   resetTmuxResolution, resolveTmux, socketFor, tmuxArgs, tmuxConfArgs, tmuxEnv, tmuxEnvOption, tmuxSocket,
 } from "../src/tmux-binary.js";
 
 const require = createRequire(import.meta.url);
 const roots: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-tmuxbin-")); roots.push(d); return d; };
+/** 2.3's socket name for a home (getTmuxSocketName()'s rule, paths.ts). */
+const hashed = (home: string) => "agend-" + createHash("sha256").update(home).digest("hex").slice(0, 6);
 afterEach(() => {
   resetTmuxResolution();
   vi.unstubAllEnvs();
@@ -116,20 +118,30 @@ describe("on: the bundled tmux", () => {
 });
 
 describe("on: socket, environment, config, attach", () => {
-  it("the real home's socket is agend (never tmux's default); any other home keeps its isolated name", () => {
+  it("the real home's socket is agend (never tmux's default); any other home gets its isolated name with -b", () => {
     expect(socketFor(true, null)).toBe(BUNDLED_TMUX_SOCKET);
     expect(socketFor(true, "agend-1a2b3c")).toBe(BUNDLED_TMUX_SOCKET);
-    expect(socketFor(false, "agend-1a2b3c")).toBe("agend-1a2b3c");
+    expect(socketFor(false, "agend-1a2b3c")).toBe("agend-1a2b3c-b");
     // Another home without a name of its own never falls back to the real home's (live) socket.
     expect(() => socketFor(false, null)).toThrow(TmuxUnavailableError);
   });
 
-  it("tmuxSocket() is agend for the real home, never null; another home gets its isolated name", () => {
+  it("tmuxSocket() is agend for the real home, never null; another home gets its hashed name with -b", () => {
     // The real home is the one the password database names (paths.ts), so the answer is read from it; nothing runs.
     vi.stubEnv("AGEND_HOME", join(userInfo().homedir, ".agend"));
     expect(tmuxSocket()).toBe("agend");
-    vi.stubEnv("AGEND_HOME", scratch());
-    expect(tmuxSocket()).toMatch(/^agend-[0-9a-f]{6}$/);
+    const home = scratch();
+    vi.stubEnv("AGEND_HOME", home);
+    expect(tmuxSocket()).toBe(`${hashed(home)}-b`);
+  });
+
+  it("legacyTmuxSocket() is null for the real home (tmux's default), and 2.3's hashed name for any other home", () => {
+    vi.stubEnv("AGEND_HOME", join(userInfo().homedir, ".agend"));
+    expect(legacyTmuxSocket()).toBeNull();
+    const home = scratch();
+    vi.stubEnv("AGEND_HOME", home);
+    expect(legacyTmuxSocket()).toBe(hashed(home));
+    expect(legacyTmuxSocket()).not.toBe(tmuxSocket());
   });
 
   it("the environment: bundled terminfo first, true colour, AGEND_TMUX for panes, no caller $TMUX / $TMUX_PANE", () => {

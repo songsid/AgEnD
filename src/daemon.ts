@@ -38,7 +38,7 @@ import { resolveToolSet, toolsFor } from "./tool-permissions.js";
 import { TOOLS } from "./channel/mcp-tools.js";
 import { dashboardAccessProblem, dashboardFeaturesOff, withoutFeatures } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
-import { tmuxSocket } from "./tmux-binary.js";
+import { legacyTmuxSocket, tmuxSocket } from "./tmux-binary.js";
 import { migrateLegacyWindow, tagWindowId } from "./tmux-legacy.js";
 import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
@@ -3208,7 +3208,7 @@ export class Daemon extends EventEmitter {
     // M-2457 §6 rule 3: a window-id 2.3 wrote names a window of the SYSTEM tmux's default server.
     // That window is proven ours, checkpointed and closed (or this instance is held) — and the id is dropped, as it
     // means nothing on AgEnD's own server — before the fresh-start below can look at it.
-    await migrateLegacyWindow({ agendHome: getAgendHome(), instance: this.name, instanceDir: this.instanceDir, session: this.tmuxSessionName,
+    await migrateLegacyWindow({ agendHome: getAgendHome(), instance: this.name, instanceDir: this.instanceDir, session: this.tmuxSessionName, legacySocket: legacyTmuxSocket(),
       backendBinary: this.backend?.binaryName ?? "", checkpoint: () => this.checkpointSessionId(),
       log: (msg, data) => this.logger.info(data ?? {}, msg) });
     this.startupAdmission?.();

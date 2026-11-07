@@ -2350,6 +2350,9 @@ export class InstanceLifecycle {
             if (fencedWindowId) {
               try {
                 writeFileSync(join(this.ctx.getInstanceDir(name), "window-id"), `${fencedWindowId}\n`, { mode: 0o600 });
+                // M-2457: a window of AgEnD's own server (tagged), never taken for a 2.3 one (tmux-legacy.ts).
+                const [{ tagWindowId }, { tmuxSocket }] = await Promise.all([import("./tmux-legacy.js"), import("./tmux-binary.js")]);
+                tagWindowId(this.ctx.getInstanceDir(name), tmuxSocket(), fencedWindowId);
               } catch (err) {
                 this.ctx.logger.error({ err, name, windowId: fencedWindowId }, "Could not persist old window id after unverified durable stop");
               }

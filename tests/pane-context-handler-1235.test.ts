@@ -14,8 +14,8 @@ import { Daemon } from "../src/daemon.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { forgetInstanceContext } from "../src/topic-commands.js";
-import { getAgendHome, getTmuxSocketName } from "../src/paths.js";
-import { tmuxBinary, tmuxEnv } from "../src/tmux-binary.js";
+import { getAgendHome } from "../src/paths.js";
+import { tmuxBinary, tmuxEnv, tmuxSocket } from "../src/tmux-binary.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 
 class CaptureRes extends ServerResponse {
@@ -44,11 +44,11 @@ let attachment: Child, sequence: number;
 const logger = pino({ enabled: false }) as Logger;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
-  TmuxManager.setSocketName(getTmuxSocketName()); sequence = 1;
+  TmuxManager.setSocketName(tmuxSocket()); sequence = 1;
   for (const mock of Object.values(io)) mock.mockReset().mockImplementation(() => { throw Error("unexpected native process call"); });
   io.spawn.mockImplementation((command, args) => {
     expect(command).toBe(tmuxBinary()); expect(args).toContain("-C"); expect(args).toContain("-L");
-    expect(args[args.indexOf("-L") + 1]).toBe(getTmuxSocketName());
+    expect(args[args.indexOf("-L") + 1]).toBe(tmuxSocket());
     attachment = child(); return attachment;
   });
 });
@@ -167,7 +167,7 @@ describe("public status to the existing tmux control attachment", () => {
   it("an expired control attempt uses the existing bounded fallback and remains unknown", async () => {
     const h = fixture(); expect(h.context()).toBeNull();
     await vi.advanceTimersByTimeAsync(2_001); expect(h.context()).toBeNull();
-    expect(io.execFile).toHaveBeenCalledExactlyOnceWith(tmuxBinary(), ["-L", getTmuxSocketName(), "-f", join(getAgendHome(), "tmux", "agend-tmux.conf"), "capture-pane", "-t", "context-fixture:@1", "-p", "-S", "-60"],
+    expect(io.execFile).toHaveBeenCalledExactlyOnceWith(tmuxBinary(), ["-L", tmuxSocket(), "-f", join(getAgendHome(), "tmux", "agend-tmux.conf"), "capture-pane", "-t", "context-fixture:@1", "-p", "-S", "-60"],
       { maxBuffer: 1_048_576, timeout: 1_000, env: tmuxEnv() }, expect.any(Function));
     // This is the manager lane's inert fallback, within the original 2s budget.
     expect(io.spawn).toHaveBeenCalledOnce();
