@@ -102,7 +102,7 @@ function refused(port: number): Promise<boolean> {
   });
 }
 
-function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady"> = {}) {
+function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory">> = {}) {
   const reports: { code: string; detail: string }[] = [];
   const directories: { bindPassword: string }[] = [];
   const create = createHubServerFactory({
@@ -120,6 +120,34 @@ function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/h
 }
 
 describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a really initialized Hub", () => {
+  it("wires exact group enrollment into real pairing and its owning DB before any credential is issued", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), groupId = randomUUID(); let known = false;
+    (hub.config.hub.directory as Record<string, unknown>).profile = "ad";
+    const f = factory(hub.home, http.entry, { createDirectory: () => ({ realm: "corp", groupPolicy: "ad-direct-guid", signIn: vi.fn(), close: async () => {},
+      checkEligibility: async () => ({ eligible: true, person: ADMIN }), readPolicyGroups: async person => known
+        ? { kind: "complete", person, groups: [groupId], observedAt: Date.now() } : { kind: "unknown" } }) });
+    const service = await f.create(hub.config.hub, () => true);
+    const db = new Database(join(hub.home, "hub/hub.sqlite"));
+    try {
+      await service.start();
+      // Private test pre-provisioning only: no activation route is exposed by the factory.
+      const policy = JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body);
+      Object.assign(policy, { state: "enabled", revision: policy.revision + 1,
+        groups: [{ group: { realm: "corp", objectId: groupId }, dn: "CN=Members,DC=example,DC=test", allow: ["pair_fleet"], maxFleets: 1 }] });
+      db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      const { pairing, store } = http.state.deps!, ctx = { requestId: randomUUID(), current: vi.fn(), requirePerson: async () => ADMIN.key,
+        requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "admin" }) };
+      const offer = await pairing.create(ctx, ADMIN.key), pending = pairing.pair({ code: offer.code });
+      await pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint); await pairing.approve(ctx, pending.pairingId, pending.fingerprint);
+      const input = { pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret };
+      await expect(pairing.claim(input)).rejects.toThrow("unavailable"); expect(store.read().fleets).toEqual([]);
+      known = true; const claimed = await pairing.claim(input); expect(claimed.status).toBe("approved");
+      if (claimed.status !== "approved") throw Error("positive claim refused");
+      expect(pairing.authenticate(claimed.credential)).toMatchObject({ fleetId: pending.fleetId, owner: ADMIN.key });
+      expect(db.prepare("SELECT source,state FROM hub_group_resources").all()).toEqual([{ source: "group", state: "active" }]);
+      expect((await get(hub.webPort, "/hub/v1/ping", hub.caPem)).status).toBe(200);
+    } finally { db.close(); await service.close(); }
+  });
   it.each(["\uFEFF Dummy-import-秘密\r\n", "Dummy-import-秘密\r\n"])("passes exact imported secret bytes through commit and runtime directory composition (%j)", async password => {
     const sourceHome = mkdtempSync(join(process.cwd(), ".artifacts/hub-secret-source-")); roots.push(sourceHome);
     const source = join(sourceHome, "bind"); writeFileSync(source, password, { mode: 0o600 });
