@@ -222,7 +222,7 @@ export function BrowserSignInDialog({ backend, backends, onClose }) {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", lang, ask, changed: next => {
+    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", lang, ask, dashboard: true, changed: next => {
       if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
       else if (!next.selected.includes(backend)) void cards.addBackend(backend);
       const signature = JSON.stringify([next.login, next.pending]);

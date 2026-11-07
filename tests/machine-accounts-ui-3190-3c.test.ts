@@ -91,6 +91,11 @@ describe("a computer's accounts under its name", () => {
     const host = card().querySelector('.s-account-rows .s-account-row[data-account="default"]');
     expect(labels(host)).toEqual(expect.arrayContaining(["Sign in again", "Switch account…", "Sign out…"]));
     expect(card().querySelectorAll(".s-account-machine")).toHaveLength(1);
+    // Ridge #3321 S08: beside "On Desk PC", the host's rows are named as the host's, before them.
+    const head = card().querySelector(".s-account-host-head strong");
+    expect([text(head), !!(head.compareDocumentPosition ? true : true)]).toEqual(["On this AgEnD host", true]);
+    const kids = [...card().children] as any[];
+    expect(kids.findIndex((k) => k.classList?.contains("s-account-host-head"))).toBeLessThan(kids.findIndex((k) => k.classList?.contains("s-account-rows")));
   });
   it.each([
     ["offline", "Desk PC is offline. Start its Runtime to manage its accounts."],

@@ -209,7 +209,7 @@ export function OutsideCard() {
   return html`<section class="card s-outside" id="outsideCard" ref=${card}><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
     <div class="chips s-out-apps" id="outApps" role="list" aria-label=${to("appsLabel")}><span class="tag" role="listitem">Google Authenticator</span><span class="tag" role="listitem">Microsoft Authenticator</span><span class="tag" role="listitem">${to("appOther")}</span></div>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
-    <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
+    <label class="check"><input id="outSwitch" class="s-ui-toggle" type="checkbox" role="switch" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>
     ${!s.enrolled ? html`<p class="note" id="outNeedApp">${to("needApp")}</p>` : null}
     ${s.outside && open && link.url ? html`<p class="note" id="outOpenAt">${to("openAt", link.url)}${link.quick ? ` ${to("quick")}` : ""}</p>` : null}
