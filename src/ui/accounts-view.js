@@ -150,7 +150,7 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
-      onAdd=${begin(() => setAdding(cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} />`)}
+      onAdd=${begin(() => setAdding(cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => openSignIn(target))} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
     ${adding ? html`<${AddAccountDialog} cli=${adding} label=${cliLabel(adding.backend)} onClose=${() => setAdding(null)} onAdded=${(name) => { const mine = ++interaction.current; void accountAdded(adding.backend, name, () => mounted.current && interaction.current === mine); }} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
@@ -180,7 +180,7 @@ function moveUser(backend, user, openAgent) {
   }
 }
 
-function Card({ cli, running, onMove, stageDefault, onAdd, onRemove }) {
+function Card({ cli, running, onMove, stageDefault, onAdd, onRemove, onSignIn }) {
   const [picked, setPicked] = useState(undefined);   // a staged fleet default, shown until Save reads it back
   useEffect(() => setPicked(undefined), [cli.fleetDefault]);
   const host = cli.rows.filter((r) => r.scope && r.scope.kind === "host");
@@ -190,7 +190,7 @@ function Card({ cli, running, onMove, stageDefault, onAdd, onRemove }) {
   return html`<div class="s-account-card" data-backend=${cli.backend}>
     <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
       ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${onAdd}>${manageWords.add()}</button>` : null}</div>
-    <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} onRemove=${onRemove} />`)}</div>
+    <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} onRemove=${onRemove} onSignIn=${onSignIn} />`)}</div>
     ${[...machines.values()].map((m) => html`<div class="s-account-machine"><p class="note">${tx("machine", m.scope.name)}${m.scope.readOnlyReason ? ` — ${m.scope.readOnlyReason}` : ` — ${tx("machineReadOnly")}`}</p>
       ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} readOnly=${true} />`)}</div>`)}
     ${cli.profiles && typeof stageDefault === "function" ? html`<label class="field s-account-default"><span>${tx("fleetDefault", cliLabel(cli.backend))}</span>
@@ -202,7 +202,7 @@ function Card({ cli, running, onMove, stageDefault, onAdd, onRemove }) {
   </div>`;
 }
 
-function Row({ cli, row, onMove, onRemove, running = false, readOnly = false }) {
+function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, running = false, readOnly = false }) {
   const who = identityText(row.identity);
   const u = row.usage;
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
@@ -213,7 +213,7 @@ function Row({ cli, row, onMove, onRemove, running = false, readOnly = false }) 
     </div>
     <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${tx(`state_${row.state || "unknown"}`)}</span>
     ${readOnly ? null : html`<span class="s-actions">
-      ${row.signIn ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => openSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
+      ${row.signIn ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
       ${cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
       ${row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
     </span>`}

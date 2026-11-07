@@ -169,6 +169,18 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     read.release(); await settle(12);
     expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "personal" });
   });
+  it("P2-5: a row's Sign in opened and closed meanwhile still ends the late follow-up", async () => {
+    await mount();
+    card("claude-code").querySelector(".s-account-add").click(); await settle(6);
+    await type(dialog().querySelector("#acctAddName"), "oldacct3");
+    view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "oldacct3", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
+    const read = deferred(); holdGet = read.p;
+    btn(dialog(), "Add").click(); await settle(8);
+    rowOf("claude-code", "personal").querySelector(".s-actions button").click(); await settle(6);
+    shell.shellStore.set({ dialog: null }); await settle(4);           // the person closed that Sign in
+    read.release(); await settle(12);
+    expect(shell.shellStore.get().dialog).toBe(null);
+  });
   it("P2-5: while Remove runs its dialog can't be dismissed, and Move… waits too", async () => {
     await mount();
     const del = deferred();
