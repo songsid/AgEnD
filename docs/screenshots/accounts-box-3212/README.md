@@ -3,7 +3,8 @@
 Before and after for the Accounts block of Settings → Agent → AI sign-ins and API keys, in the real dashboard served by a scratch AgEnD fleet (empty `AGEND_HOME`, no agents, no accounts, no network) and headless Chromium. The two responses a fresh fleet cannot give — `GET /ui/accounts` and the agent names of `GET /api/settings/fleet/raw` — are answered inside the browser with the same fixture for both sides, so the pages, CSS and scripts are the product's own. **Fixture data only**: example.com addresses, made-up account and agent names, no real credential or account.
 
 - **Before**: `release/2.3.5-alpha` at `3374d56d`.
-- **After**: this PR at `0d2a50c1`, the head before this folder was added (the commit that adds it only adds these files).
+- **After**: this PR at `0d2a50c1`, the head before this folder was added.
+- Those two ids are from before the branch was rebased onto `7634da9d` (which brought in #3377, the Ctrl+U fix; it changes nothing the pictures show) and before the review fixes (the meter in a module of its own, the 5h window aged at projection time, the requests behind Close and Cancel sign-in and remove). None of that changes how the block looks: the same fixture drawn at the final head gives the same block (rows, meters, tips and the "used by" menu were checked again in a real browser), so the pictures were not taken again.
 
 Each picture shows the whole Accounts block, before on the left and after on the right. Desktop is 1460 px wide; phone is 390 px wide (drawn at 2×).
 
