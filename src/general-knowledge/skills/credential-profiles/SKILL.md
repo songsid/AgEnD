@@ -122,9 +122,11 @@ A fleet admin can also add a named account (**+ Add account**: creates its
 folder, then signs it in) and remove one (**Remove…**: deletes its folder, its
 sign-in and, for Claude Code, its own conversation copies) from that page.
 Remove is refused while any agent, ClassicBot room or the fleet default uses it,
-or while it is signing in; it never touches the CLI's default sign-in. There is
-no agent tool for either: tell the person where it is rather than deleting a
-profile folder yourself.
+or while it is signing in; it never touches the CLI's default sign-in. **Sign
+out…** runs the CLI's own logout for an account (Claude Code, Codex, Kiro), and
+**Switch account…** signs the default sign-in out and opens Sign in. There is no
+agent tool for any of these: tell the person where they are rather than deleting
+a profile folder or logging a CLI out yourself.
 
 **What to do / what not to do, per backend**
 

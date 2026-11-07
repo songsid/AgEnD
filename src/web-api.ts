@@ -408,7 +408,9 @@ export interface WebApiContext {
   accountsView?(): Promise<unknown>;
   /** #3212 PR 2: + Add account / Remove (accounts-profiles.ts); `by` is the session's label, for the fleet log. */
   addAccountProfile?(backend: string, name: unknown, by: string): { ok: true } | { ok: false; error: string; clash?: string };
-  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string): { ok: true } | { ok: false; error: string; users?: unknown };
+  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string; users?: unknown }>;
+  /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
+  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string }>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
@@ -1205,12 +1207,13 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 /**
  * #3212 PR 2: Settings → Accounts — `POST /ui/accounts/<backend>` `{ name }` adds a named account (a credential profile's
  * folder); `DELETE /ui/accounts/<backend>/<name>` `{ confirm: <name> }` removes one (accounts-profiles.ts: every refusal
- * deletes nothing). The fleet's local admin session only, as the sign-in routes: never the CLI's header token, a guest,
+ * deletes nothing). PR 3: `POST /ui/accounts/<backend>/signout` `{ profile: <name> | null, confirm: true }` signs an
+ * account out with the CLI's own logout (accounts-signout.ts). The fleet's local admin session only, as the sign-in routes: never the CLI's header token, a guest,
  * a read session, the public link or the gateway — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
-  unsafe: 409, default_home: 409, failed: 500,
+  unsafe: 409, default_home: 409, failed: 500, unsupported: 400,
 };
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1225,8 +1228,10 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
   const add = method === "POST" ? /^\/ui\/accounts\/([a-z][a-z0-9-]{0,31})$/.exec(path) : null;
   const remove = method === "DELETE" ? /^\/ui\/accounts\/([a-z][a-z0-9-]{0,31})\/([^/]{1,200})$/.exec(path) : null;
-  if (!add && !remove) { json(res, 404, { error: "not_found" }); return true; }
-  if (add ? typeof ctx.addAccountProfile !== "function" : typeof ctx.removeAccountProfile !== "function") { json(res, 404, { error: "not_found" }); return true; }
+  const signout = method === "POST" ? /^\/ui\/accounts\/([a-z][a-z0-9-]{0,31})\/signout$/.exec(path) : null;
+  if (!add && !remove && !signout) { json(res, 404, { error: "not_found" }); return true; }
+  const handler = add ? ctx.addAccountProfile : remove ? ctx.removeAccountProfile : ctx.signOutAccount;
+  if (typeof handler !== "function") { json(res, 404, { error: "not_found" }); return true; }
   let target = "";
   if (remove) { try { target = decodeURIComponent(remove[2]!); } catch { json(res, 400, { error: "name" }); return true; } }
   (async () => {
@@ -1242,12 +1247,18 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
       const r = ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label);
       if (r.ok) json(res, 200, { added: parsed.data.name });
       else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}) });
-    } else {
+    } else if (remove) {
       const parsed = z.strictObject({ confirm: z.string().max(200) }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = ctx.removeAccountProfile!(remove![1]!, target, parsed.data.confirm, now.label);
-      if (r.ok) json(res, 200, { removed: target });
+      const r = await ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label);
+      if (r.ok) json(res, 200, { removed: target, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
       else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.users ? { users: r.users } : {}) });
+    } else {
+      const parsed = z.strictObject({ profile: z.string().max(200).nullable(), confirm: z.literal(true) }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
+      const r = await ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label);
+      if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
+      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error });
     }
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
   return true;

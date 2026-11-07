@@ -8,13 +8,14 @@ import { request } from "node:https";
 import { connect } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { verify, createPublicKey } from "node:crypto";
+import { verify, createPublicKey, randomUUID } from "node:crypto";
 import yaml from "js-yaml";
 import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
 import { createHubServerFactory, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
+import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
@@ -133,6 +134,22 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     const json = readPrivateFile(hub.home, "hub/json-control");
     expect(json).toBe('{"enabled":false}');
     expect(JSON.parse(json)).toEqual({ enabled: false });
+  });
+
+  it("wires an existing administrator revoke to the live member server's post-commit authorization refresh", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    const service = await f.create(hub.config.hub, () => true), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
+    try {
+      await service.start();
+      const { pairing, store } = http.state.deps!, fleetId = randomUUID();
+      store.mutate({ at: Date.now(), requestId: randomUUID(), actor: { kind: "person", person: ADMIN.key }, action: "test.fleet", result: "completed" }, state => {
+        state.fleets.push({ id: fleetId, owner: ADMIN.key, credentialHash: "a".repeat(64), generation: 1, status: "active" });
+      });
+      await pairing.revoke({ requestId: randomUUID(), current: async () => ({ kind: "directory", person: ADMIN.key, sessionId: randomUUID() }), requirePerson: async () => ADMIN.key,
+        requireAdmin: async () => ({ kind: "local-host", sessionId: randomUUID(), directoryBinding: ADMIN.key }) }, fleetId);
+      expect(refresh).toHaveBeenCalledExactlyOnceWith();
+      expect(store.read()).toMatchObject({ revocationVersion: 1, fleets: [{ id: fleetId, status: "revoked" }] });
+    } finally { refresh.mockRestore(); await service.close(); }
   });
 
   it("without S3 in the build: hub-incomplete, before opening anything", async () => {

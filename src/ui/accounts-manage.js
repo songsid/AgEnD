@@ -31,6 +31,15 @@ register("accountsManage", {
     err_missing: "This account's folder is no longer there.", err_unsafe: "This account's folder isn't a plain folder of this account inside AgEnD's accounts folder, so nothing was deleted.",
     err_default_home: "That is the CLI's default sign-in, which is never deleted here.",
     err_users_unknown: "AgEnD can't read the ClassicBot settings, so it can't tell whether a room uses this account. Fix classicBot.yaml, then try again.",
+    signOut: "Sign out…", switchAccount: "Switch account…", signOutTitle: "Sign out of {0}'s {1}?", switchTitle: "Switch {0}'s default sign-in?",
+    signOutLead: "AgEnD runs {0}'s own logout for this account on the host. Its conversations stay.",
+    switchLead: "AgEnD signs this account out with {0}'s own logout, then opens Sign in for the account you want. Agents using it restart on the new account once you've signed in.",
+    stopUsers: "Using it now — they stop working until it's signed in again:", nobody: "No agent, ClassicBot room or fleet default uses it.",
+    signOutGo: "Sign out", switchGo: "Sign out and sign in", signingOut: "Signing out…", signedOut: "Signed out.",
+    keychainLeft: "Signed out, but a Keychain item for this account is still on this Mac. Remove it in Keychain Access.",
+    removedKeychainLeft: "Account “{0}” removed, but a Keychain item for it is still on this Mac. Remove it in Keychain Access.",
+    err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout didn't succeed. Try again, or run it on the host.",
+    defName: "default sign-in", acctName: "account “{0}”",
   },
   "zh-TW": {
     add: "＋ 新增帳號", addTitle: "新增 {0} 帳號", addLead: "具名帳號是這台主機上另一組登入。先取名，再登入。",
@@ -51,6 +60,15 @@ register("accountsManage", {
     err_missing: "這個帳號的資料夾已經不在了。", err_unsafe: "這個帳號的資料夾不是 AgEnD 帳號資料夾裡、屬於這個使用者的一般資料夾，所以沒有刪除任何東西。",
     err_default_home: "那是 CLI 的預設登入，這裡永遠不會刪除它。",
     err_users_unknown: "AgEnD 無法讀取 ClassicBot 設定，所以無法確定是否有房間在使用這個帳號。請先修正 classicBot.yaml 再試一次。",
+    signOut: "登出…", switchAccount: "切換帳號…", signOutTitle: "要登出 {0} 的{1}嗎？", switchTitle: "要切換 {0} 的預設登入嗎？",
+    signOutLead: "AgEnD 會在主機上用 {0} 自己的登出指令登出這個帳號。它的對話會保留。",
+    switchLead: "AgEnD 會用 {0} 自己的登出指令登出這個帳號，然後開啟「登入」讓你登入想用的帳號。登入後，使用它的 Agent 會以新帳號重新啟動。",
+    stopUsers: "目前使用中——在重新登入前它們都無法運作：", nobody: "沒有 Agent、ClassicBot 房間或 Fleet 預設在使用它。",
+    signOutGo: "登出", switchGo: "登出並登入", signingOut: "正在登出…", signedOut: "已登出。",
+    keychainLeft: "已登出，但這台 Mac 上仍有這個帳號的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
+    removedKeychainLeft: "已移除帳號「{0}」，但這台 Mac 上仍有它的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
+    err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請再試一次，或在主機上執行。",
+    defName: "預設登入", acctName: "帳號「{0}」",
   },
 });
 const tm = (k, ...v) => t(`accountsManage.${k}`, ...v);
@@ -128,7 +146,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
     const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed });
     if (!live.current) return;
     setBusy(false);
-    if (r.ok) { toast(tm("removed", row.profile), true); onClose(); onRemoved(); return; }
+    if (r.ok) { toast(r.keychainLeft ? tm("removedKeychainLeft", row.profile) : tm("removed", row.profile), !r.keychainLeft); onClose(); onRemoved(); return; }
     if (r.error === "in_use" && r.users) setUsers(r.users);
     setErr(errText(r));
   };
@@ -147,5 +165,45 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   </${Dialog}>`;
 }
 
+/**
+ * #3212 PR 3: Sign out (`mode` "signout") or Switch account (`mode` "switch", the default sign-in): names the account
+ * and who stops using it until it is signed in again (an agent and the fleet default with Move…); the CLI's own logout
+ * runs on the host. `onDone(result)`: after the server signed it out.
+ */
+export function SignOutDialog({ cli, row, label, mode = "signout", onClose, onMove, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const live = useLive();
+  const users = row.usedBy;
+  const any = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
+  const which = row.profile ? tm("acctName", row.profile) : tm("defName");
+  const go = async () => {
+    if (busy) return;
+    setBusy(true); setErr("");
+    const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}/signout`, { profile: row.profile || null, confirm: true });
+    if (!live.current) return;
+    setBusy(false);
+    if (!r.ok) { setErr(r.error === "failed" ? tm("err_signout_failed", label) : errText(r)); return; }
+    toast(r.keychainLeft ? tm("keychainLeft") : tm("signedOut"), !r.keychainLeft);
+    onClose(); onDone(r);
+  };
+  const moveBtn = (user) => html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
+  return html`<${Dialog} title=${mode === "switch" ? tm("switchTitle", label) : tm("signOutTitle", label, which)} onClose=${onClose} busy=${busy}
+    actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
+    <button type="button" class=${mode === "switch" ? "btn btn-primary" : "btn btn-danger"} disabled=${busy} onClick=${go}>${busy ? tm("signingOut") : mode === "switch" ? tm("switchGo") : tm("signOutGo")}</button>`}>
+    <p>${mode === "switch" ? tm("switchLead", label) : tm("signOutLead", label)}</p>
+    ${any ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("stopUsers")}</strong></p><ul>
+      ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${mode === "switch" ? null : moveBtn({ kind: "agent", name })}</li>`)}
+      ${users.fleetDefault && row.profile ? html`<li><span>${tm("inUseDefault", label)}</span>${moveBtn({ kind: "default" })}</li>` : null}
+      ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span></li>`)}
+    </ul></div>` : html`<p class="note">${tm("nobody")}</p>`}
+    ${err ? html`<p class="err" role="alert">${err}</p>` : null}
+  </${Dialog}>`;
+}
+
+/** The CLIs the dashboard can sign out (their own logout; accounts-signout.ts SIGN_OUT). */
+export const SIGN_OUT_CLIS = new Set(["claude-code", "codex", "kiro-cli"]);
+
 /** The button labels the view draws (from this module, so an older view never shows them). */
-export const manageWords = { add: () => tm("add"), remove: () => tm("remove"), added: (n) => tm("added", n), addedHost: (n) => tm("addedHostSignIn", n) };
+export const manageWords = { add: () => tm("add"), remove: () => tm("remove"), added: (n) => tm("added", n), addedHost: (n) => tm("addedHostSignIn", n),
+  signOut: () => tm("signOut"), switchAccount: () => tm("switchAccount") };
