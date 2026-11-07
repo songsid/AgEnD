@@ -17,7 +17,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
-import { CompactMeter } from "/assets/usage-dialog.js";   // #3321: the Usage panel's meter, not a second one
+import { CompactMeter } from "/assets/usage-meter.js";   // #3321: the Usage panel's meter, not a second one (its own module: a tab that kept an older usage-dialog.js still links)
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
