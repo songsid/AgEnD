@@ -15,7 +15,7 @@
 export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
-export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "runtimes", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
+export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "runtimes", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "advanced"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 /** #2347: the names before the regrouping, still served (the page moves to the new address); where each one went. */
 export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = Object.freeze({
