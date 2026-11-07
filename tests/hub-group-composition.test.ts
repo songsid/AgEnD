@@ -134,6 +134,19 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     expect((await r.call(r.admin, "POST", `${r.path}/resources/resume`, { ...resume, expectedLifecycleRevision: 1 })).status).toBe(409);
     expect((await r.call(r.admin, "POST", `${r.path}/resources/resume`, resume)).json).toMatchObject({ ok: true, state: "active" });
     expect((await r.call(r.admin, "GET", r.path)).json.paused).toEqual([]);
+    await r.save({ ...await r.readPolicy(), denies: [{ person: ADMIN.key, deny: ["pair_fleet"] }] });
+    expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toEqual([{ id: pending.fleetId, label: null, status: "suspended" }]);
+  });
+  it("shows legacy only for intact never-enabled repair; enabled repair stays unavailable while sign-in and admin repair remain open", async () => {
+    const r = await rig(), original = await r.readPolicy();
+    const replace = (policy: HubGroupPolicy) => r.db!.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+    replace({ ...original, generation: "older-generation" });
+    expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.mode).toBe("legacy");
+    expect((await r.call(r.admin, "GET", r.path)).json).toMatchObject({ binding: "repair-required", policy: null });
+    replace(original); await r.save(await r.proposal()); const enabled = await r.readPolicy(); replace({ ...enabled, generation: "older-generation" });
+    expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).status).toBe(503);
+    expect((await r.call(r.admin, "GET", r.path)).json).toMatchObject({ binding: "repair-required", policy: null });
+    expect((await r.signIn(r.colleague.login)).view.signedIn).toBe(true);
   });
   it("keeps a non-AD editor read-only and permanently fences captured controls on service close", async () => {
     const r = await rig(false), policy = await r.proposal(); expect((await r.call(r.admin, "GET", r.path)).json.supported).toBe(false);

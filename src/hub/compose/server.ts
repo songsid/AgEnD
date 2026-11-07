@@ -318,7 +318,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             action: "group-policy.authorization-changed", result: "completed" }, state => { state.revocationVersion++; });
         }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
       teardown.add("group policy confirmation", () => groupControl.close());
-      const groupWelcome = createHubGroupWelcome({ policy, ready: () => binding().kind === "ready", fleets: () => store.read().fleets });
+      const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
+        const state = binding();
+        return state.kind === "ready" ? "ready" : state.legacy ? "never-enabled" : "unavailable";
+      }, fleets: () => store.read().fleets, fleetState: async resource => groups.resourceState(resource) });
       let generation = 0;
       const mode: HubMode = { serverEnabled: live, memberEnabled: () => false, epoch: () => generation };
       const http = httpEntry.createHubHttp({
