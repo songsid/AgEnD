@@ -57,6 +57,11 @@ export interface GroupImpact {
   readonly suspendedOnSave: readonly GroupImpactResource[];
   /** The configured administrator is in no `ask_agents` group after this change. */
   readonly adminLosesChat: boolean;
+  /**
+   * People whose group membership AD did not report (leader ruling via cid-s89-seams): HELD both ways — this change neither grants
+   * them anything nor suspends anything of theirs, and it does not block saving. `capabilities` are the actions left undecided.
+   */
+  readonly held: readonly (GroupImpactPerson & { readonly reason: "membership-unknown" })[];
 }
 export type GroupPreviewResponse =
   | { readonly ok: true; readonly previewDigest: string; readonly expiresAt: number; readonly policyRevision: number; readonly authorizationVersion: number; readonly impact: GroupImpact }

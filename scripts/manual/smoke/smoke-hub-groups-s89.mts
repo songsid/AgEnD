@@ -37,10 +37,14 @@ rig.addPerson("bo", "Bo Wu"); rig.addPerson("cy", "Cy Tan");
 
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
-const CASES = [
+const ALL_CASES = [
   { device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "desk", lang: "zh-TW", theme: "dark", viewport: { width: 1366, height: 860 } },
+  { device: "desk", lang: "zh-TW", theme: "light", viewport: { width: 1366, height: 860 } },
   { device: "phone", lang: "en", theme: "light", viewport: { width: 390, height: 844 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } },
 ] as const;
+// ONLY=desk-light-zh-TW,… runs just those cases (e.g. pictures for an early review); SKEW runs unless ONLY is set.
+const ONLY = (process.env.ONLY ?? "").split(",").filter(Boolean);
+const CASES = ONLY.length ? ALL_CASES.filter((c) => ONLY.includes(`${c.device}-${c.theme}-${c.lang}`)) : ALL_CASES;
 const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts");
 const NEW_MODULES = ["hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js"];
 const listed = [...(HUB_UI_MODULES as readonly string[]), ...NEW_MODULES];
@@ -51,7 +55,8 @@ const POLICY = { realm: "corp", generation: "gen-1", revision: 4, state: "enable
   { group: { realm: "corp", objectId: ID1 }, dn: "CN=Hub-Members,OU=Groups,DC=example,DC=test", allow: ["ask_agents"], maxFleets: 0 },
   { group: { realm: "corp", objectId: ID2 }, dn: "CN=Hub-Owners,OU=Groups,DC=example,DC=test", allow: ["ask_agents", "publish_agents", "pair_fleet"], maxFleets: 1 }], denies: [] };
 const IMPACT = { losingActions: [{ personId: { realm: "corp", objectId: ID1 }, name: "Bo Wu", login: "bo" }], losingPublication: [],
-  grandfathered: [{ kind: "exposure", id: "x1", revision: 2, label: "Sales numbers", owner: { name: "Cy Tan" } }], suspendedOnSave: [], adminLosesChat: false };
+  grandfathered: [{ kind: "exposure", id: "x1", revision: 2, label: "Sales numbers", owner: { name: "Cy Tan" } }], suspendedOnSave: [], adminLosesChat: false,
+  held: [{ personId: "corp/" + "3f1e2d3c-4b5a-4968-8776-655443322113", name: "Dee Lin", login: "dee", capabilities: ["ask_agents"], reason: "membership-unknown" }] };
 const WELCOME: Record<string, unknown> = {
   none: { ok: true, v: 1, mode: "enabled", chat: { state: "deny", reason: "no-group" }, publish: { state: "deny", reason: "no-group" }, connect: { state: "deny", reason: "no-group", maxFleets: 0, fleets: [] } },
   ask: { ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "deny", reason: "no-group" }, connect: { state: "deny", reason: "no-group", maxFleets: 0, fleets: [] } },
@@ -132,7 +137,7 @@ try {
     await d.page.screenshot({ path: shot(`${tag}-editor-preview`) });
     const ed = await d.page.evaluate(`({ rows: document.querySelectorAll(".hub-group-row").length, url: location.pathname + location.search,
       preview: document.querySelector(".hub-groups-preview")?.textContent || "" })`);
-    check(`${tag}-editor`, ed.rows === 2 && ed.url === "/ui/hub/admin?view=groups" && /Bo Wu/.test(ed.preview) && /Sales numbers/.test(ed.preview) && !(await overflow(d.page)) && await clean(d),
+    check(`${tag}-editor`, ed.rows === 2 && ed.url === "/ui/hub/admin?view=groups" && /Bo Wu/.test(ed.preview) && /Sales numbers/.test(ed.preview) && /Dee Lin/.test(ed.preview) && !(await overflow(d.page)) && await clean(d),
       { ed: { ...ed, preview: ed.preview.slice(0, 160) }, errs: d.errs, foreign: d.foreign, csp: await d.csp() });
     await d.ctx.close();
   }
@@ -142,7 +147,7 @@ try {
     const body = p.startsWith("/assets/") ? old(`shared/${f}`) : old(f);
     return body === null ? route.continue() : route.fulfill({ status: 200, contentType: f.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8", body });
   });
-  for (const c of [CASES[0], CASES[3]]) {
+  for (const c of ONLY.length ? [] : [ALL_CASES[0], ALL_CASES[4]]) {
     const tag = `skew-${c.device}-${c.lang}`;
     // 1. An older hub-client.js (no group calls) under this panel, with the server's mark: nothing of the feature shows; the admin page works.
     const a = await open(c, "/ui/hub/admin", async (p) => { await contract(p, "full"); await serveOld(["hub-client.js"])(p); });

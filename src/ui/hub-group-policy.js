@@ -137,7 +137,8 @@ export function HubGroupPolicyPage() {
         ${!preview || preview.loading ? html`<p class="note" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${hg("previewing")}</p>`
           : !preview.ok ? html`<p class="note" role="status">${preview.code === "unavailable" || preview.code === "not-found" ? hg("enableLater") : preview.code === "conflict" ? hg("conflict") : hg("failed")}</p>`
           : html`${pv.adminLosesChat ? html`<p class="err" role="alert">${hg("adminLosesChat")}</p>` : null}
-            ${list(pv.losingActions, hg("losingActions"))}${list(pv.losingPublication, hg("losingPublication"))}${list(pv.grandfathered, hg("grandfathered"))}${list(pv.suspendedOnSave || pv.suspended, hg("suspended"))}
+            ${list(pv.losingActions, hg("losingActions"))}${pv.held && pv.held.length ? html`<div class="hub-groups-impact hub-groups-held" data-held=${pv.held.length}><b>${hg("held", pv.held.length)}</b><p class="note">${hg("heldHint")}</p>
+              <ul>${pv.held.map((r, i) => html`<li key=${i}>${r.name || r.personId}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null}${list(pv.losingPublication, hg("losingPublication"))}${list(pv.grandfathered, hg("grandfathered"))}${list(pv.suspendedOnSave || pv.suspended, hg("suspended"))}
             ${!(pv.losingActions || []).length && !(pv.losingPublication || []).length && !(pv.suspendedOnSave || pv.suspended || []).length && !pv.adminLosesChat ? html`<p class="note">${hg("noImpact")}</p>` : null}
             <div class="hub-groups-actions"><button type="button" class="btn btn-primary" disabled=${saving} onClick=${save}>${state === "enabled" && policy.state !== "enabled" ? hg("saveOn") : hg("save")}</button></div>`}
       </section>` : null}
