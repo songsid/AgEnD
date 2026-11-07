@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, request, type Server } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { signOutAccount, removeClaudeBackups, SIGN_OUT, CLAUDE_DEFAULT_KEYCHAIN_SERVICE } from "../src/accounts-signout.js";
@@ -370,5 +370,39 @@ describe("#3305 review r1 remainders", () => {
     expect(await signOut(ok, "claude-code", "work", true, "x")).toEqual({ ok: true });
     await new Promise((r) => setTimeout(r, 5));
     expect(ok.loginWindow.tryClaim("web", "codex"), "a confirmed end releases").not.toBe(null);
+  });
+});
+
+describe("#3305 review r2 remainders", () => {
+  const deferred = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
+  it("P1: backups that could not be listed before the logout are unknown, not none — nothing is deleted", async () => {
+    const cfg = scratch(), backups = join(cfg, "backups"); mkdirSync(backups);
+    writeFileSync(join(backups, ".claude.json.backup.personal"), "{}");
+    chmodSync(backups, 0o000);                                              // unreadable when the snapshot is taken
+    const saved = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = cfg;
+    try {
+      const run = async () => { chmodSync(backups, 0o755); return { code: 0 }; };   // readable again by the cleanup
+      expect(await signOutAccount(scratch(), { backend: "claude-code", profile: null, confirm: true, signingIn: false }, { run, keychainHas: noKeychain, platform: "linux", fs: fsMine })).toEqual({ ok: true });
+      expect(readdirSync(backups)).toEqual([".claude.json.backup.personal"]);
+    } finally { chmodSync(backups, 0o755); if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
+  });
+  it("P2-3: a newer stop cancels a reopen still waiting for an old logout's CLI", async () => {
+    const { data } = profileDir();
+    let ended!: () => void; const gone = new Promise<void>((r) => { ended = r; });
+    const fm: any = {
+      dataDir: data, logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }, eventLog: null, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(),
+      loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null, shutdown: async () => {} },
+      withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
+      reopenLoginWindow: (FleetManager.prototype as any).reopenLoginWindow, loginReopenGen: 0, structuredLoginCleanupFailed: false,
+      forgetSignInIdentities: () => {}, backendAvailability: { refresh: async () => {} },
+      accountSignOutDeps: { platform: "linux", run: async () => ({ code: null, timedOut: true, gone }), keychainHas: noKeychain },
+    };
+    await (FleetManager.prototype as any).signOutAccount.call(fm, "claude-code", "work", true, "x");   // its CLI's end is unknown
+    fm.loginWindow.close(); fm.reopenLoginWindow();                            // stop, start: the reopen waits
+    const stopping = (FleetManager.prototype as any).shutdownLoginWindows.call(fm);   // a newer stop
+    ended(); await stopping; await new Promise((r) => setTimeout(r, 5));
+    expect(fm.loginWindow.tryClaim("web", "claude-code"), "the old reopen does not open a stopped fleet").toBe(null);
+    fm.reopenLoginWindow();                                                    // the next start reopens at once (nothing pending)
+    expect(fm.loginWindow.tryClaim("web", "claude-code")).not.toBe(null);
   });
 });

@@ -31,25 +31,26 @@ export function runQuiet(binary: string, args: readonly string[], env: NodeJS.Pr
     try { child = spawn(binary, [...args], { env, stdio: "ignore", windowsHide: true }); } catch { resolve({ code: null, gone: Promise.resolve() }); return; }
     let markGone!: () => void;
     const gone = new Promise<void>(r => { markGone = r; });
-    child.once("error", () => markGone());
-    child.once("exit", () => markGone());
-    let done = false, timedOut = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
     const later = (ms: number, fn: () => void) => { const t = setTimeout(fn, ms); t.unref?.(); timers.push(t); };
+    let done = false, timedOut = false, ended = false;
+    // Only an exit is the child's end — or an error before it ever had a pid (it never started). An error on a started
+    // child (a signal that could not be sent: EPERM, …) is not (#3305 review, Node's ChildProcess "error" contract): the
+    // answer may come (a failure), but `gone` and the escalation stay until an exit is seen.
+    const end = () => { if (ended) return; ended = true; for (const t of timers) clearTimeout(t); markGone(); };
     const finish = (code: number | null) => {
       if (done) return;
       done = true;
-      for (const t of timers) clearTimeout(t);
       resolve(timedOut ? { code: null, timedOut: true, gone } : { code, gone });
     };
-    child.once("error", () => finish(null));
-    child.once("exit", code => finish(code));
+    child.on("error", () => { if (child.pid === undefined) end(); finish(null); });
+    child.once("exit", code => { end(); finish(code); });
     later(timeoutMs, () => {
       timedOut = true;
       try { child.kill("SIGINT"); } catch { /* gone */ }
       later(graceMs, () => {
         try { child.kill("SIGKILL"); } catch { /* gone */ }
-        later(killWaitMs, () => finish(null));
+        later(killWaitMs, () => finish(null));   // the answer is bounded; `gone` still waits for an exit
       });
     });
   });

@@ -20526,6 +20526,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async shutdownLoginWindows(): Promise<void> {
+    // #3305 review: a newer stop supersedes a reopen still waiting for an old account logout's CLI.
+    this.loginReopenGen++;
     // Close the lock FIRST: in-flight starts parked in a pre-check or
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.

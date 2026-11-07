@@ -37,9 +37,20 @@ describe("runQuiet (#3305 review P2-5)", () => {
     await new Promise((res) => setTimeout(res, 30)); expect(isGone, "not gone until an exit is seen").toBe(false);
     deaf.emit("exit", null); await new Promise((res) => setTimeout(res, 1)); expect(isGone).toBe(true);
   });
+  it("#3305 r2: an error on a started child (a kill that failed: EPERM) is not its end — `gone` waits for the exit", async () => {
+    const c = child((sig, k) => { if (sig === "SIGINT") k.emit("error", Object.assign(new Error("kill EPERM"), { code: "EPERM" })); });
+    c.pid = 4242;
+    const r = await runQuiet("x", [], {}, opts(c));
+    expect(r).toMatchObject({ code: null, timedOut: true });
+    let isGone = false; void r.gone.then(() => { isGone = true; });
+    await new Promise((res) => setTimeout(res, 40)); expect(isGone).toBe(false);
+    expect(c.signals, "the escalation went on after the error").toEqual(["SIGINT", "SIGKILL"]);
+    c.emit("exit", null); await new Promise((res) => setTimeout(res, 1)); expect(isGone).toBe(true);
+  });
   it("not found or not started: a failure", async () => {
-    const c = child(); const p = runQuiet("x", [], {}, opts(c)); setTimeout(() => c.emit("error", new Error("ENOENT")), 2);
-    expect(await p).toMatchObject({ code: null });
+    const c = child(); const p = runQuiet("x", [], {}, opts(c)); setTimeout(() => c.emit("error", new Error("ENOENT")), 2);   // no pid: never started
+    const nf = await p; expect(nf).toMatchObject({ code: null });
+    let ok = false; await Promise.race([nf.gone.then(() => { ok = true; }), new Promise((res) => setTimeout(res, 20))]); expect(ok, "never started: gone").toBe(true);
     expect(await runQuiet("x", [], {}, { spawn: () => { throw new Error("spawn"); } })).toMatchObject({ code: null });
   });
 });

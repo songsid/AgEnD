@@ -60,16 +60,24 @@ export interface SignOutDeps {
   fs: ProfileFs;
 }
 
-/** The `.claude.json` backups in a config dir, as `<name>\0<inode>` (a file replaced under the same name is another one). */
-export function claudeBackups(configDir: string): Set<string> {
+/**
+ * The `.claude.json` backups in a config dir, as `<name>\0<inode>` (a file replaced under the same name is another one).
+ * An empty set only when there is no backups folder at all; null when what is there could not be read completely
+ * (#3305 review: unknown is not empty — a cleanup measured against an incomplete list could take the person's files).
+ */
+export function claudeBackups(configDir: string): Set<string> | null {
   const dir = join(configDir, "backups"), out = new Set<string>();
-  try {
-    const st = lstatSync(dir); if (!st.isDirectory() || st.isSymbolicLink()) return out;
-    for (const name of readdirSync(dir)) {
-      if (!name.startsWith(".claude.json.backup")) continue;
-      try { out.add(`${name}\0${lstatSync(join(dir, name)).ino}`); } catch { /* gone */ }
+  let st;
+  try { st = lstatSync(dir); } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? out : null; }
+  if (!st.isDirectory() || st.isSymbolicLink()) return out;           // nothing the cleanup would touch
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return null; }
+  for (const name of names) {
+    if (!name.startsWith(".claude.json.backup")) continue;
+    try { out.add(`${name}\0${lstatSync(join(dir, name)).ino}`); } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;   // gone meanwhile: not there; anything else: unknown
     }
-  } catch { /* none */ }
+  }
   return out;
 }
 
@@ -134,11 +142,12 @@ export async function signOutAccount(dataDir: string, req: SignOutRequest, deps:
   if (req.backend !== "claude-code") return { ok: true };
   if (profile !== null) removeClaudeBackups(configDir, { all: true });
   else {
-    // No folder before the logout: no backup of the person's to keep apart, and none bound to clean — nothing is deleted.
-    if (seen) {
+    // No folder before the logout, or its backups could not be listed completely: nothing is bound to clean — nothing is
+    // deleted (the backup this logout wrote stays; the person's own are never at risk).
+    if (seen && before) {
       const now = dirIdentity(configDir);
       if (!now || now.real !== seen.real || now.dev !== seen.dev || now.ino !== seen.ino) return { ok: false, error: "unsafe" };
-      removeClaudeBackups(seen.real, { except: before! });
+      removeClaudeBackups(seen.real, { except: before });
     }
   }
   if (d.platform === "darwin") {
