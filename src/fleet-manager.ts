@@ -25581,9 +25581,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let jobId = requestedJobId;
     if (jobId === null) {
       // One already asked for is in flight (its row "running"): never a second job, nor a second restart.
-      // #3373 review P2: a consumed restart job runs until the next process settles it (settleAfterRestart) or its launch
-      // fails (finish) — so this sees only a restart still in flight, never an old one.
-      if (this.applyJobs.all().some(item => item.restart_key && item.status === "running" && item.targets.some(r => r.target === APPLY_FLEET_TARGET && r.status === "running"))) {
+      // #3373 review P2: a consumed restart job (and its row) runs until the next process settles it (settleAfterRestart)
+      // or its launch fails (finish) — so this sees only a restart still in flight, never an old one.
+      if (this.applyJobs.all().some(item => item.restart_key && item.targets.some(r => r.target === APPLY_FLEET_TARGET && r.status === "running"))) {
         return { ok: false, status: 409, error: "a restart is already running" };
       }
       const pending = this.settingsRestartPending();
