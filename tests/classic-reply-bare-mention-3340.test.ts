@@ -61,6 +61,13 @@ describe("#3340 Discord ClassicBot: a reply that is only @bot", () => {
     await r.post("<@BOT>");
     expect(r.forward).not.toHaveBeenCalled(); expect(r.react).not.toHaveBeenCalled();
   });
+  it("an empty reply to one of the bot's OWN messages, without the mention (a sticker or embed only): still dropped, never an empty turn quoting itself", async () => {
+    const r = discordRoom();
+    await r.post("", { text: "our earlier answer", authorId: "BOT" });
+    expect(r.forward).not.toHaveBeenCalled(); expect(r.react).not.toHaveBeenCalled();
+    await r.post("<@BOT>", { text: "our earlier answer", authorId: "BOT" });      // with the mention it is asked about, as any reply
+    expect(r.forward).toHaveBeenCalledTimes(1);
+  });
   it("the control: a reply with words after @bot is forwarded as before", async () => {
     const r = discordRoom();
     await r.post("<@BOT> what do you think?", { text: QUOTED, authorId: "ANOTHER-PERSON" });

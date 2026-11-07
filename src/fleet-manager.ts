@@ -19714,9 +19714,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY: then the replied-to message
-      // is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape ("/chat @bot (you)").
-      if (!strippedText && !msg.attachments?.length && !msg.replyToText) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY that carries the mention: then the
+      // replied-to message is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape
+      // ("/chat @bot (you)"). Only with the mention in the text: an empty reply to one of our own messages (addressed through #2551, a
+      // sticker or embed only) stays dropped, never an empty turn quoting our own answer (Fable #3342 F1).
+      if (!strippedText && !msg.attachments?.length && !(msg.replyToText && mentionTag && addressText.includes(mentionTag))) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 
