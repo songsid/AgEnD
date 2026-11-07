@@ -46,8 +46,9 @@ describe("the plan for a good scratch run", () => {
 
   it("gives the child its own tmux socket and session, derived the way the fleet derives them", () => {
     const plan = planOf();
-    expect(plan.socketName).toBe(hashed(`${SCRATCH}/ag`));
-    expect(plan.socketName).toBe(tmuxSocketNameFor(`${SCRATCH}/ag`, LIVE_HOME));
+    // M-2457: the child's bundled tmux listens on the hashed name with `-b` (2.3's own name is a legacy server's).
+    expect(plan.socketName).toBe(`${hashed(`${SCRATCH}/ag`)}-b`);
+    expect(plan.socketName).toBe(`${tmuxSocketNameFor(`${SCRATCH}/ag`, LIVE_HOME)}-b`);
     expect(plan.sessionName).toBe(tmuxSessionNameFor(`${SCRATCH}/ag`, LIVE_HOME));
     expect(plan.sessionName).not.toBe("agend");
     expect(plan.tmuxSocketPath).toBe(`${SCRATCH}/tm/tmux-1000/${plan.socketName}`);
@@ -156,7 +157,7 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
 
     it("a changed HOME in the runner's environment does not make the check pass or fail — the passwd home is what counts", () => {
       const moved = planOf({ parentEnv: { ...PARENT, HOME: SCRATCH, AGEND_HOME: `${SCRATCH}/.agend` } });
-      expect(moved.socketName).toBe(hashed(`${SCRATCH}/ag`));
+      expect(moved.socketName).toBe(`${hashed(`${SCRATCH}/ag`)}-b`);
       expect(moved.childEnv.HOME).toBe(`${SCRATCH}/hm`);
     });
   });

@@ -87,6 +87,7 @@ export interface NeedsYouHubContext {
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
   backendSignIns?(): BackendSignInInput[];
+  signInKeepAlive?(): import("./needs-you.js").SignInKeepAliveInput[];
   configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
   hubHolds?(): import("./needs-you.js").HubHoldInput[];
@@ -271,7 +272,7 @@ export class NeedsYouHub {
     }
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
@@ -368,7 +369,7 @@ export class NeedsYouHub {
     const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
-    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation) && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation || item.keepAlive) && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

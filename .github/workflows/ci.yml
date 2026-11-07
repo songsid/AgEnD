@@ -578,5 +578,4 @@ jobs:
         env:
           BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
         run: |
-          command -v tmux >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq tmux; }
           bash scripts/ci/tmux-rollback-proof.sh "$BASELINE_TGZ" "./$TGZ" "$ROLLBACK_VERSION"

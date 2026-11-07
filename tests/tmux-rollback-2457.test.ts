@@ -99,19 +99,24 @@ describe("agend rollback", () => {
   });
 });
 
-describe("agend rollback stays hidden and refused until the bundled tmux is on (Fable #3276: dark release)", () => {
-  it("refuses with the plain npm way back, and runs nothing (no stop, no npm)", async () => {
+describe("agend rollback is on (C-4): listed in the help, and gated like every fleet control", () => {
+  it("is listed, and a fleet agent's run without --yes is refused before anything stops or installs", async () => {
     const { execFile } = await import("node:child_process");
     const home = mkdtempSync(join(tmpdir(), "agend-rollback-cli-")); roots.push(home);
     const bin = join(home, "bin"); mkdirSync(bin);
     for (const tool of ["npm", "systemctl", "launchctl", "sudo"]) {
       writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> "${join(home, "calls")}"\nexit 1\n`); chmodSync(join(bin, tool), 0o755);
     }
-    const r = await new Promise<{ code: number | null; err: string }>(resolve => execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), "rollback", "2.3.4", "--yes"],
-      { env: { HOME: home, AGEND_HOME: join(home, "agend"), PATH: `${bin}:/usr/bin:/bin`, TZ: "UTC" }, timeout: 60_000 },
-      (e, _o, err) => resolve({ code: e ? (typeof e.code === "number" ? e.code : null) : 0, err })));
-    expect(r.code).toBe(1);
-    expect(r.err).toContain("agend rollback is for AgEnD's bundled tmux, which is not on here. To go back: npm install -g @songsid/agend@2.3.4");
+    const run = (args: string[], env: NodeJS.ProcessEnv = {}) => new Promise<{ code: number | null; out: string; err: string }>(resolve => execFile(process.execPath,
+      ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args],
+      { env: { HOME: home, AGEND_HOME: join(home, "agend"), PATH: `${bin}:/usr/bin:/bin`, TZ: "UTC", ...env }, timeout: 60_000 },
+      (e, out, err) => resolve({ code: e ? (typeof e.code === "number" ? e.code : null) : 0, out: String(out), err: String(err) })));
+    // Not hidden any more (the dark release hid it).
+    expect((await run(["--help"])).out).toMatch(/^\s+rollback \[options\] <version>/m);
+    // The gate still applies: from a fleet agent without --yes it refuses, and nothing else runs.
+    const refused = await run(["rollback", "2.3.4"], { AGEND_INSTANCE_NAME: "agend-worker" });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('Refusing `agend rollback`: it was started from the fleet agent session "agend-worker"');
     expect(existsSync(join(home, "calls"))).toBe(false);
   });
 });

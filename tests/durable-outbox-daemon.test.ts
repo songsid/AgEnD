@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -593,6 +593,55 @@ describe("MCP durable response delivery tracking", () => {
       expect(replacementStore.get(row.deliveryId)?.state).toBe("retry_wait");
     } finally {
       vi.restoreAllMocks();
+      replacementStore.close();
+    }
+  });
+
+  // M-2457 C-4 (Fable #3312 N2): a 2.3 window id (untagged window-id) moves to the migration journal BEFORE reconciliation
+  // reads window-id: on AgEnD's own server "@3" could be another instance's window, and must never be captured as this
+  // target's pane evidence.
+  it("never reads a 2.3 window id as this target's pane: it is in the journal before reconciliation", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-legacy-id-"));
+    roots.push(root);
+    vi.stubEnv("AGEND_HOME", root);
+    const dbPath = join(root, "delivery-outbox.db");
+    const oldStore = new DeliveryOutbox(dbPath, "manager-before-crash");
+    const row = oldStore.admit({
+      operationId: "op-legacy-id", sourceKey: "source:op-legacy-id:worker", sourceInstance: "source", sourceDaemonBootId: "source-boot",
+      targetInstance: "worker", kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "hello", meta: {} },
+    }).delivery;
+    const oldClaim = oldStore.claimNext("manager-before-crash", () => "old-target-boot", new Set())!;
+    // No window id on the attempt: reconciliation would fall back to the instance's saved window-id.
+    expect(oldStore.begin(row.deliveryId, "old-target-boot", oldClaim.attemptNo, {
+      backend: "mock", windowId: null, transcriptPath: null, transcriptOffset: null, transcriptSessionId: null, submissionMode: "idle_submit",
+    })).toBe("begun");
+    oldStore.close();
+    const manager = new FleetManager(root);
+    const instanceDir = (manager as any).getInstanceDir("worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@3");                    // written by 2.3: no socket tag
+    const replacementStore = new DeliveryOutbox(dbPath, manager.managerBootId);
+    manager.deliveryOutbox = replacementStore;
+    (manager as any).shuttingDown = true;
+    const config = { backend: "mock", working_directory: root, log_level: "error",
+      restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 }, context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as any;
+    manager.fleetConfig = { defaults: { backend: "mock" }, instances: { worker: config } } as any;
+    const captured: string[] = [];
+    vi.spyOn(TmuxManager, "getPanePid").mockResolvedValue(null);
+    vi.spyOn(TmuxManager.prototype, "capturePane").mockImplementation(async function (this: TmuxManager) { captured.push(this.getWindowId()); return "❯"; });
+    vi.spyOn(TmuxManager.prototype, "killWindowConfirmed").mockResolvedValue(true);
+    const start = vi.spyOn(Daemon.prototype, "start").mockResolvedValue(undefined);
+    try {
+      // No pane of this target is known any more, so its in-flight attempt stays fenced (the fail-safe outcome) —
+      // and "@3" was never captured as its evidence.
+      await expect(manager.lifecycle.start("worker", config, false)).rejects.toThrow(/could not confirm that its previous CLI window closed/);
+      expect(start).not.toHaveBeenCalled();
+      expect(captured).not.toContain("@3");
+      expect(existsSync(join(instanceDir, "window-id"))).toBe(false);
+      expect(JSON.parse(readFileSync(join(root, "tmux-migration.json"), "utf8")).pending).toEqual({ worker: "@3" });
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
       replacementStore.close();
     }
   });

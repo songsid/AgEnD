@@ -30,6 +30,9 @@ export function createStructuredSignInTransport(options: { native?: TerminalBack
     start(spec: StructuredSignInLaunch, signal: AbortSignal) {
       return serial(async () => {
         guard(signal);
+        // A named profile is signed in through the host's own profile flow (login-controller) or, on a paired computer, through that computer's Runtime.
+        // This transport launches a CLI with the host's own environment only: a profile is never silently dropped.
+        if (spec.profile !== undefined) throw new Error("signin_profile_unsupported");
         const environment = structuredSignInEnvironment(options.env ?? process.env);
         const envArgs = Object.entries(environment).map(([key, value]) => shellQuote(`${key}=${value}`)).join(" ");
         // Exec closes the shell boundary after the fixed login command exits.

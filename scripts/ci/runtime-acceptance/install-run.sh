@@ -28,6 +28,20 @@ fi
 step "npm install -g @songsid/agend@$CAND on Node $SYS_NODE_VERSION, npm $(npm --version)"
 npm install -g --no-audit --no-fund "@songsid/agend@$CAND"
 
+# M-2457: AgEnD runs only its bundled tmux (no PATH fallback): the pinned package is installed and its postinstall
+# check passed (the receipt names that pin and a binary of the declared size).
+step "the bundled tmux is installed and verified"
+node -e '
+  const fs = require("fs"), path = require("path");
+  const pkg = path.join(process.argv[1], "lib/node_modules/@songsid/agend");
+  const m = JSON.parse(fs.readFileSync(path.join(pkg, "package.json"), "utf8"));
+  const name = `@songsid/agend-tmux-${process.platform}-${process.arch}`, pin = (m.optionalDependencies || {})[name];
+  if (!pin) { console.error(`no ${name} pin in the candidate`); process.exit(1); }
+  const r = JSON.parse(fs.readFileSync(path.join(pkg, ".agend-tmux.json"), "utf8"));
+  if (r.pinnedVersion !== pin || fs.statSync(r.tmuxPath).size !== r.size) { console.error("the receipt does not match the pin"); process.exit(1); }
+  console.log(`  ${name}@${pin}: tmux ${r.tmux}, sha256 ${r.sha256.slice(0, 16)}…, verified ${r.verifiedAt}`);
+' "$PREFIX"
+
 check_installed
 check_daemon
 check_no_system_node

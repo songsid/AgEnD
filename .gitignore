@@ -60,4 +60,5 @@ raw/
 # #1450: written by the postinstall when the bundled Node is installed (also in a dev checkout after npm ci)
 .agend-runtime.json
 .agend-runtime.key
+.agend-tmux.json
 __pycache__/

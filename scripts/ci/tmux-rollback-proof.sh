@@ -13,7 +13,7 @@ BASELINE_TGZ="$(realpath "${1:?verified previous-release tarball}")"
 CANDIDATE_TGZ="$(realpath "${2:?candidate tarball}")"
 BASELINE_VERSION="${3:?previous-release version}"
 [[ "$BASELINE_VERSION" =~ ^2\.3\.[0-9]+$ ]] || { echo 'Expected a 2.3.x rollback target' >&2; exit 1; }
-TMUX_BIN="$(command -v tmux)" || { echo 'tmux is required' >&2; exit 1; }
+TMUX_BIN=""   # the candidate's bundled tmux, once installed (its verified copy under AGEND_HOME, as the fleet runs it)
 WORK=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/agend-tmux-rollback.XXXXXX")
 PREFIX="$WORK/prefix"
 mkdir -p "$PREFIX" "$WORK/home" "$WORK/agend" "$WORK/tmux" "$WORK/guard"
@@ -23,7 +23,7 @@ export npm_config_prefix="$PREFIX" npm_config_cache="$WORK/cache" npm_config_use
 for tool in systemctl launchctl sudo; do printf '#!/bin/sh\necho "%s $*" >> "%s/guard.log"\nexit 1\n' "$tool" "$WORK" > "$WORK/guard/$tool"; chmod +x "$WORK/guard/$tool"; done
 export PATH="$WORK/guard:$PREFIX/bin:$PATH"
 unset TMUX TMUX_PANE
-cleanup() { [ -n "${SOCK:-}" ] && "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null || true; pkill -CONT -f "$WORK" 2>/dev/null || true; rm -rf "${WORK:?}"; }
+cleanup() { [ -n "${SOCK:-}" ] && [ -n "$TMUX_BIN" ] && "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null || true; pkill -CONT -f "$WORK" 2>/dev/null || true; rm -rf "${WORK:?}"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 installed() { node -p 'require(process.argv[1]).version' "$PREFIX/lib/node_modules/@songsid/agend/package.json"; }
@@ -32,7 +32,10 @@ CANDIDATE_VERSION=$(tar -xOf "$CANDIDATE_TGZ" package/package.json | node -pe 'J
 npm install --global "$CANDIDATE_TGZ" --registry https://registry.npmjs.org/ >/dev/null
 [ "$(installed)" = "$CANDIDATE_VERSION" ] || fail "the candidate did not install"
 PKG="$PREFIX/lib/node_modules/@songsid/agend"
-export AGEND_BUNDLED_TMUX=1 AGEND_TMUX_BIN="$TMUX_BIN"
+# The bundled tmux this candidate pins (an optional dependency, verified by its postinstall): no system tmux involved.
+TMUX_BIN=$(node -e 'import(process.argv[1]).then(m => process.stdout.write(m.tmuxBinary()))' "$PKG/dist/tmux-binary.js")
+[ -x "$TMUX_BIN" ] || fail "the candidate's bundled tmux did not resolve"
+export TMUX_BIN
 
 # This home's socket, as AgEnD names it (an isolated AGEND_HOME gets its own hashed name; the real home's is `agend`).
 SOCK=$(node -e 'import(process.argv[1]).then(m => process.stdout.write(m.tmuxSocket()))' "$PKG/dist/tmux-binary.js")
@@ -43,7 +46,7 @@ start_server() {
   node -e '
     import(process.argv[1]).then(async m => {
       const r = await m.recordServer({ agendHome: process.env.AGEND_HOME, socket: process.argv[2], version: "",
-        current: { binary: process.env.AGEND_TMUX_BIN, sha256: m.sha256File(process.env.AGEND_TMUX_BIN) } });
+        current: { binary: process.env.TMUX_BIN, sha256: m.sha256File(process.env.TMUX_BIN) } });
       if (!r) process.exit(1);
     });' "$PKG/dist/tmux-server.js" "$SOCK"
   SERVER_PID=$(node -p 'require(process.argv[1]).serverPid' "$AGEND_HOME/tmux/server.json")

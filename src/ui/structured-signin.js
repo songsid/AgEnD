@@ -24,6 +24,16 @@ export const SIGNIN_STRINGS = {
     error_expired: "This login attempt expired. Start a new attempt.",
     error_auth_unconfirmed: "The CLI exited, but credentials could not be verified. Retry or sign in later.",
     error_provider_rejected: "The provider rejected this sign-in. Retry or sign in later.",
+    // #3190 Part 3c: a profile on a paired computer (the dashboard's Accounts view).
+    error_machine_unknown: "That computer is not paired any more.",
+    error_machine_offline: "That computer is offline. Start its Runtime, then try again.",
+    error_machine_unsupported: "That computer's Runtime is too old to sign in from here. Update the Runtime on it, then try again.",
+    error_machine_accounts_off: "The owner of that computer has not allowed this. On that computer run: agend-runtime remote-setup accounts on",
+    error_machine_unreachable: "That computer did not answer. Check its Runtime window, then try again.",
+    error_machine_profile_not_owned: "This account was not created by AgEnD's Runtime, so it can only be signed in on that computer: agend-runtime login claude-code NAME",
+    error_machine_busy: "Another sign-in is already running on that computer.",
+    error_invalid_machine_target: "That is not a valid account on a computer.",
+    error_machine_transport_failed: "That computer could not complete the sign-in. Check its Runtime window, then try again.",
   },
   "zh-TW": {
     heading: "登入你的 AI 後端",
@@ -48,6 +58,16 @@ export const SIGNIN_STRINGS = {
     error_expired: "這次登入已過期。請重新開始。",
     error_auth_unconfirmed: "CLI 已結束，但無法確認憑證。請重試或稍後登入。",
     error_provider_rejected: "平台拒絕了這次登入。請重試或稍後登入。",
+    // #3190 Part 3c：配對電腦上的憑證設定檔（儀表板的「帳號」頁）。
+    error_machine_unknown: "那台電腦已不再配對。",
+    error_machine_offline: "那台電腦離線了。請先啟動它的 Runtime，再試一次。",
+    error_machine_unsupported: "那台電腦的 Runtime 太舊，無法在這裡登入。請先更新它的 Runtime，再試一次。",
+    error_machine_accounts_off: "那台電腦的擁有者尚未允許這件事。請在那台電腦上執行：agend-runtime remote-setup accounts on",
+    error_machine_unreachable: "那台電腦沒有回應。請檢查它的 Runtime 視窗，再試一次。",
+    error_machine_profile_not_owned: "這個帳號不是 AgEnD 的 Runtime 建立的，只能在那台電腦上登入：agend-runtime login claude-code NAME",
+    error_machine_busy: "那台電腦上已經有另一個登入在進行。",
+    error_invalid_machine_target: "這不是電腦上的有效帳號。",
+    error_machine_transport_failed: "那台電腦沒有完成這次登入。請檢查它的 Runtime 視窗，再試一次。",
   },
 };
 const NAMES = { "kiro-cli": "Kiro", "claude-code": "Claude Code", codex: "Codex", antigravity: "Antigravity" };
@@ -55,14 +75,19 @@ const CHOICES = { builder_id: "Builder ID", google: "Google", github: "GitHub", 
 /** The page's language, as its <html lang> says (the setup page and the dashboard both keep it current). */
 const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" : "en";
 
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang } = {}) {
+/**
+ * `machine` (#3190 Part 3c): these cards are for ONE credential profile on a paired computer (the endpoint carries `?machine=&profile=`). The dialog around them says
+ * so, so the setup page's heading and lead are not repeated; there is no "sign in later" (this is an explicit request); and a sign-in again asks nothing about
+ * Kiro (Claude Code's own sign-in replaces the login; it signs nothing out first).
+ */
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
   const tr = (key, value) => { const text = SIGNIN_STRINGS[language()][key] ?? SIGNIN_STRINGS.en[key] ?? key; return value === undefined ? text : text.split("{0}").join(value); };
   const el = (tag, text, parent = root) => { const node = doc.createElement(tag); if (text) node.textContent = text; parent.append(node); return node; };
   // An error is kept as its code, so it is said again in the other language when that changes.
-  const errorText = code => SIGNIN_STRINGS.en["error_" + code] ? tr("error_" + code) : tr("error");
+  const errorText = code => machine && SIGNIN_STRINGS.en["error_machine_" + code] ? tr("error_machine_" + code) : SIGNIN_STRINGS.en["error_" + code] ? tr("error_" + code) : tr("error");
   const name = backend => backend === "antigravity" ? tr("antigravity") : NAMES[backend] || backend;
   const choiceName = choice => CHOICES[choice] ?? tr("choice_" + choice);
   const phaseName = phase => SIGNIN_STRINGS.en["phase_" + phase] ? tr("phase_" + phase) : phase.replaceAll("_", " ");
@@ -85,8 +110,7 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     const signature = JSON.stringify([view, busy, message, language()]);
     if (disposed || rendered === signature) return;
     rendered = signature; root.replaceChildren();
-    el("h2", tr("heading"));
-    el("p", tr("lead"));
+    if (!machine) { el("h2", tr("heading")); el("p", tr("lead")); }
     if (message) { const alert = el("p", errorText(message)); alert.setAttribute("role", "alert"); }
     if (!view) { button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
     for (const backend of view.selected) {
@@ -122,14 +146,14 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
         const usable = !["antigravity"].includes(backend) && state !== "not_installed";
         if (usable) button(card, tr(state === "valid" ? "signInAgain" : "signIn"), () => {
           const relogin = state === "valid";
-          if (relogin && !globalThis.confirm(tr("relogin"))) return;
+          if (relogin && !machine && !globalThis.confirm(tr("relogin"))) return;
           void perform({ operation: "start", backend, relogin });
         });
       }
-      if (pending && !skipped) button(card, tr("later"), () => perform({ operation: "skip", backend }));
+      if (pending && !skipped && !machine) button(card, tr("later"), () => perform({ operation: "skip", backend }));
     }
     button(root, tr("check"), () => perform({ operation: "refresh" }));
-    if (view.ready) el("p", tr("ready"));
+    if (view.ready && !machine) el("p", tr("ready"));
   }
   async function poll() {
     if (disposed) return;

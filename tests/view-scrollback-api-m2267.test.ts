@@ -10,12 +10,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { VIEW_HISTORY, handleViewRequest, parsePaneScrollback, type ViewApiContext } from "../src/view-api.js";
 import { tmuxExecHelper } from "../src/tmux-exec-helper.js";
-import { getAgendHome, getTmuxSocketName } from "../src/paths.js";
+import { getAgendHome } from "../src/paths.js";
 import { getTmuxSession } from "../src/config.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 
 const ctx = (): ViewApiContext => ({
   webToken: "wt", dataDir: getAgendHome(),
@@ -34,12 +35,19 @@ function get(path: string) {
   });
 }
 
+/** tmux's subcommand: the first word after its global -L / -f options (their values follow each). */
+function subcommand(args: string[]): string {
+  let i = 0;
+  while (i < args.length && (args[i] === "-L" || args[i] === "-f")) i += 2;
+  return args[i]!;
+}
+
 let tmux: (...args: string[]) => string, haveTmux = true;
 beforeAll(() => {
-  const socket = getTmuxSocketName();
+  const socket = tmuxSocket();
   expect(socket, "isolated AGEND_HOME should yield a private tmux socket").toBeTruthy();
-  try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
-  tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf-8" });
+  try { execFileSync(tmuxBinary(), ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
+  tmux = (...args: string[]) => execFileSync(tmuxBinary(), ["-L", socket!, ...args], { encoding: "utf-8" });
 });
 afterEach(() => { vi.restoreAllMocks(); try { tmux("kill-server"); } catch { /* none */ } });
 afterAll(() => { try { tmux("kill-server"); } catch { /* none */ } });
@@ -81,15 +89,16 @@ describe("the scrollback, from a real tmux pane", () => {
     if (!haveTmux) return;
     const wid = pane("for i in $(seq 1 40); do echo \"line $i\"; done; sleep 60");
     await settle(() => /line 40/.test(tmux("capture-pane", "-p", "-t", wid)));
-    const verbs: string[] = [];
+    const verbs: string[] = [], files = new Set<string>();
     const real = tmuxExecHelper.exec.bind(tmuxExecHelper);
     vi.spyOn(tmuxExecHelper, "exec").mockImplementation(((file: string, args: string[], opts: any, direct: any) => {
-      const at = args[0] === "-L" ? 2 : 0;
-      verbs.push(`${file} ${args[at]}`);
+      files.add(file);
+      verbs.push(`${basename(file)} ${subcommand(args)}`);
       return real(file, args, opts, direct);
     }) as any);
     await get("/api/pane/alpha?history=1");
     await get("/api/pane/alpha");
+    expect(files).toEqual(new Set([tmuxBinary()]));                          // AgEnD's own binary, never PATH's
     expect(new Set(verbs)).toEqual(new Set(["tmux capture-pane", "tmux display-message"]));
     expect(tmux("display-message", "-p", "-t", wid, "#{pane_in_mode}").trim()).toBe("0");
   });

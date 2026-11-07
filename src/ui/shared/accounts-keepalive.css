@@ -1,0 +1,7 @@
+/* #3292: Settings → Accounts → Keep sign-in alive — linked by accounts-keepalive.js (an older accounts.css lacks these rules). */
+.s-account-keepalive { flex-basis: 100%; display: grid; gap: 2px; padding: var(--s-1) 0 0; border-top: 1px dashed var(--border); }
+.s-account-keepalive .check { display: flex; align-items: flex-start; gap: var(--s-2); }
+.s-account-keepalive small { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.s-account-keepalive .s-keepalive-fallback { margin-left: var(--s-4); }
+.s-account-keepalive .is-warn { color: var(--warn); font-weight: 600; }
+.s-account-keepalive .is-bad { color: var(--danger); font-weight: 600; }

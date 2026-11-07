@@ -1,12 +1,17 @@
 /**
  * M-2457 PR C §6 rule 3: the 2.3.x → bundled-tmux hop. 2.3.x ran each agent in a window of the SYSTEM tmux on the
- * DEFAULT socket; with the bundled tmux on, AgEnD's server is another one (`-L agend`). Where the old server survived
+ * DEFAULT socket (the real home) or on the home's hashed socket `agend-<hash6>` (another home); the bundled tmux runs
+ * its own server on another socket (`agend`, or `agend-<hash6>-b`: never 2.3's). Where the old server survived
  * (launchd, a foreground fleet; also after a rollback to 2.3 and a second upgrade) its windows may still run agents,
- * and a new window for the same instance would resume the same conversation twice.
+ * and a new window for the same instance would resume the same conversation twice. "The legacy server" below is the
+ * system tmux on 2.3's socket for this home (`legacySocket`: null = the default socket).
  *
  * Per instance, before it starts (the daemon calls migrateLegacyWindow):
  *  - The trigger: a window-id file without its socket tag (`window-id.socket`, written beside it while the bundled tmux
- *    is on) was written by 2.3 and names a window on the default server.
+ *    is on) was written by 2.3 and names a window on the legacy server. Its id is moved into the journal (`pending`)
+ *    and the file removed before anything else can read it — at fleet start for every instance (sweepLegacyWindowIds),
+ *    and again here — so no reader of `window-id` ever acts on a 2.3 id on the new server, and a hold survives the
+ *    instance's retries and restarts until the window is gone or released.
  *  - Prove the window ours: its #{window_id} is the file's, its name is the instance's, and its pane's process tree runs
  *    the instance's backend binary.
  *  - Checkpoint the instance's session id (the daemon's own checkpoint), kill-window it with the system tmux, and confirm
@@ -46,9 +51,11 @@ export interface Journal {
   windows: Record<string, { windowId: string; step: Step }>;
   /** Instances the user released with `agend tmux-migrate --release`: their untagged window is left alone. */
   released: Record<string, string>;
+  /** 2.3 window ids taken out of `window-id` and not settled yet (migrated, gone or released): the instance is checked. */
+  pending: Record<string, string>;
 }
 
-const emptyJournal = (): Journal => ({ server: null, windows: {}, released: {} });
+const emptyJournal = (): Journal => ({ server: null, windows: {}, released: {}, pending: {} });
 
 export function readJournal(agendHome: string): Journal {
   try {
@@ -62,7 +69,9 @@ export function readJournal(agendHome: string): Journal {
     }
     const released: Journal["released"] = {};
     for (const [k, v] of Object.entries(j.released ?? {})) if (typeof v === "string") released[k] = v;
-    return { server, windows, released };
+    const pending: Journal["pending"] = {};
+    for (const [k, v] of Object.entries(j.pending ?? {})) if (typeof v === "string" && /^@\d+$/.test(v)) pending[k] = v;
+    return { server, windows, released, pending };
   } catch { return emptyJournal(); }
 }
 
@@ -74,7 +83,7 @@ export function writeJournal(agendHome: string, j: Journal): void {
 }
 
 /** The window-id file's state: no file, tagged with a socket (written with the bundled tmux on), or untagged (2.3). */
-export function windowIdState(instanceDir: string): { kind: "none" } | { kind: "tagged"; id: string; socket: string } | { kind: "untagged"; id: string } {
+export function windowIdState(instanceDir: string, currentSocket?: string): { kind: "none" } | { kind: "tagged"; id: string; socket: string } | { kind: "untagged"; id: string } {
   let id = "";
   try { id = readFileSync(join(instanceDir, "window-id"), "utf8").trim(); } catch { return { kind: "none" }; }
   if (!id) return { kind: "none" };
@@ -82,7 +91,9 @@ export function windowIdState(instanceDir: string): { kind: "none" } | { kind: "
   // behind — a tag for another id is no tag.
   try {
     const [socket, taggedId] = readFileSync(join(instanceDir, WINDOW_SOCKET_TAG), "utf8").split("\n").map(x => x.trim());
-    if (socket && taggedId === id) return { kind: "tagged", id, socket };
+    // Fable #3312 N1: only a tag for the socket AgEnD runs now is ours. A tag naming another socket (an isolated home
+    // that ran the dark switch tagged `agend-<hash6>`, now 2.3's legacy name) is a window AgEnD's server doesn't hold.
+    if (socket && taggedId === id && (currentSocket === undefined || socket === currentSocket)) return { kind: "tagged", id, socket };
   } catch { /* untagged */ }
   return { kind: "untagged", id };
 }
@@ -94,6 +105,33 @@ export function tagWindowId(instanceDir: string, socket: string, windowId: strin
 
 export function dropWindowId(instanceDir: string): void {
   for (const f of ["window-id", WINDOW_SOCKET_TAG]) { try { unlinkSync(join(instanceDir, f)); } catch { /* gone */ } }
+}
+
+/**
+ * Move every untagged (2.3) window id into the journal's `pending` and remove its window-id file. Run at fleet start
+ * before any instance does anything, and per instance by migrateLegacyWindow. The journal is written before a file is
+ * removed, so a crash in between leaves the id in both places, never in neither. Returns the instances moved.
+ */
+export function sweepLegacyWindowIds(agendHome: string, instances: Array<{ name: string; dir: string }>, currentSocket?: string): string[] {
+  const moved: Array<{ name: string; dir: string }> = [];
+  const j = readJournal(agendHome);
+  for (const i of instances) {
+    const state = windowIdState(i.dir, currentSocket);
+    if (state.kind !== "untagged" || !/^@\d+$/.test(state.id)) continue;
+    j.pending[i.name] = state.id;
+    moved.push(i);
+  }
+  if (!moved.length) return [];
+  writeJournal(agendHome, j);
+  for (const i of moved) dropWindowId(i.dir);
+  return moved.map(i => i.name);
+}
+
+function settle(agendHome: string, instance: string): void {
+  const j = readJournal(agendHome);
+  if (!(instance in j.pending)) return;
+  delete j.pending[instance];
+  writeJournal(agendHome, j);
 }
 
 /** Whether a process tree (pid → [ppid, command line]) under `root` runs `binary` (its basename, as the command or argv[0..1]). */
@@ -116,7 +154,8 @@ export function treeRuns(procs: Map<number, { ppid: number; args: string }>, roo
 export interface LegacyProbes {
   /** The system tmux on PATH (never the bundled one), or null. */
   systemTmux(): Promise<string | null>;
-  /** Run the system tmux against the DEFAULT socket: stdout, or a rejection whose message is tmux's stderr. */
+  /** Run the system tmux (args carry `-L <legacy socket>` for another home; none: the default socket): stdout, or a
+   *  rejection whose message is tmux's stderr. */
   tmux(bin: string, args: string[]): Promise<string>;
   processes(): Promise<Map<number, { ppid: number; args: string }>>;
   alive(pid: number): boolean;
@@ -135,6 +174,10 @@ export interface MigrateArgs {
   instance: string;
   instanceDir: string;
   session: string;
+  /** 2.3's socket for this home: null for the real home (tmux's default socket), else its hashed name. */
+  legacySocket: string | null;
+  /** The socket AgEnD runs now (tmuxSocket()): a window-id tagged for any other socket is not one of its windows. */
+  currentSocket?: string;
   backendBinary: string;
   checkpoint: () => Promise<void> | void;
   probes?: LegacyProbes;
@@ -147,22 +190,25 @@ export interface MigrateArgs {
  */
 export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tagged" | "stale" | "migrated" | "released"> {
   const p = a.probes ?? realLegacyProbes;
-  const state = windowIdState(a.instanceDir);
-  if (state.kind === "none") return "none";
-  if (state.kind === "tagged") return "tagged";
-  const hold = (why: string) => { a.log?.("legacy tmux window held", { instance: a.instance, why }); return new LegacyWindowHoldError(a.instance, why); };
+  const before = windowIdState(a.instanceDir, a.currentSocket);
+  sweepLegacyWindowIds(a.agendHome, [{ name: a.instance, dir: a.instanceDir }], a.currentSocket);
   const journal = readJournal(a.agendHome);
-  if (journal.released[a.instance] === state.id) { dropWindowId(a.instanceDir); return "released"; }
+  const legacyId = journal.pending[a.instance];
+  if (!legacyId) return before.kind === "tagged" ? "tagged" : "none";
+  const state = { id: legacyId };
+  const hold = (why: string) => { a.log?.("legacy tmux window held", { instance: a.instance, why }); return new LegacyWindowHoldError(a.instance, why); };
+  if (journal.released[a.instance] === state.id) { settle(a.agendHome, a.instance); return "released"; }
+  const tmux = (bin: string, args: string[]) => p.tmux(bin, a.legacySocket ? ["-L", a.legacySocket, ...args] : args);
 
   const bin = await p.systemTmux();
   if (!bin) throw hold("its window id was written by AgEnD 2.3, and there is no system tmux to ask whether that window still runs");
   let incarnation: Incarnation;
   let windows: LegacyWindow[];
   try {
-    const [pid, start] = (await p.tmux(bin, ["display-message", "-p", "#{pid} #{start_time}"])).trim().split(/\s+/).map(Number);
+    const [pid, start] = (await tmux(bin, ["display-message", "-p", "#{pid} #{start_time}"])).trim().split(/\s+/).map(Number);
     if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(start)) throw new UnreadableAnswer("unexpected answer");
     incarnation = { pid: pid!, start: start! };
-    const out = await p.tmux(bin, ["list-windows", "-a", "-F", ["#{session_name}", "#{window_id}", "#{window_name}", "#{pane_pid}"].join(SEP)]);
+    const out = await tmux(bin, ["list-windows", "-a", "-F", ["#{session_name}", "#{window_id}", "#{window_name}", "#{pane_pid}"].join(SEP)]);
     windows = [];
     for (const line of out.split("\n").filter(Boolean)) {
       // An answer AgEnD can't read is never taken for "the window is gone": that would drop the id while the 2.3 window
@@ -174,19 +220,19 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
   } catch (e) {
     const msg = String((e as Error).message ?? e);
     // Only tmux's own failure (its stderr) may say "no server"; an answer AgEnD couldn't read never does (Fable #3276).
-    if (!(e instanceof UnreadableAnswer) && NO_SERVER.test(msg)) { dropWindowId(a.instanceDir); return "stale"; }   // no default server: the window is gone
-    throw hold(`the default tmux server answers but can't be queried (${msg.split("\n")[0]!.slice(0, 160)})`);
+    if (!(e instanceof UnreadableAnswer) && NO_SERVER.test(msg)) { settle(a.agendHome, a.instance); return "stale"; }   // no legacy server: the window is gone
+    throw hold(`the old tmux server answers but can't be queried (${msg.split("\n")[0]!.slice(0, 160)})`);
   }
 
   // By id only: ids are unique per server, and a window the user moved to another session still runs the agent.
   const w = windows.find(x => x.id === state.id);
-  if (!w) { dropWindowId(a.instanceDir); return "stale"; }
+  if (!w) { settle(a.agendHome, a.instance); return "stale"; }
   if (w.name !== a.instance) throw hold(`window ${w.id} is named "${w.name}", not "${a.instance}"`);
   if (!treeRuns(await p.processes(), w.panePid, a.backendBinary)) throw hold(`window ${w.id} does not run ${a.backendBinary}`);
 
   // A journal for another server incarnation is stale: start a fresh pass on this one.
   const j: Journal = journal.server && journal.server.pid === incarnation.pid && journal.server.start === incarnation.start
-    ? journal : { server: incarnation, windows: {}, released: journal.released };
+    ? journal : { server: incarnation, windows: {}, released: journal.released, pending: journal.pending };
   const step = j.windows[a.instance]?.windowId === w.id ? j.windows[a.instance]!.step : null;
   if (!step) {
     await a.checkpoint();
@@ -194,18 +240,18 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
     writeJournal(a.agendHome, j);
   }
   if (step !== "killed" && step !== "confirmed") {
-    try { await p.tmux(bin, ["kill-window", "-t", w.id]); } catch { /* confirmed below */ }
+    try { await tmux(bin, ["kill-window", "-t", w.id]); } catch { /* confirmed below */ }
     j.windows[a.instance] = { windowId: w.id, step: "killed" };
     writeJournal(a.agendHome, j);
   }
   for (let i = 0; i < 50; i++) {
     let listed = false;
-    try { listed = (await p.tmux(bin, ["list-windows", "-a", "-F", "#{window_id}"])).split("\n").includes(w.id); }
+    try { listed = (await tmux(bin, ["list-windows", "-a", "-F", "#{window_id}"])).split("\n").includes(w.id); }
     catch (e) { if (!NO_SERVER.test(String((e as Error).message ?? e))) listed = true; }
     if (!listed && !p.alive(w.panePid)) {
       j.windows[a.instance] = { windowId: w.id, step: "confirmed" };
+      delete j.pending[a.instance];
       writeJournal(a.agendHome, j);
-      dropWindowId(a.instanceDir);
       a.log?.("legacy tmux window migrated", { instance: a.instance, window: w.id });
       return "migrated";
     }
@@ -215,13 +261,14 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
 }
 
 /** `agend tmux-migrate --release <name>`: leave that instance's untagged window to the user; its next start goes ahead. */
-export function releaseLegacyWindow(agendHome: string, instance: string, instanceDir: string): string | null {
-  const state = windowIdState(instanceDir);
-  if (state.kind !== "untagged") return null;
+export function releaseLegacyWindow(agendHome: string, instance: string, instanceDir: string, currentSocket?: string): string | null {
+  sweepLegacyWindowIds(agendHome, [{ name: instance, dir: instanceDir }], currentSocket);
   const j = readJournal(agendHome);
-  j.released[instance] = state.id;
+  const id = j.pending[instance];
+  if (!id) return null;
+  j.released[instance] = id;   // the next start sees it released, settles it and goes ahead
   writeJournal(agendHome, j);
-  return state.id;
+  return id;
 }
 
 const run = (file: string, args: string[], env?: NodeJS.ProcessEnv) => new Promise<string>((resolve, reject) =>
