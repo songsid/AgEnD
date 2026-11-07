@@ -10,7 +10,7 @@
 // Words are registered here (a new module: an older cached strings file never leaves a raw key).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
-import { createStore, useStore } from "/assets/app-store.js";
+import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
@@ -19,6 +19,7 @@ import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
 import { toast } from "/assets/ui-toast.js";
 import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
+import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
 
 register("accounts", {
   en: {
@@ -69,19 +70,32 @@ function linkAccountsCss(doc = typeof document !== "undefined" ? document : null
 const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };
 
 export const accountsStore = createStore({ loaded: false, failed: false, view: null });
+/**
+ * #3313 review P2-7: the server says sign-ins changed (`backend_login`: a sign-in moved, an account was learned, a Keep
+ * sign-in alive check finished): a page showing the accounts reads them again, fresh. Listened to once per page. The
+ * existing event, so a tab whose cached shell (app-stream.js) predates this still delivers it.
+ */
+let accountsEventOff = null;
+export function listenAccountsEvent() {
+  if (accountsEventOff) return;
+  const on = appStore.get().streamOn;
+  if (typeof on !== "function") return;
+  accountsEventOff = on("backend_login", () => { if (accountsStore.get().loaded) void refreshAccounts({ fresh: true }); }) || (() => {});
+}
 let reading = null, started = 0, applied = 0;
 /**
  * Read GET /ui/accounts. A read already running is joined — unless `fresh` (#3291 review, Prism P2-4: after a write, the
  * view must come from a read that began after it): then a new read starts, and an older one that answers later never
- * replaces a newer answer.
+ * replaces a newer answer. Resolves true only when THIS read's view was applied (#3313 review r2: what a write's follow-up
+ * read needs to know).
  */
 export function refreshAccounts({ fresh = false } = {}) {
   if (reading && !fresh) return reading;
   const mine = ++started;
-  const apply = (next) => { if (mine > applied) { applied = mine; accountsStore.set(next); } };
+  const apply = (next) => { if (mine > applied) { applied = mine; accountsStore.set(next); return true; } return false; };
   const p = fetch("/ui/accounts", { credentials: "same-origin", cache: "no-store" })
-    .then(async (r) => { const v = r.ok ? await r.json() : null; apply({ loaded: true, failed: !v, view: v }); })
-    .catch(() => apply({ loaded: true, failed: true, view: accountsStore.get().view }))
+    .then(async (r) => { const v = r.ok ? await r.json() : null; return apply({ loaded: true, failed: !v, view: v }) && !!v; })
+    .catch(() => { apply({ loaded: true, failed: true, view: accountsStore.get().view }); return false; })
     .finally(() => { if (reading === p) reading = null; });
   reading = p;
   return p;
@@ -140,7 +154,7 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const interaction = useRef(0);
   const begin = (fn) => (...a) => { interaction.current++; fn(...a); };
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
-  useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
+  useEffect(() => { linkAccountsCss(); listenAccountsEvent(); void refreshAccounts(); void refreshSignIn(); }, []);
   // A sign-in that ends may be another account now: read again.
   const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}`;
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
@@ -240,6 +254,7 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, run
       ${row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
     </span>`}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${tx("hostCommand")}</summary><p class="note">${tx("hostCommandHint")}</p><p class="s-host-cli-command"><code>${row.hostCommand}</code></p></details>` : null}
+    ${!readOnly && row.keepAlive && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}
   </div>`;
 }
 

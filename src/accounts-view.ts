@@ -38,7 +38,11 @@ export interface AccountRow {
   update?: string;
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   usage?: AccountUsage;
+  /** #3292: "Keep sign-in alive" (Claude Code and Codex host rows): the setting, its last run, the dates the sign-in's file says. */
+  keepAlive?: AccountKeepAlive;
 }
+/** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
+export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
 export interface AccountsCli { backend: string; profiles: boolean; installed: boolean; fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>; rows: AccountRow[] }
 export interface AccountsView { clis: AccountsCli[] }
 
@@ -55,6 +59,8 @@ export interface AccountsInput {
   fleetDefaults: ReadonlyMap<string, string>;
   /** Weekly (or longer) usage per row, by `backend\0profile` ("" for the default). */
   usage?: ReadonlyMap<string, AccountUsage>;
+  /** #3292: the keep-alive part per row, by the same `backend\0profile` key. */
+  keepAlive?: ReadonlyMap<string, AccountKeepAlive>;
 }
 
 const key = (backend: string, profile: string | null) => `${backend}\0${profile ?? ""}`;
@@ -78,11 +84,12 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       fleetDefault: fleetDefault === profile || (profile === null && fleetDefault === null),
     });
     const usage = (profile: string | null) => input.usage?.get(key(backend, profile));
+    const keepAlive = (profile: string | null) => { const k = input.keepAlive?.get(key(backend, profile)); return k ? { keepAlive: k } : {}; };
     rows.push({
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
-      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}),
+      usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...keepAlive(null),
     });
     if (PROFILE_CLIS.has(backend)) {
       const names = new Set<string>();
@@ -98,7 +105,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
         rows.push({
           scope: { kind: "host" }, backend, profile, state: src?.state ?? "not_signed_in", signIn: !!src?.signIn,
           ...(src?.identity ? { identity: src.identity } : {}), ...(src?.hostCommand ? { hostCommand: src.hostCommand } : {}),
-          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}),
+          usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}), ...keepAlive(profile),
         });
       }
     }
