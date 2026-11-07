@@ -24,7 +24,7 @@ function fixture() {
   writeFileSync(path, `defaults:\n  backend: claude-code\ninstances: {}\n`);
   const fm = new FleetManager(dir); fm.loadConfig(path);
   const tick = vi.fn(async (_opts?: unknown) => {});
-  vi.spyOn(fm as never, "keepAliveService").mockReturnValue({ tick } as never);
+  vi.spyOn(fm as any, "keepAliveService").mockReturnValue({ tick } as never);
   return { fm: fm as any, tick };
 }
 
