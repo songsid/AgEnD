@@ -20,6 +20,15 @@ const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_pai
 // The switcher may have cached hub-strings before this action existed. Its original Allow word is still available.
 const allowOnHubLabel = () => { const label = hw("allowOnHub"); return label === "hub.allowOnHub" ? `${hw("allow")}…` : label; };
 
+// A queued local confirmation describes one operation, not every later pairing or link state.
+function waitingForPairing(msg, p) {
+  const pending = msg?.pending;
+  if (!pending) return true;
+  if (pending.action === "connect") return p?.state === "unpaired";
+  if (pending.action === "confirm") return p?.state === "pending" && p.localConfirmed === false && p.fingerprint?.digest === pending.fingerprint;
+  return pending.action === "disconnect" && p?.state === "paired" && p.binding === pending.binding && p.hub?.hubId === pending.hubId;
+}
+
 /** A fingerprint: its first 128 bits in groups people compare, the whole digest on request. */
 function Fingerprint({ label, fp }) {
   const [full, setFull] = useState(false);
@@ -40,6 +49,11 @@ export function HubConnectCard() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);
+  const pendingMessage = (action, shown) => setMsg({ error: false, text: hw("waitingConfirm"),
+    pending: { action, fingerprint: shown?.fingerprint?.digest, binding: shown?.binding, hubId: shown?.hub?.hubId } });
+  useEffect(() => {
+    if (msg?.pending && !waitingForPairing(msg, pairing)) setMsg(null);
+  }, [msg, pairing]);
   const readPairing = () => {
     setReadError(false);
     return client.pairing().then((p) => { if (live.current) setPairing(p); }, () => { if (live.current) setReadError(true); });
@@ -60,7 +74,7 @@ export function HubConnectCard() {
   const connect = () => act(async () => {
     const r = await client.connect({ address: form.address.trim(), code: form.code.trim() });
     if (!live.current) return;
-    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
+    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) pendingMessage("connect"); }
     else setMsg({ error: true, text: hw(CONNECT_ERRORS[r.error] || "errFailed") });
   });
   const disconnect = (name) => act(async () => {
@@ -70,7 +84,7 @@ export function HubConnectCard() {
     if (!live.current) return;
     if (!r.ok) { setMsg({ error: true, text: hw("errUnsaved") }); return; }
     setPairing(await client.pairing());
-    if (r.pendingConfirmation) { setMsg({ error: false, text: hw("pendingSent") }); return; }
+    if (r.pendingConfirmation) { pendingMessage("disconnect", shown); return; }
     if (r.remote === "pending") setMsg({ error: false, text: hw("disconnectPending") });
   });
   const cancel = () => act(async () => { const p = await client.cancel(); if (live.current) setPairing(p); });
@@ -96,7 +110,7 @@ export function HubConnectCard() {
       <p class="note">${hw("pendingCompare")}</p>
       ${p.localConfirmed === false && client.confirmFingerprint ? html`<div class="field-row"><button type="button" class="btn btn-primary hub-local-confirm" disabled=${busy}
           onClick=${() => act(async () => { const r = await client.confirmFingerprint(p.fingerprint.digest); if (!live.current) return;
-            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
+            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) pendingMessage("confirm", p); }
             else setMsg({ error: true, text: hw(r.error === "expired" ? "hold_expired" : r.error === "conflict" ? "errConflict" : "errUnsaved") }); })}>${hw("localMatch")}</button></div>`
         : p.localConfirmed === true ? html`<p class="note hub-local-confirmed">${hw("localConfirmed")}</p>` : null}
       ${p.ownerConfirmed === null && p.adminApproved === null
@@ -148,7 +162,7 @@ export function HubConnectCard() {
     <p class="note">${hw("lead")}</p>
     ${client.stub ? html`<p class="note hub-preview" role="note">${hw("preview")}</p>` : null}
     ${body}
-    ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
+    ${msg && waitingForPairing(msg, p) ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
     ${p && p.state === "paired" ? html`<${HubExposures} key=${`${p.binding}|${p.hub.hubId}|${p.hub.fingerprint?.digest}|${safeWebOrigin(p)}`} client=${client} pairing=${p} />` : null}
   </section>`;
 }
