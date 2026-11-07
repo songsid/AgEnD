@@ -53,6 +53,7 @@
   // …and no "No chat bot?" help: the hint above already is it.
   if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
+  $("checking").setAttribute?.("aria-label", t("checking"));
 
   // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and
   // answered with this page), but it is still the fleet's token: take it out of the address bar and

@@ -5,6 +5,7 @@
 // them grants anything by itself — a session still needs its account's Confirm in Discord or Telegram).
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { useTypedText } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -66,7 +67,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   }, [f, original, overview]);
   const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note">${tn("vaHint")}</p>${body}</section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
-  if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
+  if (!overview || !f) return card(html`<${Skeleton} variant="rows" lines=${3} />`);
 
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
   const hoursError = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max) ? "vaHoursRange" : "";

@@ -13,6 +13,8 @@
 <!--/app-icon-->
 <script src="/assets/theme.js"></script>
 <link rel="stylesheet" href="/assets/tokens.css">
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/loading.css">
 <style>
   /* #1408 step 5: the app's tokens (tokens.css), light and dark like every page (theme.js before paint). */
   * { box-sizing: border-box; }
@@ -43,9 +45,11 @@
 </style>
 </head>
 <body>
-<main>
+<main class="signin-card">
   <div class="brand">AgEnD</div>
-  <div id="checking" data-i18n="checking">Checking your session…</div>
+  <div id="checking" class="skeleton sk-signin" role="status" aria-busy="true" aria-label="Checking your session…">
+    <div aria-hidden="true"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div>
+  </div>
   <form id="form" hidden autocomplete="off">
     <h1 data-i18n="title">Sign in to AgEnD</h1>
     <p data-i18n="lead">Enter your sign-in code.</p>

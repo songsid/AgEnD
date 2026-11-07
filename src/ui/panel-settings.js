@@ -650,6 +650,7 @@ export function ProfileCard() {
   };
   const busy = state.phase !== "ready";
   const changed = draft.trim() !== state.name;
+  if (state.phase === "loading") return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3><${Skeleton} lines=${4} /></section>`;
   return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>
     <p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p>
     <div class="field"><label for="profile-name">${tn("profileName")}</label>

@@ -13,11 +13,18 @@
 <script src="/assets/theme.js"></script>
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/loading.css">
 <script src="/assets/agend-auth.js"></script>
 <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
-<div id="app" class="app-root"></div>
+<div id="app" class="app-root"><div class="sk-boot" role="status" aria-busy="true" aria-label="Loading…">
+  <div class="sk-boot-side" aria-hidden="true"><div class="skeleton"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div></div>
+  <div class="sk-boot-main" aria-hidden="true"><div class="sk-boot-head skeleton"><div class="sk-line"></div></div>
+    <div class="skeleton sk-rows"><div class="sk-row"><div class="sk-line sk-thumb"></div><div class="sk-copy"><div class="sk-line"></div><div class="sk-line"></div></div><div class="sk-line sk-pill"></div></div>
+      <div class="sk-row"><div class="sk-line sk-thumb"></div><div class="sk-copy"><div class="sk-line"></div><div class="sk-line"></div></div><div class="sk-line sk-pill"></div></div>
+      <div class="sk-row"><div class="sk-line sk-thumb"></div><div class="sk-copy"><div class="sk-line"></div><div class="sk-line"></div></div><div class="sk-line sk-pill"></div></div></div>
+  </div></div></div>
 <noscript><p class="noscript">AgEnD's web app needs JavaScript.</p></noscript>
 </body>
 </html>

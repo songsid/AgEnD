@@ -16,7 +16,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
-import { Empty } from "/assets/ui-states.js";
+import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
@@ -133,7 +133,7 @@ export function groupNeeds(items) {
 
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { needs, chatOwner: owner, instances, connections } = useStore(appStore);
+  const { ready, needs, chatOwner: owner, instances, connections } = useStore(appStore);
   // #1854: a fleet with no chat connection (web only, or not known yet) has no General to point at.
   const chatApp = connections > 0;
   const names = useStore(namesStore);
@@ -151,7 +151,7 @@ export function NeedsPanel({ navKey }) {
   return html`<div data-effect-panel="needs" class="panel p-needs">
     <${PanelHeader} title=${tn("title")} sub=${items.length ? t("app.needsCount", items.length) : null} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
-      ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
+      ${!ready && !items.length ? html`<${Skeleton} variant="rows" lines=${3} />` : !items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config"])} class="n-group" aria-label=${g.instance}>
           <h2 class="n-group-head">${g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}

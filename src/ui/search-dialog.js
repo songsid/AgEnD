@@ -12,6 +12,7 @@ import { navigate } from "/assets/app-nav.js";
 import { chatPath, fleetPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { goToSetting, searchSettings, settingLabel } from "./settings-registry.js";
 import "./settings-strings.js";
 
@@ -332,7 +333,7 @@ function Results({ guest = false, q, res, groups, settings = [], active, setActi
   return html`
     ${res.building ? html`<p class="search-note" role="status">${t("search.building")}</p>` : null}
     ${res.limited ? html`<p class="search-note" role="status">${t("search.limited")}</p>` : null}
-    ${res.status === "loading" && !hits.length ? html`<p class="search-status" role="status">${t("search.searching")}</p>` : null}
+    ${res.status === "loading" && !hits.length ? html`<${Skeleton} variant="rows" lines=${4} label=${t("search.searching")} />` : null}
     ${failed ? html`<p class="search-status bad" role="alert">${res.error}</p>` : null}
     ${res.status === "ok" && !hits.length && !settings.length ? html`<p class="search-status" role="status">${filtered ? t("search.noneFiltered") : t("search.none")}</p>` : null}
     <div id="search-results" role="listbox" aria-label=${t("search.results")} class=${`search-results${res.status === "loading" ? " stale" : ""}`}>
@@ -367,7 +368,7 @@ function Detail({ detail, q, label, onBack, onClose }) {
   const head = html`<div class="search-detail-head"><button type="button" class="chip-btn" onClick=${onBack}><${Icon} name="back" size=${14} />${t("search.back")}</button>
     <span class=${`search-badge ${hit.source}`}>${t(`search.badge_${hit.source}`)}</span><span class="search-who">${hit.source === "xmsg" ? t("search.from", label(hit.instance), label(hit.peer || "")) : label(hit.instance)}</span>
     <time class="search-time">${when(hit.ts)}</time></div>`;
-  if (detail.status === "loading") return html`<div class="search-detail">${head}<p class="search-status" role="status">${t("search.loadingCtx")}</p></div>`;
+  if (detail.status === "loading") return html`<div class="search-detail">${head}<${Skeleton} lines=${6} label=${t("search.loadingCtx")} /></div>`;
   if (detail.status === "error") return html`<div class="search-detail">${head}<p class="search-status bad" role="alert">${detail.error}</p></div>`;
   const ctx = detail.ctx || {};
   const doc = ctx.doc || {};
