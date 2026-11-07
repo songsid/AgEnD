@@ -80,7 +80,7 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * so, so the setup page's heading and lead are not repeated; there is no "sign in later" (this is an explicit request); and a sign-in again asks nothing about
  * Kiro (Claude Code's own sign-in replaces the login; it signs nothing out first).
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -110,7 +110,9 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     const signature = JSON.stringify([view, busy, message, language()]);
     if (disposed || rendered === signature) return;
     rendered = signature; root.replaceChildren();
-    if (!machine) { el("h2", tr("heading")); el("p", tr("lead")); }
+    // Ridge #3321 S12: inside the dashboard (`dashboard`) the dialog's own title names the CLI — the setup page's heading, lead and
+    // "continue setup" are not repeated there.
+    if (!machine && !dashboard) { el("h2", tr("heading")); el("p", tr("lead")); }
     if (message) { const alert = el("p", errorText(message)); alert.setAttribute("role", "alert"); }
     if (!view) { button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
     for (const backend of view.selected) {
@@ -159,7 +161,7 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
       if (pending && !skipped && !machine) button(card, tr("later"), () => perform({ operation: "skip", backend }));
     }
     button(root, tr("check"), () => perform({ operation: "refresh" }));
-    if (view.ready && !machine) el("p", tr("ready"));
+    if (view.ready && !machine && !dashboard) el("p", tr("ready"));
   }
   async function poll() {
     if (disposed) return;

@@ -16,6 +16,7 @@ register("settingsLayout", {
     "lead_web-dashboard": "Manage fleet-wide dashboard features, branding and resource limits.",
     lead_access: "Manage sign-in, web authority, guests and sharing.",
     lead_advanced: "Inspect and edit fleet configuration, with effective values kept separate.",
+    lead_hub: "Connect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.",
     lead_notifications: "Choose when account usage reminders are sent, and to whom.",
     editor: "Configuration editor", effective: "Effective settings (read only)",
     aiAccounts: "AI accounts and keys", aiAccountsHint: "Sign-ins and supported provider keys on the AgEnD host. Windows CLI status is shown under Runtime.",
@@ -31,6 +32,7 @@ register("settingsLayout", {
     "lead_web-dashboard": "管理整個 Fleet 的網頁功能、品牌與資源限制。",
     lead_access: "管理登入、網頁授權、訪客與對外分享。",
     lead_advanced: "檢視與編輯 Fleet 設定，並區分目前生效的唯讀內容。",
+    lead_hub: "將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。",
     lead_notifications: "設定帳號用量提醒的時機與傳送對象。",
     editor: "設定編輯器", effective: "生效設定（唯讀）",
     aiAccounts: "AI 帳號與金鑰", aiAccountsHint: "管理 AgEnD 主機的登入與支援的供應商金鑰；Windows CLI 狀態請到 Runtime 查看。",
@@ -41,13 +43,13 @@ register("settingsLayout", {
 register("settingsLayout", {
   en: {
     aiAccounts: "AI sign-ins and API keys", aiAccountsSummary: "Host CLI sign-ins and provider API keys, managed separately.",
-    aiHostScope: "Credentials on the AgEnD host", aiAccountsHint: "These sign-ins and keys belong to the host running AgEnD.", aiWindowsLink: "Manage Windows computers and their CLIs in Runtime",
+    aiHostScope: "Credentials on the AgEnD host and paired computers", aiAccountsHint: "Sign-ins are listed per computer: this AgEnD host, then each paired computer. Provider API keys belong to the host.", aiWindowsLink: "Manage Windows computers and their CLIs in Runtime",
     apiKeysTitle: "Provider API keys", apiKeysHint: "API credentials for supported provider integrations.", apiKeysUnavailableState: "Not offered", apiKeysUnavailable: "Provider API key management is not offered in this session.",
     apiNewPlaceholder: "Enter an API key to verify", apiReplacePlaceholder: "Enter a replacement API key",
   },
   "zh-TW": {
     aiAccounts: "AI 登入與 API 金鑰", aiAccountsSummary: "分開管理主機 CLI 登入與供應商 API 金鑰。",
-    aiHostScope: "AgEnD 主機上的憑證", aiAccountsHint: "這裡的登入與金鑰屬於執行 AgEnD 的主機。", aiWindowsLink: "前往 Runtime 管理 Windows 電腦與 CLI",
+    aiHostScope: "AgEnD 主機與已配對電腦上的憑證", aiAccountsHint: "登入依電腦列出：先是這台 AgEnD 主機，再來是每台已配對電腦。供應商 API 金鑰屬於主機。", aiWindowsLink: "前往 Runtime 管理 Windows 電腦與 CLI",
     apiKeysTitle: "供應商 API 金鑰", apiKeysHint: "供支援的供應商整合功能使用的 API 憑證。", apiKeysUnavailableState: "目前未提供", apiKeysUnavailable: "此工作階段未提供供應商 API 金鑰管理。",
     apiNewPlaceholder: "輸入要驗證的 API 金鑰", apiReplacePlaceholder: "輸入替換用的 API 金鑰",
   },

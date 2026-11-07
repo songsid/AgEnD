@@ -19,7 +19,7 @@ register("accountsKeepAlive", {
     plan: "Plan: {0}", last: "Last check {0}: {1}",
     o_refreshed: "renewed", o_fallback_refreshed: "renewed with the small request", o_not_needed: "still valid", o_checked: "signed in",
     o_in_use: "in use, kept alive by its agents", o_unsupported: "nothing to renew (an API key)", o_not_renewed: "not renewed",
-    o_needs_sign_in: "needs signing in again", o_transient: "couldn't reach the service; tried again tomorrow",
+    o_needs_sign_in: "needs signing in again", o_transient: "couldn't reach the service; will try again tomorrow",
     on: "Keep sign-in alive is on.", off: "Keep sign-in alive is off.", failed: "That didn't work. Try again.",
   },
   "zh-TW": {
@@ -31,7 +31,7 @@ register("accountsKeepAlive", {
     plan: "方案：{0}", last: "上次檢查 {0}：{1}",
     o_refreshed: "已續期", o_fallback_refreshed: "已用小請求續期", o_not_needed: "仍有效", o_checked: "已登入",
     o_in_use: "使用中，由它的 Agent 保持登入", o_unsupported: "沒有需要續期的（API 金鑰）", o_not_renewed: "沒有續期",
-    o_needs_sign_in: "需要重新登入", o_transient: "連不上服務；明天再試",
+    o_needs_sign_in: "需要重新登入", o_transient: "連不上服務；明天會再試",
     on: "已開啟保持登入。", off: "已關閉保持登入。", failed: "沒有成功，請再試一次。",
   },
 });
@@ -100,7 +100,8 @@ export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
   const last = k.enabled && k.lastAt && k.lastOutcome ? tk("last", stamp(k.lastAt), tk(`o_${k.lastOutcome}`)) : null;
   const bad = k.lastOutcome === "needs_sign_in" || k.lastOutcome === "not_renewed";
   return html`<div class="s-account-keepalive" data-keepalive=${k.enabled ? "on" : "off"}>
-    <label class="check"><input type="checkbox" checked=${!!k.enabled} disabled=${busy} onChange=${(e) => save(e.currentTarget.checked, k.fallback)} />
+    ${/* Ridge #3321 S10: an on/off feature is the shared switch (s-ui-toggle), as Hub membership and web authority; the paid fallback stays a checkbox. */ ""}
+    <label class="check"><input class="s-ui-toggle" type="checkbox" role="switch" checked=${!!k.enabled} disabled=${busy} onChange=${(e) => save(e.currentTarget.checked, k.fallback)} />
       <span>${tk("label")}</span></label>
     <small class="s-keepalive-hint">${tk(row.backend === "claude-code" ? "hint_claude" : "hint_codex")}</small>
     ${row.backend === "claude-code" && k.enabled ? html`<label class="check s-keepalive-fallback"><input type="checkbox" checked=${!!k.fallback} disabled=${busy} onChange=${(e) => save(true, e.currentTarget.checked)} />

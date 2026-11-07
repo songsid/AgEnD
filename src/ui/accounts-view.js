@@ -14,7 +14,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { Skeleton } from "/assets/ui-states.js";
+import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
@@ -26,7 +26,7 @@ import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
 
 register("accounts", {
   en: {
-    title: "Accounts", hint: "Each CLI's sign-ins on this host: the default one and named accounts (credential profiles), who uses them and their weekly usage.",
+    title: "Accounts", hint: "Each CLI's sign-ins on this AgEnD host and on paired computers: the default one and named accounts (credential profiles), who uses them and their weekly usage.",
     loading: "Reading accounts…", failed: "Could not read the accounts.", empty: "No CLI is installed or used by an agent on this host.",
     def: "Default sign-in", profile: "Account “{0}”", state_usable: "signed in", state_not_signed_in: "not signed in", state_unknown: "not checked",
     state_not_installed: "not installed", state_too_old: "too old",
@@ -52,7 +52,7 @@ register("accounts", {
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
   },
   "zh-TW": {
-    title: "帳號", hint: "這台主機上各 CLI 的登入：預設登入與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
+    title: "帳號", hint: "這台 AgEnD 主機與已配對電腦上各 CLI 的登入：預設登入與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
     loading: "正在讀取帳號…", failed: "無法讀取帳號。", empty: "這台主機上沒有安裝或被 Agent 使用的 CLI。",
     def: "預設登入", profile: "帳號「{0}」", state_usable: "已登入", state_not_signed_in: "尚未登入", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
@@ -161,6 +161,12 @@ export function accountChoices(view, backend) {
  * Settings → Agents → Accounts. `stageAgent(name, inst, patch)` and `stageDefault(backend, profile | null)` stage changes;
  * `openAgent(name)` (#3212 PR 2) opens an agent's own dialog, where its Account is chosen (Remove's Move…).
  */
+// Ridge #3321 S08: the host's own group head, beside paired computers' "On <computer>".
+register("accounts", {
+  en: { onHost: "On this AgEnD host" },
+  "zh-TW": { onHost: "在這台 AgEnD 主機上" },
+});
+
 export function AccountsView({ instances, stageAgent, stageDefault, openAgent }) {
   const { loaded, failed, view } = useStore(accountsStore);
   // Settings read its data again (after a Save): so does this view.
@@ -189,7 +195,10 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
-  if (failed && !view) return html`<p class="note" role="alert">${tx("failed")}</p>`;
+  // Ridge #3321 S07: a first read that fails keeps the section's heading and says so with Retry (the shared ErrorState).
+  if (failed && !view) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
+    <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
+    <${ErrorState} message=${tx("failed")} onRetry=${() => void refreshAccounts({ fresh: true })} /></section>`;
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
@@ -258,6 +267,8 @@ function Card({ cli, running, onMove, stageDefault, onAdd, onRemove, onSignIn, o
   return html`<div class="s-account-card" data-backend=${cli.backend}>
     <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
       ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${() => onAdd()}>${manageWords.add()}</button>` : null}</div>
+    ${/* Ridge #3321 S08: beside paired computers' "On <computer>" groups, the host's rows are named as the host's too. */ ""}
+    ${machines.size && host.length ? html`<div class="s-account-machine-head s-account-host-head"><strong>${tx("onHost")}</strong></div>` : null}
     <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} onRemove=${onRemove} onSignIn=${onSignIn} onSignOut=${onSignOut} />`)}</div>
     ${[...machines.values()].map((m) => html`<${MachineSection} key=${m.scope.id} cli=${cli} m=${m} running=${running} onAdd=${onAdd} onSignIn=${onSignIn} onSignOut=${onSignOut} onRemove=${onRemove} />`)}
     ${cli.profiles && typeof stageDefault === "function" ? html`<label class="field s-account-default"><span>${tx("fleetDefault", cliLabel(cli.backend))}</span>

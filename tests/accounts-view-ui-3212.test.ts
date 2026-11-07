@@ -136,7 +136,10 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(p.root.querySelector("#ag-account")).toBeNull();
     await p.unmount(); A.accountsStore.set({ loaded: false, failed: false, view: null });
     (globalThis as any).fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: "accounts_need_a_local_admin" }) });
-    try { await mount(); expect(text(p.root.querySelector("[role=alert]"))).toBe("Could not read the accounts."); }
+    // Ridge #3321 S07: the section keeps its heading, and the shared error state offers Retry.
+    try { await mount(); const alert = p.root.querySelector("[role=alert]");
+      expect([text(alert).startsWith("Could not read the accounts."), text(p.root.querySelector(".s-accounts h3")), !![...p.root.querySelectorAll(".s-accounts button")].find((b: any) => text(b) === "Try again")])
+        .toEqual([true, "Accounts", true]); }
     finally { (globalThis as any).fetch = fetchFake; }
   });
 });

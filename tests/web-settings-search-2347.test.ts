@@ -62,7 +62,7 @@ const open = async (section: string) => {
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
-const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"];
+const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
 
 /** What a section draws that no entry covers, and the entries whose element it does not draw. */
 async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {
@@ -84,10 +84,12 @@ async function coverage(sections: string[], skipAbsent: (e: any) => boolean = ()
 }
 /** Drawn only with a fixed hostname (a named tunnel): checked by the named-tunnel case below. */
 const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link"]);
+// Settings → Hub: Connect to a Hub is drawn only once membership is on and the page is marked a member (alpha.6 #2).
+const MEMBER_ONLY = new Set(["hub.connect"]);
 
 describe("#2347 §6: the registry is what Settings draws", () => {
   it("every field with an id in a section has an entry, and every entry's element is drawn in its section", async () => {
-    expect(await coverage(SECTIONS, (e) => NAMED_ONLY.has(e.id))).toEqual([[], []]);
+    expect(await coverage(SECTIONS, (e) => NAMED_ONLY.has(e.id) || MEMBER_ONLY.has(e.id))).toEqual([[], []]);
   }, 30_000);
   it("with a fixed hostname (a named tunnel): its own fields too — Reopen after start, Also over my named link", async () => {
     rawWeb = { public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } }; namedHost = "chat.example.com";
