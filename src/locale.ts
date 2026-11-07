@@ -1629,7 +1629,7 @@ const enMessages = {
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "logs.capped_tail": "最多顯示 {0} 行；這裡僅提供最近的日誌末段。",
-    "config.general_missing": "連線「{0}」沒有 general_topic agent，因此不在 agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
+    "config.general_missing": "連線「{0}」沒有 general_topic Agent，因此不在 Agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 Agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
   "general_location.offline": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。待處理或結果不明的請求不會自動重送。",
   "general_location.offline_short": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。",
   "general_location.offline_title": "General 所在的 Windows 電腦已離線",
