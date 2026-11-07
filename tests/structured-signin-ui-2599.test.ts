@@ -51,3 +51,47 @@ it("returned code is submitted literally to the closed API and cleared from the 
   const input = h.fetcher.mock.calls.filter(([, o]) => o.body && JSON.parse(o.body).operation === "input")[0];
   expect(JSON.parse(input![1].body)).toMatchObject({ operation: "input", revision: 8, action: { kind: "code", value: "synthetic#code" } }); h.cards.dispose();
 });
+
+// Ridge #3321 S01 (P1): Accounts → Claude Code → "Sign in again" asked "Kiro will sign out its existing account first".
+// The question names the card's own CLI and says what a sign-in again does to it: only Kiro signs out first (its
+// logoutArgv); Claude Code and Codex sign in again over the account they have. Declining sends nothing.
+function relogin(backend: string, opts: { lang?: string; confirm?: (q: string, cli: string) => Promise<boolean> | boolean; answer?: boolean } = {}) {
+  const asked: string[] = [];
+  const state = { selected: [backend], pending: [], skipped: [], states: { [backend]: "valid" }, login: null as any, ready: true };
+  const fetcher = vi.fn(async (_url: string, options: any) => ({ ok: true, json: async () => structuredClone(state) }));
+  function element(tag: string): any {
+    return { tag, textContent: "", children: [], dataset: {}, disabled: false, ownerDocument: doc,
+      append(child: any) { this.children.push(child); }, replaceChildren() { this.children = []; }, setAttribute(key: string, value: string) { this[key] = value; } };
+  }
+  const doc = { createElement: element, getElementById: () => null, documentElement: { lang: opts.lang ?? "en" } };
+  const root = element("main");
+  const ctx = createContext({ document: doc, fetch: fetcher, setTimeout: () => 1, clearTimeout() {}, URL,
+    confirm: (q: string) => { asked.push(q); return opts.answer ?? false; } });
+  runInContext(source, ctx);
+  const cards = ctx.mountStructuredSignIns(root, { endpoint: "setup/signins", fetcher, ...(opts.confirm ? { confirm: opts.confirm } : {}) });
+  const nodes = (): any[] => { const all: any[] = []; const visit = (n: any) => { all.push(n); n.children.forEach(visit); }; visit(root); return all; };
+  const flush = async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); };
+  const starts = () => fetcher.mock.calls.map(([, o]) => (o.body ? JSON.parse(o.body) : null)).filter((b) => b?.operation === "start");
+  return { asked, cards, nodes, flush, starts };
+}
+it.each([
+  ["kiro-cli", "en", "Sign in again", "Sign in to Kiro again? It signs out its current account first."],
+  ["claude-code", "en", "Sign in again", "Sign in to Claude Code again? The new sign-in replaces the account it uses now."],
+  ["codex", "en", "Sign in again", "Sign in to Codex again? The new sign-in replaces the account it uses now."],
+  ["claude-code", "zh-TW", "重新登入", "要重新登入 Claude Code 嗎？新的登入會取代目前使用的帳號。"],
+  ["kiro-cli", "zh-TW", "重新登入", "要重新登入 Kiro 嗎？會先登出目前的帳號。"],
+])("Ridge #3321 S01: %s (%s) — Sign in again asks about that CLI, and declining sends nothing", async (backend, lang, label, question) => {
+  const h = relogin(backend, { lang, answer: false }); await h.flush();
+  const b = h.nodes().find((n) => n.tag === "button" && n.textContent === label); expect(b, label).toBeDefined();
+  await b.onclick(); await h.flush();
+  expect([h.asked, h.starts()]).toEqual([[question], []]);
+  h.cards.dispose();
+});
+it("Ridge #3321 S01: the dashboard's own confirmation is used when given (with the CLI's name); yes starts the re-login", async () => {
+  const calls: [string, string][] = [];
+  const h = relogin("claude-code", { confirm: async (q, cli) => { calls.push([q, cli]); return true; } }); await h.flush();
+  await h.nodes().find((n) => n.tag === "button" && n.textContent === "Sign in again").onclick(); await h.flush();
+  expect([calls, h.asked, h.starts()]).toEqual([[["Sign in to Claude Code again? The new sign-in replaces the account it uses now.", "Claude Code"]], [],
+    [{ operation: "start", backend: "claude-code", relogin: true }]]);
+  h.cards.dispose();
+});
