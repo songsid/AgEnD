@@ -476,6 +476,16 @@ import { carryClaudeConversation, type CarryResult } from "./backend/claude-carr
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
+import { runQuiet } from "./quiet-run.js";
+
+const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
+  platform: process.platform,
+  run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),   // its `gone` is kept by withAccountWriter
+  // #3305 review P2-5: a deadline is a failure (runQuiet), for the Keychain query too; it only reads, so its child is not
+  // held as a credential writer (its answer is a failure until it exits 0 in time).
+  keychainHas: async (service: string) => (await runQuiet("security", ["find-generic-password", "-s", service], process.env, { timeoutMs: 15_000 })).code === 0,
+};
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -9822,7 +9832,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async startAllWithinDeadline(configPath: string, deadline: StartupMemoryDeadline): Promise<void> {
-    if (!this.structuredLoginCleanupFailed) this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
+    if (!this.structuredLoginCleanupFailed) this.reopenLoginWindow();                           // a stopAll → startAll restart must accept login windows again
     this.loginController?.reopen();
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
@@ -20078,7 +20088,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): RemoveResult {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): Promise<RemoveResult> {
+    const profile = typeof name === "string" ? name : "";
+    const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
+    // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
+    // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
+    // #3305 review: the logout holds the shared login window (no sign-in or other logout starts meanwhile), and after it
+    // every check is made again — who uses it, sign-ins, ClassicBot's settings — on the same folder (its identity).
+    const signOutDeps = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    let keychainLeft = false;
+    let removed: RemoveResult;
+    if (backend === "claude-code" && signOutDeps.platform === "darwin") {
+      const dry = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null), undefined, { dryRun: true });
+      if (!dry.ok) return refused(dry);
+      const claim = this.loginWindow.tryClaim("web", backend);
+      if (!claim) return refused({ ok: false, error: "signing_in" });
+      const step = await this.withAccountWriter(claim, async deps => {
+        const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, deps);
+        if (!out.ok) return { ok: false, error: out.error === "unsafe" ? "unsafe" : "failed" } as RemoveResult;
+        if (!this.loginWindow.isCurrent(claim)) return { ok: false, error: "failed" } as RemoveResult;   // the fleet is stopping
+        keychainLeft = out.keychainLeft === true;
+        return removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, claim), undefined, { expect: dry.identity });
+      });
+      if (!step.ok) return refused(step);
+      removed = step;
+    } else removed = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null));
+    if (!removed.ok) return refused(removed);
+    this.logger.info({ backend, profile, by, ...(keychainLeft ? { keychainLeft } : {}) }, "Credential profile removed from Settings → Accounts");
+    return keychainLeft ? { ok: true, keychainLeft: true } : { ok: true };
+  }
+
+  /**
+   * Remove's whole safety proof, read now (#3291 review): who uses the account — configured agents and live daemons, the
+   * fleet default, ClassicBot rooms read strictly — and whether a sign-in for it runs. `ownClaim`: the login window this
+   * removal holds itself, which is not someone else's sign-in.
+   */
+  private removalRequest(backend: string, name: unknown, confirm: unknown, ownClaim: import("./login-window-lock.js").LoginWindowClaim | null) {
     const profile = typeof name === "string" ? name : "";
     // #3291 review (Prism P2-3): one folder on a case-insensitive disk (Windows, default macOS) — `Work` and `work` are the
     // same account for every safety check here.
@@ -20111,10 +20157,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     const held = this.loginWindow.current;
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
-      || (held?.backend === backend && !this.loginController?.activeBackend);
-    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" });
-    if (result.ok) this.logger.info({ backend, profile, by }, "Credential profile removed from Settings → Accounts");
-    else this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: result.error }, "Credential profile removal refused");
+      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend);
+    return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
+  }
+
+  /**
+   * #3212 PR 3: Settings → Accounts → Sign out (accounts-signout.ts): the CLI's own logout for the default sign-in
+   * (`profile` null) or a named account. Refused while a sign-in for it runs (case-insensitive, as Remove). The fleet
+   * log records who signed out which backend's account; then every page reads the sign-ins again.
+   */
+  /** How a CLI's logout is run and the Keychain asked (a test's stand-in; the platform with it). */
+  accountSignOutDeps = ACCOUNT_SIGN_OUT_DEPS;
+  /** #3305 review: every account logout's whole life — its CLI children until positively gone (shutdown drains them). */
+  private readonly accountWriters = new Set<Promise<void>>();
+
+  /**
+   * #3305 review P2-3/P2-5: run `work` as the owner of the credential writer (`claim`). Its CLIs run through a runner
+   * that records each child's positive end; the work is told whether it still owns the writer (`stillOwner`) before it
+   * cleans anything; and the claim is released only once every child it started is positively gone — a child whose end
+   * is unknown keeps sign-in admission closed (logged). Shutdown waits for these (shutdownLoginWindows), and a restart
+   * reopens admission only after they are gone.
+   */
+  private async withAccountWriter<T>(claim: import("./login-window-lock.js").LoginWindowClaim, work: (deps: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform" | "stillOwner">) => Promise<T>): Promise<T> {
+    const base = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    const children: Promise<void>[] = [];
+    const watch = async (r: { code: number | null; gone?: Promise<void> }) => { if (r.gone) children.push(r.gone); return r; };
+    const deps = {
+      platform: base.platform,
+      run: async (b: string, a: readonly string[], e: NodeJS.ProcessEnv) => watch(await base.run(b, a, e)),
+      keychainHas: base.keychainHas,
+      stillOwner: () => this.loginWindow.isCurrent(claim),
+    };
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.accountWriters.add(life);
+    try { return await work(deps); }
+    finally {
+      const settle = () => { this.loginWindow.release(claim); this.accountWriters.delete(life); finished(); };
+      if (!children.length) settle();
+      else {
+        let warned = false;
+        const t = setTimeout(() => { warned = true; this.logger.error("An account logout's CLI has not ended: sign-in stays closed until it does"); }, 30_000);
+        t.unref?.();
+        void Promise.all(children).then(() => { clearTimeout(t); if (warned) this.logger.info("The account logout's CLI ended: sign-in is open again"); settle(); });
+      }
+    }
+  }
+  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
+    const named = typeof profile === "string" ? profile : null;
+    const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
+    // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
+    // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
+    const signingIn = this.loginController?.signingIn(backend, named) ?? false;
+    const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
+    let result: SignOutResult;
+    if (!claim) result = { ok: false, error: "signing_in" };
+    else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));
+    if (result.ok) {
+      this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}) }, "Account signed out from Settings → Accounts");
+      this.forgetSignInIdentities();
+      void this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+    } else this.logger.info({ backend, profile: shown, by, refused: result.error }, "Account sign-out refused");
     return result;
   }
 
@@ -20452,7 +20556,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Fleet shutdown: end any web login or install window and wait for its confirmed teardown. */
+  /**
+   * #3305 review P2-3: reopen sign-in admission after a restart — only once no account logout's CLI from before is still
+   * alive (a fresh sign-in must never overlap it). Each reopen supersedes a deferred one.
+   */
+  private loginReopenGen = 0;
+  private reopenLoginWindow(): void {
+    const gen = ++this.loginReopenGen;
+    const pending = [...this.accountWriters];
+    if (!pending.length) { this.loginWindow.reopen(); return; }
+    this.logger.warn({ pending: pending.length }, "Sign-in admission reopens once an account logout from before the restart has ended");
+    void Promise.all(pending).then(() => { if (gen === this.loginReopenGen && !this.structuredLoginCleanupFailed) this.loginWindow.reopen(); });
+  }
+
   private async shutdownLoginWindows(): Promise<void> {
+    // #3305 review: a newer stop supersedes a reopen still waiting for an old account logout's CLI.
+    this.loginReopenGen++;
     // Close the lock FIRST: in-flight starts parked in a pre-check or
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
@@ -20489,6 +20608,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }), "browser-controls"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
+      // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.
+      bounded(this.accountWriters.size ? Promise.all([...this.accountWriters]).then(() => undefined) : undefined, "account-logout"),
     ]);
   }
 
