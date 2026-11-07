@@ -489,12 +489,12 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
       // On screen (`ok`, as kiro's signed-out row): chat `/login` when that path
-      // exists (#1699 part 2), otherwise Settings → Accounts. Never a host command.
+      // exists (#1699 part 2), otherwise Settings → Agents → Sign-ins. Never a host command.
       if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
         return { status: "ok", hint: `Not logged in — sign in with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
-      return { status: "ok", hint: "Not logged in — sign in from Settings → Accounts.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
+      return { status: "ok", hint: "Not logged in — sign in from Settings → Agents → Sign-ins.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
