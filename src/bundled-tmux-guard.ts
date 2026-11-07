@@ -7,10 +7,12 @@
  * foreground fleet the 2.4 server can survive, still running agents, and this version would start each conversation a
  * second time beside it. So before any instance starts, this version refuses when that server is still there.
  *
- * Which server counts:
- *  - the real home: anything answering on `agend` (this version never uses that socket);
- *  - another home: its hashed socket is this version's own too, so only the server server.json recorded (same pid), or
- *    one this version's tmux cannot talk to (another protocol: the bundled tmux).
+ * Which server counts — anything answering on a socket 2.4 uses for this home and this version never does:
+ *  - the socket server.json recorded (2.4 writes it when it starts its server), when it is not this version's own;
+ *  - the known name: `agend` for the real home, `<hashed name>-b` for another home (2.4 gives an isolated home's
+ *    bundled tmux its own name, so it never shares 2.3's hashed socket);
+ *  - a record naming this version's own hashed socket (an earlier 2.4 build that shared it): only the server it recorded
+ *    (same pid), or one this version's tmux cannot talk to (another protocol: the bundled tmux).
  */
 import { execFile } from "./child-process.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -40,22 +42,32 @@ export const guardMessage = (hit: GuardHit | string): string => {
   `(agend tmux kill-server, from 2.4), then start AgEnD again. Run as a service, AgEnD keeps retrying the start until it is closed.`;
 };
 
-function recordedPid(agendHome: string): number | null {
+/** 2.4's socket for another home: its hashed name with `-b`, never 2.3's own. */
+export const bundledIsolatedSocket = (hashed: string): string => `${hashed}-b`;
+/** A socket label as tmux -L takes it: a plain file name, never a path. */
+const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+function readRecord(agendHome: string): { pid: number | null; socket: string | null } | null {
   try {
     const r = JSON.parse(readFileSync(join(agendHome, "tmux", "server.json"), "utf8"));
-    return Number.isSafeInteger(r?.serverPid) ? r.serverPid : null;
+    return { pid: Number.isSafeInteger(r?.serverPid) ? r.serverPid : null, socket: typeof r?.socket === "string" && LABEL.test(r.socket) ? r.socket : null };
   } catch { return null; }
 }
 
 /** A 2.4 server still there for this home (confirmed, or unconfirmed: it did not answer in time), or null (go ahead). */
 export async function newerTmuxServer(d: GuardDeps): Promise<GuardHit | null> {
-  if (d.realHome) return (await d.accepts("agend")) ? { socket: "agend", confirmed: true } : null;
-  if (!d.socket || !existsSync(join(d.agendHome, "tmux", "server.json"))) return null;
+  const record = existsSync(join(d.agendHome, "tmux", "server.json")) ? readRecord(d.agendHome) : null;
+  const own = d.realHome ? null : d.socket;
+  const theirs = d.realHome ? ["agend"] : d.socket ? [bundledIsolatedSocket(d.socket)] : [];
+  if (record?.socket && record.socket !== own && !theirs.includes(record.socket)) theirs.unshift(record.socket);
+  for (const label of theirs) if (await d.accepts(label)) return { socket: label, confirmed: true };
+  // A record of this version's own hashed socket (or one without a socket): only the server it names counts.
+  if (d.realHome || !d.socket || !record || (record.socket !== null && record.socket !== own)) return null;
   if (!(await d.accepts(d.socket))) return null;
   const pid = await d.serverPid(d.socket);
   if (pid === "timeout") return { socket: d.socket, confirmed: false };   // fail closed, but say what is known
   if (pid instanceof Error) return { socket: d.socket, confirmed: true };   // not a server this version's tmux can talk to
-  return pid === recordedPid(d.agendHome) ? { socket: d.socket, confirmed: true } : null;
+  return pid === record.pid ? { socket: d.socket, confirmed: true } : null;
 }
 
 export function socketFile(label: string, env: NodeJS.ProcessEnv = process.env, uid: number = process.getuid?.() ?? 0): string {
