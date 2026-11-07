@@ -204,6 +204,21 @@ describe("claude-code: a sign-in code the server refuses (live-captured, claude 
     expect(hit?.message).toMatch(/\/login again/);
   });
 
+  // claude 2.1.319 words the same refusal differently (live-captured in the preview): without a match it fell through to "the CLI ended, credentials unconfirmed".
+  const REFUSED_319 = [
+    "Opening browser to sign in…",
+    "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&client_id=x",
+    "Paste code here if prompted > Login failed: That code wasn't accepted. It may be incomplete, expired, already used, or from an earlier sign-in attempt. Sign in again to get a new code.",
+    "Pane is dead (status 1, Sat Nov  7 21:10:01 2026)",
+  ].join("\n");
+
+  it("maps claude 2.1.319's wording of the refusal the same way", () => {
+    const hit = failures.find(f => f.pattern.test(REFUSED_319));
+    expect(hit?.suggest).toBe("relogin");
+    expect(hit?.message).toMatch(/rejected/);
+    expect(hit?.message).toMatch(/\/login again/);
+  });
+
   it("does not claim a failure for a code the CLI merely called invalid (it is still waiting)", () => {
     expect(failures.some(f => f.pattern.test(INVALID))).toBe(false);
   });

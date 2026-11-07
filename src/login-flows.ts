@@ -271,10 +271,12 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
     // Live-verified (claude 2.1.289): a code that LOOKS right but the server refuses ends the command with exit 1 and
     // "Login failed: Request failed with status code 400" — which the terminal page shows as "Ended", like an
-    // interruption. (A malformed code only prints "Invalid code…" and the prompt stays open for another try.)
+    // interruption. claude 2.1.319 says it in words instead: "Login failed: That code wasn't accepted. It may be incomplete,
+    // expired, already used, or from an earlier sign-in attempt. Sign in again to get a new code." (A malformed code only
+    // prints "Invalid code…" and the prompt stays open for another try.)
     failures: [
       {
-        pattern: /Login failed: Request failed with status code 400/,
+        pattern: /Login failed: Request failed with status code 400|Login failed: That code wasn't accepted/,   // two whole messages (not a grouped alternation): the upstream precheck's manifest keeps each as one literal
         message: "The sign-in code was rejected — it expired, was already used, was pasted more than once, or came from a different login attempt. Start /login again, open only the new link, and paste the code once",
         suggest: "relogin",
       },

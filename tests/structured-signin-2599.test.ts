@@ -140,7 +140,10 @@ describe("#2599 structured login: commands and named controls", () => {
     for (const value of ["", "abc\ndef", "abc\x1bdef", "$(touch/tmp/pwn)", "x".repeat(4097)]) expect(await h.act({ kind: "code", value })).toBe("invalid");
     const secret = ["synthetic", "authorization", "code"].join("_") + "#synthetic_state";
     expect(await h.act({ kind: "code", value: secret })).toBe("accepted");
-    expect(h.transport.write.mock.calls[0]![0]).toBe("\x15" + secret + "\r");
+    // No Ctrl+U in front of the code: claude >= 2.1.319 reads it raw, nothing consumes `\x15`, and the server was sent "\x15<code>" and refused it.
+    // (`\x15` stays for kiro's prefilled start URL and region, above.)
+    expect(h.transport.write.mock.calls[0]![0]).toBe(secret + "\r");
+    expect(h.transport.write.mock.calls[0]![0]).not.toContain("\x15");
     expect(JSON.stringify(h.changed.mock.calls)).not.toContain(secret);
     expect(JSON.stringify(h.view())).not.toContain(secret);
     expect(JSON.stringify(h.session.view(h.other))).not.toContain("https:");
