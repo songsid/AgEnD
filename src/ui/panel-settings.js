@@ -41,6 +41,7 @@ import {
   NewBotDialog, Override, Select, ask, impactText, inAgentDefaults, valueText,
 } from "./settings-dialogs.js";
 import { SharedAgentSettings, sharedNotes } from "./settings-shared.js";
+import { QuotaNoticeSettings, quotaNoticeText } from "./settings-quota-notice.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
 import { RuntimesPanel } from "./panel-runtimes.js";
@@ -86,13 +87,13 @@ import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
 
-const tn = (k, ...v) => t(`settings.${k}`, ...v);
+const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -424,7 +425,8 @@ export function SettingsPanel({ route, navKey }) {
               request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { backend_options: opts } } });
           }} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
       </div></details>`
-    : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
+    : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" />${!SETTINGS_SECTIONS.includes("notifications") ? html`<${QuotaNoticeSettings} key=${`quota:${formKey}`} ctx=${ctx} />` : null}</${YamlLock}>`
+    : section === "notifications" ? html`<${YamlLock} staged=${staged}><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>

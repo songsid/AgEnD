@@ -737,3 +737,31 @@ Sign-in controls require the current setup cookie on this computer; they are ref
 `agend setup --backend-signin-capabilities` prints installer capability JSON without opening setup or clearing its completion marker. The Windows installer requires version-1 setup, dashboard and installer capability flags before using the new flow. It installs AgEnD first, then opens the backend checklist in the setup page. Older packages keep the console fallback. A resumed, already-configured install opens the same checklist on the dashboard with `agend web --code --backend-signins kiro-cli,claude-code,codex`; this navigation alone never starts a login. Existing installer progress IDs stay compatible. The final status uses fresh authentication checks, so a skipped login is never reported as signed in. Antigravity remains an explicit console fallback; its passive device-auth bridge has not been enabled.
 
 On the directly reached dashboard, only a current local admin session can use browser sign-in. Agents' header tokens, read sessions, guests and public links cannot read hints or send answers. Default Kiro/Claude/Codex accounts use the named controls; credential profiles retain their existing flow. **Use console fallback** is an explicit choice for an unsupported screen. The shell banner reopens an active attempt. A successful login invokes the existing recovery for that backend's default-account agents; merely reusing already-valid credentials does not restart running agents. Login, install and legacy/profile flows share one writer reservation.
+
+### Quota reminders
+
+Settings → Notifications edits `defaults.quota_notice` without restarting agents:
+
+```yaml
+defaults:
+  quota_notice:
+    enabled: true
+    thresholds: [10]       # percent remaining, not percent used
+    periods: [weekly]     # session, hourly, daily, weekly, monthly
+    target: general       # General or a configured fleet instance's topic
+    backends:
+      kiro-cli:
+        periods: [monthly]
+instances:
+  worker:
+    quota_notice:
+      enabled: false      # this agent contributes no reminder rules
+```
+
+These are the built-in defaults even when omitted. Rules inherit fleet → backend → agent; arrays replace. Thresholds are up to eight distinct finite percentages from 1 to 99. Empty thresholds or periods disable that rule. Fleet agents and ClassicBot rooms can override enabled, thresholds and periods; the destination is fleet-wide. Enabled agents sharing a backend and credential profile contribute the union of their rules. Turning one agent off does not mute the others.
+
+Only fresh measured percentages with a known quota period and future reset qualify. Session and hourly are distinct. Stale, unlimited, expiry-only and unsupported readings produce no reminder. CLI statusline/relay observations must also be fresh. No additional provider polling is introduced. Account identity is the backend plus the credential source/profile on this execution host; aliases are not merged by email or display name. Remote-machine credentials require remote usage telemetry and cannot use the fleet host's reading.
+
+A private `quota-notices.json` reserves account/window/threshold dispatches before posting. It survives restarts and destination changes; a failed or unknown external delivery is not automatically resent. Invalid or unwritable state holds optional reminders. Keep this file when backing up the fleet. A real new quota window permits new reminders; small reset drift does not. This is at-most-once dispatch, not confirmed delivery. Notices go to the selected existing topic (or Notices on a web-only fleet); a missing target does not silently select another agent.
+
+Only low-quota reminders are configurable. Hard exhausted/blocked CLI messages, per-agent pause and auto-continue state, and the existing quota verification/history fences remain active.

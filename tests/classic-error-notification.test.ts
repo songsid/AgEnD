@@ -53,6 +53,19 @@ function makeLifecycle(classicNames: string[]) {
 }
 
 describe("PTY error notification targets", () => {
+  it("replaces only optional low reminders; blocked, pause and continue notices survive disabled preferences", () => {
+    const { attach, notifyInstanceTopic, ctx } = makeLifecycle([]);
+    (ctx.fleetConfig!.defaults as any).quota_notice = { enabled: false };
+    const daemon = attach("worker");
+    const low = new CodexBackend("/tmp").getErrorPatterns().find(p => p.message === "Codex usage limit running low")!;
+    expect(low.quotaAdvisory).toBe(true);
+    daemon.emit("pty_error", { name: "worker", ...low });
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();
+    daemon.emit("pty_error", { name: "worker", type: "quota", action: "notify", message: "Individual quota reached" });
+    expect(notifyInstanceTopic).toHaveBeenCalledTimes(1);
+    daemon.emit("pty_error", { name: "worker", type: "quota", action: "notify", message: "paused; auto-continue armed" });
+    expect(notifyInstanceTopic).toHaveBeenCalledTimes(2);
+  });
   it("routes ClassicBot errors to General, not the user's classic channel", () => {
     const { attach, notifyInstanceTopic } = makeLifecycle(["classic-user-1234"]);
     const daemon = attach("classic-user-1234");

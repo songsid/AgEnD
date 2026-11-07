@@ -29,6 +29,7 @@ export const IMPACT_ORDER: readonly ConfigImpact[] = ["now", "instance", "fleet"
  * when the two drift.
  */
 export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new Set<keyof InstanceConfig>([
+  "quota_notice",
   "tool_progress",
   "reply_completion_guard",
   "reply_triggers",
@@ -58,7 +59,7 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
  * drops it here too.
  */
 export const CLASSIC_HOT_CONFIG_KEYS: ReadonlySet<string> = new Set(
-  (["tool_progress", "reply_completion_guard", "reply_triggers"] as const)
+  (["quota_notice", "tool_progress", "reply_completion_guard", "reply_triggers"] as const)
     .filter(key => HOT_INSTANCE_CONFIG_KEYS.has(key)),
 );
 
@@ -74,7 +75,7 @@ const FLEET_SCOPED_INSTANCE_KEYS: ReadonlySet<string> = new Set([
 
 /** Instance-scoped fields the settings page renders. */
 const INSTANCE_FIELDS = [
-  "display_name", "description", "backend", "model", "working_directory",
+  "quota_notice", "display_name", "description", "backend", "model", "working_directory",
   "resume_interrupted_work", "auto_pause_after", "warm_cap", "topic_id", "channel_id", "general_topic",
   "tool_progress", "reply_completion_guard", "reply_triggers", "mcp_proxy_reply", "log_level",
   "systemPrompt", "tags", "hang_detector", "agent_mode", "tool_set",
@@ -93,7 +94,7 @@ const INSTANCE_FIELDS = [
 
 /** ClassicBot channel fields the settings page renders. */
 const CLASSIC_FIELDS = [
-  "backend", "model", "auto_pause_after", "tool_progress",
+  "quota_notice", "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "reply_triggers", "collab", "context_lines", "pre_task_command",
   "web_echo",
 ] as const;

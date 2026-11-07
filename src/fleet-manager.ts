@@ -6,6 +6,9 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
+import { quotaNoticeRule } from "./quota-notice-config.js";
+import { onUsageSnapshot } from "./usage/usage-api.js";
 import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
@@ -7257,6 +7260,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private classicBehaviorUpdate(instanceName: string): Record<string, unknown> {
     return {
+      quota_notice: this.classicChannels?.getQuotaNoticeByInstance?.(instanceName) ?? null,
       reply_triggers: this.classicChannels?.getReplyTriggersByInstance(instanceName, this.fleetConfig?.defaults?.reply_triggers) ?? DEFAULT_REPLY_TRIGGERS,
       tool_progress: this.classicChannels?.getToolProgressByInstance(
         instanceName,
@@ -10504,7 +10508,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Discord bot and while some account has a running agent, read every 30 min — the same cached read (its 5-minute TTL
    * still bounds the vendor calls), recorded like any other.
    */
+  private quotaNotices: QuotaNotices | null = null;
+  private stopQuotaObserver: (() => void) | null = null;
+
+  private quotaNoticePolicy(): QuotaNoticePolicy {
+    const defaults = this.fleetConfig?.defaults.quota_notice;
+    const wanted = defaults?.target ?? "general";
+    const instances = this.fleetConfig?.instances ?? {};
+    const target = wanted === "general"
+      ? Object.entries(instances).find(([name, c]) => c.general_topic === true || name === "general")?.[0]
+      : Object.hasOwn(instances, wanted) ? wanted : undefined;
+    const webOnly = !!this.webOnlyPromptPlace();
+    const config = target ? instances[target] : undefined;
+    const adapterId = target ? this.getInstanceAdapterId(target) : undefined;
+    const groupId = target ? this.getChannelConfig(adapterId)?.group_id : undefined;
+    const ready = !!target && (webOnly || (config?.topic_id != null && !!groupId && !!(this.getAdapterForInstance(target) ?? this.adapter)));
+    return {
+      target: this.shuttingDown ? "" : ready ? target! : !target && wanted === "general" && webOnly ? "/notices" : "",
+      destinationBinding: JSON.stringify([webOnly, adapterId, groupId, config?.topic_id]),
+      locale: this.fleetConfig?.defaults.locale ?? getLocale(),
+      subscriptions: this.shuttingDown ? [] : this.activeBackendBindings().flatMap(([name, backend, profile]) => {
+        // Local WSL usage cannot prove a Windows/paired machine's credential source.
+        const instance = instances[name];
+        if (instance?.runtime === "windows" || instance?.machine_id) return [];
+        const provider = usageProviderIdForBackend(backend);
+        if (!provider) return [];
+        const providerId = profile ? `${provider}:${profile}` : provider;
+        return [{ account: `${backend}:host:${profile ?? ""}`, providerId,
+          rule: quotaNoticeRule(defaults, backend, instances[name]?.quota_notice ?? this.classicChannels?.getQuotaNoticeByInstance?.(name)) }];
+      }),
+    };
+  }
+
   private startQuotaBackgroundReads(): void {
+    if (!this.quotaNotices) {
+      this.quotaNotices = new QuotaNotices({
+        file: join(this.dataDir, "quota-notices.json"), policy: () => this.quotaNoticePolicy(),
+        send: (target, text) => target === "/notices" ? this.recordWebNotice("fleet", text) : this.notifyInstanceTopic(target, text),
+        warn: err => this.logger.warn({ err }, "Optional quota reminders held: could not retain dispatch state"),
+      });
+      this.stopQuotaObserver = onUsageSnapshot(payload => { void this.quotaNotices?.observe(payload); });
+    }
     if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
     this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
     this.quotaReadTimer.unref?.();
@@ -23913,6 +23957,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
+      quota_notice: classicIdentity?.quotaNotice,
       tool_progress: toolProgress ?? "off",
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),
@@ -24079,6 +24124,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
+    const quotaNoticesStopped = this.quotaNotices?.stop();
     // Stop receive admission before the first await or any instance shutdown; outbound
     // adapters remain available below to retire notices and pending prompts.
     for (const state of this.adapterState.values()) {
@@ -24156,6 +24203,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await needsStopped;
     await settingsControlStopped;
     await cacheStopped;
+    await quotaNoticesStopped;
+    this.quotaNotices = null;
     await webChatStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
