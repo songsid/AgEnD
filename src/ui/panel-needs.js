@@ -176,7 +176,7 @@ export const decisions = createStore({});
 
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { ready, needs, chatOwner: owner, instances, connections, proposals } = useStore(appStore);
+  const { ready, needsLoaded, needs, chatOwner: owner, instances, connections, proposals } = useStore(appStore);
   // A tab opened before an upgrade has this panel but not the app.js that installs the list (it never set `proposals`):
   // install it here then. On a current page app.js already did, and this panel reads nothing itself (#1374).
   useEffect(() => { if (appStore.get().proposals === undefined) installProposals(); }, []);
@@ -207,7 +207,7 @@ export function NeedsPanel({ navKey }) {
         ${asks.map((p) => html`<${ProposalItem} key=${p.id} proposal=${p} nowMs=${nowMs} />`)}
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
-      ${!ready && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
+      ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
         : !items.length && !asks.length && !decidedHere.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config", !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
           <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>

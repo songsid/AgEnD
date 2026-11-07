@@ -42,11 +42,16 @@ describe("#3290 shared loading states", () => {
     const { appStore, mergeNoticeList } = await import("/assets/app-store.js");
     const { NeedsPanel } = await import("/ui/js/panel-needs.js");
     const { NoticesPanel } = await import("/ui/js/panel-notices.js");
-    appStore.set({ ready: false, needs: [], instances: [], connections: 0, notices: null, noticesError: false, readNotices: () => {} });
+    appStore.set({ ready: false, needsLoaded: false, needs: [], instances: [], connections: 0, notices: null, noticesError: false, readNotices: () => {} });
     await p.mount(h(NeedsPanel, { navKey: "pending" }));
     expect(p.document.querySelector(".p-needs .skeleton")).not.toBeNull();
     expect(p.document.querySelector(".p-needs .empty")).toBeNull();
     appStore.set({ ready: true }); await settle();
+    expect(p.document.querySelector(".p-needs .empty")).toBeNull();
+    appStore.set({ needsLoaded: true }); await settle();
+    expect(p.document.querySelector(".p-needs .empty")).not.toBeNull();
+    // An older app.js never names this optional flag; its known status remains the fallback.
+    appStore.set({ needsLoaded: undefined }); await settle();
     expect(p.document.querySelector(".p-needs .empty")).not.toBeNull();
     await p.mount(h(NoticesPanel, { navKey: "notices" }));
     expect(p.document.querySelector(".p-notices .skeleton")).not.toBeNull();
@@ -55,6 +60,21 @@ describe("#3290 shared loading states", () => {
     expect(p.document.querySelector(".p-notices .error-state")).not.toBeNull();
     appStore.set({ notices: mergeNoticeList(null, { enabled: true, items: [], seen: 0 }), noticesError: false }); await settle();
     expect(p.document.querySelector(".p-notices .empty")).not.toBeNull();
+  });
+
+  it("reserves the Profile form without exposing pending controls, then reveals the loaded form", async () => {
+    p = page();
+    let answer!: (value: unknown) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(r => { answer = r; })));
+    const { ProfileCard } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(ProfileCard, {}));
+    expect(p.document.querySelector(".s-profile .skeleton")).not.toBeNull();
+    expect(p.document.querySelector('.s-profile [aria-hidden="true"][inert] #profile-name')).not.toBeNull();
+    answer({ ok: true, json: async () => ({ name: "Ridge", shown: "Ridge", id: "fixture", bound: false }) });
+    await settle();
+    expect(p.document.querySelector(".s-profile .skeleton")).toBeNull();
+    expect(p.document.querySelector(".s-profile [inert]")).toBeNull();
+    expect(p.document.querySelector("#profile-name")?.value).toBe("Ridge");
   });
 
   it("records a first Notice read failure and clears it when Retry succeeds", async () => {

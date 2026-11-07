@@ -85,6 +85,8 @@
   const deviceLogin = webOnly && !outside && document.body.getAttribute("data-device-login") === "1";
   // #3061 (P2b): …and, when `web.login_qr` is on (<body data-login-qr="1">), it also draws the QR code of the approve link.
   const loginQr = deviceLogin && document.body.getAttribute("data-login-qr") === "1";
+  // Reserve the gated action while the form is still hidden, so ending the session read does not resize the card.
+  if (deviceLogin) $("another").hidden = false;
   const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
@@ -172,7 +174,6 @@
     } catch { /* private mode */ }
     $("code").focus();
     offerResend();
-    if (deviceLogin) $("another").hidden = false;
   }
 
   // Only a returning device gets the button; the answer is a boolean and asking has no side effect. Never from outside
