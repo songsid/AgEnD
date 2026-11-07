@@ -389,6 +389,8 @@ export interface WebApiContext {
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts), reached through the same `/ui/browser-backend-signins` with `?machine=&profile=`. */
   readonly machineSignIns?: import("./machine-signins.js").MachineSignIns;
+  /** #3212: dashboard sign-ins for a NAMED account on this host (profile-signins.ts), reached through the same `/ui/browser-backend-signins` with `?backend=&profile=`. */
+  readonly profileSignIns?: import("./profile-signins.js").ProfileSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
   /** Starts, in the background, reading the account behind each Claude Code sign-in (masked). Never awaited: the list answers at once with what is known. */
@@ -1121,18 +1123,22 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   const owner = who();
   if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
   if (!["GET", "POST"].includes(req.method ?? "")) { json(res, 404, { error: "not_found" }); return true; }
-  // #3190 Part 3c: `?machine=<id>&profile=<name>` addresses the same sign-in controls for a credential profile on a paired computer (machine-signins.ts). Nothing else
-  // is accepted in the query, and both are checked in full before anything else happens.
+  // #3190 Part 3c: `?machine=<id>&profile=<name>` addresses the same sign-in controls for a credential profile on a paired computer (machine-signins.ts). #3212:
+  // `?backend=<cli>&profile=<name>` addresses them for a named account on THIS host (profile-signins.ts). Nothing else is accepted in the query, and both are checked
+  // in full before anything else happens.
   const keys = [...url.searchParams.keys()];
   let target: { machine: string; profile: string } | null = null;
+  let account: { backend: string; profile: string } | null = null;
   if (keys.length) {
-    const machine = url.searchParams.get("machine"), profile = url.searchParams.get("profile");
-    if (keys.length !== 2 || !machine || !profile || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) || !validCredentialProfileName(profile)) { json(res, 404, { error: "not_found" }); return true; }
-    target = { machine, profile };
+    const machine = url.searchParams.get("machine"), backend = url.searchParams.get("backend"), profile = url.searchParams.get("profile");
+    const shape = keys.length === 2 && new Set(keys).size === 2 && profile && validCredentialProfileName(profile);
+    if (shape && machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) && !backend) target = { machine, profile };
+    else if (shape && backend === "claude-code" && !machine) account = { backend, profile };
+    else { json(res, 404, { error: "not_found" }); return true; }
   }
-  // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's does not need it.
-  const service = target ? undefined : ctx.browserBackendSignIns, machines = target ? ctx.machineSignIns : undefined;
-  if (target ? !machines : !service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
+  // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's or a named account's does not need it.
+  const service = target || account ? undefined : ctx.browserBackendSignIns, machines = target ? ctx.machineSignIns : undefined, accounts = account ? ctx.profileSignIns : undefined;
+  if (target ? !machines : account ? !accounts : !service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   void (async () => {
     let result;
     if (target && machines) {
@@ -1157,6 +1163,30 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
         else if (action.operation === "input") result = await machines.input(owner, target, action.id, action.revision, action.action);
         else if (action.operation === "cancel") result = await machines.cancel(owner, target);
         else result = machines.snapshot(owner, target);
+      }
+    } else if (account && accounts) {
+      if (reading) result = await accounts.refresh(owner, account);
+      else {
+        let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
+        let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+        // The same controls as the default account's, for the one account in the address: start (its backend must be the address's), answer a prompt, cancel, read again.
+        // No checklist here: no select, no skip.
+        const parsed = z.discriminatedUnion("operation", [
+          z.strictObject({ operation: z.literal("start"), backend: z.literal(account.backend), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
+            z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
+            z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
+          ]) }),
+          z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+        ]).safeParse(body);
+        if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
+        const action = parsed.data;
+        if (action.operation === "start") result = await accounts.begin(owner, account, action.relogin === true);
+        else if (action.operation === "input") result = await accounts.input(owner, account, action.id, action.revision, action.action);
+        else if (action.operation === "cancel") result = await accounts.cancel(owner, account);
+        else result = await accounts.refresh(owner, account, true);
       }
     } else if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return; }
     else if (reading) result = await service.refresh(owner);
@@ -1189,7 +1219,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
     json(res, 200, result);
   })().catch(error => {
     const code = error instanceof Error ? error.message : "";
-    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
+    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|busy|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist|target)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
     if (!res.destroyed && !res.writableEnded) json(res, safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
   });
   return true;
