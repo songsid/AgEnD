@@ -4,6 +4,22 @@ Running coding agents remotely through Telegram or Discord gives chat participan
 
 Paths below use the default data directory, `~/.agend`; `AGEND_HOME` can select another directory.
 
+## Threat model
+
+AgEnD defends against:
+- remote parties;
+- other users of the same computer (other OS accounts);
+- visitors over the public link or gateway;
+- web guests;
+- cross-site requests (CSRF) from other pages in the owner's browser.
+
+A process running as the **same OS user as the fleet** is treated as the owner (fleet decision 64a289a0, #3327). Such a process can read `~/.agend/web.token`, edit `fleet.yaml`, read credentials and run the CLIs directly. Blocking it on one HTTP route would give no real protection. Use a separate OS user, or an isolated container, for anything that must not have the owner's authority.
+
+Inside that model, AgEnD still keeps sensitive steps on the human path, as defence in depth, without adding clicks:
+- **Pairing a computer:** creating a pairing code and approving a computer take an administrator session on the directly reached dashboard, with its cookie and CSRF value. These are the page's own **Connect a computer** and **Approve computer** buttons. The bare `X-Agend-Token` header is refused.
+- **Turning remote runtimes on:** this is a held Settings change, which the bare token cannot request.
+- **On a web-only fleet:** the host operator is the owner (decision 28c2d3a3). Setting the authenticator up again, or removing it, is announced in Notices, so a change the owner did not make is noticed.
+
 ## Chat access and administration
 
 An admitted user can ask an agent to read files, change code or run commands, subject to the backend's permissions. Treat those users, their accounts and any admitted bots as trusted with the agent's workspace and host access.
