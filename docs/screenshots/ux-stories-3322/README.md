@@ -61,3 +61,15 @@ Run infrastructure lives under ignored `.artifacts/ux3322/` (not a download atta
 5. Poll: retain the machine-readable result for the agent, but present a localized human result in the chat rather than the internal prompt.
 
 No credentials or bearer URLs are included. Codes, fingerprints, directory IDs and identities in these PNGs belong only to the disposable fixture.
+
+## Published review
+
+Parent summary: https://github.com/songsid/AgEnD/issues/3322#issuecomment-6709500543
+
+- P1 account assignment / removal move: #3335
+- P2 pairing owner first-login prerequisite: #3336
+- P2 member-address handoff: #3337
+- P2 publication → can-ask grant handoff: #3338
+- P3 internal poll-result prompt in chat: #3339
+
+All five are formal child issues of #3322 and have owning-area labels. Owned web/member/preview/control listeners and the fake LDAPS container were stopped after testing.
