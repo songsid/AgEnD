@@ -130,7 +130,7 @@ describe("Administration → Group permissions", () => {
     const box = pg.root.querySelectorAll(`[data-group="${ID1}"] input[type=checkbox]`)[1]; box.checked = true;
     fire(box, "change"); await until(() => pg.root.querySelector(".hub-groups-preview .btn-primary"), 400);
     const p = text(pg.root.querySelector(".hub-groups-preview"));
-    for (const words of ["Bo Wu", "bo", "Cy", "Sales", "you won't be able to chat either"]) expect(p, words).toContain(words);
+    for (const words of ["Bo Wu", "bo", "Cy", "Sales", "After saving, you won't be able to chat with agents", "After saving, can't share new or revised agents"]) expect(p, words).toContain(words);
   });
   it("a group the directory doesn't have: said in words, nothing added", async () => {
     const f = fake({ resolveGroup: async () => ({ ok: true, reason: "not-found" }) });
