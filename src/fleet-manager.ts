@@ -20097,19 +20097,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly keepAliveRenewing = new Map<string, Promise<void>>();
   private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
 
-  /** LifecycleContext: hold the sign-in a start will launch on (waits while Keep sign-in alive renews it). */
-  async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void } | null> {
-    if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
+  /**
+   * The sign-in a start launches on, from the instance's own (defaults-expanded at load) options — exactly what the
+   * Daemon's clone of that config hands its CLI. Never today's defaults: an older config object keeps its own.
+   */
+  private launchCredentialKey(config: InstanceConfig, backend: string): string {
     let profile: string | null = null;
-    try { profile = instanceCredentialProfile(config, this.fleetConfig?.defaults, backend); } catch { profile = null; }
-    const key = this.credentialKey(backend, profile);
-    // Wait out a renewal of this sign-in; the check and the record below run with no await between them.
-    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) { await renewing; assertCurrent(); }
+    try { profile = resolveCredentialProfile(config.backend_options?.[backend]); } catch { profile = null; }
+    return this.credentialKey(backend, profile);
+  }
+
+  /**
+   * #3313 review r2: failed starts whose CLI was not proven gone keep holding their sign-in (across a retry of the same
+   * agent too) until a check finds it ended.
+   */
+  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean> }>();
+  private orphanCheck: Promise<void> | null = null;
+  private recheckCredentialOrphans(): void {
+    if (this.orphanCheck || !this.credentialOrphans.size) return;
+    this.orphanCheck = (async () => {
+      for (const [id, o] of [...this.credentialOrphans]) {
+        let gone = false;
+        try { gone = await o.ended(); } catch { gone = false; }
+        if (gone) this.credentialOrphans.delete(id);
+      }
+    })().finally(() => { this.orphanCheck = null; });
+  }
+
+  /**
+   * LifecycleContext: hold the sign-in a start will launch on (waits while Keep sign-in alive renews it). The key is
+   * read again after every wait; `current(config)` lets the start check, with no await before it builds its Daemon,
+   * that the config still names that sign-in (a save may have changed it meanwhile: then it asks again).
+   */
+  async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void } | null> {
+    if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
+    let key = this.launchCredentialKey(config, backend);
+    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) {
+      await renewing; assertCurrent();
+      key = this.launchCredentialKey(config, backend);
+    }
     const lease = { key, starting: true };
     this.credentialLeases.set(name, lease);
+    const drop = () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); };
     return {
       published: () => { lease.starting = false; },
-      release: () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); },
+      release: drop,
+      current: c => this.launchCredentialKey(c, backend) === key,
+      // A failed start whose CLI may still run: the sign-in stays held (by itself, not by the agent's name) until it is seen gone.
+      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended }); this.recheckCredentialOrphans(); },
     };
   }
 
@@ -20120,6 +20155,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private keepAliveInUse(backend: string, profile: string | null): boolean {
     const key = this.credentialKey(backend, profile);
+    for (const o of this.credentialOrphans.values()) if (o.key === key) { this.recheckCredentialOrphans(); return true; }
     for (const [name, lease] of [...this.credentialLeases]) {
       if (!lease.starting && !this.daemons?.has(name)) { this.credentialLeases.delete(name); continue; }
       if (lease.key === key) return true;

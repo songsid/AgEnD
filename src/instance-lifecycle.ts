@@ -196,6 +196,13 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * Context interface for instance lifecycle operations.
  * FleetManager implements this.
  */
+/**
+ * #3292: a start's hold on the sign-in it launches on. `current(config)`: the config still names it (checked with no await
+ * before the Daemon clones the config). `unknownEnd(ended)`: the start failed and its CLI was not proven gone — the
+ * sign-in stays held until `ended()` says so.
+ */
+export interface CredentialHold { published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void }
+
 export interface LifecycleContext {
   assertGeneralBindingStart?(name: string, config: InstanceConfig): void;
   /**
@@ -203,7 +210,7 @@ export interface LifecycleContext {
    * it — waits while a renewal of that same sign-in runs (a Codex refresh token is single-use). `published()` once the
    * daemon is registered (it then holds the sign-in while it lives); `release()` when the start fails before that.
    */
-  admitCredentialUse?(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void } | null>;
+  admitCredentialUse?(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<CredentialHold | null>;
   /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
   nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
   reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
@@ -1918,7 +1925,8 @@ export class InstanceLifecycle {
 
     const native = isNativePaneInstance(config) ? await this.ctx.nativePaneFor?.(name, config, check) : undefined;
     let nativePublished=false;
-    let credentialHold: { published(): void; release(): void } | null = null, credentialPublished = false;
+    let credentialHold: CredentialHold | null = null, credentialPublished = false;
+    let launched: Daemon | null = null;
     try {
     check();
     if (isNativePaneInstance(config) && !native) throw Error("Native pane ownership is unavailable; no local CLI was started");
@@ -1978,8 +1986,15 @@ export class InstanceLifecycle {
     }
 
     // #3292 review P1: never started on a sign-in Keep sign-in alive is renewing; held against renewal from here on.
-    if (!native) credentialHold = await this.ctx.admitCredentialUse?.(name, config, backendName, check) ?? null;
-    check();
+    // #3313 review r2: the hold names what this config names NOW (nothing awaits between this and the Daemon's clone).
+    if (!native) {
+      for (;;) {
+        credentialHold = await this.ctx.admitCredentialUse?.(name, config, backendName, check) ?? null;
+        check();
+        if (!credentialHold || credentialHold.current(config)) break;
+        credentialHold.release(); credentialHold = null;          // a save changed its account while it waited: ask again
+      }
+    }
     const backend = native?.backend ?? createBackend(backendName, instanceDir);
     const daemon = new Daemon(
       name,
@@ -1998,6 +2013,7 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    launched = daemon;
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
     daemon.on("kiro_compatibility_hold", (message: string | null) => {
@@ -2148,7 +2164,13 @@ export class InstanceLifecycle {
     // (pause, notify) finds both.
     (daemon as IncidentEventSource).releaseStartupIncidents?.();
     }catch(error){
-      if (!credentialPublished) credentialHold?.release();
+      if (!credentialPublished && credentialHold) {
+        // #3313 review r2: released only when this start's CLI is positively gone (or never existed); else held until it is.
+        const d = launched as (Daemon & { startupCliEnded?(): Promise<boolean> }) | null;
+        const ended = d?.startupCliEnded ? await d.startupCliEnded().catch(() => false) : true;
+        if (ended) credentialHold.release();
+        else credentialHold.unknownEnd(() => d!.startupCliEnded!());
+      }
       // The factory registered helper authority before acquire(). A superseded pre-window start must release it too.
       if(native&&!nativePublished)await native.release("detach").catch(err=>this.ctx.logger.warn({name,err},"Prepared native authority could not detach"));
       throw error;

@@ -13,12 +13,13 @@ vi.mock("../src/logger.js", async original => {
   return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
 });
 const order: string[] = [];
-let failStart = false;
+let failStart = false, cliEnded: boolean | "throws" = true;
 vi.mock("../src/daemon.js", async importOriginal => {
   const mod = await importOriginal<typeof import("../src/daemon.js")>();
   class LaunchlessDaemon extends mod.Daemon {
     override async start(): Promise<void> { order.push("daemon.start"); if (failStart) throw new Error("launch failed"); }
     override async abortStartup(): Promise<void> {}
+    override async startupCliEnded(): Promise<boolean> { if (cliEnded === "throws") throw new Error("tmux could not list"); return cliEnded; }
   }
   return { ...mod, Daemon: LaunchlessDaemon };
 });
@@ -91,6 +92,46 @@ describe("reciprocal admission (P1)", () => {
   });
 });
 
+describe("#3313 review r2: admission names what the start will launch", () => {
+  it("the config's account changed to a named one while it waited for the shared renewal: it then waits for THAT renewal, and the lease names it", async () => {
+    const shared = acquire("codex", null);
+    const cfg = fm.fleetConfig.instances.gpt;
+    let lease: any = null;
+    const waiting = fm.admitCredentialUse("gpt", cfg, "codex", () => {}).then((h: any) => { lease = h; });
+    // A save refreshes the instance object in place (fleet-manager saveFleetConfig): its options now name "new".
+    Object.assign(cfg, { backend_options: { codex: { credential_profile: "new" } } });
+    shared.release();
+    (fm.loginWindow as any).owner = null;
+    const renewNew = acquire("codex", "new");
+    expect(typeof renewNew).toBe("object");
+    await new Promise(r => setTimeout(r, 20));
+    expect(lease).toBeNull();                                               // still waiting: "new" is being renewed
+    renewNew.release();
+    await waiting;
+    expect(fm.credentialLeases.get("gpt").key).toBe("codex\0new");
+    expect(lease.current(cfg)).toBe(true);
+    lease.release();
+  });
+  it("an older config object keeps its own account: today's named default is never applied to it", async () => {
+    load("new");
+    const older = { ...fm.fleetConfig.instances.gpt, backend_options: {} };   // loaded before the default named an account
+    const lease = await fm.admitCredentialUse("gpt", older, "codex", () => {});
+    expect(fm.credentialLeases.get("gpt").key).toBe("codex\0");
+    expect(acquire("codex", null)).toBe("in_use");
+    lease.release();
+  });
+  it("a failed start's unknown end keeps the sign-in in use (even across a retry of the same agent) until it is seen ended", async () => {
+    const lease = await startOn("gpt");
+    let gone = false;
+    lease.unknownEnd(async () => gone);
+    expect(acquire("codex", null)).toBe("in_use");
+    const retry = await startOn("gpt"); retry.release();                     // a retry and its failure do not clear it
+    expect(acquire("codex", null)).toBe("in_use");
+    gone = true;
+    await vi.waitFor(() => { const h = acquire("codex", null); expect(typeof h).toBe("object"); h.release(); });
+  });
+});
+
 describe("the account a running agent LAUNCHED on (P2)", () => {
   it("launched on the default sign-in, then the fleet default changed to a named account: the default stays in use, the named one is free", async () => {
     const lease = await startOn("gpt");                                    // defaults: no profile → the default sign-in
@@ -139,22 +180,40 @@ describe("the real InstanceLifecycle start waits for the hold before its CLI sta
     order.length = 0; failStart = false;
     let admit!: (v: unknown) => void;
     const calls: string[] = [];
-    const hold = { published: () => calls.push(`published:${lc.daemons.has("worker")}`), release: () => calls.push("release") };
-    const { lc, root } = lifecycle(() => new Promise(r => { admit = r; }));
+    const hold = { published: () => calls.push(`published:${lc.daemons.has("worker")}`), release: () => calls.push("release"), current: () => true, unknownEnd: () => calls.push("unknownEnd") };
+    let asked = false;
+    const { lc, root } = lifecycle(() => { asked = true; return new Promise(r => { admit = r; }); });
     const started = lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false);
-    await new Promise(r => setTimeout(r, 50));
+    await vi.waitFor(() => expect(asked).toBe(true));
+    await new Promise(r => setTimeout(r, 30));
     expect(order).toEqual([]);
     admit(hold);
     await started;
     expect(order).toEqual(["daemon.start"]);
     expect(calls).toEqual(["published:true"]);
   });
-  it("a start that fails after admission releases its hold (never published)", async () => {
-    order.length = 0; failStart = true;
+  const failing = async (ended: boolean | "throws") => {
+    order.length = 0; failStart = true; cliEnded = ended;
     const calls: string[] = [];
-    const { lc, root } = lifecycle(async () => ({ published: () => calls.push("published"), release: () => calls.push("release") }));
+    const { lc, root } = lifecycle(async () => ({ published: () => calls.push("published"), release: () => calls.push("release"), current: () => true, unknownEnd: () => calls.push("unknownEnd") }));
     await expect(lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false)).rejects.toThrow();
-    expect(calls).toEqual(["release"]);
-    failStart = false;
+    failStart = false; cliEnded = true;
+    return calls;
+  };
+  it("a start that fails after admission, its CLI positively gone: the hold is released (never published)", async () => {
+    expect(await failing(true)).toEqual(["release"]);
+  });
+  it("#3313 review r2: a failed start whose CLI was not proven gone keeps the sign-in held (unknownEnd), never released", async () => {
+    expect(await failing(false)).toEqual(["unknownEnd"]);
+    expect(await failing("throws")).toEqual(["unknownEnd"]);
+  });
+  it("#3313 review r2: a config whose account changed while it waited asks again (the Daemon clones what was admitted)", async () => {
+    order.length = 0;
+    const calls: string[] = [];
+    let n = 0;
+    const { lc, root } = lifecycle(async () => { n++; return { published: () => calls.push(`published#${n}`), release: () => calls.push(`release#${n}`), current: () => n >= 2, unknownEnd: () => {} }; });
+    await lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false);
+    expect(calls).toEqual(["release#1", "published#2"]);
+    expect(order).toEqual(["daemon.start"]);
   });
 });

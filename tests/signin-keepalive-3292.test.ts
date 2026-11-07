@@ -406,6 +406,36 @@ setInterval(() => {}, 1000);`);
     expect(r.code).toBeNull();
     expect(existsSync(marker)).toBe(true);
   });
+  it("#3313 review r2: stopped before its late initialize answer, codex is never asked to refresh (nothing more is sent); the run still waits for its exit", async () => {
+    const out = scratch(), got = join(out, "received"), marker = join(out, "exited");
+    const bin = fakeBin(`
+const fs = require("fs"); let buf = "";
+process.stdin.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); fs.appendFileSync(${JSON.stringify(got)}, line + "\\n"); } });
+// It answers initialize late — after the run was stopped — and keeps running for a while before it exits.
+process.on("SIGINT", () => { setTimeout(() => process.stdout.write(JSON.stringify({ id: 1, result: {} }) + "\\n"), 100); setTimeout(() => { fs.writeFileSync(${JSON.stringify(marker)}, "x"); process.exit(0); }, 600); });
+setInterval(() => {}, 1000);`);
+    const { makeRunners } = await import("../src/signin-keepalive.js");
+    const c = new AbortController();
+    const p = makeRunners({ claude: bin, codex: bin }).codexRefresh(scratch(), c.signal);
+    await new Promise(r => setTimeout(r, 300));
+    c.abort();
+    expect(await p).toEqual({ answered: false, accountNull: false });
+    expect(existsSync(marker)).toBe(true);
+    const lines = readFileSync(got, "utf8").trim().split("\n").map(l => JSON.parse(l).method ?? `id${JSON.parse(l).id}`);
+    expect(lines).toEqual(["initialize"]);                                  // no "initialized", no account/read
+  });
+  it("control: answered in time, the refresh is asked (initialize, initialized, account/read)", async () => {
+    const out = scratch(), got = join(out, "received");
+    const bin = fakeBin(`
+const fs = require("fs"); let buf = "";
+process.stdin.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); fs.appendFileSync(${JSON.stringify(got)}, line + "\\n"); const m = JSON.parse(line);
+  if (m.id === 1) process.stdout.write(JSON.stringify({ id: 1, result: {} }) + "\\n");
+  if (m.id === 2) process.stdout.write(JSON.stringify({ id: 2, result: { account: { type: "chatgpt" } } }) + "\\n"); } });
+process.stdin.on("end", () => process.exit(0));`);
+    const { makeRunners } = await import("../src/signin-keepalive.js");
+    expect(await makeRunners({ claude: bin, codex: bin }).codexRefresh(scratch(), new AbortController().signal)).toEqual({ answered: true, accountNull: false });
+    expect(readFileSync(got, "utf8").trim().split("\n").map(l => JSON.parse(l).method)).toEqual(["initialize", "initialized", "account/read"]);
+  });
   it("a CLI that ignores SIGINT is killed (SIGKILL after 5 s), and only then does the run resolve", async () => {
     const bin = fakeBin(`process.on("SIGINT", () => {}); process.stdout.write("started\\n"); setInterval(() => {}, 1000);`);
     const { makeRunners } = await import("../src/signin-keepalive.js");

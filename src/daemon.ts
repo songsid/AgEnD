@@ -13085,6 +13085,17 @@ export class Daemon extends EventEmitter {
    * retries. Idempotent, and fast: no graceful CLI quit, the CLI never reached
    * its prompt.
    */
+  /**
+   * #3313 review r2: after a failed start (abortStartup), whether this start's CLI is positively gone — no window was ever
+   * asked for, or its window (by id, or by name while its creation was pending) is positively absent after another kill.
+   * False when that cannot be told (tmux could not list).
+   */
+  async startupCliEnded(): Promise<boolean> {
+    if (this.nativePaneLifecycle) return true;
+    if (!this.tmux) return true;
+    try { return await this.tmux.killWindowConfirmed(); } catch { return false; }
+  }
+
   async abortStartup(): Promise<void> {
     if (this.startupAborted) return;
     this.startupAborted = true;

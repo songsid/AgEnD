@@ -86,15 +86,16 @@ let reading = null, started = 0, applied = 0;
 /**
  * Read GET /ui/accounts. A read already running is joined — unless `fresh` (#3291 review, Prism P2-4: after a write, the
  * view must come from a read that began after it): then a new read starts, and an older one that answers later never
- * replaces a newer answer.
+ * replaces a newer answer. Resolves true only when THIS read's view was applied (#3313 review r2: what a write's follow-up
+ * read needs to know).
  */
 export function refreshAccounts({ fresh = false } = {}) {
   if (reading && !fresh) return reading;
   const mine = ++started;
-  const apply = (next) => { if (mine > applied) { applied = mine; accountsStore.set(next); } };
+  const apply = (next) => { if (mine > applied) { applied = mine; accountsStore.set(next); return true; } return false; };
   const p = fetch("/ui/accounts", { credentials: "same-origin", cache: "no-store" })
-    .then(async (r) => { const v = r.ok ? await r.json() : null; apply({ loaded: true, failed: !v, view: v }); })
-    .catch(() => apply({ loaded: true, failed: true, view: accountsStore.get().view }))
+    .then(async (r) => { const v = r.ok ? await r.json() : null; return apply({ loaded: true, failed: !v, view: v }) && !!v; })
+    .catch(() => { apply({ loaded: true, failed: true, view: accountsStore.get().view }); return false; })
     .finally(() => { if (reading === p) reading = null; });
   reading = p;
   return p;

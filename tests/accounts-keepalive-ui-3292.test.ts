@@ -159,6 +159,31 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     await settle(8);
     expect(posts[1]).toEqual({ url: "/ui/accounts/keep-alive", body: { backend: "claude-code", profile: "work", enabled: false, fallback: false } });
   });
+  it("#3313 review r2: a read from before the write answering late, then the read after it failing, never brings back the withdrawn fallback", async () => {
+    view = VIEW(); view.clis[0].rows[1].keepAlive = { enabled: true, fallback: true };
+    await mount();
+    const stale = JSON.parse(JSON.stringify(view));                          // what the server said before the write
+    const held: Array<(how: "ok" | "net") => void> = [];
+    (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === "POST") { posts.push({ url: String(url), body: JSON.parse(init.body!) }); return { ok: true, status: 200, json: async () => ({}) }; }
+      if (String(url).startsWith("/ui/accounts")) return new Promise((resolve, reject) => { held.push(how => how === "ok" ? resolve({ ok: true, status: 200, json: async () => stale }) : reject(new Error("network"))); });
+      return { ok: true, status: 200, json: async () => ({ login: null, targets: [] }) };
+    };
+    streamHandlers.backend_login![0]!();                                     // a read from before the write (held)
+    await settle(2);
+    { const box = ka("claude-code", "work").querySelector(".s-keepalive-fallback input"); box.checked = false; fire(box, "change"); }
+    await settle(4);                                                         // the write is acknowledged; the read after it is held
+    expect(held.length).toBe(2);
+    held[0]!("ok"); await settle(4);                                         // the older read answers first (fallback: true)
+    held[1]!("net"); await settle(8);                                        // the read after the write fails
+    const k = ka("claude-code", "work");
+    expect(k.querySelector('input[type="checkbox"]').disabled).toBe(false);
+    expect(k.querySelector(".s-keepalive-fallback input").checked).toBe(false);
+    (globalThis as any).fetch = fetchFake;
+    { const box = k.querySelector('input[type="checkbox"]'); box.checked = false; fire(box, "change"); }
+    await settle(8);
+    expect(posts.at(-1)).toEqual({ url: "/ui/accounts/keep-alive", body: { backend: "claude-code", profile: "work", enabled: false, fallback: false } });
+  });
   it("Traditional Chinese, and its stylesheet linked once", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();

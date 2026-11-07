@@ -284,10 +284,13 @@ export function makeRunners(bin: { claude: string; codex: string }): KeepAliveRu
     let child: Child;
     try { child = spawn(bin.codex, ["app-server"], { env: runEnv({ CODEX_HOME: runHome }), cwd: runHome, stdio: ["pipe", "pipe", "ignore"], windowsHide: true }); } catch { return { answered: false, accountNull: false }; }
     const w = watchChild(child);
-    let buf = "", answered = false, accountNull = false, grace: NodeJS.Timeout | null = null;
-    const send = (o: unknown) => { try { child.stdin?.write(JSON.stringify(o) + "\n"); } catch { /* closed */ } };
+    let buf = "", answered = false, accountNull = false, grace: NodeJS.Timeout | null = null, ended = false;
+    // #3313 review r2: once stopped (withdrawn, stopped, or past its deadline) nothing more is sent — a late answer to
+    // `initialize` never starts the refresh — and the process is still owned until it exits.
+    const end = () => { ended = true; w.stop(); };
+    const send = (o: unknown) => { if (ended || signal.aborted) return; try { child.stdin?.write(JSON.stringify(o) + "\n"); } catch { /* closed */ } };
     // After its answer it is asked to leave (stdin closed); if it has not within the grace, it is stopped.
-    const finish = () => { if (grace) return; try { child.stdin?.end(); } catch { /* closed */ } grace = setTimeout(w.stop, CODEX_EXIT_GRACE_MS); grace.unref?.(); };
+    const finish = () => { if (grace) return; ended = true; try { child.stdin?.end(); } catch { /* closed */ } grace = setTimeout(w.stop, CODEX_EXIT_GRACE_MS); grace.unref?.(); };
     child.stdin?.on("error", () => { /* it left first */ });
     child.stdout?.on("data", (d: Buffer) => {
       buf += d.toString("utf8");
@@ -297,13 +300,13 @@ export function makeRunners(bin: { claude: string; codex: string }): KeepAliveRu
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         let m: any; try { m = JSON.parse(line); } catch { continue; }
         if (m?.id === 1) { send({ method: "initialized" }); send({ id: 2, method: "account/read", params: { refreshToken: true } }); }
-        else if (m?.id === 2) { answered = !m.error; accountNull = !m.error && m.result?.account === null; finish(); }
+        else if (m?.id === 2 && !ended) { answered = !m.error; accountNull = !m.error && m.result?.account === null; finish(); }
       }
     });
-    const timer = setTimeout(w.stop, CODEX_TIMEOUT_MS); timer.unref?.();
-    signal.addEventListener("abort", w.stop, { once: true });
+    const timer = setTimeout(end, CODEX_TIMEOUT_MS); timer.unref?.();
+    signal.addEventListener("abort", end, { once: true });
     send({ id: 1, method: "initialize", params: { clientInfo: { name: "agend-signin-keepalive", version: "1" } } });
-    try { await w.exited; } finally { clearTimeout(timer); if (grace) clearTimeout(grace); signal.removeEventListener("abort", w.stop); }
+    try { await w.exited; } finally { clearTimeout(timer); if (grace) clearTimeout(grace); signal.removeEventListener("abort", end); }
     return { answered, accountNull };
   },
 }; }

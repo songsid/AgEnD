@@ -65,10 +65,11 @@ export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
   const given = row && row.keepAlive;
   const [busy, setBusy] = useState(false);
   const busyNow = useRef(false);
-  // #3313 review P2-6: what the server acknowledged, shown (and built on) until a read of the view brings a newer row —
-  // a read that fails leaves it standing, so a later switch never sends back a setting the person already withdrew.
+  // #3313 review P2-6 (r2): what the server acknowledged, shown and built on until a read that began after the write
+  // has been applied (onSaved answers true), or the row says the same. A read from before the write, or one that failed,
+  // never brings back a setting the person already withdrew.
   const [ack, setAck] = useState(null);
-  useEffect(() => { setAck(null); }, [given]);
+  useEffect(() => { if (ack && given && !!given.enabled === ack.enabled && !!given.fallback === ack.fallback) setAck(null); }, [given, ack]);
   // #3313 review (web-claude P3): an answer that arrives after the row is gone (the person left the page) says nothing
   // and reads nothing again.
   const live = useRef(true);
@@ -85,7 +86,9 @@ export function KeepAliveControl({ row, onSaved, now = Date.now() }) {
       toast(ok ? tk(enabled ? "on" : "off") : tk("failed"), ok);
       if (!ok) return;
       setAck({ enabled: !!enabled, fallback: !!fallback });
-      if (typeof onSaved === "function") { try { await onSaved(); } catch { /* the acknowledged setting stays shown */ } }
+      let fresh = false;
+      if (typeof onSaved === "function") { try { fresh = (await onSaved()) === true; } catch { fresh = false; } }
+      if (fresh && live.current) setAck(null);
     } finally {
       busyNow.current = false;
       if (live.current) setBusy(false);
