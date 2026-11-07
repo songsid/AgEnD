@@ -156,6 +156,28 @@ describe("sealed group policy confirmation control", () => {
     expect(await w.control.apply(request, w.ctx)).toMatchObject({ ok: true });
     expect(await w.control.apply(request, w.ctx)).toEqual({ ok: false, code: "stale-preview" }); expect(w.advance).toHaveBeenCalledOnce();
   });
+  it.each(["in-time", "expired", "backward"] as const)("fences the preview deadline across final administrator authentication (%s)", async mode => {
+    const w = fixture(), next = w.proposal(), preview = await w.control.preview({ policy: next }, w.ctx);
+    if (!preview.ok) throw Error("positive preview refused");
+    w.time(119_999);
+    const actor: HubActor = { kind: "directory", person: w.administrator, sessionId: "admin-session" }, entered = gate<void>(), held = gate<HubActor>();
+    w.authenticate.mockResolvedValueOnce(actor).mockImplementationOnce(() => { entered.resolve(); return held.promise; });
+    const pending = w.control.apply({ policy: next, previewDigest: preview.previewDigest }, w.ctx); await entered.promise;
+    const expired = mode !== "in-time";
+    if (mode === "expired") w.time(2); else if (mode === "backward") w.time(-120_000); held.resolve(actor);
+    expect(await pending).toMatchObject(expired ? { ok: false, code: "expired" } : { ok: true });
+    expect(w.policy.read().state).toBe(expired ? "never-enabled" : "enabled");
+    if (expired) { expect(w.db.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]); expect(w.advance).not.toHaveBeenCalled();
+      expect(await w.control.apply({ policy: next, previewDigest: preview.previewDigest }, w.ctx)).toEqual({ ok: false, code: "stale-preview" }); }
+  });
+  it("rolls back when the preview expires during the final required impact audit", async () => {
+    const w = fixture(), next = w.proposal(), preview = await w.control.preview({ policy: next }, w.ctx);
+    if (!preview.ok) throw Error("positive preview refused"); w.time(119_999);
+    w.append.mockImplementation((event, db) => { const result = w.audit.appendInTransaction(event, db); if (event.action === "group-policy.impact-checked") w.time(2); return result; });
+    expect(await w.control.apply({ policy: next, previewDigest: preview.previewDigest }, w.ctx)).toEqual({ ok: false, code: "expired" });
+    expect(w.policy.read().state).toBe("never-enabled"); expect(w.db.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
+    expect(w.db.prepare("SELECT * FROM hub_group_events").all()).toEqual([]); expect(w.advance).not.toHaveBeenCalled(); expect(w.refresh).not.toHaveBeenCalled();
+  });
   it.each(["epoch", "policy", "ordinary", "session", "close"] as const)("withholds a held apply after %s changes", async changed => {
     const w = fixture(), next = w.proposal(), preview = await w.control.preview({ policy: next }, w.ctx);
     if (!preview.ok) throw Error("positive preview refused"); const held = gate<PolicyGroupFacts>(), entered = gate<PersonKey>();

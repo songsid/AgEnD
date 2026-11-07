@@ -22,6 +22,7 @@ import { applyRequest, previewRequest, resolveRequest, type GroupAdminContext, t
 
 type Failure = Extract<GroupPreviewResponse, { ok: false }>["code"];
 class Refusal extends Error { constructor(readonly code: Failure) { super(code); } }
+class ExpiredPreview extends Error {}
 interface Candidate {
   sessionId: string; raw: string; canonical: string; before: string; epoch: number;
   inventory: string; facts: string; impact: string; created: number; expiresAt: number;
@@ -127,7 +128,11 @@ export function createHubGroupAdminControl(options: {
       const candidate = candidates.get(request.previewDigest); candidates.delete(request.previewDigest); prune();
       if (!candidate || candidate.sessionId !== actor.sessionId || candidate.raw !== JSON.stringify(request.policy)) return { ok: false, code: "stale-preview" };
       if (now() < candidate.created || now() >= candidate.expiresAt) return { ok: false, code: "expired" };
+      const assertUnexpired = () => {
+        const at = now(); if (at < candidate.created || at >= candidate.expiresAt) throw new ExpiredPreview();
+      };
       const p = await prepare(request.policy, ctx, actor);
+      assertUnexpired();
       if (candidate.before !== p.serialized || candidate.epoch !== p.epoch || candidate.inventory !== p.snapshot.fingerprint) return { ok: false, code: "conflict" };
       if (candidate.canonical !== JSON.stringify(p.canonical) || candidate.facts !== p.observed.semantic || candidate.impact !== JSON.stringify(p.plan.impact)) {
         db.transaction(() => {
@@ -138,7 +143,7 @@ export function createHubGroupAdminControl(options: {
       }
       let changed = false;
       const saved = db.transaction(() => {
-        p.assertSnapshot();
+        assertUnexpired(); p.assertSnapshot();
         const resources = createHubGroupResources({ db, policy: p.selected, audit, current: alive, now });
         const lifecycleOf = (resource: Parameters<typeof inventory.ledger>[0]) => {
           const row = inventory.ledger(resource); return row ? { source: row.source, state: row.state, revision: row.revision } : null;
@@ -158,7 +163,7 @@ export function createHubGroupAdminControl(options: {
           { observed: [...p.observed.facts], impact: p.plan.impact });
         boundary.assertCurrent(ctx);
         const assertCommitted = () => {
-          boundary.assertCurrent(ctx);
+          boundary.assertCurrent(ctx); assertUnexpired();
           if (binding().kind !== "ready" || policyOf() !== p.selected || JSON.stringify(p.selected.read()) !== JSON.stringify(result)
             || inventoryOf.snapshot().ordinaryFingerprint !== p.snapshot.ordinaryFingerprint) throw new Refusal("conflict");
           const captured = new Set(p.plan.capture.map(r => JSON.stringify(r))), suspended = new Set(p.plan.suspend.map(r => JSON.stringify(r)));
@@ -179,7 +184,8 @@ export function createHubGroupAdminControl(options: {
       }).immediate();
       if (changed) synchronous(refreshAuthorization());
       boundary.assertCurrent(ctx); return { ok: true, policyRevision: saved.revision, state: saved.state };
-    } catch (error) { const code = failure(error); if (code) return { ok: false, code: code === "invalid" ? "stale-preview" : code }; throw error; }
+    } catch (error) { if (error instanceof ExpiredPreview) return { ok: false, code: "expired" };
+      const code = failure(error); if (code) return { ok: false, code: code === "invalid" ? "stale-preview" : code }; throw error; }
     finally { working--; }
   };
   return { read: reads.read, resolve: reads.resolve, resume: reads.resume, preview, apply,
