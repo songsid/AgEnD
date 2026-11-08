@@ -1,0 +1,5 @@
+(node:507572) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+A8-01 PASS
+STARTUP {"probe":"desk-light-en-1","emptyHint":false,"busy":[{"probe":"desk-light-en-1","at":1794105652811,"path":"/hub/v1/exposures","method":"GET","status":429,"retryAfter":"10","body":{"code":"backpressure"}}],"attemptedPeak":5,"driverPeak":4}
+STARTUP {"probe":"phone-dark-zh-TW-1","emptyHint":false,"busy":[{"probe":"phone-dark-zh-TW-1","at":1794105655683,"path":"/hub/v1/exposures","method":"GET","status":429,"retryAfter":"10","body":{"code":"backpressure"}}],"attemptedPeak":5,"driverPeak":4}
