@@ -20282,7 +20282,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
       installed: backend => this.isCliInstalledOffLoop(backend),
-      known: (backend, profile) => accountFolderExists(this.dataDir, backend, profile),
+      known: (backend, profile) => accountFolderExists(this.dataDir, backend, profile) ? "exists" : this.configuredProfileNames(backend).has(profile) ? "configured" : "unknown",
+      add: (backend, profile) => {
+        const result = addAccountProfile(this.dataDir, backend, profile, this.configuredProfileNames(backend));
+        if (result.ok) this.logger.info({ backend, profile }, "Credential profile added by the first sign-in of an account the configuration names");
+        return result.ok;
+      },
       checkAuth: (backend, profile) => {
         const env = credentialProfileEnv(this.dataDir, backend, profile);
         return env ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, env) : Promise.resolve("unknown" as const);
@@ -20646,13 +20651,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   addAccountProfile(backend: string, name: unknown, by: string, machine?: MachineActor): AddResult | Promise<MachineAccountResult> {
     // #3190 Part 3c: on a paired computer the profile's folder is made by its Runtime when the first sign-in starts; this only checks what can be checked first.
     if (machine) return this.machineAccounts.add(backend, name, machine.id, by);
+    const result = addAccountProfile(this.dataDir, backend, name, this.configuredProfileNames(backend));
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /** The profile names the configuration refers to for this backend — an agent, a ClassicBot room, the fleet default — whether or not their folders exist yet. */
+  private configuredProfileNames(backend: string): Set<string> {
     const { agents, classic, fleetDefaults } = this.accountUses();
     const configured = new Set<string>();
     for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
     const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
-    const result = addAccountProfile(this.dataDir, backend, name, configured);
-    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
-    return result;
+    return configured;
   }
 
   /**

@@ -24,7 +24,7 @@ export const SIGNIN_STRINGS = {
     error_expired: "This login attempt expired. Start a new attempt.",
     error_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
     error_signin_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
-    error_signin_profile_unknown: "This account has not been added yet. Use + Add account with this name in Settings → Accounts, then sign in.",
+    error_signin_profile_unknown: "This account is not in the list. Add it with + Add account in Settings → Accounts, then sign in.",
     error_auth_unconfirmed: "The CLI exited, but credentials could not be verified. Retry or sign in later.",
     error_provider_rejected: "The provider rejected this sign-in. Retry or sign in later.",
     // #3190 Part 3c: a profile on a paired computer (the dashboard's Accounts view).
@@ -61,7 +61,7 @@ export const SIGNIN_STRINGS = {
     error_expired: "這次登入已過期。請重新開始。",
     error_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
     error_signin_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
-    error_signin_profile_unknown: "這個帳號還沒有新增。請先在 設定 → 帳號 用 + 新增帳號 加入同樣的名稱，再登入。",
+    error_signin_profile_unknown: "清單裡沒有這個帳號。請先在 設定 → 帳號 用 + 新增帳號 加入，再登入。",
     error_auth_unconfirmed: "CLI 已結束，但無法確認憑證。請重試或稍後登入。",
     error_provider_rejected: "平台拒絕了這次登入。請重試或稍後登入。",
     // #3190 Part 3c：配對電腦上的憑證設定檔（儀表板的「帳號」頁）。

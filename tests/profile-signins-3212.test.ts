@@ -57,7 +57,7 @@ describe("the transport: which folder and variable a named account's sign-in get
       const dir = temp();
       for (const backend of ["codex", "kiro-cli"]) expect(() => structuredSignInProfileEnvironment(dir, backend, "CHY"), backend).toThrow("signin_profile_unsupported");
       expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
-      expect(() => new ProfileSignIns({ lock: new LoginWindowLock(), current: () => true, installed: async () => true, known: () => true, checkAuth: async () => "invalid", transport: () => { throw new Error("no"); } })
+      expect(() => new ProfileSignIns({ lock: new LoginWindowLock(), current: () => true, installed: async () => true, known: () => "exists", add: () => false, checkAuth: async () => "invalid", transport: () => { throw new Error("no"); } })
         .snapshot({}, { backend: "codex", profile: "CHY" })).toThrow("invalid_signin_target");
     } finally { widened.clear(); for (const b of before) widened.add(b); }
   });
@@ -135,7 +135,7 @@ function rig(extra: Partial<ProfileSignInDeps> = {}) {
   const installed = vi.fn(async () => state.installed);
   const transportFor = vi.fn((_target: unknown) => transport);
   const events: unknown[] = [];
-  const c = new ProfileSignIns({ lock, current: who => who === owner && state.current, installed, known: () => true, checkAuth, transport: transportFor, changed: (e, _o, launched) => events.push({ ...e, launched }), ...extra });
+  const c = new ProfileSignIns({ lock, current: who => who === owner && state.current, installed, known: () => "exists", add: vi.fn(() => true), checkAuth, transport: transportFor, changed: (e, _o, launched) => events.push({ ...e, launched }), ...extra });
   return { c, owner, other, lock, state, transport, checkAuth, installed, transportFor, events, target: (profile = "CHY") => ({ backend: "claude-code", profile }) };
 }
 const login = (h: ReturnType<typeof rig>) => h.c.snapshot(h.owner, h.target()).login!;
@@ -273,13 +273,39 @@ describe("ProfileSignIns", () => {
     expect(h.c.signingIn("claude-code", "CHY")).toBe(false); expect(h.transport.close).toHaveBeenCalledTimes(2);
   });
   it("a run that is not an account (no folder with exactly this name) is refused before the window is claimed, the probe runs or a child starts; a read is refused the same (#3418 review)", async () => {
-    const h = rig({ known: (_backend, profile) => profile === "CHY" });
+    const h = rig({ known: (_backend, profile) => profile === "CHY" ? "exists" : "unknown" });
     for (const profile of ["chy", "Chy", "NEW"]) {
       await expect(h.c.begin(h.owner, h.target(profile))).rejects.toThrow("signin_profile_unknown");
       await expect(h.c.refresh(h.owner, h.target(profile))).rejects.toThrow("signin_profile_unknown");
     }
     expect(h.lock.isHeld).toBe(false); expect(h.checkAuth).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled(); expect(h.installed).not.toHaveBeenCalled();
     await h.c.begin(h.owner, h.target("CHY")); expect(h.transport.start).toHaveBeenCalledTimes(1);
+  });
+  it("a name only the configuration refers to (no folder yet): a read says not signed in with no probe and no folder; Sign in makes it through Add's path once, then starts — one step (maintainer's ruling on #3418)", async () => {
+    const add = vi.fn(() => true);
+    const h = rig({ known: (_backend, profile) => profile === "NEWCFG" ? "configured" : "unknown", add });
+    const read = await h.c.refresh(h.owner, h.target("NEWCFG"));
+    expect(read).toMatchObject({ pending: ["claude-code"], states: { "claude-code": "invalid" }, ready: false, target: { backend: "claude-code", profile: "NEWCFG" } });
+    expect(add).not.toHaveBeenCalled(); expect(h.checkAuth).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled();
+    h.state.installed = false; expect((await h.c.refresh(h.owner, h.target("NEWCFG"))).states["claude-code"]).toBe("not_installed"); h.state.installed = true;
+    expect(add).not.toHaveBeenCalled();
+    const run = await h.c.begin(h.owner, h.target("NEWCFG"));
+    expect(add).toHaveBeenCalledExactlyOnceWith("claude-code", "NEWCFG");
+    expect(run.login).toMatchObject({ phase: "code" }); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    await h.c.begin(h.owner, h.target("NEWCFG")); expect(add).toHaveBeenCalledTimes(1);   // a refresh or a double click joins: nothing is added again
+  });
+  it("when Add refuses a configured name (a case clash, an unsafe root, a folder that exists) it stays refused as signin_profile_unknown: no CLI, the window free; a name that is not configured never reaches Add", async () => {
+    const add = vi.fn(() => false);
+    const h = rig({ known: (_backend, profile) => profile === "Chy" ? "configured" : "unknown", add });
+    await expect(h.c.begin(h.owner, h.target("Chy"))).rejects.toThrow("signin_profile_unknown");
+    expect(add).toHaveBeenCalledTimes(1); expect(h.transport.start).not.toHaveBeenCalled(); expect(h.lock.isHeld).toBe(false);
+    await expect(h.c.begin(h.owner, h.target("NEW"))).rejects.toThrow("signin_profile_unknown");
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+  it("a configured name whose folder Add made (another tab) while the CLI was being looked for is signed in, not refused", async () => {
+    let asked = 0;
+    const h = rig({ known: () => asked++ === 0 ? "configured" : "exists", add: () => false });
+    await h.c.begin(h.owner, h.target("NEWCFG")); expect(h.transport.start).toHaveBeenCalledTimes(1);
   });
   it("a child that cannot be shown gone keeps the window reserved and blocks the next attempt (the account still counts as signing in)", async () => {
     const h = rig(); await h.c.begin(h.owner, h.target());
@@ -411,7 +437,7 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
     expect(ended.body.login).toMatchObject({ phase: "failed", reason: "cancelled" }); expect(h.transport.close).toHaveBeenCalledTimes(1); expect(h.lock.isHeld).toBe(false);
   });
   it("a name that is not an existing account is refused before anything is read or reserved: 409 signin_profile_unknown, no probe, no CLI, no folder (#3418 review)", async () => {
-    const h = await http({ known: (_backend, profile) => profile === "CHY" });
+    const h = await http({ known: (_backend, profile) => profile === "CHY" ? "exists" : "unknown" });
     for (const query of ["?backend=claude-code&profile=chy", "?backend=claude-code&profile=NEW"]) {
       expect(await h.call(query)).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
       expect(await h.call(query, { operation: "start", backend: "claude-code" })).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
@@ -419,6 +445,17 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
     }
     expect(h.checkAuth).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled(); expect(h.lock.isHeld).toBe(false);
     expect((await h.call(Q)).status).toBe(200);   // the account that exists reads as before
+  });
+  it("a configured name with no folder yet: a read answers 200 (not signed in, nothing made), and Sign in adds it once and starts (maintainer's ruling on #3418)", async () => {
+    const add = vi.fn(() => true);
+    const h = await http({ known: (_backend, profile) => profile === "CFG" ? "configured" : "unknown", add });
+    const query = "?backend=claude-code&profile=CFG";
+    expect(await h.call(query)).toMatchObject({ status: 200, body: { pending: ["claude-code"], states: { "claude-code": "invalid" }, target: { profile: "CFG" } } });
+    expect(add).not.toHaveBeenCalled(); expect(h.checkAuth).not.toHaveBeenCalled();
+    const started = await h.call(query, { operation: "start", backend: "claude-code" });
+    expect(started.status).toBe(200); expect(started.body.login).toMatchObject({ phase: "code" });
+    expect(add).toHaveBeenCalledExactlyOnceWith("claude-code", "CFG"); expect(h.transport.start.mock.calls[0]![0]).toEqual({ argv: ["claude", "auth", "login"], profile: "CFG" });
+    expect(await h.call("?backend=claude-code&profile=NOPE")).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
   });
   it("an error never carries a vendor's words or a path", async () => {
     const h = await http(); h.transport.start.mockRejectedValue(new Error("/home/x/.claude secret"));
@@ -448,6 +485,42 @@ describe("FleetManager", () => {
   }
   const target = { backend: "claude-code", profile: "CHY" };
 
+  it("Sign in on an account only the configuration names (an agent's or the fleet default's, no folder yet) makes the folder through Add's path — private, exact name, logged — and starts in one step; a name that is not configured, or that clashes in case with a folder, is refused and makes nothing (maintainer's ruling on #3418)", async () => {
+    const h = fleet(); const base = join(h.dir, "credential-profiles", "claude-code");
+    h.fm.fleetConfig = { defaults: { backend_options: { "claude-code": { credential_profile: "TEAM" } } }, instances: {
+      worker: { backend: "claude-code", working_directory: "/tmp/w", backend_options: { "claude-code": { credential_profile: "WORKER" } } },
+      clash: { backend: "claude-code", working_directory: "/tmp/c", backend_options: { "claude-code": { credential_profile: "Chy" } } } } };   // `CHY` is a folder already
+    const info = vi.spyOn(h.fm.logger, "info");
+    for (const profile of ["TEAM", "WORKER"]) {
+      const t = { backend: "claude-code", profile };
+      expect(existsSync(profileHome(h.dir, profile))).toBe(false);
+      const probes = h.deps.checkAuth.mock.calls.length;
+      expect(await h.service.refresh(h.owner, t)).toMatchObject({ pending: ["claude-code"], states: { "claude-code": "invalid" } });
+      expect(existsSync(profileHome(h.dir, profile)), "a read makes nothing").toBe(false);
+      expect(h.deps.checkAuth.mock.calls.length, "and runs no probe").toBe(probes);
+      await h.service.begin(h.owner, t);
+      expect(statSync(profileHome(h.dir, profile)).mode & 0o777).toBe(0o700);
+      expect(info).toHaveBeenCalledWith({ backend: "claude-code", profile }, expect.stringContaining("first sign-in"));
+      await h.service.cancel(h.owner, t);
+    }
+    expect(readdirSync(base).sort()).toEqual(["CHY", "TEAM", "WORKER"]);
+    for (const profile of ["NEW", "team", "Chy"]) {   // not configured; a different spelling of a configured one; configured but a different case of an existing folder
+      await expect(h.service.begin(h.owner, { backend: "claude-code", profile }), profile).rejects.toThrow("signin_profile_unknown");
+      await expect(h.service.refresh(h.owner, { backend: "claude-code", profile: profile === "Chy" ? "NEW" : profile })).rejects.toThrow("signin_profile_unknown");
+    }
+    expect(readdirSync(base).sort()).toEqual(["CHY", "TEAM", "WORKER"]); expect(h.fm.loginWindow.isHeld).toBe(false);
+    expect(info.mock.calls.filter(c => String(c[1]).includes("first sign-in"))).toHaveLength(2);
+  });
+  it("Add's case-clash check sees the configured names too: a configuration that names `TEAM` and `team` (no folders) signs neither in — nothing is made", async () => {
+    const h = fleet(); const base = join(h.dir, "credential-profiles", "claude-code");
+    h.fm.fleetConfig = { defaults: { backend_options: { "claude-code": { credential_profile: "TEAM" } } }, instances: {
+      worker: { backend: "claude-code", working_directory: "/tmp/w", backend_options: { "claude-code": { credential_profile: "team" } } } } };
+    for (const profile of ["TEAM", "team"]) {
+      await expect(h.service.begin(h.owner, { backend: "claude-code", profile }), profile).rejects.toThrow("signin_profile_unknown");
+      expect(h.fm.loginWindow.isHeld).toBe(false);
+    }
+    expect(readdirSync(base)).toEqual(["CHY"]); expect(h.transport.start).not.toHaveBeenCalled();
+  });
   it("it shares the host's login window and is a coordinator of its own (not the default account's)", () => {
     const h = fleet();
     expect(h.deps.lock).toBe(h.fm.loginWindow); expect(h.service).not.toBe(h.fm.browserBackendSignIns);
