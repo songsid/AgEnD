@@ -66,7 +66,7 @@ try {
       const errors: string[] = []; page.on("pageerror", (e: any) => errors.push(String(e)));
       try {
         await page.goto(origin + s.path, { waitUntil: "commit" });
-        if (s.name === "hub-new-chat") await page.locator(".hub-new:visible").first().click({ timeout: 30_000 });
+        if (s.name === "hub-new-chat") await page.locator(".sidebar .side-new:visible, .hub-home .hub-new:visible").first().click({ timeout: 30_000 });
         await Promise.race([requested, page.waitForTimeout(30_000).then(() => { throw new Error(`${s.name}: no held request; ${errors.join(" ")}`); })]);
         await page.waitForTimeout(800);
         const data = await page.evaluate(() => ({ skeletons: document.querySelectorAll(".skeleton").length, busy: document.querySelectorAll('[aria-busy="true"]').length,

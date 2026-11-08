@@ -326,6 +326,16 @@ jobs:
           OUT: ${{ runner.temp }}/ui-gate
           FONTCONFIG_FILE: /etc/fonts/fonts.conf
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-ui-gate.mts
+      # cid-hub-shell-parity: the Hub's shell is the dashboard's — its sidebar (brand, rows, list, foot; the session menu and
+      # Settings open on the screen), one card frame per page, the notices card in the page's column, Hub-only requests.
+      # Runs even when a gate before it failed, so one run shows every gate's verdict.
+      - name: Run the Hub shell gate
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          GATE: ci
+          OUT: ${{ runner.temp }}/ui-gate
+          FONTCONFIG_FILE: /etc/fonts/fonts.conf
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-shell-gate.mts
       - name: Pictures of every section (on failure)
         if: failure() && needs.detect-changes.outputs.text-only != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

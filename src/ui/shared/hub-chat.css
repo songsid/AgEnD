@@ -84,3 +84,15 @@
 
 /* An HTML block's Download needs the preview (#3226 E): not offered in the Hub's thread until then. */
 .hub-scroller .pv-dl { display: none; }
+/* cid-hub-shell-parity: the Hub's sidebar is the dashboard's own (side-row, side-new, side-label, side-foot, prefs-pop);
+   only what the Hub adds is here — its conversation filter, the list's count and empty line, and its foot's two parts. */
+.hub-side-rooms .hub-rooms { padding: 0 var(--s-1); }
+.hub-side-filter { display: flex; align-items: center; gap: var(--s-2); margin: 0 var(--s-2) var(--s-2); padding: 0 var(--s-2);
+  background: var(--surface); border-radius: var(--r-sm); color: var(--text-3); }
+.hub-side-filter input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 7px 0; font: inherit; font-size: var(--fs-sm); outline: none; }
+.hub-side-rooms .inst-head > .count { padding: var(--s-3) var(--s-3) var(--s-1); color: var(--text-3); font-size: var(--fs-xs); }
+.side-foot > .hub-prefs { flex: 1; min-width: 0; }
+.side-foot > .hub-session-row, .hub-session-row > .menu, .hub-session-row > .menu > .side-row { width: 100%; min-width: 0; }
+/* The foot is the sidebar's bottom: its session menu opens upward (as the dashboard's), never below the screen. */
+.hub-session-row .hub-session-menu .menu-list { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+
