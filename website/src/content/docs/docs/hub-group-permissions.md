@@ -5,8 +5,6 @@ description: Decide by Active Directory group what colleagues may do on the AgEn
 
 :::caution
 **Experimental. 2.3.5-alpha.8 and later only, and off by default.** Group permissions let a Hub administrator decide, by Active Directory security group, what signed-in colleagues may do on the AgEnD Hub. Until an administrator turns them on, the Hub behaves as before.
-
-**Draft:** the Hub only offers this once its group enforcement is installed. Until then the editor says *"Turning group permissions on becomes available once the Hub's enforcement is installed."* This page is finished when that lands.
 :::
 
 Everyone in your directory can still **sign in** to the Hub. Group permissions decide what each person can **do** after signing in:
@@ -15,13 +13,15 @@ Everyone in your directory can still **sign in** to the Hub. Group permissions d
 |---|---|
 | **Chat with agents** | Ask the agents their owners have shared with them. The agent's owner still has to give each person access; the group permission alone opens nothing. |
 | **Share agents** | Share new agents, or new versions of agents, from their own fleet on the Hub. Each share still needs the owner's own confirmation. |
-| **Connect a fleet** | Pair their own AgEnD fleet with the Hub, up to the **Fleets** number set for the group (0–8). With **Fleets** at 0, members can't connect a fleet even though the box is ticked. |
+| **Connect a fleet** | Pair their own AgEnD fleet through self-service, up to the **Fleets** number set for the group (0–8). With **Fleets** at 0, self-service is unavailable even though the box is ticked; explicit administrator approval remains available as described below. |
 
 A person who is in several groups gets everything any of their groups allows, and the highest **Fleets** number among their groups that allow **Connect a fleet**. A person listed under **People excluded** is denied what they are excluded from: exclusions win over any group.
 
 ## 1. Set up access for a department (Hub administrator)
 
 ### Where the editor is
+
+Group permissions need the Hub's directory to be **Active Directory over LDAPS (port 636)**. With any other directory the editor is read-only and says *"This Hub's directory can't be used for group permissions. Group permissions need Active Directory over LDAPS (port 636)."*
 
 Only the Hub's directory administrator can open it. Either:
 
@@ -69,7 +69,7 @@ After signing in, a colleague's home page greets them (**Welcome, *name*** — *
 
 | Their access | What they see |
 |---|---|
-| **Chat and Connect a fleet** | Both cards on. **Chat with an agent** has **Open chats**; **Connect your fleet** shows *"Your fleets: N of M"* and *"Your Hub admin pairs fleets for you. Ask them for a pairing code."* |
+| **Chat and Connect a fleet** | Both cards on. **Chat with an agent** has **Open chats**; **Connect your fleet** shows *"Your fleets: N of M"*, a fleet-name field and **Connect my fleet**. An older Hub or cached client keeps the administrator pairing-code guidance. |
 | **Chat only** | **Chat with an agent** is on; **Connect your fleet** is off, with the reason *"Connecting a fleet is not included in your access."* |
 | **Nothing allowed** | Both off: *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
 | **At their fleet limit** | *"You have connected as many fleets as you may. Manage them, or ask your Hub admin for more."* |
@@ -83,22 +83,29 @@ Their own fleets are listed with their state: **Active**, **Paused**, **Revoked*
 
 ## 3. Quick pairing
 
-:::note
-**Draft:** quick pairing is not in this release yet. Today a colleague asks the Hub administrator for a pairing code, as the **Connect your fleet** card says. This section is finished when quick pairing lands.
-:::
+When **Connect a fleet** is allowed and there is a free slot:
+
+1. On the Hub welcome page, type a **Fleet name** you and your Hub admin will recognise and choose **Connect my fleet**. The Hub shows a **Member address**, a **One-time code** and when the code expires (ten minutes).
+2. In that fleet's web dashboard, open **Settings → Fleet → Hub**. Under **Hub membership**, turn on **Allow this fleet to connect to a Hub** if it is off. Enter the member address in **Hub address** and the code in **One-time pairing code**, then choose **Connect**. Complete the local Settings confirmation if one is offered.
+3. The fleet shows a **Waiting for approval** card with a pairing fingerprint, and the Hub shows its own. Compare them. On the fleet, choose **It matches the Hub's screen**; on the Hub, choose **They match**. If they differ, choose **They differ** and check the address before starting again. Neither screen's confirmation replaces the other.
+4. The Hub shows **Connected** only after the fleet has saved its pin and connected. Pairing does not share any agent. Sharing still needs its own permission and confirmation. **Connect another fleet** starts another pairing while capacity remains.
+
+You have at most one pending self-service offer. Starting again replaces its code and invalidates the old attempt. **Stop pairing** or expiry frees the pending slot. Retained fleets, including manually approved and paused fleets, count against later self-service pairing. If the directory cannot confirm access, pairing waits; it never uses an old permission to finish. Follow any uncertain-outcome warning on the fleet before trying again.
+
+The Hub records a security notice for your other signed-in sessions, the Hub administrator and your other connected fleets. Offline delivery stays queued. Older fleet versions receive no new message until updated. Notices contain the fleet name and ID, not the code or credential. Expand **Earlier notices** and choose **Show older notices** to reach older retained records. A notice on your fleet offers **Review and revoke on the Hub**, where you sign in normally; that link grants no access. On the Hub, **Revoke this fleet** takes one click and affects only the named fleet.
+
+The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
 
 ## 4. Turn off, pause and resume
 
 - **Turn the policy off:** **Turn off** in the editor, then save. Until you save, the editor shows *"Not saved"* and *"Turns off when you save; what depends on it is paused."* **Undo** cancels it. After saving: *"Switched off — resources paused"*.
 
-  **Turning off pauses chatting, sharing and connecting for everyone**, the administrator included. Fleets and shared agents that existed before group permissions were first turned on stay registered, but **nobody can ask any agent** until you turn group permissions on again **and** resume chat access in **Paused** (below). Once turned on, group permissions can be switched off but never return to the "never turned on" state.
+  **Turning off pauses actions that depend on groups**, including chatting, sharing and self-service pairing, for the administrator too. Explicit manual pairing remains available; membership loss or switching off does not pause manual fleets. Person exclusions, directory ineligibility and revocation still apply. Fleets and shared agents that existed before group permissions were first turned on stay registered, but **nobody can ask any agent** until you turn group permissions on again **and** resume chat access in **Paused** (below). Once turned on, group permissions can be switched off but never return to the "never turned on" state.
 - **Take a group away:** **Remove** the group, check **What this change does**, then save.
 - **Resume something paused:** the editor's **Paused** section lists what was allowed by a group before and is paused now: fleets, shared agents and chat access (*"Allowed by a group before, paused now. Resume one after checking it is still wanted."*). Choose **Resume** on each one you still want (*"Resumed."*). Turning group permissions back on never resumes anything by itself: you decide, item by item.
 - **Exclude a person:** **People excluded** is shown in the editor; adding someone to it from the editor is not available in this release.
 
-:::note
-**Draft:** revoking a single person's access from the editor, and an owner's own revoke, come in a later release. This section is updated when they land.
-:::
+**Revoke your own fleet:** use **Revoke this fleet** beside that fleet on your Hub welcome page or in its security notice. This remains available after you lose self-service permission, while your directory account remains eligible. It revokes the exact current fleet generation. Adding or revoking a person from the group editor remains a separate follow-up.
 
 ## See also
 
