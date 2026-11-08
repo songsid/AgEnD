@@ -25094,8 +25094,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     }
-    try { await this.hubSetupController?.close(); }
-    catch { this.logger.warn("Hub setup scratch cleanup is unconfirmed; setup remains fenced"); }
+    // close() fences setup synchronously; its physical drain joins the asynchronous phase below.
+    // Awaiting even an absent controller here would yield before the remaining shutdown fences.
+    const setupClosed = this.hubSetupController?.close().catch(() => {
+      this.logger.warn("Hub setup scratch cleanup is unconfirmed; setup remains fenced");
+    });
     this.hubSetupController=null; this.hubSetupInit=null;
     this.companyJoinController?.close(); this.companyJoinController = null; this.companyJoinInit = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
@@ -25152,6 +25155,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
     await inboundStopped;
+    await setupClosed;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;

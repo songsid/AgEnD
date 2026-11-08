@@ -3,9 +3,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { X509Certificate } from "node:crypto";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import * as directoryDriver from "../src/hub/directory/directory.js";
+import { WebSessionStore } from "../src/web-session.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { HubRuntime } from "../src/hub/runtime.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
@@ -56,6 +58,23 @@ async function fixture(){
     async close(){await (await internal.hubSetupInit)?.close();await runtime?.close();const s=internal.healthServer as Server;internal.healthServer=null;
       s.closeAllConnections();await new Promise<void>(resolve=>s.close(()=>resolve()));internal.webSessions?.flush?.();await peer.close();rmSync(home,{recursive:true,force:true});}};
   cleanups.push(r.close);return r;
+}
+
+function held() { let release!:()=>void; const promise=new Promise<void>(r=>{release=r;});return {promise,release}; }
+/** Pause only after the real verified LDAPS lookup settles; all directory/HTTP replies remain real. */
+function holdAdministratorLookup() {
+  const entered=held(),resume=held(),real=directoryDriver.createHubDirectory;
+  vi.spyOn(directoryDriver,"createHubDirectory").mockImplementation((...args)=>{
+    const directory=real(...args),lookup=directory.lookupForInitialization!.bind(directory);
+    directory.lookupForInitialization=async login=>{const found=await lookup(login);entered.release();await resume.promise;return found;};
+    return directory;
+  });
+  return {entered:entered.promise,release:resume.release};
+}
+function noSetupEffects(r:Awaited<ReturnType<typeof fixture>>) {
+  expect(r.fm.getRawFleetConfig().hub).toBeUndefined();
+  expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);
+  expect(readdirSync(r.home).filter(name=>name.startsWith(".hub-browser-"))).toEqual([]);
 }
 
 describe("initial setup from the actual host launch session",()=>{
@@ -116,6 +135,49 @@ describe("initial setup from the actual host launch session",()=>{
       expect(JSON.stringify(got.body)).not.toContain(credentials.bindPassword);expect(ca.binds.length).toBeGreaterThan(0);
       expect(r.fm.getRawFleetConfig().hub).toBeUndefined();expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);
     }finally{await ca.close();}
+  },20_000);
+  it.each(["epoch","session-store","unchanged"] as const)("rechecks the fleet authority identity after held prepare: %s",async change=>{
+    const r=await fixture(),gate=holdAdministratorLookup(),oldSessions=r.internal.webSessions;
+    const response=r.call("/prepare",r.input);
+    try {
+      await gate.entered;const epoch=r.fm.webAuthorityState().epoch;
+      if(change==="epoch")expect(r.fm.revokeWebAuthority().epoch).toBeGreaterThan(epoch);
+      if(change==="session-store")r.internal.webSessions=new WebSessionStore();
+      // The original cookie/record itself is still valid: only the captured fleet epoch/store identity changed.
+      expect(oldSessions.authenticate(r.host.id,tokenEpoch(r.token),{touch:false})).not.toBeNull();
+      gate.release();const result=await response;
+      if(change==="unchanged") {expect(result.status).toBe(200);expect(result.body.ref).toBeTypeOf("string");
+        expect((await r.call("/cancel",{ref:result.body.ref})).status).toBe(200);}
+      else {expect(result.body).toEqual({error:"denied"});expect(result.status).toBe(403);}
+      noSetupEffects(r);
+    } finally {gate.release();r.internal.webSessions=oldSessions;await response;}
+  },20_000);
+  it("a disconnected held prepare cannot leave a draft or initialization effect",async()=>{
+    const r=await fixture(),gate=holdAdministratorLookup(),control=await r.fm.hubSetup(),prepare=vi.spyOn(control,"prepare"),closed=held();
+    const observe=(req:import("node:http").IncomingMessage,res:import("node:http").ServerResponse)=>{
+      if(req.url===prefix+"/prepare")res.once("close",closed.release);
+    };
+    const server=r.internal.healthServer as Server;server.prependListener("request",observe);
+    const req=httpRequest({host:"127.0.0.1",port:r.port,method:"POST",path:prefix+"/prepare",headers:r.headers()});
+    req.on("error",()=>{});req.end(JSON.stringify(r.input));
+    try {
+      await gate.entered;expect(prepare).toHaveBeenCalledOnce();
+      const settled=(prepare.mock.results[0]!.value as ReturnType<typeof control.prepare>).then(value=>({value,error:null}),error=>({value:null,error}));
+      req.destroy();await closed.promise;gate.release();
+      const result=await settled;expect(result.error).toMatchObject({code:"denied"});expect(result.value).toBeNull();noSetupEffects(r);
+      // The request died, not the D3 session. A later independent request can still use it.
+      expect((await r.call("")).body).toMatchObject({initialized:false,incomplete:false});
+    } finally {req.destroy();gate.release();server.removeListener("request",observe);}
+  },20_000);
+  it("keeps the captured host session when another valid cookie replaces the request cookie",async()=>{
+    const r=await fixture(),second=await r.signIn();
+    const req={method:"POST",headers:{host:`127.0.0.1:${r.port}`,...r.headers()},socket:{remoteAddress:"127.0.0.1"}} as any;
+    const proof=r.fm.hubSetupSession(req)!;expect(proof.current()).toBe(true);
+    Object.assign(req.headers,r.headers(second.id));
+    expect(r.internal.webSessions.authenticate(r.host.id,tokenEpoch(r.token),{touch:false})).not.toBeNull();
+    expect(r.internal.webSessions.authenticate(second.id,tokenEpoch(r.token),{touch:false})).not.toBeNull();
+    expect(proof.current()).toBe(false);
+    Object.assign(req.headers,r.headers());expect(proof.current()).toBe(true);
   },20_000);
   it("a late revoked D3 session and a disabled candidate never enable or mint a Hub session",async()=>{
     const r=await fixture(),prepared=await r.call("/prepare",r.input);expect(prepared.status).toBe(200);
