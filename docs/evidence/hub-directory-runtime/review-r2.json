@@ -1,0 +1,38 @@
+{
+  "scope": "R2 fenced machine HTTP response; barrier and existing company-join test retained",
+  "baseline": {
+    "failed": 1,
+    "intentionallyUnselected": 19,
+    "failure": "Expected 503, received 404"
+  },
+  "focused": {
+    "files": 3,
+    "passed": 79,
+    "skipped": 0,
+    "command": "vitest run tests/hub-company-join-http.test.ts tests/hub-network.test.ts tests/hub-compose.test.ts --maxWorkers=2"
+  },
+  "types": {
+    "source": "passed",
+    "tests": "passed"
+  },
+  "guardReversal": {
+    "guard": "fenced-machine-http-unavailable",
+    "assertionCaught": true,
+    "failures": 2,
+    "restored": true
+  },
+  "restoredSelection": {
+    "passed": 2,
+    "intentionallyUnselected": 63
+  },
+  "controls": [
+    "Existing direct-epoch/head-mismatch test unchanged",
+    "Additional normal settings-writer decision advances epoch and head coherently; old machine join challenge is 503"
+  ],
+  "limits": [
+    "Company-join suite uses existing owned fake-LDAPS peer; no real directory/account",
+    "Runtime proof driver and candidate TLS probe remain inert",
+    "No public AD-settings operation, pilot, native-manager or live-fleet operation",
+    "No additional schema change"
+  ]
+}

@@ -714,6 +714,17 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
       expect(r.runtime.directoryDecision()).toBe(participant); // Still owns the physical DB, despite logical revocation.
       expect(r.runtime.serverHealth(oldConfig)).toBe("unavailable");
       expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(503);
+      const machine = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: r.hub.memberPort, servername: "hub.example.test",
+          ca: readFileSync(join(r.hub.home, "hub/keys/tls-cert.pem")), path: "/hub/v1/join/challenge", method: "POST", agent: false,
+          headers: { "Content-Type": "application/json", "Content-Length": 2 } }, res => {
+          let body = ""; res.setEncoding("utf8"); res.on("data", value => { body += value; });
+          res.on("end", () => resolve({ status: res.statusCode!, body }));
+        });
+        req.on("error", reject); req.end("{}");
+      });
+      // This epoch/head advance is the real writer decision, not the corruption-only direct epoch control.
+      expect(machine).toEqual({ status: 503, body: JSON.stringify({ code: "unavailable" }) });
       await r.runtime.apply(r.hub.config);
       expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
       expect(r.runtime.directorySettings()!.source()).toMatchObject({ epoch: 1, bindPassword: "Dummy-next-bind-only", config: { url: "ldaps://next.example.test" } });

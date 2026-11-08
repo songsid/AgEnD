@@ -4,7 +4,8 @@
     "files": 9,
     "passed": 244,
     "skipped": 0,
-    "command": "vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-settings-api-m2682.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts tests/hub-tls-mount.test.ts tests/hub-init-s1-provider.test.ts tests/hub-health.test.ts --maxWorkers=2"
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-settings-api-m2682.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts tests/hub-tls-mount.test.ts tests/hub-init-s1-provider.test.ts tests/hub-health.test.ts --maxWorkers=2",
+    "scope": "R1 verified before the isolated R2 machine-HTTP correction; current R2 focused receipt is review-r2.json"
   },
   "types": {
     "source": "passed",
@@ -13,10 +14,10 @@
   "runtimeCases": 22,
   "transport": "Owned production S3 HTTPS handler with ordinary CA verification; directory driver inert",
   "scopeLimits": [
-    "No real LDAPS, directory account, vendor, native-manager, pilot or live-fleet operation",
+    "No real directory/account, vendor, native-manager, pilot or live-fleet operation",
     "TLS probe in proof composition control is inert; HTTPS listener verification is real",
     "Host-owner context is constructed inside the private test harness, not a public D3 route acceptance",
-    "No originating browser-token release or directory notice delivery; no public AD operation",
+    "No originating AD-settings browser-token release or directory notice delivery; no public AD-settings operation",
     "Injected stops/reopen only, not power loss; no full browser/system rig"
   ],
   "reviewR1": {
@@ -29,5 +30,6 @@
   "restoredReviewSelection": {
     "passed": 8,
     "intentionallyUnselected": 37
-  }
+  },
+  "reviewR2": "review-r2.json: existing fake-LDAPS company-join control plus coherent real-writer epoch/head control"
 }
