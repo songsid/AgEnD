@@ -26,6 +26,9 @@ import { resolveDirectoryConfig, type HubDirectory, type HubDirectoryConfig } fr
 import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyBinding, type HubGroupPolicyStore } from "../group-policy/store.js";
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
+import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
+import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
+import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256 } from "../identity.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
@@ -57,6 +60,7 @@ export interface HubHttpDeps {
   directory: HubDirectory;
   pairing: HubPairingService;
   groups?: HubGroupAuthorization;
+  groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   store: HubTransportStore;
   current(): HubMode;
   now?: () => number;
@@ -282,10 +286,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let fenced = false;
       const live = () => !fenced && current();
       let groupPolicy: HubGroupPolicyStore | undefined;
+      const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+        generation: groupGeneration, directory, audit, current: live, now });
+      const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator,
-        policy: () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
-          generation: groupGeneration, directory, audit, current: live, now }),
-        binding: () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration),
+        policy, binding,
         audit, current: live, now, version: () => store.read().revocationVersion,
         advanceAuthorization: (database, resource) => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group authorization transaction is unavailable");
@@ -306,6 +311,19 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         enrollment: { prepare: (resource, ctx) => groups.prepareEnrollment(resource, ctx),
           atomic: work => db.transaction(() => work(db)).immediate() },
       });
+      const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
+        transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
+        authorization: groups, policy, binding, current: live, version: () => store.read().revocationVersion, now,
+        advanceAuthorization: database => {
+          if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group policy transaction is unavailable");
+          store.mutate({ at: now(), requestId: randomBytes(16).toString("hex"), actor: { kind: "local-host" },
+            action: "group-policy.authorization-changed", result: "completed" }, state => { state.revocationVersion++; });
+        }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
+      teardown.add("group policy confirmation", () => groupControl.close());
+      const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
+        const state = binding();
+        return state.kind === "ready" ? "ready" : state.legacy ? "never-enabled" : "unavailable";
+      }, fleets: () => store.read().fleets, fleetState: async resource => groups.resourceState(resource) });
       let generation = 0;
       const mode: HubMode = { serverEnabled: live, memberEnabled: () => false, epoch: () => generation };
       const http = httpEntry.createHubHttp({
@@ -316,6 +334,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         directory,
         pairing,
         groups,
+        groupHttp: { control: groupControl, welcome: groupWelcome },
         store,
         current: () => mode,
         now,

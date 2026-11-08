@@ -29,7 +29,7 @@ When creating a new instance with `create_instance`:
 - **Don't run two fleet processes** on the same AGEND_HOME — port/socket conflicts
 - **Don't change `channel.group_id`** without re-creating all topics — routing breaks
 - **Don't remove an instance from fleet.yaml** that has active work — stop it first
-- **Don't try to get around a Settings confirmation** — a sensitive change made in the web Settings (access, secrets, connections, …) waits for a fleet admin to confirm it in General, or with `agend settings confirm <id>` on the host
+- **Don't try to get around a Settings confirmation** — a sensitive change made in the web Settings (access, secrets, connections, …) waits for a fleet admin to confirm it: in General in Telegram or Discord, or on the dashboard where its confirmation card offers that (on a fleet with no chat app: in the browser on the computer running AgEnD, or with the authenticator code). Point people to that card or to General — never to a command to type
 
 ## Access Mode Reference
 
