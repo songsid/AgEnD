@@ -91,6 +91,21 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     expect(await resolveInstalledAgend(deps)).toEqual({ ok: true, agend: join(custom, "bin", "agend"), version: "2.3.5-beta.1" });
   });
 
+  it("a candidate answering through a symlink (an nvm `current` link, /usr/local → elsewhere) counts by its real root; another real root does not", async () => {
+    const h = host();
+    const viaLink = join(h.t, "current"); symlinkSync(h.nvm, viaLink);              // npm reports the link path
+    const npmSays = (root: string, prefix: string) =>
+      writeFileSync(join(h.nvm, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${root}" ;; prefix) echo "${prefix}" ;; esac\n`);
+    vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
+    npmSays(join(viaLink, "lib", "node_modules"), viaLink);
+    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(viaLink, "bin", "agend"), version: "2.3.5-beta.1" });
+    const sysLink = join(h.t, "syslink"); symlinkSync(h.sys, sysLink);              // a link to a DIFFERENT real root
+    npmSays(join(sysLink, "lib", "node_modules"), sysLink);
+    const r = await resolveInstalledAgend(h.deps);
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toContain(`${join(h.nvm, "bin", "npm")} → ${join(h.sys, "lib", "node_modules")}`);
+  });
+
   it("the launched update runs with that npm's directory first on PATH: its npm and node are the install's", () => {
     const h = host();
     const out = join(h.t, "seen");
