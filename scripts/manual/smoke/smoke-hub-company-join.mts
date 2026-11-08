@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, chmodSync, existsS
 import { join, resolve, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createServer as createHttpsServer } from "node:https";
 import yaml from "js-yaml";
 const repo = resolve(process.env.REPO ?? process.cwd()), out = resolve(process.env.OUT ?? join(repo, ".artifacts/hub-company-join/browser"));
 mkdirSync(out, { recursive: true });
@@ -26,6 +27,7 @@ const { generateKeyPairSync } = await import("node:crypto");
 const { currentBinding } = await import(repo + "/src/hub/member/pairing-api.ts");
 const { setLocale } = await import(repo + "/src/locale.ts");
 const { CompanyJoinClient } = await import(repo + "/src/hub/join/client.ts");
+const { companyFlowCookieName } = await import(repo + "/src/hub/join/http.ts");
 const { bootFixture, matrix, VIEWPORTS, caseName } = await import(repo + "/scripts/manual/smoke-fixture/index.mts");
 const r = await companyJoinRig((port: number) => { dcPort = port; }, { host });
 const admin = await r.signIn("alice"); await r.enable(admin, 8);
@@ -46,10 +48,62 @@ const smallJoinTargets = `(() => {
   }
   return small;
 })()`;
-let fx: any = null;
+let fx: any = null, publicProbe: ReturnType<typeof createHttpsServer> | null = null;
 try {
-  const scenarios = process.env.ADMIN_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
-  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of process.env.HUB_SHOTS ? ["outsider", "copied"] : ["outsider", "limit", "changed", "cancel", "copied", "samehost"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
+  if (process.env.PUBLIC_ONLY) {
+    // Exercise the production public entry before navigation, not just Start's later backend refusal.
+    const requests: Array<{ hostname: string; cookie: string }> = [];
+    publicProbe = createHttpsServer({ key: readFileSync(r.certs.key), cert: readFileSync(r.certs.cert) }, (req, res) => {
+      requests.push({ hostname: req.headers.host ?? "", cookie: req.headers.cookie ?? "" });
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }); res.end("Owned Fleet navigation cookie probe. Dummy cookies only.");
+    });
+    await new Promise<void>((done, reject) => { publicProbe!.once("error", reject); publicProbe!.listen(0, "127.0.0.1", done); });
+    const port = (publicProbe.address() as { port: number }).port;
+    const unsafe = `https://${host}:${port}`, safe = `https://fleet.lan.example:${port}`;
+    const hubCookie = "__Host-agend_hub_" + randomUUID(), flowCookie = companyFlowCookieName(randomUUID(), randomUUID());
+    const pw = createRequire(resolve(process.env.PW_DIR!) + "/")("playwright-core"), browser = await pw.chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox", `--host-resolver-rules=MAP ${host} 127.0.0.1, MAP fleet.lan.example 127.0.0.1`] });
+    try {
+      for (const c of matrix()) {
+        const tag = caseName(c), ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, ignoreHTTPSErrors: true });
+        try {
+          await ctx.addInitScript({ content: `try{localStorage.setItem('agend_lang',${JSON.stringify(c.lang)});localStorage.setItem('agend_theme',${JSON.stringify(c.theme)})}catch{}` });
+          const cookie = (name: string, url: string) => ({ name, value: "dummy-cookie-control", url, httpOnly: true, secure: true, sameSite: "Strict" as const });
+          await ctx.addCookies([cookie(hubCookie, r.webOrigin), cookie(flowCookie, r.webOrigin), cookie("agend_session", safe)]);
+          await ctx.route("**/*", (route: any) => {
+            const u = new URL(route.request().url()); if (![r.webOrigin, safe, unsafe].includes(u.origin)) return route.abort();
+            if (assetRoot && u.pathname === "/ui/js/hub-company-join.js") return route.fulfill({ path: join(resolve(assetRoot), "hub-company-join.js"), contentType: "application/javascript" });
+            return route.continue();
+          });
+          const page = await ctx.newPage(), errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
+          await page.goto(companyLink); await page.locator(".p-hub-info textarea").waitFor();
+          check(tag + " public entry offers no password", await page.locator('input[type="password"]').count() === 0);
+          const input = page.locator(".p-hub-info input"), link = page.locator(".p-hub-info a.btn-primary");
+          const before = requests.length; await input.fill(unsafe);
+          if (process.env.BEFORE_ASSETS) {
+            await link.waitFor(); check(tag + " before reproduces unsafe navigation offer", (await link.getAttribute("href"))!.startsWith(unsafe + "/settings/hub"));
+          } else {
+            const text = c.lang === "zh-TW" ? "只更換連接埠仍不安全" : "changing only the port is not enough";
+            await page.getByText(text, { exact: false }).waitFor();
+            check(tag + " same hostname has guidance and no navigation target", await link.count() === 0);
+            await input.press("Enter"); check(tag + " unsafe entry sends no request to Fleet listener", requests.length === before && new URL(page.url()).origin === r.webOrigin);
+          }
+          await page.screenshot({ path: join(out, tag + (process.env.BEFORE_ASSETS ? "-public-before.png" : "-public-blocked.png")), fullPage: true });
+          if (!process.env.BEFORE_ASSETS) {
+            await input.fill(safe); await link.waitFor(); check(tag + " distinct hostname offers exact Fleet path", (await link.getAttribute("href"))!.startsWith(safe + "/settings/hub#join="));
+            await page.screenshot({ path: join(out, tag + "-public-distinct.png"), fullPage: true });
+            const popup = ctx.waitForEvent("page"); await link.click(); const fleet = await popup; await fleet.waitForLoadState("domcontentloaded");
+            const observed = requests.slice(before).find(row => row.hostname === new URL(safe).host);
+            check(tag + " actual distinct-host navigation sends only Fleet cookie", !!observed && observed.cookie.includes("agend_session=") && !observed.cookie.includes(hubCookie) && !observed.cookie.includes(flowCookie));
+            check(tag + " navigation has no opener", await fleet.evaluate(() => window.opener === null));
+          }
+          check(tag + " public entry has no overflow or script errors", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth) && errors.length === 0, errors);
+          result.cases.push({ tag, kind: process.env.BEFORE_ASSETS ? "public-before" : "public-entry", ok: true });
+        } finally { await ctx.close(); }
+      }
+    } finally { await browser.close(); }
+  }
+  const scenarios = process.env.ADMIN_ONLY || process.env.PUBLIC_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
+  if (!process.env.ADMIN_ONLY && !process.env.PUBLIC_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of process.env.HUB_SHOTS ? ["outsider", "copied"] : ["outsider", "limit", "changed", "cancel", "copied", "samehost"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
   const selected = process.env.ONLY_CASES ? scenarios.filter(s => process.env.ONLY_CASES!.split(",").includes(s.kind)) : scenarios;
   for (const [index, scenario] of selected.entries()) {
     const { c, kind } = scenario; setLocale(c.lang); const tag = caseName(c) + (kind === "happy" ? "" : "-" + kind), login = scenario.login || "join-person-" + index;
@@ -175,7 +229,7 @@ try {
       await fx.close(); fx = null;
     }
   }
-  if (!process.env.BEFORE_ASSETS) {
+  if (!process.env.BEFORE_ASSETS && !process.env.PUBLIC_ONLY) {
     // Actual signed-in Administration, not a mock DOM or an injected shell.
     for (const c of matrix().filter(c => c.lang === "zh-TW")) {
       const pw = createRequire(resolve(process.env.PW_DIR!) + "/")("playwright-core"), browser = await pw.chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox", "--host-resolver-rules=MAP dashboard.lan.example 127.0.0.1"] });
@@ -204,6 +258,7 @@ try {
   result.status = "PASS";
 } catch (error: any) { result.status = "FAIL"; result.error = error.stack; throw error; }
 finally {
+  if (publicProbe?.listening) { publicProbe.closeAllConnections(); await new Promise<void>(done => publicProbe!.close(() => done())); }
   if (fx) { fx.fm.companyJoinController?.close(); fx.fm.hubRuntime?.fence(); await fx.fm.hubRuntime?.close(); fx.fm.hubEffectsReady = false; await fx.close(); }
   await r.close(); tls.connect = realConnect; syncBuiltinESMExports(); writeFileSync(join(out, "results.json"), JSON.stringify(result, null, 2));
 }

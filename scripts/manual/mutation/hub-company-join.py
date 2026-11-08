@@ -1,6 +1,6 @@
 """Owned local assertion reversals for #3423. Each source is restored before the next mutant, including failure."""
 from pathlib import Path
-import json, subprocess
+import json, subprocess, sys
 ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / '.artifacts/hub-company-join/mutations'
 OUT.mkdir(parents=True, exist_ok=True)
@@ -22,7 +22,13 @@ CASES = [
  ('issued-retention', 'src/hub/join/store.ts', "OR json_extract(body,'$.issuedHash') IS NOT NULL", "OR stage IN('issued','acknowledged')", 'tests/hub-company-join-http.test.ts', 'mixed legacy/company'),
  ('ancestor-durability', 'src/hub/join/private.ts', 'if (directory === ".") break;', 'break;', 'tests/hub-company-join-private.test.ts', None),
  ('pin-retry-durability', 'src/hub/join/trust.ts', 'syncJoinPrivate(this.home, suffix);', '', 'tests/hub-company-join-private.test.ts', 'pin left behind'),
+ ('public-browser-hosts', 'src/ui/hub-company-join.js', 'separateHosts = u.hostname === new URL(location.origin).hostname;', 'separateHosts = false;', 'tests/hub-company-join-ui.test.ts', 'public link refuses'),
+ ('visible-copy-attributes', 'tests/named-link-test-2906.test.ts', '.map(match => match[1] ?? match[2]).join(" ")', '.map(() => "").join("")', 'tests/named-link-test-2906.test.ts', 'keeps visible'),
 ]
+if len(sys.argv) > 1:
+    requested = set(sys.argv[1:])
+    if requested - {case[0] for case in CASES}: raise RuntimeError('Unknown mutation name')
+    CASES = [case for case in CASES if case[0] in requested]
 results = []
 for name, source, old, new, test, title in CASES:
     path = ROOT / source
@@ -40,7 +46,7 @@ for name, source, old, new, test, title in CASES:
         row = {'mutation':name,'failedTests':data['numFailedTests'],'totalTests':data['numTotalTests'],
                'caught':run.returncode != 0 and data['numFailedTests'] > 0 and not data.get('numRuntimeErrorTestSuites',0)}
         results.append(row)
-        (OUT / 'results.json').write_text(json.dumps(results, indent=2))
+        (OUT / ('results-delta.json' if len(sys.argv) > 1 else 'results.json')).write_text(json.dumps(results, indent=2))
         print(json.dumps(row), flush=True)
         if not row['caught']: raise RuntimeError('Mutation survived or did not reach assertions: ' + name)
     finally:

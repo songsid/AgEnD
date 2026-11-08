@@ -49,6 +49,18 @@ describe("company join UI", () => {
     expect(p.root.querySelector("a")?.getAttribute("href")).toBe("http://127.0.0.1:4444/settings/hub#join=" + encodeURIComponent("https://hub.example.test/join-info#hub=YWJj"));
     expect(calls).toEqual([]);
   });
+  it.each(["https://hub.example.test", "https://hub.example.test:4444"])("the public link refuses same-hostname navigation before any request (%s)", async address => {
+    fetcher(() => { throw Error("No request expected"); });
+    const p = await mount(hub.CompanyJoinInfoPage, {}, "https://hub.example.test/ui/hub?joinInfo=1#hub=YWJj");
+    const input = p.root.querySelector("input"); input.value = address; fire(input, "input"); await settle(3);
+    expect(p.root.querySelector("a")).toBeNull();
+    expect(p.root.textContent).toContain(words.hj("separateHosts"));
+    expect(calls).toEqual([]);
+    input.value = "https://fleet.example.test:4444"; fire(input, "input"); await settle(3);
+    expect(p.root.querySelector("a")?.getAttribute("href")).toBe("https://fleet.example.test:4444/settings/hub#join=" + encodeURIComponent("https://hub.example.test/join-info#hub=YWJj"));
+    expect(p.root.textContent).not.toContain(words.hj("separateHosts"));
+    expect(calls).toEqual([]);
+  });
   it("an already-bound Fleet does not offer another enrollment from a different local session", async () => {
     fetcher(() => ({ ok: true, bound: true, operation: null })); const p = await mount(fleet.CompanyJoinSettings);
     expect(p.root.textContent).toBe(""); expect(calls.filter(c => c.init.method === "POST")).toEqual([]);

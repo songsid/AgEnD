@@ -10,16 +10,24 @@ export function joinRequest() {
 export function companyInfoRequest() { try { return new URLSearchParams(location.search).get("joinInfo") === "1"; } catch { return false; } }
 export function CompanyJoinInfoPage() {
   const [fleet, setFleet] = useState(""), [copied, setCopied] = useState(false), [error, setError] = useState(null);
-  let link = "", target = null;
+  let link = "", target = null, separateHosts = false;
   try {
     const fragment = location.hash;
     if (fragment.length <= 8192 && /^#(?:hub|invite)=[A-Za-z0-9_-]+$/.test(fragment)) link = location.origin + "/join-info" + fragment;
-    if (fleet) { const u = new URL(fleet); if (u.origin === fleet && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) target = u.origin + "/settings/hub#join=" + encodeURIComponent(link); }
+    if (fleet) {
+      const u = new URL(fleet);
+      if (u.origin === fleet && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) {
+        // Browser cookies are hostname-scoped, not port-scoped. Refuse before offering navigation.
+        separateHosts = u.hostname === new URL(location.origin).hostname;
+        if (!separateHosts) target = u.origin + "/settings/hub#join=" + encodeURIComponent(link);
+      }
+    }
   } catch { /* Invalid addresses remain an inactive navigation link. */ }
   return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join"><h3>${hj("companyLink")}</h3>
     <p class="note">${hj("linkLead")}</p>
     ${link ? html`<label class="field"><span>${hj("companyLink")}</span><textarea rows="4" readonly value=${link} /></label><div class="field-row"><button class="btn btn-sm" type="button" onClick=${async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError(hj("copyFailed")); } }}>${hj(copied ? "copied" : "copy")}</button></div>
       <label class="field"><span>${hj("fleetAddress")}</span><input value=${fleet} type="url" onInput=${e => setFleet(e.target.value.trim())} /></label>
+      ${separateHosts ? html`<${ErrorState} message=${hj("separateHosts")} />` : null}
       ${target ? html`<a class="btn btn-primary" href=${target} target="_blank" rel="noopener noreferrer">${hj("openFleet")}</a>` : null}` : html`<${ErrorState} message=${hj("invalidLink")} />`}
     ${error ? html`<p class="err" role="alert">${error}</p>` : null}
   </section></div></div>`;

@@ -346,9 +346,10 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
   const literalCopy = (source: string) => {
     const out: string[] = [], ast = ts.createSourceFile("copy.ts", source, ts.ScriptTarget.Latest, true);
     const add = (text: string) => {
-      // Import/route/capability tokens and HTML attributes are implementation, not words shown to a person.
+      // Ignore technical tokens/attributes, but retain copy displayed by fields, tooltips and accessibility labels.
       if (/^(?:\.?\.?\/)/.test(text) || text === "company-join-v1") return;
-      out.push(text.replace(/<[^>]*>/g, ""));
+      out.push(text.replace(/<[^>]*>/g, tag => [...tag.matchAll(/\s(?:placeholder|title|aria-label|aria-description|alt)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)]
+        .map(match => match[1] ?? match[2]).join(" ")));
     };
     const visit = (node: ts.Node) => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
@@ -360,6 +361,10 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
   };
   it("checks visible copy rather than imports or interpolation variables, and still catches network marketing copy", () => {
     const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<p>${company.message}</p>`; const b = "Company network";');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it.each(["placeholder", "title", "aria-label"])("keeps visible %s copy while ignoring technical HTML attributes", attribute => {
+    const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<input class="company-field" data-company="company" ' + attribute + '="Company network" />`;');
     expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
   });
   it("keeps network copy free of 公司/company/corporate; #3423 explicitly permits company sign-in wording", () => {
