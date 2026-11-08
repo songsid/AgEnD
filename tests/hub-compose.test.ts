@@ -15,7 +15,7 @@ import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
 import { createHubServerFactory, type HubHttp, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
-import type { HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
+import { HubDirectoryResponseOwner, type HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
@@ -932,18 +932,46 @@ describe.skipIf(process.platform === "win32")("directory browser facade belongs 
 });
 
 /** This owned test route exercises only the physical adapter; no public AD route or authority bypass is installed. */
-async function directoryResponseRig() {
+async function directoryResponseRig(manual = false) {
   let enter!: (response: HubDirectoryResponse) => void;
   const entered = new Promise<HubDirectoryResponse>(resolve => { enter = resolve; });
+  let attempt!: (capture: (proof: () => boolean) => HubDirectoryResponse) => void;
+  const attempting = new Promise<(proof: () => boolean) => HubDirectoryResponse>(resolve => { attempt = resolve; });
   const r = await directoryRuntimeRig((http, deps) => ({ ...http, handle(req, res) {
     if (req.url !== "/test-only/owned-response") return http.handle(req, res);
-    req.resume(); req.once("end", () => { enter(deps.directoryResponse!.capture(req, res, () => deps.current().serverEnabled())); });
+    req.resume(); req.once("end", () => {
+      const capture = (proof: () => boolean) => deps.directoryResponse!.capture(req, res, proof);
+      if (manual) attempt(capture); else enter(capture(() => deps.current().serverEnabled()));
+    });
     return true;
   } }));
-  return { ...r, begin: (cookie?: string) => directoryBrowser(r.hub, cookie, {}, "/test-only/owned-response"), entered };
+  return { ...r, begin: (cookie?: string) => directoryBrowser(r.hub, cookie, {}, "/test-only/owned-response"), entered, attempting };
 }
 
 describe.skipIf(process.platform === "win32")("directory response survives its owning listener remount", () => {
+  it("refuses revoked-generation capture before calling its caller proof", async () => {
+    const r = await directoryResponseRig(true), pending = r.begin().catch(() => null);
+    try {
+      const capture = await r.attempting; r.commit(); const proof = vi.fn(() => true);
+      expect(() => capture(proof)).toThrow(); expect(proof).not.toHaveBeenCalled();
+    } finally { await r.runtime.close(); await pending; }
+  });
+  it("refuses capture if the caller proof revokes its generation", async () => {
+    const r = await directoryResponseRig(true), pending = r.begin().catch(() => null);
+    try {
+      const capture = await r.attempting;
+      expect(() => capture(() => { r.commit(); return true; })).toThrow();
+    } finally { await r.runtime.close(); await pending; }
+  });
+  it("refuses reply under its old generation's authority after revocation", async () => {
+    const r = await directoryResponseRig(true), pending = r.begin().catch(() => null);
+    try {
+      const capture = await r.attempting, old = r.runtime.directorySettings()!, response = capture(() => true); r.commit();
+      const build = vi.fn(() => ({ status: 200, json: "{}" }));
+      await expect(response.reply(build, old.current)).rejects.toThrow(); expect(build).not.toHaveBeenCalled();
+      expect(await pending).toBeNull();
+    } finally { await r.runtime.close(); await pending; }
+  });
   it("delivers the committed successor on the original HTTPS response after same-port remount", async () => {
     const r = await directoryResponseRig(); let pending: ReturnType<typeof r.begin> | undefined;
     try {
@@ -994,6 +1022,13 @@ describe.skipIf(process.platform === "win32")("directory response survives its o
     const r = await directoryResponseRig(), pending = r.begin().catch(() => null); await r.entered;
     const original = HttpsServer.prototype.close; let held = false, release: (() => void) | undefined, acknowledge!: () => void;
     const acknowledged = new Promise<void>(resolve => { acknowledge = resolve; });
+    let drain!: () => void;
+    const draining = new Promise<void>(resolve => { drain = resolve; });
+    const originalDrain = HubDirectoryResponseOwner.prototype.close;
+    // Entry is after mount.close and drainLeftovers have settled; only the transferred server remains held.
+    const ownerClose = vi.spyOn(HubDirectoryResponseOwner.prototype, "close").mockImplementation(function(this: HubDirectoryResponseOwner) {
+      drain(); return originalDrain.call(this);
+    });
     const close = vi.spyOn(HttpsServer.prototype, "close").mockImplementation(function(this: HttpsServer, callback?: (error?: Error) => void) {
       const address = this.address(), hold = !held && typeof address === "object" && address?.port === r.hub.webPort;
       if (hold) held = true;
@@ -1003,9 +1038,11 @@ describe.skipIf(process.platform === "win32")("directory response survives its o
     try {
       r.commit(); await r.runtime.apply(r.hub.config); let stopped = false;
       stopping = r.runtime.close().then(() => { stopped = true; }); await acknowledged;
-      await new Promise<void>(resolve => setImmediate(resolve)); expect(stopped).toBe(false);
+      expect(await Promise.race([draining.then(() => "draining"), stopping.then(() => "stopped")])).toBe("draining");
+      expect(await Promise.race([stopping.then(() => "stopped"), new Promise<string>(resolve => setImmediate(() => resolve("held")))])).toBe("held");
+      expect(stopped).toBe(false);
       release!(); await stopping; expect(stopped).toBe(true); expect(await pending).toBeNull();
-    } finally { release?.(); close.mockRestore(); await stopping; await r.runtime.close(); await pending; }
+    } finally { release?.(); close.mockRestore(); ownerClose.mockRestore(); await stopping; await r.runtime.close(); await pending; }
   });
 });
 

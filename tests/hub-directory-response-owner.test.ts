@@ -9,17 +9,21 @@ import { HubDirectoryResponseOwner, type HubDirectoryResponse, type HubDirectory
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const close of cleanup.splice(0).reverse()) await close(); });
 function deferred<T = void>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function rig(owner = new HubDirectoryResponseOwner(), proof: () => boolean = () => true) {
+async function rig(owner = new HubDirectoryResponseOwner(), proof: () => boolean = () => true, early = false) {
   const certs = makeTestCerts(), entered = deferred<HubDirectoryResponse>(), refused = deferred<string>(), unleased = deferred(), companion = deferred();
   let listener!: HubDirectoryResponseListener, socket: import("node:tls").TLSSocket | undefined;
   const server = createServer({ key: readFileSync(certs.key), cert: readFileSync(certs.cert) }, (req, res) => {
     if (req.url === "/companion") companion.resolve();
     if (!listener.enter(req, res)) return;
+    const capture = () => {
+      try { entered.resolve(listener.capture(req, res, proof)); }
+      catch (error) { refused.resolve((error as { code: string }).code); res.writeHead((error as { code: string }).code === "backpressure" ? 429 : 400); res.end("{}"); }
+    };
+    if (early) { capture(); return; }
     req.resume(); req.once("end", () => {
       if (req.url === "/unleased") { unleased.resolve(); return; }
       if (req.url !== "/held") { res.end("{}"); return; }
-      try { entered.resolve(listener.capture(req, res, proof)); }
-      catch (error) { refused.resolve((error as { code: string }).code); res.writeHead((error as { code: string }).code === "backpressure" ? 429 : 400); res.end("{}"); }
+      capture();
     });
   });
   server.on("secureConnection", connected => { socket = connected; });
@@ -41,6 +45,24 @@ async function rig(owner = new HubDirectoryResponseOwner(), proof: () => boolean
 const response = { status: 200, json: '{"ok":true}', cookie: "__Host-fictional=opaque; Path=/; Secure; HttpOnly; SameSite=Strict" };
 
 describe("private directory response ownership", () => {
+  it("refuses capture before the request body finishes", async () => {
+    const r = await rig(new HubDirectoryResponseOwner(), () => true, true);
+    const socket = connect({ host: "127.0.0.1", port: r.port, servername: "hub.example.test", ca: readFileSync(r.certs.caCert) });
+    socket.on("error", () => {}); socket.resume();
+    await new Promise<void>(resolve => socket.once("secureConnect", resolve));
+    socket.write("POST /held HTTP/1.1\r\nHost: hub.example.test\r\nContent-Length: 2\r\n\r\n{");
+    expect(await Promise.race([r.refused, r.entered.then(() => "captured")])).toBe("invalid"); expect(r.owner.pending).toBe(0);
+  });
+  it("releases the slot after reply so another listener can capture", async () => {
+    const owner = new HubDirectoryResponseOwner(), first = await rig(owner), second = await rig(owner);
+    const firstReply = first.call(), lease = await first.entered;
+    await lease.reply(() => response, () => true); expect((await firstReply).status).toBe(200);
+    const next = second.call().catch(() => null);
+    const attempt = await Promise.race([second.entered.then(lease => ({ kind: "captured", lease })), next.then(() => ({ kind: "refused" }))]);
+    expect(attempt.kind).toBe("captured");
+    if (attempt.kind === "captured" && "lease" in attempt) await attempt.lease.reply(() => response, () => true);
+    expect((await next)?.status).toBe(200); expect(owner.pending).toBe(0);
+  });
   it("does not acquire ownership when its admission proof fences the owner", async () => {
     const owner = new HubDirectoryResponseOwner(), r = await rig(owner, () => { owner.fence(); return true; });
     const call = r.call().catch(() => null);
