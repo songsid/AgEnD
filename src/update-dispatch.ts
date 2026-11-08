@@ -5,34 +5,36 @@
  * replaces). No unverified fallback: when npm cannot say where it installed AgEnD, or what it says does not hold
  * together, `/update` refuses and says to run `agend update` from a shell.
  *
+ * #3440: which `npm` is asked matters. A fleet service's PATH can put a system npm (e.g. `/usr/bin/npm`) ahead of the
+ * nvm Node that installed AgEnD, and that npm's global root has no AgEnD in it. The npm that manages THIS running
+ * package is the one asked: an npm is accepted only when its global root is the running package's own root. With the
+ * patch from the 雲晴家 fleet operator, who verified it on the original failing machine.
+ *
  * Runs on the fleet's event loop: every step is async and bounded.
  */
 import { execFile } from "./child-process.js";
 import { access, readFile, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
-import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 export interface DispatchDeps {
-  /** `env` replaces PATH for that one program (an npm runs with its own directory first, so its node is its own). */
-  run(command: string, args: string[], timeoutMs: number, env?: { PATH: string }): Promise<{ status: number | null; stdout: string }>;
+  run(command: string, args: string[], timeoutMs: number): Promise<{ status: number | null; stdout: string }>;
   readFile(path: string): Promise<string>;
   realpath(path: string): Promise<string>;
-  /** An executable file there. */
+  /** An executable file there (#3440). */
   isExecutable?(path: string): Promise<boolean>;
-  /** The running AgEnD package's directory (where THIS code is installed). */
-  packageDir?: string;
-  /** The Node running this process. */
+  /** The package directory this code runs from — whose global root the npm asked must have (#3440). Null: unknown. */
+  packageDir?: string | null;
+  /** The Node running this process (#3440): the npm beside it is a candidate when AgEnD runs on a plain Node. */
   execPath?: string;
-  /** This process's PATH. */
-  pathEnv?: string;
 }
 
 export const defaultDispatchDeps: DispatchDeps = {
-  run: async (command, args, timeoutMs, env) => {
+  run: async (command, args, timeoutMs) => {
     try {
-      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs, ...(env ? { env: { ...process.env, ...env } } : {}) });
+      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs });
       return { status: 0, stdout: String(stdout) };
     } catch (err) {
       const code = (err as { code?: unknown }).code;
@@ -42,66 +44,74 @@ export const defaultDispatchDeps: DispatchDeps = {
   readFile: path => readFile(path, "utf8"),
   realpath: path => realpath(path),
   isExecutable: async path => { try { await access(path, constants.X_OK); return true; } catch { return false; } },
+  packageDir: fileURLToPath(new URL("..", import.meta.url)),
+  execPath: process.execPath,
 };
 
 /**
- * `binDir`: the directory of the npm that manages this install — the update must run with it first on PATH, so its
- * `agend update`, `npm` and npm's `node` are this install's (#3440). Absent: PATH already finds it (or a source checkout).
+ * #3440: the `npm` beside a POSIX global install of this package: `<prefix>/lib/node_modules/@songsid/agend` →
+ * `<prefix>/bin/npm`, run by `<prefix>/bin/node`. npm takes its global prefix from the Node that runs it, and its
+ * `#!/usr/bin/env node` would pick PATH's Node — the same system one that hid the install — so the prefix's own Node runs
+ * it explicitly. Null for anything else (a checkout, a Windows prefix). (From the 雲晴家 fleet operator's patch.)
  */
-export type InstalledAgend = { ok: true; agend: string; version: string; binDir?: string } | { ok: false; reason: string };
+export function colocatedNpm(packageDir: string | null | undefined, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } | null {
+  if (!packageDir || platform === "win32") return null;
+  const pkg = packageDir.replace(/\/+$/, "");
+  const scope = dirname(pkg), root = dirname(scope), lib = dirname(root);
+  if (basename(pkg) !== "agend" || basename(scope) !== "@songsid" || basename(root) !== "node_modules" || basename(lib) !== "lib") return null;
+  const bin = join(dirname(lib), "bin");
+  return { command: join(bin, "node"), args: [join(bin, "npm")] };
+}
 
-/**
- * #3440: the global node_modules this running AgEnD was installed into, from where its code actually lives
- * (`<root>/@songsid/agend`), or null when it is not a global install (a source checkout: the PATH npm decides, as before).
- */
+/** #3440: the global node_modules the running package was installed into (realpath'd), or null (not a global install). */
 async function runningGlobalRoot(deps: DispatchDeps): Promise<string | null> {
-  const dir = deps.packageDir ?? fileURLToPath(new URL("..", import.meta.url));
+  if (!deps.packageDir) return null;
   let real: string;
-  try { real = await deps.realpath(dir); } catch { return null; }
+  try { real = await deps.realpath(deps.packageDir); } catch { return null; }
   const scope = dirname(real), root = dirname(scope);
   return basename(real) === "agend" && basename(scope) === "@songsid" && basename(root) === "node_modules" ? root : null;
 }
 
-/**
- * #3440: the npm that manages the running install, never merely the first one on the fleet's PATH (a service's PATH can
- * be minimal, or put a system npm before nvm's). Candidates: `<prefix>/bin/npm` beside the running package, the npm
- * next to the Node running AgEnD, then PATH's. Each runs with its own directory first on PATH — npm takes its global
- * prefix from the Node that runs it — and is accepted only when its `npm root -g` is the running package's root.
- */
-async function npmForRunningInstall(deps: DispatchDeps): Promise<{ npm: string; binDir?: string; root: string; prefix: string } | { reason: string }> {
+type Npm = { command: string; args: string[]; label: string };
+type NpmAnswer = { root: string; prefix: string } | null;
+
+async function askNpm(npm: Npm, deps: DispatchDeps): Promise<NpmAnswer> {
   const last = (text: string) => text.trim().split("\n").pop()?.trim() ?? "";
-  const ask = async (npm: string, env?: { PATH: string }) => {
-    const [root, prefix] = await Promise.all([deps.run(npm, ["root", "-g"], 15_000, env), deps.run(npm, ["prefix", "-g"], 15_000, env)]);
-    return root.status === 0 && prefix.status === 0 && last(root.stdout) && last(prefix.stdout) ? { root: last(root.stdout), prefix: last(prefix.stdout) } : null;
-  };
+  const ask = (what: string) => deps.run(npm.command, [...npm.args, what, "-g"], 15_000);
+  const [root, prefix] = await Promise.all([ask("root"), ask("prefix")]);
+  return root.status === 0 && prefix.status === 0 && last(root.stdout) && last(prefix.stdout) ? { root: last(root.stdout), prefix: last(prefix.stdout) } : null;
+}
+
+/**
+ * #3440: the npm that manages the running install — never merely the first one on the fleet's PATH. Candidates: the npm
+ * beside the running package (run by that prefix's Node), the npm beside the Node running AgEnD (run by it), then PATH's.
+ * One is accepted only when its global root IS the running package's root, so another install elsewhere (an old AgEnD in
+ * a system root) can never be the one updated. A source checkout keeps the old rule: PATH's npm.
+ */
+async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string; prefix: string } | { reason: string }> {
   const expected = await runningGlobalRoot(deps);
-  if (!expected) {
-    const answer = await ask("npm");
-    return answer ? { npm: "npm", ...answer } : { reason: "npm could not say where AgEnD is installed" };
-  }
-  const pathEnv = deps.pathEnv ?? process.env.PATH ?? "";
+  const onPath: Npm = { command: "npm", args: [], label: "npm on PATH" };
+  if (!expected) return (await askNpm(onPath, deps)) ?? { reason: "npm could not say where AgEnD is installed" };
   const executable = deps.isExecutable ?? defaultDispatchDeps.isExecutable!;
-  const candidates = [...new Set([
-    join(dirname(dirname(expected)), "bin", "npm"),                 // <prefix>/lib/node_modules → <prefix>/bin/npm
-    join(dirname(deps.execPath ?? process.execPath), "npm"),          // the npm beside a plain Node running AgEnD
-  ])];
+  const candidates: Npm[] = [];
+  const beside = colocatedNpm(join(expected, "@songsid", "agend"));
+  if (beside && await executable(beside.command) && await executable(beside.args[0]!)) candidates.push({ ...beside, label: beside.args[0]! });
+  const execPath = deps.execPath ?? process.execPath;
+  const nextToNode = join(dirname(execPath), "npm");
+  if (!candidates.some(c => c.label === nextToNode) && await executable(nextToNode)) candidates.push({ command: execPath, args: [nextToNode], label: nextToNode });
+  candidates.push(onPath);
   const tried: string[] = [];
   for (const npm of candidates) {
-    if (!(await executable(npm))) continue;
-    const binDir = dirname(npm);
-    const answer = await ask(npm, { PATH: [binDir, pathEnv].filter(Boolean).join(delimiter) });
+    const answer = await askNpm(npm, deps);
     let root: string | null = null;
     if (answer) { try { root = await deps.realpath(answer.root); } catch { root = answer.root; } }
-    tried.push(`${npm} → ${root ?? "no answer"}`);
-    if (root === expected) return { npm, binDir, ...answer! };
+    tried.push(`${npm.label} → ${root ?? "no answer"}`);
+    if (answer && root === expected) return answer;
   }
-  const onPath = await ask("npm", { PATH: pathEnv });
-  let pathRoot: string | null = null;
-  if (onPath) { try { pathRoot = await deps.realpath(onPath.root); } catch { pathRoot = onPath.root; } }
-  tried.push(`npm on PATH → ${pathRoot ?? "no answer"}`);
-  if (onPath && pathRoot === expected) return { npm: "npm", ...onPath };
   return { reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${expected} (tried ${tried.join("; ")})` };
 }
+
+export type InstalledAgend = { ok: true; agend: string; version: string } | { ok: false; reason: string };
 
 /** npm's global root and prefix → the installed package, its bin target, and the bin link that must lead to it. */
 export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatchDeps): Promise<InstalledAgend> {
@@ -124,18 +134,16 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
   try { [target, linked] = await Promise.all([deps.realpath(join(pkgDir, binRel)), deps.realpath(agend)]); }
   catch { return { ok: false, reason: `${agend} does not lead to the installed package` }; }
   if (target !== linked) return { ok: false, reason: `${agend} leads to ${linked}, not the installed package's ${target}` };
-  return { ok: true, agend, version: manifest.version, ...(found.binDir ? { binDir: found.binDir } : {}) };
+  return { ok: true, agend, version: manifest.version };
 }
 
 /**
  * `<installed agend> update`, 2 s from now, from a detached `sh`. Service callers must wrap it in an independent scope before launch. The
- * path is a positional argument, never spliced into the script. With `binDir` (#3440), that npm's directory goes first on
- * PATH — also data, `$2` — so the update's own `npm`, and the `node` npm runs on, are the running install's.
+ * path is a positional argument, never spliced into the script. #3440: the agend's own bin directory (`<prefix>/bin`,
+ * where its `npm` and `node` live) goes first on PATH, so the CLI's npm checks and install use the npm that installed
+ * it, not a system npm the service's PATH happens to list first. (From the 雲晴家 fleet operator's patch.)
  */
-export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && exec "$1" update';
-export const DELAYED_UPDATE_SCRIPT_WITH_PATH = 'sleep 2 && PATH="$2:$PATH" && export PATH && exec "$1" update';
-export function updateCommand(agend: string, binDir?: string): { command: string; args: string[] } {
-  return binDir && isAbsolute(binDir)
-    ? { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT_WITH_PATH, "sh", agend, binDir] }
-    : { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT, "sh", agend] };
+export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update';
+export function updateCommand(agend: string): { command: string; args: string[] } {
+  return { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT, "sh", agend] };
 }
