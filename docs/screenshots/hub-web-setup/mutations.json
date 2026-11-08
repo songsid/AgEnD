@@ -1,0 +1,60 @@
+{
+  "mutants": [
+    {
+      "name": "page-mark",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "version",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "continuation",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "ca-confirmation",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "leaf-pin",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "all-ca-fingerprints",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "fresh-test",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "clear-secrets",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "stop-mismatch",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "host-mark",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "name": "existing-hub",
+      "assertionCaught": true,
+      "exit": 1
+    }
+  ],
+  "restored": true
+}

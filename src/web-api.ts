@@ -4211,6 +4211,8 @@ export interface AppShellContext {
   getRawFleetConfig?(): unknown;
   /** #3298 S-89: this fleet's own Hub offers group permissions (marks the page `data-hub-groups`). */
   hubGroupPermissions?(): boolean;
+  /** Display capability only. Setup routes independently reauthorize the exact local host session. */
+  hubSetupSession?(req: IncomingMessage): unknown;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4376,7 +4378,10 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   // learned in this process, never by reading a Hub session across origins. Never over the public link.
   let groups = false;
   try { groups = ctx.hubGroupPermissions?.() === true; } catch { groups = false; }
-  return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "");
+  let setup = false;
+  try { setup = !!ctx.hubSetupSession?.(req); } catch { /* unavailable authority never offers setup */ }
+  return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "")
+    + (setup && !gatewayRequestContext(req) ? ' data-hub-setup="1"' : "");
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
