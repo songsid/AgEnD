@@ -3,8 +3,6 @@
 中文版：[hub-group-permissions.zh-TW.md](hub-group-permissions.zh-TW.md)
 
 > **Experimental. 2.3.5-alpha.8 and later only, and off by default.** Group permissions let a Hub administrator decide, by Active Directory security group, what signed-in colleagues may do on the AgEnD Hub. Until an administrator turns them on, the Hub behaves as before.
->
-> **Draft:** the Hub only offers this once its group enforcement is installed. Until then the editor says *"Turning group permissions on becomes available once the Hub's enforcement is installed."* This page is finished when that lands.
 
 Everyone in your directory can still **sign in** to the Hub. Group permissions decide what each person can **do** after signing in:
 
@@ -12,7 +10,7 @@ Everyone in your directory can still **sign in** to the Hub. Group permissions d
 |---|---|
 | **Chat with agents** | Ask the agents their owners have shared with them. The agent's owner still has to give each person access; the group permission alone opens nothing. |
 | **Share agents** | Share new agents, or new versions of agents, from their own fleet on the Hub. Each share still needs the owner's own confirmation. |
-| **Connect a fleet** | Pair their own AgEnD fleet with the Hub, up to the **Fleets** number set for the group (0–8). With **Fleets** at 0, members can't connect a fleet even though the box is ticked. |
+| **Connect a fleet** | Pair their own AgEnD fleet through self-service, up to the **Fleets** number set for the group (0–8). With **Fleets** at 0, self-service is unavailable even though the box is ticked; explicit administrator approval remains available as described below. |
 
 A person who is in several groups gets everything any of their groups allows, and the highest **Fleets** number among their groups that allow **Connect a fleet**. A person listed under **People excluded** is denied what they are excluded from: exclusions win over any group.
 
@@ -82,11 +80,13 @@ Their own fleets are listed with their state: **Active**, **Paused**, **Revoked*
 
 > **Draft:** quick pairing is not in this release yet. Today a colleague asks the Hub administrator for a pairing code, as the **Connect your fleet** card says. This section is finished when quick pairing lands.
 
+The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
+
 ## 4. Turn off, pause and resume
 
 - **Turn the policy off:** **Turn off** in the editor, then save. Until you save, the editor shows *"Not saved"* and *"Turns off when you save; what depends on it is paused."* **Undo** cancels it. After saving: *"Switched off — resources paused"*.
 
-  **Turning off pauses chatting, sharing and connecting for everyone**, the administrator included. Fleets and shared agents that existed before group permissions were first turned on stay registered, but **nobody can ask any agent** until you turn group permissions on again **and** resume chat access in **Paused** (below). Once turned on, group permissions can be switched off but never return to the "never turned on" state.
+  **Turning off pauses actions that depend on groups**, including chatting, sharing and self-service pairing, for the administrator too. Explicit manual pairing remains available; membership loss or switching off does not pause manual fleets. Person exclusions, directory ineligibility and revocation still apply. Fleets and shared agents that existed before group permissions were first turned on stay registered, but **nobody can ask any agent** until you turn group permissions on again **and** resume chat access in **Paused** (below). Once turned on, group permissions can be switched off but never return to the "never turned on" state.
 - **Take a group away:** **Remove** the group, check **What this change does**, then save.
 - **Resume something paused:** the editor's **Paused** section lists what was allowed by a group before and is paused now: fleets, shared agents and chat access (*"Allowed by a group before, paused now. Resume one after checking it is still wanted."*). Choose **Resume** on each one you still want (*"Resumed."*). Turning group permissions back on never resumes anything by itself: you decide, item by item.
 - **Exclude a person:** **People excluded** is shown in the editor; adding someone to it from the editor is not available in this release.
