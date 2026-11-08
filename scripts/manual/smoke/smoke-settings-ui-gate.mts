@@ -10,13 +10,23 @@
 //   - left-accent: no coloured left edge on a rounded box — a border-left wider than (or coloured unlike) the box's own top
 //               border while a left corner is rounded. The house style is the straight left bar (`.lbar`, #2330/#2332/#2489);
 //               a rounded border-left accent came back once in #3367's Accounts boxes (the user's report), so it fails here;
+//   - tap (phone width only; style guide rule 7, a ratchet): every interactive control in the column is at least --tap (44px)
+//               in both directions — a checkbox or radio by its label when it has one. Today's small controls are listed in
+//               ui-gate-tap-allowlist.json (section + where, with a count); a new one, or one more of a listed kind, fails.
+//               Both states count: as drawn, and with every disclosure open (a control only an open drawer shows). A
+//               disabled control (:disabled, a disabled fieldset included) isn't a target; a checkbox or radio is measured
+//               by its largest associated label (wrapping or label[for]) when that is bigger than the control.
+//               The list only shrinks: after GATE=full over every section, a listed allowance no case reached fails
+//               (gate:tap-allowlist-stale). TAP_UPDATE=1 lowers the list to this run and refuses (writes nothing) if any
+//               count would rise; TAP_UPDATE=reset adopts this run as a new baseline (a new branch's first list only —
+//               reviewed as such, never to pass a PR);
 //   - no page error, no CSP report, no horizontal scroll of the page.
 // GATE=ci (the CI job, < 5 min): desk light en + phone dark zh-TW, every section, the long-value pass, one middle width (1024).
 // GATE=full (local, ~10 min): the whole matrix (desk/phone × light/dark × en/zh-TW) and widths 900–1280.
 // Pictures of every section land in OUT (a failing CI run uploads them).
 //   PW_DIR=<dir with playwright-core> (or node_modules) REPO=<checkout> OUT=<dir> [GATE=ci|full] [CHROME=<chrome binary>] \
 //   FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, caseName, matrix, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
@@ -30,6 +40,16 @@ const SECTIONS: string[] = process.env.SECTIONS ? process.env.SECTIONS.split(","
 const CASES = GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
 const WIDTHS = GATE === "full" ? [900, 1024, 1180, 1280] : [1024];
 const LONG = "claude-opus-5-5-20261101-extended-context-preview-with-a-very-long-model-identifier [1m] (Windows PC DESKTOP-ABCDEFGHIJ)";
+
+const TAP_LIST = join(REPO, "scripts/manual/smoke/ui-gate-tap-allowlist.json");
+const tapAllowed: Record<string, number> = JSON.parse(readFileSync(TAP_LIST, "utf8"));
+const tapSeen: Record<string, number> = {};
+/** One phone section's small controls: the larger count of the drawn and the opened state, per place (never their sum). */
+export function tapCounts(drawn: Record<string, number>, opened: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = { ...drawn };
+  for (const [k, n] of Object.entries(opened)) out[k] = Math.max(out[k] ?? 0, n);
+  return out;
+}
 
 const r: Record<string, unknown> = { gate: GATE };
 const fail: string[] = [];
@@ -86,7 +106,18 @@ const MEASURE = `(() => {
     const round = (parseFloat(s.borderTopLeftRadius) || 0) > 0 || (parseFloat(s.borderBottomLeftRadius) || 0) > 0;
     if (edge && round) accents.push(path(el) + " " + s.borderLeftWidth + " " + s.borderLeftColor + " r" + s.borderTopLeftRadius);
   }
-  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8), accentCount: accents.length, pageX: document.documentElement.scrollWidth - innerWidth };
+  // Style guide rule 7: a phone tap target is at least --tap (44px) both ways; a checkbox or radio counts by its label.
+  const tap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")) || 44;
+  const small = {};
+  for (const el of col.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=switch], [role=tab], [role=checkbox]")) {
+    if (!vis(el) || el.matches(":disabled")) continue;
+    // A checkbox or radio is tapped through its label (wrapping or label[for]): the largest associated box counts.
+    let w = el.getBoundingClientRect().width, h = el.getBoundingClientRect().height;
+    if (el.matches("input[type=checkbox], input[type=radio]")) for (const l of el.labels || []) { if (!vis(l)) continue; const lb = l.getBoundingClientRect(); if (Math.min(lb.width, lb.height) > Math.min(w, h)) { w = lb.width; h = lb.height; } }
+    if (Math.min(w, h) + 0.5 >= tap) continue;
+    const k = path(el); small[k] = (small[k] || 0) + 1;
+  }
+  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8), accentCount: accents.length, small, tap, pageX: document.documentElement.scrollWidth - innerWidth };
 })()`;
 
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 47510), instances: 12 });
@@ -120,6 +151,39 @@ async function selfTest(page: any): Promise<void> {
   const want = CONTROLS.filter(([, , bad]) => bad).map(([n]) => n);
   check("gate:left-accent-self-test", JSON.stringify(flagged) === JSON.stringify(want), { flagged, want });
 }
+/**
+ * The tap rule checks itself too, through the same drawn/opened combination as the sections: a 30px button is small, a
+ * 44px one isn't; a checkbox counts by its 44px label, wrapping or label[for]; a 30px button in a disabled fieldset is not
+ * a target; and a 30px button that only an opened disclosure shows is caught (Prism #3417).
+ */
+async function tapSelfTest(page: any): Promise<void> {
+  // A string, like MEASURE: a named helper inside a compiled function would reach the page as an undefined __name.
+  await page.evaluate(`(() => {
+    const col = document.querySelector(".p-settings .panel-body > .col");
+    const box = document.createElement("div"); box.id = "ui-gate-tap-controls";
+    box.innerHTML = '<button class="ui-gate-tap-small">a</button><button class="ui-gate-tap-big">b</button>'
+      + '<label class="ui-gate-tap-label"><input type="checkbox" class="ui-gate-tap-check"> c</label>'
+      + '<input type="checkbox" id="ui-gate-tap-for" class="ui-gate-tap-forcheck"><label for="ui-gate-tap-for" class="ui-gate-tap-forlabel">d</label>'
+      + '<fieldset disabled><button class="ui-gate-tap-disabled">e</button></fieldset>'
+      + '<details><summary>f</summary><button class="ui-gate-tap-openonly">g</button></details>';   // hidden by CSS until open (below)
+    col.appendChild(box);
+    for (const [sel, w, h] of [[".ui-gate-tap-small", "30px", "30px"], [".ui-gate-tap-big", "44px", "44px"], [".ui-gate-tap-label", "120px", "44px"],
+        [".ui-gate-tap-forlabel", "120px", "44px"], [".ui-gate-tap-disabled", "30px", "30px"], [".ui-gate-tap-openonly", "30px", "30px"]]) {
+      const el = box.querySelector(sel);
+      for (const [k, v] of [["display", "inline-block"], ["width", w], ["height", h], ["min-height", "0"], ["min-width", "0"], ["padding", "0"]]) el.style.setProperty(k, v);
+    }
+    // Prism's #3417 shape: content a stylesheet hides until its disclosure opens (details[open] > button { display: block }).
+    box.querySelector(".ui-gate-tap-openonly").style.setProperty("display", "none");
+  })()`);
+  const drawn = await page.evaluate(MEASURE) as any;
+  await page.evaluate(`(() => { document.querySelector("#ui-gate-tap-controls details").open = true; document.querySelector(".ui-gate-tap-openonly").style.setProperty("display", "inline-block"); })()`);
+  const opened = await page.evaluate(MEASURE) as any;
+  await page.evaluate(() => document.getElementById("ui-gate-tap-controls")?.remove());
+  const flagged = Object.keys(tapCounts(drawn.small, opened.small)).map((k) => /\.ui-gate-tap-([\w-]+)$/.exec(k)?.[1]).filter(Boolean).sort();
+  const closedMissed = !Object.keys(drawn.small).some((k) => k.endsWith(".ui-gate-tap-openonly"));
+  check("gate:tap-self-test", JSON.stringify(flagged) === JSON.stringify(["openonly", "small"]) && closedMissed && drawn.tap === 44, { flagged, closedMissed, tap: drawn.tap });
+}
+let tapSelfTested = false;
 let selfTested = false;
 try {
   for (const c of CASES) {
@@ -146,6 +210,16 @@ try {
       check(`${tag}:buttons`, mixed.length === 0, mixed);
       check(`${tag}:overflow`, drawn.overCount === 0 && opened.overCount === 0 && drawn.pageX <= 0 && opened.pageX <= 0, { drawn: drawn.over, opened: opened.over, pageX: [drawn.pageX, opened.pageX] });
       check(`${tag}:left-accent`, drawn.accentCount === 0 && opened.accentCount === 0, { drawn: drawn.accents, opened: opened.accents });
+      if (c.device === "phone") {
+        if (!tapSelfTested) { await tapSelfTest(page); tapSelfTested = true; }
+        const over: string[] = [];
+        for (const [where, n] of Object.entries(tapCounts(drawn.small, opened.small))) {
+          const k = `${section} ${where}`;
+          tapSeen[k] = Math.max(tapSeen[k] ?? 0, n);
+          if (n > (tapAllowed[k] ?? 0)) over.push(`${k} ×${n} (allowed ${tapAllowed[k] ?? 0})`);
+        }
+        check(`${tag}:tap`, over.length === 0, over);
+      }
     }
     for (const width of WIDTHS) for (const section of SECTIONS) {
       if (c.device !== "desk") break;
@@ -164,6 +238,20 @@ try {
   fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);
 } finally {
   r.seconds = Math.round((Date.now() - started) / 1000);
+  // The list only shrinks (Prism #3417): over the complete matrix, an allowance no case reached is stale.
+  const complete = GATE === "full" && !process.env.SECTIONS && !r.error;
+  if (complete) {
+    const stale = Object.entries(tapAllowed).filter(([k, n]) => (tapSeen[k] ?? 0) < n).map(([k, n]) => `${k} (${tapSeen[k] ?? 0} now, ${n} listed)`);
+    check("gate:tap-allowlist-stale", stale.length === 0, stale);
+  }
+  const merged = Object.fromEntries(Object.entries(tapSeen).sort(([a], [b]) => a.localeCompare(b)));
+  if (process.env.TAP_UPDATE === "reset" && complete) {
+    writeFileSync(TAP_LIST, JSON.stringify(merged, null, 1) + "\n"); console.log(`TAP_UPDATE=reset: new baseline, ${Object.keys(merged).length} entries`);
+  } else if (process.env.TAP_UPDATE === "1" && complete) {
+    const rises = Object.entries(merged).filter(([k, n]) => n > (tapAllowed[k] ?? 0));
+    if (rises.length) console.log(`TAP_UPDATE: refused, ${rises.length} count(s) would rise; the list is unchanged`);
+    else { writeFileSync(TAP_LIST, JSON.stringify(merged, null, 1) + "\n"); console.log(`TAP_UPDATE: lowered to ${Object.keys(merged).length} entries`); }
+  } else if (process.env.TAP_UPDATE) console.log("TAP_UPDATE: needs GATE=full over every section; the list is unchanged");
   writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 600)}`);
   console.log(fail.length ? `UI gate FAILED (${fail.length}) in ${r.seconds}s — pictures and result.json in ${OUT}` : `UI gate passed in ${r.seconds}s (${Object.keys(r).length - 2} checks)`);

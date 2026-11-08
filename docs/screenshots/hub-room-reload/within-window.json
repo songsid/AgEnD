@@ -1,0 +1,34 @@
+{
+  "desk-light-en": {
+    "reloadMs": 788,
+    "reopenMs": 1620
+  },
+  "desk-light-zh-TW": {
+    "reloadMs": 594,
+    "reopenMs": 1307
+  },
+  "desk-dark-en": {
+    "reloadMs": 410,
+    "reopenMs": 869
+  },
+  "desk-dark-zh-TW": {
+    "reloadMs": 764,
+    "reopenMs": 1777
+  },
+  "phone-light-en": {
+    "reloadMs": 976,
+    "reopenMs": 2314
+  },
+  "phone-light-zh-TW": {
+    "reloadMs": 1075,
+    "reopenMs": 2693
+  },
+  "phone-dark-en": {
+    "reloadMs": 1490,
+    "reopenMs": 4014
+  },
+  "phone-dark-zh-TW": {
+    "reloadMs": 842,
+    "reopenMs": 2198
+  }
+}

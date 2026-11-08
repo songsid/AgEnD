@@ -1,236 +1,232 @@
-// The AgEnD UI gate on the Hub's pages (cid-hub-shell-parity; the user: 「agend 排得很好看, agend hub 醜到不行」). The Hub's
-// shell is the fleet dashboard's (style guide rule 1), checked in a real headless Chrome on a REAL Hub web listener
-// (createHubHttp's handle() behind node:https on 127.0.0.1, the shared S5 fakes of tests/helpers/hub-s3b-rig.ts, a fake
-// directory; no fleet runs, no network), the administrator signed in. Per case:
-//   - sidebar:  the dashboard's sidebar — a one-line brand ("AgEnD Hub", the Hub's name its tooltip); the nav as side-row
-//               rows, each with its icon, one height, one left inset, exactly one marked current; Search (with its Ctrl K
-//               hint on a wide screen) and New chat as side-rows (no bordered pill, no old Hub brand line); the conversation
-//               list under its section label, its empty state one line; the foot (Settings, the session row) at the bottom;
-//               Notices with no count (the Hub has no read state); the session menu opens on the screen (upward);
-//   - pages:    Chats, My shared agents, Administration and Notices — each page's own cards share one frame; one height per
-//               button kind; nothing past the content column or the page; no coloured left edge on a rounded box; the
-//               dashboard's page head (PanelHeader) on every page but the chat; the security notices card in the page's
-//               column (the cards' own edges), never full-bleed above a chat;
-//   - Hub-only: the page asks the Hub for nothing but /hub/v1/*, /assets/*, its own /ui/js modules and its pages;
-//   - no page error, no CSP report.
-// The Notices page needs a Hub that offers its security notices: the rig composes none, so the session's capability mark and
-// the notices are answered in the browser (page.route) — the page itself is the product's.
-// GATE=ci (the CI job): desk light en + phone dark zh-TW. GATE=full (local): desk/phone × light/dark × en/zh-TW.
-// Pictures of every page land in OUT/smoke-hub-ui-gate (a failing CI run uploads them).
-//   PW_DIR=<dir with playwright-core> (or node_modules) REPO=<checkout> OUT=<dir> [GATE=ci|full] [CHROME=<chrome binary>] \
-//   FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-hub-ui-gate.mts
+// The UI gate on the Hub's own pages (docs/design/ui-style-guide.md, leader cid-ui-style-guide): sign-in, the signed-in
+// welcome, a chat, the owner's agents, Administration and its Group permissions editor, on a REAL Hub web listener
+// (createHubHttp behind node:https, the s3b rig: scratch DB, fake directory; no fleet runs). Group permissions are composed
+// with a fixed control and welcome answer, so the pages draw as a Hub with them on.
+//
+// Per page and case:
+//   (a self-test first: the overflow check run on five boxes with known answers; see overflowSelfTest)
+//   :overflow   nothing wider than the window: the page doesn't scroll sideways, and no element reaches past the right
+//               edge unless a scrolling box (overflow auto/scroll) inside the window holds it — a hidden or clipping box
+//               (the app shell is one) doesn't excuse it: that content is cut off. A box that scrolls sideways counts
+//               too (a vertical scroller computes overflow-x: auto as well), unless it is code, pre or a table — style
+//               guide rule 7;
+//   :buttons    one height per button class combination on the page;
+//   :no-errors  no page error, no CSP report;
+//   :tap        at phone width, controls smaller than --tap (44px) — a ratchet: the places listed in
+//               ui-gate-hub-tap-allowlist.json may keep their count, a new one or a higher count fails.
+// GATE=ci (default): desk-light-en and phone-dark-zh-TW, plus a 1024 px desktop. GATE=full: the 8-case matrix, plus 900,
+// 1024, 1180 and 1280 px, and a listed place that has fewer small controls now fails too (lower it with TAP_UPDATE=1, which
+// refuses to raise anything; TAP_UPDATE=reset adopts the current pages as a new baseline — a branch's first list only).
+//   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-hub-ui-gate.mts
 import { createRequire } from "node:module";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { caseName, matrix, shotPath, VIEWPORTS, type MatrixCase } from "../smoke-fixture/index.mts";
+import { randomUUID } from "node:crypto";
 
-const SMOKE = "smoke-hub-ui-gate";
-const REPO = process.env.REPO ?? process.cwd();
-const PW = process.env.PW_DIR ?? REPO;
+const REPO = process.env.REPO ?? process.cwd(), PW = process.env.PW_DIR ?? REPO;
 const GATE = process.env.GATE === "full" ? "full" : "ci";
-const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
+const OUT = join(process.env.OUT ?? "/tmp/smoke-out", "smoke-hub-ui-gate");
 mkdirSync(OUT, { recursive: true });
-const CASES: MatrixCase[] = GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
+type Case = { device: "desk" | "phone"; theme: "light" | "dark"; lang: "en" | "zh-TW" };
+const ALL: Case[] = [];
+for (const device of ["desk", "phone"] as const) for (const theme of ["light", "dark"] as const) for (const lang of ["en", "zh-TW"] as const) ALL.push({ device, theme, lang });
+const caseName = (c: Case) => `${c.device}-${c.theme}-${c.lang}`;
+const CASES = GATE === "full" ? ALL : [ALL[0]!, ALL[7]!];
+const WIDTHS = GATE === "full" ? [900, 1024, 1180, 1280] : [1024];
+const TAP_LIST = join(REPO, "scripts/manual/smoke/ui-gate-hub-tap-allowlist.json");
+const tapAllowed: Record<string, number> = JSON.parse(readFileSync(TAP_LIST, "utf8"));
+const tapSeen: Record<string, number> = {};
+
 const r: Record<string, unknown> = { gate: GATE };
 const fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
-const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
-const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
-// What the Hub's own listener serves under /ui/js (the authority — the page may ask for nothing else there).
-const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts") as { HUB_UI_MODULES: readonly string[] };
-const allowed = (path: string) => /^\/(hub\/v1\/|assets\/|ui\/hub|favicon)/.test(path) || (path.startsWith("/ui/js/") && HUB_UI_MODULES.includes(path.slice(7)));
-const port = 48700 + Math.floor(Math.random() * 90), origin = `https://127.0.0.1:${port}`;
-const rig = await s3bRig({ webOrigin: origin });
-const http = rig.http;
-const keys = mkdtempSync(join(OUT, "keys-")); chmodSync(keys, 0o700);
-await provisionHubIdentity({ home: keys, memberOrigin: origin });
-const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) },
-  (req, res) => { if (!http.handle(req, res)) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("not found"); } });
-await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
-// The world: olivia's fleet publishes two agents (the administrator sees them in Administration).
-const olivia = rig.addPerson("olivia", "Olivia Chen");
-const fleetId = randomUUID(), link = rig.link(fleetId, olivia);
-const exposure = (id: string, name: string) => ({ id, fleetId, owner: olivia, displayName: name, revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
-await http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [exposure(randomUUID(), "Sales numbers"), exposure(randomUUID(), "Design guide")] }, link) as never, link);
-// One retained security notice for the Notices page (the DTO the Hub's notice stream sends).
-const NOTICE = { id: randomUUID(), label: "Olivia's laptop", at: Date.now() - 3_600_000, fleetId, generation: 1, revoked: false };
 
-/** The sidebar as drawn (the drawer open on a phone). */
-const SIDEBAR = `(() => {
-  const sb = document.querySelector("#sidebar");
-  if (!sb) return { missing: true };
-  const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== "hidden" && s.display !== "none" && b.width > 0 && b.height > 0; };
-  const brand = sb.querySelector(".side-head .brand");
-  const bs = brand && getComputedStyle(brand);
-  const rows = [...sb.querySelectorAll(".side-nav > .side-row")].filter(vis).map((el) => {
-    const b = el.getBoundingClientRect(), icon = el.querySelector("svg.icon"), ib = icon && icon.getBoundingClientRect();
-    return { text: (el.querySelector(".grow")?.textContent || "").trim(), h: Math.round(b.height), iconX: ib ? Math.round(ib.left - b.left) : null,
-      current: el.matches(".active"), count: !!el.querySelector(".nav-count"), kbd: (el.querySelector("kbd")?.textContent || "").trim(), cls: el.className };
-  });
-  const foot = sb.querySelector(".side-foot"), fb = foot && foot.getBoundingClientRect();
-  const footRows = foot ? [...foot.querySelectorAll(".side-row")].filter(vis).map((el) => Math.round(el.getBoundingClientRect().height)) : [];
-  const label = sb.querySelector(".hub-side-rooms .inst-head .side-label");
-  const empty = sb.querySelector(".hub-side-rooms .side-empty");
-  const lines = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
-  return {
-    brand: brand ? { text: brand.textContent.trim(), title: brand.getAttribute("title"), lines: lines(brand), weight: bs.fontWeight } : null,
-    rows, foot: fb ? { bottomGap: Math.round(sb.getBoundingClientRect().bottom - fb.bottom), rows: footRows, prefs: !!foot.querySelector(".hub-prefs"), session: !!foot.querySelector(".hub-session-row") } : null,
-    label: label ? label.textContent.trim() : null, empty: empty ? { text: empty.textContent.trim(), lines: lines(empty) } : null,
-    legacy: [...sb.querySelectorAll(".hub-new, .hub-brand-name, .empty-hint, .hub-list-empty")].filter(vis).map((el) => el.className),
-  };
-})()`;
-
-/** The page as drawn: its head, overflow, its cards' frames, its buttons, left accents (as the Settings gate measures). */
-const PAGE = `(() => {
-  const panel = document.querySelector("main .p-hub") || document.querySelector(".p-hub");
-  const body = panel && panel.querySelector(".panel-body");
-  if (!body) return { missing: true };
-  const cb = body.getBoundingClientRect();
-  const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== "hidden" && s.display !== "none" && b.width > 0 && b.height > 0 && !el.closest("[hidden]"); };
+// A string, not a function: a named helper inside a compiled function reaches the page as an undefined __name.
+const MEASURE = `(() => {
+  const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== "hidden" && s.display !== "none" && b.width > 0 && b.height > 0 && !el.closest("[hidden], details:not([open]) > :not(summary)"); };
   const name = (el) => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\\s+/).slice(0, 2).join(".") : "");
-  const path = (el) => { const p = []; for (let e = el; e && e !== body && p.length < 3; e = e.parentElement) p.unshift(name(e)); return p.join(" > "); };
-  const over = [];
-  for (const el of body.querySelectorAll("*")) {
+  const path = (el) => { const p = []; for (let e = el; e && e !== document.body && p.length < 3; e = e.parentElement) p.unshift(name(e)); return p.join(" > "); };
+  const W = document.documentElement.clientWidth, over = [];
+  for (const el of document.body.querySelectorAll("*")) {
     if (!vis(el)) continue;
     const b = el.getBoundingClientRect();
-    let clipped = false;
-    for (let a = el.parentElement; a && a !== body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o !== "visible") { clipped = a.getBoundingClientRect().right <= cb.right + 1; break; } }
-    if (!clipped && b.right > cb.right + 1) over.push(path(el) + " +" + Math.round(b.right - cb.right));
+    if (b.right <= W + 1) continue;
+    let held = false;
+    // The nearest box that doesn't show overflow decides (Fable #3424 F1): held only when it scrolls and fits the window;
+    // a hidden box — even one inside a scroller — cuts the content off.
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === "visible") continue; held = (o === "auto" || o === "scroll") && a.getBoundingClientRect().right <= W + 1; break; }
+    if (!held) over.push(path(el) + " right=" + Math.round(b.right));
   }
-  const inBox = (el) => !!el.parentElement.closest("details, dialog");
-  const cards = [...body.querySelectorAll(".card")].filter((el) => vis(el) && !inBox(el))
-    .map((el) => { const s = getComputedStyle(el); return { el: path(el), frame: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft, s.borderTopWidth, s.borderTopStyle, s.borderTopLeftRadius].join(" ") }; });
+  // A box that scrolls sideways: its content is wider than the box. Code, pre and tables may scroll on purpose.
+  for (const el of document.body.querySelectorAll("*")) {
+    const o = getComputedStyle(el).overflowX;
+    if ((o !== "auto" && o !== "scroll") || el.scrollWidth <= el.clientWidth + 1 || !vis(el)) continue;
+    if (el.matches("pre, code, table, .codeblock, .table-wrap") || el.closest("pre, .codeblock, .table-wrap")) continue;
+    over.push(path(el) + " scrolls sideways (" + el.scrollWidth + " > " + el.clientWidth + ")");
+  }
   const kinds = {};
-  for (const el of body.querySelectorAll("button, a.btn")) {
-    if (!vis(el) || el.closest("nav, [role=tablist], .s-row, dialog, .hub-composer")) continue;
+  for (const el of document.querySelectorAll("button, a.btn")) {
+    if (!vis(el)) continue;
     const cls = String(el.className || "").split(/\\s+/).filter((c) => /^(btn|icon-btn)/.test(c)).sort().join(".");
     if (!cls) continue;
     const h = Math.round(el.getBoundingClientRect().height);
-    const row = el.parentElement, peers = row ? [...row.querySelectorAll(":scope > select, :scope > input, :scope > label select, :scope > label input")] : [];
-    if (peers.some((f) => vis(f) && Math.abs(Math.round(f.getBoundingClientRect().height) - h) <= 1)) continue;
-    (kinds[cls] ||= {})[h] = (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 24);
+    (kinds[cls] = kinds[cls] || {})[h] = path(el);
   }
-  const painted = (c) => { if (!c || c === "transparent") return false; let m = /\\/\\s*([\\d.]+)(%?)\\s*\\)$/.exec(c); if (!m && c.startsWith("rgba(")) m = /,\\s*([\\d.]+)(%?)\\s*\\)$/.exec(c); return !m || parseFloat(m[1]) / (m[2] ? 100 : 1) > 0; };
-  const accents = [];
-  for (const el of body.querySelectorAll("*")) {
-    if (!vis(el)) continue;
-    const s = getComputedStyle(el), lw = parseFloat(s.borderLeftWidth) || 0;
-    if (lw < 2 || s.borderLeftStyle === "none" || !painted(s.borderLeftColor)) continue;
-    const edge = lw > (parseFloat(s.borderTopWidth) || 0) || s.borderLeftColor !== s.borderTopColor;
-    const round = (parseFloat(s.borderTopLeftRadius) || 0) > 0 || (parseFloat(s.borderBottomLeftRadius) || 0) > 0;
-    if (edge && round) accents.push(path(el) + " " + s.borderLeftWidth + " r" + s.borderTopLeftRadius);
+  const tap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")) || 44;
+  const small = {};
+  for (const el of document.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=switch], [role=tab], [role=checkbox]")) {
+    if (!vis(el) || el.matches(":disabled")) continue;
+    let b = el.getBoundingClientRect(), m = Math.min(b.width, b.height);
+    if (b.bottom <= 0) continue;   // drawn above the page until focused (the keyboard skip link): not a touch target
+    if (el.matches("input[type=checkbox], input[type=radio]")) for (const l of el.labels || []) { if (!vis(l)) continue; const lb = l.getBoundingClientRect(); if (Math.min(lb.width, lb.height) > m) m = Math.min(lb.width, lb.height); }
+    if (m >= tap - 0.5) continue;
+    const k = path(el); small[k] = (small[k] || 0) + 1;
   }
-  // The security notices card: in the page's column (the cards' own edges) on a page; inset from the edges above a chat.
-  const align = [];
-  for (const n of body.querySelectorAll(".hub-security-notices")) {
-    if (!vis(n)) continue;
-    const nb = n.getBoundingClientRect();
-    const col = [...body.querySelectorAll(":scope > .col")].find((c) => !c.contains(n) && vis(c));
-    if (col) { const s = getComputedStyle(col), b = col.getBoundingClientRect(), l = b.left + parseFloat(s.paddingLeft), r = b.right - parseFloat(s.paddingRight);
-      if (Math.abs(nb.left - l) > 1 || Math.abs(nb.right - r) > 1) align.push("off the column " + [Math.round(nb.left - l), Math.round(nb.right - r)]); }
-    else if (nb.left < cb.left + 8 || nb.right > cb.right - 8) align.push("full-bleed " + [Math.round(nb.left - cb.left), Math.round(cb.right - nb.right)]);
-  }
-  const head = panel.querySelector(":scope > header.panel-head h1");
-  return { align, head: head ? head.textContent.trim() : null, over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8),
-    pageX: document.documentElement.scrollWidth - innerWidth };
+  return { pageX: document.documentElement.scrollWidth - W, over: over.slice(0, 12), overCount: over.length, kinds, small, tap };
 })()`;
+
+const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
+const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
+const port = Number(process.env.HUB_GATE_PORT ?? 48930), origin = `https://127.0.0.1:${port}`;
+const ID1 = "0f1e2d3c-4b5a-4968-8776-655443322110";
+const POLICY = { realm: "corp", generation: "gen-1", revision: 4, state: "enabled", denies: [], groups: [
+  { group: { realm: "corp", objectId: ID1 }, dn: "CN=Hub-Owners-With-A-Long-Group-Name,OU=Groups,DC=example,DC=test", allow: ["ask_agents", "publish_agents", "pair_fleet"], maxFleets: 1 }] };
+const control = {
+  async read(ctx: any) { await ctx.requireAdmin(); return { ok: true, groupPolicyV1: true, supported: true, binding: "ready", policy: POLICY, paused: [] }; },
+  async resolve(_i: unknown, ctx: any) { await ctx.requireAdmin(); return { ok: false, reason: "not-found" }; },
+  async preview(_i: unknown, ctx: any) { await ctx.requireAdmin(); return { ok: false, code: "stale-preview" }; },
+  async apply(_i: unknown, ctx: any) { await ctx.requireAdmin(); return { ok: false, code: "stale-preview" }; },
+  async resume(_i: unknown, ctx: any) { await ctx.requireAdmin(); return { ok: true, state: "enabled" }; },
+};
+const welcome = async (ctx: any) => { await ctx.requirePerson();
+  return { ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "allow", reason: "group" }, connect: { state: "allow", reason: "group", maxFleets: 2, fleets: [] } }; };
+const rig = await s3bRig({ webOrigin: origin, groupHttp: { control, welcome } });
+const keys = mkdtempSync(join(OUT, ".keys-")); chmodSync(keys, 0o700);
+await provisionHubIdentity({ home: keys, memberOrigin: origin });
+const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) },
+  (req, res) => { if (!rig.http.handle(req, res)) { res.writeHead(404); res.end(); } });
+await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+
+// People and content with long values (rule 7): a long name, a long agent name, a long message.
+const olivia = rig.addPerson("olivia", "Olivia Chen-Montgomery of the Platform Reliability Engineering Group");
+rig.addPerson("bo", "Bo Wu");
+const fleetId = randomUUID(), link = rig.link(fleetId, olivia), id = randomUUID();
+await rig.http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [{ id, fleetId, owner: olivia, displayName: "Design guide reviewer for the quarterly platform architecture documents", revision: 1,
+  state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, link) as never, link);
+const owner = await rig.signIn("olivia"), admin = await rig.signIn("admin"), bo = await rig.signIn("bo");
+const runs: Array<{ c: Case; width?: number }> = [...CASES.map((c) => ({ c })), ...WIDTHS.map((width) => ({ c: ALL[0]!, width }))];
+// One asker per run: the Hub paces a room's reads per session (ROOM_POLL_MS, 10 s), and sign-ins per login.
+const askers: Array<{ cookie: string; room: string }> = [];
+for (let i = 0; i < runs.length; i++) {
+  rig.addPerson(`alex${i}`, "Alex Lin");
+  const who = await rig.signIn(`alex${i}`);
+  const grant = (await rig.call(owner, "POST", "/hub/v1/grants", { exposureId: id, exposureRevision: 1, login: `alex${i}`, days: 7 })).json.grant;
+  askers.push({ cookie: who.cookie, room: (await rig.call(who, "POST", "/hub/v1/rooms", { exposureId: id, grantId: grant.id })).json.room.id });
+}
+
+const PAGES = [
+  { name: "signin", who: null, path: "/ui/hub", ready: "#hubLogin" },
+  { name: "welcome", who: bo, path: "/ui/hub", ready: ".hub-welcome-card" },
+  { name: "chat", who: "asker", path: "/ui/hub?room=", ready: ".hub-chat-main" },
+  { name: "owner", who: owner, path: "/ui/hub/exposures", ready: ".hub-owner" },
+  { name: "admin", who: admin, path: "/ui/hub/admin", ready: ".hub-admin" },
+  { name: "admin-groups", who: admin, path: "/ui/hub/admin?view=groups", ready: ".hub-group-row" },
+] as const;
 
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
-const started = Date.now();
-const PAGES = [
-  { key: "chats", path: "/ui/hub", current: { en: "Chats", "zh-TW": "對話" }, head: false },
-  { key: "mine", path: "/ui/hub/exposures", current: { en: "My shared agents", "zh-TW": "我分享的 Agent" }, head: true },
-  { key: "admin", path: "/ui/hub/admin", current: { en: "Administration", "zh-TW": "管理" }, head: true },
-  { key: "notices", path: "/ui/hub?view=notices", current: { en: "Notices", "zh-TW": "通知" }, head: true },
-] as const;
+async function open(c: Case, who: { cookie: string } | null, viewport: { width: number; height: number }) {
+  const ctx = await browser.newContext({ viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
+    isMobile: c.device === "phone", hasTouch: c.device === "phone" });
+  if (who) { const [n, v] = who.cookie.split("="); await ctx.addCookies([{ name: n, value: v, url: origin, httpOnly: true, secure: true }]); }
+  await ctx.addInitScript({ content: `try { localStorage.setItem("agend_lang", ${JSON.stringify(c.lang)}); localStorage.setItem("agend_theme", ${JSON.stringify(c.theme)}); localStorage.setItem("agend_tour_done", "1"); } catch {}
+    window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective + " " + (e.blockedURI || "")));` });
+  const page = await ctx.newPage(), errs: string[] = [];
+  page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+  return { ctx, page, errs };
+}
+
+/**
+ * The :overflow check, checked (decision 4d8dd46e; Fable #3424 F1): five boxes drawn into a real Hub page, each measured by
+ * MEASURE itself. Flagged: content cut off by a hidden box, a box that scrolls sideways, and content cut off by a hidden box
+ * inside a scroller. Not flagged: a wide <pre> (it may scroll) and a box that fits. Changing either loop turns this red.
+ */
+const OVERFLOW_FIXTURES = `(() => {
+  const root = document.createElement("div"); root.id = "ui-gate-ov";
+  const box = (cls, css, parent) => { const el = document.createElement(cls === "pre" ? "pre" : "div"); if (cls && cls !== "pre") el.className = "ui-gate-ov-" + cls; if (cls === "pre") el.className = "ui-gate-ov-pre";
+    for (const [k, v] of css) el.style.setProperty(k, v); (parent || root).appendChild(el); return el; };
+  const wide = [["width", "3000px"], ["height", "20px"]];
+  box(null, wide, box("hidden", [["width", "300px"], ["overflow", "hidden"]]));
+  box(null, wide, box("scroll", [["width", "300px"], ["height", "60px"], ["overflow-y", "auto"]]));
+  box(null, wide, box(null, [["width", "280px"], ["overflow", "hidden"]], box("nested", [["width", "300px"], ["height", "60px"], ["overflow-y", "auto"]])));
+  box("pre", [["width", "300px"], ["overflow", "auto"], ["margin", "0"]]).textContent = "x".repeat(800);
+  box("fits", [["width", "200px"], ["height", "20px"]]);
+  root.style.setProperty("position", "absolute"); root.style.setProperty("left", "0"); root.style.setProperty("top", "0");
+  document.body.appendChild(root);
+})()`;
+async function overflowSelfTest(page: any): Promise<void> {
+  await page.evaluate(OVERFLOW_FIXTURES);
+  const m = await page.evaluate(MEASURE) as any;
+  await page.evaluate(`document.getElementById("ui-gate-ov")?.remove()`);
+  const flagged = [...new Set((m.over as string[]).map((o) => /ui-gate-ov-([a-z]+)/.exec(o)?.[1]).filter(Boolean))].sort();
+  check("gate:overflow-self-test", JSON.stringify(flagged) === JSON.stringify(["hidden", "nested", "scroll"]), { flagged, over: m.over });
+}
+
 try {
-  for (const c of CASES) {
-    const cn = caseName(c), phone = c.device === "phone";
-    const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
-      isMobile: phone, hasTouch: phone, deviceScaleFactor: Number(process.env.PW_DPR ?? 1) });
-    await ctx.addInitScript({ content: `try { localStorage.setItem("agend_lang", ${JSON.stringify(c.lang)}); localStorage.setItem("agend_tour_done", "1"); } catch {}
-      window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective + " " + (e.blockedURI || "")));` });
-    // The Hub offers its security notices (the rig composes no notice routes): the session's mark and one retained notice.
-    await ctx.route(/\/hub\/v1\/session$/, async (route: any) => {
-      if (route.request().method() !== "GET") return route.continue();
-      const res = await route.fetch(); const json = await res.json().catch(() => null);
-      if (json && json.signedIn) json.features = [...new Set([...(json.features ?? []), "quick-pairing-v1"])];
-      await route.fulfill({ response: res, json });
-    });
-    await ctx.route(/\/hub\/v1\/notices\/events$/, (route: any) => route.fulfill({ status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
-      body: `event: notices\ndata: ${JSON.stringify({ notices: [NOTICE] })}\n\n` }));
-    await ctx.route(/\/hub\/v1\/notices(\/[^/]+\/ack)?$/, (route: any) => route.fulfill({ status: 200, json: route.request().method() === "GET" ? { notices: [NOTICE] } : {} }));
-    const page = await ctx.newPage();
-    const errs: string[] = [], foreign: string[] = [];
-    page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
-    page.on("request", (q: any) => { const u = new URL(q.url()); if (u.origin === origin && !allowed(u.pathname)) foreign.push(u.pathname); });
-    await page.goto(origin + "/ui/hub");
-    await page.waitForSelector("#hubLogin", { timeout: 15000 });
-    await page.fill("#hubLogin", "admin"); await page.fill("#hubPassword", "pw-admin");
-    await page.click(".hub-signin button[type=submit]");
-    await page.waitForSelector("#sidebar .side-foot", { timeout: 15000, state: "attached" });
-    for (const p of PAGES) {
-      const tag = `${cn}:${p.key}`;
-      await page.goto(origin + p.path);
-      await page.waitForSelector("#sidebar .side-foot", { timeout: 15000, state: "attached" });
-      await page.waitForSelector(p.key === "notices" ? ".p-hub-notices .hub-security-notices" : ".p-hub .panel-body", { timeout: 15000 });
-      await page.waitForTimeout(900);
-      const drawn = await page.evaluate(PAGE) as any;
-      await page.screenshot({ path: shotPath(SMOKE, cn, p.key) });
-      if (drawn.missing) { check(`${tag}:drawn`, false, "no Hub page body"); continue; }
-      check(`${tag}:head`, p.head ? drawn.head === p.current[c.lang] : true, { head: drawn.head });
-      const frames = [...new Set((drawn.cards as any[]).map((x) => x.frame))];
-      check(`${tag}:frame`, frames.length <= 1, drawn.cards);
-      const mixed = Object.entries(drawn.kinds as Record<string, Record<string, string>>).filter(([, hs]) => Object.keys(hs).length > 1);
-      check(`${tag}:buttons`, mixed.length === 0, mixed);
-      check(`${tag}:overflow`, drawn.overCount === 0 && drawn.pageX <= 0, { over: drawn.over, pageX: drawn.pageX });
-      check(`${tag}:left-accent`, drawn.accents.length === 0, drawn.accents);
-      check(`${tag}:notice-in-column`, drawn.align.length === 0, drawn.align);
-      if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(600); await page.screenshot({ path: shotPath(SMOKE, cn, `${p.key}-drawer`) }); }
-      const sb = await page.evaluate(SIDEBAR) as any;
-      if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
-      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"];
-      const rows = sb.rows as any[];
-      check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
-      check(`${tag}:sidebar:rows`, JSON.stringify(rows.map((x) => x.text)) === JSON.stringify(want), rows.map((x) => x.text));
-      check(`${tag}:sidebar:row-shape`, new Set(rows.map((x) => x.h)).size === 1 && new Set(rows.map((x) => x.iconX)).size === 1 && rows.every((x) => x.iconX !== null), rows.map((x) => [x.text, x.h, x.iconX]));
-      check(`${tag}:sidebar:current`, rows.filter((x) => x.current).map((x) => x.text).join() === p.current[c.lang], rows.filter((x) => x.current).map((x) => x.text));
-      check(`${tag}:sidebar:notices-no-count`, rows.every((x) => !x.count), rows.filter((x) => x.count).map((x) => x.text));
-      check(`${tag}:sidebar:search`, /side-search/.test(rows[4]?.cls ?? "") && (phone || /K$/.test(rows[4]?.kbd ?? "")), rows[4]);
-      check(`${tag}:sidebar:new`, /side-new/.test(rows[5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[5], legacy: sb.legacy });
-      check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && !!sb.empty && sb.empty.lines === 1, { label: sb.label, empty: sb.empty });
-      if (p.key === "chats") {   // the session menu, opened: every item shown — inside the screen and topmost at its centre
-        await page.click("#sidebar .hub-session-row button"); await page.waitForTimeout(300);
-        const menu = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-session-row [role=menuitem]")].map((x) => { const b = x.getBoundingClientRect();
-          return { t: x.textContent.trim(), shown: b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("[role=menuitem]") === x }; })`) as { t: string; shown: boolean }[];
-        await page.screenshot({ path: shotPath(SMOKE, cn, "session-menu") });
-        await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-        check(`${tag}:sidebar:session-menu`, menu.length === 4 && menu.every((m) => m.shown), menu);
-        // Settings, opened: this device's theme and language, both on the screen.
-        await page.click("#sidebar .hub-prefs > summary"); await page.waitForTimeout(300);
-        const prefs = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-prefs .pop select")].map((x) => { const b = x.getBoundingClientRect();
-          return b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === x; })`) as boolean[];
-        await page.screenshot({ path: shotPath(SMOKE, cn, "settings-pop") });
-        await page.click("#sidebar .hub-prefs > summary"); await page.waitForTimeout(200);
-        check(`${tag}:sidebar:settings-pop`, prefs.length === 2 && prefs.every(Boolean), prefs);
-      }
-      check(`${tag}:sidebar:foot`, !!sb.foot && sb.foot.prefs && sb.foot.session && sb.foot.bottomGap <= 2 && sb.foot.rows.every((h: number) => h === rows[0]?.h), sb.foot);
-    }
-    const csp = await page.evaluate("window.__csp || []") as string[];
-    check(`${cn}:hub-only`, foreign.length === 0, foreign);
-    check(`${cn}:no-errors`, errs.length === 0 && csp.length === 0, { errs, csp });
-    await ctx.close();
+  {
+    const { ctx, page } = await open(ALL[0]!, null, { width: 1366, height: 900 });
+    try { await page.goto(origin + "/ui/hub"); await page.waitForSelector("#hubLogin", { timeout: 15000 }); await overflowSelfTest(page); }
+    finally { await ctx.close(); }
   }
-} catch (e) {
-  fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);
-} finally {
-  r.seconds = Math.round((Date.now() - started) / 1000);
-  writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
-  for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 600)}`);
-  console.log(fail.length ? `Hub UI gate FAILED (${fail.length}) in ${r.seconds}s — pictures and result.json in ${OUT}` : `Hub UI gate passed in ${r.seconds}s (${Object.keys(r).length - 2} checks)`);
-  await browser.close(); server.close(); await rig.close?.(); rmSync(keys, { recursive: true, force: true });
+  for (const [i, { c, width }] of runs.entries()) {
+    const cn = width ? `desk-${width}` : caseName(c);
+    const viewport = width ? { width, height: 900 } : c.device === "desk" ? { width: 1366, height: 900 } : { width: 390, height: 844 };
+    for (const p of PAGES) {
+      const tag = `${cn}:${p.name}`;
+      const who = p.who === "asker" ? askers[i]! : p.who, path = p.who === "asker" ? p.path + askers[i]!.room : p.path;
+      const { ctx, page, errs } = await open(c, who, viewport);
+      try {
+        await page.goto(origin + path);
+        const drawn = await page.waitForSelector(p.ready, { timeout: 15000 }).then(() => true, () => false);
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: join(OUT, `${tag.replace(":", "-")}.png`), fullPage: true });
+        const failed = await page.evaluate(`[...document.querySelectorAll(".error-state")].map((e) => e.innerText.trim()).filter(Boolean)`) as string[];
+        // The page drew what it is for, not a failed read (the gate measures a working page).
+        check(`${tag}:drawn`, drawn && failed.length === 0, { ready: p.ready, drawn, failed, errs });
+        if (!drawn) continue;
+        const m = await page.evaluate(MEASURE) as any;
+        check(`${tag}:overflow`, m.pageX <= 0 && m.overCount === 0, { pageX: m.pageX, over: m.over });
+        const mixed = Object.entries(m.kinds as Record<string, Record<string, string>>).filter(([, hs]) => Object.keys(hs).length > 1);
+        check(`${tag}:buttons`, mixed.length === 0, mixed);
+        const csp = await page.evaluate("window.__csp || []") as string[];
+        check(`${tag}:no-errors`, errs.length === 0 && csp.length === 0, { errs, csp });
+        if (c.device === "phone" && !width) {
+          const over: string[] = [];
+          for (const [where, n] of Object.entries(m.small as Record<string, number>)) {
+            const k = `${p.name} ${where}`;
+            tapSeen[k] = Math.max(tapSeen[k] ?? 0, n);
+            if (n > (tapAllowed[k] ?? 0)) over.push(`${where} (${n} now, ${tapAllowed[k] ?? 0} allowed)`);
+          }
+          check(`${tag}:tap`, over.length === 0, over);
+        }
+      } finally { await ctx.close(); }
+    }
+  }
+  const sorted = Object.fromEntries(Object.entries(tapSeen).sort(([a], [b]) => a.localeCompare(b)));
+  const rises = Object.entries(tapSeen).filter(([k, n]) => n > (tapAllowed[k] ?? 0));
+  if (process.env.TAP_UPDATE === "reset" || (process.env.TAP_UPDATE === "1" && rises.length === 0)) writeFileSync(TAP_LIST, JSON.stringify(sorted, null, 2) + "\n");
+  if (GATE === "full" && process.env.TAP_UPDATE !== "reset") {
+    const stale = Object.entries(tapAllowed).filter(([k, n]) => (tapSeen[k] ?? 0) < n).map(([k, n]) => `${k} (${tapSeen[k] ?? 0} now, ${n} listed)`);
+    check("gate:tap-allowlist-stale", stale.length === 0, stale);
+  }
+} catch (e) { fail.push(`exception: ${(e as Error).message}`); r.exception = String((e as Error).stack || e).slice(0, 1500); }
+finally {
+  await browser.close(); server.closeAllConnections(); await new Promise<void>((res) => server.close(() => res()));
+  await rig.close(); rmSync(keys, { recursive: true, force: true });
+  writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 2));
+  const failed = Object.fromEntries(Object.entries(r).filter(([, v]) => v !== "PASS"));
+  console.log(JSON.stringify(failed, null, 2));
+  console.log(`${Object.keys(r).length - 1} checks; ` + (fail.length ? `FAIL ${fail.length}: ${fail.join(", ")}` : "ALL PASS"));
   process.exit(fail.length ? 1 : 0);
 }
