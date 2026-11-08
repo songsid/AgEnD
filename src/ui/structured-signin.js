@@ -126,7 +126,8 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     // "continue setup" are not repeated there.
     if (!machine && !dashboard) { el("h2", tr("heading")); el("p", tr("lead")); }
     if (message) { const alert = el("p", errorText(message)); alert.setAttribute("role", "alert"); }
-    if (!view) { if (!dialog) button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
+    // In the account dialog the cards read themselves every second, so there is no Check sign-ins — except when the first read failed and there is nothing to show: then it is the Retry.
+    if (!view) { if (!dialog || message) button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
     for (const backend of dialog && focus ? view.selected.filter(b => b === focus) : view.selected) {
       const card = el("section"); card.dataset.backend = backend;
       el("h3", name(backend), card);

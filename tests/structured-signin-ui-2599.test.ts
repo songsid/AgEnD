@@ -123,3 +123,15 @@ it("`dialog`: a read that fails is still said (an alert), and there is still no 
   expect(h.nodes().filter(n => n.tag === "button").map(n => n.textContent)).toEqual(["Sign in"]);
   h.cards.dispose();
 });
+
+it("`dialog`: a first read that fails leaves nothing to show, so it is said and offered as a retry (Check sign-ins); once it reads, the retry is gone (docs/design/ui-style-guide.md §6)", async () => {
+  let failing = true;
+  const state = { selected: ["kiro-cli"], pending: ["kiro-cli"], skipped: [], states: { "kiro-cli": "invalid" }, login: null, ready: false };
+  const fetcher = vi.fn(async () => { if (failing) throw new Error("offline"); return { ok: true, json: async () => structuredClone(state) }; });
+  const h = browser({ dashboard: true, dialog: true, focus: "kiro-cli", fetcher }); await h.flush();
+  expect(h.nodes().some(n => n.role === "alert")).toBe(true);
+  expect(h.nodes().filter(n => n.tag === "button").map(n => n.textContent)).toEqual(["Check sign-ins"]);
+  failing = false; await h.click("Check sign-ins");
+  expect(h.nodes().filter(n => n.tag === "button").map(n => n.textContent)).toEqual(["Sign in"]);
+  h.cards.dispose();
+});

@@ -3,6 +3,7 @@
  * the old web-terminal flow (a temporary public link, a terminal page, a one-time access code). The real modules on the mini DOM with a recording fetch; nothing
  * reaches a server.
  */
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
@@ -232,5 +233,17 @@ describe("zh-TW", () => {
     await p.unmount();
     await open({ backend: "claude-code" });
     expect(p.root.querySelector(".dlg-title").textContent).toBe("登入 Claude Code · 預設登入");
+  });
+});
+
+// The style guide's rules for a dialog that carries a user-chosen name: nothing scrolls sideways with a long value (§7), a phone control is the --tap size, and a failed first read is retried (§6).
+describe("the dialog's layout rules (docs/design/ui-style-guide.md §6, §7)", () => {
+  const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+  it("a title wraps inside the dialog: a 64-character account name has no space to break at", () => {
+    expect(css).toMatch(/^\.dlg-title\s*\{[^}]*overflow-wrap:\s*anywhere/m);
+  });
+  it("the console-fallback link below the cards is the phone tap size, as the buttons of the cards and of the dialog's footer are", () => {
+    const coarse = css.slice(css.indexOf("@media (pointer: coarse), (max-width: 899px) {\n  .signin-browser"));
+    expect(coarse.slice(0, coarse.indexOf("}"))).toMatch(/\.signin-browser ~ \.note \.btn[^}]*min-height:\s*var\(--tap\)/);
   });
 });
