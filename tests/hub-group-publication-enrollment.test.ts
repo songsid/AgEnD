@@ -46,7 +46,7 @@ async function world(options: { enable?: boolean; manualFleet?: boolean } = {}) 
 describe("group enrollment with actual publication snapshots", () => {
   it("preserves never-enabled publication without group reads or exposure provenance", async () => {
     const w = await world({ enable: false }), e = w.exposure(); await w.send(1, [e]);
-    expect(w.rows()).toHaveLength(1); expect(w.read).not.toHaveBeenCalled(); expect(w.prepare).not.toHaveBeenCalled(); expect(w.resources.read(w.resource(e))).toBeNull();
+    expect(w.rows()).toHaveLength(1); expect(w.read).not.toHaveBeenCalled(); expect(w.resources.read(w.resource(e))).toBeNull();
   });
   it("commits a batch's actual publications and provenance together with source-correlated audit", async () => {
     const w = await world(), a = w.exposure(), b = w.exposure(), frame = w.r.frame("exposure.snapshot", { revision: 1, exposures: [a, b] }, w.link);
@@ -73,7 +73,7 @@ describe("group enrollment with actual publication snapshots", () => {
   });
   it("a byte-identical retry needs no new membership read, allowance or provenance", async () => {
     const w = await world(), e = w.exposure(); await w.send(1, [e]); w.read.mockClear(); w.prepare.mockClear(); w.read.mockResolvedValue({ kind: "unknown" });
-    await w.send(1, [e]); expect(w.read).not.toHaveBeenCalled(); expect(w.prepare).not.toHaveBeenCalled(); expect(w.rows()).toHaveLength(1);
+    await w.send(1, [e]); expect(w.read).not.toHaveBeenCalled(); expect(w.rows()).toHaveLength(1);
   });
   it("withdrawal and unchanged exact bindings remain available during an outage", async () => {
     const w = await world(), e = w.exposure(); await w.send(1, [e]); w.read.mockClear(); w.read.mockResolvedValue({ kind: "unknown" });

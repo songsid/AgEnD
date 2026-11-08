@@ -1,4 +1,4 @@
-/** New join journals/keys require parent fsync success before ACK, unlike best-effort legacy writes. */
+/** Flush the file and every private ancestor through home before trust, remote push or ACK. Retry repeats required flushes. */
 import { closeSync, constants, fsyncSync, openSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { atomicWriteFileSync } from "../../atomic-write.js";
@@ -7,8 +7,11 @@ import { ensurePrivateDirectory, privatePath } from "../private-files.js";
 export function syncJoinPrivate(home: string, suffix: string): void {
   const path = privatePath(home, suffix), file = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { fsyncSync(file); } finally { closeSync(file); }
-  const parent = openSync(privatePath(home, dirname(suffix), true), constants.O_RDONLY | constants.O_NOFOLLOW);
-  try { fsyncSync(parent); } finally { closeSync(parent); }
+  for (let directory = dirname(suffix); ; directory = dirname(directory)) {
+    const parent = openSync(privatePath(home, directory, true), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try { fsyncSync(parent); } finally { closeSync(parent); }
+    if (directory === ".") break;
+  }
 }
 export function createJoinPrivate(home: string, suffix: string, value: string): void {
   ensurePrivateDirectory(home, dirname(suffix));

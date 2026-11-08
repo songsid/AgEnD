@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import {
   browserOriginProof, canonicalFleetOrigin, companyIdentityDigest, joinKeyThumbprint,
-  pkceChallenge, signJoinProof, verifyJoinProof,
+  pkceChallenge, signJoinProof, verifyJoinProof, validateJoinBinding,
 } from "../src/hub/join/protocol.js";
 
 function world() {
@@ -17,6 +17,11 @@ function world() {
 }
 
 describe("company join exact identity and browser-origin binding", () => {
+  it.each(["https://hub.example.test", "https://hub.example.test:7443"])("rejects shared browser hostnames even when ports differ (%s)", fleetOrigin => {
+    const { binding } = world();
+    expect(() => validateJoinBinding({ ...binding, fleetOrigin })).toThrow();
+    expect(() => validateJoinBinding({ ...binding, fleetOrigin: "https://fleet.example.test:7443" })).not.toThrow();
+  });
   it.each(["hubId", "webOrigin", "memberOrigin", "spkiSha256", "issuerPublicKey"] as const)("a changed %s changes the stable Hub identity", field => {
     const { hub } = world(), other = world().hub;
     const values = { ...other, webOrigin: "https://another.example.test", memberOrigin: "https://hub.example.test:9444", spkiSha256: "b".repeat(64) };

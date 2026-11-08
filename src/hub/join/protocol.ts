@@ -4,6 +4,7 @@ import { z } from "zod";
 import { canonicalArguments, sha256 } from "../identity.js";
 import { hubOrigin } from "../tls.js";
 import { epoch, hash, uuid, validated, HubProtocolError } from "../validation.js";
+import { canonicalCompanyFleetOrigin } from "../../authority/company-join.js";
 
 const b64 = (length: number) => z.string().length(length).regex(/^[A-Za-z0-9_-]+$/).refine(s => Buffer.from(s, "base64url").toString("base64url") === s);
 export const verifierSchema = b64(43);
@@ -31,12 +32,13 @@ export function pkceChallenge(verifier: string): string {
   return Buffer.from(sha256(validated(verifierSchema, verifier)), "hex").toString("base64url");
 }
 export function canonicalFleetOrigin(input: string): string {
-  try {
-    const u = new URL(input), loopback = ["127.0.0.1", "[::1]", "localhost"].includes(u.hostname);
-    if (u.origin !== input || u.username || u.password || u.pathname !== "/" || u.search || u.hash || u.hostname.endsWith(".")
-      || !(u.protocol === "https:" || u.protocol === "http:" && loopback)) throw new HubProtocolError();
-    return u.origin;
-  } catch { throw new HubProtocolError("invalid"); }
+  try { return canonicalCompanyFleetOrigin(input); } catch { throw new HubProtocolError("invalid"); }
+}
+export class CompanyBrowserHostnameConflict extends HubProtocolError { constructor() { super("invalid"); } }
+/** Cookies are host-scoped, not port-scoped. A separate browser hostname is mandatory before any Fleet trust or handoff. */
+export function requireSeparateJoinHosts(fleetOrigin: string, hubWebOrigin: string): void {
+  const fleet = new URL(canonicalFleetOrigin(fleetOrigin)), hub = new URL(hubOrigin(hubWebOrigin));
+  if (fleet.hostname === hub.hostname) throw new CompanyBrowserHostnameConflict();
 }
 /** Call before any browser state/cookie/AD effect. rawHeaders must additionally reject duplicate Origin headers. */
 export function browserOriginProof(input: unknown, registered: string): string {
@@ -56,6 +58,7 @@ export function companyIdentityDigest(input: JoinIdentity): string {
 export function validateJoinBinding(input: unknown): JoinBinding {
   const b = validated(joinBindingSchema, input);
   companyIdentityDigest(b.hub); canonicalFleetOrigin(b.fleetOrigin); joinKeyThumbprint(b.publicKey);
+  requireSeparateJoinHosts(b.fleetOrigin, b.hub.webOrigin);
   return b;
 }
 function bytes(binding: JoinBinding, proof: Omit<JoinProof, "signature">, payload: unknown): Buffer {

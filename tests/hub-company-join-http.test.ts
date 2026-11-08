@@ -41,6 +41,33 @@ async function attempt(r: Awaited<ReturnType<typeof companyJoinRig>>) {
 }
 
 describe("company-join actual Hub boundary", () => {
+  it("Hub admission independently refuses a key binding that shares the Fleet browser hostname", async () => {
+    const { r } = await world(), metadata = (await r.call(null, "GET", "/hub/v1/join/metadata")).body;
+    const key = generateKeyPairSync("ed25519"), fleet = new URL(metadata.hub.webOrigin); fleet.port = "7443";
+    const binding = { hub: metadata.hub, fleetOrigin: fleet.origin, requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(),
+      publicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString(), verifierS256: pkceChallenge(randomBytes(32).toString("base64url")) };
+    expect((await r.call(null, "POST", "/hub/v1/join/challenge", { binding, purpose: "push" }, { Origin: undefined })).status).toBe(400);
+    expect(r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_nonces").get()).toEqual({ n: 0 });
+    expect(r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get()).toEqual({ n: 0 });
+  });
+  it.each(["cancel", "expiry"])("issued %s keeps mixed legacy/company admission headroom until its original outer deadline", async reason => {
+    const { r, admin } = await world(); await r.enable(admin, 8); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(200);
+    const b = await attempt(r), second = await b.browser();
+    r.deps.store.mutate({ at: clock, requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.claims", result: "completed" }, state => {
+      for (let n = 0; n < 47; n++) state.pairings.push({ id: randomUUID(), owner: { realm: "corp", objectId: randomUUID() },
+        codeHash: null, expiresAt: clock + 600_000, fleetId: null, claimHash: null, fingerprint: null, ownerConfirmed: true, adminApproved: true, state: "claimed" });
+    });
+    expect((await b.approve(second)).status).toBe(429);
+    if (reason === "cancel") expect((await a.command("cancel")).body.state).toBe("undeliverable");
+    else { clock += 120_000; expect((await a.command("tombstone")).body.state).toBe("undeliverable"); }
+    expect(r.deps.store.read().fleets).toHaveLength(1);
+    expect((await b.approve(second)).status).toBe(429);
+    clock += 600_001;
+    expect(r.deps.companyJoin!.retained()).toBe(0);
+    const fresh = await attempt(r); expect((await fresh.approve(await fresh.browser())).status).toBe(200);
+  });
   it("a directory epoch change fences the held browser authority and pinned redemption before any new credential", async () => {
     const { r } = await world(), a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
     r.db.transaction(() => advanceHubSessionEpoch(r.db, readHubSessionEpoch(r.db))).immediate();

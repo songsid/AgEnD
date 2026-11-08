@@ -6,7 +6,7 @@ import { z } from "zod";
 import { CompanyJoinClient, CompanyJoinRemoteError } from "./client.js";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
 import { parseCompanyAddress } from "./descriptor.js";
-import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge } from "./protocol.js";
+import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
 import { hash, uuid, epoch, person, token, validated, HubProtocolError, parseStrictJson } from "../validation.js";
 import { sha256, issuerKeyId } from "../identity.js";
 import { HubMemberProfileStore, profileSchema, validateHubBinding, type HubMemberProfile } from "../profile.js";
@@ -125,8 +125,11 @@ export class CompanyJoinController {
     const current = () => !this.closed && gen === this.generation && sameSnapshot(snapshot, this.options.snapshot())
       && authority.session.current() && authority.confirmedCurrent() && this.now() < started + 600_000;
     try {
-      const address = parseCompanyAddress(body.address), metadata = await this.client.discover(address.webOrigin, current);
+      const address = parseCompanyAddress(body.address);
+      requireSeparateJoinHosts(body.fleetOrigin, address.webOrigin);
+      const metadata = await this.client.discover(address.webOrigin, current);
       if (!current()) throw new HubProtocolError("stale");
+      requireSeparateJoinHosts(body.fleetOrigin, metadata.hub.webOrigin);
       // An established legacy binding is an additional trust anchor, never a way to forget a mismatched pin.
       let existing = null;
       try {
@@ -156,6 +159,7 @@ export class CompanyJoinController {
     } finally { this.starting = false; }
   }
   private reason(error: unknown): string {
+    if (error instanceof CompanyBrowserHostnameConflict) return "separate-hostnames";
     if (error instanceof CompanyIdentityChanged) return "identity-changed";
     if (error instanceof CompanyJoinRemoteError) return error.code;
     if (error instanceof HubProtocolError) return error.code;

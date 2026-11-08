@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { z } from "zod";
 import { readPrivateFile } from "../private-files.js";
 import { epoch, hash, uuid, parseStrictJson, validated } from "../validation.js";
-import { joinBindingSchema, verifierSchema } from "./protocol.js";
-import { createJoinPrivate, writeJoinPrivate } from "./private.js";
+import { joinBindingSchema, validateJoinBinding, verifierSchema } from "./protocol.js";
+import { createJoinPrivate, syncJoinPrivate, writeJoinPrivate } from "./private.js";
 export interface JoinLocalSession {
   readonly ownerKey: object; readonly sessionId: string; readonly authorityEpoch: number; readonly hostHere: boolean; readonly fleetOrigin?: string;
   current(): boolean;
@@ -24,6 +24,8 @@ export const localJoinPath = (id: string) => `hub-member/company-joins/${validat
 export function readLocalJoin(home: string, id: string): LocalJoinJournal {
   const record = validated(journalSchema, parseStrictJson(readPrivateFile(home, localJoinPath(id), 48 * 1024)));
   if (record.operationId !== id || record.binding.operationId !== id || record.deadline > record.createdAt + 600_000) throw Error("Join journal differs");
+  validateJoinBinding(record.binding); // Upgrading cannot revive an old same-hostname browser handoff.
+  syncJoinPrivate(home, localJoinPath(id));
   return record;
 }
 export function saveLocalJoin(home: string, input: LocalJoinJournal, current: () => boolean): void {
@@ -47,7 +49,8 @@ export function companyBindingSettled(home: string, marker: CompanyBindingMarker
 export function currentLocalJoinId(home: string): string | null {
   const path = "hub-member/company-join-current.json";
   if (!existsSync(join(home, path))) return null;
-  return validated(z.strictObject({ v: z.literal(1), operationId: uuid }), parseStrictJson(readPrivateFile(home, path, 512))).operationId;
+  const id = validated(z.strictObject({ v: z.literal(1), operationId: uuid }), parseStrictJson(readPrivateFile(home, path, 512))).operationId;
+  syncJoinPrivate(home, path); return id;
 }
 export function selectLocalJoin(home: string, id: string, current: () => boolean): void {
   const path = "hub-member/company-join-current.json", value = JSON.stringify({ v: 1, operationId: validated(uuid, id) });

@@ -51,6 +51,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { CompanyIdentityChanged } from "./hub/join/trust.js";
+import { CompanyBrowserHostnameConflict } from "./hub/join/protocol.js";
 import { HubProtocolError, validated, uuid } from "./hub/validation.js";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -977,7 +978,7 @@ export function handleSettingsRequest(
           json(res, 200, { ok: true, operation: step === "resume" ? await api.resume(id, authority!) : await api.cancel(id, session) });
         }
       } catch (error) {
-        const code = error instanceof CompanyIdentityChanged ? "identity-changed" : error instanceof HubProtocolError ? error.code : "unavailable";
+        const code = error instanceof CompanyBrowserHostnameConflict ? "separate-hostnames" : error instanceof CompanyIdentityChanged ? "identity-changed" : error instanceof HubProtocolError ? error.code : "unavailable";
         json(res, code === "denied" || code === "revoked" ? 403 : code === "invalid" ? 400 : 409, { ok: false, error: code });
       }
     })();

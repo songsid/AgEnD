@@ -18,6 +18,10 @@ CASES = [
  ('notice-v2-wire', 'src/hub/server.ts', 'if (frame.type === "pairing.notice-v2" &&', 'if (false && frame.type === "pairing.notice-v2" &&', 'tests/hub-pairing-notices-network.test.ts', 'manual notices use v2'),
  ('invitation-recipient', 'src/hub/join/service.ts', 'if (invitation && personKeyString(invitation.claims.owner) !== key)', 'if (false)', 'tests/hub-company-join-invitation.test.ts', 'copied invitation cannot select'),
  ('directory-epoch', 'src/hub/join/service.ts', '!this.options.current() || readHubSessionEpoch(this.options.db) !== this.directoryEpoch', '!this.options.current()', 'tests/hub-company-join-http.test.ts', 'directory epoch change'),
+ ('browser-hosts', 'src/hub/join/protocol.ts', 'if (fleet.hostname === hub.hostname)', 'if (false)', 'tests/hub-company-join-protocol.test.ts', 'rejects shared browser hostnames'),
+ ('issued-retention', 'src/hub/join/store.ts', "OR json_extract(body,'$.issuedHash') IS NOT NULL", "OR stage IN('issued','acknowledged')", 'tests/hub-company-join-http.test.ts', 'mixed legacy/company'),
+ ('ancestor-durability', 'src/hub/join/private.ts', 'if (directory === ".") break;', 'break;', 'tests/hub-company-join-private.test.ts', None),
+ ('pin-retry-durability', 'src/hub/join/trust.ts', 'syncJoinPrivate(this.home, suffix);', '', 'tests/hub-company-join-private.test.ts', 'pin left behind'),
 ]
 results = []
 for name, source, old, new, test, title in CASES:

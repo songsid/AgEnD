@@ -14,6 +14,7 @@ register("companyJoin", {
     limit: "Your Fleet limit is reached. Disconnect an existing Fleet or ask your Hub administrator.",
     busy: "The Hub is busy. Check this same connection again shortly.",
     changed: "The Hub's identity is different. Connection stopped. Ask your Hub administrator for the new company link.",
+    separateHosts: "The Hub and this Fleet need different web hostnames to keep their sign-ins separate. Ask your administrator for a different address; changing only the port is not enough.",
     repair: "Replace saved Hub identity", repairLead: "Paste a new company link you trust first. Replacing the saved identity needs a separate local authorization and does not connect a Fleet.",
     incompatible: "This Hub does not offer company sign-in joining. Use its existing pairing flow and member address, or ask its administrator to enable company joining.",
     unsaved: "The connection could not be saved completely. Recover this same connection; do not create another one.",
@@ -43,6 +44,7 @@ register("companyJoin", {
     limit: "你的 Fleet 數量已達上限。請先中斷既有 Fleet，或洽 Hub 管理員。",
     busy: "Hub 目前忙碌，請稍後再次檢查這次連接。",
     changed: "Hub 的身分與先前不同，已停止連接。請向 Hub 管理員取得新的公司連結。",
+    separateHosts: "Hub 與這個 Fleet 必須使用不同的網頁主機名稱，才能分開登入。請向管理員取得不同的位址；只更換連接埠仍不安全。",
     repair: "更換已儲存的 Hub 身分", repairLead: "請先貼上你信任的新公司連結。更換已儲存的身分需另行取得本機授權，不會連接 Fleet。",
     incompatible: "這個 Hub 尚未提供公司帳號連接。請使用既有配對流程與成員位址，或洽管理員啟用公司帳號連接。",
     unsaved: "連線資料尚未完整儲存。請恢復這次連接，不要另開一次連接。",
@@ -66,7 +68,7 @@ export function joinResponseCode(result) {
   return match ? match[1] : result?.body?.error;
 }
 export function joinError(code) {
-  return hj(code === "identity-changed" ? "changed" : code === "denied" ? "denied" : code === "limit-reached" ? "limit"
+  return hj(code === "separate-hostnames" ? "separateHosts" : code === "identity-changed" ? "changed" : code === "denied" ? "denied" : code === "limit-reached" ? "limit"
     : code === "authority" || code === "revoked" ? "authority" : code === "confirmation-required" ? "confirmationRequired" : code === "expired" ? "expired" : code === "incompatible" ? "incompatible"
     : code === "backpressure" ? "busy" : code === "cancelled" ? "cancelled" : code === "unsaved" ? "unsaved" : "unknown");
 }

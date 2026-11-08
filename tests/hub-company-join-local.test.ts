@@ -1,6 +1,6 @@
 /** Local cancellation and strict profile/journal settlement must win independently of the short Settings transaction. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
@@ -10,7 +10,7 @@ import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pai
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sha256 } from "../src/hub/identity.js";
 import { companyIdentityDigest } from "../src/hub/join/protocol.js";
-import { createJoinPrivate } from "../src/hub/join/private.js";
+import { createJoinPrivate, writeJoinPrivate } from "../src/hub/join/private.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
 const homes: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const p of homes.splice(0)) rmSync(p, { force: true, recursive: true }); });
@@ -45,6 +45,18 @@ async function world() {
     diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
 describe("Fleet local company join", () => {
+  it("a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push", async () => {
+    const w = await world();
+    await expect(w.controller.start({ address: w.metadata.hub.webOrigin, label: "My Fleet", fleetOrigin: "https://hub.example.test:7443" }, w.authority)).rejects.toThrow();
+    expect(w.client.discover).not.toHaveBeenCalled(); expect(w.calls).toEqual([]);
+    expect(existsSync(join(w.directory, "hub-member"))).toBe(false);
+  });
+  it("a pending journal from an older build cannot revive a same-hostname browser handoff", async () => {
+    const w = await world(), pending = await w.start(), r = readLocalJoin(w.directory, pending.operationId);
+    r.binding.fleetOrigin = "https://hub.example.test:7443";
+    writeJoinPrivate(w.directory, `hub-member/company-joins/${r.operationId}.json`, JSON.stringify(r), () => true);
+    expect(() => w.controller.bridge(r.operationId, w.session)).toThrow(); expect(w.calls).toEqual(["push"]);
+  });
   it("an existing or unfinished legacy binding refuses before discovery or a new Hub reservation", async () => {
     const w = await world();
     createJoinPrivate(w.directory, "hub-member/state.json", JSON.stringify({ hubId: w.metadata.hub.hubId }));

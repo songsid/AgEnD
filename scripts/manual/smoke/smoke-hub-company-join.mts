@@ -49,8 +49,9 @@ const smallJoinTargets = `(() => {
 let fx: any = null;
 try {
   const scenarios = process.env.ADMIN_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
-  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of process.env.HUB_SHOTS ? ["outsider", "copied"] : ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
-  for (const [index, scenario] of scenarios.entries()) {
+  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of process.env.HUB_SHOTS ? ["outsider", "copied"] : ["outsider", "limit", "changed", "cancel", "copied", "samehost"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
+  const selected = process.env.ONLY_CASES ? scenarios.filter(s => process.env.ONLY_CASES!.split(",").includes(s.kind)) : scenarios;
+  for (const [index, scenario] of selected.entries()) {
     const { c, kind } = scenario; setLocale(c.lang); const tag = caseName(c) + (kind === "happy" ? "" : "-" + kind), login = scenario.login || "join-person-" + index;
     if (kind === "limit") await r.enable(admin, 1);
     if (!scenario.login) r.people.push({ id: randomUUID(), login, dn: `CN=${login},DC=example,DC=test`, password: "Dummy-" + login, groups: [kind === "outsider" ? "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" : "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] });
@@ -94,6 +95,8 @@ try {
       await page.locator("#hubCompanyAddress").waitFor();
       check(tag + " actual Settings sub-nav", await page.locator('.settings-nav a[href="/settings/hub"], .s-nav a[href="/settings/hub"]' ).count() > 0 || await page.locator('.s-section-nav, .settings-side').count() > 0);
       let address = companyLink;
+      const attemptsBefore = (r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get() as { n: number }).n;
+      if (kind === "samehost") { const shared = new URL(r.webOrigin); shared.hostname = new URL(fx.base).hostname; address = shared.origin; }
       if (kind === "changed") {
         const meta = (await r.call(null, "GET", "/hub/v1/join/metadata")).body, key = generateKeyPairSync("ed25519");
         const descriptor = signCompanyDescriptor({ ...meta.hub, issuerPublicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString() }, key.privateKey);
@@ -106,10 +109,11 @@ try {
       await page.screenshot({ path: join(out, tag + "-01-fleet-start.png"), fullPage: c.device === "phone" });
       const opened = ctx.waitForEvent("page"); await page.getByRole("button", { name: c.lang === "zh-TW" ? "以公司帳號登入" : "Sign in with company account", exact: true }).click();
       const hub = await opened;
-      if (kind === "changed") {
-        await page.getByText("Hub 的身分與先前不同", { exact: false }).waitFor();
+      if (kind === "changed" || kind === "samehost") {
+        await page.getByText(kind === "changed" ? "Hub 的身分與先前不同" : "必須使用不同的網頁主機名稱", { exact: false }).waitFor();
         check(tag + " refused before AD", !hub.url().startsWith(r.webOrigin));
-        await page.screenshot({ path: join(out, tag + "-05-identity-changed.png") });
+        check(tag + " no new Hub request", (r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get() as { n: number }).n === attemptsBefore);
+        await page.screenshot({ path: join(out, tag + (kind === "changed" ? "-05-identity-changed.png" : "-08-same-hostname-refused.png")) });
         result.cases.push({ tag, ok: true }); continue;
       }
       hub.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));
@@ -120,7 +124,8 @@ try {
       await hub.screenshot({ path: join(out, tag + "-02-hub-signin.png") });
       if (process.env.HUB_SHOTS && kind === "happy") { result.cases.push({ tag, kind: "signin-shot", ok: true }); continue; }
       if (kind === "copied") {
-        const copied = await fx.browser.newContext({ viewport: VIEWPORTS.desk, ignoreHTTPSErrors: true });
+        const copied = await fx.browser.newContext({ viewport: VIEWPORTS.desk, colorScheme: c.theme, ignoreHTTPSErrors: true });
+        await copied.addInitScript({ content: `localStorage.setItem('agend_lang',${JSON.stringify(c.lang)});localStorage.setItem('agend_theme',${JSON.stringify(c.theme)});` });
         try { const other = await copied.newPage(); await other.goto(hub.url()); await other.locator(".error-state").waitFor();
           check(tag + " copied handle shows no AD fields", await other.locator("#hubLogin").count() === 0);
           await other.screenshot({ path: join(out, tag + "-06-copied-refused.png") });

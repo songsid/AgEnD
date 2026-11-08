@@ -6,7 +6,7 @@ import { companyIdentityDigest, joinIdentitySchema, type JoinIdentity } from "./
 import { sha256 } from "../identity.js";
 import { hash, validated, parseStrictJson, HubProtocolError } from "../validation.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
-import { createJoinPrivate, writeJoinPrivate } from "./private.js";
+import { createJoinPrivate, syncJoinPrivate, writeJoinPrivate } from "./private.js";
 import { hubOrigin } from "../tls.js";
 
 export class CompanyIdentityChanged extends HubProtocolError { constructor() { super("denied"); } }
@@ -37,6 +37,7 @@ export class CompanyTrustStore {
       const previous = validated(trustSchema, parseStrictJson(readPrivateFile(this.home, suffix, 8192)));
       if (previous.hub.webOrigin !== hub.webOrigin || previous.fingerprint !== companyIdentityDigest(previous.hub)
         || previous.fingerprint !== fingerprint) throw new CompanyIdentityChanged();
+      syncJoinPrivate(this.home, suffix); // A prior failed flush may have left this exact file visible but not durable.
       if (!current()) throw new HubProtocolError("stale");
       return expected ? "company-link" : "known";
     }

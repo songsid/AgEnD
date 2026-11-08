@@ -70,7 +70,7 @@ export class CompanyJoinRecords {
   }
   /** Retained automatic/manual admissions share the global headroom until their original ten-minute deadline. */
   retained(): number {
-    const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person IS NOT NULL AND stage IN('identity-approved','issued','acknowledged') AND outer_deadline>?")
+    const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person IS NOT NULL AND outer_deadline>? AND (stage='identity-approved' OR json_extract(body,'$.issuedHash') IS NOT NULL)")
       .all(this.now()) as { id: string }[];
     return rows.length;
   }

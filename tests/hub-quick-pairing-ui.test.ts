@@ -142,13 +142,13 @@ describe("security notices and exact owner narrowing", () => {
     }
     vi.stubGlobal("EventSource",Stream);
     const seen=vi.fn(),hub=client.createHubWebClient(),off=hub.subscribePairingNotices(seen);
-    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]); expect(hub.pairingNoticeSnapshotV1).toBe(true);
+    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events?v=2"]); expect(hub.pairingNoticeSnapshotV1).toBe(true);
     streams[0].handlers.notices({data:JSON.stringify({notices:[notice]})});expect(seen).toHaveBeenCalledWith([notice]);
     off();expect(streams[0].close).toHaveBeenCalledOnce();
     const api=vi.fn(async()=>({ok:true,body:{pairing:{state:"unpaired"},notices:[notice]}}));
     const timers={setTimeout:vi.fn(()=>1),clearTimeout:vi.fn()};
     const member=client.createMemberClient({confirm:{api},timers,doc:{hidden:false}});
-    await member.pairing();expect(api).toHaveBeenCalledExactlyOnceWith("/api/hub/member/pairing");
+    await member.pairing();expect(api).toHaveBeenCalledExactlyOnceWith("/api/hub/member/pairing?v=2");
     expect(member.pairingNotices()).toEqual([notice]);const stop=member.subscribe(()=>{});stop();
     expect(streams).toHaveLength(1);expect(timers.clearTimeout).toHaveBeenCalledOnce();
   });
