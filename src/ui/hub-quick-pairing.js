@@ -120,7 +120,7 @@ export function OwnedFleetRevoke({ fleet, onRevoked }) {
   return html`<button type="button" class="btn btn-sm btn-danger" disabled=${busy} onClick=${revoke}>${hq("revoke")}</button>
     ${error ? html`<small class="err" role="alert">${hq("revokeFailed")}</small>` : null}`;
 }
-export function PairingNotices({ admin = false, memberNotices = null, memberOrigin = null }) {
+export function PairingNotices({ admin = false, memberNotices = null, memberOrigin = null, empty = null }) {
   const c = hubClient(), live = useRef(true), epoch = useRef(0), acked = useRef(new Set());
   const [noticeError, setNoticeError] = useState(null);
   const [notices, setNotices] = useState(memberNotices || []);
@@ -176,7 +176,8 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
     } })();
     return () => { cancelled = true; };
   }, [notices, memberNotices, historyOpen, historyCount]);
-  if (!target && !noticeError) return null;
+  // `empty`: what a page of its own shows with no notice (the Hub's Notices page, cid-hub-shell-parity); elsewhere nothing.
+  if (!target && !noticeError) return empty;
   const status = noticeError ? html`<p class="note" role="status" data-notices="retrying">${hr(noticeError)}</p>` : null;
   if (!target) return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>${status}</aside>`;
   return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>${status}

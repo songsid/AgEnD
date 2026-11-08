@@ -216,6 +216,33 @@ Don't: `` html`<span class="s-ico">⚙️</span>` ``
 
 Checked by: **Review**.
 
+## 13. The Hub's shell is the dashboard's
+
+The Hub pages use the fleet dashboard's sidebar and page frame, so the two read as one product (cid-hub-shell-parity).
+Build a Hub sidebar part from the dashboard's classes, never a Hub-only look:
+
+| Part | Use |
+|---|---|
+| Brand | `.side-head .brand`: one line, "AgEnD Hub". The Hub's name is its `title` (tooltip), never a second line (#3426) |
+| Places | `.side-nav > a.side-row` with an `Icon` and `span.grow`; the current page is `.active` |
+| Search, New chat | `button.side-row.side-search` (with its `kbd.kbd-hint` shortcut), `button.side-row.side-new`, never a bordered pill |
+| A count | `.nav-count`, only for something the Hub really counts. Notices has none: the Hub keeps no read state |
+| The conversation list | `.view-roster.inst-nav > .side-section`, headed by `.inst-head > h2.side-label`; empty: one `p.side-empty` line |
+| The foot | `.side-foot`: `details.prefs-pop` (Settings: theme and language) and the session row; its menu opens upward |
+| A page | `PanelHeader` with the page's title, then cards in the page's column; the security notices card stands in that column too |
+
+A new Hub place is a row in `HubSide` (`src/ui/panel-hub.js`). Another feature passes its row as
+`{ route, labelKey, icon, visible(session) }` to the sidebar's owner instead of adding markup there.
+
+Don't: `` html`<a class="brand hub-brand">AgEnD Hub<span class="hub-brand-name"> · ${name}</span></a>` `` (two lines
+on a phone), `` html`<button class="btn hub-new">New chat</button>` `` in the sidebar.
+
+Checked by: **CI** — the Hub shell gate (`scripts/manual/smoke/smoke-hub-shell-gate.mts`): the brand is one line,
+every nav row has one height and one icon inset, exactly one row is current, Search and New chat are side-rows, no
+count on Notices, the list's empty state is one line, the foot sits at the bottom, the session menu and Settings open
+on the screen, one card frame per Hub page, the notices card in the page's column, and the page asks the Hub for
+nothing but its own files. `tests/hub-shell-parity.test.ts` checks the same markup in a mini DOM.
+
 ## Evidence in the pull request
 
 A PR that adds or changes UI includes (decision 3536dae9):
@@ -242,8 +269,11 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | 12. Shared icons, no emoji icons (Settings) | — | yes |
 | Button sizes (Settings, Hub pages) | UI gate `:buttons` (one height per button class combination) | — |
 | No page errors or CSP reports (Settings, Hub pages) | UI gate `:no-errors` | — |
+| 13. The Hub's shell is the dashboard's | Hub shell gate, `hub-shell-parity` | new Hub places |
 
 The UI gate is `scripts/manual/smoke/smoke-settings-ui-gate.mts`, run by the `ui-gate` job in
 `.github/workflows/ci.yml` on every Settings section at `desk-light-en` and `phone-dark-zh-TW`, plus a 1024 px desktop
 width. The same job runs the Hub gate, `scripts/manual/smoke/smoke-hub-ui-gate.mts`, on a real Hub web listener (a
 scratch database and directory) at the same cases; it also fails when a page shows a failed read instead of its content.
+Then the Hub shell gate, `scripts/manual/smoke/smoke-hub-shell-gate.mts`, checks rule 13 on the same listener
+(`GATE=full` runs the whole matrix locally).
