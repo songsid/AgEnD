@@ -303,6 +303,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         now,
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
+        enrollment: { prepare: (resource, ctx) => groups.prepareEnrollment(resource, ctx),
+          atomic: work => db.transaction(() => work(db)).immediate() },
       });
       let generation = 0;
       const mode: HubMode = { serverEnabled: live, memberEnabled: () => false, epoch: () => generation };
