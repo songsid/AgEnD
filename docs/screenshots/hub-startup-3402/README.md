@@ -46,7 +46,59 @@ the isolated browser context. All people, groups and secrets are fake. It starts
 no fleet, member, agent, model, daemon or native CLI and touches no real account,
 directory, pilot or trust store.
 
-Receipts and representative screenshots are added after the source-bound run.
+## Automated checks
+
+- Four selected fail-first cases failed by assertion on the baseline (35 other
+  cases deliberately unselected): duplicate notice GET, full-page peak five,
+  welcome backpressure wording and the missing catalog retry/empty guidance.
+- Seven focused suites: 171/171 assertions passed, zero skips; production build
+  and test TypeScript checks passed.
+- Nine individual guard reversals each caused assertion failures: duplicate
+  snapshot bootstrap, retained-client GET/stream overlap, unsupported
+  EventSource snapshot mark, welcome busy text, hidden catalog refusal, welcome
+  delay, admin busy text, admin delay, and admin timer cancellation.
+
+## Source-bound browser evidence
+
+Source `12880158f5d15137a863360cf2d16fc6d53b16bc`:
+24 fresh pages (eight desktop/phone × language × theme combinations, three each)
+all show the empty-agent hint, have no 429, and attempt at most four concurrent
+Core eligibility reads. There are 51 explicit browser checks, three separate
+real-429/recovery controls, and two retained-module controls. The normal startup
+and genuine-capacity controls are recorded separately in `startup-receipt.json`.
+
+The retained-f61 UI control reproduced attempted peak five, admitted driver peak
+four, catalog 429 with Retry-After 10 and no empty-agent hint on desktop EN.
+The phone zh-TW baseline attempt did not hit the timing race (peak four, hint
+visible). `baseline-receipt.json` records this static-UI substitution on the same
+authorization backend; it is not a second old-binary deployment. Cleanup also
+finished with zero reads.
+
+The busy controls use actual 429 responses with Retry-After 10. EN desktop and
+zh-TW phone welcome reads, plus the admin editor read, show busy text and recover
+through fresh requests after the specified delay. Four occupied requests settle
+normally. Retained `hub-client.js` and `hub-group-strings.js` controls preserve
+bounded startup and the empty hint; busy welcome controls also retain old group
+strings. Retained old notice consumers need a refresh to get the startup fix.
+
+`startup-cleanup.json` records completed closure and zero physical directory
+reads left. No browser errors, CSP violations or foreign requests occurred.
+`checks.json` records focused/mutation counts and hashes of the 14 representative
+PNGs. Browser receipts bind the source commit; the follow-up evidence commit
+changes docs/screenshots only.
+
+| Screens | Coverage |
+| --- | --- |
+| `desk-{light,dark}-{en,zh-TW}-1.png` | Desktop welcome and empty-agent hint |
+| `phone-{light,dark}-{en,zh-TW}-1.png` | Phone welcome and empty-agent hint |
+| `*-busy-ungranted.png` | Real backpressure, explicit busy text |
+| `*-busy-admin*.png` | Editor busy state and automatic recovery |
+| `skew-*.png` | Current UI with retained client/translation module |
+
+An image-only review of all 14 samples found no blocking visual issue or private
+data. Phone EN captures end across the lower Connect card edge; its text is
+readable, but these static captures do not prove vertical scrolling behavior.
+
 Physical driver peak alone is insufficient evidence: the broken baseline also
 stays at four admitted reads. Ordinary attempted concurrency, absence of 429,
 and the visible empty-agent hint are checked together.
