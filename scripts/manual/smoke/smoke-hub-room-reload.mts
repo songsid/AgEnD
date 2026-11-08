@@ -54,7 +54,7 @@ try{
   p.on("response",(r:any)=>{if(new URL(r.url()).pathname.endsWith("/messages"))receipt.network.push({tag,at:Date.now(),path:new URL(r.url()).pathname,status:r.status(),method:r.request().method(),retryAfter:r.headers()["retry-after"]});});
   try{
    await p.goto(origin+"/ui/hub");await p.fill("#hubLogin","asker"+i);await p.fill("#hubPassword","pw-asker"+i);await p.locator(".hub-signin button[type=submit]").click();await p.locator(".hub-home").waitFor();
-   await p.locator(c.device==="desk"?".sidebar .hub-new":".hub-home .hub-new").click();await p.locator(".hub-pick-row button").first().click();await p.locator(".hub-room-empty").waitFor();
+   await p.locator(c.device==="desk"?".sidebar .side-new":".hub-home .side-new").click();await p.locator(".hub-pick-row button").first().click();await p.locator(".hub-room-empty").waitFor();
    const roomURL=p.url(),path="/hub/v1/rooms/"+new URL(roomURL).searchParams.get("room")+"/messages";
    const q=`Reload question ${tag}`,a=`Visible reply ${tag}`;await p.fill("#msgIn",q);await p.locator("#sendBtn").click();await answer(q,a);
    const r=p.waitForResponse((r:any)=>new URL(r.url()).pathname===path&&r.request().method()==="GET");await p.reload();const response=await r;row.reloadStatus=response.status();

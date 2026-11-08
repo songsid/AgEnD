@@ -1,0 +1,12 @@
+---
+section: Changed
+---
+- **The Hub's pages read more simply (#3431).**
+  - Security notices now appear only on the Notices page, not above every page.
+  - Revoking a fleet asks you to confirm first.
+  - Each page has one title, and the browser tab shows the same name.
+  - Phones get the full page width.
+  - On a phone, the chat list looks the same as in the sidebar.
+  - The sign-in menu shows who you are and Sign out.
+  - When nothing has been shared with you, the welcome page no longer offers a button that opens an empty list.
+  - Messages about the Hub's name tell you to reload and try again, never to ask someone else.

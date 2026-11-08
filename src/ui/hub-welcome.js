@@ -2,10 +2,9 @@
 // fleet", shaped by what this person may do now (no actions / ask only / full). It is a DISPLAY of the server's welcome
 // projection (GET /hub/v1/me/welcome): it grants nothing, and every chat, pairing or sharing action asks the server again.
 // An answer the directory couldn't give is "can't be checked right now" with Retry, never a cached yes. Shared components:
-// PageHead, card, btn, tag, note, Skeleton/ErrorState; the two cards sit in .hub-welcome (hub.css: a two-up grid, one column
+// a lead line, card, btn, tag, note, Skeleton/ErrorState; the two cards sit in .hub-welcome (hub.css: a two-up grid, one column
 // on a phone).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { PageHead } from "/assets/page-head.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
 import { hubClient, hubName } from "./hub-client.js";
@@ -58,7 +57,9 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
     live.current = false; generation.current++; clearTimeout(retry.current);
   }; }, []);
   const refresh = async () => { const r = await c.welcome(); if (live.current && r.ok) setW(r); };
-  const head = html`<${PageHead} title=${hg("welcomeTitle", name || "")} scope=${hubName() || "Hub"} lead=${hg("welcomeLead")} />`;
+  // The chats' panel header already names the page ("Chats"): the welcome greets in its lead, not with a second title
+  // stacked under the first (Argon #7). The Hub's name stays beside the greeting.
+  const head = html`<p class="s-page-lead hub-page-lead hub-welcome-lead"><strong>${hg("welcomeTitle", name || "")}</strong>${hubName() ? html` <span class="s-scope">${hubName()}</span>` : null}<br />${hg("welcomeLead")}</p>`;
   if (error) return html`<div class="col hub-welcome-page">${head}${error === "busy"
     ? html`<p class="note" role="status" data-welcome="busy">${hr("busy")}</p>`
     : html`<${ErrorState} message=${error === "catalogUnavailable" ? hr(error) : hg(error)} onRetry=${load} />`}</div>`;
@@ -78,8 +79,10 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
     <div class="hub-welcome">
       <section class=${`card hub-welcome-card${chatOk ? "" : " is-off"}`} data-entry="chat" aria-disabled=${chatOk ? "false" : "true"}>
         <h3>${hg("chatTitle")}</h3><p class="note">${hg("chatHint")}</p>
-        ${chatOk ? html`${askable === 0 ? html`<p class="note" data-welcome="nothing-shared">${hg("chatNone")}</p>` : null}
-            <div class="hub-welcome-actions"><button type="button" class="btn btn-primary" onClick=${onChats}>${hg("chatGo")}</button></div>`
+        ${chatOk ? (askable === 0
+            // Nothing shared with this person yet: say so — no button that opens an empty list (Argon #6).
+            ? html`<p class="note" data-welcome="nothing-shared">${hg("chatNone")}</p>`
+            : html`<div class="hub-welcome-actions"><button type="button" class="btn btn-primary" onClick=${onChats}>${hg("chatGo")}</button></div>`)
           : html`<p class="note">${reasonText(chat, "contactAdmin")}</p>`}
       </section>
       <section class=${`card hub-welcome-card${connectOk ? "" : " is-off"}`} data-entry="connect" aria-disabled=${connectOk ? "false" : "true"}>

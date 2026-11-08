@@ -8,6 +8,8 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { PageHead } from "/assets/page-head.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
+import { Icon } from "/assets/ui-icons.js";
+import { setTitle } from "/assets/app-shell.js";
 import { hubClient } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
 import { hr } from "./hub-read-strings.js";
@@ -33,6 +35,7 @@ export function GroupPermissionsCard() {
 
 export function HubGroupPolicyPage() {
   const c = hubClient();
+  useEffect(() => { setTitle(hg("title")); }, []);           // the tab names this page (Argon #17)
   const [view, setView] = useState(null), [error, setError] = useState(""), [msg, setMsg] = useState(null);
   const [state, setState] = useState("never-enabled"), [groups, setGroups] = useState([]);
   const [dn, setDn] = useState(""), [adding, setAdding] = useState(false), [addError, setAddError] = useState("");
@@ -111,7 +114,10 @@ export function HubGroupPolicyPage() {
     setMsg(r.ok ? { ok: true, text: hg("resumed") } : { ok: false, text: hg(r.code === "conflict" ? "conflict" : "failed") });
     await load();
   };
-  const head = html`<${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
+  // Back to Administration first, as a sub-page's crumb (My shared agents → an agent draws it the same way), then the page's
+  // head (Argon #14: the link sat below the head, a raw "←").
+  const head = html`<a class="hub-crumb" href="/ui/hub/admin" onClick=${(e) => { e.preventDefault(); navigate("/ui/hub/admin"); }}><${Icon} name="back" size=${14} />${hg("back")}</a>
+    <${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
   if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout">${error === READ_BUSY
     ? html`<p class="note" role="status" data-groups="busy">${hr("busy")}</p>`
     : html`<${ErrorState} message=${error} onRetry=${load} />`}</div></div>`;
@@ -125,7 +131,6 @@ export function HubGroupPolicyPage() {
   const list = (rows, label) => rows && rows.length ? html`<div class="hub-groups-impact"><b>${label}</b><ul>${rows.map((r, i) => html`<li key=${i}>${r.name || r.label || r.dn || r.id}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null;
   return html`<div class="col hub-owner hub-groups">${head}
     <div class="s-section-layout">
-      <p class="note"><a href="/ui/hub/admin" onClick=${(e) => { e.preventDefault(); navigate("/ui/hub/admin"); }}>← ${hg("back")}</a></p>
       ${view.supported !== true ? html`<p class="note" role="status" data-reason="unsupported">${hg("unsupported")}</p>` : null}
       ${view.binding === "repair-required" ? html`<p class="err" role="alert" data-reason="repair">${hg("repair")}</p>` : null}
       ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}

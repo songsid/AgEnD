@@ -164,7 +164,7 @@ describe("the shell", () => {
       expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("New chat");
       await until(() => pg.root.querySelector(".side-foot .hub-session-row button"));
       (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
-      expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex", "My shared agents", "Sign out"]);
+      expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex (alex)", "Sign out"]);   // Argon #10: the nav's rows aren't repeated in the menu
       i18n.setLang("zh-TW", { store: false }); await settle(5);
       expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("新對話");
     } finally { g.fetch = realFetch; }
@@ -310,8 +310,8 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     const pg = await pageWith("hub", "/ui/hub", "Team Hub");
     router.startRouter(pg.window);
     await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "ask" }, navKey: "hub:ask|1|en" }));
-    await until(() => pg.root.querySelector(".hub-home .hub-new"));
-    (pg.root.querySelector(".hub-home .hub-new") as any).click();
+    await until(() => pg.root.querySelector(".hub-home .side-new"));
+    (pg.root.querySelector(".hub-home .side-new") as any).click();
     await until(() => pg.root.querySelector(".hub-pick-row"));
     expect(pg.root.querySelector(".hub-pick-row .s")!.textContent).toContain("Answers for Olivia");
     (pg.root.querySelector(".hub-pick-row button") as any).click();

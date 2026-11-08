@@ -109,7 +109,7 @@ describe("#3290 Hub initial reads", () => {
 
   it("the New chat picker is pending until catalog data arrives, and a cancelled dialog stays closed", async () => {
     const catalog = held(); api({ "/hub/v1/exposures": () => catalog.promise }); await mount();
-    await until(() => p!.root.querySelector(".hub-new")); fire(p!.root.querySelector(".hub-new")!, "click");
+    await until(() => p!.root.querySelector(".side-new")); fire(p!.root.querySelector(".side-new")!, "click");
     await until(() => p!.root.querySelector("dialog .skeleton")); expect(p!.root.querySelector("dialog .empty")).toBeNull();
     fire(p!.root.querySelector("dialog .dlg-x")!, "click"); await settle();
     catalog.release([200, { askable: [] }]); await settle();
