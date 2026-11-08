@@ -177,8 +177,10 @@ try {
       const tag = `${cn}:${p.key}`;
       await page.goto(origin + p.path);
       await page.waitForSelector("#sidebar .side-foot", { timeout: 15000, state: "attached" });
-      await page.waitForSelector(p.key === "notices" ? ".p-hub-notices .hub-security-notices" : ".p-hub .panel-body", { timeout: 15000 });
+      // A page that never draws (an older build has no Notices page) fails here and the run goes on — one run, every verdict.
+      const ready = await page.waitForSelector(p.key === "notices" ? ".p-hub-notices .hub-security-notices" : ".p-hub .panel-body", { timeout: 15000 }).then(() => true, () => false);
       await page.waitForTimeout(900);
+      if (!ready) { await page.screenshot({ path: shotPath(SMOKE, cn, p.key) }); check(`${tag}:drawn`, false, "the page never drew"); continue; }
       const drawn = await page.evaluate(PAGE) as any;
       await page.screenshot({ path: shotPath(SMOKE, cn, p.key) });
       if (drawn.missing) { check(`${tag}:drawn`, false, "no Hub page body"); continue; }
@@ -203,21 +205,21 @@ try {
       check(`${tag}:sidebar:search`, /side-search/.test(rows[4]?.cls ?? "") && (phone || /K$/.test(rows[4]?.kbd ?? "")), rows[4]);
       check(`${tag}:sidebar:new`, /side-new/.test(rows[5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[5], legacy: sb.legacy });
       check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && !!sb.empty && sb.empty.lines === 1, { label: sb.label, empty: sb.empty });
-      if (p.key === "chats") {   // the session menu, opened: every item shown — inside the screen and topmost at its centre
-        await page.click("#sidebar .hub-session-row button"); await page.waitForTimeout(300);
+      if (p.key === "chats") try {   // the session menu, opened: every item shown — inside the screen and topmost at its centre
+        await page.click("#sidebar .hub-session-row button", { timeout: 5000 }); await page.waitForTimeout(300);
         const menu = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-session-row [role=menuitem]")].map((x) => { const b = x.getBoundingClientRect();
           return { t: x.textContent.trim(), shown: b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("[role=menuitem]") === x }; })`) as { t: string; shown: boolean }[];
         await page.screenshot({ path: shotPath(SMOKE, cn, "session-menu") });
         await page.keyboard.press("Escape"); await page.waitForTimeout(200);
         check(`${tag}:sidebar:session-menu`, menu.length === 4 && menu.every((m) => m.shown), menu);
         // Settings, opened: this device's theme and language, both on the screen.
-        await page.click("#sidebar .hub-prefs > summary"); await page.waitForTimeout(300);
+        await page.click("#sidebar .hub-prefs > summary", { timeout: 5000 }); await page.waitForTimeout(300);
         const prefs = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-prefs .pop select")].map((x) => { const b = x.getBoundingClientRect();
           return b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === x; })`) as boolean[];
         await page.screenshot({ path: shotPath(SMOKE, cn, "settings-pop") });
         await page.click("#sidebar .hub-prefs > summary"); await page.waitForTimeout(200);
         check(`${tag}:sidebar:settings-pop`, prefs.length === 2 && prefs.every(Boolean), prefs);
-      }
+      } catch (e) { check(`${tag}:sidebar:menus`, false, String(e).slice(0, 200)); }
       check(`${tag}:sidebar:foot`, !!sb.foot && sb.foot.prefs && sb.foot.session && sb.foot.bottomGap <= 2 && sb.foot.rows.every((h: number) => h === rows[0]?.h), sb.foot);
     }
     const csp = await page.evaluate("window.__csp || []") as string[];
