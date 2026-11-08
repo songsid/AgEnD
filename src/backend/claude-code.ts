@@ -1,3 +1,4 @@
+import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
@@ -1213,6 +1214,9 @@ export class ClaudePaneDetectors {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
+      // #3441: only the CLI itself supplies the model requirement.
+      { pattern: CLAUDE_MINIMUM_ERROR, type: "outdated_cli", action: "notify", skipCooldown: true, skipRecoveryWait: true,
+        message: "Claude Code cannot run this model with its current version" },
       { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
       // What 2.1.288 prints once it has given up on a 429 after its 10 retries
       // (#1101): `● API Error: Request rejected (429) · <the API's message>`.
@@ -1520,6 +1524,8 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     this.binaryPath = resolveBinary("claude");
   }
 
+  refreshLaunchBinary(path: string): void { this.binaryPath = path; }
+
   /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
@@ -1558,11 +1564,18 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // marker alone. This also makes an empty/missing Classic workspace start
     // fresh rather than entering a resume crash loop.
     const retainedGeneral = selectedGeneralHostSession(this.instanceDir, config.instanceName, "claude-code", config.workingDirectory);
+    const repairSession = !config.skipResume && config.resumeSessionId
+      && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(config.resumeSessionId) ? config.resumeSessionId : null;
+    if (repairSession && retainedGeneral && repairSession !== retainedGeneral) {
+      throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed"));
+    }
     if (retainedGeneral) {
       const path = join(claudeConfigDirFor(profileDir), "projects", claudeProjectKey(config.workingDirectory), `${retainedGeneral}.jsonl`);
       try { if (!lstatSync(path).isFile()) throw Error("not regular"); }
       catch { throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed")); }
       cmd += ` --resume ${shellQuote(retainedGeneral)}`;
+    } else if (repairSession) {
+      cmd += ` --resume ${shellQuote(repairSession)}`;
     } else if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
       cmd += " --continue";
     }
