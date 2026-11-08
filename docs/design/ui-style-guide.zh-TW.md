@@ -175,15 +175,18 @@ Hub 頁面用 Fleet dashboard 的側邊欄和頁面外框，兩者看起來是�
 | 各個頁面 | `.side-nav > a.side-row`，加 `Icon` 和 `span.grow`；目前所在的頁面是 `.active` |
 | 搜尋、新對話 | `button.side-row.side-search`（附 `kbd.kbd-hint` 快捷鍵）、`button.side-row.side-new`，不用有外框的膠囊按鈕 |
 | 數字標記 | `.nav-count`，只用在 Hub 真的有計數的東西。通知沒有：Hub 不記錄誰讀過 |
-| 對話清單 | `.view-roster.inst-nav > .side-section`，標題是 `.inst-head > h2.side-label`；沒有對話時只有一行 `p.side-empty` |
-| 底部 | `.side-foot`：`details.prefs-pop`（設定：主題和語言）和登入列；它的選單往上開 |
-| 頁面 | `PanelHeader` 放頁面標題，下面是頁面欄位裡的卡片；安全通知卡片也放在同一個欄位裡 |
+| 對話清單 | `.view-roster.inst-nav > .side-section`，標題是 `.inst-head > h2.side-label`；沒有對話時只有一行 `p.side-empty`，同一個畫面只說一次（旁邊的頁面已經說了，側邊欄就不再說）。手機的對話首頁用同一份清單（`HubRoomList`），不另做一份 |
+| 底部 | `.side-foot`：`details.prefs-pop`（設定：主題和語言）和登入列。它的選單列出這個人（名稱和登入名稱）和「登出」，不重複導覽列的項目；選單往上開，而且在側邊欄裡面 |
+| 頁面 | 只命名一次：`PanelHeader` 放標題（範圍標記用 `.s-scope` 放在 `sub`），分頁標題也是同一個名稱；頁面以說明文字（`p.s-page-lead.hub-page-lead`）開頭，不再用 `PageHead` 重複標題。有自己主題的子頁面（某個 Agent、群組權限）把 `a.hub-crumb` 放在它的 `PageHead` 上方 |
+| 頁面外框 | 卡片放在頁面欄位（`.col.hub-owner`）裡；只有頁面本體提供左右留白（`.hub-page-body > .col` 不再加） |
+| 安全通知 | 只在「通知」頁、放在標題下方，不釘在其他頁面上方 |
+| 破壞性動作 | 和其他地方一樣用 `confirmDialog({ danger: true })`（撤銷 Fleet）。可以復原的動作（移除 Hub 名稱）不另外確認 |
 
-新的 Hub 頁面是 `HubSide`（`src/ui/panel-hub.js`）裡的一列。其他功能要加一列時，把 `{ route, labelKey, icon, visible(session) }` 交給側邊欄的負責人，不直接在側邊欄加標記。
+新的 Hub 頁面是 `HubSide`（`src/ui/panel-hub.js`）裡的一列。其他功能要加一列時，請側邊欄的負責人加上（路徑、名稱、圖示、誰看得到），不直接在側邊欄加標記。
 
 不要：`` html`<a class="brand hub-brand">AgEnD Hub<span class="hub-brand-name"> · ${name}</span></a>` ``（在手機上變成兩行）、側邊欄裡的 `` html`<button class="btn hub-new">新對話</button>` ``。
 
-檢查方式：**CI** — Hub 外框關卡（`scripts/manual/smoke/smoke-hub-shell-gate.mts`）：品牌只有一行；每個導覽列高度一樣、圖示位置一樣；只有一列標成目前所在；搜尋和新對話是 side-row；通知沒有數字；清單沒有內容時只有一行；底部貼齊最下面；登入選單和設定都在畫面內打開；每個 Hub 頁面的卡片外框一致；通知卡片在頁面欄位裡；頁面只向 Hub 要它自己的檔案。`tests/hub-shell-parity.test.ts` 在 mini DOM 裡檢查同樣的標記。
+檢查方式：**CI** — Hub 外框關卡（`scripts/manual/smoke/smoke-hub-shell-gate.mts`）：品牌只有一行；每個導覽列高度一樣、圖示位置一樣；只有一列標成目前所在；搜尋和新對話是 side-row；通知沒有數字；清單沒有內容時只有一行；底部貼齊最下面；登入選單和設定都在畫面內、側邊欄裡打開；每個 Hub 頁面的卡片外框一致；通知卡片在頁面欄位裡、只出現在「通知」頁；每頁只有一個標題，分頁標題相同；只有一層左右留白；手機的對話首頁用側邊欄的同一份清單；登出後只顯示登入頁；頁面只向 Hub 要它自己的檔案。`tests/hub-shell-parity.test.ts` 在 mini DOM 裡檢查同樣的標記。
 
 ## Pull request 要附的證明
 

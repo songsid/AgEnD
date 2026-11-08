@@ -94,5 +94,5 @@
 .side-foot > .hub-prefs { flex: 1; min-width: 0; }
 .side-foot > .hub-session-row, .hub-session-row > .menu, .hub-session-row > .menu > .side-row { width: 100%; min-width: 0; }
 /* The foot is the sidebar's bottom: its session menu opens upward (as the dashboard's), never below the screen. */
-.hub-session-row .hub-session-menu .menu-list { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+.hub-session-row .hub-session-menu .menu-list { top: auto; bottom: calc(100% + 6px); left: auto; right: 0; max-width: calc(var(--sidebar-w, 260px) - 2 * var(--s-2)); }
 

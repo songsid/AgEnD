@@ -1,6 +1,8 @@
 import { hj } from "./hub-company-join-strings.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
+import { lang } from "/assets/app-i18n.js";
 import { compareGroups, hubClient, safeWebOrigin } from "./hub-client.js";
 import { hq } from "./hub-quick-strings.js";
 import { hr } from "./hub-read-strings.js";
@@ -8,7 +10,7 @@ import { linkHubOwnerCss } from "./hub-owner-strings.js";
 
 const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict" ? "conflict" : r.code === "backpressure" ? "limit"
   : r.code === "denied" || r.code === "revoked" ? "denied" : r.code === "unavailable" || r.code === "unreachable" ? "unavailable" : "failed");
-const time = (at) => new Date(at).toLocaleString();
+const time = (at) => { try { return new Date(at).toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "medium", timeStyle: "short" }); } catch { return new Date(at).toLocaleString(); } };
 
 /** The page controls its own attempt only. The separate fleet-local proof is never performed by this component. */
 export function QuickPairingGuide({ allowed = false, publishAllowed = false, onConnected = () => {} }) {
@@ -67,9 +69,9 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
     ${error ? html`<${ErrorState} message=${error} onRetry=${() => load(attempt?.id)} />` : null}
     ${mismatch ? html`<p class="err" role="alert">${stopped ? hq("mismatchStop") : hq("compare")}</p>` : null}
     ${stopped ? html`<p class="note" role="status">${hq("stopped")}</p>` : null}
-    ${!attempt ? allowed ? html`<form onSubmit=${create}><label for="quickFleetLabel">${hq("label")}</label>
+    ${!attempt ? allowed ? html`<form class="form" onSubmit=${create}><label class="field" for="quickFleetLabel"><span>${hq("label")}</span>
       <input id="quickFleetLabel" value=${label} maxLength="120" required placeholder=${hq("labelExample")} onInput=${e => setLabel(e.target.value)} />
-      <p class="note">${hq("labelHint")} ${hq("privacy")}</p><div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !label.trim()}>${hq(stopped ? "again" : "start")}</button></div></form>` : null
+      <small class="note">${hq("labelHint")} ${hq("privacy")}</small></label><div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !label.trim()}>${hq(stopped ? "again" : "start")}</button></div></form>` : null
       : attempt.connected ? html`<p class="note" role="status"><b>${hq("connected")}</b></p><h4>${hq("publish")}</h4><p class="note">${hq(publishAllowed ? "publishHint" : "publishNo")}</p>
         ${allowed ? html`<div class="field-row"><button type="button" class="btn" onClick=${() => { generation.current++; setAttempt(null); }}>${hq("another")}</button></div>` : null}`
       : html`<ol class="hub-steps"><li class=${attempt.state === "claimed" ? "done" : "now"}><div class="hub-step-body"><h4>${hq("localTitle")}</h4><p class="note">${hq("local")}</p>
@@ -78,7 +80,7 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
         <p class="note">${hq("expires", time(attempt.expiresAt))}</p></div></li>
         <li class=${attempt.fingerprint ? "now" : ""}><div class="hub-step-body"><h4>${hq("compareTitle")}</h4><p class="note">${hq("compare")}</p>
           ${attempt.fingerprint ? html`<code class="hub-fp-groups">${compareGroups(attempt.fingerprint)}</code>
-            <button type="button" class="btn btn-sm btn-link" aria-expanded=${full} onClick=${() => setFull(!full)}>${full ? "SHA-256 −" : "SHA-256 +"}</button>
+            <button type="button" class="btn btn-sm btn-ghost" aria-expanded=${full} onClick=${() => setFull(!full)}>${full ? "SHA-256 −" : "SHA-256 +"}</button>
             ${full ? html`<code class="hub-fp-full">${attempt.fingerprint}</code>` : null}
             ${attempt.ownerConfirmed ? html`<p class="note" role="status">${hq("claim")}</p>` : html`<div class="field-row"><button type="button" class="btn btn-primary" disabled=${busy || mismatch} onClick=${match}>${hq("match")}</button>
               <button type="button" class="btn" disabled=${busy} onClick=${() => stop(true)}>${hq("mismatch")}</button></div>`}` : null}
@@ -92,6 +94,7 @@ function Notice({ notice, admin = false, memberOrigin = null, after = () => {} }
   const live = useRef(true); useEffect(() => () => { live.current = false; }, []);
   const revoke = async () => {
     if (busy || notice.revoked) return;
+    if (!(await confirmDialog({ message: hq("revokeAsk", notice.label), confirmLabel: hq("revoke"), danger: true })) || !live.current) return;
     setBusy(true); setError(false); const c = hubClient();
     const r = await (admin ? c.revokeFleet(notice.fleetId) : c.revokeOwnFleet(notice.fleetId, notice.generation));
     if (!live.current) return;
@@ -113,7 +116,9 @@ export function OwnedFleetRevoke({ fleet, onRevoked }) {
   const live = useRef(true); useEffect(() => () => { live.current = false; }, []);
   if (!Number.isSafeInteger(fleet.generation) || fleet.status === "revoked") return null;
   const revoke = async () => {
-    if (busy) return; setBusy(true); setError(false);
+    if (busy) return;
+    if (!(await confirmDialog({ message: hq("revokeAsk", fleet.label || fleet.id), confirmLabel: hq("revoke"), danger: true })) || !live.current) return;
+    setBusy(true); setError(false);
     const r = await hubClient().revokeOwnFleet(fleet.id, fleet.generation);
     if (!live.current) return;
     setBusy(false); if (r.ok) onRevoked(); else setError(true);

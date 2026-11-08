@@ -134,7 +134,16 @@ const PAGE = `(() => {
     else if (nb.left < cb.left + 8 || nb.right > cb.right - 8) align.push("full-bleed " + [Math.round(nb.left - cb.left), Math.round(cb.right - nb.right)]);
   }
   const head = panel.querySelector(":scope > header.panel-head h1");
-  return { align, head: head ? head.textContent.trim() : null, over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8),
+  const hb = panel.querySelector(":scope > header.panel-head")?.getBoundingClientRect();
+  // cid-hub-ux-fixes (Argon's review): one title per page (the header's, not again as the page's own heading); the notices
+  // never above the header; the page body is the only gutter (no column padding on top of it).
+  const again = [...panel.querySelectorAll(".s-page-head h2")].filter((x) => vis(x) && head && x.textContent.trim() === head.textContent.trim()).map((x) => x.textContent.trim());
+  const notices = [...document.querySelectorAll(".hub-security-notices")].filter(vis).map((n) => ({ above: !hb || n.getBoundingClientRect().top < hb.bottom - 1 }));
+  const col = body.querySelector(":scope > .col");
+  const gutter = col ? { left: Math.round(col.getBoundingClientRect().left - cb.left), padLeft: parseFloat(getComputedStyle(col).paddingLeft) || 0, bodyPad: parseFloat(getComputedStyle(body).paddingLeft) || 0 } : null;
+  // A phone's chats home draws the sidebar's own roster, not the pre-parity list (Argon #9).
+  const oldList = [...document.querySelectorAll(".hub-home-list .hub-nav, .hub-home-list .hub-new, .hub-home-list .hub-search, .hub-home-list .hub-list-empty")].filter(vis).map((x) => x.className);
+  return { align, again, notices, gutter, oldList, title: document.title, head: head ? head.textContent.trim() : null, over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8),
     pageX: document.documentElement.scrollWidth - innerWidth };
 })()`;
 
@@ -192,6 +201,12 @@ try {
       check(`${tag}:overflow`, drawn.overCount === 0 && drawn.pageX <= 0, { over: drawn.over, pageX: drawn.pageX });
       check(`${tag}:left-accent`, drawn.accents.length === 0, drawn.accents);
       check(`${tag}:notice-in-column`, drawn.align.length === 0, drawn.align);
+      // Argon #7 / #17 / #1 / #5 / #11, held mechanically:
+      check(`${tag}:one-title`, drawn.again.length === 0, drawn.again);
+      check(`${tag}:tab-title`, drawn.title === `${p.current[c.lang]} · AgEnD`, drawn.title);
+      check(`${tag}:notices-place`, p.key === "notices" ? drawn.notices.length >= 1 && drawn.notices.every((n: any) => !n.above) : drawn.notices.length === 0, drawn.notices);
+      check(`${tag}:home-roster`, drawn.oldList.length === 0, drawn.oldList);
+      check(`${tag}:one-gutter`, !drawn.gutter || (drawn.gutter.padLeft === 0 && (!phone || drawn.gutter.left === drawn.gutter.bodyPad)), drawn.gutter);
       if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(600); await page.screenshot({ path: shotPath(SMOKE, cn, `${p.key}-drawer`) }); }
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
@@ -204,14 +219,19 @@ try {
       check(`${tag}:sidebar:notices-no-count`, rows.every((x) => !x.count), rows.filter((x) => x.count).map((x) => x.text));
       check(`${tag}:sidebar:search`, /side-search/.test(rows[4]?.cls ?? "") && (phone || /K$/.test(rows[4]?.kbd ?? "")), rows[4]);
       check(`${tag}:sidebar:new`, /side-new/.test(rows[5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[5], legacy: sb.legacy });
-      check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && !!sb.empty && sb.empty.lines === 1, { label: sb.label, empty: sb.empty });
+      // No chat yet: one line in the list — except on the chats' home, where the page itself says it (Argon #19).
+      check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && (p.key === "chats" ? !sb.empty : !!sb.empty && sb.empty.lines === 1), { label: sb.label, empty: sb.empty });
       if (p.key === "chats") try {   // the session menu, opened: every item shown — inside the screen and topmost at its centre
         await page.click("#sidebar .hub-session-row button", { timeout: 5000 }); await page.waitForTimeout(300);
-        const menu = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-session-row [role=menuitem]")].map((x) => { const b = x.getBoundingClientRect();
-          return { t: x.textContent.trim(), shown: b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("[role=menuitem]") === x }; })`) as { t: string; shown: boolean }[];
+        // …and inside the sidebar (a phone's drawer: Argon #3 — the menu ran 68 px past its edge).
+        const menu = await page.evaluate(`(() => { const sbr = document.querySelector("#sidebar").getBoundingClientRect();
+          return [...document.querySelectorAll("#sidebar .hub-session-row [role=menuitem]")].map((x) => { const b = x.getBoundingClientRect();
+          return { t: x.textContent.trim(), shown: b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && b.left >= sbr.left - 1 && b.right <= sbr.right + 1
+            && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("[role=menuitem]") === x }; }); })()`) as { t: string; shown: boolean }[];
         await page.screenshot({ path: shotPath(SMOKE, cn, "session-menu") });
         await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-        check(`${tag}:sidebar:session-menu`, menu.length === 4 && menu.every((m) => m.shown), menu);
+        // The person (name and sign-in name), then Sign out — the nav's rows aren't repeated (Argon #10).
+        check(`${tag}:sidebar:session-menu`, menu.length === 2 && menu[0]!.t.includes("(admin)") && menu.every((m) => m.shown), menu);
         // Settings, opened: this device's theme and language, both on the screen.
         await page.click("#sidebar .hub-prefs > summary", { timeout: 5000 }); await page.waitForTimeout(300);
         const prefs = await page.evaluate(`[...document.querySelectorAll("#sidebar .hub-prefs .pop select")].map((x) => { const b = x.getBoundingClientRect();
@@ -222,6 +242,18 @@ try {
       } catch (e) { check(`${tag}:sidebar:menus`, false, String(e).slice(0, 200)); }
       check(`${tag}:sidebar:foot`, !!sb.foot && sb.foot.prefs && sb.foot.session && sb.foot.bottomGap <= 2 && sb.foot.rows.every((h: number) => h === rows[0]?.h), sb.foot);
     }
+    // Signed out (Argon #2): the sign-in page alone — no "Signed in" row and no failed list beside it.
+    try {
+      await page.goto(origin + "/ui/hub"); await page.waitForSelector("#sidebar .hub-session-row button", { timeout: 15000, state: "attached" });
+      if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(500); }
+      await page.click("#sidebar .hub-session-row button"); await page.waitForTimeout(300);
+      await page.click("#sidebar .hub-session-row [role=menuitem]:last-child"); await page.waitForSelector("#hubLogin", { timeout: 15000 });
+      await page.waitForTimeout(800);
+      const out = await page.evaluate(`(() => { const sb = document.querySelector("#sidebar"); const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== "hidden" && s.display !== "none" && b.width > 0 && b.height > 0; };
+        return { session: !!sb && [...sb.querySelectorAll(".hub-session-row, .dot.ok")].some(vis), failed: [...document.querySelectorAll(".error-state")].some(vis), signin: !!document.querySelector("#hubLogin") }; })()`) as any;
+      await page.screenshot({ path: shotPath(SMOKE, cn, "signed-out") });
+      check(`${cn}:signed-out`, out.signin && !out.session && !out.failed, out);
+    } catch (e) { check(`${cn}:signed-out`, false, String(e).slice(0, 200)); }
     const csp = await page.evaluate("window.__csp || []") as string[];
     check(`${cn}:hub-only`, foreign.length === 0, foreign);
     check(`${cn}:no-errors`, errs.length === 0 && csp.length === 0, { errs, csp });

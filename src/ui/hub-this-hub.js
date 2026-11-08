@@ -12,8 +12,8 @@ import { hubClient, compareGroups } from "./hub-client.js";
 
 register("hubThisHub", {
   en: {
-    title: "This Hub", lead: "Its name is what people see next to AgEnD Hub. The rest identifies this Hub and can't be changed here.",
-    name: "Hub name", namePlaceholder: "No name: shown as AgEnD Hub", nameHint: "Up to 64 characters.",
+    title: "This Hub", lead: "Its name is shown on the sign-in page and when you point at AgEnD Hub in the sidebar. The rest identifies this Hub and can't be changed here.",
+    name: "Hub name", noName: "No name", namePlaceholder: "No name: shown as AgEnD Hub", nameHint: "Up to 64 characters.",
     save: "Save name", removeName: "Remove name", saving: "Saving…",
     saved: "Saved. The Hub is reloading with its new name.", removed: "Name removed. The Hub is reloading.",
     hubId: "Hub ID", memberKey: "Member key fingerprint", memberKeyHint: "People compare this when they pair a fleet with this Hub.",
@@ -26,13 +26,13 @@ register("hubThisHub", {
     err_expired: "That took too long. Save again.",
     err_busy: "Another change to the Hub's settings is still finishing. Try again in a moment.",
     err_denied: "Only this Hub's administrator can rename it. Sign in again and retry.",
-    err_unavailable: "The Hub's settings can't be changed right now: its sealed settings don't check out. Ask the host owner to look at the Hub.",
-    err_recovery: "The rename didn't finish cleanly, and the Hub may stop until it is put right. Don't retry: ask the host owner to check the Hub on its computer.",
+    err_unavailable: "The Hub's settings can't be changed right now. Reload this page and try again.",
+    err_recovery: "The rename didn't finish. Reload this page to see the Hub's current name, then try again if it's not the one you want.",
     err_failed: "The name wasn't saved. Try again.",
   },
   "zh-TW": {
-    title: "這個 Hub", lead: "名稱會顯示在 AgEnD Hub 旁邊。其餘資料用來識別這個 Hub，不能在這裡變更。",
-    name: "Hub 名稱", namePlaceholder: "沒有名稱：顯示為 AgEnD Hub", nameHint: "最多 64 個字元。",
+    title: "這個 Hub", lead: "名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。",
+    name: "Hub 名稱", noName: "沒有名稱", namePlaceholder: "沒有名稱：顯示為 AgEnD Hub", nameHint: "最多 64 個字元。",
     save: "儲存名稱", removeName: "移除名稱", saving: "儲存中…",
     saved: "已儲存。Hub 正在以新名稱重新載入。", removed: "已移除名稱。Hub 正在重新載入。",
     hubId: "Hub ID", memberKey: "成員金鑰指紋", memberKeyHint: "有人把 Fleet 配對到這個 Hub 時，會比對這組指紋。",
@@ -45,8 +45,8 @@ register("hubThisHub", {
     err_expired: "等候太久了，請再儲存一次。",
     err_busy: "Hub 設定的另一項變更還在完成中，請稍後再試。",
     err_denied: "只有這個 Hub 的管理員可以改名。請重新登入後再試。",
-    err_unavailable: "目前無法變更 Hub 的設定：它的密封設定檢查不通過。請主機擁有者檢查 Hub。",
-    err_recovery: "改名沒有順利完成，Hub 可能會停止，直到問題排除。請不要重試，請主機擁有者在那台電腦上檢查 Hub。",
+    err_unavailable: "目前無法變更 Hub 的設定。請重新載入這個頁面後再試。",
+    err_recovery: "改名沒有完成。請重新載入這個頁面查看 Hub 目前的名稱，如果不是你要的名稱再試一次。",
     err_failed: "名稱沒有儲存，請再試一次。",
   },
 });
@@ -90,7 +90,8 @@ export function ThisHubCard() {
     reloadWhenRenamed(name);
   };
   const typed = draft.trim(), current = info.name || "";
-  return html`<section class="card hub-this-hub" data-section="this-hub"><h3>${ht("title")}</h3><p class="note">${ht("lead")}</p>
+  // The Hub's name shows here in plain sight (the sidebar's brand carries it only as its tooltip — the leader on Argon #18).
+  return html`<section class="card hub-this-hub" data-section="this-hub"><div class="hub-card-head"><h3>${ht("title")}</h3><span class="s-scope" data-hub-name=${current ? "set" : "none"}>${current || ht("noName")}</span></div><p class="note">${ht("lead")}</p>
     ${info.rename ? html`<form class="hub-this-form" onSubmit=${(e) => { e.preventDefault(); if (typed && typed !== current) save(typed); }}>
       <label class="field"><span>${ht("name")}</span><input id="hubThisName" maxlength="64" autocomplete="off" placeholder=${ht("namePlaceholder")} value=${draft} disabled=${busy}
         onInput=${(e) => { setDraft(e.target.value); setError(""); }} /><small class="note">${ht("nameHint")}</small></label>
