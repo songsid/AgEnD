@@ -4,6 +4,7 @@
 // with a fixed control and welcome answer, so the pages draw as a Hub with them on.
 //
 // Per page and case:
+//   (a self-test first: the overflow check run on five boxes with known answers; see overflowSelfTest)
 //   :overflow   nothing wider than the window: the page doesn't scroll sideways, and no element reaches past the right
 //               edge unless a scrolling box (overflow auto/scroll) inside the window holds it — a hidden or clipping box
 //               (the app shell is one) doesn't excuse it: that content is cut off. A box that scrolls sideways counts
@@ -52,7 +53,9 @@ const MEASURE = `(() => {
     const b = el.getBoundingClientRect();
     if (b.right <= W + 1) continue;
     let held = false;
-    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if ((o === "auto" || o === "scroll") && a.getBoundingClientRect().right <= W + 1) { held = true; break; } }
+    // The nearest box that doesn't show overflow decides (Fable #3424 F1): held only when it scrolls and fits the window;
+    // a hidden box — even one inside a scroller — cuts the content off.
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === "visible") continue; held = (o === "auto" || o === "scroll") && a.getBoundingClientRect().right <= W + 1; break; }
     if (!held) over.push(path(el) + " right=" + Math.round(b.right));
   }
   // A box that scrolls sideways: its content is wider than the box. Code, pre and tables may scroll on purpose.
@@ -144,7 +147,38 @@ async function open(c: Case, who: { cookie: string } | null, viewport: { width: 
   return { ctx, page, errs };
 }
 
+/**
+ * The :overflow check, checked (decision 4d8dd46e; Fable #3424 F1): five boxes drawn into a real Hub page, each measured by
+ * MEASURE itself. Flagged: content cut off by a hidden box, a box that scrolls sideways, and content cut off by a hidden box
+ * inside a scroller. Not flagged: a wide <pre> (it may scroll) and a box that fits. Changing either loop turns this red.
+ */
+const OVERFLOW_FIXTURES = `(() => {
+  const root = document.createElement("div"); root.id = "ui-gate-ov";
+  const box = (cls, css, parent) => { const el = document.createElement(cls === "pre" ? "pre" : "div"); if (cls && cls !== "pre") el.className = "ui-gate-ov-" + cls; if (cls === "pre") el.className = "ui-gate-ov-pre";
+    for (const [k, v] of css) el.style.setProperty(k, v); (parent || root).appendChild(el); return el; };
+  const wide = [["width", "3000px"], ["height", "20px"]];
+  box(null, wide, box("hidden", [["width", "300px"], ["overflow", "hidden"]]));
+  box(null, wide, box("scroll", [["width", "300px"], ["height", "60px"], ["overflow-y", "auto"]]));
+  box(null, wide, box(null, [["width", "280px"], ["overflow", "hidden"]], box("nested", [["width", "300px"], ["height", "60px"], ["overflow-y", "auto"]])));
+  box("pre", [["width", "300px"], ["overflow", "auto"], ["margin", "0"]]).textContent = "x".repeat(800);
+  box("fits", [["width", "200px"], ["height", "20px"]]);
+  root.style.setProperty("position", "absolute"); root.style.setProperty("left", "0"); root.style.setProperty("top", "0");
+  document.body.appendChild(root);
+})()`;
+async function overflowSelfTest(page: any): Promise<void> {
+  await page.evaluate(OVERFLOW_FIXTURES);
+  const m = await page.evaluate(MEASURE) as any;
+  await page.evaluate(`document.getElementById("ui-gate-ov")?.remove()`);
+  const flagged = [...new Set((m.over as string[]).map((o) => /ui-gate-ov-([a-z]+)/.exec(o)?.[1]).filter(Boolean))].sort();
+  check("gate:overflow-self-test", JSON.stringify(flagged) === JSON.stringify(["hidden", "nested", "scroll"]), { flagged, over: m.over });
+}
+
 try {
+  {
+    const { ctx, page } = await open(ALL[0]!, null, { width: 1366, height: 900 });
+    try { await page.goto(origin + "/ui/hub"); await page.waitForSelector("#hubLogin", { timeout: 15000 }); await overflowSelfTest(page); }
+    finally { await ctx.close(); }
+  }
   for (const [i, { c, width }] of runs.entries()) {
     const cn = width ? `desk-${width}` : caseName(c);
     const viewport = width ? { width, height: 900 } : c.device === "desk" ? { width: 1366, height: 900 } : { width: 390, height: 844 };
