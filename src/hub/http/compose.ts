@@ -166,7 +166,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         signedIn(); const who = personKeyString(await guard(() => ctx.requirePerson())), wanted = query.get("id");
         const state = deps.store.read();
         const attempt = [...state.pairings].reverse().find(p => p.automatic && personKeyString(p.owner) === who && p.expiresAt > core.now()
-          && (!wanted || p.id === wanted) && ["offered", "pending", "claimed"].includes(p.state));
+          && (!wanted || p.id === wanted) && ["offered", "pending", "claimed"].includes(p.state)
+          && (p.state !== "claimed" || state.fleets.some(f => f.id === p.fleetId && f.status === "active" && f.credentialHash)));
         if (wanted && !attempt) throw new HubProtocolError("expired");
         return send(res, 200, { attempt: attempt ? { id: attempt.id, state: attempt.state, fingerprint: attempt.fingerprint,
           expiresAt: attempt.expiresAt, ownerConfirmed: attempt.ownerConfirmed,

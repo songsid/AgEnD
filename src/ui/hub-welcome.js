@@ -39,6 +39,7 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
     setW(r); setAskable(cat && cat.ok && Array.isArray(cat.askable) ? cat.askable.length : null);
   };
   useEffect(() => { void load(); }, []);
+  const refresh = async () => { const r = await c.welcome(); if (live.current && r.ok) setW(r); };
   const head = html`<${PageHead} title=${hg("welcomeTitle", name || "")} scope=${hubName() || "Hub"} lead=${hg("welcomeLead")} />`;
   if (error) return html`<div class="col hub-welcome-page">${head}<${ErrorState} message=${hg("unknown")} onRetry=${load} /></div>`;
   if (!w) return html`<div class="col hub-welcome-page">${head}<div class="hub-welcome"><section class="card"><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section></div></div>`;
@@ -70,7 +71,7 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
           : !connectOk ? html`<p class="note">${chat.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
           : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`
           : !quick || !c.quickPairingV1 ? html`<p class="note">${hg("connectManual")}</p>` : null}
-        ${quickOn ? html`<${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} />` : null}
+        ${quickOn ? html`<${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} onConnected=${refresh} />` : null}
       </section>
     </div>
     ${!legacy && w.publish && w.publish.state !== "allow" && connectOk ? html`<p class="note" data-welcome="publish">${hg("publishNot")}</p>` : null}

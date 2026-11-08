@@ -9,8 +9,8 @@ const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict
 const time = (at) => new Date(at).toLocaleString();
 
 /** The page controls its own attempt only. The separate fleet-local proof is never performed by this component. */
-export function QuickPairingGuide({ allowed = false, publishAllowed = false }) {
-  const c = hubClient(), live = useRef(true), generation = useRef(0);
+export function QuickPairingGuide({ allowed = false, publishAllowed = false, onConnected = () => {} }) {
+  const c = hubClient(), live = useRef(true), generation = useRef(0), reported = useRef(null);
   const [attempt, setAttempt] = useState(null), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [label, setLabel] = useState(""), [error, setError] = useState(null), [mismatch, setMismatch] = useState(false), [stopped, setStopped] = useState(false);
   const [copied, setCopied] = useState(null), [full, setFull] = useState(false);
@@ -22,6 +22,7 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false }) {
     setError(null); setAttempt(old => r.attempt ? { ...(old?.id === r.attempt.id ? old : {}), ...r.attempt, memberOrigin: r.memberOrigin } : null);
   };
   useEffect(() => { linkHubOwnerCss(); live.current = true; void load(); return () => { live.current = false; generation.current++; }; }, []);
+  useEffect(() => { if (attempt?.connected && reported.current !== attempt.id) { reported.current = attempt.id; onConnected(); } }, [attempt?.connected, attempt?.id]);
   useEffect(() => {
     if (!attempt?.id || attempt.connected || mismatch || stopped) return;
     let pending = false;

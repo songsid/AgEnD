@@ -125,6 +125,7 @@ describe("quick pairing on the composed HTTPS surface", () => {
     expect((await r.call(second, "POST", `/hub/v1/fleets/${p.fleetId}/revoke`, { generation: 2 })).status).toBe(404);
     expect(r.deps.store.read().revocationVersion).toBe(version);
     expect((await r.call(second, "POST", `/hub/v1/fleets/${p.fleetId}/revoke`, { generation: 1 })).status).toBe(200);
+    expect((await r.call(r.admin, "GET", "/hub/v1/quick-pairing")).json.attempt).toBe(null);
     expect((await r.call(second, "GET", "/hub/v1/notices")).json.notices[0].revoked).toBe(true);
     expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toMatchObject([{ id: p.fleetId, generation: 2, status: "revoked" }]);
   });
