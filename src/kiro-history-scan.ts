@@ -20,6 +20,17 @@ export const KIRO_HISTORY_SOURCE_BYTES = 128 * 1024 * 1024;
 const HOUR = 3_600_000;
 const gone = (e: unknown) => (e as NodeJS.ErrnoException)?.code === "ENOENT";
 const signature = (path: string): string => { const s = statSync(path); return `${s.ino}:${s.size}:${s.mtimeMs}`; };
+const record = (v: unknown): Record<string, unknown> | null => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+function validateTuiMetadata(session: unknown): void {
+  const turns = record(record(record(session)?.session_state)?.conversation_metadata)?.user_turn_metadatas;
+  if (!Array.isArray(turns)) throw new Error("Kiro TUI history metadata is incomplete");
+  for (const value of turns) {
+    const turn = record(value), at = turn?.end_timestamp;
+    const validTime = typeof at === "string" ? Number.isFinite(Date.parse(at)) && Date.parse(at) > 0 : typeof at === "number" && Number.isFinite(at) && at > 0;
+    if (!turn || !Array.isArray(turn.message_ids) || !turn.message_ids.every(id => typeof id === "string") || !validTime)
+      throw new Error("Kiro TUI history turn metadata is incomplete");
+  }
+}
 
 export function scanKiroHistory(i: KiroHistoryInput): KiroHistoryOutput {
   const start = performance.now(), maxSources = Math.max(1, Math.min(i.maxSources ?? 8, 32));
@@ -76,6 +87,9 @@ export function scanKiroHistory(i: KiroHistoryInput): KiroHistoryOutput {
       const session = JSON.parse(readFileSync(path, "utf8")) as { cwd?: unknown; session_id?: unknown };
       sources++; readBytes += size;
       if (typeof session.cwd === "string" && i.cwds.includes(session.cwd)) {
+        // The live parser tolerates incomplete snapshots. A one-time reader cannot silently mark one complete:
+        // require the recognized turn structure; [] is a valid empty session and remains a zero-history control.
+        validateTuiMetadata(session);
         const lines = b === "-" ? [] : readFileSync(sidecar, "utf8").split("\n").filter(l => l.trim());
         // A partial sidecar must not become a durable one-time completion.
         for (const line of lines) JSON.parse(line);

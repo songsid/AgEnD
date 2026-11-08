@@ -435,6 +435,12 @@ export class CacheService {
         const current = () => !this.closing && !this.stopped && this.o.kiroDbPath?.() === dbPath && this.o.kiroHome?.() === home &&
           this.o.instances().some(i => i.name === inst.name && i.backend === inst.backend &&
             configured(i) === config);
+        const currentBinding = async (expected: string): Promise<boolean> => {
+          const nowCwds = await cwdKeys(inst.workingDirectory), nowHome = await identity(home);
+          const sharedNow = await this.shared(this.o.instances());
+          const nowSource = await identity(inst.kiroDbPath ?? dbPath);
+          return current() && !sharedNow.has(inst.name) && historyBinding([config, nowCwds, nowSource, nowHome]) === expected;
+        };
         let job = this.kiroHistory.get(inst.name) ?? await readHistoryJob(path);
         if (job?.phase === "done") { this.kiroHistory.set(inst.name, job); continue; }
         const life = await this.lifetimeFor(inst);
@@ -448,9 +454,7 @@ export class CacheService {
           const scan = this.o.kiroHistoryScan ?? (async (i: KiroHistoryInput) => (await import("./kiro-usage-run.js")).runKiroHistoryScan(i));
           const out = await scan({ dbPath: inst.kiroDbPath ?? dbPath, kiroHome: home, cwds,
             profile: job.profile, zone: job.zone, before: job.before, cursor: job.cursor });
-          const stillSource = await identity(inst.kiroDbPath ?? dbPath);
-          if (!current() || source !== stillSource || tuiSource !== await identity(home) || historyBinding(cwds) !== historyBinding(await cwdKeys(inst.workingDirectory)) ||
-            (await this.shared(this.o.instances())).has(inst.name)) return false;
+          if (!await currentBinding(binding)) return false;
           const next = structuredClone(job);
           mergeHistoryRows(next.rows, out.rows); next.cursor = out.cursor;
           if (out.done) {
@@ -466,6 +470,11 @@ export class CacheService {
         }
         if (!current()) return false;
         const nextLife = structuredClone(await this.lifetimeFor(inst));
+        // Saving a ready journal awaited filesystem work. It is not authority to import an old source: obtain the
+        // complete binding again before the first receipt. A matching durable receipt instead authorizes only
+        // finishing that immutable journal's rollup, even when the original source has since been replaced.
+        if (nextLife.kiroBackfill !== job.binding && !await currentBinding(job.binding)) return false;
+        if (!current()) return false;
         applyHistoryLifetime(nextLife, job);
         if (!await writeDays(this.lifetimePath(inst), nextLife)) throw new Error("Kiro history lifetime could not be saved");
         this.lifetimes.set(inst.name, nextLife);

@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,10 +12,11 @@ import { scanKiroHistory, type KiroHistoryInput } from "../src/kiro-history-scan
 import { runKiroHistoryScan } from "../src/kiro-usage-run.js";
 import { buildUsageReport } from "../src/usage-report.js";
 import { historyBefore } from "../src/kiro-history.js";
+import * as history from "../src/kiro-history.js";
 
 const DAY = 86_400_000, NOW = Date.UTC(2026, 10, 8, 12);
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { force: true, recursive: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) rmSync(dir, { force: true, recursive: true }); });
 const entry = (t: number) => ({ user: { content: { Prompt: { prompt: "abcd" } } }, request_metadata: {
   request_start_timestamp_ms: t, response_size: 8, context_usage_percentage: 1, model_id: "claude-sonnet-4.6",
 } });
@@ -166,6 +167,87 @@ describe("#3450 automatic historical Kiro backfill", () => {
     const scan = vi.fn(async (i: KiroHistoryInput) => scanKiroHistory(i));
     const svc = r.service({ instances: () => ["a", "b"].map(name => ({ name, backend: "kiro-cli", workingDirectory: r.cwd, ledgerPath: join(r.root, name, "cache-ledger.json") })), kiroHistoryScan: scan });
     await svc.kick(); expect(scan).not.toHaveBeenCalled(); await svc.stop();
+  });
+
+  it("revalidates the DB inode after the ready-journal write before the first receipt", async () => {
+    const r = rig(), replacement = rig();
+    r.classic("old", [NOW - 50 * DAY, NOW - 50 * DAY + 1000]); r.db.close();
+    replacement.classic("new", [NOW - 45 * DAY], r.cwd); replacement.db.close();
+    const original = history.writeHistoryJob;
+    let replaced = false;
+    vi.spyOn(history, "writeHistoryJob").mockImplementation(async (path, job) => {
+      const saved = await original(path, job);
+      if (saved && job.phase === "ready" && !replaced) {
+        expect(existsSync(join(r.own, "usage-lifetime.json"))).toBe(false);
+        renameSync(replacement.dbPath, r.dbPath); replaced = true;
+      }
+      return saved;
+    });
+    const svc = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) });
+    await svc.pass(); await svc.stop(); expect(replaced).toBe(true);
+    expect((await svc.lifetimeFor({ name: "k", backend: "kiro-cli", workingDirectory: r.cwd, ledgerPath: join(r.own, "cache-ledger.json") })).kiroBackfill).toBeUndefined();
+    expect(existsSync(join(r.own, "usage-lifetime.json"))).toBe(false);
+    const retry = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) }); await retry.kick();
+    expect((await retry.officeLevels(NOW)).k!.workTokens).toBe(2002); await retry.stop();
+  });
+
+  it("finishes a durable receipt's rollup after source replacement without re-enrollment", async () => {
+    const r = rig(), replacement = rig();
+    r.classic("old", [NOW - 50 * DAY, NOW - 50 * DAY + 1000]); r.db.close();
+    replacement.classic("new", [NOW - 45 * DAY], r.cwd); replacement.db.close();
+    const path = join(r.own, "usage-days.json"); mkdirSync(path);
+    const first = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) }); await first.pass(); await first.stop();
+    expect(JSON.parse(readFileSync(join(r.own, "usage-lifetime.json"), "utf8")).kiroBackfill).toBeTruthy();
+    renameSync(replacement.dbPath, r.dbPath); rmSync(path, { recursive: true });
+    const scan = vi.fn(async (i: KiroHistoryInput) => scanKiroHistory(i));
+    const retry = r.service({ kiroHistoryScan: scan }); await retry.kick();
+    expect(scan).not.toHaveBeenCalled();
+    expect((await retry.officeLevels(NOW)).k!.workTokens).toBe(4004);
+    expect((await retry.usageData()).instances[0]!.days.rows.flatMap(x => Object.values(x.m)).reduce((n, t) => n + t[0], 0)).toBe(2);
+    expect(JSON.parse(readFileSync(join(r.own, "kiro-history-v1.json"), "utf8")).phase).toBe("done"); await retry.stop();
+  });
+
+  it("rechecks newly shared workspaces after the ready-journal write", async () => {
+    const r = rig(); r.classic("old", [NOW - 50 * DAY]); r.db.close();
+    let shared = false;
+    const original = history.writeHistoryJob;
+    vi.spyOn(history, "writeHistoryJob").mockImplementation(async (path, job) => {
+      const saved = await original(path, job); if (saved && job.phase === "ready") shared = true; return saved;
+    });
+    const svc = r.service({ instances: () => (shared ? ["k", "other"] : ["k"]).map(name => ({ name, backend: "kiro-cli", workingDirectory: r.cwd,
+      ledgerPath: join(name === "k" ? r.own : join(r.root, "other"), "cache-ledger.json"), profile: "default" })), kiroHistoryScan: async i => scanKiroHistory(i) });
+    await svc.pass(); await svc.stop(); expect(shared).toBe(true);
+    expect(existsSync(join(r.own, "usage-lifetime.json"))).toBe(false);
+  });
+
+  it.each([
+    ["missing", undefined], ["null", null], ["text", "truncated"], ["object", {}],
+    ["null turn", [null]], ["text turn", ["truncated"]],
+    ["malformed message IDs", [{ message_ids: "truncated", end_timestamp: "2026-09-19T12:00:01Z" }]],
+    ["non-string message ID", [{ message_ids: [1], end_timestamp: "2026-09-19T12:00:01Z" }]],
+    ["missing end time", [{ message_ids: ["a"] }]],
+    ["invalid end time", [{ message_ids: ["a"], end_timestamp: "truncated" }]],
+  ])("malformed TUI metadata (%s) stays pending and imports after repair + restart", async (_name, metadata) => {
+    const r = rig(); r.tui("old", NOW - 50 * DAY); r.db.close();
+    const path = join(r.home, "sessions", "cli", "old.json"), valid = readFileSync(path, "utf8");
+    const malformed = JSON.parse(valid); malformed.session_state.conversation_metadata.user_turn_metadatas = metadata;
+    writeFileSync(path, JSON.stringify(malformed));
+    const svc = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) }); await svc.pass(); await svc.stop();
+    expect(existsSync(join(r.own, "kiro-history-v1.json"))).toBe(false);
+    writeFileSync(path, valid);
+    const retry = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) }); await retry.kick();
+    expect((await retry.officeLevels(NOW)).k!.workTokens).toBe(2002);
+    expect(JSON.parse(readFileSync(join(r.own, "kiro-history-v1.json"), "utf8")).phase).toBe("done"); await retry.stop();
+  });
+
+  it("a valid empty TUI session completes with no history", async () => {
+    const r = rig(); r.tui("empty", NOW - 50 * DAY); r.db.close();
+    const path = join(r.home, "sessions", "cli", "empty.json"), session = JSON.parse(readFileSync(path, "utf8"));
+    session.session_state.conversation_metadata.user_turn_metadatas = []; writeFileSync(path, JSON.stringify(session));
+    const svc = r.service({ kiroHistoryScan: async i => scanKiroHistory(i) }); await svc.kick();
+    expect((await svc.officeLevels(NOW)).k!.workTokens).toBe(0);
+    expect(existsSync(join(r.own, "kiro-history-v1.json"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(r.own, "kiro-history-v1.json"), "utf8")).phase).toBe("done"); await svc.stop();
   });
 });
 
