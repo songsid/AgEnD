@@ -1,0 +1,33 @@
+{
+  "scope": "Private directory Save coordinator; no production HTTP mount or AD UI capability",
+  "focused": {
+    "passed": 228,
+    "files": 4,
+    "skipped": 0,
+    "command": "vitest run tests/hub-directory-save.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-compose.test.ts --maxWorkers=1"
+  },
+  "finalTestOnlyCorrection": {
+    "detail": "The held-input mutation now assigns a valid different random UUID rather than a non-UUID string. Source unchanged; that selected control passed after correction.",
+    "passed": 1,
+    "intentionallyUnselected": 18
+  },
+  "https": {
+    "passed": 2,
+    "mode": "CA-verified ordinary HTTPS to the actual Hub runtime; original response and real proof/writer/SQL decision; candidate driver/probe inert",
+    "ready": "New exact-generation cookie accepted; old cookie refused",
+    "restored": "Replacement directory mount deliberately refuses, validated cold participant borrows same writer; forward epoch2, operations2, full notice rows2, all old sessions ended, no cookie, Hub ready"
+  },
+  "writer": "Explicit compensation deadline survives staging and final-proof clock expiry. Late post-floor refusal retains uncertain journal/floor; no epoch rollback.",
+  "limits": [
+    "The capture route is test-only",
+    "The coordinator is unmounted and grants no actor authority",
+    "No public AD route, browser, real directory/account, native manager, pilot or live fleet",
+    "No automatic startup compensation intent reconstruction",
+    "Durable notice delivery/ACK and the AD settings form remain unfinished"
+  ],
+  "sync": "Plain merge of alpha74c007427 including landed #3466; no tree change from approved parent c42b1cd87",
+  "types": {
+    "source": "passed: tsc --noEmit",
+    "tests": "passed: tsc -p tsconfig.test.json --noEmit"
+  }
+}

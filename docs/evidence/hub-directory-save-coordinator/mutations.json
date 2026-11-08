@@ -1,0 +1,83 @@
+{
+  "cases": [
+    {
+      "id": "C1-before-decision",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "acquires the response only"
+    },
+    {
+      "id": "C2-no-async-hook",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "async response capture"
+    },
+    {
+      "id": "C3-new-head",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "newer decision is never overwritten"
+    },
+    {
+      "id": "C4-original-actor",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "mismatched actor operation"
+    },
+    {
+      "id": "C5-head-before-compensation",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "newer decision is never overwritten"
+    },
+    {
+      "id": "C6-no-restored-cookie",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "failed replacement creates"
+    },
+    {
+      "id": "C7-busy",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "does not admit a second save"
+    },
+    {
+      "id": "C8-stop",
+      "assertionCaught": true,
+      "failedTests": 2,
+      "selection": "Stop permanently fences"
+    },
+    {
+      "id": "C9-host-lifetime",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "host lifetime fences"
+    },
+    {
+      "id": "C10-actor-snapshot",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "snapshots the actor"
+    },
+    {
+      "id": "C11-credential-snapshot",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "snapshots the actor"
+    },
+    {
+      "id": "C12-deadline",
+      "assertionCaught": true,
+      "failedTests": 2,
+      "selection": "compensation intent deadline"
+    },
+    {
+      "id": "C13-cleanup-owner",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "close retains and retries"
+    }
+  ],
+  "restored": true
+}
