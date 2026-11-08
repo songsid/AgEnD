@@ -251,10 +251,14 @@ export class ReplyButtonStore {
     return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL AND poll IS NULL
       AND (delivered_at IS NOT NULL OR (consumed_at IS NULL AND expires_at <= ?))`).all(now) as Row[]).map(fromRow);
   }
-  /** The next expiry or poll deadline still to come, for the one sweep timer. */
-  nextExpiry(now: number): number | null {
+  /**
+   * The earliest expiry or poll deadline not yet handled, for the one sweep timer — one already past included (#3197):
+   * a re-arm at or just after a deadline (a timer Node fired 1 ms early, another reply's bind before the sweep ran) must
+   * keep it, not skip to the next one ahead. A sweep handles every past one, so a past value never repeats.
+   */
+  nextExpiry(): number | null {
     const r = this.db.prepare(`SELECT MIN(expires_at) AS t FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
-      AND expires_at > ? AND ((poll IS NULL AND consumed_at IS NULL) OR (poll IS NOT NULL AND closed_at IS NULL))`).get(now) as { t: number | null };
+      AND ((poll IS NULL AND consumed_at IS NULL) OR (poll IS NOT NULL AND closed_at IS NULL))`).get() as { t: number | null };
     return r.t ?? null;
   }
 
