@@ -30,6 +30,15 @@ const txt = (p: AppPage) => p.root.textContent || "";
 const button = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === text);
 
 describe("quick-pairing guide preserves each proof and user intent", () => {
+  it.each([false,true])("#3403: accepting the code or Hub confirmation (%s) does not finish the fleet-local step",async ownerConfirmed=>{
+    const p=await mount(fake({quickPairing:async()=>({ok:true,attempt:{...pending,ownerConfirmed}})}));
+    expect(p.root.querySelector(".hub-steps li")?.className).toBe("now");
+  });
+  it("#3403: only the claimed state proves local completion while the pinned connection is still pending",async()=>{
+    const p=await mount(fake({quickPairing:async()=>({ok:true,attempt:{...pending,state:"claimed",ownerConfirmed:true}})}));
+    const step=p.root.querySelector(".hub-steps li");expect(step?.className).toBe("done");
+    expect(step?.textContent).toContain("Waiting for your fleet's pinned connection");
+  });
   it("does not mint on entry; one submit shows the member port, code and local confirmation instructions", async () => {
     const c = fake(), p = await mount(c);
     expect(c.createQuickPairing).not.toHaveBeenCalled();

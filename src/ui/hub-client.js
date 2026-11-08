@@ -320,7 +320,11 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   };
   const step = async (name, body) => {
     const r = await confirm.api(`/api/hub/member/pairing/${name}`, { method: "POST", headers: { "Idempotency-Key": confirm.newKey("hub") }, body: JSON.stringify(body || {}) });
-    if (confirm.isPendingResponse(r)) { void Promise.resolve(confirm.track(r.body.pending_change, "hub")).catch(() => {}); return { ok: true, pendingConfirmation: true, pairing: await pairingNow() }; }
+    if (confirm.isPendingResponse(r)) {
+      const settled = Promise.resolve(confirm.track(r.body.pending_change, "hub"));
+      void settled.catch(() => {});
+      return { ok: true, pendingConfirmation: true, settled, pairing: await pairingNow() };
+    }
     if (r.status === 404) return { ok: false, error: "unavailable" };
     return r.body && typeof r.body === "object" ? r.body : { ok: false, error: "unsaved" };
   };
@@ -352,7 +356,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
       // #3115 r2: exactly the pairing shown — its hub and bindingId; the server refuses any other (a replacement, a re-pair).
       const hubId = shown && (shown.hub ? shown.hub.hubId : shown.hubId), binding = shown && shown.binding;
       if (!hubId || !binding) return { ok: false, error: "conflict" };
-      const r = await step("disconnect", { hubId, binding }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
+      const r = await step("disconnect", { hubId, binding }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true, settled: r.settled } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
     async cancel() { const r = await confirm.api("/api/hub/member/pairing/cancel", { method: "POST", body: "{}" }); return r.ok && r.body && r.body.pairing ? r.body.pairing : pairingNow(); },
     /** The local status, every pollMs while visible (one request at a time; none while hidden); stops with the last listener. */
     subscribe(fn) { listeners.add(fn); if (!timer) timer = timers.setTimeout(tick, pollMs); return () => { listeners.delete(fn); if (!listeners.size && timer) { timers.clearTimeout(timer); timer = null; } }; },

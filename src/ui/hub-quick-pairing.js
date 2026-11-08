@@ -57,6 +57,8 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
     await load(id);
   };
   const copy = async (key, value) => { try { await navigator.clipboard.writeText(value); if (live.current) setCopied(key); } catch { /* text remains selectable */ } };
+  // The Hub cannot observe the fleet-local button. Only its later claim proves that step completed; accepting
+  // the code or confirming on the Hub alone does not. Connected still requires the pinned ready link below.
   if (loading) return html`<${Skeleton} variant="rows" lines=${2} />`;
   if (!allowed && !attempt && !error) return null;
   return html`<div data-quick-pairing="guide">
@@ -68,9 +70,9 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
       <p class="note">${hq("labelHint")} ${hq("privacy")}</p><div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !label.trim()}>${hq(stopped ? "again" : "start")}</button></div></form>` : null
       : attempt.connected ? html`<p class="note" role="status"><b>${hq("connected")}</b></p><h4>${hq("publish")}</h4><p class="note">${hq(publishAllowed ? "publishHint" : "publishNo")}</p>
         ${allowed ? html`<div class="field-row"><button type="button" class="btn" onClick=${() => { generation.current++; setAttempt(null); }}>${hq("another")}</button></div>` : null}`
-      : html`<ol class="hub-steps"><li class=${attempt.state === "offered" ? "now" : "done"}><div class="hub-step-body"><h4>${hq("localTitle")}</h4><p class="note">${hq("local")}</p>
+      : html`<ol class="hub-steps"><li class=${attempt.state === "claimed" ? "done" : "now"}><div class="hub-step-body"><h4>${hq("localTitle")}</h4><p class="note">${hq("local")}</p>
         <span class="note">${hq("address")}</span><code class="hub-fp-full">${attempt.memberOrigin}</code>
-        ${attempt.code ? html`<span class="note">${hq("code")}</span><code class="hub-fp-groups">${attempt.code}</code><button type="button" class="btn btn-sm" onClick=${() => copy("code", attempt.code)}>${hq(copied === "code" ? "copied" : "copy")}</button>` : html`<p class="note">${hq("waiting")}</p>`}
+        ${attempt.code ? html`<span class="note">${hq("code")}</span><code class="hub-fp-groups">${attempt.code}</code><button type="button" class="btn btn-sm" onClick=${() => copy("code", attempt.code)}>${hq(copied === "code" ? "copied" : "copy")}</button>` : html`<p class="note">${hq(attempt.state === "claimed" ? "claim" : "waiting")}</p>`}
         <p class="note">${hq("expires", time(attempt.expiresAt))}</p></div></li>
         <li class=${attempt.fingerprint ? "now" : ""}><div class="hub-step-body"><h4>${hq("compareTitle")}</h4><p class="note">${hq("compare")}</p>
           ${attempt.fingerprint ? html`<code class="hub-fp-groups">${compareGroups(attempt.fingerprint)}</code>
