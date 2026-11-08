@@ -14,6 +14,7 @@
  * - `close()` forgets the links. S5 closes the DB.
  */
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
+import { handleHubSettingsHttp } from "../settings-api.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -341,6 +342,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value) => send(res, status, value),
       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
+    // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).
+    if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
+      send: (status, value) => send(res, status, value),
+      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
+      audit: (event) => core.atomic((_db, tx) => core.audit(tx, { requestId: event.requestId, actor: { kind: "person", person: event.actor.person }, action: event.action,
+        result: event.result, ...(event.reasonCode ? { reasonCode: event.reasonCode } : {}) })) })) return;
     if (path.startsWith("/hub/v1/admin/")) return admin(req, res, path, ctx, method, signedIn, csrf, body, guard);
     throw new HttpError(404, "not-found");
   }
