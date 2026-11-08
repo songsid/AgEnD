@@ -246,9 +246,13 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     return { receiptId: op.id, directoryEpoch: op.directoryEpoch };
   };
   const installDirectory = (p: PreparedDirectory, current: () => boolean, original?: HubDirectorySettingsOperation) => {
-    const check = () => {
+    const checkTime = () => {
       const t = now();
-      if (!Number.isSafeInteger(t) || t < p.createdAt || t >= p.expiresAt || !currentProof(current)) throw new HubSettingsError("denied");
+      if (!Number.isSafeInteger(t) || t < p.createdAt || t >= p.expiresAt) throw new HubSettingsError("denied");
+    };
+    const check = () => {
+      checkTime();
+      if (!currentProof(current)) throw new HubSettingsError("denied");
       image();
       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
     };
@@ -273,6 +277,8 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       if (!same(directoryImage(JSON.parse(readDirectoryFile(id, "old-hub")), readDirectoryFile(id, "old-manifest"), readDirectoryFile(id, "old-secret", 4096)), p.before)
         || !same(directoryImage(JSON.parse(readDirectoryFile(id, "new-hub")), readDirectoryFile(id, "new-manifest"), readDirectoryFile(id, "new-secret", 4096)), after)
         || sha(readDirectoryFile(id, "receipt")) !== request.receiptSha) throw new HubSettingsError("stale");
+      // Proof and material checks may cross either bound; fence the callback-free SQL transition with a fresh sample.
+      checkTime();
     };
     try {
       if (original) decision().compensate(original.id, request, decisionCheck); else decision().decide(request, decisionCheck);

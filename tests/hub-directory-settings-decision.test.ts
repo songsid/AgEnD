@@ -382,6 +382,35 @@ describe("directory-v2 uses the SAME sealed settings writer", () => {
     expect(() => w.recover()).toThrow(/uncertain/); expect(w.pending()).toBe(true);
     expect(r.readHub()).toEqual(old); expect(r.secret()).toBe(oldSecret);
   });
+  it.each([
+    { name: "expires at the upper bound", advance: 300_000, allowed: false },
+    { name: "moves before the preparation", advance: -1, allowed: false },
+    { name: "stays inside the bounds", advance: 299_999, allowed: true },
+  ])("rechecks the writer clock after the final proof when it $name", async ({ advance, allowed }) => {
+    const r = await writerRig(), w = r.writer(), old = r.readHub(), oldSecret = r.secret(), oldManifest = r.manifest();
+    let proofs = 0;
+    const current = () => { if (++proofs === 4) r.tick(advance); return true; };
+    const p = w.directory!.prepare(r.candidate(), r.actor, current);
+    if (allowed) {
+      expect(w.directory!.commit(p.ref, r.actor, current)).toMatchObject({ directoryEpoch: 1 });
+      expect(r.readHub().directory.url).toBe("ldaps://new.example.test"); expect(r.secret()).toBe("\ufeff new secret \n");
+      expect(r.counts()).toEqual({ hub_settings_operations: 1, hub_settings_security_notices: 1, hub_audit: 1 });
+      expect(readHubSessionEpoch(r.db)).toBe(1); expect(w.pending()).toBe(false); expect(() => r.verifies()).not.toThrow();
+    } else {
+      expect(() => w.directory!.commit(p.ref, r.actor, current)).toThrow(/denied/);
+      expect(r.readHub()).toEqual(old); expect(r.secret()).toBe(oldSecret); expect(r.manifest()).toBe(oldManifest);
+      expect(r.counts()).toEqual({ hub_settings_operations: 0, hub_settings_security_notices: 0, hub_audit: 0 });
+      expect(r.policy().generation).toBe("generation-old"); expect(readHubSessionEpoch(r.db)).toBe(0);
+      expect(r.db.prepare("SELECT state FROM hub_sessions").get()).toEqual({ state: "active" });
+      expect(w.pending()).toBe(true); expect(() => w.recover()).toThrow(/uncertain/);
+      r.restart();
+      const recovered = r.writer(); expect(() => recovered.recover()).toThrow(/uncertain/); expect(recovered.pending()).toBe(true);
+      expect(r.readHub()).toEqual(old); expect(r.secret()).toBe(oldSecret); expect(r.manifest()).toBe(oldManifest);
+      expect(readHubSessionEpoch(r.db)).toBe(0); expect(r.counts().hub_settings_operations).toBe(0);
+    }
+    expect(proofs).toBe(4); expect(r.floor.read()).toBe(1);
+    expect(() => w.directory!.commit(p.ref, r.actor, () => true)).toThrow(/expired/);
+  });
   it("an obsolete installer stops before its next active-file effect when a new durable head appears", async () => {
     const r = await writerRig(), w = r.writer(), oldManifest = r.manifest(), old = r.readHub();
     const p = w.directory!.prepare(r.candidate(), r.actor, () => true);
