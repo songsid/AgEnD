@@ -71,7 +71,10 @@ try {
           await ctx.addCookies([cookie(hubCookie, r.webOrigin), cookie(flowCookie, r.webOrigin), cookie("agend_session", safe)]);
           await ctx.route("**/*", (route: any) => {
             const u = new URL(route.request().url()); if (![r.webOrigin, safe, unsafe].includes(u.origin)) return route.abort();
-            if (assetRoot && u.pathname === "/ui/js/hub-company-join.js") return route.fulfill({ path: join(resolve(assetRoot), "hub-company-join.js"), contentType: "application/javascript" });
+            if (assetRoot && (u.pathname.startsWith("/assets/") || u.pathname.startsWith("/ui/js/"))) {
+              const candidate = join(resolve(assetRoot), u.pathname.split("/").pop()!);
+              if (existsSync(candidate)) return route.fulfill({ path: candidate, contentType: candidate.endsWith(".css") ? "text/css" : "application/javascript" });
+            }
             return route.continue();
           });
           const page = await ctx.newPage(), errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
