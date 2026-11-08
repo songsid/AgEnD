@@ -1,0 +1,186 @@
+{
+  "scope": "static design only; no production behavior tested",
+  "base": "9b06e6bd",
+  "checks": [
+    {
+      "screen": "basics",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "01-basics-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "basics",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "02-basics-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "directory",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "03-directory-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "directory",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "04-directory-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "trust",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "05-trust-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "trust",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "06-trust-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "review",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "07-review-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "review",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "08-review-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "existing",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "09-existing-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "existing",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "10-existing-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "readonly",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "11-readonly-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "readonly",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "12-readonly-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "error",
+      "lang": "zh-TW",
+      "size": "desktop",
+      "theme": "light",
+      "file": "13-error-zh-TW-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "error",
+      "lang": "zh-TW",
+      "size": "phone",
+      "theme": "dark",
+      "file": "14-error-zh-TW-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "directory",
+      "lang": "en",
+      "size": "desktop",
+      "theme": "light",
+      "file": "15-directory-en-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "directory",
+      "lang": "en",
+      "size": "phone",
+      "theme": "light",
+      "file": "16-directory-en-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    },
+    {
+      "screen": "existing",
+      "lang": "en",
+      "size": "desktop",
+      "theme": "dark",
+      "file": "17-existing-en-desktop.png",
+      "width": 1366,
+      "scroll": 1366,
+      "fonts": true
+    },
+    {
+      "screen": "existing",
+      "lang": "en",
+      "size": "phone",
+      "theme": "dark",
+      "file": "18-existing-en-phone.png",
+      "width": 390,
+      "scroll": 390,
+      "fonts": true
+    }
+  ]
+}
