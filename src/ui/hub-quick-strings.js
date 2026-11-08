@@ -4,7 +4,7 @@ register("hubQuick", {
   en: {
     start: "Connect my fleet", label: "Fleet name", labelHint: "A name you and your Hub admin will recognise.",
     labelExample: "For example, my laptop", privacy: "Connect only a fleet you control. Your other Hub sessions, connected fleets and Hub admin will be notified.",
-    localTitle: "Confirm on your fleet", local: "On your fleet's web page, open Settings → Hub. Turn on Hub membership, then paste this address into the Hub address field and enter the one-time code. Confirm the local prompt there.",
+    localTitle: "Confirm on your fleet", local: "On your fleet's web page, open Settings → Hub. Turn on Allow this fleet to connect to a Hub, then paste this address into the Hub address field and enter the one-time code. Confirm the local prompt there.",
     remoteSteps: "Finish the fingerprint check on the Hub too.", ownerStep: "On the Hub, compare this fingerprint and confirm your pairing.", policyStep: "The Hub checks its group policy, or waits for its administrator's approval.",
     address: "Hub address", code: "One-time code", copy: "Copy", copied: "Copied", expires: "Expires {0}",
     compareTitle: "Compare the fingerprints", compare: "On your fleet, open Settings → Hub → Waiting for approval. Compare its fingerprint with this one. Confirm locally on your fleet too.",
@@ -23,7 +23,7 @@ register("hubQuick", {
   "zh-TW": {
     start: "連接我的 Fleet", label: "Fleet 名稱", labelHint: "取一個你和 Hub 管理員都認得的名字。", labelExample: "例如：我的筆電",
     privacy: "只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。",
-    localTitle: "在你的 Fleet 確認", local: "在你的 Fleet 網頁開啟「設定 → Hub」，啟用 Hub 成員資格，將以下位址貼到「Hub 位址」欄位，再輸入一次性代碼，並在當地確認提示。",
+    localTitle: "在你的 Fleet 確認", local: "在你的 Fleet 網頁開啟「設定 → Hub」，開啟「允許這個 Fleet 連線至 Hub」，將以下位址貼到「Hub 位址」欄位，再輸入一次性代碼，並在當地確認提示。",
     remoteSteps: "也要在 Hub 完成指紋比對。", ownerStep: "在 Hub 比對這個指紋，並確認你的配對。", policyStep: "Hub 會檢查群組規則，或等待管理員核准。",
     address: "Hub 位址", code: "一次性代碼", copy: "複製", copied: "已複製", expires: "有效至 {0}",
     compareTitle: "比對指紋", compare: "在你的 Fleet 開啟「設定 → Hub → 等待核准」，將當地指紋與下方逐一比對，也要在你的 Fleet 確認。",

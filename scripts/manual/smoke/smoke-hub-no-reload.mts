@@ -56,7 +56,9 @@ try {
     const state = await page.evaluate(() => ({ marker: (window as any).__noReloadMarker === 1, mark: document.body.dataset.hub ?? null,
       reloadAsked: /Reload page|重新整理頁面/.test(document.body.innerText), code: !!document.querySelector("#hubCode, [id*=hubCode], input[name=code]") }));
     const on = !!fm.getRawFleetConfig()?.hub_member?.enabled;
-    await page.locator("#hub-membership").scrollIntoViewIfNeeded();
+    // The fields when they are there (on a phone they sit below the fixed tab bar), else the membership card.
+    await page.evaluate(() => { const el = document.querySelector("#hub-connect") ?? document.querySelector("#hub-membership"); el?.scrollIntoView({ block: "center" }); });
+    await page.waitForTimeout(300);
     await page.screenshot({ path: shotPath(SMOKE, cn, `${LABEL}-after-confirm`) });
     const cspNow = await csp();
     if (BASE) { r[cn] = { fields, ...state, on, errs }; await ctx.close(); continue; }
