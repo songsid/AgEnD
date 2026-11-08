@@ -76,6 +76,16 @@ async function rig(supported = true) {
     unknown: () => { known = false; }, known: () => { known = true; }, disableAdmin: () => { adminEligible = false; }, fence: () => { live = false; } };
 }
 
+async function manualAttempt(r: Awaited<ReturnType<typeof rig>>) {
+  const browser = await r.signIn(r.colleague.login);
+  const offer = await r.call(r.admin, "POST", "/hub/v1/admin/pairings", { login: r.colleague.login }); expect(offer.status).toBe(200);
+  const pending = r.deps.pairing.pair({ code: offer.json.code });
+  expect((await r.call(browser, "POST", `/hub/v1/pairings/${pending.pairingId}/confirm`, { fingerprint: pending.fingerprint })).status).toBe(200);
+  return { browser, pending, resource: { kind: "fleet" as const, id: pending.fleetId, revision: 1, owner: r.colleague.key },
+    approve: () => r.call(r.admin, "POST", `/hub/v1/admin/pairings/${pending.pairingId}/approve`, { fingerprint: pending.fingerprint }),
+    claim: () => r.deps.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret }) };
+}
+
 describe("the complete group control on the actual Hub HTTPS factory", () => {
   it("starts off, exposes only the configured admin's editor, and keeps eligible no-action sign-in open", async () => {
     const refreshed = vi.spyOn(HubServer.prototype, "refreshAuthorization");
@@ -137,7 +147,26 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     await r.save({ ...await r.readPolicy(), denies: [{ person: ADMIN.key, deny: ["pair_fleet"] }] });
     expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toEqual([{ id: pending.fleetId, label: null, status: "suspended" }]);
   });
-  it("enforces enabled group permission and the fleet quota through the composed credential-issuance path", async () => {
+  it.each(["none", "unknown"])("preserves explicit admin-approved manual pairing with %s self-service membership", async mode => {
+    const r = await rig(); await r.save(await r.proposal());
+    const browser = await r.signIn(r.colleague.login), owner = r.colleague.key;
+    r.read.mockClear(); if (mode === "unknown") r.unknown();
+    const offer = await r.call(r.admin, "POST", "/hub/v1/admin/pairings", { login: r.colleague.login });
+    expect(offer.status).toBe(200);
+    const pending = r.deps.pairing.pair({ code: offer.json.code });
+    expect((await r.call(browser, "POST", `/hub/v1/pairings/${pending.pairingId}/confirm`, { fingerprint: pending.fingerprint })).status).toBe(200);
+    expect((await r.call(r.admin, "POST", `/hub/v1/admin/pairings/${pending.pairingId}/approve`, { fingerprint: pending.fingerprint })).status).toBe(200);
+    const claiming = r.deps.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret });
+    await expect(claiming).resolves.toMatchObject({ status: "approved" }); const result = await claiming;
+    expect(result.status).toBe("approved");
+    if (result.status !== "approved") throw Error("manual pairing did not issue a credential");
+    expect(r.deps.pairing.authenticate(result.credential)).toMatchObject({ fleetId: pending.fleetId, owner });
+    expect(r.read).not.toHaveBeenCalled();
+    expect(r.deps.groups!.resourceState({ kind: "fleet", id: pending.fleetId, revision: 1, owner })).toMatchObject({ source: "manual", state: "active" });
+    expect((await r.call(browser, "GET", "/hub/v1/me/welcome")).json).toMatchObject({
+      chat: { state: mode === "unknown" ? "unknown" : "deny" }, publish: { state: mode === "unknown" ? "unknown" : "deny" }, connect: { state: mode === "unknown" ? "unknown" : "deny" } });
+  });
+  it("allows explicit manual approval above the automatic fleet limit without granting self-service", async () => {
     const r = await rig(); await r.save(await r.proposal());
     const claim = async (owner: DirectoryPerson["key"]) => {
       const ctx = { requestId: randomUUID(), current: async () => ({ kind: "directory" as const, person: owner, sessionId: "test-owner-authority" }), requirePerson: async () => owner,
@@ -147,15 +176,73 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
       await r.deps.pairing.approve(ctx, pending.pairingId, pending.fingerprint);
       return r.deps.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret });
     };
-    await expect(claim(r.colleague.key)).rejects.toThrow("denied");
-    expect(r.deps.store.read().fleets).toEqual([]);
-    expect(r.db!.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
+    await expect(claim(r.colleague.key)).resolves.toMatchObject({ status: "approved" });
     await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
     await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
-    await expect(claim(ADMIN.key)).rejects.toThrow("denied");
-    expect(r.deps.store.read().fleets).toHaveLength(2);
+    await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
+    expect(r.deps.store.read().fleets).toHaveLength(4);
     expect(r.db!.prepare("SELECT source,state FROM hub_group_resources").all()).toEqual([
-      { source: "group", state: "active" }, { source: "group", state: "active" }]);
+      { source: "manual", state: "active" }, { source: "manual", state: "active" },
+      { source: "manual", state: "active" }, { source: "manual", state: "active" }]);
+  });
+  it("blocks an explicit person deny on manual approval and suspends an existing exact manual fleet only after that deny", async () => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
+    await r.save({ ...await r.readPolicy(), denies: [{ person: r.colleague.key, deny: ["pair_fleet"] }] });
+    expect((await attempt.approve()).status).toBe(403); expect(r.deps.store.read().fleets).toEqual([]);
+    await r.save({ ...await r.readPolicy(), denies: [] }); expect((await attempt.approve()).status).toBe(200); await attempt.claim();
+    r.unknown(); await r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true });
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ source: "manual", state: "active" });
+    r.known(); await r.save({ ...await r.readPolicy(), groups: [] });
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active" });
+    await r.save({ ...await r.readPolicy(), denies: [{ person: r.colleague.key, deny: ["pair_fleet"] }] });
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "suspended" });
+  });
+  it.each(["disabled", "gone", "unavailable"] as const)("never lets manual approval or claim override %s owner eligibility", async reason => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
+    const original = r.directory.checkEligibility.bind(r.directory);
+    const refuse = async (key: DirectoryPerson["key"]) => key.objectId === r.colleague.key.objectId
+      ? { eligible: false as const, reason } : original(key);
+    r.directory.checkEligibility = refuse;
+    expect((await attempt.approve()).status).toBe(reason === "unavailable" ? 503 : 403);
+    expect(r.deps.store.read().pairings[0]!.adminApproved).toBe(false);
+    r.directory.checkEligibility = original; expect((await attempt.approve()).status).toBe(200);
+    r.directory.checkEligibility = refuse; await expect(attempt.claim()).rejects.toThrow();
+    expect(r.deps.store.read().fleets).toEqual([]); expect(r.db!.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
+  });
+  it("holds directory outages without mutation and suspends an existing manual fleet after authoritative ineligibility", async () => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
+    expect((await attempt.approve()).status).toBe(200); await attempt.claim();
+    const original = r.directory.checkEligibility.bind(r.directory);
+    r.directory.checkEligibility = key => key.objectId === r.colleague.key.objectId
+      ? Promise.resolve({ eligible: true, person: { ...r.colleague, key: ADMIN.key } }) : original(key);
+    await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active" });
+    let reason: "unavailable" | "disabled" = "unavailable";
+    r.directory.checkEligibility = key => key.objectId === r.colleague.key.objectId
+      ? Promise.resolve({ eligible: false as const, reason }) : original(key);
+    await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active" });
+    reason = "disabled";
+    await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "suspended" });
+  });
+  it("cannot finish a held manual approval after the administrator signs out", async () => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
+    const original = r.directory.checkEligibility.bind(r.directory), entered = gate<boolean>(), release = gate<boolean>();
+    r.directory.checkEligibility = async key => { if (key.objectId === r.colleague.key.objectId) { entered.resolve(true); await release.promise; } return original(key); };
+    const approving = attempt.approve(); await entered.promise;
+    expect((await r.call(r.admin, "DELETE", "/hub/v1/session")).status).toBe(200); release.resolve(true);
+    expect((await approving).status).toBe(401); expect(r.deps.store.read().pairings[0]!.adminApproved).toBe(false);
+    expect(r.deps.store.read().fleets).toEqual([]);
+  });
+  it("requires the exact persisted approver, not a boolean or a different directory person", async () => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r); expect((await attempt.approve()).status).toBe(200);
+    const change = (approvedBy?: DirectoryPerson["key"]) => r.deps.store.mutate({ at: Date.now(), requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.approver", result: "completed" }, state => {
+      const row = state.pairings[0]!; if (approvedBy) row.approvedBy = approvedBy; else delete row.approvedBy;
+    });
+    change(r.colleague.key); await expect(attempt.claim()).rejects.toThrow(); expect(r.deps.store.read().fleets).toEqual([]);
+    change(); await expect(attempt.claim()).resolves.toEqual({ status: "pending" }); expect(r.deps.store.read().fleets).toEqual([]);
+    expect((await attempt.approve()).status).toBe(200); await expect(attempt.claim()).resolves.toMatchObject({ status: "approved" });
   });
   it("shows legacy only for intact never-enabled repair; enabled repair stays unavailable while sign-in and admin repair remain open", async () => {
     const r = await rig(), original = await r.readPolicy();
@@ -163,6 +250,8 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     replace({ ...original, generation: "older-generation" });
     expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.mode).toBe("legacy");
     expect((await r.call(r.admin, "GET", r.path)).json).toMatchObject({ binding: "repair-required", policy: null });
+    const manual = await manualAttempt(r); expect((await manual.approve()).status).toBe(200);
+    await expect(manual.claim()).resolves.toMatchObject({ status: "approved" });
     replace(original); await r.save(await r.proposal()); const enabled = await r.readPolicy(); replace({ ...enabled, generation: "older-generation" });
     expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).status).toBe(503);
     expect((await r.call(r.admin, "GET", r.path)).json).toMatchObject({ binding: "repair-required", policy: null });

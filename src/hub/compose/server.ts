@@ -289,7 +289,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
         generation: groupGeneration, directory, audit, current: live, now });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
-      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator,
+      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
         policy, binding,
         audit, current: live, now, version: () => store.read().revocationVersion,
         advanceAuthorization: (database, resource) => {
@@ -309,6 +309,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
         enrollment: { prepare: (resource, ctx) => groups.prepareEnrollment(resource, ctx),
+          prepareManual: (resource, approvedBy, ctx) => groups.prepareManualEnrollment(resource, approvedBy, ctx),
           atomic: work => db.transaction(() => work(db)).immediate() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
