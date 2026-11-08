@@ -73,7 +73,7 @@ const oldRef = process.env.OLD_REF ?? "7ab23b6c6", old = (file: string) => execF
 let api: ReturnType<typeof createHubMemberPairingApi> | undefined, member: HubMemberClient | undefined, inboxDb: Database.Database | undefined, online = false, memberLive = true;
 const extraPairings: ReturnType<typeof createHubMemberPairingApi>[] = [];
 const contexts: any[] = [];
-const shot = async (p: any, name: string) => { await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png"); };
+const shot = async (p: any, name: string) => { await p.evaluate(() => document.fonts.ready); await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png"); };
 async function context(c: any, oldClient = false) {
   const ctx = await fx.browser.newContext({ viewport: c.device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 900 },
     isMobile: c.device === "phone", hasTouch: c.device === "phone", locale: c.lang === "en" ? "en-US" : "zh-TW", colorScheme: c.theme, ignoreHTTPSErrors: true }); contexts.push(ctx);
@@ -133,17 +133,25 @@ try {
       const code = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").first().innerText()).trim(); check(tag + " one-time code", /^[a-f0-9]{12}$/.test(code));
       await shot(a.p, tag + "-code");
       const other = await context(c); await signIn(other.p, owner.login);
-      const mh = await attachMember(i), local = await context(c);
+      const mh = await attachMember(i);
+      // Fleet theme/language follow the host's preferences, overriding browser storage after sign-in.
+      fx.fm.webPrefs.write("operator", new Map<string, unknown>([["theme", c.theme], ["lang", c.lang]]));
+      const local = await context(c);
       const issued = await (await fetch(fx.base + "/auth/issue-code", { method: "POST", headers: { "X-Agend-Token": fx.fm.webToken } })).json() as any;
       await local.p.goto(fx.base + "/signin"); await local.p.fill("#code", issued.code); await local.p.click("#go"); await local.p.waitForURL(fx.base + "/ui");
       await local.p.goto(fx.base + "/settings/hub"); await local.p.fill("#hubAddress", memberOrigin); await local.p.fill("#hubCode", code);
       await local.p.locator("#hub-connect form button[type=submit]").click(); await apply(local.p, ".hub-local-confirm");
+      check(tag + " fleet requested theme and language", await local.p.evaluate(({ theme, lang }: any) => document.documentElement.dataset.theme === theme && document.documentElement.lang === (lang === "zh-TW" ? "zh-Hant" : lang), c));
       await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).waitFor();
       const shown = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").last().innerText()).replace(/\s/g, ""), localShown = (await local.p.locator(".hub-pending .hub-fp-groups").innerText()).replace(/\s/g, "");
-      check(tag + " exact same fingerprint", shown === localShown && shown.length === 32); await shot(a.p, tag + "-fingerprint"); await shot(local.p, tag + "-local-confirmation");
+      check(tag + " exact same fingerprint", shown === localShown && shown.length === 32);
+      await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).scrollIntoViewIfNeeded();
+      await local.p.locator(".hub-local-confirm").scrollIntoViewIfNeeded();
+      await shot(a.p, tag + "-fingerprint"); await shot(local.p, tag + "-local-confirmation");
       await local.p.locator(".hub-local-confirm").click(); await apply(local.p, ".hub-local-confirmed, .hub-paired");
       await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).click();
       await a.p.getByText(c.lang === "en" ? "Connected" : "已連接", { exact: true }).waitFor({ timeout: 20000 });
+      await a.p.locator('[data-fleet-status="active"]').first().waitFor();
       const profile = new HubMemberProfileStore(mh, api!.boundHub()!.hubId).readProfile(); check(tag + " pinned credential persisted", profile.hub.memberOrigin === memberOrigin);
       await other.p.locator("[data-pairing-notice]").first().waitFor(); await admin.p.locator("[data-pairing-notice]").first().waitFor();
       check(tag + " initiator excluded", await a.p.locator("[data-pairing-notice]").count() === 0);
@@ -170,7 +178,10 @@ try {
         } finally { readDb.close(); }
         const href = await local.p.locator(".hub-security-notices a").first().getAttribute("href");
         check(tag + " exact non-bearer review link", href === `${origin}/ui/hub?securityNotice=${nid}`);
-        await shot(local.p, tag + "-existing-fleet-notice"); await shot(admin.p, tag + "-administrator-notice"); await geometry(local.p, tag + " fleet notice");
+        const adminShot = await context(c); await signIn(adminShot.p, "admin", "/ui/hub/admin");
+        await adminShot.p.locator(`[data-pairing-notice="${nid}"]`).waitFor();
+        await local.p.locator(`[data-pairing-notice="${nid}"]`).scrollIntoViewIfNeeded();
+        await shot(local.p, tag + "-existing-fleet-notice"); await shot(adminShot.p, tag + "-administrator-notice"); await geometry(local.p, tag + " fleet notice"); await adminShot.ctx.close();
       }
       await other.p.locator("[data-pairing-notice] .btn-danger").first().click(); await other.p.getByText(c.lang === "en" ? "Revoked" : "已撤銷", { exact: true }).first().waitFor();
       check(tag + " one-click revoke no dialog", await other.p.locator("[role=dialog]").count() === 0); await local.ctx.close(); await other.ctx.close();

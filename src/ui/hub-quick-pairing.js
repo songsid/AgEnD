@@ -59,11 +59,11 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
   const copy = async (key, value) => { try { await navigator.clipboard.writeText(value); if (live.current) setCopied(key); } catch { /* text remains selectable */ } };
   if (loading) return html`<${Skeleton} variant="rows" lines=${2} />`;
   if (!allowed && !attempt && !error) return null;
-  return html`<div class="col" data-quick-pairing="guide">
+  return html`<div data-quick-pairing="guide">
     ${error ? html`<${ErrorState} message=${error} onRetry=${() => load(attempt?.id)} />` : null}
     ${mismatch ? html`<p class="err" role="alert">${stopped ? hq("mismatchStop") : hq("compare")}</p>` : null}
     ${stopped ? html`<p class="note" role="status">${hq("stopped")}</p>` : null}
-    ${!attempt ? allowed ? html`<form onSubmit=${create} class="col"><label for="quickFleetLabel">${hq("label")}</label>
+    ${!attempt ? allowed ? html`<form onSubmit=${create}><label for="quickFleetLabel">${hq("label")}</label>
       <input id="quickFleetLabel" value=${label} maxLength="120" required placeholder=${hq("labelExample")} onInput=${e => setLabel(e.target.value)} />
       <p class="note">${hq("labelHint")} ${hq("privacy")}</p><div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !label.trim()}>${hq(stopped ? "again" : "start")}</button></div></form>` : null
       : attempt.connected ? html`<p class="note" role="status"><b>${hq("connected")}</b></p><h4>${hq("publish")}</h4><p class="note">${hq(publishAllowed ? "publishHint" : "publishNo")}</p>
@@ -95,8 +95,8 @@ function Notice({ notice, admin = false, memberOrigin = null, after = () => {} }
   };
   let href = null;
   if (memberOrigin) { try { const origin = new URL(memberOrigin); if (origin.protocol === "https:") href = `${origin.origin}/ui/hub?securityNotice=${encodeURIComponent(notice.id)}`; } catch { /* no link */ } }
-  return html`<div class="col" data-pairing-notice=${notice.id}><b>${hq("notice", notice.label)}</b><small class="note">${hq("approved")} ${time(notice.at)}</small>
-    <small class="note">${hq("fleetId")} <code class="hub-fp-full">${notice.fleetId}</code></small>
+  return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${hq("approved")} ${time(notice.at)}</p>
+    <p class="note">${hq("fleetId")} <code class="hub-fp-full">${notice.fleetId}</code></p>
     <p class="note">${hq("revokeHint")}</p>
     ${notice.revoked ? html`<span class="tag">${hq("revoked")}</span>` : href ? html`<a class="btn" target="_blank" rel="noopener noreferrer" href=${href}>${hq("review")}</a>`
       : html`<div class="field-row"><button type="button" class="btn btn-danger" disabled=${busy} onClick=${revoke}>${hq("revoke")}</button></div>`}

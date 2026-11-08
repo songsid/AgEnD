@@ -147,4 +147,16 @@ describe("quick pairing on the composed HTTPS surface", () => {
     expect(r.db!.prepare("SELECT * FROM hub_pairing_notices").all()).toEqual([]);
     expect(r.deps.store.read().fleets.filter(f => personKeyString(f.owner) === personKeyString(ADMIN.key))).toEqual([]);
   });
+  it("never borrows manual fallback for an automatic attempt even if an admin also approved its fingerprint", async () => {
+    const r = await rig(); await r.save(await r.proposal());
+    const o = await r.call(r.admin, "POST", "/hub/v1/quick-pairing", { label: "Automatic only" });
+    const p = r.deps.pairing.pair({ code: o.json.code });
+    expect((await r.call(r.admin, "POST", `/hub/v1/pairings/${p.pairingId}/confirm`, { fingerprint: p.fingerprint })).status).toBe(200);
+    expect((await r.call(r.admin, "POST", `/hub/v1/admin/pairings/${p.pairingId}/approve`, { fingerprint: p.fingerprint })).status).toBe(200);
+    expect(r.deps.store.read().pairings[0]!.approvedBy).toEqual(ADMIN.key);
+    r.unknown();
+    await expect(r.deps.pairing.claim({ pairingId: p.pairingId, fleetId: p.fleetId, claimSecret: p.claimSecret })).rejects.toThrow("unavailable");
+    expect(r.deps.store.read().fleets).toEqual([]);
+    expect(r.db!.prepare("SELECT * FROM hub_pairing_notices").all()).toEqual([]);
+  });
 });

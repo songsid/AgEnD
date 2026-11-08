@@ -22,10 +22,10 @@ pairing proofs are checked again after awaits and required audit callbacks.
 
 One automatic live offer is retained per person. Replacing it invalidates its old code and pending claim atomically.
 An existing manual offer is preserved and directs the person to that workflow. Quick creation stops at 48 retained
-pairing records; administrator creation retains the existing global64 limit and headroom. Expired records are removed
+pairing records; administrator creation retains the existing global 64 limit and headroom. Expired records are removed
 at offer creation. Personal automatic admission/claim counts retained credential-bearing owned fleets, including manual
 and group-suspended fleets, plus unexpired automatic reservations. Pending manual attempts are not automatic reservations.
-The existing hard256 retained-fleet cap remains. Stopping the exact own offer frees its reservation. Policy off and
+The existing hard 256 retained-fleet cap remains. Stopping the exact own offer frees its reservation. Policy off and
 explicit person denies cancel affected pending automatic offers in the same policy/version transaction.
 
 Unknown membership holds the current action and creates no new reservation or resource suspension. A complete negative
@@ -48,7 +48,7 @@ group-policy source and revoked projection; no code, credential, directory DN or
 
 The private fleet Settings endpoint supplies its retained inbox. The existing visible-only member poll presents it on
 the fleet page (at most five seconds after receipt); payloads never enter the general fleet/guest SSE stream. Older
-members receive no new frame and their target remains queued. Per-Hub and member inboxes cap at1024 records and refuse
+members receive no new frame and their target remains queued. Per-Hub and member inboxes cap at 1024 records and refuse
 new automatic credentials/ACKs rather than discard an unread offline security notice. This conservative capacity needs
 operator attention before saturation; no silent eviction is implemented.
 
@@ -62,7 +62,7 @@ use the existing configured-admin revoke route. Buttons require one explicit cli
 Focused suites cover atomic failure, quota races, stale sessions/claims, replacement/expiry, mixed versions, retained
 notices, forged ACKs, label injection and exact owner revoke. `scripts/manual/hub-quick-pairing/accept.mts` runs the real
 sealed Hub and fleet web Settings against the recorded fake LDAPS wire peer, with no daemon, native pane, model, account
-or tmux. Its connector redirects only the requested directory636 to its own ephemeral listener; TLS verification and
+or tmux. Its connector redirects only the requested directory port 636 to its own ephemeral listener; TLS verification and
 critical extended-DN BER remain production code. PNGs cover desktop/phone, EN/zh-TW, light/dark, previous UI and cached CSS/client.
 
 New migration components are `s90-pairing-notices` (Hub) and `s90-pairing-inbox` (member). Before deploying, back up the
