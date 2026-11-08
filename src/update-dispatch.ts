@@ -15,7 +15,7 @@
 import { execFile } from "./child-process.js";
 import { access, readFile, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -29,6 +29,8 @@ export interface DispatchDeps {
   packageDir?: string | null;
   /** The Node running this process (#3440): the npm beside it is a candidate when AgEnD runs on a plain Node. */
   execPath?: string;
+  /** This process's PATH (#3440): where PATH's `npm` lives. */
+  pathEnv?: string;
 }
 
 export const defaultDispatchDeps: DispatchDeps = {
@@ -63,16 +65,39 @@ export function colocatedNpm(packageDir: string | null | undefined, platform: No
   return { command: join(bin, "node"), args: [join(bin, "npm")] };
 }
 
-/** #3440: the global node_modules the running package was installed into (realpath'd), or null (not a global install). */
-async function runningGlobalRoot(deps: DispatchDeps): Promise<string | null> {
-  if (!deps.packageDir) return null;
+/**
+ * #3440: what the running package is — a global install (its realpath'd global node_modules), a source checkout, or
+ * unknowable. A location that cannot be read (EACCES, the package being replaced) is NOT a checkout: guessing from
+ * PATH then could update another install (#3443 review), so it refuses. No package directory at all: PATH's npm, as before.
+ */
+type RunningInstall = { kind: "global"; root: string } | { kind: "checkout" } | { kind: "unreadable"; reason: string };
+async function runningInstall(deps: DispatchDeps): Promise<RunningInstall> {
+  if (!deps.packageDir) return { kind: "checkout" };
   let real: string;
-  try { real = await deps.realpath(deps.packageDir); } catch { return null; }
+  try { real = await deps.realpath(deps.packageDir); }
+  catch (err) {
+    const code = (err as { code?: unknown }).code;
+    return { kind: "unreadable", reason: `cannot read where the running AgEnD is installed (${deps.packageDir}${typeof code === "string" ? `: ${code}` : ""}), so it cannot tell which install to update` };
+  }
   const scope = dirname(real), root = dirname(scope);
-  return basename(real) === "agend" && basename(scope) === "@songsid" && basename(root) === "node_modules" ? root : null;
+  return basename(real) === "agend" && basename(scope) === "@songsid" && basename(root) === "node_modules" ? { kind: "global", root } : { kind: "checkout" };
 }
 
 type Npm = { command: string; args: string[]; label: string };
+
+/**
+ * #3440 (#3443 review): the directory of the npm that proved the install, for the update to run with first on PATH — so
+ * the CLI's own npm checks and install, and the Node npm runs on, are the ones just verified, never another npm the
+ * service's PATH lists first. A candidate run by an explicit Node: that npm's directory (its Node beside it). PATH's: the
+ * first PATH directory holding an executable `npm`.
+ */
+async function npmDirOf(npm: Npm, deps: DispatchDeps, executable: (path: string) => Promise<boolean>): Promise<string | undefined> {
+  if (npm.args.length) return dirname(npm.args[0]!);
+  for (const dir of (deps.pathEnv ?? process.env.PATH ?? "").split(delimiter)) {
+    if (dir && isAbsolute(dir) && await executable(join(dir, "npm"))) return dir;
+  }
+  return undefined;
+}
 type NpmAnswer = { root: string; prefix: string } | null;
 
 async function askNpm(npm: Npm, deps: DispatchDeps): Promise<NpmAnswer> {
@@ -88,10 +113,12 @@ async function askNpm(npm: Npm, deps: DispatchDeps): Promise<NpmAnswer> {
  * One is accepted only when its global root IS the running package's root, so another install elsewhere (an old AgEnD in
  * a system root) can never be the one updated. A source checkout keeps the old rule: PATH's npm.
  */
-async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string; prefix: string } | { reason: string }> {
-  const expected = await runningGlobalRoot(deps);
+async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string; prefix: string; npmDir?: string } | { reason: string }> {
+  const running = await runningInstall(deps);
   const onPath: Npm = { command: "npm", args: [], label: "npm on PATH" };
-  if (!expected) return (await askNpm(onPath, deps)) ?? { reason: "npm could not say where AgEnD is installed" };
+  if (running.kind === "unreadable") return { reason: running.reason };
+  if (running.kind === "checkout") return (await askNpm(onPath, deps)) ?? { reason: "npm could not say where AgEnD is installed" };
+  const expected = running.root;
   const executable = deps.isExecutable ?? defaultDispatchDeps.isExecutable!;
   const candidates: Npm[] = [];
   const beside = colocatedNpm(join(expected, "@songsid", "agend"));
@@ -106,12 +133,13 @@ async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string;
     let root: string | null = null;
     if (answer) { try { root = await deps.realpath(answer.root); } catch { root = answer.root; } }
     tried.push(`${npm.label} → ${root ?? "no answer"}`);
-    if (answer && root === expected) return answer;
+    if (answer && root === expected) return { ...answer, npmDir: await npmDirOf(npm, deps, executable) };
   }
   return { reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${expected} (tried ${tried.join("; ")})` };
 }
 
-export type InstalledAgend = { ok: true; agend: string; version: string } | { ok: false; reason: string };
+/** `npmDir` (#3440): the directory of the npm that proved this install — the update runs with it first on PATH. */
+export type InstalledAgend = { ok: true; agend: string; version: string; npmDir?: string } | { ok: false; reason: string };
 
 /** npm's global root and prefix → the installed package, its bin target, and the bin link that must lead to it. */
 export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatchDeps): Promise<InstalledAgend> {
@@ -134,7 +162,7 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
   try { [target, linked] = await Promise.all([deps.realpath(join(pkgDir, binRel)), deps.realpath(agend)]); }
   catch { return { ok: false, reason: `${agend} does not lead to the installed package` }; }
   if (target !== linked) return { ok: false, reason: `${agend} leads to ${linked}, not the installed package's ${target}` };
-  return { ok: true, agend, version: manifest.version };
+  return { ok: true, agend, version: manifest.version, ...(found.npmDir ? { npmDir: found.npmDir } : {}) };
 }
 
 /**
@@ -145,6 +173,10 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
  * every global package's bin ahead of the system tools for the updater's run — as in an nvm user's own shell.
  */
 export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update';
-export function updateCommand(agend: string): { command: string; args: string[] } {
-  return { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT, "sh", agend] };
+/** #3443 review: with the proving npm's directory (`$2`, data) ahead of the agend's own — it may hold no npm (a custom prefix). */
+export const DELAYED_UPDATE_SCRIPT_NPM = 'sleep 2 && PATH="$2:${1%/*}:$PATH" && export PATH && exec "$1" update';
+export function updateCommand(agend: string, npmDir?: string): { command: string; args: string[] } {
+  return npmDir && isAbsolute(npmDir)
+    ? { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT_NPM, "sh", agend, npmDir] }
+    : { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT, "sh", agend] };
 }
