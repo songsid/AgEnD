@@ -198,7 +198,7 @@ describe("the member client's pacing and steps", () => {
   it("connect / confirm / disconnect: a 202 is sent for confirmation (followed); disconnect is remote pending; the hints are checked first", async () => {
     const calls: any[] = [];
     const confirm = { api: vi.fn(async (path: string, o: any = {}) => { calls.push([path, o.body]);
-        if (path === "/api/hub/member/pairing") return { ok: true, status: 200, body: { ok: true, pairing: { state: "unpaired" } } };
+        if (path === "/api/hub/member/pairing?v=2") return { ok: true, status: 200, body: { ok: true, pairing: { state: "unpaired" } } };
         return { ok: false, status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "p".repeat(32) } } }; }),
       isPendingResponse: (r: any) => r.status === 202, track: vi.fn(async () => ({})), newKey: () => "k" };
     const c = client.createMemberClient({ confirm });

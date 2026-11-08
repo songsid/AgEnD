@@ -108,7 +108,7 @@ export type HubMemberFrame =
   | HubFrame<"exposure.quota", HubExposureQuota>
   | HubFrame<"pairing.notice-ack", { id: string }>;
 export interface HubPairingNotice {
-  id: string; fleetId: string; generation: number; label: string; at: number; source: "group"; revoked: boolean;
+  id: string; fleetId: string; generation: number; label: string; at: number; source: "group" | "manual"; revoked: boolean;
 }
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
@@ -120,7 +120,8 @@ export type HubServerFrame =
   | HubFrame<"error", HubProtocolError>
   | HubFrame<"attachment.chunk", HubAttachmentChunk>
   | HubFrame<"attachment.ack", { id: string; offset: number }>
-  | HubFrame<"pairing.notice", HubPairingNotice>;
+  | HubFrame<"pairing.notice", HubPairingNotice & { source: "group" }>
+  | HubFrame<"pairing.notice-v2", HubPairingNotice>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;

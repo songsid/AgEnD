@@ -16,6 +16,8 @@ async function fixture(o: { language?: string; enabled?: boolean; public?: boole
   let enabled = o.enabled ?? false, getStatus = o.getStatus ?? 200;
   const calls: Array<{ path: string; options: any }> = [];
   (globalThis as any).fetch = async (path: string, options: any = {}) => {
+    // This suite records the legacy membership/pairing surface; company-operation reads are covered separately.
+    if (path === "/api/hub/member/company-join") return response({ ok: true, operation: null });
     calls.push({ path, options });
     if (path === "/api/settings/hub/membership") {
       if (!options.method) return response({ ok: getStatus === 200, enabled }, getStatus);
@@ -27,23 +29,23 @@ async function fixture(o: { language?: string; enabled?: boolean; public?: boole
   };
   const i18n = await import("/assets/app-i18n.js"); i18n.setLang(o.language ?? "en", { store: false });
   const module = await import("/ui/js/settings-hub-membership.js");
-  await pg.mount(h(module.HubMembershipSettings, {})); await until(() => o.public || !!pg.root.querySelector("input"));
+  await pg.mount(h(module.HubMembershipSettings, {})); await until(() => o.public || !!pg.root.querySelector("#hubMemberEnabled"));
   await settle(5);
   return { pg, calls, state(v: boolean) { enabled = v; }, status(v: number) { getStatus = v; } };
 }
-const change = (pg: AppPage, enabled: boolean) => { const input: any = pg.root.querySelector("input"); input.checked = enabled; fire(input, "change"); };
+const change = (pg: AppPage, enabled: boolean) => { const input: any = pg.root.querySelector("#hubMemberEnabled"); input.checked = enabled; fire(input, "change"); };
 describe("off-default lazy Hub membership Settings", () => {
   it.each(["en", "zh-TW"])("shows localized owner guidance while off (%s), saves only the boolean, then shows Connect's fields with no reload (cid-hub-no-reload)", async language => {
     const { pg, calls } = await fixture({ language });
     expect(pg.root.textContent).toContain(language === "en" ? "Hub membership" : "Hub 成員功能");
     expect(pg.root.textContent).toContain(language === "en" ? "does not pair a Hub or share an agent" : "不會自動配對 Hub 或分享 Agent");
     expect(pg.root.textContent).not.toContain("hubMembership.");
-    expect((pg.root.querySelector("input") as any).checked).toBe(false);
+    expect((pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(false);
     expect(calls.map(c => c.path)).toEqual(["/api/settings/hub/membership"]);
     change(pg, true); await until(() => calls.length === 3);
     expect(calls[1]!.options.method).toBe("PUT"); expect(JSON.parse(calls[1]!.options.body)).toEqual({ enabled: true });
     expect(calls[1]!.options.headers["Idempotency-Key"]).toBeTruthy();
-    await until(() => (pg.root.querySelector("input") as any).checked);
+    await until(() => (pg.root.querySelector("#hubMemberEnabled") as any).checked);
     // The leader's cid-hub-no-reload (#3319): applied, the page is marked a member in place and Connect's fields are there —
     // never "Reload page". The client it loads is the member client (the page had loaded no Hub client before).
     await until(() => !!pg.root.querySelector("#hubAddress"));
@@ -81,40 +83,40 @@ describe("off-default lazy Hub membership Settings", () => {
     change(f.pg, true); change(f.pg, true);
     await until(() => f.pg.root.textContent.includes("Waiting for owner confirmation"));
     expect(f.calls.filter(c => c.options.method)).toHaveLength(1);
-    expect((f.pg.root.querySelector("input") as any).checked).toBe(false);
-    expect((f.pg.root.querySelector("input") as any).disabled).toBe(true);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(false);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).disabled).toBe(true);
     f.state(true);
     const c = await import("/ui/js/settings-confirm.js"); await c.track({ id: "m".repeat(32), state: "applied", outcome: { result: { ok: true } } }, "Hub membership");
-    await until(() => !(f.pg.root.querySelector("input") as any).disabled);
-    expect((f.pg.root.querySelector("input") as any).checked).toBe(true);
+    await until(() => !(f.pg.root.querySelector("#hubMemberEnabled") as any).disabled);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(true);
     expect(f.calls.filter(c => !c.options.method && c.path === "/api/settings/hub/membership")).toHaveLength(2);
   });
   it("unknown or failed reads disable changes; an older host can be checked again without a mutation", async () => {
     const f = await fixture({ getStatus: 404 });
     await until(() => f.pg.root.textContent.includes("unavailable"));
-    expect((f.pg.root.querySelector("input") as any).disabled).toBe(true);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).disabled).toBe(true);
     change(f.pg, true); await settle(); expect(f.calls).toHaveLength(1);
-    f.status(200); fire(f.pg.root.querySelector("button")!, "click"); await until(() => !(f.pg.root.querySelector("input") as any).disabled);
-    expect((f.pg.root.querySelector("input") as any).checked).toBe(false); expect(f.calls.every(c => !c.options.method)).toBe(true);
+    f.status(200); fire(f.pg.root.querySelector("#hub-membership button")!, "click"); await until(() => !(f.pg.root.querySelector("#hubMemberEnabled") as any).disabled);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(false); expect(f.calls.every(c => !c.options.method)).toBe(true);
   });
   it("an ambiguous write becomes unknown rather than success and needs a fresh read before retry", async () => {
     const f = await fixture({ write: Promise.resolve(response({ result: "pending_confirmation" }, 202)) });
     change(f.pg, true); await until(() => f.pg.root.textContent.includes("could not be verified"));
-    expect((f.pg.root.querySelector("input") as any).disabled).toBe(true);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).disabled).toBe(true);
     expect(f.pg.root.textContent).not.toContain("Reload page");
     expect(f.calls).toHaveLength(2);
-    fire(f.pg.root.querySelector("button")!, "click"); await until(() => f.calls.length === 3);
+    fire(f.pg.root.querySelector("#hub-membership button")!, "click"); await until(() => f.calls.length === 3);
     expect(f.calls[2]!.options.method).toBeUndefined();
   });
   it("a late older retry cannot overwrite the newer membership read", async () => {
     const f = await fixture({ getStatus: 404 }), older = held<any>(), newer = held<any>(); let reads = 0;
     await until(() => f.pg.root.textContent.includes("unavailable"));
     (globalThis as any).fetch = () => ++reads === 1 ? older.promise : newer.promise;
-    const retry = f.pg.root.querySelector("button")!; fire(retry, "click"); fire(retry, "click");
+    const retry = f.pg.root.querySelector("#hub-membership button")!; fire(retry, "click"); fire(retry, "click");
     expect(reads).toBe(2);
-    newer.resolve(response({ ok: true, enabled: false })); await until(() => !(f.pg.root.querySelector("input") as any).disabled);
+    newer.resolve(response({ ok: true, enabled: false })); await until(() => !(f.pg.root.querySelector("#hubMemberEnabled") as any).disabled);
     older.resolve(response({ ok: true, enabled: true })); await settle(10);
-    expect((f.pg.root.querySelector("input") as any).checked).toBe(false);
+    expect((f.pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(false);
     expect(f.pg.root.textContent).not.toContain("Reload page");
   });
   it("does not start a readback after the card unmounts during a held write", async () => {
@@ -125,6 +127,6 @@ describe("off-default lazy Hub membership Settings", () => {
   });
   it("a public-link page loads no membership data or control", async () => {
     const f = await fixture({ public: true, enabled: true, memberMark: true }); await settle(10);
-    expect(f.calls).toEqual([]); expect(f.pg.root.textContent).toBe(""); expect(f.pg.root.querySelector("input")).toBeNull();
+    expect(f.calls).toEqual([]); expect(f.pg.root.textContent).toBe(""); expect(f.pg.root.querySelector("#hubMemberEnabled")).toBeNull();
   });
 });
