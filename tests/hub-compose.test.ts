@@ -4,7 +4,7 @@
  * built but never signs in), nothing outside the scratch home is touched.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { request } from "node:https";
+import { request, Server as HttpsServer } from "node:https";
 import { connect } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,7 +14,8 @@ import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
-import { createHubServerFactory, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
+import { createHubServerFactory, type HubHttp, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
+import type { HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
@@ -654,11 +655,11 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 });
 
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
-async function directoryRuntimeRig() {
+async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http) {
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined;
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
-  const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return real.createHubHttp(deps); } };
+  const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return wrap(real.createHubHttp(deps), deps); } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
     writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
@@ -853,9 +854,9 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
 
 
 /** Ordinary verified HTTPS only; no intercepted API responses or personal credentials. */
-function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown) {
+function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown, path = "/hub/v1/session") {
   return new Promise<{ status: number; json: any; cookie: string }>((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port: hub.webPort, path: "/hub/v1/session", servername: "hub.example.test", ca: hub.caPem,
+    const req = request({ host: "127.0.0.1", port: hub.webPort, path, servername: "hub.example.test", ca: hub.caPem,
       agent: false, method: body === undefined ? "GET" : "POST", headers: { Origin: String(hub.config.hub.webOrigin),
         ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) } }, res => {
       let text = ""; res.setEncoding("utf8"); res.on("data", data => { text += data; });
@@ -927,6 +928,84 @@ describe.skipIf(process.platform === "win32")("directory browser facade belongs 
     const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry } });
     try { await runtime.apply(hub.config); expect(runtime.directorySettings()).not.toBeNull(); expect(() => runtime.directorySettings()!.sessions()).toThrow(); }
     finally { await runtime.close(); }
+  });
+});
+
+/** This owned test route exercises only the physical adapter; no public AD route or authority bypass is installed. */
+async function directoryResponseRig() {
+  let enter!: (response: HubDirectoryResponse) => void;
+  const entered = new Promise<HubDirectoryResponse>(resolve => { enter = resolve; });
+  const r = await directoryRuntimeRig((http, deps) => ({ ...http, handle(req, res) {
+    if (req.url !== "/test-only/owned-response") return http.handle(req, res);
+    req.resume(); req.once("end", () => { enter(deps.directoryResponse!.capture(req, res, () => deps.current().serverEnabled())); });
+    return true;
+  } }));
+  return { ...r, begin: (cookie?: string) => directoryBrowser(r.hub, cookie, {}, "/test-only/owned-response"), entered };
+}
+
+describe.skipIf(process.platform === "win32")("directory response survives its owning listener remount", () => {
+  it("delivers the committed successor on the original HTTPS response after same-port remount", async () => {
+    const r = await directoryResponseRig(); let pending: ReturnType<typeof r.begin> | undefined;
+    try {
+      const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(signed.status).toBe(200);
+      const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1), db = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+      let sessionId: string;
+      try { sessionId = (db.prepare("SELECT id FROM hub_sessions WHERE token_hash=?").get(createHash("sha256").update(token).digest("hex")) as { id: string }).id; }
+      finally { db.close(); }
+      const actor = { kind: "hub-administrator" as const, person: ADMIN.key, sessionId, requestId: randomUUID() };
+      const old = r.runtime.directorySettings()!, sessions = old.sessions(), rotation = sessions.prepareDirectoryRotation(token, actor);
+      const proof = createHubDirectorySettingsProof({ source: old.source, withDirectoryRead: old.withDirectoryRead,
+        recentAuthentication: a => sessions.recentAuthentication(a), writer: () => r.writer.directory!,
+        createDirectory: () => ({ realm: "corp", signIn: async () => { throw Error("personal credentials reached candidate"); },
+          checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }), probeTls: async () => "a".repeat(64) });
+      try {
+        const candidate = r.candidate(), ctx = { actor, current: () => true };
+        const draft = await proof.prepare({ ...candidate, changes: [...candidate.changes] }, ctx);
+        pending = r.begin(signed.cookie); const response = await r.entered;
+        const saved = await proof.apply(draft.ref, { confirmation: draft.trust!.challenge }, ctx, rotation);
+        expect(old.current()).toBe(false); expect(response.current()).toBe(true);
+        await r.runtime.apply(r.hub.config);
+        expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+        const fresh = r.runtime.directorySettings()!;
+        const sending = response.reply(() => {
+          const successor = fresh.sessions().completeDirectoryRotation(rotation, saved.receiptId);
+          return { status: 200, json: JSON.stringify({ ok: true }), cookie: hubSetCookie(String(r.hub.config.hub.hubId), successor.token, successor.maxAgeMs) };
+        }, fresh.current);
+        const result = await pending; pending = undefined; await sending;
+        expect(result.status).toBe(200); expect(result.json).toEqual({ ok: true }); expect(result.cookie).not.toBe(signed.cookie);
+        expect((await directoryBrowser(r.hub, result.cookie)).json).toMatchObject({ signedIn: true, admin: true });
+        expect((await directoryBrowser(r.hub, signed.cookie)).json.signedIn).toBe(false);
+        await expect(response.reply(() => ({ status: 200, json: "{}" }), fresh.current)).rejects.toThrow();
+      } finally { proof.close(); }
+    } finally { await r.runtime.close(); await pending?.catch(() => {}); }
+  });
+  it("Stop aborts a transferred response synchronously and drains it before finishing", async () => {
+    const r = await directoryResponseRig(); const pending = r.begin().catch(() => null);
+    try {
+      const response = await r.entered; r.commit(); await r.runtime.apply(r.hub.config);
+      expect(response.current()).toBe(true); r.runtime.fence(); expect(response.current()).toBe(false);
+      const build = vi.fn(() => ({ status: 200, json: "{}" }));
+      await expect(response.reply(build, () => true)).rejects.toThrow(); expect(build).not.toHaveBeenCalled();
+      await r.runtime.close(); expect(await pending).toBeNull(); expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); await pending; }
+  });
+  it("Stop retains the transferred server until its physical close acknowledges", async () => {
+    const r = await directoryResponseRig(), pending = r.begin().catch(() => null); await r.entered;
+    const original = HttpsServer.prototype.close; let held = false, release: (() => void) | undefined, acknowledge!: () => void;
+    const acknowledged = new Promise<void>(resolve => { acknowledge = resolve; });
+    const close = vi.spyOn(HttpsServer.prototype, "close").mockImplementation(function(this: HttpsServer, callback?: (error?: Error) => void) {
+      const address = this.address(), hold = !held && typeof address === "object" && address?.port === r.hub.webPort;
+      if (hold) held = true;
+      return original.call(this, error => { if (hold) { release = () => callback?.(error); acknowledge(); } else callback?.(error); });
+    });
+    let stopping: Promise<void> | undefined;
+    try {
+      r.commit(); await r.runtime.apply(r.hub.config); let stopped = false;
+      stopping = r.runtime.close().then(() => { stopped = true; }); await acknowledged;
+      await new Promise<void>(resolve => setImmediate(resolve)); expect(stopped).toBe(false);
+      release!(); await stopping; expect(stopped).toBe(true); expect(await pending).toBeNull();
+    } finally { release?.(); close.mockRestore(); await stopping; await r.runtime.close(); await pending; }
   });
 });
 

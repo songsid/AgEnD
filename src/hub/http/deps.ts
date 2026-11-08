@@ -57,6 +57,8 @@ export interface HubHttpDeps {
   /** The server's mode (S5): `serverEnabled()` false once fenced — every request and continuation refuses from then on. */
   current(): HubMode;
   now?: () => number;
+  /** Private listener resource ownership; carries no session or directory authority. */
+  directoryResponse?: import("../compose/server.js").HubHttpDeps["directoryResponse"];
 }
 /**
  * S5's `hubTxDatabase(tx)` (db.ts): the DB behind a tx, valid only while that tx's `atomic` callback runs. Passed in

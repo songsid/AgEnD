@@ -16,6 +16,7 @@ import { createHubServerFactory, hubServerDatabasePlan, type HubHttpEntry, type 
 import { withHubDirectoryRecovery } from "./settings-directory-recovery.js";
 import type { HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
+import { HubDirectoryResponseOwner } from "./directory-response-owner.js";
 import { createHubMemberFactory, type HubMemberComponents, type HubMemberFactoryOptions } from "./compose/member.js";
 import type { HubViewSource } from "./compose/views.js";
 
@@ -105,6 +106,7 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
 };
 
 export class HubRuntime {
+  private readonly directoryResponses: HubDirectoryResponseOwner;
   private mountedDirectory: HubMountedDirectory | null = null;
   private recoveryDirectory: HubDirectorySettingsDecision | null = null;
   private settingsRecoveryGeneration = 0;
@@ -141,12 +143,14 @@ export class HubRuntime {
 
   constructor(private readonly options: HubRuntimeOptions) {
     const now = options.now ?? Date.now;
+    this.directoryResponses = new HubDirectoryResponseOwner({ now });
     const composed = options.createServer
       ? null
       : createHubServerFactory({
           home: options.home,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
+          directoryResponses: this.directoryResponses,
           ...(options.settingsWriter ? { settingsWriter: options.settingsWriter } : {}),
           directoryReady: directory => {
             this.mountedDirectory = directory;
@@ -362,6 +366,7 @@ export class HubRuntime {
     this.settingsRecoveryGeneration++;
     this.stopped = true;
     this.pending = null;
+    this.directoryResponses.fence();
     this.mount.fence();
   }
 
@@ -372,8 +377,10 @@ export class HubRuntime {
     } catch {
       /* already reported */
     }
-    await this.mount.close();
-    await this.drainLeftovers({ server: true, member: true }, true);
+    try {
+      await this.mount.close();
+      await this.drainLeftovers({ server: true, member: true }, true);
+    } finally { await this.directoryResponses.close(); }
   }
 
   /** Off/Stop: confirm a failed creation's cleanup; while it still fails it stays owned and held (and Stop rejects). */
