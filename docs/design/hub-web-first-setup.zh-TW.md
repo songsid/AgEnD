@@ -85,7 +85,7 @@ Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果�
 
 ### 儲存時的重新驗證與身分連續性
 
-1. 「儲存」啟動候選檢查；有合格的近期 AD 驗證便直接沿用，否則在同頁索取目前管理員的個人密碼。近期窗口建議上限五分鐘，由伺服器記錄的驗證時間判定，精確值交安全審查；不能採信客戶端時間或把一般 session 存活時間當近期驗證。
+1. 「儲存」啟動候選檢查；有合格的近期 AD 驗證便直接沿用，否則在同頁索取目前管理員的個人密碼。近期驗證期限上限五分鐘，由伺服器記錄的驗證時間判定；不能採信客戶端時間或把一般 session 存活時間當近期驗證。
 2. 個人重新驗證只使用**舊的、目前受信任且正在生效的目錄**。絕不把管理員的個人密碼送給正在提案的新伺服器。舊目錄無法驗證時，遠端管理員不能儲存；主機擁有者使用獨立 D3 修復流程。
 3. 新設定須通過正常 TLS、服務綁定、bounded lookup 與新鮮 immutable eligibility 檢查；操作者在新設定中必須仍是原本合格的相同 `{realm, objectId}`。同名不同 GUID、停用、不明、不同 realm／ID 模型都拒絕，明白說明原設定保持不變。一般儲存不重新指定管理員。
 4. 伺服器產生的短效單次證明綁定 actor、session、舊 authentication/config epoch、候選內容、秘密／憑證版本、舊設定／manifest image 與期限。每次 await 後及 durable commit 前重查，並與共同 writer 的 CAS 一起判定；不能讓瀏覽器提供 `recentAuth:true` 取代證明。
@@ -112,9 +112,9 @@ Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果�
 
 ### 持久安全通知
 
-每次成功的實際變更（包含服務密碼輪替）都在同一個 durable operation 記下安全通知 outbox，送給**變更前已確定的主機擁有者及其他管理員**，並寫稽核；不是從 audit 事後猜通知。內容只有操作、人、時間及遮罩的變更類別，沒有秘密或完整 DN。純 no-op 不假裝是變更，失敗則保留失敗稽核。
+每次成功的實際變更（包含服務密碼輪替）都在下述同一個 SQLite 決策交易記下完整安全通知 outbox，送給**變更前已確定的主機擁有者及其他管理員**，並寫稽核；不是從 audit 事後猜通知。內容只有操作、人、時間及遮罩的變更類別，沒有秘密或完整 DN。純 no-op 不假裝是變更，失敗則保留失敗稽核。
 
-目前 Hub 是單一 configured admin；「其他管理員」表示既有支援且已明確指定的管理員收件者，並不新增角色或把群組成員視為 admin。主機擁有者不是 Hub PersonKey，必須使用明確的主機通知 sink／Needs-you；即使新 AD 無法登入仍能看到。新增 typed security-notice outbox，不能把目錄變更塞進 pairing-notice schema。重啟復原要可冪等送達並顯示待送狀態；通知服務短暫不可用不遺失通知。
+目前 Hub 是單一 configured admin；「其他管理員」表示既有支援且已明確指定的管理員收件者，並不新增角色或把群組成員視為 admin。主機擁有者不是 Hub PersonKey，必須使用明確的主機通知 sink／Needs-you；即使新 AD 無法登入仍能看到。新增 typed security-notice outbox，不能把目錄變更塞進 pairing-notice schema。重啟復原要可冪等送達並顯示待送狀態；通知服務短暫不可用不遺失通知。outbox 保存完整且已遮罩的通知內容（明確寫「已提交／套用中」，不在 mount 成功前假稱已就緒）、變更前收件者的穩定身分／sink、操作與事件 id、建立時間及送達狀態，不只保存通知 id。提交後不再向新目錄查詢「原本應通知誰」。
 
 近期已驗證的管理員 session 若遭竊仍有剩餘風險；短效單次證明、身分連續性、信任確認及獨立擁有者通知降低風險，不能宣稱完全防止已掌握有效 session 的攻擊者。
 
@@ -124,29 +124,66 @@ Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果�
 
 名稱清除的 canonical 表示是 `hub.name` key 不存在，不用空字串或空白字串；簽署摘要、runtime 與 renderer 要一致支援。M-2682 的 strict rename patch 與 private preparation ref 可直接延伸 AD，HTTP 不拿到內部 before/after。新操作 receipt 以 digest 連到 manifest 的 confirmationId，保留 manifest v1 的 strict schema。
 
-共同 helper 已在 [#3426](https://github.com/songsid/AgEnD/pull/3426) 提出；目前 journal v1 只支援 rename。本案 directory 擴充使用 journal **v2**，把 staged-secret ref／revision、材料版本、actor-proof version 與 notice-outbox ids 納入持久操作；expected image 也加入秘密及材料版本。writer 接受由 route 證明的 actor/current，不在 writer 中硬編碼 hostSessionHere；directory route 提供上述窄的近期 admin 證明或 D3 修復證明。v2 actor 來源要明確區分 directory PersonKey 與 host session；主機擁有者不能被捏造成目錄 PersonKey。
+共同 helper 已在 [#3426](https://github.com/songsid/AgEnD/pull/3426) 提出；目前 journal v1 只支援 rename。以下是**已有 Hub 重新設定目錄的 v2 擴充要求**，不是宣稱 rename v1 已實作跨 SQLite 交易，也不新增第二個 writer。writer 接受 route 證明的 actor/current；directory route 提供窄的近期 admin 證明或 D3 修復證明。actor 來源明確區分 directory PersonKey 與 host session，不能捏造主機擁有者的目錄身分。
 
-1. **Prepare**：操作各自驗證角色、session、CSRF；以完整已驗證的舊設定與 manifest 為基底，產生 allowlisted candidate。保留所有無關設定，拒絕替被手動竄改的舊設定重新背書。
-2. **Stage / test**：秘密及 PEM 只在私有暫存，UI 只持有 opaque draft id。新舊材料分開，不能先覆寫有效 bind secret。測試成功後繫結 draft、actor、來源 session、設定／秘密／manifest 版本及期限。
-3. **Commit**：取得全安裝共同的設定 writer gate。再查現有完整 image/CAS、角色、期限及必要的候選資格；產生新操作來源紀錄及 Ed25519 簽章。名稱只能改名稱，AD 操作只能改已核准的 AD 範圍；客戶端不能要求任意欄位或任意 planDigest。
-4. **Durable generation**：config、secret reference、manifest 是多個檔案，不能宣稱單次 rename 就全部原子。使用私有可復原 journal 與新舊世代材料；序列化 FleetManager 的 load/save/reload → applyHubSwitches 發布（目前沒有外部檔案 watcher），在完整 commit 點前持續服務舊的不可變設定；完成後一次發布新世代。
-5. **Recovery before mount**：程序啟動或重新載入時先復原 journal，再執行嚴格的 seal 檢查與掛載。以明確 durable commit marker 判斷：未提交世代回復完整舊組；已提交世代完成完整新組，不能僅憑 staged signature 有效就自動套用。檔案與父目錄都需 fsync。讀到不預期的外部改寫時拒絕覆蓋並顯示可修復狀態，不重新產生信任。
-6. **Publish**：候選服務已完成所有可提前的檢查後才 remount；實際交接仍須釋放舊 listener。正常成功儲存不留下 `hub-unsealed` hold。若最後掛載失敗，只能依 journal 回到已知一致的上一世代，清楚顯示失敗；不能假稱已套用或用關閉驗證來維持綠燈。
+### v2 的唯一提交決定在 Hub SQLite
 
-所有可撤銷的角色及期限檢查在 durable commit marker 之前完成；marker 前取消就不生效。marker 寫下後是已授權的持久決定，後續 session 過期不能讓兩個檔案安裝一半就停止；仍須完成／復原整組世代，回應權限與實體收尾分開。若完成後掛載失敗而需要回到舊組，需另有明確且可稽核的補償狀態，不能把已提交的決定假裝成未發生。
+檔案 rename 與 SQLite 不能成為一個 OS 原子動作。**唯一授權生效點，是現有 Hub 私有資料庫內一個 IMMEDIATE 交易的持久 COMMIT**。新增 `hub_settings_operations` 決策列；檔案 journal v2 只是 prepared／安裝進度的復原索引，自己的 `committed` 字樣或有效 staged signature 都不能授權目錄變更。現有 DB 的 WAL／`synchronous=FULL` 持久性要求繼續適用。
 
-`sealHubInitialization()` 只是既有 issuer 的簽章 primitive，不提供上述交易。初始 manifest 的 confirmationId 代表初始化確認；新的 rename／AD 操作須有可稽核且明確的網頁來源，不能冒稱當年主機擁有者再次確認。
+1. **準備、測試及私有 staging（尚未決定）**：驗證完整舊 seal、身分及設定；產生 op id、allowlisted 新設定、新簽署 manifest、私有服務秘密／CA 材料及 receipt。對每個 staged file 及其父目錄 fsync，記下確切內容 hash、材料 revision 與私有 reference。新舊材料分開，尚不覆寫有效檔案。重新驗證 proof、候選、session／config epoch 及期限；所有 LDAP await 都在資料庫交易之外。
+2. **同一個 owning-DB 決策交易**：取得共同設定 writer gate，以同一個 Hub DB handle 開 IMMEDIATE 交易，重查 config／manifest／秘密／材料／政策／lifecycle／epoch 的完整 expected image。交易內一起寫入：決策列及其 staged-file hashes／receipt、已驗證的 group binding 和遞增版本、member authorization version、下述 directory/session epoch 與 session transition、必要 audit，以及**完整通知 payload＋變更前收件者快照**。不能用另一個先提交的 DB 或事後非必要 audit／outbox 補寫。
+3. **提交前最後檢查與 floor**：沿用現有 transport writer 的 floor-before-audit/DB 規則，不另繞過 floor。必要 audit/outbox 的容量與儲存、精確來源身分、候選期限、角色／session、CAS 任一拒絕，SQL 不提交。必要同步 audit 等 callback 之後，再驗證授權來源仍有效及精確規畫的轉換；最後寫 session/epoch 轉換到 COMMIT 之間沒有 await 或可重入的外部 callback。callback 回傳 thenable 一律拒絕。若 floor 已提升而 SQL 回滾，依既有規則為 uncertain，不能宣稱維持舊服務成功。
+4. **唯一決定及發布屏障**：上述 SQL COMMIT 同時授權這個 exact operation 的整組材料、政策／版本、audit 與通知。提交後新 DB head 尚未對應到已安裝並掛載的設定時，所有作用請求由 `mountedGeneration === durableSettingsHead` 屏障拒絕為暫時 unavailable；不能在記憶體舊設定下使用新 DB binding。舊 epoch 的等待請求也不能繼續。僅受保護的設定操作狀態／復原路徑可報告「套用中」。
+5. **可冪等的實體完成**：同一 writer gate 下讀取 authoritative DB head，逐個安裝確切決定的 secret/material、manifest 及 config（檔案與父目錄 fsync），每步記進度並驗證；只接受預期的 old/new hashes，不覆寫第三種外部改寫。`rawFleetConfig`／`configHistory.accepted` 及 runtime generation 只在完整新組一致且通過嚴格 verify/mount 後一起發布，才開放作用請求。FleetManager load/save/reload → applyHubSwitches 與 CLI adapter 共用此 gate；目前沒有外部檔案 watcher。
+6. **收尾與通知**：以操作／收件者／事件 id 去重派送已持久保存的通知，允許重試與保留待送狀態；不靠 cleanup 成功才記住誰應收到。audit、原操作決策及完整 outbox 早在步驟 2 的同一 COMMIT 已存在。外部 sink 若不支援 exactly-once，以相同 event id 冪等接收／去重，不能宣稱跨外部系統原子送達。
 
-共同 helper 的角色檢查由不同操作傳入的窄能力決定，不讓目錄使用者藉 rename 取得重新指定管理員或重設 CA 的能力。名稱正規化及預覽開關的精確 schema 與 M-2682 共用。CLI 仍可初始化；CLI 與網頁寫入必須遵守同一把 writer gate，不能各自提交。
+角色、期限及 exact-candidate 檢查都在唯一 SQL COMMIT 前完成。COMMIT 之後是已授權的持久決定，原 session 到期或瀏覽器斷線不會中斷整組檔案的完成；回應權限與實體收尾分開。initialization v1 的 confirmationId 不被冒用：新操作的 receipt digest 綁入新 manifest；`sealHubInitialization()` 仍只是簽章 primitive，不能代替此跨域決策協定。
+
+### 啟動與 crash 復原的判定
+
+所有 mount、session admission 及 member admission 之前，先讀 floor／DB 決策與 material head，再讀檔案索引。**DB 決策完整、floor 一致、通知／audit／binding／epoch 全部齊備，才有資格發布該世代**。
+
+| crash／拒絕所在位置 | 復原規則 |
+|---|---|
+| staging 或 fsync 前後，DB 未提交且 floor 未提升 | 無授權新決定；完整舊組可繼續。只清理可證明屬於本操作的未提交 staging |
+| floor 已提升，audit／outbox／DB 拒絕，或 COMMIT 結果無法證明 | floor 與 DB 不一致或結果不明即 uncertain；拒絕 mount／作用，不降低 floor，不從檔案 marker 猜成功，也不自動補出一個未授權決定 |
+| 唯一 SQL COMMIT 已成功，但尚未安裝任何新檔案 | 新通知／audit／政策／epoch 已完整存在；屏障維持關閉，依決策完成 exact 新檔案，不回復舊 DB |
+| 任兩個檔案安裝步驟之間，或已完整但尚未 mount | 依 DB head 與每個 old/new hash 冪等續作；舊 staged operation 若已被後續操作取代就不能重播。缺失／不符材料則 uncertain，不強行掛載 |
+| mount／發布後、進度更新或通知送達／清理前 | 以 operation head／receipt／event id 證明已完成，保留同一組 audit/outbox 並冪等補派，不重複授權或重發新的事件 |
+
+不存在「檔案 marker 已 committed，但通知或 group binding 可以稍後再補」的成功狀態。一般成功儲存不留下 `hub-unsealed`；不確定的儲存／掛載失敗仍需明確顯示，不能靠放寬 seal/floor 驗證變綠。
+
+### 掛載失敗的補償只往前走
+
+SQL 決定提交後若新 runtime 無法掛載，**不能還原舊資料庫、floor、epoch、session rows、revocation、provenance 或取消紀錄**。原決定仍是已發生的操作，保留其 audit 及全部通知。需要恢復先前連線內容時，建立新的 `directory-compensate` 操作，連到失敗的 op id，使用同一個 v2 決策協定：
+
+- 原已驗證的操作只可預先授權「本次新設定掛載失敗時恢復確切上一組內容」這個窄補償，不能授權任意新目錄；補償只能針對仍是目前 head 的失敗操作。另有更新的設定決定就拒絕 stale 補償，不把它蓋回去。
+- 重新讀取**現在**的 floor／DB／政策／撤銷與 provenance。把舊連線及材料內容寫為**新的** generation、秘密／材料 revision、receipt、簽署 manifest 與 binding revision；所有版本／member authorization／session epoch 只能增加，不能安裝舊版本號。前次秘密內容若要重用，也只能以新版本私有材料發布，不能回捲 reference/revision。若原操作只裝到一半，補償的 per-file preimage 只能來自該已授權操作鏈的 old/new hashes，並在新決策中逐檔綁定；未知第三種內容不會因重新拍快照就變合法。
+- 群組規則、manual/group provenance、已撤銷 fleet/grant、已暫停資源及已取消工作保留最新狀態；不把原操作前的政策／資源 snapshot 當成可整包恢復的資料。先前失效的 cookies、近期驗證、draft、permit、lease、handshake 不恢復。補償再次失效 sessions 並 fence 工作。
+- 原目的地的身分／群組 binding 連續性及材料仍需驗證；不能確認則補償拒絕並顯示 repair-required。補償的 audit 與完整舊收件者通知是新的事件，與原操作並存，說明「已提交但掛載失敗／補償結果」，不抹掉失敗歷史。
+- 補償中 crash 仍按新決策 op 冪等續作；floor 已提升但補償 SQL 失敗、未知外部檔案或不符 DB head 都維持 uncertain，**先拒絕 mount 再要求修復**。不自動連續反覆補償，不以重試重設 floor。已提交的補償只能由自己的持久決定完成；舊原操作 worker 必須 recheck head，不能覆寫補償。
+
+名稱正規化及預覽開關的 schema 與 M-2682 共用。CLI 仍可初始化；既有 Hub 的 CLI／網頁目錄設定提交必須使用同一 v2 writer gate，不能繞過上述決策與恢復規則。
 
 ### 目錄世代與群組權限不能漏掉
 
 目前 `groupGeneration` 包含 URL、realm、profile、base DN、bind DN、查詢模型及 CA。只重新簽署 manifest，不處理這個 binding，會留下群組政策 `repair-required`。
 
 - 同一身分命名空間內的連線變更，在提交前重查目前管理員及已設定群組的 immutable GUID／來源，並將經驗證的政策 binding 更新納入同一個 durable operation；不把 DN 字串當群組身分。
-- 需要提升全域 authorization version，讓舊 permit、lease、等待中的握手及舊 session/config epoch 不能繼續使用；依既有 refreshAuthorization 語意讓 member links 重新連線。
+- 同一決策交易提升 member authorization version，讓舊 permit、lease、等待中的 member 握手失效；依既有 refreshAuthorization 讓 member links 重新連線。**這不會自行使 HubSessions 失效**；瀏覽器使用下面獨立的 durable session/config epoch。
 - 未知／部分會員資料仍是 HELD：不開新權限、不因一次 AD 故障改寫或暫停既有資源；只有權威負向或明確政策縮限才能改狀態。保留 manual/group provenance。
 - 無法證明既有 namespace／管理員／群組綁定連續時，拒絕一般儲存，原設定保持有效；進入明確的擁有者移轉設計。不得默默清空群組規則、把它關閉，或把舊授權套到另一個目錄。
+
+### 瀏覽器 session 與目錄世代的明確轉換
+
+目前 `HubSessions.session()` 檢查 token row、期限／idle 與 core lifetime，**不比較 transport.revocationVersion**。v2 必須新增持久的 `directoryEpoch`／`configGeneration`（在 authoritative settings head），並在 `hub_sessions` 記錄對應 epoch；不能只假設 remount 或 member refresh 會涵蓋瀏覽器。session schema 的 epoch 是必要欄位，缺少或不符就拒絕，不提供 legacy fallback；新 schema/component 也必須讓不支援它的舊 binary 拒絕。
+
+- 每個 cookie 認證都同時比較 session row 的 epoch、DB head 及 mounted generation。request context 在建立時捕捉 epoch；`current()`、`isCurrent`、requirePerson/Admin、effect 前的交易斷言、近期驗證及所有 draft/confirmation 證明都要重查這個捕捉值，不能 await 後自動改綁新世代。即使候選中的 PersonKey 相同也一樣。
+- `signIn` 在 LDAP await 前捕捉來源 epoch，回來後及寫 session 的交易中再比對；跨世代的登入結果不得在新世代鑄造 cookie。重啟後也只讀 durable epoch，不靠記憶體 flag。
+- 與目錄變更同一個決策交易，提升 epoch 並終止所有舊 epoch session rows；近期驗證及草稿隨 epoch 不符失效。舊請求／SSE／背景操作立即被屏障或 current fence 阻擋，再實體關閉；不能讓異步收尾窗口繼續執行效果。
+- **操作者不多按一次確認**：已有 fresh-admin 證明且候選 exact immutable admin 相同時，可在這個同一交易做一筆明確的 session rotation：結束原 session，產生新 id／新 token hash／新 CSRF 對應的新 epoch row。新 token 僅在這次請求的記憶體，絕不放 journal/outbox；只有 exact operation 已完整安裝、掛載且新 session 仍有效時，原連線的完成回應才 Set-Cookie 並更新頁內 CSRF。它是對本次已認證操作者的窄 transition，不把其他舊 sessions 搬過去，也不把已消耗的舊 epoch 近期驗證 proof 延續為新目錄的再次儲存權限；新 session 的普通作用仍走新目錄的新鮮 eligibility。
+- 提交後的完成回應只可回傳該 op receipt／結果，不能以已失效的舊 `ctx.requireAdmin` 再啟動其他動作或把舊 current() 視為仍有效。若 crash／斷線導致新 cookie 未送達，變更仍按持久決定完成；重開頁面正常重新登入即可，不能靠舊 cookie 取回新 token。D3 修復路徑不製造任何 Hub admin session。
+- 初次 setup 仍只指定 PersonKey，**不建立虛構管理員 session**；由本人之後登入。若補償發生，先前 rotation 的新 row 也失效，不能讓恢復舊連線內容復活舊登入。
 
 ## 草稿、錯誤與稽核
 
@@ -164,7 +201,7 @@ Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果�
 
 ## 驗收與拆分
 
-1. **共用提交基礎（M-2682 協作）**：有效舊 seal、窄操作、CAS、writer serialization、journal/recovery、稽核及正常 reload。測 crash 在每個檔案寫入點，不用一個 stub 冒充多檔原子性。
+1. **共用提交基礎（M-2682 協作）**：v2 唯一 SQLite 決策、同 DB 的 group binding/version／sessions／audit／完整 outbox、writer serialization、staging/fsync 及檔案安裝。對 staging→floor→audit/outbox→SQL COMMIT→每個 file install→mount/publish→delivery/cleanup 的每個邊界前後注入 crash，驗證未提交不授權、已提交完整重播、事件不漏不重、第三種檔案拒絕與 post-floor failure uncertain；不能用一個成功 stub 冒充跨域原子性。
 2. **web bootstrap adapter**：fake LDAPS＋真 fleet HTTP listener，完成與 CLI 相同的 state set、簽章、權限與 schema；CLI fallback 仍可獨立初始化。中斷續作不換人、不覆寫已存在的 identity。
 3. **AD 設定頁**：舊目錄近期重新驗證、候選測試、write-only secret、CA／host consent、同 key 管理員檢查、群組世代與安全 outbox，與名稱／預覽共用寫入序列。測實際 FleetManager load/save/reload 發布，不只測 helper 回傳。
 4. **UI 驗收**：沿用 PageHead、`.s-section-layout`、`.card`、`.field`、`.grid2`、`.btn`、`.tag` 及共用 loading/error 元件；桌機／手機、EN／zh-TW、明／暗色；長值、無橫捲、無多餘確認、無主機指令。
@@ -172,6 +209,9 @@ Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果�
 6. **權限效果**：更換連線不授予一般目錄使用者主機能力；舊 session/permit 失效；群組 unknown 不變成正向或大量暫停；未啟用政策仍維持原來語意。
 7. **保密與 SKEW**：新舊前端互不放寬；能力標記不存在時不顯示可儲存的控制。API schema、audit/log/DOM/支援匯出都不含秘密；提交中舊頁顯示 conflict/refresh，不猜測已成功。
 8. **新增 admin 改 AD 的反向案例**：沒有近期驗證、錯誤舊目錄密碼、驗證中撤銷 session、候選冒用同名 GUID、持有驗證跨過期限、信任確認後換 host／材料，一律不提交。確認個人密碼只到舊目錄、新目的地不重用舊 bind secret；同 CA 換 host 仍出現一次確認，同 host 一般編輯不出現確認；通知隨提交／crash recovery 保留並冪等送達主機擁有者。
+
+9. **補償反向控制**：新設定 failed remount、補償每步 crash、floor 已升／DB 拒絕、原操作後新增 revoke／explicit deny，再補償。要求 head／floor／epoch 嚴格前進，原 audit/notices 與新補償事件都保留，revocation/provenance 不倒退，舊 session／permit／lease／取消工作不復活；補償不確定先 hold。
+10. **真實 HubSessions／HTTP 路徑**：原 cookie／近期驗證／held request 在目錄提交及 restart 後都被拒，即使是相同 PersonKey；member version 單獨變更不能被當作 session invalidation 證據。測原登入 await 跨 commit、actor rotation 成功及新 CSRF、回應前 crash/斷線需重新登入、補償不復活 rotation、初次 setup 無 session。不能只 mock `current()` 或只驗 member reconnect。
 
 所有設計與驗收先用假的目錄、人物及私有安裝。沒有核准前不碰實際目錄、試用 Hub 或系統信任庫。圖稿只代表排版與文案，不是連線或初始化的執行證據。
 
