@@ -82,6 +82,11 @@ describe("directory setting preparation authority", () => {
     else c.directory[field] = field === "url" ? "ldaps://another.example.test" : field === "realm" ? "different" : "CN=Another";
     await expect(r.control.prepare(c, r.ctx)).rejects.toMatchObject({ code: "invalid" }); expect(r.probeTls).not.toHaveBeenCalled();
   });
+  it("refuses a foreign bind-secret reference before inspecting the candidate", async () => {
+    const r = fixture(), c = r.candidate(); c.directory.bindPasswordRef = "foreign-secret-reference";
+    await expect(r.control.prepare(c, r.ctx)).rejects.toMatchObject({ code: "invalid" });
+    expect(r.probeTls).not.toHaveBeenCalled(); expect(r.old.signIn).not.toHaveBeenCalled(); expect(r.prepared).not.toHaveBeenCalled();
+  });
   it("requires recent OLD-directory authentication and refuses a same-login/different immutable admin", async () => {
     const r = fixture(); let p = await r.control.prepare(r.candidate(), r.ctx);
     await expect(r.control.apply(p.ref, { confirmation: p.trust!.challenge }, r.ctx)).rejects.toMatchObject({ code: "reauthentication" });
@@ -162,11 +167,33 @@ describe("directory setting preparation authority", () => {
     const q = await r.control.prepare(r.candidate(), r.ctx);
     await expect(r.control.apply(q.ref, { confirmation: q.trust!.challenge }, r.ctx)).rejects.toMatchObject({ code: "reauthentication" });
   });
+  it.each(["image", "epoch", "unchanged"] as const)("binds cached password authentication to its source: %s", async change => {
+    const r = fixture(); await r.save(); expect(r.old.signIn).toHaveBeenCalledOnce();
+    if (change === "image") r.source.image = "b".repeat(64);
+    if (change === "epoch") r.source.epoch++;
+    const p = await r.control.prepare(r.candidate(), r.ctx);
+    const result = r.control.apply(p.ref, { confirmation: p.trust!.challenge }, r.ctx);
+    if (change === "unchanged") {
+      await expect(result).resolves.toMatchObject({ directoryEpoch: 1 });
+      expect(r.old.checkEligibility).toHaveBeenCalledOnce(); expect(r.commit).toHaveBeenCalledTimes(2);
+    } else {
+      await expect(result).rejects.toMatchObject({ code: "reauthentication" });
+      expect(r.old.checkEligibility).not.toHaveBeenCalled(); expect(r.commit).toHaveBeenCalledOnce();
+    }
+    expect(r.old.signIn).toHaveBeenCalledOnce(); // No implicit new authentication, whether reuse was allowed or refused.
+  });
   it("D3 host recovery never authenticates against an unavailable old directory or invents an admin session", async () => {
     const r = fixture(); r.old.signIn.mockRejectedValue(Error("outage"));
     const ctx = { ...r.ctx, actor: { kind: "host-owner" as const, sessionId: "owned-D3-session", requestId: randomUUID() } };
     const p = await r.control.prepare(r.candidate(), ctx); await r.control.apply(p.ref, { confirmation: p.trust!.challenge }, ctx);
     expect(r.old.signIn).not.toHaveBeenCalled(); expect(r.prepared.mock.calls[0]![1]).toEqual(ctx.actor); expect(r.next.checkEligibility).toHaveBeenCalled();
+  });
+  it("refuses personal credentials on host recovery without forwarding them or reaching the writer", async () => {
+    const r = fixture(), ctx = { ...r.ctx, actor: { kind: "host-owner" as const, sessionId: "owned-D3-session", requestId: randomUUID() } };
+    const p = await r.control.prepare(r.candidate(), ctx);
+    await expect(r.control.apply(p.ref, { confirmation: p.trust!.challenge, credentials: r.credentials }, ctx)).rejects.toMatchObject({ code: "invalid" });
+    expect(r.old.signIn).not.toHaveBeenCalled(); expect(r.createDirectory).not.toHaveBeenCalled(); expect(r.commit).not.toHaveBeenCalled();
+    await expect(r.control.apply(p.ref, { confirmation: p.trust!.challenge }, ctx)).rejects.toMatchObject({ code: "expired" });
   });
   it("an expired OLD sealed CA does not prevent D3 preparing its replacement", async () => {
     const certs = directoryCertificates();
