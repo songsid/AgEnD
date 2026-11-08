@@ -1657,6 +1657,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     })();
     try{return await this.hubSetupInit;}catch(error){this.hubSetupInit=null;throw error;}
   }
+  /** Existing-state host notices also work while the Hub listener is held. No runtime/initializer is started here. */
+  async hubDirectoryNotices(): Promise<import("./hub/settings-directory-host-notices.js").HubDirectoryHostNotices> {
+    const { createHubDirectoryHostNotices } = await import("./hub/settings-directory-host-notices.js");
+    if (this.shuttingDown) throw Error("Fleet is stopping");
+    return createHubDirectoryHostNotices({ home: this.dataDir,
+      readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub, current: () => !this.shuttingDown });
+  }
   /** The member's company sign-in controller; separate from host-owned Hub initialization. */
   private companyJoinController: import("./hub/join/local.js").CompanyJoinController | null = null;
   private companyJoinInit: Promise<import("./hub/join/local.js").CompanyJoinController> | null = null;

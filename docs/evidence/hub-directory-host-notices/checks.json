@@ -1,0 +1,21 @@
+{
+  "scope": "Real fleet HTTP/D3, initialized sealed scratch Hub/shared writer and existing WAL state after an owned replacement mount refusal. Inert directory methods; no real LDAP/account, browser, native manager, pilot or live fleet.",
+  "focused": {
+    "command": "vitest run tests/hub-directory-host-notices.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-notices.test.ts tests/changelog-fragments.test.ts",
+    "passed": 215,
+    "failed": 0,
+    "skipped": 0
+  },
+  "restored": {
+    "command": "vitest run tests/hub-directory-host-notices.test.ts",
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": {
+    "source": "tsc --noEmit: exit 0",
+    "tests": "tsc --noEmit -p tsconfig.test.json: exit 0"
+  },
+  "attribution": "After the 215-test run, test-only callback assertions added the owned layout mutation and an explicit not-to-throw control, plus a comment clarification. Final restored12/12 and both type programs pass; production source is unchanged.",
+  "cleanup": "Every fixture closes its failed Hub runtime, fleet HTTP server and inspectors, flushes its owned web-session store, and removes its scratch home/certificates. The cold helper closes SQLite and zeroes the file-read key buffer in finally."
+}

@@ -10,6 +10,8 @@ import { createHubDirectorySettingsDecision, parseHubDirectorySecurityNotice, ty
 import { epoch, identifier, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 
 const querySchema = z.strictObject({ before: uuid.optional(), limit: z.number().int().min(1).max(100).default(50), unread: z.boolean().default(false) });
+export const HUB_DIRECTORY_HOST_NOTICE_SINK = "owner-needs-you";
+export function parseHubDirectoryNoticeQuery(raw: unknown) { return validated(querySchema, raw); }
 export type HubDirectoryNoticeQuery = z.input<typeof querySchema>;
 export interface HubDirectoryNoticeView {
   id: string; operationId: string; kind: HubDirectorySecurityNotice["kind"]; phase: "applying"; at: number;
