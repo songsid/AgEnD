@@ -87,7 +87,7 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 
 不要這樣寫：`color: #888; padding: 13px;`
 
-檢查方式：**CI**。`tests/web-tokens-1408.test.ts` 檢查變數本身（淺色和深色定義同一組名稱，文字對比至少 4.5:1，焦點框與邊框至少 3:1）。`tests/ui-css-literals-ratchet.test.ts` 則以「只減不增」的方式檢查使用情形：舊規則裡還留著的寫死顏色（`#hex`、`rgb()`、`rgba()`、`hsl()`）和以 px 寫的字級，列在 `tests/ui-css-literals-allowlist.json`；新增一個就會失敗，清單也只會縮小（把寫死的值換成變數後，用 `UPDATE_CSS_LITERALS=1` 重新產生）。寫死的間距和圓角沒有掃描，靠**審查**。
+檢查方式：**CI**。`tests/web-tokens-1408.test.ts` 檢查變數本身（淺色和深色定義同一組名稱，文字對比至少 4.5:1，焦點框與邊框至少 3:1）。`tests/ui-css-literals-ratchet.test.ts` 則以「只減不增」的方式檢查使用情形：舊規則裡還留著的寫死顏色（`#hex`、`rgb()`、`rgba()`、`hsl()`）和以 px 寫的字級，列在 `tests/ui-css-literals-allowlist.json`；新增一個就會失敗（寫在巢狀規則裡或用大寫也一樣），清單也只會縮小：已經拿掉的值必須從清單移除；`UPDATE_CSS_LITERALS=1` 只會調低清單，不會調高。寫死的間距和圓角沒有掃描，靠**審查**。
 
 ## 5. 不使用行內樣式
 
@@ -117,7 +117,7 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 
 已知的不一致：#3320 的部分設定規則在 `max-width: 600px` 切換，而不是 899 px。新的 CSS 不要沿用 600 px 的寫法；統一兩者是另一項修改。
 
-檢查方式：設定頁由 **CI** 檢查：UI 關卡的 `:overflow`（所有展開區塊都打開、每個選單加上一個很長的選項），以及手機寬度下的 `:tap`。`:tap` 也是只減不增：目前偏小的控制項列在 `scripts/manual/smoke/ui-gate-tap-allowlist.json`，新增一個就會失敗。16px 的輸入框由 `tests/web-input-zoom-1611.test.ts` 檢查。設定頁以外的頁面靠**審查**，看截圖確認。
+檢查方式：設定頁由 **CI** 檢查：UI 關卡的 `:overflow`（所有展開區塊都打開、每個選單加上一個很長的選項），以及手機寬度下的 `:tap`。`:tap` 也是只減不增：目前偏小的控制項列在 `scripts/manual/smoke/ui-gate-tap-allowlist.json`，新增一個就會失敗，不論它一開始就畫出來，還是要打開展開區塊才出現。停用的控制項不計。清單只會縮小：完整的關卡（`GATE=full`）遇到已經不再對應偏小控制項的項目，也會失敗。16px 的輸入框由 `tests/web-input-zoom-1611.test.ts` 檢查。設定頁以外的頁面靠**審查**，看截圖確認。
 
 ## 8. 每段文字都有英文和繁體中文
 

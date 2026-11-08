@@ -4,8 +4,9 @@
  * per file and declaration; a NEW literal colour (#hex, rgb(), rgba(), hsl(), hsla()) or font-size in px fails here. The
  * list only shrinks: removing a literal also fails until its count is lowered, so the next change can't quietly spend it.
  *
- *   After replacing literals with tokens, regenerate the list:
+ *   After replacing literals with tokens, lower the list (it refuses, writing nothing, if any count would rise):
  *   UPDATE_CSS_LITERALS=1 npx vitest run tests/ui-css-literals-ratchet.test.ts
+ *   UPDATE_CSS_LITERALS=reset adopts the current sheets as a new baseline — a branch's first list only, reviewed as such.
  *
  * tokens.css (where the literals are defined) and vendor/ (third-party CSS) are not scanned.
  */
@@ -17,20 +18,35 @@ const ROOT = join(import.meta.dirname, "..");
 const UI = join(ROOT, "src", "ui");
 const LIST = join(import.meta.dirname, "ui-css-literals-allowlist.json");
 
-const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/;
-const PX = /\d(?:\.\d+)?px\b/;
+// CSS function names and units are case-insensitive (RGB(), 15PX) (Prism #3417 P2).
+const COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i;
+const PX = /\d(?:\.\d+)?px\b/i;
 
-/** Every declaration in the innermost blocks of a stylesheet, comments removed: [property, value]. */
+/**
+ * Every declaration of a stylesheet at any depth, comments removed: [property, value]. A rule's own declarations count
+ * even when it also holds nested rules (`.a { color: #123; &:hover { … } }`, Prism #3417 P2): text is split at `;`, `{`
+ * and `}` outside quotes; a piece ending at `{` is a selector or at-rule prelude, any other piece inside a block is a
+ * declaration.
+ */
 export function declarations(css: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const block of text.matchAll(/\{([^{}]*)\}/g)) {
-    for (const decl of block[1]!.split(";")) {
-      const i = decl.indexOf(":");
-      if (i < 0) continue;
-      const prop = decl.slice(0, i).trim().toLowerCase(), value = decl.slice(i + 1).trim().replace(/\s+/g, " ");
-      if (prop && value) out.push([prop, value]);
-    }
+  let depth = 0, buf = "", quote = "";
+  const take = () => {
+    const decl = buf; buf = "";
+    if (depth === 0) return;
+    const i = decl.indexOf(":");
+    if (i < 0) return;
+    const prop = decl.slice(0, i).trim().toLowerCase(), value = decl.slice(i + 1).trim().replace(/\s+/g, " ");
+    if (prop && value) out.push([prop, value]);
+  };
+  for (const ch of text) {
+    if (quote) { buf += ch; if (ch === quote) quote = ""; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; buf += ch; continue; }
+    if (ch === "{") { buf = ""; depth++; continue; }
+    if (ch === "}") { take(); depth = Math.max(0, depth - 1); continue; }
+    if (ch === ";") { take(); continue; }
+    buf += ch;
   }
   return out;
 }
@@ -39,9 +55,9 @@ export function declarations(css: string): Array<[string, string]> {
 export function literals(css: string): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const [prop, value] of declarations(css)) {
-    const keys: string[] = [];
-    if (COLOUR.test(value)) keys.push(`colour ${prop}: ${value}`);
-    if ((prop === "font-size" || prop === "font") && PX.test(value)) keys.push(`font-px ${prop}: ${value}`);
+    const keys: string[] = [], bare = value.replace(/"[^"]*"|'[^']*'/g, '""');   // text in a string is not a colour
+    if (COLOUR.test(bare)) keys.push(`colour ${prop}: ${value}`);
+    if ((prop === "font-size" || prop === "font") && PX.test(bare)) keys.push(`font-px ${prop}: ${value}`);
     for (const k of keys) counts[k] = (counts[k] ?? 0) + 1;
   }
   return counts;
@@ -65,10 +81,26 @@ function scan(): Record<string, Record<string, number>> {
   return all;
 }
 
+type Counts = Record<string, Record<string, number>>;
+/** What the list may become: the new counts, unless any count rises (then nothing is written: the list only shrinks). */
+export function regenerate(listed: Counts, found: Counts): { write: boolean; increases: string[] } {
+  const increases: string[] = [];
+  for (const [file, ks] of Object.entries(found)) for (const [k, n] of Object.entries(ks)) {
+    const was = listed[file]?.[k] ?? 0;
+    if (n > was) increases.push(`${file}: ${k} (${was} → ${n})`);
+  }
+  return { write: increases.length === 0, increases };
+}
+
 describe("stylesheet literals ratchet (style guide rule 4)", () => {
-  if (process.env.UPDATE_CSS_LITERALS === "1") writeFileSync(LIST, JSON.stringify(scan(), null, 2) + "\n");
-  const allowed: Record<string, Record<string, number>> = JSON.parse(readFileSync(LIST, "utf8"));
+  const listed: Counts = JSON.parse(readFileSync(LIST, "utf8"));
   const now = scan();
+  // The updater lowers the list after literals are replaced; it never raises it (Prism #3417 P2): with any increase it
+  // writes nothing, and the check below fails on that increase.
+  if (process.env.UPDATE_CSS_LITERALS === "1" && regenerate(listed, now).write) writeFileSync(LIST, JSON.stringify(now, null, 2) + "\n");
+  // "reset" adopts the current stylesheets as a new baseline: a branch's first list only, reviewed as such.
+  if (process.env.UPDATE_CSS_LITERALS === "reset") writeFileSync(LIST, JSON.stringify(now, null, 2) + "\n");
+  const allowed: Counts = JSON.parse(readFileSync(LIST, "utf8"));
 
   it("scans the web UI's stylesheets (tokens.css and vendor/ excluded)", () => {
     const names = sheets(UI).map((p) => relative(ROOT, p));
@@ -90,6 +122,21 @@ describe("stylesheet literals ratchet (style guide rule 4)", () => {
       if (is < n) stale.push(`${file}: ${k} (${is} now, ${n} listed)`);
     }
     expect(stale).toEqual([]);
+  });
+  it("the updater lowers the list and refuses to raise it", () => {
+    const listed: Counts = { "a.css": { "colour color: #fff": 2, "font-px font-size: 13px": 1 } };
+    expect(regenerate(listed, { "a.css": { "colour color: #fff": 1 } })).toEqual({ write: true, increases: [] });   // fixed → lower
+    expect(regenerate(listed, { "a.css": { "colour color: #fff": 3 } }).write).toBe(false);                          // one more
+    expect(regenerate(listed, { "a.css": { "colour color: #fff": 2, "colour color: #123456": 1 } }).increases).toEqual(["a.css: colour color: #123456 (0 → 1)"]);
+    expect(regenerate(listed, { "b.css": { "font-px font: 12px x": 1 } }).write).toBe(false);                         // a new file
+  });
+  it("a rule's own declarations count beside nested rules, and function names and units in any case", () => {
+    expect(literals(`.a { color: #123456; &:hover { opacity: .9; } }`)).toEqual({ "colour color: #123456": 1 });
+    expect(literals(`.a { &:hover { color: var(--text); } font-size: 15px; }`)).toEqual({ "font-px font-size: 15px": 1 });
+    expect(literals(`@media (max-width: 899px) { .a { color: RGB(0 0 0); font-size: 15PX; .b { background: HSL(1 2% 3%); } } }`))
+      .toEqual({ "colour color: RGB(0 0 0)": 1, "font-px font-size: 15PX": 1, "colour background: HSL(1 2% 3%)": 1 });
+    expect(literals(`.a { color: var(--text); &:hover { color: var(--accent); .b { font-size: var(--fs-sm); } } }`)).toEqual({});
+    expect(literals(`.a { content: "{ color: #fff; }"; color: var(--text); }`)).toEqual({});
   });
   it("the scanner itself: colours in any notation and px font sizes count; tokens, comments and other px don't", () => {
     const css = `/* #fff in a comment */ .a { color: #fff; background: rgba(0, 0, 0, .5); border: 1px solid var(--border); }

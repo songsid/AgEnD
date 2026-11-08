@@ -106,8 +106,8 @@ Don't: `color: #888; padding: 13px;`
 Checked by: **CI**. `tests/web-tokens-1408.test.ts` checks the tokens themselves (light and dark define the same names,
 text meets 4.5:1 and focus/borders 3:1). `tests/ui-css-literals-ratchet.test.ts` is a ratchet on their use: the literal
 colours (`#hex`, `rgb()`, `rgba()`, `hsl()`) and px font sizes that older rules still have are listed in
-`tests/ui-css-literals-allowlist.json`; a new one fails, and the list only shrinks (`UPDATE_CSS_LITERALS=1` rewrites it
-after literals are replaced). **Review** for literal spacing and radius, which aren't scanned.
+`tests/ui-css-literals-allowlist.json`; a new one fails, including in a nested rule or written in capitals, and the list
+only shrinks: a literal that is gone must come off it, and `UPDATE_CSS_LITERALS=1` lowers it but refuses to raise it. **Review** for literal spacing and radius, which aren't scanned.
 
 ## 5. No inline styles
 
@@ -146,7 +146,9 @@ A known inconsistency: some Settings rules from #3320 switch at `max-width: 600p
 
 Checked by: **CI** — on Settings, the UI gate's `:overflow` check (with every disclosure opened and a long option added),
 and its `:tap` check at phone width, a ratchet: the controls that are smaller today are listed in
-`scripts/manual/smoke/ui-gate-tap-allowlist.json`, and a new one fails. `tests/web-input-zoom-1611.test.ts` checks the
+`scripts/manual/smoke/ui-gate-tap-allowlist.json`, and a new one fails, whether it is drawn at once or only shown when a
+disclosure opens. Disabled controls don't count. The list only shrinks: the full gate (`GATE=full`) fails on an
+allowance that no longer matches a small control. `tests/web-input-zoom-1611.test.ts` checks the
 16px inputs. **Review** for pages outside Settings, using the screenshots.
 
 ## 8. Every string in English and Traditional Chinese
