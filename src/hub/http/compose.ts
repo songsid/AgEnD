@@ -23,6 +23,7 @@ import { HubProtocolError, parseStrictJson } from "../validation.js";
 import { personKeyString } from "../identity.js";
 import type { HubMemberFrame, HubServerFrame } from "../types.js";
 import type { HubLinkContext } from "../server.js";
+import type { HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { HubSessions, hubClearCookie, hubSetCookie } from "../sessions.js";
 import { HubCatalogService } from "../catalog.js";
 import { HubPolicyService } from "../policy.js";
@@ -59,6 +60,7 @@ export interface HubHttp {
   close(): Promise<void>;
   /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
   readonly features: readonly string[];
+  readonly directorySessions: HubDirectoryBrowserSessions;
 }
 
 class SignedOut extends Error {}
@@ -502,6 +504,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
   rooms.buttons.start();
   return {
+    directorySessions: Object.freeze({
+      recentAuthentication: actor => sessions.recentAuthentication(actor),
+      prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
+      completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
+    } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
     async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

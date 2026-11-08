@@ -8,7 +8,7 @@ import { request } from "node:https";
 import { connect } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { verify, createPublicKey, randomUUID } from "node:crypto";
+import { verify, createPublicKey, randomUUID, createHash } from "node:crypto";
 import yaml from "js-yaml";
 import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
@@ -26,6 +26,7 @@ import { sealHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
 import { atomicWriteFileSync } from "../src/atomic-write.js";
+import { hubSetCookie } from "../src/hub/sessions.js";
 import { SERVER_SET } from "../src/hub/compose/storage.js";
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 
@@ -656,7 +657,7 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 async function directoryRuntimeRig() {
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined;
-  let creates = 0, eligibility = 0;
+  let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
   const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return real.createHubHttp(deps); } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
@@ -671,7 +672,10 @@ async function directoryRuntimeRig() {
       step(point) { if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
     });
     runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer,
-      createDirectory: () => { creates++; return { realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
+      createDirectory: () => { creates++; return { realm: "corp", signIn: async (login, password) => {
+          await signInGate?.();
+          return login === ADMIN.login && password === "Dummy-browser-only" ? { ok: true, person: ADMIN } : { ok: false, reason: "invalid-credentials" };
+        },
         checkEligibility: async () => { eligibility++; return { eligible: true, person: ADMIN }; }, close: async () => {} }; } });
     return runtime;
   };
@@ -687,7 +691,7 @@ async function directoryRuntimeRig() {
     crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current);
   };
   return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; },
-    get creates() { return creates; }, get eligibility() { return eligibility; }, entry, build, commit, candidate, actor };
+    get creates() { return creates; }, get eligibility() { return eligibility; }, holdSignIn(gate?: () => Promise<void>) { signInGate = gate; }, entry, build, commit, candidate, actor };
 }
 
 describe.skipIf(process.platform === "win32")("directory decision joins the mounted runtime", () => {
@@ -847,6 +851,84 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
   });
 });
 
+
+/** Ordinary verified HTTPS only; no intercepted API responses or personal credentials. */
+function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown) {
+  return new Promise<{ status: number; json: any; cookie: string }>((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port: hub.webPort, path: "/hub/v1/session", servername: "hub.example.test", ca: hub.caPem,
+      agent: false, method: body === undefined ? "GET" : "POST", headers: { Origin: String(hub.config.hub.webOrigin),
+        ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) } }, res => {
+      let text = ""; res.setEncoding("utf8"); res.on("data", data => { text += data; });
+      res.on("end", () => { try { resolve({ status: res.statusCode!, json: JSON.parse(text), cookie: res.headers["set-cookie"]?.[0]?.split(";")[0] ?? "" }); } catch (error) { reject(error); } });
+    });
+    req.on("error", reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+  });
+}
+
+describe.skipIf(process.platform === "win32")("directory browser facade belongs to its mounted generation", () => {
+  it("releases only the committed successor once after remount; old cookies and held old sign-in remain revoked", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }); let entered!: () => void;
+    const inDriver = new Promise<void>(resolve => { entered = resolve; });
+    let pending: ReturnType<typeof directoryBrowser> | undefined;
+    const inspect = () => new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+    try {
+      const credentials = { login: ADMIN.login, password: "Dummy-browser-only" };
+      const signed = await directoryBrowser(r.hub, undefined, credentials), other = await directoryBrowser(r.hub, undefined, credentials);
+      expect(signed.status).toBe(200); expect(other.status).toBe(200); expect(signed.json.admin).toBe(true);
+      const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1), db = inspect();
+      let original: { id: string; expires_at: number };
+      try { original = db.prepare("SELECT id,expires_at FROM hub_sessions WHERE token_hash=?").get(createHash("sha256").update(token).digest("hex")) as typeof original; }
+      finally { db.close(); }
+      const actor = { kind: "hub-administrator" as const, person: ADMIN.key, sessionId: original.id, requestId: randomUUID() };
+      const old = r.runtime.directorySettings()!, oldSessions = old.sessions();
+      expect(oldSessions.recentAuthentication(actor)).toEqual(expect.any(Number));
+      const rotation = oldSessions.prepareDirectoryRotation(token, actor);
+      const proof = createHubDirectorySettingsProof({ source: old.source, withDirectoryRead: old.withDirectoryRead,
+        recentAuthentication: a => oldSessions.recentAuthentication(a), writer: () => r.writer.directory!,
+        createDirectory: () => ({ realm: "corp", signIn: async () => { throw Error("personal credentials reached candidate"); },
+          checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }), probeTls: async () => "a".repeat(64) });
+      let saved: { receiptId: string; directoryEpoch: number };
+      try {
+        const candidate = r.candidate(), ctx = { actor, current: () => true };
+        const draft = await proof.prepare({ ...candidate, changes: [...candidate.changes] }, ctx);
+        r.holdSignIn(async () => { entered(); await held; });
+        pending = directoryBrowser(r.hub, undefined, credentials); await inDriver;
+        saved = await proof.apply(draft.ref, { confirmation: draft.trust!.challenge }, ctx, rotation);
+      } finally { proof.close(); }
+      expect(saved.directoryEpoch).toBe(1);
+      expect(() => old.sessions()).toThrow();
+      expect(() => oldSessions.completeDirectoryRotation(rotation, saved.receiptId)).toThrow();
+      release(); expect((await pending).status).toBe(503); pending = undefined; r.holdSignIn();
+      await r.runtime.apply(r.hub.config);
+      const fresh = r.runtime.directorySettings()!.sessions();
+      expect((await directoryBrowser(r.hub, signed.cookie)).json.signedIn).toBe(false);
+      expect((await directoryBrowser(r.hub, other.cookie)).json.signedIn).toBe(false);
+      expect(() => fresh.completeDirectoryRotation(rotation, randomUUID())).toThrow();
+      const beforeRelease = Date.now(), successor = fresh.completeDirectoryRotation(rotation, saved.receiptId), afterRelease = Date.now();
+      expect(successor.maxAgeMs).toBeGreaterThan(0);
+      expect(successor.maxAgeMs).toBeLessThanOrEqual(original.expires_at - beforeRelease);
+      expect(successor.maxAgeMs).toBeGreaterThanOrEqual(original.expires_at - afterRelease);
+      expect(() => fresh.completeDirectoryRotation(rotation, saved.receiptId)).toThrow();
+      const cookie = hubSetCookie(String(r.hub.config.hub.hubId), successor.token, successor.maxAgeMs).split(";")[0]!;
+      expect((await directoryBrowser(r.hub, cookie)).json).toMatchObject({ signedIn: true, admin: true, login: ADMIN.login });
+      const after = inspect();
+      try {
+        const rows = after.prepare("SELECT id,expires_at,state FROM hub_sessions").all() as Array<{ id: string; expires_at: number; state: string }>;
+        expect(rows).toHaveLength(3); expect(rows.filter(row => row.state === "active")).toHaveLength(1);
+        const active = rows.find(row => row.state === "active")!; expect(active.expires_at).toBe(original.expires_at);
+        expect(fresh.recentAuthentication({ ...actor, sessionId: active.id })).toBeNull();
+      } finally { after.close(); }
+      r.runtime.fence(); expect(() => fresh.prepareDirectoryRotation(successor.token, actor)).toThrow();
+    } finally { release(); await pending?.catch(() => {}); await r.runtime.close(); }
+  });
+  it("an older HTTP entry without the private session adapter refuses handoff", async () => {
+    const hub = await initializedHub(), http = fakeHttp();
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry } });
+    try { await runtime.apply(hub.config); expect(runtime.directorySettings()).not.toBeNull(); expect(() => runtime.directorySettings()!.sessions()).toThrow(); }
+    finally { await runtime.close(); }
+  });
+});
 
 describe.skipIf(process.platform === "win32")("directory runtime review regressions", () => {
   it.each(["member-await", "before-publication"])("refuses changed material at %s without publishing the directory control", async stage => {

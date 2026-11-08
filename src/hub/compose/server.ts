@@ -50,7 +50,7 @@ import { signCompanyDescriptor } from "../join/descriptor.js";
 import { HubCompanyJoin } from "../join/service.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } from "../settings-directory-decision.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
-import type { HubMountedDirectory } from "../settings-directory-runtime.js";
+import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { parseGroupPolicy } from "../group-policy/model.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
@@ -88,6 +88,8 @@ export interface HubHttp {
   close(): Promise<void>;
   /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
   readonly features?: readonly string[];
+  /** Private adapter only; no token/ref lookup HTTP route or browser capability. */
+  readonly directorySessions?: HubDirectoryBrowserSessions;
 }
 
 export interface HubHttpEntry {
@@ -313,6 +315,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           return { directory, config: structuredClone(directoryConfig), bindPassword, administrator: { ...settings.administrator },
             groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: live };
         })(),
+        sessions() {
+          if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");
+          return http.directorySessions;
+        },
         withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => policy().withDirectoryRead(person, work),
       });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
