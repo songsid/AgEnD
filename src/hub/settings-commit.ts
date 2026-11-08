@@ -141,6 +141,19 @@ export interface HubSettingsWriter {
   directory?: HubDirectorySettingsWriter;
 }
 
+/** Internal material projection shared by the writer and its mount barrier; not a browser DTO or an authority proof. */
+export function hubDirectorySettingsImage(hub: unknown, manifest: string, secret: string): HubDirectorySettingsImage {
+  return { configDigest: hubPlanDigest(hub), configSha: sha(canonical(hub)), directorySha: sha(canonical(obj(hub).directory)),
+    manifestSha: sha(manifest), bindSecretSha: sha(secret) };
+}
+
+/** Fixed private files only. Callers still verify the seal and the authoritative SQL head before admission. */
+export function readHubDirectorySettingsImage(home: string, hub: unknown): HubDirectorySettingsImage {
+  if (obj(obj(hub).directory).bindPasswordRef !== BIND_PASSWORD_REF) throw new HubSettingsError("unavailable");
+  return hubDirectorySettingsImage(hub, readPrivateFile(home, MANIFEST, 64 * 1024, { preserveBom: true }),
+    readPrivateFile(home, BIND_SECRET_REL, 4096, { preserveBom: true }));
+}
+
 export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSettingsWriter {
   const now = deps.now ?? Date.now;
   const prepared = new Map<string, Prepared>();
@@ -205,7 +218,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   const readDirectoryFile = (id: string, role: string, limit = 1024 * 1024) => readPrivateFile(deps.home, directoryFile(id, role), limit, { preserveBom: true });
   const readSecret = () => readPrivateFile(deps.home, BIND_SECRET_REL, 4096, { preserveBom: true });
   const directoryImage = (hub: unknown = deps.readHub(), manifest = readManifest(), secret = readSecret()): HubDirectorySettingsImage =>
-    ({ configDigest: hubPlanDigest(hub), configSha: sha(canonical(hub)), directorySha: sha(canonical(obj(hub).directory)), manifestSha: sha(manifest), bindSecretSha: sha(secret) });
+    hubDirectorySettingsImage(hub, manifest, secret);
   const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
   const removeDirectoryPreparation = (id: string) => {
     for (const role of ["old-hub", "new-hub", "old-secret", "new-secret", "old-manifest", "new-manifest", "receipt"]) rmSync(file(directoryFile(id, role)), { force: true });

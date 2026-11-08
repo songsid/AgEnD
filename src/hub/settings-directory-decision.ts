@@ -109,6 +109,13 @@ export type HubDirectorySettingsDecision = ReturnType<typeof createHubDirectoryS
 /** Internal library, no I/O on construction. The shared writer owns all file installation and proof acquisition. */
 export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDeps) {
   const { db, transport } = deps, hubId = validated(identifier, deps.hubId);
+  // Only while THIS root decision calls its synchronous proof. The final SQL checks still validate every own change.
+  let proofBasis: { expected: HubDirectoryDecisionRequest["expected"]; policy: HubGroupPolicy } | null = null;
+  function prove<T>(expected: HubDirectoryDecisionRequest["expected"], policy: HubGroupPolicy, work: () => T): T {
+    if (proofBasis) throw new HubProtocolError("invalid");
+    proofBasis = { expected: structuredClone(expected), policy: structuredClone(policy) };
+    try { return work(); } finally { proofBasis = null; }
+  }
   function inspect() {
     const head = readHubDirectorySettingsHead(db), state = transport.read(), p = policyRow(db);
     if (p.hub_id !== hubId) throw new HubProtocolError("uncertain");
@@ -124,7 +131,9 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
     const transition = rotation ? takeHubDirectorySessionRotation(rotation, db, hubId, input.actor, input.expected.directoryEpoch) : undefined;
     if (compensation && transition) throw new HubProtocolError("invalid");
     const result = db.transaction(() => {
-      synchronous(assertProof()); assertExpected(input.expected);
+      assertExpected(input.expected);
+      const basisPolicy = policyRow(db).policy;
+      synchronous(prove(input.expected, basisPolicy, assertProof)); assertExpected(input.expected);
       transition?.validate(transition.clock());
       const previous = policyRow(db), policy = previous.policy;
       if (previous.hub_id !== hubId || (input.actor.kind === "hub-administrator" && input.actor.person.realm !== policy.realm)) throw new HubProtocolError("denied");
@@ -160,7 +169,7 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         db.prepare("INSERT INTO hub_settings_security_notices VALUES(?,?,?)").run(notice.id, input.id, JSON.stringify(notice));
         for (const target of targetRows(notice.recipients)) db.prepare("INSERT INTO hub_settings_security_targets VALUES(?,?,?,'queued')").run(notice.id, target.kind, target.target);
       }); // existing floor-before-audit and same-DB write; any later rollback leaves a raised floor uncertain
-      const finalProof = assertProof(); synchronous(finalProof);
+      const finalProof = prove(input.expected, policy, assertProof); synchronous(finalProof);
       // The shared writer returns its last clock sample, avoiding another callback after its final material/time check.
       const transitionTime = typeof finalProof === "number" ? finalProof : transition?.clock();
       // Audit/proof callbacks may reenter. Recheck every authority image before the final callback-free transition.
@@ -189,6 +198,8 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
   return {
     hubId,
     inspect,
+    /** Internal source projection for the exact synchronous proof; absent outside that callback (including after an await). */
+    proofBasis() { return proofBasis ? structuredClone(proofBasis) : null; },
     decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, rotation?: HubDirectorySessionRotation) { return decide(raw, assertProof, undefined, rotation); },
     /** A new operation restoring ONLY original content; current policy/denies/revokes/provenance are never rewound. */
     compensate(originalId: string, raw: HubDirectoryDecisionRequest, assertPreauthorizedIntent: () => void) {

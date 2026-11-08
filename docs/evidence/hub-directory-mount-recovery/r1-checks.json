@@ -1,0 +1,32 @@
+{
+  "review": "Fable F1/F2; optional N1 documentation clarified",
+  "productionChanged": false,
+  "focused": {
+    "passed": 98,
+    "skips": 0,
+    "file": "tests/hub-directory-settings-decision.test.ts"
+  },
+  "testTypes": "passed",
+  "mutationControls": {
+    "selected": 6,
+    "unselected": 92
+  },
+  "mutations": [
+    {
+      "guard": "operations-probe",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "targets-probe",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "newer-error",
+      "assertionCaught": true,
+      "failures": 1
+    }
+  ],
+  "restored": true
+}

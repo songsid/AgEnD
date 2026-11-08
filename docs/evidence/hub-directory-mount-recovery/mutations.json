@@ -1,0 +1,138 @@
+{
+  "barrier": {
+    "mutants": [
+      {
+        "name": "material",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "decision",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "seal",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "permanent",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "authority-stamp",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "config-snapshot",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "owner-snapshot",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "hub-binding",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "post-seal-owner",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "proof-scope",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "proof-copy",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "proof-close",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "expected-before-proof",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "scoped-stamp",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "secret-bytes",
+        "assertionCaught": true,
+        "exit": 1
+      },
+      {
+        "name": "secret-reference",
+        "assertionCaught": true,
+        "exit": 1
+      }
+    ],
+    "restored": true
+  },
+  "coldRecovery": {
+    "mutants": [
+      {
+        "name": "registry",
+        "assertionCaught": true,
+        "failed": 4
+      },
+      {
+        "name": "authority-tables",
+        "assertionCaught": true,
+        "failed": 1
+      },
+      {
+        "name": "identity",
+        "assertionCaught": true,
+        "failed": 1
+      },
+      {
+        "name": "db-binding",
+        "assertionCaught": true,
+        "failed": 1
+      },
+      {
+        "name": "content-key",
+        "assertionCaught": true,
+        "failed": 1
+      },
+      {
+        "name": "authority-inspect",
+        "assertionCaught": true,
+        "failed": 3
+      },
+      {
+        "name": "close",
+        "assertionCaught": true,
+        "failed": 6
+      },
+      {
+        "name": "async-refusal",
+        "assertionCaught": true,
+        "failed": 1
+      },
+      {
+        "name": "older-schema",
+        "assertionCaught": true,
+        "failed": 1
+      }
+    ],
+    "restored": true
+  },
+  "carry": "Barrier reversals ran before the additive cold-recovery helper; the three source hashes remain exact. Cold-recovery reversals select only the cold-recovery describe; other cases are deliberately unselected."
+}
