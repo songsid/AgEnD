@@ -40,6 +40,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
     setDeliveryOutboxPort() {}
     setAgentCredentialIssuer(issue: (token: string) => void) { this.credentialIssuer = issue; }
     setPeerWorkingDirectories() {}
+    setDecisionTeams() {}
     setStatusEmojiAvoidList() {}
     setWorkLeaseCheck(check: () => boolean) { this.leaseCheck = check; }
     seedActivityNow() { this.seeded = true; }

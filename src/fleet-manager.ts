@@ -8597,7 +8597,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const decisions = this.scheduler.db.listAllActiveDecisions();
         if (decisions.length > 0) {
-          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root }));
+          // Each instance keeps only its own (selectRelevantDecisions). Fleet ones are capped apart, so a long fleet list
+          // cannot crowd team and project decisions out of the snapshot.
+          const fleetWide = decisions.filter(d => d.scope === "fleet").slice(0, 20);
+          const scoped = decisions.filter(d => d.scope !== "fleet").slice(0, 60);
+          const capped = [...fleetWide, ...scoped].map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
           process.env.AGEND_DECISIONS = JSON.stringify(capped);
           this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
         }
@@ -12028,13 +12032,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const scoped = this.decisionScopeFor(instanceName, payload.scope, payload.team);
+          if ("error" in scoped) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: scoped.error }); return; }
           const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
           if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
             project_root: projectRoot,
-            scope: (payload.scope as "project" | "fleet" | undefined),
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title: payload.title as string,
             content: payload.content as string,
             tags: payload.tags as string[] | undefined,
@@ -12050,6 +12058,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result = decisionListAnswer(db.listDecisions(projectRoot, {
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
+            teams: instanceTeams(this.fleetConfig?.teams, instanceName),
           }), { id: payload.id, full: payload.full });
           break;
         case "fleet_decision_update": {
@@ -12246,6 +12255,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { id: value };
   }
 
+  /**
+   * The scope (and team) a new decision gets. Team membership is read from fleet.yaml now. Omitted scope: the poster's
+   * team when they are in exactly one, project (this exact directory) when they are in none; in several, they choose.
+   * A team decision goes only to a team the poster is in.
+   */
+  decisionScopeFor(instance: string, scope: unknown, team: unknown): { scope: "project" | "team" | "fleet"; team?: string; teams: string[] } | { error: string } {
+    const teams = instanceTeams(this.fleetConfig?.teams, instance);
+    const named = typeof team === "string" && team.trim() ? team.trim() : undefined;
+    if (scope !== undefined && scope !== null && scope !== "project" && scope !== "team" && scope !== "fleet") {
+      return { error: `scope must be "project", "team" or "fleet"` };
+    }
+    if (scope === "project" || scope === "fleet") {
+      return named ? { error: `team goes with scope "team", not "${scope}"` } : { scope, teams };
+    }
+    if (named) {
+      if (!teams.includes(named)) {
+        return { error: teams.length ? `You are not in team "${named}". Your teams: ${teams.join(", ")}` : `You are not in team "${named}" (you are in no team)` };
+      }
+      return { scope: "team", team: named, teams };
+    }
+    if (teams.length === 1) return { scope: "team", team: teams[0], teams };
+    if (teams.length > 1) return { error: `You are in several teams (${teams.join(", ")}): name one with team, or use scope "project" or "fleet"` };
+    if (scope === "team") return { error: `You are in no team: use scope "project" (this directory) or "fleet"` };
+    return { scope: "project", teams };
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -12259,13 +12294,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const title = asStr(args.title);
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
-        const scope = args.scope === "fleet" ? "fleet" : "project";
+        const scoped = this.decisionScopeFor(instance, args.scope, args.team);
+        if ("error" in scoped) return { error: scoped.error };
         const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
         if ("error" in supersedes) return { error: supersedes.error };
         try {
           return db.createDecision({
             project_root: projectRoot,
-            scope,
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title,
             content,
             tags: asStrArr(args.tags),
@@ -12283,6 +12321,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return decisionListAnswer(db.listDecisions(projectRoot, {
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
+        teams: instanceTeams(this.fleetConfig?.teams, instance),
       }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
       case "update": {
         const id = asStr(args.id);

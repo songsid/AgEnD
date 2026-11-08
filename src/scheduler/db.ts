@@ -45,6 +45,7 @@ export class SchedulerDb {
         id            TEXT PRIMARY KEY,
         project_root  TEXT NOT NULL,
         scope         TEXT NOT NULL DEFAULT 'project',
+        team          TEXT,
         title         TEXT NOT NULL,
         content       TEXT NOT NULL,
         tags          TEXT,
@@ -120,6 +121,12 @@ export class SchedulerDb {
       this.db.exec("ALTER TABLE decisions ADD COLUMN scope TEXT NOT NULL DEFAULT 'project'");
     }
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_decisions_scope ON decisions(scope)");
+    // Migration: team-scoped decisions. Older versions never list scope 'team' rows (they read project = their exact
+    // directory, or fleet), so a rollback hides team decisions rather than showing them to everyone.
+    const decisionCols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
+    if (decisionCols.length > 0 && !decisionCols.some(c => c.name === "team")) {
+      this.db.exec("ALTER TABLE decisions ADD COLUMN team TEXT");
+    }
 
     // Tasks table
     this.db.exec(`
@@ -481,6 +488,7 @@ export class SchedulerDb {
       id: row.id as string,
       project_root: row.project_root as string,
       scope: (row.scope as Decision["scope"]) ?? "project",
+      team: (row.team as string | null | undefined) ?? null,
       title: row.title as string,
       content: row.content as string,
       tags: row.tags ? JSON.parse(row.tags as string) : [],
@@ -500,20 +508,23 @@ export class SchedulerDb {
     const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 86_400_000).toISOString() : null;
 
     const scope = params.scope ?? "project";
+    const team = scope === "team" ? params.team?.trim() : undefined;
+    if (scope === "team" && !team) throw new Error("A team decision needs its team");
     // One transaction: a predecessor that is not there, not visible to this project, or no longer active — or an update
     // that changes no row — throws, and the new decision is not inserted either (never a new one beside an old one
     // still standing, never an old one marked superseded by nothing).
     this.db.transaction(() => {
       const old = params.supersedes ? this.getDecision(params.supersedes) : null;
       if (params.supersedes) {
-        const visible = old && (old.scope === "fleet" || old.project_root === params.project_root);
+        const visible = old && (old.scope === "fleet"
+          || (old.scope === "team" ? !!old.team && (params.poster_teams ?? []).includes(old.team) : old.project_root === params.project_root));
         if (!old || !visible) throw new Error(`Decision "${params.supersedes}" not found`);
         if (old.status !== "active") throw new Error(`Decision "${params.supersedes}" is ${old.status}, not active: only an active decision can be superseded`);
       }
       this.db.prepare(`
-        INSERT INTO decisions (id, project_root, scope, title, content, tags, created_by, created_at, expires_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, params.project_root, scope, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
+        INSERT INTO decisions (id, project_root, scope, team, title, content, tags, created_by, created_at, expires_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, params.project_root, scope, team ?? null, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
       if (params.supersedes && this.supersedeDecision(params.supersedes, id) !== 1) {
         throw new Error(`Decision "${params.supersedes}" could not be superseded`);
       }
@@ -527,17 +538,22 @@ export class SchedulerDb {
     return row ? this.rowToDecision(row) : null;
   }
 
-  listDecisions(projectRoot: string, opts?: { includeArchived?: boolean; tags?: string[] }): Decision[] {
-    // Return project-scoped decisions for this root + all fleet-scoped decisions
-    let sql = "SELECT * FROM decisions WHERE ((project_root = ? AND scope = 'project') OR scope = 'fleet')";
-    const values: unknown[] = [projectRoot];
+  /**
+   * Fleet decisions, this exact directory's project decisions, and the decisions of `teams` (the caller's teams, read
+   * from fleet.yaml at call time: joining or leaving a team changes what is listed without reposting anything).
+   */
+  listDecisions(projectRoot: string, opts?: { includeArchived?: boolean; tags?: string[]; teams?: string[] }): Decision[] {
+    const teams = [...new Set(opts?.teams ?? [])];
+    const teamClause = teams.length ? ` OR (scope = 'team' AND team IN (${teams.map(() => "?").join(",")}))` : "";
+    let sql = `SELECT * FROM decisions WHERE ((project_root = ? AND scope = 'project') OR scope = 'fleet'${teamClause})`;
+    const values: unknown[] = [projectRoot, ...teams];
 
     if (!opts?.includeArchived) {
       sql += " AND status = 'active'";
     }
 
-    // Fleet decisions first, then project, newest first within each group
-    sql += " ORDER BY CASE scope WHEN 'fleet' THEN 0 ELSE 1 END, created_at DESC";
+    // Fleet decisions first, then team, then project, newest first within each group
+    sql += " ORDER BY CASE scope WHEN 'fleet' THEN 0 WHEN 'team' THEN 1 ELSE 2 END, created_at DESC";
     let rows = this.db.prepare(sql).all(...values) as Record<string, unknown>[];
 
     if (opts?.tags?.length) {
@@ -553,7 +569,7 @@ export class SchedulerDb {
   /** Return all active decisions regardless of project_root (for env var injection). */
   listAllActiveDecisions(): Decision[] {
     const rows = this.db.prepare(
-      "SELECT * FROM decisions WHERE status = 'active' ORDER BY CASE scope WHEN 'fleet' THEN 0 ELSE 1 END, created_at DESC"
+      "SELECT * FROM decisions WHERE status = 'active' ORDER BY CASE scope WHEN 'fleet' THEN 0 WHEN 'team' THEN 1 ELSE 2 END, created_at DESC"
     ).all() as Record<string, unknown>[];
     return rows.map(r => this.rowToDecision(r));
   }

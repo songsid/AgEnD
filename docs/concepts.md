@@ -278,9 +278,20 @@ finishing it from review with done.
 
 ## decision
 
-A recorded agreement (`post_decision`, `list_decisions`), scoped to a project
-directory or to the whole fleet. Decisions are the fleet's memory of why,
-readable with `list_decisions`.
+A recorded agreement (`post_decision`, `list_decisions`). Decisions are the
+fleet's memory of why, readable with `list_decisions`. Each one has a scope:
+
+- **team**: every member of one team (fleet.yaml `teams`), wherever they work.
+  Membership is read when listing and at each launch, so joining or leaving a
+  team takes effect without posting again. This is the default for a poster in
+  a team; a poster in several teams names one.
+- **project**: this exact working directory only. This is the default for a
+  poster in no team.
+- **fleet**: every instance on the fleet. Use it only for rules every team
+  follows.
+
+An instance's Active Decisions are the fleet ones, its teams' ones and its own
+directory's ones.
 
 - Can: record agreements agents and people consult later.
 - Can't: enforce itself — code that never reads a decision is not bound by it
