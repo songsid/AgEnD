@@ -97,7 +97,7 @@ Hub 管理的「設定 → AD 連線」顯示目前連線、CA 狀態、最近�
 1. **Prepare**：操作各自驗證角色、session、CSRF；以完整已驗證的舊設定與 manifest 為基底，產生 allowlisted candidate。保留所有無關設定，拒絕替被手動竄改的舊設定重新背書。
 2. **Stage / test**：秘密及 PEM 只在私有暫存，UI 只持有 opaque draft id。新舊材料分開，不能先覆寫有效 bind secret。測試成功後繫結 draft、actor、來源 session、設定／秘密／manifest 版本及期限。
 3. **Commit**：取得全安裝共同的設定 writer gate。再查現有完整 image/CAS、角色、期限及必要的候選資格；產生新操作來源紀錄及 Ed25519 簽章。名稱只能改名稱，AD 操作只能改已核准的 AD 範圍；客戶端不能要求任意欄位或任意 planDigest。
-4. **Durable generation**：config、secret reference、manifest 是多個檔案，不能宣稱單次 rename 就全部原子。使用私有可復原 journal 與新舊世代材料，暫停自己的 config watcher 發布，在完整 commit 點前持續服務舊的不可變設定；完成後一次發布新世代。
+4. **Durable generation**：config、secret reference、manifest 是多個檔案，不能宣稱單次 rename 就全部原子。使用私有可復原 journal 與新舊世代材料；序列化 FleetManager 的 load/save/reload → applyHubSwitches 發布（目前沒有外部檔案 watcher），在完整 commit 點前持續服務舊的不可變設定；完成後一次發布新世代。
 5. **Recovery before mount**：程序啟動或重新載入時先復原 journal，再執行嚴格的 seal 檢查與掛載。以明確 durable commit marker 判斷：未提交世代回復完整舊組；已提交世代完成完整新組，不能僅憑 staged signature 有效就自動套用。檔案與父目錄都需 fsync。讀到不預期的外部改寫時拒絕覆蓋並顯示可修復狀態，不重新產生信任。
 6. **Publish**：候選服務已完成所有可提前的檢查後才 remount；實際交接仍須釋放舊 listener。正常成功儲存不留下 `hub-unsealed` hold。若最後掛載失敗，只能依 journal 回到已知一致的上一世代，清楚顯示失敗；不能假稱已套用或用關閉驗證來維持綠燈。
 
@@ -134,7 +134,7 @@ Hub 管理的「設定 → AD 連線」顯示目前連線、CA 狀態、最近�
 
 1. **共用提交基礎（M-2682 協作）**：有效舊 seal、窄操作、CAS、writer serialization、journal/recovery、稽核及正常 reload。測 crash 在每個檔案寫入點，不用一個 stub 冒充多檔原子性。
 2. **web bootstrap adapter**：fake LDAPS＋真 fleet HTTP listener，完成與 CLI 相同的 state set、簽章、權限與 schema；CLI fallback 仍可獨立初始化。中斷續作不換人、不覆寫已存在的 identity。
-3. **AD 設定頁**：候選測試、write-only secret、CA consent、同 key 管理員檢查、群組世代處理，與名稱／預覽共用寫入序列。測實際 config watcher，不只測 helper 回傳。
+3. **AD 設定頁**：候選測試、write-only secret、CA consent、同 key 管理員檢查、群組世代處理，與名稱／預覽共用寫入序列。測實際 FleetManager load/save/reload 發布，不只測 helper 回傳。
 4. **UI 驗收**：沿用 PageHead、`.s-section-layout`、`.card`、`.field`、`.grid2`、`.btn`、`.tag` 及共用 loading/error 元件；桌機／手機、EN／zh-TW、明／暗色；長值、無橫捲、無多餘確認、無主機指令。
 5. **拒絕與競態**：bare loopback、header token、LAN、guest、gateway、D3 session 過期／撤銷、CSRF；CA mismatch/expired/hostname、錯誤帳密、含糊／停用管理員、lookup 超額、逾期 draft、並行 CLI／rename／AD、稽核拒絕、程序 crash、取消仍在實體 LDAP 工作中。
 6. **權限效果**：更換連線不授予一般目錄使用者主機能力；舊 session/permit 失效；群組 unknown 不變成正向或大量暫停；未啟用政策仍維持原來語意。
