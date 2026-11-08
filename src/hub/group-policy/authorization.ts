@@ -2,6 +2,7 @@
 import type Database from "better-sqlite3";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubActor, PersonKey } from "../types.js";
+import type { HubDirectory } from "../directory/types.js";
 import { personKeyString } from "../identity.js";
 import { identifier, person, validated } from "../validation.js";
 import { createHubGroupResources, HubGroupEnrollmentRefusal, parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
@@ -36,6 +37,7 @@ export interface HubGroupAuthorizationOptions {
   /** Synchronous socket refresh only after the resource transaction returns successfully. */
   refreshAuthorization(): void;
   now?: () => number;
+  directory?: Pick<HubDirectory, "checkEligibility">;
 }
 function synchronous(result: unknown): void {
   if (result && typeof (result as { then?: unknown }).then === "function") {
@@ -106,7 +108,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       if (version() !== epoch) throw new HubGroupPolicyError("conflict");
     }
     let invalidated = false;
-    const resources = createHubGroupResources({ db, policy, audit, current: alive, now, invalidate(tx, changed) {
+    const resources = createHubGroupResources({ db, policy, audit, current: alive, now, directory: options.directory, invalidate(tx, changed) {
       if (tx !== db || !db.inTransaction) throw new HubGroupPolicyError("invalid");
       const previous = version();
       // A resume may advance only its captured epoch. This check is inside the lifecycle
@@ -206,6 +208,41 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
           assertPreparation();
         },
       });
+    },
+    /** Only the real pairing service's persisted, authenticated configured-admin approval may call this. */
+    async prepareManualEnrollment(input: HubGroupResource, confirmedBy: PersonKey, incoming: GroupCheckContext): Promise<HubGroupEnrollmentPermit> {
+      const resource = parseHubGroupResource(input), actor = validated(person, confirmedBy), ctx = capture(incoming);
+      assert(ctx.current);
+      if (db.inTransaction || resource.kind !== "fleet" || personKeyString(actor) !== personKeyString(administrator)
+        || resource.owner.realm !== administrator.realm) throw new HubGroupAuthorizationError("denied");
+      if (bindingOf().kind !== "ready") {
+        // Intact never-enabled generation repair must not take the ordinary admin pairing path down.
+        // The actual pairing still records the exact approver; no mismatched strict group store is opened.
+        const legacy = await run(resource, ctx, "enroll"); let used = false;
+        return Object.freeze({ ...legacy, maxFleets: 0, commit(database: Database.Database) {
+          if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
+          used = true; legacy.assertCurrent();
+        } });
+      }
+      const epoch = version(), policy = policyOf(), image = JSON.stringify(policy.read());
+      const assertPreparation = () => {
+        assert(ctx.current);
+        if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== image || version() !== epoch) throw new HubGroupPolicyError("conflict");
+      };
+      if (policy.read().realm !== administrator.realm) throw new HubGroupAuthorizationError("denied");
+      const resources = createHubGroupResources({ db, policy, audit, current: alive, now });
+      const prepared = resources.prepareManualRegistration(resource, actor, { ...ctx, current: () => {
+        try { assertPreparation(); return true; } catch { return false; }
+      } });
+      let committed: HubGroupResourceView | null = null;
+      return Object.freeze({ source: "manual", maxFleets: 0, assertCurrent() {
+        assertPreparation(); const row = resources.read(resource);
+        if (committed ? !sameRow(row, committed) : row !== null) throw new HubGroupPolicyError("conflict");
+      }, commit(database: Database.Database) {
+        assertPreparation(); prepared.commit(database); committed = resources.read(resource);
+        if (!committed || committed.source !== "manual" || committed.state !== "active") throw new HubGroupPolicyError("conflict");
+        assertPreparation();
+      } });
     },
     resume(resource: HubGroupResource, ctx: GroupCheckContext & { requireAdmin(): Promise<HubActor> }) {
       const authenticate = ctx.requireAdmin.bind(ctx);

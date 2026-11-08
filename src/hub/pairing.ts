@@ -33,7 +33,8 @@ export class HubPairingService {
     /** Required when composed with a live member server; reconnect other links after a global version commit. */
     refreshAuthorization?(): void;
     /** S5 owns this DB. No transaction is held across directory work; provenance and the actual fleet commit together. */
-    enrollment?: { prepare: HubGroupAuthorization["prepareEnrollment"]; atomic<T>(work: (database: Database.Database) => T): T };
+    enrollment?: { prepare: HubGroupAuthorization["prepareEnrollment"]; prepareManual?: HubGroupAuthorization["prepareManualEnrollment"];
+      atomic<T>(work: (database: Database.Database) => T): T };
     /** Required durable outbox. Delivery begins only after the credential transaction has committed. */
     quick?: { enqueue(database: Database.Database, notice: HubQuickPairingNotice, state: HubTransportState): void; committed(): void } }) {}
   private now(): number { return this.options.now?.() ?? Date.now(); }
@@ -175,12 +176,45 @@ export class HubPairingService {
     } else write();
   }
   async approve(ctx: HubRequestContext, pairId: string, fingerprint: string): Promise<void> {
-    validated(uuid, pairId); validated(hash, fingerprint); const admin = await ctx.requireAdmin(); this.check();
-    this.options.store.mutate(this.audit(admin, "pairing.approved", ctx.requestId), state => {
+    validated(uuid, pairId); validated(hash, fingerprint); const found = await ctx.requireAdmin(); this.check();
+    const admin = found.kind === "directory" ? { ...found, person: validated(person, found.person) } : found;
+    const enrollment = this.options.enrollment;
+    let proof: HubGroupEnrollmentPermit | undefined;
+    const selected = this.options.store.read().pairings.find(p => p.id === pairId);
+    if (enrollment?.prepareManual) {
+      if (admin.kind !== "directory" || !selected || selected.state !== "pending" || !selected.ownerConfirmed
+        || selected.expiresAt <= this.now() || selected.fingerprint !== fingerprint || !selected.fleetId) throw new HubProtocolError("denied");
+      const owner = validated(person, selected.owner), who = validated(person, admin.person);
+      const eligible = await this.options.directory.checkEligibility(owner);
+      if (!eligible.eligible) throw new HubProtocolError(eligible.reason === "unavailable" ? "unavailable" : "denied");
+      if (personKeyString(eligible.person.key) !== personKeyString(owner)) throw new HubProtocolError("denied");
+      const again = await ctx.requireAdmin(); this.check();
+      if (again.kind !== "directory" || personKeyString(again.person) !== personKeyString(who)) throw new HubProtocolError("denied");
+      try {
+        proof = await enrollment.prepareManual({ kind: "fleet", id: selected.fleetId, revision: 1, owner }, who,
+          { requestId: ctx.requestId, current: () => this.options.enabled() && selected.expiresAt > this.now() && (ctx.isCurrent?.() ?? true) });
+      } catch (error) {
+        if ((error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")
+          || (error instanceof HubGroupAuthorizationError && error.reason === "denied")) throw new HubProtocolError("denied");
+        if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+        throw error;
+      }
+    }
+    const write = () => this.options.store.mutate(this.audit(admin, "pairing.approved", ctx.requestId), state => {
       const p = state.pairings.find(p => p.id === pairId);
       if (!p || p.state !== "pending" || p.expiresAt <= this.now() || p.fingerprint !== fingerprint || !p.ownerConfirmed) throw new HubProtocolError("denied");
+      if (proof && (!selected || p.fleetId !== selected.fleetId || personKeyString(p.owner) !== personKeyString(selected.owner))) throw new HubProtocolError("denied");
+      proof?.assertCurrent();
       p.adminApproved = true;
+      if (admin.kind === "directory") p.approvedBy = validated(person, admin.person);
     });
+    try {
+      if (proof && enrollment) enrollment.atomic(() => { write(); proof!.assertCurrent(); });
+      else write();
+    } catch (error) {
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
+    }
   }
   private throttled(state: HubTransportState, key: string, maximum: number): boolean {
     const bucket = state.buckets.find(b => b.key === sha256(key));
@@ -206,8 +240,13 @@ export class HubPairingService {
     if (enrollment && eligible && owner && selected?.ownerConfirmed && (selected.adminApproved || selected.automatic)
       && personKeyString(selected.owner) === personKeyString(owner) && selected.fingerprint === offered?.fingerprint) {
       try {
-        prepared = await enrollment.prepare({ kind: "fleet", id: body.fleetId, revision: 1, owner },
-          { requestId: randomUUID(), current: () => this.options.enabled() && selected.expiresAt > this.now() });
+        const resource = { kind: "fleet" as const, id: body.fleetId, revision: 1, owner };
+        const context = { requestId: randomUUID(), current: () => this.options.enabled() && selected.expiresAt > this.now() };
+        if (selected.automatic) prepared = await enrollment.prepare(resource, context);
+        else if (enrollment.prepareManual) {
+          // An old boolean approval is not an authenticated manual-grant identity. It needs a new explicit approval.
+          if (selected.approvedBy) prepared = await enrollment.prepareManual(resource, selected.approvedBy, context);
+        } else prepared = await enrollment.prepare(resource, context);
       } catch (error) {
         if ((error instanceof HubGroupAuthorizationError && error.reason === "denied")
           || (error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")) enrollmentRefusal = new HubProtocolError("denied");
@@ -233,7 +272,7 @@ export class HubPairingService {
       if (enrollment && !prepared) { event.result = "allowed"; event.action = "pairing.claim-pending"; return { status: "pending" as const }; }
       prepared?.assertCurrent();
       if (p.automatic && (!prepared || prepared.source !== "group" || !this.options.quick)) return null;
-      if (!p.automatic && prepared && prepared.source !== "legacy" && state.fleets.filter(f => f.status === "active" && f.credentialHash
+      if (prepared?.source === "group" && state.fleets.filter(f => f.status === "active" && f.credentialHash
         && personKeyString(f.owner) === personKeyString(owner)).length >= prepared.maxFleets) return null;
       if (p.automatic && prepared && this.slots(state, owner, p.id) >= prepared.maxFleets) return null;
       if (state.fleets.length >= 256) throw new HubProtocolError("backpressure");
@@ -260,7 +299,8 @@ export class HubPairingService {
             || !owner || personKeyString(fleet.owner) !== personKeyString(owner) || pairing?.state !== "claimed" || pairing.claimHash !== null
             || pairing.fleetId !== body.fleetId || personKeyString(pairing.owner) !== personKeyString(owner) || !pairing.ownerConfirmed
             || (!pairing.adminApproved && !pairing.automatic) || JSON.stringify(pairing.automatic) !== JSON.stringify(selected?.automatic)
-            || pairing.fingerprint !== selected?.fingerprint || pairing.expiresAt !== selected.expiresAt) throw new HubProtocolError("unavailable");
+            || pairing.fingerprint !== selected?.fingerprint || pairing.expiresAt !== selected.expiresAt
+            || JSON.stringify(pairing.approvedBy) !== JSON.stringify(selected.approvedBy)) throw new HubProtocolError("unavailable");
         }
         prepared.assertCurrent(); return result;
       }) : write();
