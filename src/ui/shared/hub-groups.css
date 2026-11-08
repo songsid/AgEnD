@@ -24,3 +24,5 @@
 .hub-group-fleets { display: inline-flex; align-items: center; gap: var(--s-1); }
 .hub-group-fleets input { width: 4.5em; }
 .hub-groups-impact ul { margin: var(--s-1) 0 var(--s-2); padding-left: var(--s-4); }
+/* A phone's Remove is a full touch target whichever line it wraps onto (Fable #3424 N1: its size followed the font). */
+@media (max-width: 899px) { .hub-rows .s-row.hub-row.hub-group-row > .btn { min-height: var(--tap); min-width: var(--tap); } }
