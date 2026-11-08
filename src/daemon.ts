@@ -10143,7 +10143,7 @@ export class Daemon extends EventEmitter {
    */
   private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
     if (!this.fatalStartupBlocked && !this.modelMinimumBlocked) return false;
-    this.logger.error("Delivery refused — CLI startup or executable integrity is held");
+    this.logger.error("Delivery refused — CLI startup or model-version repair is held");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
     return true;
   }
@@ -13261,7 +13261,8 @@ export class Daemon extends EventEmitter {
 
   /** #3441: only the CLI's own refusal can request this one, non-renewable repair. */
   private handleClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
-    if (this.modelMinimumRepairUsed || this.modelMinimumBlocked || this.backend?.binaryName !== "claude"
+    if (this.modelMinimumRepairUsed || this.modelMinimumBlocked || this.spawning || this.healthCheckPaused
+      || this.pauseWakeState !== "active" || this.backend?.binaryName !== "claude"
       || !this.backend.refreshLaunchBinary) return Promise.resolve();
     if (this.modelMinimumFlight) return this.modelMinimumFlight;
     const flight = this.repairClaudeModelMinimum(minimum).finally(() => {
@@ -13277,7 +13278,7 @@ export class Daemon extends EventEmitter {
     const fence = this.launchFenceEpoch, attempt = this.launchAttempt, phase = this.pauseWakeState;
     const baseCurrent = () => this.tmux === tmux && this.backend === backend && tmux?.getWindowId() === window
       && this.spawnGeneration === spawn && this.launchFenceEpoch === fence && this.pauseWakeState === phase
-      && !this.startupAborted && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen;
+      && !this.startupAborted && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen && !this.healthCheckPaused;
     const current = () => baseCurrent() && this.launchAttempt === attempt;
     const failed = () => new Error(t("inst.cli_repair_failed"));
     try {

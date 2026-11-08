@@ -66,14 +66,15 @@ it("concurrent detections join one version read and one repair", async () => {
   const a = w.fire(), b = w.fire(); expect(a).toBe(b); await ready; release("2.1.319"); await a;
   expect(w.d.trySpawnInsideGate).toHaveBeenCalledOnce(); expect(w.warnings).toHaveLength(1);
 });
-it.each(["window", "fence", "pause"])("a %s change while reading disk retires the old repair", async what => {
+it.each(["window", "fence", "pause", "health"])("a %s change while reading disk retires the old repair", async what => {
   const w = world(); let release!: (v: string) => void, entered!: () => void;
   const ready = new Promise<void>(r => entered = r);
   w.d.installedClaudeVersion.mockImplementationOnce(() => { entered(); return new Promise(r => release = r); });
   const run = w.fire(); await ready;
   if (what === "window") w.d.tmux = { getWindowId: () => "@2" };
   else if (what === "fence") w.d.launchFenceEpoch++;
-  else w.d.pauseWakeState = "paused";
+  else if (what === "pause") w.d.pauseWakeState = "paused";
+  else w.d.healthCheckPaused = true;
   release("2.1.319"); await run; expect(w.d.trySpawnInsideGate).not.toHaveBeenCalled(); expect(w.warnings).toHaveLength(0);
 });
 it("stop during launcher resolution cannot produce a late notice or respawn", async () => {
@@ -164,4 +165,13 @@ it("installed versions are read from a real package without executing its non-ex
   writeFileSync(join(pkg,"package.json"), JSON.stringify({name:"@anthropic-ai/claude-code",version:"2.1.220"}));
   expect(await read.call(w.d,launcher)).toBe("2.1.220");
   writeFileSync(join(pkg,"package.json"), "unreadable metadata"); expect(await read.call(w.d,launcher)).toBeNull();
+});
+
+it.each(["paused","pausing","waking","spawning","health-held"])("an already %s daemon cannot admit a model-version restart", async state => {
+  const w = world();
+  if(state === "spawning")w.d.spawning = true;
+  else if(state === "health-held")w.d.healthCheckPaused = true;
+  else w.d.pauseWakeState = state;
+  await w.fire(); expect(w.d.resolveClaudeInstallPath).not.toHaveBeenCalled();
+  expect(w.d.trySpawnInsideGate).not.toHaveBeenCalled();expect(w.warnings).toHaveLength(0);
 });
