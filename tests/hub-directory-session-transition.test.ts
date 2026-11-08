@@ -9,7 +9,7 @@ import { applyHubMigrations, createHubUnitOfWork, hubTxDatabase, openHubDatabase
 import { createHubHttp, HUB_HTTP_MIGRATIONS, type HubHttp } from "../src/hub/http/compose.js";
 import { HubPairingService } from "../src/hub/pairing.js";
 import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../src/hub/store.js";
-import { issuerKeyId, signAsker } from "../src/hub/identity.js";
+import { issuerKeyId, signAsker, personKeyString } from "../src/hub/identity.js";
 import { createBrowserCertificate } from "../src/hub/init/browser-certificate.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
 import { tempDir } from "./support/hub-init-fixtures.js";
@@ -39,6 +39,9 @@ async function httpsRig(sealed = false) {
   const identity = sealed ? await provisionHubIdentity({home,memberOrigin:"https://member.example.test"}) : undefined;
   const person = { realm: "fictional", objectId: randomUUID() }, hubId = identity?.hubId ?? randomUUID(), keys = generateKeyPairSync("ed25519");
   const found = { key: person, login: "avery", dn: "fictional", groups: [], displayName: "Avery (fictional)" };
+  const colleague = { realm: person.realm, objectId: randomUUID() };
+  const colleagueFound = { ...found, key: colleague, login: "riley", displayName: "Riley (fictional)" };
+  let administrator = { ...person };
   let signInHold: ReturnType<typeof held> | undefined, eligibilityHold: ReturnType<typeof held> | undefined;
   let signInCalls = 0, now = 1_000_000, auditHook: (() => void) | undefined;
   const directory: HubDirectory = {
@@ -46,11 +49,13 @@ async function httpsRig(sealed = false) {
     async signIn(login, password) {
       signInCalls++;
       const h = signInHold; if (h) { h.enter(); await h.wait; }
-      return login === "avery" && password === "dummy-password" ? { ok: true, person: found } : { ok: false, reason: "invalid-credentials" };
+      const selected = [found, colleagueFound].find(p => p.login === login);
+      return selected && password === "dummy-password" ? { ok: true, person: selected } : { ok: false, reason: "invalid-credentials" };
     },
-    async checkEligibility() {
+    async checkEligibility(key) {
       const h = eligibilityHold; if (h) { h.enter(); await h.wait; }
-      return { eligible: true, person: found };
+      const selected = [found, colleagueFound].find(p => personKeyString(p.key) === personKeyString(key));
+      return selected ? { eligible: true, person: selected } : { eligible: false, reason: "gone" };
     },
     async close() {},
   };
@@ -75,7 +80,7 @@ async function httpsRig(sealed = false) {
       identity: { hubId, memberOrigin: "https://member.example.test", webOrigin: origin, spkiSha256: "a".repeat(64),
         issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() } });
     decision = createHubDirectorySettingsDecision({ db, transport: store, hubId });
-    const deps: ConstructorParameters<typeof HubCore>[0] = { store, directory, pairing, config: { hubId, name: "Fictional", memberOrigin: "https://member.example.test", webOrigin: origin, administrator: person },
+    const deps: ConstructorParameters<typeof HubCore>[0] = { store, directory, pairing, config: { hubId, name: "Fictional", memberOrigin: "https://member.example.test", webOrigin: origin, administrator },
       uow: createHubUnitOfWork(db), audit: { append(tx, record) {
         hubTxDatabase(tx).prepare("INSERT INTO test_audit VALUES(?)").run(JSON.stringify(record)); const hook = auditHook; auditHook = undefined; hook?.();
       }, async read() { return []; }, async readContent(): Promise<never> { throw Error("not used"); } },
@@ -98,18 +103,18 @@ async function httpsRig(sealed = false) {
     });
     req.on("error", reject); req.end(body);
   });
-  return { get db() { return db; }, home, hubId, get signInCalls() { return signInCalls; }, call, person,
+  return { get db() { return db; }, home, hubId, get signInCalls() { return signInCalls; }, call, person, colleague,
     get sessions() { return sessions; }, get decision() { return decision; },
     setNow: (n: number) => { now = n; }, get now() { return now; }, setMounted: (value: boolean) => { mounted = value; },
-    actor(browser: Browser) { const s = sessions.session(browser.cookie.split("=")[1]!); if (!s) throw Error("no session"); return { kind: "hub-administrator" as const, person, sessionId: s.sessionId, requestId: randomUUID() }; },
+    actor(browser: Browser) { const s = sessions.session(browser.cookie.split("=")[1]!); if (!s) throw Error("no session"); return { kind: "hub-administrator" as const, person: s.person, sessionId: s.sessionId, requestId: randomUUID() }; },
     token(browser: Browser) { return browser.cookie.split("=")[1]!; },
     browser(token: string): Browser { return { cookie: `${hubCookieName(hubId)}=${token}`, csrf: hubCsrfOf(token) }; },
     input(actor: HubDirectoryDecisionRequest["actor"]): HubDirectoryDecisionRequest {
       const image = (n: string) => Object.fromEntries(["configDigest","configSha","directorySha","manifestSha","bindSecretSha"].map(k => [k,n.repeat(64)])) as HubDirectoryDecisionRequest["before"];
       return { id: randomUUID(), expected: decision.inspect(), before: image("a"), after: image("b"), generation: "new-generation", receiptSha: "c".repeat(64), actor, at: now, changes: ["server"], recipients: [{kind:"host",sink:"owner-test"}] };
     },
-    remount: async () => { await http.close(); openHttp(); },
-    signIn: async () => { const r = await call(null, "POST", "/hub/v1/session", { login: "avery", password: "dummy-password" }); return { ...r, csrf: r.json.csrf as string }; },
+    remount: async (configuredAdmin = administrator) => { await http.close(); administrator = { ...configuredAdmin }; openHttp(); },
+    signIn: async (login = "avery") => { const r = await call(null, "POST", "/hub/v1/session", { login, password: "dummy-password" }); return { ...r, csrf: r.json.csrf as string }; },
     holdSignIn: () => (signInHold = held()), holdEligibility: () => (eligibilityHold = held()),
     advance: () => db.transaction(() => advanceHubSessionEpoch(db, readHubSessionEpoch(db))).immediate(),
     tick: () => { now += 1000; }, auditOnce: (hook: () => void) => { auditHook = hook; },
@@ -341,4 +346,32 @@ it("consumes a valid handle even when the first source proof refuses before the 
   expect(readHubSessionEpoch(r.db)).toBe(0); expect(r.decision.inspect().operationId).toBeNull();
   expect(()=>r.decision.decide(input,()=>{},rotation)).toThrow();
   expect(r.db.prepare("SELECT COUNT(*) n FROM hub_settings_operations").get()).toEqual({n:0});
+});
+
+
+describe("configured administrator boundary (review F1)", () => {
+  it.each(["recent authentication", "prepare rotation"])("refuses %s for a genuine signed-in non-admin even when the supplied actor kind says administrator", async operation => {
+    const r = rig = await httpsRig(), browser = await r.signIn("riley"), actor = r.actor(browser);
+    expect(browser.status).toBe(200); expect(browser.json.admin).toBe(false);
+    expect(actor).toMatchObject({ kind:"hub-administrator", person:r.colleague });
+    expect((await r.call(browser,"GET","/hub/v1/session")).json).toMatchObject({signedIn:true,admin:false});
+    expect(r.db.prepare("SELECT authenticated_at,directory_epoch FROM hub_session_authentication WHERE session_id=?").get(actor.sessionId))
+      .toEqual({authenticated_at:r.now,directory_epoch:0});
+    if(operation === "recent authentication")expect(r.sessions.recentAuthentication(actor)).toBeNull();
+    else expect(()=>r.sessions.prepareDirectoryRotation(r.token(browser),actor)).toThrow(expect.objectContaining({code:"denied"}));
+  });
+  it("refuses a committed handoff when its person is no longer the configured admin on the current mount; the matching-admin control releases", async () => {
+    const {r,input,rotation}=await setup();
+    r.decision.decide(input,()=>{},rotation);
+    // Replace only the fixture's current admin configuration, not the private handle or durable successor.
+    // This is a module-boundary control, not a supported directory/admin change through the public API.
+    await r.remount(r.colleague);
+    expect(readHubSessionEpoch(r.db)).toBe(1);
+    expect(r.db.prepare("SELECT person,directory_epoch FROM hub_sessions WHERE state='active'").get())
+      .toEqual({person:personKeyString(r.person),directory_epoch:1});
+    expect(()=>r.sessions.completeDirectoryRotation(rotation,input.id)).toThrow(expect.objectContaining({code:"revoked"}));
+    await r.remount(r.person);
+    const successor=r.sessions.completeDirectoryRotation(rotation,input.id);
+    expect((await r.call(r.browser(successor.token),"GET","/hub/v1/session")).json).toMatchObject({signedIn:true,admin:true});
+  });
 });
