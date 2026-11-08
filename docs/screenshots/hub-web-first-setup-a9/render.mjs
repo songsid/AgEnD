@@ -72,7 +72,7 @@ try{
   await page.evaluate(({hub,content})=>{
    const target=document.querySelector(hub?'.p-hub-admin .panel-body':'.col[data-settings-section="hub"]');
    if(!target)throw Error('real panel missing');const back=hub?'':target.querySelector('.s-back')?.outerHTML||'';
-   target.innerHTML=back+content;target.dataset.designPrototype='1';
+   target.innerHTML=back+(hub?`<div class="col hub-owner">${content}</div>`:content);target.dataset.designPrototype='1';
   },{hub,content});
   await page.evaluate(async()=>{await document.fonts.load('16px "Noto Sans TC"','繁體中文');await document.fonts.ready;});
   if(['ca-change','server-change'].includes(x.screen)){
@@ -87,12 +87,17 @@ try{
   }
   const overflow=await page.evaluate(()=>{const p=document.querySelector('.panel-body');return p?Math.max(0,p.scrollHeight-p.clientHeight):0;});
   if(overflow&&!['ca-change','server-change'].includes(x.screen))await page.setViewportSize({width:x.size==='desktop'?1366:390,height:(x.size==='desktop'?1000:844)+overflow+20});
-  const metrics=await page.evaluate(hub=>({width:innerWidth,scroll:document.documentElement.scrollWidth,fonts:document.fonts.check('16px "Noto Sans TC"'),dialogClipped:[...document.querySelectorAll('.confirm-text')].some(p=>p.scrollWidth>p.clientWidth),realApp:!!document.querySelector('#app.app-root > *'),realSidebar:!!document.querySelector('#sidebar'),settingsHub:hub?null:document.querySelector('.s-nav .seg-item.active')?.getAttribute('href'),prototypeOnlyInPanel:!!document.querySelector('.panel-body [data-design-prototype],.panel-body[data-design-prototype]')}),hub);
+  const metrics=await page.evaluate(hub=>{
+   const brand=document.querySelector('#sidebar .side-head .brand'),rg=document.createRange();if(brand)rg.selectNodeContents(brand);
+   const frames=[...document.querySelectorAll('.p-hub .s-section-layout .card')].map(el=>{const s=getComputedStyle(el);return [s.padding,s.borderTopWidth,s.borderTopStyle,s.borderRadius].join(' ');});
+   return {width:innerWidth,scroll:document.documentElement.scrollWidth,fonts:document.fonts.check('16px "Noto Sans TC"'),dialogClipped:[...document.querySelectorAll('.confirm-text')].some(p=>p.scrollWidth>p.clientWidth),realApp:!!document.querySelector('#app.app-root > *'),realSidebar:!!document.querySelector('#sidebar'),settingsHub:hub?null:document.querySelector('.s-nav .seg-item.active')?.getAttribute('href'),prototypeOnlyInPanel:!!document.querySelector('.panel-body [data-design-prototype],.panel-body[data-design-prototype]'),hubColumn:hub?!!document.querySelector('.p-hub .col.hub-owner'):null,hubPanelHeader:hub?!!document.querySelector('.p-hub .panel-head'):null,hubBrand:hub?brand?.textContent.trim():null,hubBrandLines:hub&&brand?new Set([...rg.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size:null,hubCardFrames:hub?new Set(frames).size:null};
+  },hub);
   if(metrics.scroll>metrics.width||metrics.dialogClipped||!metrics.fonts||!metrics.realApp||!metrics.realSidebar||(!hub&&metrics.settingsHub!=='/settings/hub'))throw Error('real-shell geometry: '+JSON.stringify({x,metrics}));
+  if(hub&&(!metrics.hubColumn||!metrics.hubPanelHeader||metrics.hubBrand!=='AgEnD Hub'||metrics.hubCardFrames!==1||(x.size==='desktop'&&metrics.hubBrandLines!==1)))throw Error('new Hub shell: '+JSON.stringify({x,metrics}));
   if(pageErrors.length)throw Error('app errors: '+JSON.stringify({x,pageErrors}));
   const file=`${String(matrix.indexOf(x)+1).padStart(2,'0')}-${x.screen}-${x.lang}-${x.size}.png`;
   await page.screenshot({path:join(out,file),fullPage:true});checks.push({...x,file,...metrics,pageErrors});await context.close();
  }
- await writeFile(join(here,'mockup-checks.json'),JSON.stringify({scope:'real app.html/app.js/sidebar/Settings nav; fake protocol and in-panel design content only; no product behavior tested',base:'9b06e6bd',appHtmlSha256:createHash('sha256').update(appHtml).digest('hex'),hubShell:'current landed shell; new M-2686 shell not approved',checks,requestPaths:[...requestPaths].sort(),serverErrors:errors},null,2)+'\n');
+ await writeFile(join(here,'mockup-checks.json'),JSON.stringify({scope:'real app.html/app.js/sidebar/Settings nav; fake protocol and in-panel design content only; no product behavior tested',base:'10a695e6 (includes #3432 shell28683566)',appHtmlSha256:createHash('sha256').update(appHtml).digest('hex'),hubShell:'landed #3432: real one-line brand, side-row navigation, foot, PanelHeader and col.hub-owner',checks,requestPaths:[...requestPaths].sort(),serverErrors:errors},null,2)+'\n');
  console.log(JSON.stringify({pngs:checks.length,realShell:true,settingsHubSelected:checks.filter(x=>x.settingsHub).length,pageErrors:checks.flatMap(x=>x.pageErrors).length,serverErrors:errors.length}));
 }finally{if(browser)await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

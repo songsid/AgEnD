@@ -35,7 +35,7 @@
 .mock-check input { flex-shrink: 0; margin-top: var(--s-1); }
 .mock-hint-inline { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 @media (max-width: 899px) {
-  .mock-content { padding: var(--s-4); }
+  .p-settings .mock-content { padding: var(--s-4); }
   .mock-label { font-size: var(--fs-xs); }
   .mock-steps { gap: var(--s-1); margin: var(--s-4) 0; }
   .mock-step { padding: var(--s-2); }

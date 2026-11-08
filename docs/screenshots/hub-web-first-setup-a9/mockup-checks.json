@@ -1,8 +1,8 @@
 {
   "scope": "real app.html/app.js/sidebar/Settings nav; fake protocol and in-panel design content only; no product behavior tested",
-  "base": "9b06e6bd",
+  "base": "10a695e6 (includes #3432 shell28683566)",
   "appHtmlSha256": "0722e98592188ff6871f0b77004ae765f1ddd59a86c96f6bf98a459c13b018e6",
-  "hubShell": "current landed shell; new M-2686 shell not approved",
+  "hubShell": "landed #3432: real one-line brand, side-row navigation, foot, PanelHeader and col.hub-owner",
   "checks": [
     {
       "screen": "basics",
@@ -18,6 +18,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -34,6 +39,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -50,6 +60,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -66,6 +81,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -82,6 +102,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -98,6 +123,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -114,6 +144,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -130,6 +165,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -146,6 +186,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -162,6 +207,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -178,6 +228,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -194,6 +249,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -210,6 +270,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -226,6 +291,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -242,6 +312,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -258,6 +333,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -274,6 +354,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -290,6 +375,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -306,6 +396,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -322,6 +417,11 @@
       "realSidebar": true,
       "settingsHub": "/settings/hub",
       "prototypeOnlyInPanel": true,
+      "hubColumn": null,
+      "hubPanelHeader": null,
+      "hubBrand": null,
+      "hubBrandLines": null,
+      "hubCardFrames": null,
       "pageErrors": []
     },
     {
@@ -338,6 +438,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -354,6 +459,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -370,6 +480,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     },
     {
@@ -386,6 +501,11 @@
       "realSidebar": true,
       "settingsHub": null,
       "prototypeOnlyInPanel": true,
+      "hubColumn": true,
+      "hubPanelHeader": true,
+      "hubBrand": "AgEnD Hub",
+      "hubBrandLines": 1,
+      "hubCardFrames": 1,
       "pageErrors": []
     }
   ],
@@ -473,6 +593,7 @@
     "/auth/sessions",
     "/design-font.otf",
     "/favicon.svg",
+    "/hub/v1/admin/hub",
     "/hub/v1/admin/overview",
     "/hub/v1/rooms",
     "/hub/v1/session",
@@ -545,6 +666,7 @@
     "/ui/js/hub-quota.js",
     "/ui/js/hub-read-strings.js",
     "/ui/js/hub-strings.js",
+    "/ui/js/hub-this-hub.js",
     "/ui/js/image-lightbox.js",
     "/ui/js/image-zoom.js",
     "/ui/js/machine-signin.js",
