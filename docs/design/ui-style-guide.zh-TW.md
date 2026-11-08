@@ -25,7 +25,7 @@
 | 一塊內容 | `.card` | `src/ui/shared/app.css` |
 | 設定的群組與列 | `.s-group`、`.s-group-head`、`.s-row`、`.field`、`.grid2` | `app.css` |
 | 按鈕 | `.btn`、`.btn-primary`、`.btn-danger`、`.btn-ghost`、`.btn-sm`、`.icon-btn` | `app.css` |
-| 小型狀態標籤 | `.tag`、`.tag.ok`、`.tag.warn` | `app.css` |
+| 小型狀態標籤 | `.tag`、`.tag.warn` | `app.css` |
 | 提示文字／錯誤訊息 | `.note`／`.err` | `app.css` |
 | 載入中、沒有內容、讀取失敗 | `Skeleton`、`Empty`、`ErrorState` | `src/ui/shared/ui-states.js` |
 | 對話框／確認 | `Dialog`／`confirmDialog` | `ui-dialog.js`／`ui-confirm.js` |
@@ -50,7 +50,7 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 
 頂層的設定卡片就用一般的 `.card`，它提供共用的背景、`--r-md` 圓角和內距（`app.css`）。不要替某一張卡片另外加邊框、內距或圓角：同一個區塊裡的卡片看起來必須一致。卡片裡的東西不能比卡片寬。
 
-這裡兩條分支不一樣。在 2.3.5 線上，#3320 為每個設定區塊加了統一的外框（`.s-section-layout`：1px 的 `--border` 邊框、內距 24px，手機上 16px，並把 select 和輸入框限制在 `max-width: 100%`）。main 沒有這個版面（#3325 刻意沒有帶過來），所以不要把那套外框照搬到 main。
+這裡兩條分支不一樣。在 2.3.5 線上，#3320 為每個設定區塊加了統一的外框（`.s-section-layout`：1px 的 `--border` 邊框、`--r-md` 圓角、內距 24px，手機上 16px，並把 select 和輸入框限制在 `max-width: 100%`）。main 沒有這個版面（#3325 刻意沒有帶過來），所以不要把那套外框照搬到 main。
 
 檢查方式：**CI**。UI 關卡的 `:frame` 檢查以區塊為單位：同一個區塊裡看得到的頂層卡片，內距、邊框和左上圓角必須相同。放在抽屜、展開區塊、`details` 或對話框裡的卡片，以及 `.s-dev` 編輯器和 `.s-access-terminal` 卡片，不列入比對。不同區塊之間的外框不互相比對。
 
@@ -79,7 +79,7 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 - 間距 `--s-1` … `--s-8`（以 4px 為格）；
 - 字級 `--fs-xs` … `--fs-xl` 和對應的 `--lh-*`，字重 `--fw-*`；
 - 圓角 `--r-sm`、`--r-md`、`--r-lg`、`--r-full`；
-- 顏色依用途取用：`--text`、`--text-2`、`--text-3`、`--surface`、`--surface-2`、`--border`、`--accent`、`--ok`、`--warn`、`--danger`，以及它們的 `-bg`／`-line` 版本。
+- 顏色依用途取用：`--text`、`--text-2`、`--text-3`、`--surface`、`--surface-2`、`--border`、`--accent`、`--ok`、`--warn`、`--danger`，以及實際存在的 `-bg`／`-line` 版本（`--ok-bg`、`--warn-bg`、`--warn-line`、`--danger-bg`、`--danger-line`）。
 
 深色是預設的 `:root`，淺色覆寫同樣的名稱。所以用變數寫的顏色在兩種主題下都正確，寫死的十六進位色碼則不會。
 
