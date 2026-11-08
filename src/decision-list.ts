@@ -10,6 +10,8 @@ export interface DecisionTitle {
   id: string;
   title: string;
   scope: Decision["scope"];
+  /** A team decision's team. */
+  team?: string;
   /** The day it was last changed (YYYY-MM-DD). */
   date: string;
   tags?: string[];
@@ -38,7 +40,7 @@ export function decisionListAnswer(all: readonly Decision[], opts: { id?: unknow
   }
   if (opts.full === true) return all;
   const titles: DecisionTitle[] = all.map(d => ({
-    id: d.id, title: d.title, scope: d.scope, date: (d.updated_at || d.created_at || "").slice(0, 10),
+    id: d.id, title: d.title, scope: d.scope, ...(d.team ? { team: d.team } : {}), date: (d.updated_at || d.created_at || "").slice(0, 10),
     ...(d.tags?.length ? { tags: d.tags } : {}),
     ...(d.status && d.status !== "active" ? { status: d.status } : {}),
   }));
