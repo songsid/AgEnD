@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -135,4 +135,15 @@ it("a stop during tmux sizing fences the exact respawn effect", async () => {
   const exec = vi.spyOn(tmuxExecHelper, "exec").mockResolvedValue({ stdout: "", stderr: "" });
   const run = manager.respawnWindow("owned-command", "/tmp", () => { if (!current) throw new Error("stopped"); });
   await ready; current = false; release(); await expect(run).rejects.toThrow("stopped"); expect(exec).not.toHaveBeenCalled();
+});
+
+it("installed versions are read from a real package without executing its non-executable launcher", async () => {
+  const w = world(), pkg = join(w.root, "node_modules", "@anthropic-ai", "claude-code"), launcher = join(pkg, "cli.js");
+  mkdirSync(pkg, {recursive:true}); writeFileSync(launcher, "This is inert, non-executable fixture data", {mode:0o600});
+  writeFileSync(join(pkg,"package.json"), JSON.stringify({name:"@anthropic-ai/claude-code",version:"2.1.319"}));
+  const read = (Daemon.prototype as any).installedClaudeVersion;
+  expect(await read.call(w.d,launcher)).toBe("2.1.319");
+  writeFileSync(join(pkg,"package.json"), JSON.stringify({name:"@anthropic-ai/claude-code",version:"2.1.220"}));
+  expect(await read.call(w.d,launcher)).toBe("2.1.220");
+  writeFileSync(join(pkg,"package.json"), "unreadable metadata"); expect(await read.call(w.d,launcher)).toBeNull();
 });
