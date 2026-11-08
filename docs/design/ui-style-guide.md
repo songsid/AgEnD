@@ -29,7 +29,7 @@ Use the existing shared components and classes. Don't add a one-off style for so
 | A box of content | `.card` | `src/ui/shared/app.css` |
 | A Settings group and its rows | `.s-group`, `.s-group-head`, `.s-row`, `.field`, `.grid2` | `app.css` |
 | Buttons | `.btn`, `.btn-primary`, `.btn-danger`, `.btn-ghost`, `.btn-sm`, `.icon-btn` | `app.css` |
-| A small status label | `.tag`, `.tag.ok`, `.tag.warn` | `app.css` |
+| A small status label | `.tag`, `.tag.warn` | `app.css` |
 | Hint text / an error line | `.note` / `.err` | `app.css` |
 | Loading, empty, failed | `Skeleton`, `Empty`, `ErrorState` | `src/ui/shared/ui-states.js` |
 | A dialog / a confirmation | `Dialog` / `confirmDialog` | `ui-dialog.js` / `ui-confirm.js` |
@@ -57,7 +57,7 @@ A top-level Settings card is a plain `.card`, which gives the shared background,
 inside a card is wider than the card.
 
 The two lines differ here. On the 2.3.5 line, #3320 adds one frame for every Settings section (`.s-section-layout`: a
-1px `--border` border, 24px inside, 16px on a phone, and `max-width: 100%` on selects and inputs). Main doesn't have
+1px `--border` border, `--r-md` corners, 24px inside, 16px on a phone, and `max-width: 100%` on selects and inputs). Main doesn't have
 that layout (#3325 left it out), so don't copy that frame onto main.
 
 Checked by: **CI** — the UI gate's `:frame` check, per section: the visible top-level cards of one section must share
@@ -93,7 +93,8 @@ Take sizes and colours from `src/ui/shared/tokens.css`:
 - type `--fs-xs` … `--fs-xl` with their `--lh-*`, weights `--fw-*`;
 - corners `--r-sm`, `--r-md`, `--r-lg`, `--r-full`;
 - colours by meaning: `--text`, `--text-2`, `--text-3`, `--surface`, `--surface-2`, `--border`, `--accent`, `--ok`,
-  `--warn`, `--danger` and their `-bg` / `-line` variants.
+  `--warn`, `--danger`, and the `-bg` / `-line` variants that exist (`--ok-bg`, `--warn-bg`, `--warn-line`,
+  `--danger-bg`, `--danger-line`).
 
 Dark is the default `:root`; light overrides the same names. A colour written as a token therefore works in both
 themes; a hex value doesn't.
