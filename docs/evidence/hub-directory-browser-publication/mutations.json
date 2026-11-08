@@ -1,0 +1,20 @@
+{
+  "mutants": [
+    {
+      "guard": "mounted-current",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "older-entry",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "trusted-attestation",
+      "assertionCaught": true,
+      "failures": 1
+    }
+  ],
+  "restored": true
+}
