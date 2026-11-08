@@ -18,6 +18,8 @@ A person who is in several groups gets everything any of their groups allows, an
 
 ### Where the editor is
 
+Group permissions need the Hub's directory to be **Active Directory over LDAPS (port 636)**. With any other directory the editor is read-only and says *"This Hub's directory can't be used for group permissions. Group permissions need Active Directory over LDAPS (port 636)."*
+
 Only the Hub's directory administrator can open it. Either:
 
 - **On the Hub:** open the menu on your account in the sidebar (**Menu**), choose **Administration**, then, on the **Group permissions** card (tagged *Experimental*), choose **Open group permissions**.
@@ -80,16 +82,15 @@ Their own fleets are listed with their state: **Active**, **Paused**, **Revoked*
 
 When **Connect a fleet** is allowed and there is a free slot:
 
-1. On the Hub welcome page, enter a name you recognize for your fleet and choose **Connect my fleet**. The Hub shows its **Member address** and a one-time code, valid for ten minutes.
-2. In that fleet's web dashboard, open **Settings → Fleet → Hub**, enable Hub membership if needed, and enter the member address and code. Complete the local Settings confirmation if one is offered.
-3. Compare the fingerprint shown in both places. On the fleet, choose the button saying it matches the Hub screen; on the Hub, choose **They match**. If they differ, choose **They differ** and check the address before starting again. Neither screen's confirmation replaces the other.
-4. The Hub shows **Connected** only after the fleet has saved its pin and connected. Pairing does not share any agent. Sharing still needs its own permission and confirmation. **Connect another fleet** starts another pairing while capacity remains.
+1. On the Hub welcome page, type a **Fleet name** you and your Hub admin will recognise and choose **Connect my fleet**. The Hub shows a **Member address**, a **One-time code** and when the code expires (ten minutes).
+2. In that fleet's web dashboard, open **Settings → Fleet → Hub**. If **Allow this fleet to connect to a Hub** (under **Hub membership**) is off, turn it on first. That change waits for its confirmation (*"Waiting for owner confirmation…"*): confirm it where its card says, in General or on this dashboard. Once it is on, the section shows **Reload page** (*"Reload the page to refresh the Hub controls."*); choose it.
+3. Now the pairing fields are there. Enter the member address in **Hub address** and the code in **One-time pairing code**, then choose **Connect**. Complete the local Settings confirmation if one is offered.
+4. The fleet shows a **Waiting for approval** card with a pairing fingerprint, and the Hub shows its own. Compare them. On the fleet, choose **It matches the Hub's screen**; on the Hub, choose **They match**. If they differ, choose **They differ** and check the address before starting again. Neither screen's confirmation replaces the other.
+5. The Hub shows **Connected** only after the fleet has saved its pin and connected. Pairing does not share any agent. Sharing still needs its own permission and confirmation. **Connect another fleet** starts another pairing while capacity remains.
 
 You have at most one pending self-service offer. Starting again replaces its code and invalidates the old attempt. **Stop pairing** or expiry frees the pending slot. Retained fleets, including manually approved and paused fleets, count against later self-service pairing. If the directory cannot confirm access, pairing waits; it never uses an old permission to finish. Follow any uncertain-outcome warning on the fleet before trying again.
 
 The Hub records a security notice for your other signed-in sessions, the Hub administrator and your other connected fleets. Offline delivery stays queued. Older fleet versions receive no new message until updated. Notices contain the fleet name and ID, not the code or credential. Expand **Earlier notices** and choose **Show older notices** to reach older retained records. A notice on your fleet offers **Review and revoke on the Hub**, where you sign in normally; that link grants no access. On the Hub, **Revoke this fleet** takes one click and affects only the named fleet.
-
-The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
 
 The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
 
