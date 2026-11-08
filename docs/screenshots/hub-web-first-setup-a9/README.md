@@ -1,32 +1,38 @@
 # Hub web first-run setup — design mockups
 
-Static fake-data UI designs for M-2687. No product behavior, accounts, AD requests, initializer, member or service is run. These are not acceptance screenshots. Source baseline: `9b06e6bd`.
+Design-only proposal for M-2687 / [#3425](https://github.com/songsid/AgEnD/issues/3425), with fictional data. No product initializer, directory driver, accounts, member, service or pilot is run. These images do not prove security or functional acceptance. Source baseline: `9b06e6bd`.
 
-The renderer loads the repository’s actual shared `tokens.css`, `app.css`, and Inter font, then follows the shared PageHead / Settings card / field / button markup. Additional CSS is presentation-only.
+The renderer serves the repository's **real `src/ui/app.html`, app.js, sidebar, application modules and shared CSS** over owned loopback HTTP, with a fake protocol server. Proposed markup replaces only the real panel's content. Fleet screens retain the real second-level Settings menu with **Hub selected**; phone screens retain the real navigation/back control. Hub-admin screens use the **currently landed Hub shell**. M-2686's new shell has no approved source yet; it is not reproduced or claimed here. Trust confirmation uses the real `confirmDialog` component.
 
-18 PNGs: zh-TW desktop/light and phone/dark for seven states; EN desktop/phone for the main directory and reconfigure states. Every render checks horizontal overflow and CJK-font availability.
+24 PNGs: nine states in zh-TW desktop/light and phone/dark; the directory, administrator editing and re-authentication states also in EN desktop/phone. Each capture checks real app/sidebar presence, selected Settings section where applicable, horizontal overflow, CJK-font availability, dialog text clipping and page errors. The viewport keeps its desktop/phone width and expands vertically to show the panel's complete content; this is a layout proposal, not a running setup journey.
 
-Run `node docs/screenshots/hub-web-first-setup-a9/render.mjs` with `PW_DIR` pointing to your owned playwright-core installation, `CHROME` to its Chromium executable, and `DESIGN_FONT` to an owned Noto Sans CJK TC regular OTF. Use a short owned temporary directory. The renderer starts only a loopback static-file server and closes it and the browser.
+Run `node docs/screenshots/hub-web-first-setup-a9/render.mjs` with `PW_DIR` pointing to your owned playwright-core installation, `CHROME` to its Chromium executable, and `DESIGN_FONT` to an owned Noto Sans CJK TC regular OTF. Use a short owned temporary directory. Only an owned loopback fake-protocol/static server and browser are started, and both are closed. `mockup-checks.json` records the source HTML hash and checks. No remote requests are allowed by the browser context.
 
 Font source: [Noto CJK](https://github.com/notofonts/noto-cjk), SIL OFL. The CJK font is an external rendering input and is not copied into this branch. No system fonts are installed or modified.
 
 ## Image list
 
-- [主機擁有者的首次設定：基本資料、網路與憑證 · zh-TW · 桌機](png/01-basics-zh-TW-desktop.png)
-- [主機擁有者的首次設定：基本資料、網路與憑證 · zh-TW · 手機](png/02-basics-zh-TW-phone.png)
-- [AD 草稿：寫入專用密碼與連線檢查 · zh-TW · 桌機](png/03-directory-zh-TW-desktop.png)
-- [AD 草稿：寫入專用密碼與連線檢查 · zh-TW · 手機](png/04-directory-zh-TW-phone.png)
-- [未知 CA：先確認指紋，沒有略過驗證 · zh-TW · 桌機](png/05-trust-zh-TW-desktop.png)
-- [未知 CA：先確認指紋，沒有略過驗證 · zh-TW · 手機](png/06-trust-zh-TW-phone.png)
-- [指定目錄中的管理員，完成後由本人登入 · zh-TW · 桌機](png/07-review-zh-TW-desktop.png)
-- [指定目錄中的管理員，完成後由本人登入 · zh-TW · 手機](png/08-review-zh-TW-phone.png)
-- [本機擁有者修改 AD：測試後整批儲存 · zh-TW · 桌機](png/09-existing-zh-TW-desktop.png)
-- [本機擁有者修改 AD：測試後整批儲存 · zh-TW · 手機](png/10-existing-zh-TW-phone.png)
-- [Hub 管理員看 AD 狀態，不取得主機寫入權限 · zh-TW · 桌機](png/11-readonly-zh-TW-desktop.png)
-- [Hub 管理員看 AD 狀態，不取得主機寫入權限 · zh-TW · 手機](png/12-readonly-zh-TW-phone.png)
-- [憑證檢查失敗：原設定不變，沒有強行繼續 · zh-TW · 桌機](png/13-error-zh-TW-desktop.png)
-- [憑證檢查失敗：原設定不變，沒有強行繼續 · zh-TW · 手機](png/14-error-zh-TW-phone.png)
-- [AD 草稿：寫入專用密碼與連線檢查 · en · 桌機](png/15-directory-en-desktop.png)
-- [AD 草稿：寫入專用密碼與連線檢查 · en · 手機](png/16-directory-en-phone.png)
-- [本機擁有者修改 AD：測試後整批儲存 · en · 桌機](png/17-existing-en-desktop.png)
-- [本機擁有者修改 AD：測試後整批儲存 · en · 手機](png/18-existing-en-phone.png)
+- [真實 Settings → Hub：首次設定、網路與憑證 · zh-TW · 桌機](png/01-basics-zh-TW-desktop.png)
+- [真實 Settings → Hub：首次設定、網路與憑證 · zh-TW · 手機](png/02-basics-zh-TW-phone.png)
+- [真實 Settings → Hub：AD 草稿與寫入專用服務密碼 · zh-TW · 桌機](png/03-directory-zh-TW-desktop.png)
+- [真實 Settings → Hub：AD 草稿與寫入專用服務密碼 · zh-TW · 手機](png/04-directory-zh-TW-phone.png)
+- [首次信任：先比對伺服器指紋，再取得 CA · zh-TW · 桌機](png/05-trust-zh-TW-desktop.png)
+- [首次信任：先比對伺服器指紋，再取得 CA · zh-TW · 手機](png/06-trust-zh-TW-phone.png)
+- [指定不可變管理員身分，完成後由本人登入 · zh-TW · 桌機](png/07-review-zh-TW-desktop.png)
+- [指定不可變管理員身分，完成後由本人登入 · zh-TW · 手機](png/08-review-zh-TW-phone.png)
+- [真實 Hub 管理頁：管理員可編輯 AD，儲存時重新驗證 · zh-TW · 桌機](png/09-existing-zh-TW-desktop.png)
+- [真實 Hub 管理頁：管理員可編輯 AD，儲存時重新驗證 · zh-TW · 手機](png/10-existing-zh-TW-phone.png)
+- [同頁重新驗證：個人密碼只到目前受信任的目錄 · zh-TW · 桌機](png/11-reauth-zh-TW-desktop.png)
+- [同頁重新驗證：個人密碼只到目前受信任的目錄 · zh-TW · 手機](png/12-reauth-zh-TW-phone.png)
+- [測試失敗保留原設定，沒有強行繼續 · zh-TW · 桌機](png/13-error-zh-TW-desktop.png)
+- [測試失敗保留原設定，沒有強行繼續 · zh-TW · 手機](png/14-error-zh-TW-phone.png)
+- [更換 CA：一個指紋確認，取消即可停止 · zh-TW · 桌機](png/15-ca-change-zh-TW-desktop.png)
+- [更換 CA：一個指紋確認，取消即可停止 · zh-TW · 手機](png/16-ca-change-zh-TW-phone.png)
+- [同 CA 更換主機：仍確認新主機與 leaf 指紋 · zh-TW · 桌機](png/17-server-change-zh-TW-desktop.png)
+- [同 CA 更換主機：仍確認新主機與 leaf 指紋 · zh-TW · 手機](png/18-server-change-zh-TW-phone.png)
+- [真實 Settings → Hub：AD 草稿與寫入專用服務密碼 · en · 桌機](png/19-directory-en-desktop.png)
+- [真實 Settings → Hub：AD 草稿與寫入專用服務密碼 · en · 手機](png/20-directory-en-phone.png)
+- [真實 Hub 管理頁：管理員可編輯 AD，儲存時重新驗證 · en · 桌機](png/21-existing-en-desktop.png)
+- [真實 Hub 管理頁：管理員可編輯 AD，儲存時重新驗證 · en · 手機](png/22-existing-en-phone.png)
+- [同頁重新驗證：個人密碼只到目前受信任的目錄 · en · 桌機](png/23-reauth-en-desktop.png)
+- [同頁重新驗證：個人密碼只到目前受信任的目錄 · en · 手機](png/24-reauth-en-phone.png)

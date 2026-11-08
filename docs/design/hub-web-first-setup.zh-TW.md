@@ -7,11 +7,13 @@
 - 第一次在 **這台電腦的 AgEnD → 設定 → Hub → 建立 Hub** 完成設定。入口必須是 AgEnD 自己開啟的主機擁有者登入工作階段；知道網址或能連到本機位址並不算取得權限。
 - 網頁依序填基本資料、AD 連線與管理員，檢查成功後按「完成設定」。不用另外到終端機輸入確認指令，也不用提供管理員的個人 AD 密碼來完成安裝。
 - AD 頁面可測試連線、匯入或取得 CA、比對指紋，以及更換服務帳號密碼。**密碼只寫入、不回傳；留白不會把既有密碼清空。**
-- 已有 Hub 的 AD 狀態顯示在 **Hub 管理 → 設定 → AD 連線**。會改變登入信任來源的設定，由主機擁有者在 **這台電腦的設定 → Hub → AD 連線** 修改。先測試新設定，成功後再整批套用；失敗時原設定繼續運作，不會只改一半而讓 Hub 停住。
+- **Hub 管理員也能在「Hub 管理 → AD 連線」修改設定**。儲存時須有近期、由目前受信任目錄驗證的管理員登入；新連線也必須查到同一個不可變管理員身分。測試失敗維持原設定，不會只改一半而讓 Hub 停住。
+- 平常只按一次「儲存」；需要重新登入時在頁內輸入個人密碼，這個密碼只送到**目前受信任的目錄**。更換 CA 或伺服器網址時，才多一個指紋確認。同一 CA 換伺服器也要確認新主機與 leaf 憑證指紋；同主機只改搜尋範圍、服務帳號、密碼或 filter，不多一個確認。
+- 每次實際變更都留下稽核，並向主機擁有者及其他管理員送出可保留的安全通知。本機擁有者保留明確的網頁修復入口；初次設定仍只允許主機擁有者。
 - 首位管理員以目錄中不可變的身分指定，之後由那個人自己在 Hub 登入。改帳號顯示名稱不會換人，重新建立同名帳號也不會繼承管理權限。
 - CLI 初始化保留為備援；網頁與 CLI 共用初始化器，不另外做一套較寬鬆的安裝方式。
 
-圖片為模擬資料的設計稿，不是實機截圖。圖中不使用任何試用環境的位址、帳號、憑證或目錄資料。
+圖片以真正的 `app.html`、側邊欄及應用程式模組呈現，僅在實際面板內容中放入模擬資料的設計稿；不是功能驗收。fleet 畫面保留第二層 Settings 選單並選中 Hub。Hub 畫面使用目前已落地的 Hub shell；M-2686 的新版 shell 尚未核准，不冒稱已使用。圖中不使用任何試用環境的位址、帳號、憑證或目錄資料。
 
 ## 目前的問題與既有程式
 
@@ -26,11 +28,12 @@
 | 操作 | 權限與所在畫面 | 拒絕的情況 |
 |---|---|---|
 | 尚無 Hub 的檢查、測試、指定管理員、完成設定、續作 | 主機 fleet 的設定頁；每次請求都必須通過 `hostSessionHere(session, req)` | 沒有登入、只有標頭 token、只有 loopback、LAN/遠端、guest、gateway/公開連結、過期或撤銷的工作階段 |
-| 已有 Hub 的名稱、預覽與一般資訊 | M-2682 的 Hub 管理頁；使用該操作既有的角色規則 | 一般目錄使用者不得取得設定寫入權限 |
-| AD 連線、服務秘密及 CA 調整 | 主機擁有者在 fleet 設定頁，仍須 `hostSessionHere`／D3；候選目錄重新確認管理員的相同不可變身分。Hub 管理頁提供遮罩狀態，不提供遠端寫入能力 | Hub 管理員 cookie 本身不是主機權限；新目錄中同名不同人、無法確認資格、失效工作階段、錯誤 CA 或連線失敗 |
+| 已有 Hub 的名稱與一般資訊 | M-2682 的 Hub 管理頁；名稱由 configured admin 修改，資訊只讀 | 一般目錄使用者不得取得設定寫入權限 |
+| HTML 預覽開關／連接埠 | M-2682 的 fleet 設定 → Hub，由主機擁有者管理 listener | Hub 管理員角色本身不授予主機 listener 權限 |
+| AD 連線、服務秘密及 CA 調整 | Hub 管理頁：已設定的管理員 session＋CSRF＋目前受信任目錄的近期重新驗證。候選連線須確認操作者為同一個合格 PersonKey。主機擁有者在 fleet 本機頁面保留 D3 修復路徑 | guest／公開連結、非管理員、重新驗證逾期、新目錄中同名不同人、無法確認資格、失效 session、未確認的信任變更、錯誤 CA 或測試失敗 |
 | 改 realm、不可變 ID 模型、管理員身分，或遺失目錄時復原 | 主機擁有者在本機網頁的受保護移轉流程；不能由一般「儲存連線」順便完成 | 不得把同名登入或任意 GUID 當作管理權限證明；不得自動重設管理員 |
 
-此權限分工已與 M-2682 作者協調，仍要讓使用者審閱；不把 Hub 管理員擴大成主機擁有者。不把 host cookie 複製到 Hub origin，不因為同一個瀏覽器已登入 AD 就視為主機登入。共同提交器只能接受操作專屬 gate 產生的能力，不能接受客戶端傳入 `isAdmin: true`。
+使用者已決定 Hub 管理員可編輯 AD；這是窄的目錄設定權限，不把他擴大成主機擁有者。不把 host cookie 複製到 Hub origin，不因為同一個瀏覽器已登入 AD 就視為主機登入。共同提交器只能接受操作專屬 gate 產生的能力，不能接受客戶端傳入 `isAdmin: true`。初次設定、listener 及身分移轉的主機邊界不因本決定放寬。
 
 D3 的登入來源是 AgEnD 自己的單次啟動連結，單次碼放 fragment、兌換後移除。每個請求還要檢查本機 TCP peer、Host、無轉送標頭及無 gateway。不得用「第一次到訪」、「第一個按下去的人」或 bare loopback 取代這個證明。登入碼、cookie、CSRF、密碼都不出現在查詢字串、Referer 或操作紀錄。
 
@@ -78,7 +81,26 @@ D3 的登入來源是 AgEnD 自己的單次啟動連結，單次碼放 fragment�
 
 ## AD 設定、密碼與登入失敗
 
-Hub 管理的「設定 → AD 連線」顯示目前連線、CA 狀態、最近測試結果及設定版本。主機擁有者的 fleet「設定 → Hub → AD 連線」提供編輯；不是擁有者的畫面不提供會失敗的儲存按鈕。修改尚未測試時清楚標示「尚未儲存」。測試草稿不改目前有效服務。
+Hub 管理的「AD 連線」提供目前連線、CA 狀態、最近測試結果、設定版本及編輯。管理員可直接在這個畫面完成，不跳到主機終端機或另一個來源登入。主機擁有者的 fleet「設定 → Hub」保留受保護的修復流程。修改時清楚標示「尚未儲存」；測試草稿不改目前有效服務。
+
+### 儲存時的重新驗證與身分連續性
+
+1. 「儲存」啟動候選檢查；有合格的近期 AD 驗證便直接沿用，否則在同頁索取目前管理員的個人密碼。近期窗口建議上限五分鐘，由伺服器記錄的驗證時間判定，精確值交安全審查；不能採信客戶端時間或把一般 session 存活時間當近期驗證。
+2. 個人重新驗證只使用**舊的、目前受信任且正在生效的目錄**。絕不把管理員的個人密碼送給正在提案的新伺服器。舊目錄無法驗證時，遠端管理員不能儲存；主機擁有者使用獨立 D3 修復流程。
+3. 新設定須通過正常 TLS、服務綁定、bounded lookup 與新鮮 immutable eligibility 檢查；操作者在新設定中必須仍是原本合格的相同 `{realm, objectId}`。同名不同 GUID、停用、不明、不同 realm／ID 模型都拒絕，明白說明原設定保持不變。一般儲存不重新指定管理員。
+4. 伺服器產生的短效單次證明綁定 actor、session、舊 authentication/config epoch、候選內容、秘密／憑證版本、舊設定／manifest image 與期限。每次 await 後及 durable commit 前重查，並與共同 writer 的 CAS 一起判定；不能讓瀏覽器提供 `recentAuth:true` 取代證明。
+5. 畫面上的「測試連線」可先執行，但不是永久授權。儲存仍重新驗證候選；一般編輯只按一次 Save，驗證成功直接繼續，不再加「確定要儲存」對話框。
+
+### 信任變更只用一個確認對話框
+
+| 變更 | 儲存時唯一的額外確認 |
+|---|---|
+| 同一主機／URL、同一 CA，只改 base DN、bind DN、密碼或 filter | 無；仍須近期驗證、候選測試與身分連續性 |
+| CA 改變 | 顯示新 CA 的 SHA-256 指紋及目標伺服器，確認後才進行需要該信任的認證／提交 |
+| 伺服器主機／URL 改變，即使 CA 不變 | 顯示新主機及其 leaf 憑證 SHA-256 指紋；leaf 必須已通過原受信任 CA 的鏈、主機及有效期檢查 |
+| CA 與 URL 同時改變 | 同一個對話框列出新主機、leaf 與新 CA 指紋，不連續要求兩次確認 |
+
+確認綁定這個候選的確切 host／URL 及材料；修改候選即失效。取消或不相符就停止，不提供「仍然繼續」。第一輪未信任的憑證檢視不帶帳密，不能先對候選傳送秘密再補確認。
 
 - 密碼欄位預設不帶值；「更換密碼」後才接受新內容。一般欄位留白不能意外清空秘密。
 - 密碼是 opaque 內容，保留空白及 Unicode，不 trim、不正規化，也不因秘密檔案解碼而吃掉 BOM；沿用既有 opaque-secret 的讀取規則。
@@ -88,11 +110,21 @@ Hub 管理的「設定 → AD 連線」顯示目前連線、CA 狀態、最近�
 - 有效目錄暫時故障時，畫面保留已顯示資料並可重試，不清空表單，不自動切到新目錄，也不自動把所有資源暫停。
 - 本機擁有者可由同一個網頁入口進入明確的修復流程；這不是遠端免登入管理員。CLI 只在備援文件中保留，網頁不指示使用者執行主機指令。
 
+### 持久安全通知
+
+每次成功的實際變更（包含服務密碼輪替）都在同一個 durable operation 記下安全通知 outbox，送給**變更前已確定的主機擁有者及其他管理員**，並寫稽核；不是從 audit 事後猜通知。內容只有操作、人、時間及遮罩的變更類別，沒有秘密或完整 DN。純 no-op 不假裝是變更，失敗則保留失敗稽核。
+
+目前 Hub 是單一 configured admin；「其他管理員」表示既有支援且已明確指定的管理員收件者，並不新增角色或把群組成員視為 admin。主機擁有者不是 Hub PersonKey，必須使用明確的主機通知 sink／Needs-you；即使新 AD 無法登入仍能看到。新增 typed security-notice outbox，不能把目錄變更塞進 pairing-notice schema。重啟復原要可冪等送達並顯示待送狀態；通知服務短暫不可用不遺失通知。
+
+近期已驗證的管理員 session 若遭竊仍有剩餘風險；短效單次證明、身分連續性、信任確認及獨立擁有者通知降低風險，不能宣稱完全防止已掌握有效 session 的攻擊者。
+
 ## 共同設定提交及復原：與 M-2682 的接點
 
 已與 M-2682 作者協調：由他負責 `src/hub/settings-commit.ts` 的共同 `HubSettingsCommit`，先接名稱；本案設計 directory 擴充。預覽不在 seal 摘要中，走原本單檔 Settings save 及相同 writer serialization，不額外重新簽署或套用多檔 journal。**名稱／AD 同一個 writer／journal，不要做第二個簽署器。**
 
 名稱清除的 canonical 表示是 `hub.name` key 不存在，不用空字串或空白字串；簽署摘要、runtime 與 renderer 要一致支援。M-2682 的 strict rename patch 與 private preparation ref 可直接延伸 AD，HTTP 不拿到內部 before/after。新操作 receipt 以 digest 連到 manifest 的 confirmationId，保留 manifest v1 的 strict schema。
+
+共同 helper 已在 [#3426](https://github.com/songsid/AgEnD/pull/3426) 提出；目前 journal v1 只支援 rename。本案 directory 擴充使用 journal **v2**，把 staged-secret ref／revision、材料版本、actor-proof version 與 notice-outbox ids 納入持久操作；expected image 也加入秘密及材料版本。writer 接受由 route 證明的 actor/current，不在 writer 中硬編碼 hostSessionHere；directory route 提供上述窄的近期 admin 證明或 D3 修復證明。v2 actor 來源要明確區分 directory PersonKey 與 host session；主機擁有者不能被捏造成目錄 PersonKey。
 
 1. **Prepare**：操作各自驗證角色、session、CSRF；以完整已驗證的舊設定與 manifest 為基底，產生 allowlisted candidate。保留所有無關設定，拒絕替被手動竄改的舊設定重新背書。
 2. **Stage / test**：秘密及 PEM 只在私有暫存，UI 只持有 opaque draft id。新舊材料分開，不能先覆寫有效 bind secret。測試成功後繫結 draft、actor、來源 session、設定／秘密／manifest 版本及期限。
@@ -128,25 +160,26 @@ Hub 管理的「設定 → AD 連線」顯示目前連線、CA 狀態、最近�
 
 初始設定只在主機 fleet listener 的 `/api/settings/hub/setup/*`，由既有 host-session、CSRF、same-origin gate 包住 `inspect / prepare / inspect-ca / fetch-ca / test / resolve-admin / commit / resume`。沒有 Hub admin 前，Hub listener 不掛一個公開初始化器。
 
-已有 Hub 的 `/hub/v1/admin/settings/directory` 提供管理員可讀的遮罩狀態；寫入操作在主機 fleet 的 `/api/settings/hub/directory/*`，由本機擁有者 gate 提供 `read / prepare / test / apply`，透過共同提交器，不直接寫 YAML。回應包含 opaque draft、expiry、revision、遮罩摘要、測試狀態及秘密是否已設定，不回傳內部 before/after 或秘密參照。精確路由待實作拆分時鎖定；本設計不新增目前可呼叫的 endpoint。
+已有 Hub 的 `/hub/v1/admin/settings/directory/*` 提供 `read / prepare / inspect-ca / test / reauthenticate / apply`；都由 configured-admin session、same-origin、CSRF（寫入）及操作專屬的近期驗證／信任確認保護。主機 fleet 的 `/api/settings/hub/directory/*` 是 D3 修復 adapter，不複製 Hub cookie，也不開放遠端 owner token 代用。兩者都走共同提交器，不直接寫 YAML。回應只有 opaque draft、expiry、revision、遮罩摘要、測試狀態及秘密是否已設定，不回傳內部 before/after、個人密碼或秘密參照。精確路由待實作拆分時鎖定；本設計不新增目前可呼叫的 endpoint。
 
 ## 驗收與拆分
 
 1. **共用提交基礎（M-2682 協作）**：有效舊 seal、窄操作、CAS、writer serialization、journal/recovery、稽核及正常 reload。測 crash 在每個檔案寫入點，不用一個 stub 冒充多檔原子性。
 2. **web bootstrap adapter**：fake LDAPS＋真 fleet HTTP listener，完成與 CLI 相同的 state set、簽章、權限與 schema；CLI fallback 仍可獨立初始化。中斷續作不換人、不覆寫已存在的 identity。
-3. **AD 設定頁**：候選測試、write-only secret、CA consent、同 key 管理員檢查、群組世代處理，與名稱／預覽共用寫入序列。測實際 FleetManager load/save/reload 發布，不只測 helper 回傳。
+3. **AD 設定頁**：舊目錄近期重新驗證、候選測試、write-only secret、CA／host consent、同 key 管理員檢查、群組世代與安全 outbox，與名稱／預覽共用寫入序列。測實際 FleetManager load/save/reload 發布，不只測 helper 回傳。
 4. **UI 驗收**：沿用 PageHead、`.s-section-layout`、`.card`、`.field`、`.grid2`、`.btn`、`.tag` 及共用 loading/error 元件；桌機／手機、EN／zh-TW、明／暗色；長值、無橫捲、無多餘確認、無主機指令。
 5. **拒絕與競態**：bare loopback、header token、LAN、guest、gateway、D3 session 過期／撤銷、CSRF；CA mismatch/expired/hostname、錯誤帳密、含糊／停用管理員、lookup 超額、逾期 draft、並行 CLI／rename／AD、稽核拒絕、程序 crash、取消仍在實體 LDAP 工作中。
 6. **權限效果**：更換連線不授予一般目錄使用者主機能力；舊 session/permit 失效；群組 unknown 不變成正向或大量暫停；未啟用政策仍維持原來語意。
 7. **保密與 SKEW**：新舊前端互不放寬；能力標記不存在時不顯示可儲存的控制。API schema、audit/log/DOM/支援匯出都不含秘密；提交中舊頁顯示 conflict/refresh，不猜測已成功。
+8. **新增 admin 改 AD 的反向案例**：沒有近期驗證、錯誤舊目錄密碼、驗證中撤銷 session、候選冒用同名 GUID、持有驗證跨過期限、信任確認後換 host／材料，一律不提交。確認個人密碼只到舊目錄、新目的地不重用舊 bind secret；同 CA 換 host 仍出現一次確認，同 host 一般編輯不出現確認；通知隨提交／crash recovery 保留並冪等送達主機擁有者。
 
 所有設計與驗收先用假的目錄、人物及私有安裝。沒有核准前不碰實際目錄、試用 Hub 或系統信任庫。圖稿只代表排版與文案，不是連線或初始化的執行證據。
 
 ## 請使用者確認的方向
 
 1. 初次設定限定這台電腦的擁有者頁面；以「完成設定」一次確認，不再要求終端機操作。名稱可略過，只顯示 AgEnD Hub；核准後同步改 CLI／initializer 的必填行為。
-2. AD 伺服器、帳密與 CA 會改變登入信任來源，所以由主機擁有者在本機網頁修改；Hub 管理員可讀狀態，但不因此獲得主機權限。跨 realm／ID 模型或管理員移轉走明確的影響預覽／移轉流程。
-3. 新目的地不重用舊 bind 密碼；未知 CA 必須比對指紋。測試失敗保留原服務，不提供「略過驗證」。
+2. **使用者已決定：Hub 管理員可改 AD**，限近期舊目錄驗證＋新連線同一不可變身分；每次變更通知擁有者與其他管理員。這不授予一般主機權限；跨 realm／ID 模型或管理員移轉仍是獨立流程。
+3. **已釐清：CA 或伺服器 host／URL 變更都有一個確認**；同 CA 換 host 顯示新 host＋leaf 指紋，同 host 的 base DN／服務帳號／密碼／filter 編輯不多確認。新目的地不重用舊 bind 密碼；測試失敗保留原服務，沒有「略過驗證」。
 4. 名稱、預覽、AD 設定共用可復原的提交路徑；資料／身分不重建。更換整個目錄的移轉不假裝等同改一個網址，另列清楚的影響與流程。
 
-使用者確認方向後，依上述順序拆小 PR 並送 parity review；在此之前只有設計與圖片。
+本次更新先供使用者看實際 shell 內的設計，再由 Prism 安全審查；實作核准前只有設計與圖片。之後依上述順序拆小 PR 並送 parity review。

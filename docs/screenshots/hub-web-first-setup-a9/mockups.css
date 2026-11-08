@@ -1,16 +1,6 @@
 /* Presentation-only design mockups; real shared tokens and Settings classes are served by the renderer. */
-@font-face { font-family: DesignTC; src: url('/design-font.otf') format('opentype'); font-display: block; }
-body { display: block; height: auto; min-height: 100vh; overflow: auto; font-family: Inter, DesignTC, var(--font-ui); }
-.mock-app { display: flex; min-height: 100vh; background: var(--bg); }
-.mock-sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--bg-sidebar); padding: var(--s-4); }
-.mock-brand { min-height: var(--s-8); font-size: var(--fs-lg); font-weight: var(--fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mock-nav { display: grid; gap: var(--s-1); margin-top: var(--s-4); }
-.mock-nav a { padding: var(--s-3); border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-sm); }
-.mock-nav .active { color: var(--text); background: var(--surface-2); font-weight: var(--fw-semibold); }
-.mock-work { flex: 1; min-width: 0; }
-.mock-top { min-height: var(--s-8); padding: var(--s-3) var(--s-7); display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-2); }
-.mock-phone-brand { display: none; }
-.mock-content { max-width: 1050px; margin: auto; padding: var(--s-7); }
+@font-face { font-family: "Noto Sans TC"; src: url('/design-font.otf') format('opentype'); font-display: block; }
+.mock-content { min-width: 0; padding: 0; }
 .mock-label { font-size: var(--fs-xs); color: var(--text-3); letter-spacing: .02em; }
 .mock-steps { display: flex; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-5) 0; font-size: var(--fs-sm); color: var(--text-3); }
 .mock-step { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
@@ -38,17 +28,13 @@ body { display: block; height: auto; min-height: 100vh; overflow: auto; font-fam
 .mock-subnav { display: flex; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-5) 0; color: var(--text-3); font-size: var(--fs-sm); }
 .mock-subnav b { color: var(--text); background: var(--surface-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
 .mock-subnav span { padding: var(--s-2) var(--s-3); }
-.s-page-head { margin-top: var(--s-3); }
-.s-page-lead { max-width: 72ch; }
+.mock-content .s-page-head { margin-top: var(--s-3); }
+.mock-content .s-page-lead { max-width: 72ch; }
 .grid2 { display: grid; gap: var(--s-4); }
 .mock-check { display: flex; align-items: flex-start; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .mock-check input { flex-shrink: 0; margin-top: var(--s-1); }
 .mock-hint-inline { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 @media (max-width: 899px) {
-  .mock-sidebar { display: none; }
-  .mock-top { padding: var(--s-3) var(--s-4); }
-  .mock-phone-brand { display: inline; color: var(--text); font-weight: var(--fw-semibold); }
-  .mock-top .mock-breadcrumb { display: none; }
   .mock-content { padding: var(--s-4); }
   .mock-label { font-size: var(--fs-xs); }
   .mock-steps { gap: var(--s-1); margin: var(--s-4) 0; }
