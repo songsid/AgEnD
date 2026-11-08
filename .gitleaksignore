@@ -10,7 +10,3 @@ ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:gener
 # PR #3427: historical JSON entry was the verified SHA256 of mutation-token-bound.log, not a credential.
 # Current manifest uses standard digest-first SHA256SUMS format. Exact historical finding only.
 75bdac9dd409a97dc0dd68a30b0fccbcd2a13905:docs/screenshots/hub-room-reload/SHA256SUMS.json:generic-api-key:47
-
-# PR #3448: historical mutation receipt mapped a source path to its verified SHA256, not a credential.
-# Current evidence uses digest-first source-digests.sha256. Pin only this historical finding.
-da67f593e3f4e6c6a889aaa052b702ca08a93037:docs/screenshots/hub-web-setup/mutations.json:generic-api-key:62
