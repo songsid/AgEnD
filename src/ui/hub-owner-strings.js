@@ -5,8 +5,8 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hubOwner", {
   en: {
-    memberAddress: "Member address", memberAddressHint: "Enter this address and the code in your fleet's Settings → Hub → Connect to a Hub. This is separate from the Hub's browser address.",
-    memberAddressMissing: "Ask the administrator for the member address; it may use a different port from this page.", copyHandoff: "Copy address and code", handoffCopied: "Address and code copied", handoffCopyFailed: "Couldn't copy. Select the address and code above to copy them.",
+    memberAddress: "Hub address", memberAddressHint: "Paste this address into the Hub address field in your fleet's Settings → Hub → Connect to a Hub, together with the code. This is separate from the Hub's browser address.",
+    memberAddressMissing: "Ask the administrator for the address to enter in the Hub address field; it may use a different port from this page.", copyHandoff: "Copy address and code", handoffCopied: "Address and code copied", handoffCopyFailed: "Couldn't copy. Select the address and code above to copy them.",
     active: "Active", adminLead: "Pair a fleet with this Hub and see the fleets that are paired. You can't read anyone's chats here.",
     allow: "Allow…", allowDays: "For", allowGo: "Allow", allowLogin: "Their sign-in name",
     allowLoginHint: "The account they sign in to this Hub with.", allowTitle: "Allow someone to ask {0}", approveGo: "Approve…",
@@ -26,8 +26,8 @@ register("hubOwner", {
     untilLeft: "until {0} ({1})", waitingOwner: "Waiting for the owner", whoMayAsk: "Who may ask",
   },
   "zh-TW": {
-    memberAddress: "成員連線位址", memberAddressHint: "在你 fleet 的「設定 → Hub → 連線到 Hub」輸入這個位址和配對碼。這與 Hub 的瀏覽器位址不同。",
-    memberAddressMissing: "請向管理員索取成員連線位址；它的連接埠可能與這個頁面不同。", copyHandoff: "複製位址與配對碼", handoffCopied: "已複製位址與配對碼", handoffCopyFailed: "無法複製。請選取上方的位址與配對碼來複製。",
+    memberAddress: "Hub 位址", memberAddressHint: "在你的 Fleet「設定 → Hub → 連線到 Hub」的「Hub 位址」欄位貼上這個位址，並輸入配對碼。這與 Hub 的瀏覽器位址不同。",
+    memberAddressMissing: "請向管理員索取要填入「Hub 位址」欄位的位址；它的連接埠可能與這個頁面不同。", copyHandoff: "複製位址與配對碼", handoffCopied: "已複製位址與配對碼", handoffCopyFailed: "無法複製。請選取上方的位址與配對碼來複製。",
     active: "使用中", adminLead: "把 fleet 配對到這個 Hub，並查看已配對的 fleet。這裡看不到任何人的對話。", allow: "允許提問…", allowDays: "期限", allowGo: "允許", allowLogin: "對方的登入名稱",
     allowLoginHint: "對方登入這個 Hub 用的帳號。", allowTitle: "允許提問 {0}", approveGo: "核准…", approvedTag: "已核准", backToMine: "我分享的 Agent",
     codeFor: "給 {0} 的配對碼", codeUnusedYet: "還沒使用", fleetOf: "{0} 的 fleet", makeCode: "產生配對碼", mayAsk: "{0} 人可以提問", mayAskNone: "還沒有人可以提問",
