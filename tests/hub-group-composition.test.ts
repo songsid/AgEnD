@@ -226,6 +226,34 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
     expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "suspended" });
   });
+  it.each(["resolve", "reject"])("shares four physical manual eligibility slots across factory checks until %s settlement", async mode => {
+    const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
+    expect((await attempt.approve()).status).toBe(200); await attempt.claim();
+    const original = r.directory.checkEligibility.bind(r.directory), release = gate<boolean>(); let entered = 0, live = true;
+    r.directory.checkEligibility = async key => { entered++; await release.promise;
+      if (mode === "reject") throw Error("inert directory failure"); return original(key); };
+    r.read.mockClear();
+    const before = r.auditCount(), check = (current = () => true) => r.deps.groups!.check(attempt.resource,
+      { requestId: randomUUID(), current }).then(value => value.source, error => error);
+    const work = Array.from({ length: 4 }, (_, i) => check(i === 0 ? () => live : () => true));
+    live = false; // Logical cancellation must not release a physical directory slot.
+    let extraResult: unknown; const extra = check().then(result => { extraResult = result; });
+    const welcome = r.deps.groupHttp!.welcome({ requestId: randomUUID(), current: () => true,
+      requirePerson: async () => r.colleague.key }).catch(error => error);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(entered).toBe(4); expect(extraResult).toMatchObject({ reason: "held" });
+      expect(await welcome).toBeInstanceOf(Error); expect(r.read).not.toHaveBeenCalled();
+      expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ source: "manual", state: "active", revision: 1 });
+      expect(r.auditCount()).toBe(before);
+    } finally { release.resolve(true); await Promise.all([...work, extra, welcome]); }
+    const results = await Promise.all(work); expect(results[0]).toBeInstanceOf(Error);
+    expect(results.slice(1)).toEqual(mode === "resolve" ? ["manual", "manual", "manual"] :
+      Array.from({ length: 3 }, () => expect.objectContaining({ reason: "held" })));
+    r.directory.checkEligibility = original;
+    await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).resolves.toMatchObject({ source: "manual" });
+    expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active", revision: 1 });
+  });
   it("cannot finish a held manual approval after the administrator signs out", async () => {
     const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
     const original = r.directory.checkEligibility.bind(r.directory), entered = gate<boolean>(), release = gate<boolean>();

@@ -55,6 +55,8 @@ export interface GroupCheckContext {
 }
 export interface HubGroupPolicyStore {
   read(): HubGroupPolicy;
+  /** Admission only, never an allowance. Shares membership/welcome limits until the physical read settles. */
+  withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T>;
   /** Caller must freshly require the configured Hub admin and confirm the exact effective-access preview first. */
   replace(input: unknown, actor: PersonKey, context: GroupCheckContext): HubGroupPolicy;
   /** No cache. Result does not perform suspension; only authoritative negative may be used for that later. */
@@ -99,7 +101,18 @@ export function createHubGroupPolicyStore(options: {
     db.prepare("INSERT INTO hub_group_events VALUES(?, ?, ?)").run(id, body, at);
   };
   read(); // Missing/corrupt state is not an excuse to restore permissive legacy behavior.
-  return { read, replace(input, actor, incoming) {
+  return { read, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
+    const who = validated(person, subject); assert();
+    const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
+    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    inflight.set(key, count + 1); total++;
+    try { return await read(); }
+    finally {
+      const left = (inflight.get(key) ?? 1) - 1;
+      if (left) inflight.set(key, left); else inflight.delete(key);
+      total--;
+    }
+  }, replace(input, actor, incoming) {
     const next = parseGroupPolicy(input), who = validated(person, actor), ctx = context(incoming);
     if (who.realm !== binding.realm || next.realm !== binding.realm || next.generation !== binding.generation) throw new HubGroupPolicyError("invalid");
     if ((next.state === "enabled" || next.groups.length > 0) && directory.groupPolicy !== "ad-direct-guid") throw new HubGroupPolicyError("unsupported");

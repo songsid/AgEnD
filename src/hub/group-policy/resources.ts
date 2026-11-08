@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { HubMigration } from "../db.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { PersonKey } from "../types.js";
-import type { HubDirectory } from "../directory/types.js";
+import type { Eligibility, HubDirectory } from "../directory/types.js";
 import { personKeyString } from "../identity.js";
 import { identifier, person, parseStrictJson, validated } from "../validation.js";
 import { HubGroupPolicyError, type GroupCheckContext, type HubGroupPolicyStore } from "./store.js";
@@ -93,8 +93,12 @@ export function createHubGroupResources(options: {
     assert(ctx); const p = policy.read(), before = row(r);
     if (!before || r.owner.realm !== p.realm || (actor && actor.realm !== p.realm)) throw new HubGroupPolicyError("invalid");
     const explicitlyDenied = p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
-    const eligibility = before.source === "manual" && !explicitlyDenied && r.kind === "fleet" && options.directory
-      ? await options.directory.checkEligibility(r.owner) : undefined;
+    let eligibility: Eligibility | undefined;
+    if (before.source === "manual" && !explicitlyDenied && r.kind === "fleet" && options.directory) {
+      try {
+        eligibility = await policy.withDirectoryRead(r.owner, () => options.directory!.checkEligibility(Object.freeze({ ...r.owner })));
+      } catch { eligibility = { eligible: false, reason: "unavailable" }; }
+    }
     if (before.source === "manual") return db.transaction((): HubGroupResourceDecision => {
       assert(ctx);
       if (policy.read().revision !== p.revision || JSON.stringify(row(r)) !== JSON.stringify(before)) throw new HubGroupPolicyError("conflict");
