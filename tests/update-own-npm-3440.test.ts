@@ -138,7 +138,8 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     writeFileSync(join(h.nvm, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(h.sys, "lib", "node_modules")}" ;; prefix) echo "${h.sys}" ;; esac\n`);
     const good = join(h.t, "good", "bin"); mkdirSync(good, { recursive: true });   // PATH's npm: manages the running root
     writeFileSync(join(good, "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(h.nvm, "lib", "node_modules")}" ;; prefix) echo "${h.nvm}" ;; esac\n`); chmodSync(join(good, "npm"), 0o755);
-    vi.stubEnv("PATH", `${good}:/usr/bin:/bin`);
+    const empty = join(h.t, "empty", "bin"); mkdirSync(empty, { recursive: true });   // first on PATH, holds no npm
+    vi.stubEnv("PATH", `${empty}:${good}:/usr/bin:/bin`);
     const installed = await resolveInstalledAgend(h.deps) as { ok: boolean; agend: string; npmDir: string };
     expect(installed).toMatchObject({ ok: true, agend: join(h.nvm, "bin", "agend"), npmDir: good });
     const out = join(h.t, "seen");
