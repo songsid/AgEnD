@@ -1,0 +1,550 @@
+{
+  "mode": "before",
+  "skew": false,
+  "source": "12880158f5d15137a863360cf2d16fc6d53b16bc",
+  "browser": "141.0.7390.37",
+  "boundary": "Startup-only: sealed Hub HTTPS, production AD driver over owned synthetic verified TLS/BER peer, real browser. Direct owned Chromium only; no fleet fixture, member, agent, model, daemon, native CLI or account runs.",
+  "stories": [
+    {
+      "id": "A8-01",
+      "status": "PASS",
+      "checks": 2
+    }
+  ],
+  "clicks": [
+    "Administration → Group permissions",
+    "Resolve owner group",
+    "Resolve Department A",
+    "Turn on draft",
+    "Save shown impact"
+  ],
+  "deliveries": [],
+  "holds": [],
+  "checks": [
+    {
+      "name": "unsaved policy stays Off",
+      "ok": true
+    },
+    {
+      "name": "two saved groups",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-1 no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-1 no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "no browser errors",
+      "ok": true
+    },
+    {
+      "name": "no CSP violations",
+      "ok": true
+    },
+    {
+      "name": "no foreign requests",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "A8-01-impact-before-save.png",
+    "A8-01-saved.png",
+    "desk-light-en-1.png",
+    "phone-dark-zh-TW-1.png"
+  ],
+  "errors": [],
+  "csp": [],
+  "foreign": [],
+  "api": [
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "startup": [
+    {
+      "probe": "desk-light-en-1",
+      "emptyHint": false,
+      "busy": [
+        {
+          "probe": "desk-light-en-1",
+          "at": 1794106896161,
+          "path": "/hub/v1/exposures",
+          "method": "GET",
+          "status": 429,
+          "retryAfter": "10",
+          "body": {
+            "code": "backpressure"
+          }
+        }
+      ],
+      "attemptedPeak": 5,
+      "driverPeak": 4
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "emptyHint": true,
+      "busy": [],
+      "attemptedPeak": 4,
+      "driverPeak": 4
+    }
+  ],
+  "core": [
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896091,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 88
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896131,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 63
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896137,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896153,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896155,
+      "attemptedConcurrent": 5,
+      "admittedBefore": 4,
+      "totalBefore": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896278,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898889,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 87
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898982,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 101
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898986,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 92
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899022,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 78
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899025,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 69
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899197,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    }
+  ],
+  "driver": [
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896091,
+      "active": 1,
+      "elapsed": 85
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896131,
+      "active": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896137,
+      "active": 3,
+      "elapsed": 59
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896153,
+      "active": 4,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896278,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898889,
+      "active": 1,
+      "elapsed": 80
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898982,
+      "active": 1,
+      "elapsed": 99
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898986,
+      "active": 2,
+      "elapsed": 86
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899022,
+      "active": 3,
+      "elapsed": 75
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899025,
+      "active": 4,
+      "elapsed": 62
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899197,
+      "active": 1,
+      "elapsed": 55
+    }
+  ],
+  "responses": [
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106895738,
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896077,
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896161,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 429,
+      "retryAfter": "10",
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896200,
+      "path": "/hub/v1/notices",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896203,
+      "path": "/hub/v1/notices/events",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896265,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896301,
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794106896335,
+      "path": "/hub/v1/quick-pairing",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898506,
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106898866,
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899104,
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899104,
+      "path": "/hub/v1/notices/events",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899105,
+      "path": "/hub/v1/notices",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899165,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899169,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794106899259,
+      "path": "/hub/v1/quick-pairing",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "skewHits": 20,
+  "catalogs": [
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    }
+  ],
+  "driverPeak": 4,
+  "status": "OBSERVED_STARTUP_FAILURE"
+}
