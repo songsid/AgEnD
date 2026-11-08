@@ -10,6 +10,7 @@ import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { companyJoinRig, type JoinBrowser } from "./support/hub-company-join-rig.js";
 import { pkceChallenge, signJoinProof, type JoinBinding, type JoinPurpose } from "../src/hub/join/protocol.js";
 import { sha256 } from "../src/hub/identity.js";
+import { advanceHubSessionEpoch, readHubSessionEpoch } from "../src/hub/session-epoch.js";
 let rig: Awaited<ReturnType<typeof companyJoinRig>> | undefined;
 afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(); });
 async function world() {
@@ -40,6 +41,13 @@ async function attempt(r: Awaited<ReturnType<typeof companyJoinRig>>) {
 }
 
 describe("company-join actual Hub boundary", () => {
+  it("a directory epoch change fences the held browser authority and pinned redemption before any new credential", async () => {
+    const { r } = await world(), a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
+    r.db.transaction(() => advanceHubSessionEpoch(r.db, readHubSessionEpoch(r.db))).immediate();
+    const challenge = await r.call(null, "POST", "/hub/v1/join/challenge", { binding: a.binding, purpose: "redeem" }, { Origin: undefined });
+    expect(challenge.status).toBe(503); expect(JSON.stringify(challenge.body)).not.toContain("credential");
+    expect(r.deps.store.read().fleets).toEqual([]);
+  });
   it("is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision", async () => {
     const r = rig = await companyJoinRig(port => { dc.port = port; });
     expect((await r.call(null, "GET", "/hub/v1/join/metadata")).body.features).not.toContain("company-join-v1");

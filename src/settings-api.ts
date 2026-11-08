@@ -961,7 +961,7 @@ export function handleSettingsRequest(
         }
         if (!step) {
           const id = url.searchParams.get("operationId");
-          json(res, 200, { ok: true, operation: id ? await api.status(validated(uuid, id), session) : api.current(session) }); return;
+          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session) }); return;
         }
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");

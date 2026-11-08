@@ -2,11 +2,11 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
-let fleet: any, hub: any;
+let fleet: any, hub: any, words: any;
 const mounted: AppPage[] = [], id = "0f1e2d3c-4b5a-4968-8776-655443322110", calls: Array<{ path: string; init: any }> = [];
 beforeAll(async () => {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: "en" } });
-  fleet = await import("/ui/js/settings-hub-company-join.js"); hub = await import("/ui/js/hub-company-join.js"); p.restore();
+  fleet = await import("/ui/js/settings-hub-company-join.js"); hub = await import("/ui/js/hub-company-join.js"); words = await import("/ui/js/hub-company-join-strings.js"); p.restore();
 });
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } vi.restoreAllMocks(); vi.unstubAllGlobals(); calls.length = 0; });
 const pending = { operationId: id, state: "awaiting-sign-in", issued: false, outcomeKnown: true, hubOrigin: "https://hub.example.test", expiresAt: Date.now() + 600_000 };
@@ -19,10 +19,29 @@ async function mount(component: any, props = {}, url = "http://127.0.0.1:19290/s
 }
 const button = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === text);
 describe("company join UI", () => {
+  it("keeps the specific changed-pin refusal through the shared Settings confirmation outcome", () => {
+    const code = words.joinResponseCode({ body: { error: "Could not apply (apply_rejected: identity-changed)" }, confirmed: { outcome: { detail: "apply_rejected: identity-changed" } } });
+    expect(code).toBe("identity-changed"); expect(words.joinError(code)).toContain("identity is different");
+    expect(words.joinResponseCode({ body: { error: "denied" } })).toBe("denied");
+  });
   it("opening Settings or a prefilled link never starts a join", async () => {
     fetcher(() => ({ ok: true, operation: null })); const p = await mount(fleet.CompanyJoinSettings);
     expect(p.root.querySelector("#hubCompanyAddress")).not.toBeNull(); expect(button(p, "Sign in with company account")).toBeTruthy();
     expect(calls.every(c => !c.init.method || c.init.method === "GET")).toBe(true);
+  });
+  it("the distributed public link provides in-surface navigation, without sign-in or an enrollment action", async () => {
+    fetcher(() => { throw Error("No request expected"); });
+    const p = await mount(hub.CompanyJoinInfoPage, {}, "https://hub.example.test/ui/hub?joinInfo=1#hub=YWJj");
+    expect(p.root.querySelector('input[type="password"]')).toBeNull(); expect(calls).toEqual([]);
+    const input = p.root.querySelector("input"); input.value = "javascript:alert(1)"; fire(input, "input"); await settle(3);
+    expect(p.root.querySelector("a")).toBeNull();
+    input.value = "http://127.0.0.1:4444"; fire(input, "input"); await settle(3);
+    expect(p.root.querySelector("a")?.getAttribute("href")).toBe("http://127.0.0.1:4444/settings/hub#join=" + encodeURIComponent("https://hub.example.test/join-info#hub=YWJj"));
+    expect(calls).toEqual([]);
+  });
+  it("an already-bound Fleet does not offer another enrollment from a different local session", async () => {
+    fetcher(() => ({ ok: true, bound: true, operation: null })); const p = await mount(fleet.CompanyJoinSettings);
+    expect(p.root.textContent).toBe(""); expect(calls.filter(c => c.init.method === "POST")).toEqual([]);
   });
   it("a saved profile with an offline link stays Connecting, polls and only reports Connected when ready", async () => {
     let online = false; fetcher(() => ({ ok: true, operation: { ...pending, state: "saved", link: online ? "online" : "offline" } }));
@@ -53,6 +72,7 @@ describe("company join UI", () => {
     const p = await mount(hub.HubCompanyJoinPage, { session: { login: "carol", csrf: "csrf" } }, "https://hub.example.test/ui/hub?join=" + id);
     fire(button(p, "Connect as carol"), "click"); await settle(12);
     expect(p.root.textContent).toContain("Your Fleet limit is reached"); expect(p.root.textContent).not.toContain("Your Fleet has connected");
+    expect(button(p, "Connect as carol")).toBeUndefined();
     expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
   });
 });

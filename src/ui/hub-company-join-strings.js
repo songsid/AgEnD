@@ -19,10 +19,13 @@ register("companyJoin", {
     inspect: "Open Hub", issued: "A Fleet was created on the Hub. Its saved result is retained for inspection or revoke.",
     signInConnect: "Sign in and connect Fleet", connectAs: "Connect as {0}", request: "Connect {0}", origin: "Fleet address", return: "Return to Fleet Settings",
     approved: "Company sign-in accepted. Your Fleet is completing the connection…", done: "Your Fleet has connected. Return to its Settings to share Agents when you choose.",
+    fleetDone: "Your Fleet is connected. You can now choose which Agents to share below.",
     inviteTitle: "Invitation exceptions", inviteLead: "For an eligible person without group permission. Issuing this invitation is your approval; it is bound to that person and this Hub.", inviteLogin: "Company sign-in name", inviteCreate: "Create invitation", inviteCopy: "Copy invitation",
     manualApproved: "Approved by your Hub administrator.", adminTitle: "Company sign-in joining", adminLead: "People allowed by Group permissions can connect their own Fleets. No approval is needed for each Fleet.",
     enabled: "Allow company-account Fleet connections", companyLink: "Company link", copy: "Copy company link", copied: "Copied", copyFailed: "Copy failed. Select and copy the link.",
     firstUse: "On first use, this Fleet saves the Hub's identity. Use a company link you received from your administrator.",
+    linkLead: "Open your Fleet's Settings → Hub and paste this company link. If you know its web address, open those Settings below. This page does not connect a Fleet or ask for your company password.",
+    fleetAddress: "Fleet web address", openFleet: "Open Fleet Settings", invalidLink: "This company link is incomplete. Ask your Hub administrator for a new link.",
     failed: "The Hub could not verify this connection. Return to Fleet Settings and check the same request.",
   },
   "zh-TW": {
@@ -44,16 +47,24 @@ register("companyJoin", {
     inspect: "開啟 Hub", issued: "Hub 已建立 Fleet，會保留這次結果供你檢查或撤銷。",
     signInConnect: "登入並連接 Fleet", connectAs: "以 {0} 的身分連接", request: "連接 {0}", origin: "Fleet 位址", return: "返回 Fleet 設定",
     approved: "公司帳號已確認，Fleet 正在完成連接…", done: "Fleet 已連接。返回 Fleet 設定後，可自行選擇要分享的 Agent。",
+    fleetDone: "Fleet 已連接，你可以在下方選擇要分享的 Agent。",
     inviteTitle: "例外邀請", inviteLead: "提供給尚無群組權限的合格人員。發出邀請即代表你的核准，邀請只限該人員與這個 Hub 使用。", inviteLogin: "公司登入名稱", inviteCreate: "建立邀請", inviteCopy: "複製邀請",
     manualApproved: "由 Hub 管理員核准。", adminTitle: "公司帳號連接", adminLead: "群組權限允許的人員可連接自己的 Fleet，不需逐一核准。",
     enabled: "允許以公司帳號連接 Fleet", companyLink: "公司連結", copy: "複製公司連結", copied: "已複製", copyFailed: "複製失敗，請選取並複製連結。",
     firstUse: "首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。",
+    linkLead: "請開啟你的 Fleet「設定 → Hub」，貼上這個公司連結。若知道 Fleet 網頁位址，也可在下方開啟設定。這個頁面不會連接 Fleet，也不會要求公司密碼。",
+    fleetAddress: "Fleet 網頁位址", openFleet: "開啟 Fleet 設定", invalidLink: "這個公司連結不完整，請向 Hub 管理員取得新連結。",
     failed: "Hub 無法確認這次連接。請返回 Fleet 設定，檢查同一個請求。",
   },
 });
 export const hj = (key, ...args) => t(`companyJoin.${key}`, ...args);
+/** A held Settings replay carries the handler's code in its bounded structured outcome, not its translated message. */
+export function joinResponseCode(result) {
+  const detail = result?.confirmed?.outcome?.detail, match = typeof detail === "string" && /^apply_rejected: ([a-z-]{1,64})$/.exec(detail);
+  return match ? match[1] : result?.body?.error;
+}
 export function joinError(code) {
   return hj(code === "identity-changed" ? "changed" : code === "denied" ? "denied" : code === "limit-reached" ? "limit"
     : code === "authority" || code === "revoked" ? "authority" : code === "expired" ? "expired" : code === "incompatible" ? "incompatible"
-    : code === "backpressure" ? "busy" : code === "unsaved" ? "unsaved" : "unknown");
+    : code === "backpressure" ? "busy" : code === "cancelled" ? "cancelled" : code === "unsaved" ? "unsaved" : "unknown");
 }

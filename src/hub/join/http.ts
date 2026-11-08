@@ -35,6 +35,11 @@ async function bytes(req: IncomingMessage, contentType: string, maximum = 24 * 1
 /** Returns false for protected browser/admin routes; they stay inside createHubHttp's ordinary Origin/CSRF gate. */
 export function handleCompanyJoin(req: IncomingMessage, res: ServerResponse, service: HubCompanyJoin, surface: "browser" | "machine" = "browser"): boolean {
   const path = req.url ?? "", machine = /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.exec(path);
+  if (surface === "browser" && path === "/join-info") {
+    if (req.method !== "GET") { sendCompanyJoinError(res, new HubProtocolError("invalid")); return true; }
+    // Browsers preserve the public descriptor/invitation fragment across this fixed same-origin redirect.
+    res.writeHead(303, { ...headers, Location: "/ui/hub?joinInfo=1" }); res.end(); return true;
+  }
   if (surface === "machine" ? !machine : path !== "/hub/join/open" && path !== "/hub/v1/join/metadata") return false;
   const send = (body: unknown) => { if (!res.writableEnded) { res.writeHead(200, headers); res.end(JSON.stringify(body)); } };
   void (async () => {

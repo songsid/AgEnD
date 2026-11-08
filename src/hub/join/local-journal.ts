@@ -18,7 +18,7 @@ const journalSchema = z.strictObject({ v: z.literal(1), operationId: uuid, hando
   sessionId: hash, authorityEpoch: epoch, hostConfirmed: z.boolean(), snapshot: localJoinSnapshotSchema,
   createdAt: epoch, deadline: epoch, stage: z.enum(["preparing", "pending", "durable", "active", "held", "cancelled", "ended"]),
   reason: z.string().max(64).nullable(), issued: z.boolean(), outcomeKnown: z.boolean(), issuedHash: hash.nullable(),
-  profileDigest: hash.nullable(), intendedBinding: hash.nullable(), enableIntent: z.boolean(), journalCommitId: uuid, remoteState: z.string().max(64).nullable() });
+  profileDigest: hash.nullable(), replaceProfile: hash.nullable(), intendedBinding: hash.nullable(), enableIntent: z.boolean(), journalCommitId: uuid, remoteState: z.string().max(64).nullable() });
 export type LocalJoinJournal = z.infer<typeof journalSchema>;
 export const localJoinPath = (id: string) => `hub-member/company-joins/${validated(uuid, id)}.json`;
 export function readLocalJoin(home: string, id: string): LocalJoinJournal {

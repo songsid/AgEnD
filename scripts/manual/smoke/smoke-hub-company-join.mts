@@ -3,7 +3,7 @@
  * Only the test DC:636 and the test Hub hostname are mapped to owned loopback listeners. Browser CA is injected per client.
  */
 import { createRequire, syncBuiltinESMExports } from "node:module";
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, chmodSync, existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -21,6 +21,10 @@ tls.connect = (options: any, ...args: any[]) => realConnect({ ...options,
   ...(options.host === "127.0.0.1" && options.port === 636 ? { port: dcPort } : {}), ...(options.host === host ? { host: "127.0.0.1" } : {}) }, ...args);
 syncBuiltinESMExports();
 const { companyJoinRig } = await import(repo + "/tests/support/hub-company-join-rig.ts");
+const { signCompanyDescriptor } = await import(repo + "/src/hub/join/descriptor.ts");
+const { generateKeyPairSync } = await import("node:crypto");
+const { currentBinding } = await import(repo + "/src/hub/member/pairing-api.ts");
+const { setLocale } = await import(repo + "/src/locale.ts");
 const { CompanyJoinClient } = await import(repo + "/src/hub/join/client.ts");
 const { bootFixture, matrix, VIEWPORTS, caseName } = await import(repo + "/scripts/manual/smoke-fixture/index.mts");
 const r = await companyJoinRig((port: number) => { dcPort = port; }, { host });
@@ -28,14 +32,18 @@ const admin = await r.signIn("alice"); await r.enable(admin, 8);
 const enabled = await r.call(admin, "PUT", "/hub/v1/admin/company-join", { enabled: true, expectedRevision: 1 });
 if (enabled.status !== 200) throw Error("Owned Hub feature admission failed");
 const companyLink = enabled.body.companyLink;
+const assetRoot = process.env.SKEW ?? process.env.BEFORE_ASSETS;
 const result: any = { source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(), cases: [], checks: [], errors: [],
   boundaries: "Owned listeners; real cookie/CSRF/Settings replay/Hub/SQLite/TLS/WSS/production AD driver with fake LDAPS wire. Inert Fleet lifecycle; per-client private CA and loopback hostname/DC mapping only." };
 const check = (name: string, ok: unknown, detail?: unknown) => { result.checks.push({ name, ok: !!ok, ...(!ok ? { detail } : {}) }); if (!ok) throw Error(name + (detail ? ": " + JSON.stringify(detail) : "")); };
 let fx: any = null;
 try {
-  for (const [index, c] of matrix().entries()) {
-    const tag = caseName(c), login = "join-person-" + index;
-    r.people.push({ id: randomUUID(), login, dn: `CN=${login},DC=example,DC=test`, password: "Dummy-" + login, groups: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] });
+  const scenarios = matrix().map(c => ({ c, kind: "happy", login: "" }));
+  if (process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
+  for (const [index, scenario] of scenarios.entries()) {
+    const { c, kind } = scenario; setLocale(c.lang); const tag = caseName(c) + (kind === "happy" ? "" : "-" + kind), login = scenario.login || "join-person-" + index;
+    if (kind === "limit") await r.enable(admin, 1);
+    if (!scenario.login) r.people.push({ id: randomUUID(), login, dn: `CN=${login},DC=example,DC=test`, password: "Dummy-" + login, groups: [kind === "outsider" ? "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" : "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] });
     fx = await bootFixture({ port: Number(process.env.HP ?? 54700), instances: 1, classic: false });
     const fm = fx.fm, configPath = join(fx.dir, "fleet.yaml"), config: any = yaml.load(readFileSync(configPath, "utf8"));
     // Alternate web-only and chat-configured Fleets. Native/model delivery remains an explicit refusal boundary.
@@ -50,32 +58,88 @@ try {
     const ctx = await fx.browser.newContext({ viewport: VIEWPORTS[c.device], isMobile: c.device === "phone", hasTouch: c.device === "phone", colorScheme: c.theme,
       locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true });
     await ctx.addInitScript({ content: `window.__name=fn=>fn;try{localStorage.setItem('agend_lang',${JSON.stringify(c.lang)});localStorage.setItem('agend_theme',${JSON.stringify(c.theme)});localStorage.setItem('agend_tour_done','1');localStorage.setItem('agend_firstrun_dismissed','1')}catch{};window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.violatedDirective));` });
-    await ctx.route("**/*", (route: any) => { const origin = new URL(route.request().url()).origin; return [fx.base, r.webOrigin].includes(origin) ? route.continue() : route.abort(); });
+    await ctx.route("**/*", (route: any) => { const u = new URL(route.request().url());
+      if (![fx.base, r.webOrigin].includes(u.origin)) return route.abort();
+      if (assetRoot && (u.pathname.startsWith("/assets/") || u.pathname.startsWith("/ui/js/"))) {
+        const candidate = join(resolve(assetRoot), u.pathname.split("/").pop()!);
+        if (existsSync(candidate)) return route.fulfill({ path: candidate, contentType: candidate.endsWith(".css") ? "text/css" : "application/javascript" });
+      }
+      return route.continue(); });
     const code = await (await ctx.request.post(fx.base + "/auth/issue-code", { headers: { "X-Agend-Token": fm.webToken, Origin: fx.base } })).json();
     check(tag + " host code issued", typeof code.code === "string");
     const page = await ctx.newPage(); page.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));
     try {
       await page.goto(fx.base + "/signin"); await page.fill("#code", code.code); await page.click("#go"); await page.waitForURL(fx.base + "/ui");
-      await page.goto(fx.base + "/settings/hub"); await page.locator("#hubCompanyAddress").waitFor();
+      await page.goto(fx.base + "/settings/hub");
+      if (process.env.BEFORE_ASSETS) {
+        await page.locator("#hubMemberEnabled").waitFor(); await page.screenshot({ path: join(out, tag + "-before-fleet.png") });
+        const beforeHub = await ctx.newPage(); await beforeHub.goto(r.webOrigin + "/ui/hub"); await beforeHub.locator("#hubLogin").waitFor();
+        await beforeHub.screenshot({ path: join(out, tag + "-before-hub.png") });
+        await beforeHub.fill("#hubLogin", "alice"); await beforeHub.fill("#hubPassword", "Dummy-alice-only");
+        await beforeHub.getByRole("button", { name: c.lang === "zh-TW" ? "登入" : "Sign in", exact: true }).click();
+        await beforeHub.locator(".p-hub-signin").waitFor({state:"detached"}); await beforeHub.goto(r.webOrigin + "/ui/hub/admin"); await beforeHub.locator(".hub-admin").waitFor();
+        await beforeHub.screenshot({ path: join(out, tag + "-before-admin.png") });
+        result.cases.push({ tag, kind: "before", ok: true }); continue;
+      }
+      await page.locator("#hubCompanyAddress").waitFor();
       check(tag + " actual Settings sub-nav", await page.locator('.settings-nav a[href="/settings/hub"], .s-nav a[href="/settings/hub"]' ).count() > 0 || await page.locator('.s-section-nav, .settings-side').count() > 0);
-      await page.fill("#hubCompanyAddress", companyLink); await page.fill("#hubCompanyFleetName", "Company Fleet " + index);
-      await page.screenshot({ path: join(out, tag + "-01-fleet-start.png") });
+      let address = companyLink;
+      if (kind === "changed") {
+        const meta = (await r.call(null, "GET", "/hub/v1/join/metadata")).body, key = generateKeyPairSync("ed25519");
+        const descriptor = signCompanyDescriptor({ ...meta.hub, issuerPublicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString() }, key.privateKey);
+        address = r.webOrigin + "/join-info#hub=" + Buffer.from(JSON.stringify(descriptor)).toString("base64url");
+      }
+      await page.fill("#hubCompanyAddress", address); await page.fill("#hubCompanyFleetName", "Company Fleet " + index);
+      await page.screenshot({ path: join(out, tag + "-01-fleet-start.png"), fullPage: c.device === "phone" });
       const opened = ctx.waitForEvent("page"); await page.getByRole("button", { name: c.lang === "zh-TW" ? "以公司帳號登入" : "Sign in with company account", exact: true }).click();
-      const hub = await opened; hub.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));
+      const hub = await opened;
+      if (kind === "changed") {
+        await page.getByText("Hub 的身分與先前不同", { exact: false }).waitFor();
+        check(tag + " refused before AD", !hub.url().startsWith(r.webOrigin));
+        await page.screenshot({ path: join(out, tag + "-05-identity-changed.png") });
+        result.cases.push({ tag, ok: true }); continue;
+      }
+      hub.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));
       await hub.waitForURL(r.webOrigin + "/ui/hub?join=*"); await hub.locator("#hubLogin").waitFor();
       check(tag + " no opener", await hub.evaluate("window.opener === null"));
       check(tag + " exact Fleet origin shown", (await hub.locator(".hub-signin").innerText()).includes(fx.base));
       await hub.screenshot({ path: join(out, tag + "-02-hub-signin.png") });
+      if (kind === "copied") {
+        const copied = await fx.browser.newContext({ viewport: VIEWPORTS.desk, ignoreHTTPSErrors: true });
+        try { const other = await copied.newPage(); await other.goto(hub.url()); await other.locator(".error-state").waitFor();
+          check(tag + " copied handle shows no AD fields", await other.locator("#hubLogin").count() === 0);
+          await other.screenshot({ path: join(out, tag + "-06-copied-refused.png") });
+        } finally { await copied.close(); }
+      }
+      if (kind === "cancel") {
+        await page.getByRole("button", { name: "取消連接", exact: true }).click();
+        await page.getByText("已取消連接", { exact: true }).first().waitFor();
+        await hub.locator("#hubLogin").waitFor({ state: "detached" });
+        check(tag + " cancelled before issuance", !currentBinding(fm.dataDir));
+        await page.screenshot({ path: join(out, tag + "-07-cancelled.png") });
+        result.cases.push({ tag, ok: true }); continue;
+      }
+      const fleetCount = r.deps.store.read().fleets.length;
       await hub.fill("#hubLogin", login); await hub.fill("#hubPassword", "Dummy-" + login);
       await hub.getByRole("button", { name: c.lang === "zh-TW" ? "登入並連接 Fleet" : "Sign in and connect Fleet", exact: true }).click();
       await hub.locator(".p-hub-join").waitFor();
-      await page.waitForFunction(() => document.body.innerText.includes("Fleet connected") || document.body.innerText.includes("Fleet 已連接"), undefined, { timeout: 30000 });
+      if (kind === "outsider" || kind === "limit") {
+        await hub.getByText(kind === "outsider" ? "你的公司帳號沒有連接這個 Fleet 的權限" : "你的 Fleet 數量已達上限", { exact: false }).waitFor();
+        check(tag + " refused without a credential", r.deps.store.read().fleets.length === fleetCount && !currentBinding(fm.dataDir));
+        await hub.screenshot({ path: join(out, tag + "-08-refused.png") });
+        result.cases.push({ tag, ok: true }); continue;
+      }
+      await page.locator(".hub-paired").waitFor({ timeout: 30000 });
       check(tag + " actual ready link", fm.hubMemberLink === "online", fm.hubMemberLink);
       check(tag + " zero per-Fleet admin approvals", approvals === 0, approvals);
       await page.screenshot({ path: join(out, tag + "-03-fleet-connected.png") });
       await hub.screenshot({ path: join(out, tag + "-04-hub-return.png") });
       check(tag + " Fleet no overflow", await page.evaluate("document.documentElement.scrollWidth <= innerWidth"));
       check(tag + " Hub no overflow", await hub.evaluate("document.documentElement.scrollWidth <= innerWidth"));
+      const binding = currentBinding(fm.dataDir), profile = binding ? JSON.parse(readFileSync(join(fm.dataDir, "hub-member", binding.hubId, "pairing.json"), "utf8")) : null;
+      const fleetBrowser = await page.evaluate(() => JSON.stringify({ html: document.documentElement.outerHTML, local: { ...localStorage }, session: { ...sessionStorage }, url: location.href }));
+      const hubBrowser = await hub.evaluate(() => JSON.stringify({ html: document.documentElement.outerHTML, local: { ...localStorage }, session: { ...sessionStorage }, url: location.href }));
+      check(tag + " no browser credential or Fleet AD password", profile && !fleetBrowser.includes(profile.credential) && !hubBrowser.includes(profile.credential) && !fleetBrowser.includes("Dummy-" + login));
       check(tag + " no script/CSP errors", result.errors.length === 0 && (await hub.evaluate("window.__csp")).length === 0, result.errors);
       await hub.getByRole("link", { name: c.lang === "zh-TW" ? "返回 Fleet 設定" : "Return to Fleet Settings", exact: true }).click();
       await hub.waitForURL(fx.base + "/settings/hub");
@@ -84,6 +148,27 @@ try {
     finally {
       await ctx.close(); controller.close(); fm.hubRuntime?.fence(); await fm.hubRuntime?.close(); fm.hubEffectsReady = false;
       await fx.close(); fx = null;
+    }
+  }
+  if (!process.env.BEFORE_ASSETS) {
+    // Actual signed-in Administration, not a mock DOM or an injected shell.
+    for (const c of matrix().filter(c => c.lang === "zh-TW")) {
+      const pw = createRequire(resolve(process.env.PW_DIR!) + "/")("playwright-core"), browser = await pw.chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox", "--host-resolver-rules=MAP dashboard.lan.example 127.0.0.1"] });
+      try {
+        const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, ignoreHTTPSErrors: true });
+        await ctx.addInitScript(() => localStorage.setItem("agend_lang", "zh-TW"));
+        const page = await ctx.newPage(); await page.goto(r.webOrigin + "/ui/hub"); await page.locator("#hubLogin").waitFor();
+        await page.fill("#hubLogin", "alice"); await page.fill("#hubPassword", "Dummy-alice-only"); await page.getByRole("button", { name: "登入", exact: true }).click();
+        await page.locator(".p-hub-signin").waitFor({state:"detached"}); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.getByRole("button", {name:"複製公司連結",exact:true}).waitFor();
+        await page.screenshot({ path: join(out, caseName(c) + "-09-admin.png"), fullPage: true });
+        if (c.device === "desk" && c.theme === "light") {
+          await page.goto(companyLink); await page.locator(".p-hub-info textarea").waitFor();
+          check("public company link offers no AD/password", await page.locator('input[type="password"]').count() === 0);
+          await page.screenshot({path:join(out,"desk-light-zh-TW-10-public-link.png")});
+        }
+        check(caseName(c) + " admin no overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await ctx.close();
+      } finally { await browser.close(); }
     }
   }
   result.status = "PASS";

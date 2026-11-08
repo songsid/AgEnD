@@ -24,9 +24,9 @@ async function begin(r: Awaited<ReturnType<typeof companyJoinRig>>, invitation: 
     return r.call(null, "POST", `/hub/v1/join/${purpose}`, { binding, payload, proof: signJoinProof(binding, purpose, c.body.nonce, c.body.expiresAt, payload, key.privateKey) }, { Origin: undefined });
   };
   const pushed = await command("push", { label: "Invited Fleet", invitation, stateHash: sha256(state) });
-  const approve = async (login: string) => {
+  const approve = async (login: string, beforeSubmit?: () => void) => {
     const open = await r.call(null, "POST", "/hub/join/open", new URLSearchParams({ requestId: binding.requestId, state }).toString(), { "Content-Type": "application/x-www-form-urlencoded", Origin: binding.fleetOrigin });
-    expect(open.status).toBe(303); const browser = await r.signIn(login); browser.cookie += "; " + open.cookie;
+    expect(open.status).toBe(303); const browser = await r.signIn(login); browser.cookie += "; " + open.cookie; beforeSubmit?.();
     return r.call(browser, "POST", "/hub/v1/join/approve", { requestId: binding.requestId });
   };
   return { binding, command, pushed, approve, redeem: () => command("redeem", { verifier }) };
@@ -72,6 +72,20 @@ describe("company invitation exceptions", () => {
     expect((r.db.prepare("SELECT COUNT(*) n FROM hub_group_resources WHERE json_extract(body,'$.kind')='fleet'").get() as { n: number }).n).toBe(0);
     expect((r.db.prepare("SELECT COUNT(*) n FROM hub_pairing_notices").get() as { n: number }).n).toBe(0);
     expect(JSON.parse((r.db.prepare("SELECT body FROM hub_company_join_invites").get() as { body: string }).body).consumed).toBe(false);
+  });
+  it("a previously signed-in invited owner must still be eligible at the explicit identity-submit", async () => {
+    const { r, admin } = await world(), code = await invite(r, admin, "dan"), a = await begin(r, code.invitation);
+    expect((await a.approve("dan", () => { r.people.find(p => p.login === "dan")!.eligible = false; })).status).toBe(403);
+    expect(r.deps.store.read().fleets).toEqual([]);
+    expect(JSON.parse((r.db.prepare("SELECT body FROM hub_company_join_invites").get() as { body: string }).body).consumed).toBe(false);
+  });
+  it("directory unavailability before manual issuance holds the same invitation without consuming or creating it", async () => {
+    const { r, admin } = await world(), code = await invite(r, admin, "dan"), a = await begin(r, code.invitation);
+    expect((await a.approve("dan")).status).toBe(200);
+    const read = vi.spyOn(r.directory, "checkEligibility").mockResolvedValue({ eligible: false, reason: "unavailable" });
+    expect((await a.redeem()).status).toBe(503); expect(r.deps.store.read().fleets).toEqual([]);
+    expect(JSON.parse((r.db.prepare("SELECT body FROM hub_company_join_invites").get() as { body: string }).body).consumed).toBe(false);
+    read.mockRestore(); expect((await a.redeem()).status).toBe(200); expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("the admin exception works with never-enabled group policy and retains exact manual provenance", async () => {
     const { r, admin } = await world(false), code = await invite(r, admin, "dan"), a = await begin(r, code.invitation);

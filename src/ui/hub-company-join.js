@@ -7,6 +7,23 @@ export function joinRequest() {
   try { const id = new URLSearchParams(location.search).get("join"); return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id || "") ? id : null; }
   catch { return null; }
 }
+export function companyInfoRequest() { try { return new URLSearchParams(location.search).get("joinInfo") === "1"; } catch { return false; } }
+export function CompanyJoinInfoPage() {
+  const [fleet, setFleet] = useState(""), [copied, setCopied] = useState(false), [error, setError] = useState(null);
+  let link = "", target = null;
+  try {
+    const fragment = location.hash;
+    if (fragment.length <= 8192 && /^#(?:hub|invite)=[A-Za-z0-9_-]+$/.test(fragment)) link = location.origin + "/join-info" + fragment;
+    if (fleet) { const u = new URL(fleet); if (u.origin === fleet && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) target = u.origin + "/settings/hub#join=" + encodeURIComponent(link); }
+  } catch { /* Invalid addresses remain an inactive navigation link. */ }
+  return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card"><h3>${hj("companyLink")}</h3>
+    <p class="note">${hj("linkLead")}</p>
+    ${link ? html`<label class="field"><span>${hj("companyLink")}</span><textarea rows="4" readonly value=${link} /></label><div class="field-row"><button class="btn btn-sm" type="button" onClick=${async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError(hj("copyFailed")); } }}>${hj(copied ? "copied" : "copy")}</button></div>
+      <label class="field"><span>${hj("fleetAddress")}</span><input value=${fleet} type="url" onInput=${e => setFleet(e.target.value.trim())} /></label>
+      ${target ? html`<a class="btn btn-primary" href=${target} target="_blank" rel="noopener noreferrer">${hj("openFleet")}</a>` : null}` : html`<${ErrorState} message=${hj("invalidLink")} />`}
+    ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+  </section></div></div>`;
+}
 async function call(path, method = "GET", body, csrf) {
   try {
     const res = await fetch(path, { method, credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json",
@@ -48,10 +65,10 @@ export function HubCompanyJoinPage({ session }) {
     <h3>${hj("title")}</h3>
     ${view === undefined ? html`<${Skeleton} variant="form" lines=${3} label=${hj("loading")} />` : null}
     ${view?.ok ? html`<${CompanyJoinLead} context=${view} />
-      ${view.state === "pending" ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
+      ${view.state === "pending" ? !error ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : null : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
       ${view.issued && terminal && view.state !== "acknowledged" ? html`<p class="note">${hj("issued")}</p>` : null}
       ${view.returnPath ? html`<div class="field-row"><a class="btn btn-sm" href=${view.returnPath} rel="noreferrer">${hj("return")}</a></div>` : null}` : view ? html`<${ErrorState} message=${joinError(view.code)} onRetry=${retry} />` : null}
-    ${error ? html`<${ErrorState} message=${error} onRetry=${retry} />` : null}
+    ${error ? html`<${ErrorState} message=${error} onRetry=${() => { setError(null); retry(); }} />` : null}
   </section></div></div>`;
 }
 export function CompanyJoinAdminCard() {

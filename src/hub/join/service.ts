@@ -13,6 +13,7 @@ import { HubGroupAuthorizationError } from "../group-policy/authorization.js";
 import { HubGroupEnrollmentRefusal } from "../group-policy/resources.js";
 import { HubGroupPolicyError } from "../group-policy/store.js";
 import { HUB_SESSION_IDLE } from "../sessions.js";
+import { readHubSessionEpoch } from "../session-epoch.js";
 import { automaticFleetSlots, enrollmentThrottled, spendEnrollmentBudget } from "../enrollment-budget.js";
 import { CompanyJoinRecords, type JoinRecord } from "./store.js";
 import { browserOriginProof, companyIdentityDigest, joinKeyThumbprint, joinPurpose, pkceChallenge, validateJoinBinding,
@@ -37,11 +38,15 @@ export interface CompanyJoinOptions {
 }
 export class HubCompanyJoin {
   readonly records: CompanyJoinRecords;
+  private readonly directoryEpoch: number;
   private sealer?: ReturnType<typeof createJoinSealer>;
-  constructor(private readonly options: CompanyJoinOptions) { this.records = new CompanyJoinRecords(options.db, () => this.now()); }
+  constructor(private readonly options: CompanyJoinOptions) {
+    this.directoryEpoch = readHubSessionEpoch(options.db);
+    this.records = new CompanyJoinRecords(options.db, () => this.now());
+  }
   private now(): number { return this.options.now?.() ?? Date.now(); }
-  private check(): void { if (!this.options.current()) throw new HubProtocolError("unavailable"); }
-  private atomic<T>(work: () => T): T { this.check(); return this.options.db.transaction(work).immediate(); }
+  private check(): void { if (!this.options.current() || readHubSessionEpoch(this.options.db) !== this.directoryEpoch) throw new HubProtocolError("unavailable"); }
+  private atomic<T>(work: () => T): T { this.check(); return this.options.db.transaction(() => { this.check(); const result = work(); this.check(); return result; }).immediate(); }
   private audit(action: string, requestId: string, owner?: PersonKey, fleetId?: string): void {
     const result: unknown = this.options.audit.appendInTransaction({ id: randomUUID(), sequence: 0, policyVersion: this.options.store.read().revocationVersion,
       at: this.now(), requestId, actor: owner ? { kind: "person", person: owner } : { kind: "local-host" },
@@ -220,9 +225,10 @@ export class HubCompanyJoin {
   }
   private session(r: JoinRecord): boolean {
     if (!r.owner || !r.sessionId) return false;
-    const row = this.options.db.prepare("SELECT s.person,s.state,s.expires_at,s.seen_at,p.status FROM hub_sessions s JOIN hub_people p ON p.person=s.person WHERE s.id=?")
-      .get(r.sessionId) as { person: string; state: string; expires_at: number; seen_at: number; status: string } | undefined;
-    return !!row && row.person === personKeyString(r.owner) && row.state === "active" && row.expires_at > this.now()
+    const row = this.options.db.prepare("SELECT s.person,s.state,s.expires_at,s.seen_at,s.directory_epoch,p.status FROM hub_sessions s JOIN hub_people p ON p.person=s.person WHERE s.id=?")
+      .get(r.sessionId) as { person: string; state: string; expires_at: number; seen_at: number; directory_epoch: number; status: string } | undefined;
+    return !!row && row.directory_epoch === this.directoryEpoch && readHubSessionEpoch(this.options.db) === this.directoryEpoch
+      && row.person === personKeyString(r.owner) && row.state === "active" && row.expires_at > this.now()
       && this.now() - row.seen_at <= HUB_SESSION_IDLE && row.status === "active";
   }
   private live(r: JoinRecord): boolean {
@@ -247,15 +253,16 @@ export class HubCompanyJoin {
       if (!live()) throw new HubProtocolError("revoked");
       if (!spendEnrollmentBudget(state, `quick:${key}`, 5, now) || !spendEnrollmentBudget(state, "quick:all", 48, now)) throw new HubProtocolError("backpressure");
     }));
-    let permit;
+    let permit, eligibility;
     try {
       const resource = { kind: "fleet" as const, id: r.binding.fleetId, revision: 1, owner }, context = { requestId: ctx.requestId, current: live };
+      eligibility = await this.options.groups.prepareOwnerEligibility(owner, context);
       permit = invitation ? await this.options.groups.prepareManualEnrollment(resource, invitation.claims.approvedBy, context) : await this.options.groups.prepareEnrollment(resource, context);
     }
     catch (error) { if (!live()) throw new HubProtocolError("revoked"); return this.groupError(error); }
     if (permit.source !== (r.invitationId ? "manual" : "group") || !r.invitationId && permit.maxFleets < 1) throw new HubProtocolError("denied");
     this.atomic(() => {
-      permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
+      eligibility.assertCurrent(); permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
       const transport = this.options.store.read();
       if (!invitation && (transport.pairings.some(p => p.expiresAt > this.now() && personKeyString(p.owner) === key && ["offered", "pending"].includes(p.state))
         || this.records.reservations(owner) > 0)) throw new HubProtocolError("conflict");
@@ -266,7 +273,7 @@ export class HubCompanyJoin {
         stage: "identity-approved", version: r.version + 1 };
       this.records.save(expected, r.version);
       this.audit("company-join.identity-approved", ctx.requestId, owner);
-      permit.assertCurrent(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+      eligibility.assertCurrent(); permit.assertCurrent(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
     });
     return { state: "identity-approved" };
   }

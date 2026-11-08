@@ -5,6 +5,9 @@ import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { settingsRequestExecution, settingsRequestJoinAuthority } from "../src/settings-request-capability.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
+import { WebSessionStore, tokenEpoch, csrfTokenFor } from "../src/web-session.js";
+import { companyJoinSession } from "../src/hub/join/fleet-authority.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
 const stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 async function harness(hostHere: boolean, feature = true) {
@@ -29,6 +32,19 @@ async function harness(hostHere: boolean, feature = true) {
     decide: () => store.decide(first.pending_change.id, "confirm", { label: "General admin", current: () => confirmer }) };
 }
 describe("company Start Settings authority", () => {
+  it("only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority", () => {
+    const token = "d".repeat(48), sessions = new WebSessionStore(), issued = sessions.create({ tier: "admin", surface: "local", host: true, label: "host", tokenEpoch: tokenEpoch(token) });
+    const input = { token, sessions, config: null, epoch: 1, current: () => true };
+    const req = (headers = {}, remoteAddress = "127.0.0.1"): any => ({ method: "POST", socket: { remoteAddress }, headers: { host: "127.0.0.1:4444", origin: "http://127.0.0.1:4444", cookie: `agend_session=${issued.sessionId}`, "x-agend-csrf": csrfTokenFor(issued.sessionId), ...headers } });
+    const own = companyJoinSession(req(), input)!; expect(own.hostHere).toBe(true); expect(own.fleetOrigin).toBe("http://127.0.0.1:4444");
+    expect(companyJoinSession(req({ cookie: "", "x-agend-token": token }), input)).toBeNull();
+    expect(companyJoinSession(req({ origin: "null" }), input)).toBeNull();
+    expect(companyJoinSession(req({ host: "evil.test", origin: "https://evil.test" }), input)).toBeNull();
+    expect(companyJoinSession(req({ "x-forwarded-for": "192.0.2.2" }), input)?.hostHere).toBe(false);
+    const publicReq = req(); bindGatewayRequest(publicReq, { surface: "gateway", exposureId: "test", expectedOrigin: "https://public.example", isCurrent: () => true });
+    expect(companyJoinSession(publicReq, input)).toBeNull();
+    sessions.revokeByHandle(issued.record.handle); expect(own.current()).toBe(false);
+  });
   it("the original host Start auto-claims before General notification and its private capability remains current after Settings completes", async () => {
     const h = await harness(true);
     await vi.waitFor(() => expect(h.store.get(h.first.pending_change.id, h.session.sessionId)?.state).toBe("applied"));

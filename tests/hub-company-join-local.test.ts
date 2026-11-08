@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { CompanyJoinController } from "../src/hub/join/local.js";
 import { readLocalJoin } from "../src/hub/join/local-journal.js";
-import { currentBinding } from "../src/hub/member/pairing-api.js";
+import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sha256 } from "../src/hub/identity.js";
 import { companyIdentityDigest } from "../src/hub/join/protocol.js";
@@ -50,6 +50,20 @@ describe("Fleet local company join", () => {
     createJoinPrivate(w.directory, "hub-member/state.json", JSON.stringify({ hubId: w.metadata.hub.hubId }));
     await expect(w.start()).rejects.toThrow();
     expect(w.client.discover).not.toHaveBeenCalled(); expect(w.calls).toEqual([]);
+  });
+  it("an orphan pending profile also refuses before any new reservation", async () => {
+    const w = await world(); createJoinPrivate(w.directory, `hub-member/${w.metadata.hub.hubId}/pending.json`, "{}");
+    await expect(w.start()).rejects.toThrow(); expect(w.client.discover).not.toHaveBeenCalled(); expect(w.calls).toEqual([]);
+  });
+  it("the existing exact disconnect and Start over allow a new explicitly requested join, never automatic reuse", async () => {
+    const w = await world(), first = await w.start(); w.ready(); await w.controller.status(first.operationId, w.session);
+    const pairing = createHubMemberPairingApi({ home: w.directory }), shown = pairing.view();
+    expect(shown.state).toBe("paired"); if (shown.state !== "paired") throw Error("Expected settled binding");
+    await pairing.disconnect({ hubId: shown.hub.hubId, binding: shown.binding });
+    await expect(w.start()).rejects.toThrow(); pairing.cancel(); expect(currentBinding(w.directory)).toBeNull();
+    const next = await w.start(); expect(next.operationId).not.toBe(first.operationId); w.ready();
+    expect(await w.controller.status(next.operationId, w.session)).toMatchObject({ state: "saved" });
+    expect(w.calls.filter(x => x === "push")).toHaveLength(2);
   });
   it("saves the exact profile and journal before proof ACK, then activates once without exposing any secret", async () => {
     const w = await world(), pending = await w.start(); w.ready();

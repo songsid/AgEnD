@@ -1,5 +1,5 @@
 import { hj, joinError } from "./hub-company-join-strings.js";
-import { joinRequest, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
+import { joinRequest, companyInfoRequest, CompanyJoinInfoPage, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
 // exposures and Administration (/ui/hub/exposures, /ui/hub/admin; reached from the session row's menu) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
 // API (hub-client.js createHubWebClient); nothing here reads or reaches a fleet. A lazy module: it imports only names
@@ -103,6 +103,7 @@ export function HubPanel({ route }) {
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
   // Signed out: the sign-in page alone (no panel header, no chat chrome).
+  if (companyInfoRequest()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-info"><${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${CompanyJoinInfoPage} /></div></div>`;
   if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   const notices = s?.features?.includes("quick-pairing-v1") && hubClient().quickPairingV1 ? html`<${PairingNotices} admin=${!!s.admin} />` : null;

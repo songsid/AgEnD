@@ -26,6 +26,7 @@ export function createHubPairingNoticeInbox(options: {
     async receive(input: HubPairingNotice, link: HubMemberLink): Promise<void> {
       const notice = validated(pairingNoticeV2Schema, input); check();
       if (!link.current() || !link.features.has("welcome-caps-v1") || !link.features.has("pairing-notices-v1")) throw new HubProtocolError("incompatible");
+      if (notice.source === "manual" && !link.features.has("pairing-notices-v2")) throw new HubProtocolError("incompatible");
       options.db.transaction(() => {
         check(); if (!link.current()) throw new HubProtocolError("stale");
         const prior = options.db.prepare("SELECT body FROM hub_pairing_notice_inbox WHERE id=?").get(notice.id) as { body: string } | undefined;

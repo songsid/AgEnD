@@ -82,12 +82,12 @@ export function HubMembershipSettings() {
     finally { owner.current.busy = false; if (owner.current.mounted) setBusy(false); }
   };
   if (publicPage) return null;
-  return html`<div class="form hub-membership-settings"><section class="card" id="hub-membership">
+  return html`<div class="form hub-membership-settings"><${CompanyJoinSettings} onSaved=${read} memberEnabled=${view?.enabled === true} /><section class="card" id="hub-membership">
     <h3>${copy("title")}</h3><p class="note">${copy("hint")}</p>
     ${!view && messageKey === "loading" ? html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />` : html`<label class="check"><input id="hubMemberEnabled" class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}
       disabled=${!view || busy} onChange=${e => change(e.target.checked)} /><span>${copy("enabled")}</span></label>`}
     <p class="note">${copy("off")}</p>
     ${messageKey && messageKey !== "loading" ? html`<p role="status">${copy(messageKey)}</p>` : null}
     ${!view && !busy && messageKey !== "loading" ? html`<button class="btn btn-sm" type="button" onClick=${read}>${copy("retry")}</button>` : null}
-  </section><${CompanyJoinSettings} onSaved=${read} />${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
+  </section>${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
 }
