@@ -141,7 +141,8 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
  * `<installed agend> update`, 2 s from now, from a detached `sh`. Service callers must wrap it in an independent scope before launch. The
  * path is a positional argument, never spliced into the script. #3440: the agend's own bin directory (`<prefix>/bin`,
  * where its `npm` and `node` live) goes first on PATH, so the CLI's npm checks and install use the npm that installed
- * it, not a system npm the service's PATH happens to list first. (From the 雲晴家 fleet operator's patch.)
+ * it, not a system npm the service's PATH happens to list first. (From the 雲晴家 fleet operator's patch.) That also puts
+ * every global package's bin ahead of the system tools for the updater's run — as in an nvm user's own shell.
  */
 export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update';
 export function updateCommand(agend: string): { command: string; args: string[] } {
