@@ -28,6 +28,7 @@ export default defineConfig({
         { label: 'Getting Started', slug: 'docs/getting-started' },
         { label: 'Web Guide', translations: { 'zh-TW': '網頁使用說明' }, slug: 'docs/web-guide' },
         { label: 'Office', translations: { 'zh-TW': '辦公室' }, slug: 'docs/office' },
+        { label: 'Hub Group Permissions', translations: { 'zh-TW': 'Hub 群組權限' }, slug: 'docs/hub-group-permissions' },
         { label: 'Docker', slug: 'docs/docker' },
         { label: 'Use Cases', translations: { 'zh-TW': '使用情境' }, slug: 'docs/use-cases' },
         { label: 'Features', slug: 'docs/features' },
