@@ -137,6 +137,26 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     await r.save({ ...await r.readPolicy(), denies: [{ person: ADMIN.key, deny: ["pair_fleet"] }] });
     expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toEqual([{ id: pending.fleetId, label: null, status: "suspended" }]);
   });
+  it("enforces enabled group permission and the fleet quota through the composed credential-issuance path", async () => {
+    const r = await rig(); await r.save(await r.proposal());
+    const claim = async (owner: DirectoryPerson["key"]) => {
+      const ctx = { requestId: randomUUID(), requirePerson: async () => owner,
+        requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }) };
+      const offer = await r.deps.pairing.create(ctx, owner), pending = r.deps.pairing.pair({ code: offer.code });
+      await r.deps.pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint);
+      await r.deps.pairing.approve(ctx, pending.pairingId, pending.fingerprint);
+      return r.deps.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret });
+    };
+    await expect(claim(r.colleague.key)).rejects.toThrow("denied");
+    expect(r.deps.store.read().fleets).toEqual([]);
+    expect(r.db!.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
+    await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
+    await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
+    await expect(claim(ADMIN.key)).rejects.toThrow("denied");
+    expect(r.deps.store.read().fleets).toHaveLength(2);
+    expect(r.db!.prepare("SELECT source,state FROM hub_group_resources WHERE kind='fleet'").all()).toEqual([
+      { source: "group", state: "active" }, { source: "group", state: "active" }]);
+  });
   it("shows legacy only for intact never-enabled repair; enabled repair stays unavailable while sign-in and admin repair remain open", async () => {
     const r = await rig(), original = await r.readPolicy();
     const replace = (policy: HubGroupPolicy) => r.db!.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
