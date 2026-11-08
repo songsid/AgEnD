@@ -171,6 +171,27 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     expect(execFileSync("cat", [out], { encoding: "utf8" }).trim().split("\n")).toEqual([join(B, "bin", "npm"), join(h.nvm, "lib", "node_modules")]);
   });
 
+  it("#3443 review (symlinked prefix): proved again in the launch PATH of the prefix npm reports; a decoy npm in that bin is not run", async () => {
+    const h = host();
+    const store = h.nvm;                                                 // the real files: STORE/lib/node_modules/@songsid/agend
+    rmSync(join(store, "bin", "npm"));                                   // STORE/bin (the guessed bin) holds no npm
+    const P = join(h.t, "P"); mkdirSync(join(P, "bin"), { recursive: true }); mkdirSync(join(P, "lib"));
+    symlinkSync(join(store, "lib", "node_modules"), join(P, "lib", "node_modules"));
+    symlinkSync(join("..", "lib", "node_modules", "@songsid", "agend", "launcher", "agend"), join(P, "bin", "agend"));
+    writeFileSync(join(P, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(h.sys, "lib", "node_modules")}" ;; prefix) echo "${h.sys}" ;; esac\n`); chmodSync(join(P, "bin", "npm"), 0o755);
+    const good = join(h.t, "good", "bin"); mkdirSync(good, { recursive: true });
+    writeFileSync(join(good, "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(P, "lib", "node_modules")}" ;; prefix) echo "${P}" ;; esac\n`); chmodSync(join(good, "npm"), 0o755);
+    const path = `${good}:/usr/bin:/bin`;
+    vi.stubEnv("PATH", path);
+    const installed = await resolveInstalledAgend({ ...h.deps, packageDir: join(P, "lib", "node_modules", "@songsid", "agend") }) as { ok: boolean; agend: string; npmDir?: string };
+    expect(installed).toMatchObject({ ok: true, agend: join(P, "bin", "agend"), npmDir: good });
+    const out = join(h.t, "seen");
+    writeFileSync(join(h.pkg, "launcher", "agend"), `#!/bin/sh\ncommand -v npm > ${out}\n`);
+    const { command, args } = updateCommand(installed.agend, installed.npmDir);
+    execFileSync(command, args.map(a => a.startsWith("sleep 2") ? a.replace("sleep 2", "true") : a), { env: { PATH: path } });
+    expect(execFileSync("cat", [out], { encoding: "utf8" }).trim()).toBe(join(good, "npm"));
+  });
+
   it("#3443 review P2-2: the running package's location cannot be read → refused, never another install found through PATH", async () => {
     const h = host();
     const other = prefix(join(h.t, "other"), { agend: true });          // a second, otherwise valid AgEnD under PATH's npm
