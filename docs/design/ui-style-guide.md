@@ -57,7 +57,7 @@ A top-level Settings card is a plain `.card`, which gives the shared background,
 inside a card is wider than the card.
 
 The two lines differ here. On the 2.3.5 line, #3320 adds one frame for every Settings section (`.s-section-layout`: a
-1px `--border` border, `--r-md` corners, 24px inside, 16px on a phone, and `max-width: 100%` on selects and inputs). Main doesn't have
+1px `--border` border, `--r-md` corners, 24px inside (16px at 600 px and below), and `max-width: 100%` on selects and inputs). Main doesn't have
 that layout (#3325 left it out), so don't copy that frame onto main.
 
 Checked by: **CI** — the UI gate's `:frame` check, per section: the visible top-level cards of one section must share
