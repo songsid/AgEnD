@@ -420,7 +420,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .dlg-box { display: flex; flex-direction: column; max-height: 85vh; }
 .dlg-box:focus { outline: none; }   /* the open dialog's first stop (ui-dialog.js): no ring; Tab moves on with one */
 .dlg-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-3) var(--s-2) var(--s-5); }
-.dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .dlg-body { padding: var(--s-2) var(--s-5) var(--s-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-3); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
 /* A drawer (ui-dialog.js `drawer`): on a desk, the right edge at full height, the page in view beside it. A phone keeps
@@ -1793,7 +1793,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-browser-actions { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
 .signin-browser-actions .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (pointer: coarse), (max-width: 899px) {
-  .signin-browser :is(button, a), .signin-browser-actions .btn { min-height: var(--tap); }
+  .signin-browser :is(button, a), .signin-browser-actions .btn, .signin-browser ~ .note .btn { min-height: var(--tap); }
 }
 @media (max-width: 899px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
