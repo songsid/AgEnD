@@ -69,10 +69,19 @@ const MEASURE = `(() => {
   // The user's report on #3367: a coloured left edge on a rounded box (a border-left curving into its corners) — never the
   // house style, which is the straight left bar (.lbar). A box's own all-round border (same width and colour as its top) passes.
   const accents = [];
+  // Whether a computed colour paints at all (#3407 review): "transparent", or an alpha of 0 in any computed form —
+  // rgba(r, g, b, 0), rgb(r g b / 0), color(srgb r g b / 0) (what color-mix(…, transparent) computes to). A rgb() without
+  // an alpha is opaque, whatever its last channel.
+  const painted = (c) => {
+    if (!c || c === "transparent") return false;
+    let m = /\\/\\s*([\\d.]+)(%?)\\s*\\)$/.exec(c);
+    if (!m && c.startsWith("rgba(")) m = /,\\s*([\\d.]+)(%?)\\s*\\)$/.exec(c);
+    return !m || parseFloat(m[1]) / (m[2] ? 100 : 1) > 0;
+  };
   for (const el of col.querySelectorAll("*")) {
     if (!vis(el)) continue;
     const s = getComputedStyle(el), lw = parseFloat(s.borderLeftWidth) || 0;
-    if (lw < 2 || s.borderLeftStyle === "none" || s.borderLeftColor === "transparent" || /rgba\([^)]*,\s*0\)$/.test(s.borderLeftColor)) continue;
+    if (lw < 2 || s.borderLeftStyle === "none" || !painted(s.borderLeftColor)) continue;
     const edge = lw > (parseFloat(s.borderTopWidth) || 0) || s.borderLeftColor !== s.borderTopColor;
     const round = (parseFloat(s.borderTopLeftRadius) || 0) > 0 || (parseFloat(s.borderBottomLeftRadius) || 0) > 0;
     if (edge && round) accents.push(path(el) + " " + s.borderLeftWidth + " " + s.borderLeftColor + " r" + s.borderTopLeftRadius);
@@ -82,6 +91,36 @@ const MEASURE = `(() => {
 
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 47510), instances: 12 });
 const started = Date.now();
+/**
+ * #3407 review: the left-accent rule checks itself before it judges anything — controls drawn into a Settings column and
+ * measured by MEASURE as sent to the browser. Exactly the opaque rounded accent is flagged; a border that paints nothing
+ * (transparent, rgba(…, 0), color(… / 0), color-mix(…, transparent)), a square divider and a box's own all-round border pass.
+ */
+const CONTROLS = [
+  ["opaque", "border-left: 4px solid rgb(200, 0, 0); border-radius: 8px", true],
+  ["transparent", "border-left: 4px solid transparent; border-radius: 8px", false],
+  ["rgba-zero", "border-left: 4px solid rgba(255, 0, 0, 0); border-radius: 8px", false],
+  ["color-zero", "border-left: 4px solid color(srgb 1 0 0 / 0); border-radius: 8px", false],
+  ["mix-transparent", "border-left: 4px solid color-mix(in srgb, red 0%, transparent); border-radius: 8px", false],
+  ["square-divider", "border-left: 4px solid rgb(200, 0, 0); border-radius: 0", false],
+  ["uniform-border", "border: 2px solid rgb(200, 0, 0); border-radius: 8px", false],
+] as const;
+async function selfTest(page: any): Promise<void> {
+  await page.evaluate((controls: readonly (readonly [string, string, boolean])[]) => {
+    const col = document.querySelector(".p-settings .panel-body > .col")!;
+    const box = document.createElement("div"); box.id = "ui-gate-controls";
+    for (const [name] of controls) { const d = document.createElement("div"); d.className = "ui-gate-control-" + name; d.textContent = name; box.appendChild(d); }
+    col.appendChild(box);
+    // Inline style= is refused by the page's CSP (style-src without unsafe-inline): set each control's style through the CSSOM.
+    controls.forEach(([name, css]) => { const el = box.querySelector(".ui-gate-control-" + name) as HTMLElement; for (const decl of css.split(";")) { const [k, v] = decl.split(/:(.*)/s).map((x) => x.trim()); if (k) el.style.setProperty(k, v); } el.style.setProperty("width", "40px"); el.style.setProperty("height", "20px"); });
+  }, CONTROLS as any);
+  const m = await page.evaluate(MEASURE) as any;
+  await page.evaluate(() => document.getElementById("ui-gate-controls")?.remove());
+  const flagged = (m.accents as string[]).filter((a) => a.includes("ui-gate-control-")).map((a) => /ui-gate-control-([\w-]+)/.exec(a)![1]);
+  const want = CONTROLS.filter(([, , bad]) => bad).map(([n]) => n);
+  check("gate:left-accent-self-test", JSON.stringify(flagged) === JSON.stringify(want), { flagged, want });
+}
+let selfTested = false;
 try {
   for (const c of CASES) {
     const cn = caseName(c);
@@ -92,6 +131,7 @@ try {
       await page.goto(`${fx.base}/settings/${section}`);
       await page.waitForSelector(".p-settings .panel-body > .col", { timeout: 15000 });
       await page.waitForTimeout(700);
+      if (!selfTested) { await selfTest(page); selfTested = true; }
       const drawn = await page.evaluate(MEASURE) as any;
       await page.screenshot({ path: shotPath(SMOKE, cn, section), fullPage: false });
       await page.evaluate(`(() => { document.querySelectorAll(".p-settings .panel-body details").forEach((d) => { d.open = true; });
