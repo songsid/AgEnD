@@ -83,6 +83,7 @@ describe("self-service pairing skips only the admin wait", () => {
     const input={pairingId:p.pairingId,fleetId:p.fleetId,claimSecret:p.claimSecret};
     await expect(w.service.claim(input)).rejects.toThrow(mode==="unknown"?"unavailable":"denied");
     expect(w.store.read().fleets).toEqual([]);expect(w.enqueue).not.toHaveBeenCalled();
+    expect(w.store.read().pairings).toHaveLength(mode==="unknown"?1:0);
     if(mode==="unknown"){w.read.mockImplementation(async person=>({kind:"complete",person,groups:[w.group.objectId],observedAt:100}));expect((await w.service.claim(input)).status).toBe("approved");}
   });
   it("supersedes one own automatic offer without leaking reservations or accepting its old code", async()=>{

@@ -98,7 +98,8 @@ async function apply(p: any, next: string) {
   await p.locator(next).first().waitFor();
 }
 async function attachMember(index: number) {
-  memberLive = false; await member?.close(); member = undefined; inboxDb?.close(); inboxDb = undefined; online = false; memberLive = true;
+  memberLive = false; await member?.close(); member = undefined; fx.fm.hubPairingNotices = null;
+  inboxDb?.close(); inboxDb = undefined; online = false; memberLive = true;
   const mh = join(scratch, `member-${index}`); mkdirSync(mh, { mode: 0o700 });
   api = createHubMemberPairingApi({ home: mh, enabled: () => memberLive, link: () => online ? "online" : "offline", pollMs: 250,
     notices: () => fx.fm.hubPairingNotices?.() ?? [], bindingChanged: () => {
