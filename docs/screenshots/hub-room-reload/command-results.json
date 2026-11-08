@@ -1,0 +1,18 @@
+{
+  "focused-final": 0,
+  "typecheck": 0,
+  "typecheck-tests": 0,
+  "ui-policy": 0,
+  "hub-suites-before-final-disclosure-check": 0,
+  "hub-suites-final": 143,
+  "browser-before": 0,
+  "browser-current": 0,
+  "browser-skew": 0,
+  "fail-first-view": 1,
+  "focused-r1-committed": 0,
+  "http-r1-final": 0,
+  "typecheck-r1": 0,
+  "typecheck-tests-r1": 0,
+  "browser-current-r1": 0,
+  "browser-skew-r1": 0
+}

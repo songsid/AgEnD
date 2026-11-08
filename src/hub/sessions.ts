@@ -55,7 +55,7 @@ export function hubClearCookie(hubId: string): string {
   return `${hubCookieName(hubId)}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`;
 }
 
-interface SessionRow { id: string; person: string; realm: string; object_id: string; display_name: string; login_label: string; created_at: number; seen_at: number; expires_at: number; state: string }
+interface SessionRow { id: string; person: string; realm: string; object_id: string; display_name: string; login_label: string; created_at: number; seen_at: number; expires_at: number; state: string; directory_epoch: number }
 export interface HubSessionView { sessionId: string; person: PersonKey; displayName: string; login: string; admin: boolean; csrf: string }
 
 export class HubSessions {
@@ -67,7 +67,7 @@ export class HubSessions {
 
   /** Directory sign-in → a new session. Errors are generic to the browser ("denied"), bounded to the audit. */
   async signIn(login: unknown, password: unknown): Promise<{ token: string; view: HubSessionView; maxAgeMs: number }> {
-    this.core.check();
+    this.core.atomic(() => undefined); // refuse an old mount before sending credentials to its directory
     if (typeof login !== "string" || typeof password !== "string" || !login.trim() || !password
       || login.length > LOGIN_MAX || password.length > PASSWORD_MAX) throw new HubProtocolError("invalid");
     const label = login.trim();
@@ -78,7 +78,7 @@ export class HubSessions {
     this.signingIn++;
     let result;
     try { result = await this.core.deps.directory.signIn(label, password); } finally { this.signingIn--; }
-    this.core.check();
+    this.core.atomic(() => undefined); // held old-directory results cannot mint a new-epoch session
     if (!result.ok) {
       if (result.reason === "unavailable") throw new HubProtocolError("unavailable");
       const cur = this.failures.get(key);
@@ -97,8 +97,8 @@ export class HubSessions {
       db.prepare(`INSERT INTO hub_people(person, realm, object_id, display_name, login_label, status, last_checked_at) VALUES(?,?,?,?,?,'active',?)
         ON CONFLICT(person) DO UPDATE SET display_name=excluded.display_name, login_label=excluded.login_label, status='active', last_checked_at=excluded.last_checked_at`)
         .run(id, person.realm, person.objectId, displayName, result.person.login.slice(0, LOGIN_MAX), now);
-      db.prepare("INSERT INTO hub_sessions(token_hash, id, person, created_at, seen_at, expires_at, state) VALUES(?,?,?,?,?,?,'active')")
-        .run(digest(token), sessionId, id, now, now, now + HUB_SESSION_TTL);
+      db.prepare("INSERT INTO hub_sessions(token_hash, id, person, created_at, seen_at, expires_at, state, directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
+        .run(digest(token), sessionId, id, now, now, now + HUB_SESSION_TTL, this.core.directoryEpoch);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "session.signed-in", result: "completed" });
       if (firstAdmin) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "administrator.claimed", result: "completed" });
     });
@@ -110,10 +110,10 @@ export class HubSessions {
   session(token: string | null): (HubSessionView & { token: string }) | null {
     if (!token || !this.core.live()) return null;
     const now = this.core.now();
-    return this.core.atomic((db) => {
-      const row = db.prepare(`SELECT s.id, s.person, s.created_at, s.seen_at, s.expires_at, s.state, p.realm, p.object_id, p.display_name, p.login_label
+    try { return this.core.atomic((db) => {
+      const row = db.prepare(`SELECT s.id, s.person, s.created_at, s.seen_at, s.expires_at, s.state, s.directory_epoch, p.realm, p.object_id, p.display_name, p.login_label
         FROM hub_sessions s JOIN hub_people p ON p.person = s.person WHERE s.token_hash = ?`).get(digest(token)) as SessionRow | undefined;
-      if (!row || row.state !== "active") return null;
+      if (!row || row.state !== "active" || row.directory_epoch !== this.core.directoryEpoch) return null;
       if (row.expires_at <= now || now - row.seen_at > HUB_SESSION_IDLE) {
         db.prepare("UPDATE hub_sessions SET state='ended' WHERE id=?").run(row.id);
         return null;
@@ -121,7 +121,11 @@ export class HubSessions {
       if (now - row.seen_at > 60_000) db.prepare("UPDATE hub_sessions SET seen_at=? WHERE id=?").run(now, row.id);
       const person = { realm: row.realm, objectId: row.object_id };
       return { token, sessionId: row.id, person, displayName: row.display_name, login: row.login_label, admin: this.isAdmin(person), csrf: hubCsrfOf(token) };
-    });
+    }); } catch (error) {
+      // An old mounted handler/context is no longer an authenticated session. Corrupt authority remains 503.
+      if (error instanceof HubProtocolError && error.code === "unavailable") return null;
+      throw error;
+    }
   }
 
   signOut(token: string | null): void {

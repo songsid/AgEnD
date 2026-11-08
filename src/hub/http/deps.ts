@@ -44,6 +44,8 @@ export interface HubHttpDeps {
   pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
   store: HubTransportStore;
   config: HubHttpConfig;
+  /** M-2682: Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. Absent: 404. */
+  hubSettings?: Readonly<Omit<import("../settings-api.js").HubSettingsHttpDeps, "name">>;
   preview?: Readonly<import("../preview.js").HubPreviewView>;
   issuer: HubIssuer;
   /** Re-read on every use: null before HubServer exists and after fence/close — then work is unavailable, never queued. */

@@ -302,6 +302,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
@@ -1198,6 +1199,7 @@ export class RestartSupersededError extends Error {
 }
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
+  private decisionSnapshot: readonly ActiveDecisionRow[] = [];
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
 
@@ -1945,6 +1947,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
       await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
+      // M-2682: an interrupted sealed-settings commit is finished (or rolled back) before the Hub mounts its pair. A refusal
+      // overwrites nothing; the mount then holds on the mismatch, visibly, until the files are put right.
+      if (this.hubSettingsWriter?.pending()) {
+        try { this.hubSettingsWriter.recover(); }
+        catch (err) { this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub settings recovery refused"); }
+      }
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
@@ -1952,12 +1960,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** M-2682: the one writer for sealed Hub settings, created with the Hub runtime. */
+  private hubSettingsWriter: import("./hub/settings-commit.js").HubSettingsWriter | null = null;
+
   /** Single flight: one import, one runtime, assigned once; every caller (and Stop) gets that same runtime. */
   private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
     this.hubRuntimeInit ??= (async () => {
       const { HubRuntime } = await import("./hub/runtime.js");
+      // M-2682: the one writer for sealed Hub settings (a rename from Hub Administration). It saves hub.* through this
+      // fleet's own synchronous writer, so nothing else here runs between its commit point and the new pair in force.
+      const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
+      this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
+        readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
+        saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
+        settingsWriter: this.hubSettingsWriter,
+        version: agendVersion(),
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
         // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
@@ -2234,6 +2253,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
+  hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true; }
   /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
   hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 
@@ -8078,6 +8099,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Stopped/paused ClassicBot entries count too; their workspace is exactly
    * the one startClassicInstance builds, not this FleetManager's dataDir.
    */
+  /** Take the startup snapshot of every active decision (text cut to 200 characters); see activeDecisions. */
+  snapshotActiveDecisions(): void {
+    try {
+      const decisions = this.scheduler?.db.listAllActiveDecisions() ?? [];
+      this.decisionSnapshot = decisions.map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
+      if (decisions.length > 0) this.logger.info({ count: decisions.length }, "Active decisions snapshotted for instance instructions");
+    } catch (err) {
+      this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
+    }
+  }
+
+  /** The startup snapshot of active decisions, for a daemon's Active Decisions (it selects and caps its own). */
+  activeDecisions(): readonly ActiveDecisionRow[] {
+    return this.decisionSnapshot;
+  }
+
   kiroPeerWorkingDirectories(name: string): string[] {
     if (!this.fleetConfig || !this.classicChannels) throw new Error("Kiro peer configuration is not loaded");
     const peers: string[] = [];
@@ -10413,19 +10450,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
       this.dailyTipScheduler.start();
 
-      // Inject active decisions as env var for MCP instructions.
-      // Snapshotted at startup — new decisions via post_decision are available
-      // through list_decisions tool but not auto-injected until restart.
-      try {
-        const decisions = this.scheduler.db.listAllActiveDecisions();
-        if (decisions.length > 0) {
-          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root }));
-          process.env.AGEND_DECISIONS = JSON.stringify(capped);
-          this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
-        }
-      } catch (err) {
-        this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
-      }
+      // Active decisions for each instance's instructions, snapshotted at startup — new decisions via post_decision are
+      // available through list_decisions but not auto-injected until restart. The whole active set is kept here (each
+      // entry's text cut to 200 characters) and handed to each daemon at spawn (activeDecisions): the daemon selects
+      // its own — fleet, its teams, its directory — and only then applies its caps, so other teams' or directories'
+      // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
+      this.snapshotActiveDecisions();
     }
 
     // Phase 1: Start general instances first and wait for them
@@ -13888,13 +13918,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const scoped = this.decisionScopeFor(instanceName, payload.scope, payload.team);
+          if ("error" in scoped) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: scoped.error }); return; }
           const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
           if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
             project_root: projectRoot,
-            scope: (payload.scope as "project" | "fleet" | undefined),
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title: payload.title as string,
             content: payload.content as string,
             tags: payload.tags as string[] | undefined,
@@ -13910,10 +13944,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result = decisionListAnswer(db.listDecisions(projectRoot, {
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
+            teams: instanceTeams(this.fleetConfig?.teams, instanceName),
           }), { id: payload.id, full: payload.full });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
+          const hidden = this.decisionHiddenFrom(instanceName, id);
+          if (hidden) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: hidden }); return; }
           if (payload.archive) {
             db.archiveDecision(id);
             result = { archived: true, id };
@@ -14106,6 +14143,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { id: value };
   }
 
+  /**
+   * The scope (and team) a new decision gets. Team membership is read from fleet.yaml now. Omitted scope: the poster's
+   * team when they are in exactly one, project (this exact directory) when they are in none; in several, they choose.
+   * A team decision goes only to a team the poster is in.
+   */
+  decisionScopeFor(instance: string, scope: unknown, team: unknown): { scope: "project" | "team" | "fleet"; team?: string; teams: string[] } | { error: string } {
+    const teams = instanceTeams(this.fleetConfig?.teams, instance);
+    const named = typeof team === "string" && team.trim() ? team.trim() : undefined;
+    if (scope !== undefined && scope !== null && scope !== "project" && scope !== "team" && scope !== "fleet") {
+      return { error: `scope must be "project", "team" or "fleet"` };
+    }
+    if (scope === "project" || scope === "fleet") {
+      return named ? { error: `team goes with scope "team", not "${scope}"` } : { scope, teams };
+    }
+    if (named) {
+      if (!teams.includes(named)) {
+        return { error: teams.length ? `You are not in team "${named}". Your teams: ${teams.join(", ")}` : `You are not in team "${named}" (you are in no team)` };
+      }
+      return { scope: "team", team: named, teams };
+    }
+    if (teams.length === 1) return { scope: "team", team: teams[0], teams };
+    if (teams.length > 1) return { error: `You are in several teams (${teams.join(", ")}): name one with team, or use scope "project" or "fleet"` };
+    if (scope === "team") return { error: `You are in no team: use scope "project" (this directory) or "fleet"` };
+    return { scope: "project", teams };
+  }
+
+  /**
+   * #3421 review: a team decision is only for its team's current members — reading it back through an update (even an
+   * empty one) or archiving it is refused to anyone else, exactly as list/get and supersede are. The refusal names it
+   * "not found", as for an id that does not exist, and changes nothing. Project and fleet decisions: as before.
+   */
+  decisionHiddenFrom(instance: string, id: unknown): string | null {
+    if (typeof id !== "string" || !this.scheduler) return null;
+    const d = this.scheduler.db.getDecision(id);
+    if (!d || d.scope !== "team") return null;
+    return d.team && instanceTeams(this.fleetConfig?.teams, instance).includes(d.team) ? null : `Decision "${id}" not found`;
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -14119,13 +14194,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const title = asStr(args.title);
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
-        const scope = args.scope === "fleet" ? "fleet" : "project";
+        const scoped = this.decisionScopeFor(instance, args.scope, args.team);
+        if ("error" in scoped) return { error: scoped.error };
         const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
         if ("error" in supersedes) return { error: supersedes.error };
         try {
           return db.createDecision({
             project_root: projectRoot,
-            scope,
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title,
             content,
             tags: asStrArr(args.tags),
@@ -14143,10 +14221,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return decisionListAnswer(db.listDecisions(projectRoot, {
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
+        teams: instanceTeams(this.fleetConfig?.teams, instance),
       }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
+        const hidden = this.decisionHiddenFrom(instance, id);
+        if (hidden) return { error: hidden };
         return db.updateDecision(id, {
           content: asStr(args.content),
           tags: asStrArr(args.tags),

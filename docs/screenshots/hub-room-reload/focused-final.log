@@ -1,0 +1,70 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ ✓ tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 11ms
+ ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 0ms
+ ✓ tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 1ms
+ ✓ tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 1ms
+ ✓ tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 46ms
+ ✓ tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 1ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > signs in through the directory and sets only the __Host- Hub cookie 183ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > never authenticates by a fleet cookie, a bearer token or another Hub's cookie 29ms
+ ✓ tests/hub-room-reload.test.ts > an immediate same-session reload returns the actual chat instead of429 252ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > needs the Hub's own origin and the session's CSRF token for every mutation 32ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > checks the directory on every protected request: a disabled person is signed out at once 20ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > is off when the server is fenced, and leaves every non-Hub path to its caller 25ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > draws the Hub-only shell from no request data and serves only the Hub's lazy modules 68ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > the Hub workspace's lazy modules import nothing the Hub listener doesn't serve (a fleet module 404s there) 43ms
+ ✓ tests/hub-room-reload.test.ts > rechecks the grant on an immediate reload, without a cached allow 145ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > a question and its answer: the asker's own (with its stage), then the agent's under the exposure's name 4ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > the stages as delivery marks; a question not answered for good says why in a status line 2ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > the strings stay strings; D/E/F's files, buttons and quote are taken from beside them 2ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > does not attribute automatic poll results to the asker, but retains the agent reply and terminal status 2ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > nothing for an entry without a sequence 1ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > one read at once, the next only after POLL_MS; backpressure waits as long as the server says (at least POLL_MS) 7ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a question shows at once (queued); the read that brings its entry replaces it; a room without quota withdraws it, other fields kept 7ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a refreshed result clears an older tab's cached prompt without losing the agent answer 5ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an answer with no room object at all (an older Hub) keeps what is known, quota included 9ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > revoked or not-found closes the room and stops reading; hidden pages do not read 8ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a full page reads on from its last entry: an old settled-for-good (uncertain) or still-open entry never pins the read (#3246 review) 18ms
+ ✓ tests/hub-room-reload.test.ts > rechecks owner eligibility and the exact session before disclosing a reload 97ms
+ ✓ tests/hub-room-reload.test.ts > reading then sending another question returns the new history, not a stale snapshot 93ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > no Hub server module reaches a fleet session or cookie reader 49ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an open entry older than a page never holds back the tail: the tail page is read each time, the far one every FAR_EVERY-th read 72ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > two old unsettled entries in different pages are each read again in turn (#3261 review) 56ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > one read at a time: a refresh while a read is out starts no second one 11ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an unknown button set cannot be clicked 1ms
+ ✓ tests/hub-room-reload.test.ts > a real request burst is bounded before more directory work, with Retry-After 134ms
+ ✓ tests/hub-room-reload.test.ts > different rooms and cursors share the same session work allowance 140ms
+ ✓ tests/hub-room-reload.test.ts > held reads keep both physical slots and a refusal adds no directory work 50ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > accepts complete, monotonic snapshots: older refused, a changed repeat refused, absence withdraws 373ms
+ ✓ tests/hub-room-reload.test.ts > a grant expiring during an awaited owner check cannot disclose history 29ms
+ ✓ tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content 49ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > refuses an exposure that names another fleet's id 135ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > each person lists only their own rooms 52ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > shows a person only their own exposures and what is granted to them (no enumeration) 105ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > the list: who it answers for, the grant's end, a waiting question, when it last moved 81ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > features: what the room's current fleet link negotiated (none without a current link) 41ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > the messages answer carries the room; its entries say when each was asked; another person's read is not-found 22ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > lets only the owner grant, at the revision shown, to one known eligible person 168ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > answered: no longer waiting 40ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > a revoked grant closes the room: still listed (as closed, with its name), its history no longer readable 50ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > a grant goes to whoever the directory says holds that login NOW: a rename never redirects it; a shared label is refused (Fable on #3112) 181ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > a new exposure revision leaves the old grant inapplicable; a freeze stops asking 56ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > commits a question before 'queued', dedups by key, and refuses a changed body 34ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > a failed audit append refuses the question (nothing queued) 30ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > only the room's asker reads it; reads are paced and re-check the grant 39ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > sends a signed question on a reconciled link and issues exact, short leases 86ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > accepts an answer only under the release lease issued for exactly it 67ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > a release lease is spent only on the link it was issued on (a replaced link's lease is refused) 48ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > authorization is re-checked at the answer: a grant revoked after the release lease stores nothing 109ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > an expired grant can no longer read its room (nor ask in it) 153ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > member receipts are monotonic, never downgrade evidence, and page through reconcile 37ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > cancels a queued question whose grant was revoked before it could be sent 84ms
+ ✓ tests/hub-s3b-server.test.ts > Hub administration and pairing (S3b) > only the configured administrator administers; the owner confirms their own pairing 216ms
+
+ Test Files  4 passed (4)
+      Tests  61 passed (61)
+   Start at  15:29:49
+   Duration  13.36s (transform 21.35s, setup 571ms, import 31.59s, tests 4.80s, environment 1ms)
+

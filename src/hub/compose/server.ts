@@ -40,6 +40,7 @@ import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
 import { readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
+import { HUB_NAME_RULE, type HubSettingsWriter } from "../settings-commit.js";
 import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
 import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
 import { createHubPreviewHandler, hubPreviewSettings, hubPreviewView, type HubPreviewSettings, type HubPreviewView } from "../preview.js";
@@ -68,6 +69,8 @@ export interface HubHttpDeps {
   now?: () => number;
   preview?: Readonly<HubPreviewView>;
   config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
+  /** M-2682: Hub Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. */
+  hubSettings?: Readonly<{ info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null; coexistence?: string | null }>; writer?: HubSettingsWriter }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
   transport(): Pick<HubServerTransport, "send"> | null;
@@ -107,6 +110,10 @@ export interface HubServerFactoryOptions {
   /** #3298 S-89: this Hub offers group permissions (its HTTP has "group-policy-v1"); the returned function withdraws it. */
   groupPermissionsReady?(): () => void;
   browserCertificateReady?(control: HubBrowserCertificateControl): () => void;
+  /** M-2682: the host's one writer for sealed settings (settings-commit.ts); absent: Hub Administration can't rename. */
+  settingsWriter?: HubSettingsWriter;
+  /** This AgEnD's version, shown on Hub Administration → This Hub. */
+  version?: string | null;
 }
 
 interface ServerSettings {
@@ -132,14 +139,17 @@ const listen = (v: unknown, label: string) => {
   return { host: o.host, port: o.port as number };
 };
 
-function settingsOf(cfg: Record<string, unknown>): ServerSettings {
+/** The mount's parse of the hub.* block (exported for its tests). */
+export function settingsOf(cfg: Record<string, unknown>): ServerSettings {
   const tls = obj(cfg.webTls);
   const admin = obj(cfg.administrator);
   const retention = obj(cfg.retention);
   const directory = obj(cfg.directory);
-  for (const k of ["hubId", "name", "webOrigin", "memberOrigin"]) {
+  for (const k of ["hubId", "webOrigin", "memberOrigin"]) {
     if (typeof cfg[k] !== "string" || !cfg[k]) throw new HubStateError("hub-unsealed", `hub.${k} is missing`);
   }
+  // M-2682: a cleared Hub name is the key absent (the plain brand); a present one is a non-blank string (settings-commit.ts).
+  if (cfg.name !== undefined && (typeof cfg.name !== "string" || !HUB_NAME_RULE.test(cfg.name) || cfg.name !== cfg.name.trim())) throw new HubStateError("hub-unsealed", "hub.name is invalid");
   if (typeof tls.certificateFile !== "string" || typeof tls.keyFile !== "string") throw new HubStateError("hub-unsealed", "hub.webTls is missing");
   if (typeof admin.realm !== "string" || typeof admin.objectId !== "string") throw new HubStateError("hub-unsealed", "hub.administrator is missing");
   if (!Number.isSafeInteger(retention.contentDays) || !Number.isSafeInteger(retention.eventDays)) throw new HubStateError("hub-unsealed", "hub.retention is missing");
@@ -148,7 +158,7 @@ function settingsOf(cfg: Record<string, unknown>): ServerSettings {
   const preview = hubPreviewSettings({ web: cfg.web, webOrigin: cfg.webOrigin as string, memberOrigin: cfg.memberOrigin as string, webListen, memberListen });
   return {
     hubId: cfg.hubId as string,
-    name: cfg.name as string,
+    name: typeof cfg.name === "string" ? cfg.name : "",   // "" = no name: the plain brand
     webOrigin: cfg.webOrigin as string,
     memberOrigin: cfg.memberOrigin as string,
     memberListen,
@@ -356,6 +366,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         now,
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
         config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
+        hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null,
+          coexistence: typeof cfg.coexistence === "string" ? cfg.coexistence : null }),
+          ...(options.settingsWriter ? { writer: options.settingsWriter } : {}) }),
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });
