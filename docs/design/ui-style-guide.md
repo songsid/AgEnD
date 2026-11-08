@@ -50,13 +50,19 @@ html`<section class="s-card">…</section>`   // no such style: it rendered unfr
 
 Checked by: **Review**.
 
-## 2. One card frame on every Settings page
+## 2. One card frame within a Settings section
 
-Every top-level Settings card has the same frame: a 1px `--border` border, `--r-md` corners, and the same padding. A
-card inside a drawer or a disclosure is part of that box and has no frame of its own. Nothing inside a card is wider
-than the card: bound a `select` or input with `max-width: 100%` (#3320).
+A top-level Settings card is a plain `.card`, which gives the shared background, `--r-md` corners and padding
+(`app.css`). Don't give one card its own border, padding or radius: the cards in a section must look the same. Nothing
+inside a card is wider than the card.
 
-Checked by: **CI** — the UI gate's `:frame` check compares padding, border and corner radius of every top-level card.
+The two lines differ here. On the 2.3.5 line, #3320 adds one frame for every Settings section (`.s-section-layout`: a
+1px `--border` border, 24px inside, 16px on a phone, and `max-width: 100%` on selects and inputs). Main doesn't have
+that layout (#3325 left it out), so don't copy that frame onto main.
+
+Checked by: **CI** — the UI gate's `:frame` check, per section: the visible top-level cards of one section must share
+the same padding, border and top-left radius. Cards inside a drawer, a disclosure, `details` or a dialog, and the
+`.s-dev` editor and `.s-access-terminal` cards, are not compared. Frames are not compared across sections.
 
 ## 3. A coloured left edge is the straight bar
 
@@ -165,9 +171,12 @@ Checked by: **Review**. The PR body states which surfaces the flow supports.
 ## 10. Errors in plain words
 
 An error says what happened and what the person can do, in their words: "The Hub can't be reached." with Retry, not
-`ECONNREFUSED` or a status code. Keep server codes for logs.
+`ECONNREFUSED` or a status code. Keep server codes for logs. The user listed this among the house rules for this guide
+(2026-11-08), and existing tests hold it for their surfaces: delivery notices never show a raw error
+(`tests/delivery-notices-i18n.test.ts`), and a named-link test step that throws shows its closed failure, never a raw
+error (#2907, `tests/named-link-test-2906.test.ts`).
 
-Checked by: **Review**.
+Checked by: **CI** for those surfaces; **Review** elsewhere.
 
 ## Evidence in the pull request
 
@@ -182,7 +191,7 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | Rule | CI | Review |
 |---|---|---|
 | 1. Shared components | — | yes |
-| 2. One card frame (Settings) | UI gate `:frame` | other pages |
+| 2. One card frame per Settings section | UI gate `:frame` (within a section) | across sections, other pages |
 | 3. Straight left bar | `web-left-bar-2330` | a rounded class from another rule on the same element |
 | 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast) | literal colours and sizes in new CSS |
 | 5. No inline styles | `web-csp-1300` | — |
@@ -190,7 +199,7 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | 7. Phone and desktop | UI gate `:overflow` (Settings), `web-input-zoom-1611` | pages outside Settings |
 | 8. EN and zh-TW | `i18n-ui-literals-2390` | wording |
 | 9. Same surface, minimal clicks | — | yes |
-| 10. Plain-words errors | — | yes |
+| 10. Plain-words errors | `delivery-notices-i18n`, `named-link-test-2906` (their surfaces) | elsewhere |
 | Button sizes (Settings) | UI gate `:buttons` (one height per button class combination) | — |
 | No page errors or CSP reports (Settings) | UI gate `:no-errors` | — |
 
