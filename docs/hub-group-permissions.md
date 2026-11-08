@@ -82,9 +82,9 @@ Their own fleets are listed with their state: **Active**, **Paused**, **Revoked*
 
 When **Connect a fleet** is allowed and there is a free slot:
 
-1. On the Hub welcome page, type a **Fleet name** you and your Hub admin will recognise and choose **Connect my fleet**. The Hub shows a **Member address**, a **One-time code** and when the code expires (ten minutes).
+1. On the Hub welcome page, type a **Fleet name** you and your Hub admin will recognise and choose **Connect my fleet**. The Hub shows its **Hub address**, a **One-time code** and when the code expires (ten minutes).
 2. In that fleet's web dashboard, open **Settings → Fleet → Hub**. If **Allow this fleet to connect to a Hub** (under **Hub membership**) is off, turn it on first. That change waits for its confirmation (*"Waiting for owner confirmation…"*): confirm it where its card says, in General or on this dashboard.
-3. As soon as it is on, the pairing fields appear below it, with no reload. Enter the member address in **Hub address** and the code in **One-time pairing code**, then choose **Connect**. Complete the local Settings confirmation if one is offered.
+3. As soon as it is on, the pairing fields appear below it, with no reload. Enter that address in **Hub address** and the code in **One-time pairing code**, then choose **Connect**. Complete the local Settings confirmation if one is offered.
 4. The fleet shows a **Waiting for approval** card with a pairing fingerprint, and the Hub shows its own. Compare them. On the fleet, choose **It matches the Hub's screen**; on the Hub, choose **They match**. If they differ, choose **They differ** and check the address before starting again. Neither screen's confirmation replaces the other.
 5. The Hub shows **Connected** only after the fleet has saved its pin and connected. Pairing does not share any agent. Sharing still needs its own permission and confirmation. **Connect another fleet** starts another pairing while capacity remains.
 
