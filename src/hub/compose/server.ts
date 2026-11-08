@@ -52,6 +52,7 @@ import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } 
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { parseGroupPolicy } from "../group-policy/model.js";
+import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
 export { SERVER_SET } from "./storage.js";
@@ -72,6 +73,8 @@ export interface HubHttpDeps {
   store: HubTransportStore;
   current(): HubMode;
   now?: () => number;
+  /** Private physical response ownership only; the directory route must independently prove the actor and operation. */
+  directoryResponse?: { capture(req: IncomingMessage, res: ServerResponse, current: () => boolean): HubDirectoryResponse };
   preview?: Readonly<HubPreviewView>;
   config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
   /** M-2682: Hub Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. */
@@ -121,6 +124,8 @@ export interface HubServerFactoryOptions {
   settingsWriter?: HubSettingsWriter;
   /** Private owning-generation publication; its disposer withdraws this exact instance. */
   directoryReady?(directory: HubMountedDirectory): () => void;
+  /** Runtime-owned across server generations; absent on older/custom factories. */
+  directoryResponses?: HubDirectoryResponseOwner;
   /** This AgEnD's version, shown on Hub Administration → This Hub. */
   version?: string | null;
 }
@@ -287,6 +292,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let memberServer: HubServer | null = null;
       let fenced = false;
       const owned = () => !fenced && current();
+      let responseListener: HubDirectoryResponseListener | null = null;
       const directoryDecision = createHubDirectorySettingsDecision({ db, transport: store, hubId: settings.hubId });
       const directoryBarrier = createHubDirectoryMountBarrier({ home: options.home, hub: cfg, decision: directoryDecision, current: owned });
       teardown.add("directory material barrier", () => directoryBarrier.close());
@@ -394,6 +400,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         store,
         current: () => mode,
         now,
+        ...(options.directoryResponses ? { directoryResponse: Object.freeze({ capture(req: IncomingMessage, res: ServerResponse, proof: () => boolean) {
+          if (!live() || !responseListener) throw new HubStateError("service-unavailable", "The directory response owner is unavailable");
+          return responseListener.capture(req, res, () => proof() === true && live());
+        } }) } : {}),
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
         config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
         hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null,
@@ -429,6 +439,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("browser certificate preparation", () => browserCertificate.close());
       let retentionTimer: NodeJS.Timeout | null = null;
       const serveWeb = (req: IncomingMessage, res: ServerResponse) => {
+        if (responseListener && !responseListener.enter(req, res)) return;
         if (!live()) {
           res.writeHead(503, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end('{"code":"unavailable"}');
           return;
@@ -461,8 +472,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               { ...browserCertificate.material(), minVersion: "TLSv1.2" },
               serveWeb,
             );
+            const responses = options.directoryResponses?.listener(server);
+            responseListener = responses ?? null;
             teardown.add("the Hub web listener", () => {
               if (web !== server) return;
+              if (responses) return responses.close();
               server.closeAllConnections?.();
               return new Promise<void>((resolve, reject) => server.close((err) => (err && (err as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(err) : resolve())));
             });
