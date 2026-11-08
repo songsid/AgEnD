@@ -33,7 +33,7 @@ async function fixture(o: { language?: string; enabled?: boolean; public?: boole
 }
 const change = (pg: AppPage, enabled: boolean) => { const input: any = pg.root.querySelector("input"); input.checked = enabled; fire(input, "change"); };
 describe("off-default lazy Hub membership Settings", () => {
-  it.each(["en", "zh-TW"])("shows localized owner guidance while off (%s), saves only the boolean, then asks for a page refresh", async language => {
+  it.each(["en", "zh-TW"])("shows localized owner guidance while off (%s), saves only the boolean, then shows Connect's fields with no reload (cid-hub-no-reload)", async language => {
     const { pg, calls } = await fixture({ language });
     expect(pg.root.textContent).toContain(language === "en" ? "Hub membership" : "Hub 成員功能");
     expect(pg.root.textContent).toContain(language === "en" ? "does not pair a Hub or share an agent" : "不會自動配對 Hub 或分享 Agent");
@@ -44,9 +44,37 @@ describe("off-default lazy Hub membership Settings", () => {
     expect(calls[1]!.options.method).toBe("PUT"); expect(JSON.parse(calls[1]!.options.body)).toEqual({ enabled: true });
     expect(calls[1]!.options.headers["Idempotency-Key"]).toBeTruthy();
     await until(() => (pg.root.querySelector("input") as any).checked);
-    expect(pg.root.textContent).toContain(language === "en" ? "Reload page" : "重新整理頁面");
-    expect(pg.root.querySelector("#hubAddress")).toBeNull(); // an old off-marked page never selects the stub pairing client
-    expect(calls.every(c => !c.path.startsWith("/api/hub/member/"))).toBe(true);
+    // The leader's cid-hub-no-reload (#3319): applied, the page is marked a member in place and Connect's fields are there —
+    // never "Reload page". The client it loads is the member client (the page had loaded no Hub client before).
+    await until(() => !!pg.root.querySelector("#hubAddress"));
+    expect(pg.root.querySelector("#hubAddress")).not.toBeNull();
+    expect(pg.document.body.dataset.hub).toBe("member");
+    expect(pg.root.textContent).not.toMatch(/Reload page|重新整理頁面/);
+    expect(calls.some(c => c.path.startsWith("/api/hub/member/"))).toBe(true);
+  });
+  it("a held change decided elsewhere — in General, with the code on this page, or by the host's Apply now — shows Connect's fields once applied, with no reload", async () => {
+    const f = await fixture({ pending: true });
+    change(f.pg, true);
+    await until(() => f.pg.root.textContent.includes("Waiting for owner confirmation"));
+    expect(f.pg.root.querySelector("#hubAddress")).toBeNull();
+    expect(f.pg.document.body.dataset.hub).toBeUndefined();          // not yet: nothing is on until it is applied
+    // Every way of confirming ends the same here: the followed pending change turns "applied" (settings-confirm track).
+    f.state(true);
+    const c = await import("/ui/js/settings-confirm.js"); await c.track({ id: "m".repeat(32), state: "applied", outcome: { result: { ok: true } } }, "Hub membership");
+    await until(() => !!f.pg.root.querySelector("#hubAddress"));
+    expect([f.pg.document.body.dataset.hub, /Reload page/.test(f.pg.root.textContent)]).toEqual(["member", false]);
+  });
+  it("turned off (applied), the member mark and Connect go in place too", async () => {
+    const f = await fixture({ enabled: true, memberMark: true });
+    await until(() => !!f.pg.root.querySelector("#hubAddress"));
+    change(f.pg, false);
+    await until(() => !f.pg.root.querySelector("#hubAddress"));
+    expect([f.pg.document.body.dataset.hub, /Reload page/.test(f.pg.root.textContent)]).toEqual([undefined, false]);
+  });
+  it("a page opened with membership already on but not marked (a stale tab) marks itself on its first read", async () => {
+    const f = await fixture({ enabled: true });
+    await until(() => !!f.pg.root.querySelector("#hubAddress"));
+    expect(f.pg.document.body.dataset.hub).toBe("member");
   });
   it("holds the displayed persisted state and one write through pending owner confirmation", async () => {
     const f = await fixture({ pending: true });

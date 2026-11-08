@@ -11,7 +11,7 @@ register("hubMembership", {
     loading: "Reading membership settings…", pending: "Waiting for owner confirmation…",
     failed: "The membership change could not be verified. Check again before trying another change.",
     unavailable: "Membership settings are unavailable. Open this fleet's own owner Settings and check again.",
-    retry: "Check again", reload: "Reload page", reloadHint: "Reload the page to refresh the Hub controls.",
+    retry: "Check again",
   },
   "zh-TW": {
     title: "Hub 成員功能", enabled: "允許這個 Fleet 連線至 Hub",
@@ -20,12 +20,27 @@ register("hubMembership", {
     loading: "正在讀取成員設定…", pending: "等待擁有者確認…",
     failed: "無法確認成員設定是否已變更。請再次檢查，再嘗試其他變更。",
     unavailable: "目前無法使用成員設定。請開啟這個 Fleet 自己的擁有者設定頁面，再次檢查。",
-    retry: "再次檢查", reload: "重新整理頁面", reloadHint: "請重新整理頁面以更新 Hub 控制項。",
+    retry: "再次檢查",
   },
 });
 const copy = key => t(`hubMembership.${key}`);
 const path = "/api/settings/hub/membership";
 const markedMember = () => String(globalThis.document?.body?.dataset?.hub || "").split(/\s+/).includes("member");
+/**
+ * The leader's cid-hub-no-reload (#3319: the user stuck on "Reload page"): the page's Hub mark follows the saved switch, in
+ * place — what the server would mark a fresh page with (web-api hubBodyAttrs: `hub_member.enabled`, never over a public
+ * link, which this card never renders on). So once turning membership on is applied — confirmed here, in General, or by the
+ * host's Apply now: confirmedWrite follows it to the end either way, then this card reads it again — the Connect card loads
+ * with its address and code fields, and no reload is asked for. Nothing has loaded the Hub client before (no Hub module loads
+ * on an unmarked page), so it starts as the member client. Presentation only: a mark confers no authority.
+ */
+const markMember = on => {
+  const body = globalThis.document?.body;
+  if (!body || markedMember() === on) return;
+  const tokens = String(body.dataset.hub || "").split(/\s+/).filter(t => t && t !== "member");
+  if (on) tokens.push("member");
+  if (tokens.length) body.dataset.hub = tokens.join(" "); else delete body.dataset.hub;
+};
 export function HubMembershipSettings() {
   const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
   const [view, setView] = useState(null), [busy, setBusy] = useState(false), [messageKey, setMessageKey] = useState("loading");
@@ -37,7 +52,7 @@ export function HubMembershipSettings() {
     if (!view) setMessageKey("loading");
     let result; try { result = await api(path); } catch { result = null; }
     if (!owner.current.mounted || owner.current.seq !== seq) return;
-    if (result?.ok && typeof result.body?.enabled === "boolean") { setView({ enabled: result.body.enabled }); setMessageKey(""); }
+    if (result?.ok && typeof result.body?.enabled === "boolean") { markMember(result.body.enabled); setView({ enabled: result.body.enabled }); setMessageKey(""); }
     else { setView(null); setMessageKey("unavailable"); }
   };
   useEffect(() => {
@@ -73,6 +88,5 @@ export function HubMembershipSettings() {
     <p class="note">${copy("off")}</p>
     ${messageKey && messageKey !== "loading" ? html`<p role="status">${copy(messageKey)}</p>` : null}
     ${!view && !busy && messageKey !== "loading" ? html`<button class="btn btn-sm" type="button" onClick=${read}>${copy("retry")}</button>` : null}
-    ${view && view.enabled !== markedMember() ? html`<p class="note">${copy("reloadHint")} <button class="btn btn-sm" type="button" disabled=${busy} onClick=${() => location.reload()}>${copy("reload")}</button></p>` : null}
   </section>${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
 }
