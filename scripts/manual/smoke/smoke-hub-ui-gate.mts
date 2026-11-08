@@ -101,7 +101,11 @@ const control = {
 };
 const welcome = async (ctx: any) => { await ctx.requirePerson();
   return { ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "allow", reason: "group" }, connect: { state: "allow", reason: "group", maxFleets: 2, fleets: [] } }; };
-const rig = await s3bRig({ webOrigin: origin, groupHttp: { control, welcome } });
+// M-2682: Administration → This Hub, with long values and its rename form (a stand-in writer; nothing is committed here).
+const hubSettings = { info: { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  issuerKeyId: "ed25519-7Qm2xLk9pV4sT8wR1nB6yH3jF5cD0aZe", version: "2.3.5-alpha.9", coexistence: "same-user-pilot" },
+  writer: { prepare: () => { throw new Error("not in the gate"); }, commit: () => { throw new Error("not in the gate"); }, recover() {}, pending: () => false } };
+const rig = await s3bRig({ webOrigin: origin, groupHttp: { control, welcome }, ...(await import(REPO + "/src/hub/settings-api.ts").then(() => ({ hubSettings }), () => ({}))) });
 const keys = mkdtempSync(join(OUT, ".keys-")); chmodSync(keys, 0o700);
 await provisionHubIdentity({ home: keys, memberOrigin: origin });
 const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) },
@@ -130,7 +134,7 @@ const PAGES = [
   { name: "welcome", who: bo, path: "/ui/hub", ready: ".hub-welcome-card" },
   { name: "chat", who: "asker", path: "/ui/hub?room=", ready: ".hub-chat-main" },
   { name: "owner", who: owner, path: "/ui/hub/exposures", ready: ".hub-owner" },
-  { name: "admin", who: admin, path: "/ui/hub/admin", ready: ".hub-admin" },
+  { name: "admin", who: admin, path: "/ui/hub/admin", ready: ".hub-admin .hub-this-facts, .hub-admin:not(:has(.hub-this-hub)) .hub-steps" },
   { name: "admin-groups", who: admin, path: "/ui/hub/admin?view=groups", ready: ".hub-group-row" },
 ] as const;
 

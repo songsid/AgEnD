@@ -362,7 +362,11 @@ async function main(): Promise<void> {
     }
 
     // Decisions
-    case "decision-post": args = { title: rest[0] ?? "", content: rest[1] ?? "", scope: rest[2], tags: rest[3] }; break;
+    // scope: project | team | team:<name> | fleet (omitted: your team when you are in one, else project).
+    case "decision-post": {
+      const [scope, team] = rest[2]?.startsWith("team:") ? ["team", rest[2].slice(5)] : [rest[2], undefined];
+      args = { title: rest[0] ?? "", content: rest[1] ?? "", scope, ...(team ? { team } : {}), tags: rest[3] }; break;
+    }
     case "decision-list": args = { include_archived: rest[0] === "true" }; break;
     case "decision-get": args = { id: rest[0] ?? "" }; break;
     case "decision-update": args = { id: rest[0] ?? "", content: rest[1], archive: rest[2] === "true" }; break;

@@ -830,6 +830,12 @@ function HubAdmin({ admin }) {
   return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
     <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} />`;
 }
+/** M-2682: Administration → This Hub, its own lazy module (an older server doesn't serve it: then it's left out). */
+function LazyThisHub() {
+  const [C, setC] = useState(null);
+  useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
+  return C ? html`<${C} />` : null;
+}
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
 function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
 /** #3298 S-89: the prominent entry to Group permissions at the top of Administration (discovery without docs). */
@@ -903,6 +909,7 @@ function HubAdminPage({ groups = false } = {}) {
             : html`<span class="tag">${ho("revokedTag")}</span>`}
         </div>`)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
+      <${LazyThisHub} />
     </div></div>`;
 }
 
