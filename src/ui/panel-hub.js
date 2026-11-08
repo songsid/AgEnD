@@ -103,16 +103,20 @@ export function HubPanel({ route }) {
   if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   const notices = s?.features?.includes("quick-pairing-v1") && hubClient().quickPairingV1 ? html`<${PairingNotices} admin=${!!s.admin} />` : null;
+  // On a page the notices stand in the page's own column (the cards' width and gutter at every breakpoint; an empty column
+  // is not drawn — hub.css).
+  const column = (inner) => html`<div class="col hub-owner hub-notices-col">${inner}</div>`;
   // The sidebar's Notices row: the security notices as a page of their own (the same card, the panel's PageHead).
   if (s && tab === "ask" && viewParam() === "notices" && notices) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
-    <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">${notices}</div></div>`;
+    <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
+      ${column(html`<${PairingNotices} admin=${!!s.admin} empty=${html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />`)}</div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${notices}${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
   const pageTitle = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : hw(TITLES[tab]);
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
     <${PanelHeader} title=${s ? pageTitle : hw(TITLES[tab])} />
-    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${notices}${body}</div>
+    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${s && notices ? column(notices) : notices}${body}</div>
   </div>`;
 }
 

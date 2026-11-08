@@ -40,6 +40,13 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-ask, .hub-mine, .hub-admin { display: grid; gap: var(--s-3); align-content: start; }
 .hub-body > * { width: 100%; max-width: 860px; min-width: 0; }
 .hub-body .card { margin-bottom: 0; }
+/* cid-hub-shell-parity: the security notices card wears the page's own card frame (the Settings layout's) — in the page's
+   column on a page (never wider than the cards under it), inset from the edges above a chat (never full-bleed). */
+:is(.hub-notices-col, .hub-chat-body) > .hub-security-notices { margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 10px; box-shadow: none; }
+.hub-notices-col { padding-bottom: 0; }
+.hub-notices-col:empty { display: none; }
+.hub-chat-body > .hub-security-notices { margin: var(--s-3) var(--s-4) 0; }
+@media (max-width: 600px) { :is(.hub-notices-col, .hub-chat-body) > .hub-security-notices { padding: 16px; } }
 @media (max-width: 899px) { .hub-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
 .hub-signin { max-width: 420px; }
 .hub-signin h2 { margin: 0 0 var(--s-1); }

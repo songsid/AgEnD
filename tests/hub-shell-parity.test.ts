@@ -82,6 +82,12 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     expect([pg.window.location.search, pg.root.querySelector(".p-hub-notices h1")?.textContent, pg.root.querySelector(".side-nav a.side-row.active .grow")!.textContent])
       .toEqual(["?view=notices", "Notices", "Notices"]);
   });
+  it("the Notices page with no notice says so in one line (the card is drawn only with a notice)", async () => {
+    const pg = await hub({ features: ["quick-pairing-v1"], path: "/ui/hub?view=notices" });
+    await until(() => pg.root.querySelector(".p-hub-notices .empty-title"));
+    expect([pg.root.querySelector(".p-hub-notices .hub-notices-col .empty-title")?.textContent, pg.root.querySelector(".p-hub-notices .empty-hint"),
+      pg.root.querySelector(".hub-security-notices")]).toEqual(["No security notices", null, null]);
+  });
   it("Search and Ctrl K open the conversation filter (the Hub's own — no fleet search here); Escape closes it", async () => {
     const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: false, features: [] },
       { id: "21111111-2222-4333-8444-555555555555", exposureId: "e2", grantId: "g2", state: "active", exposureName: "Design guide", ownerName: "Olivia", lastAt: 2, waiting: false, features: [] }];
