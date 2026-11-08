@@ -119,6 +119,8 @@ export interface CliBackendConfig {
   kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
   skipResume?: boolean;
+  /** Daemon-owned same-session CLI repair only; never a new conversation fallback. */
+  resumeSessionId?: string;
   /** Fleet instructions content to inject into the CLI's additive system prompt mechanism. */
   instructions?: string;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint). */
@@ -1043,6 +1045,9 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
+  /** A fresh installed launcher, used by the one same-session model-version repair. */
+  refreshLaunchBinary?(path: string): void;
+
   probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[]; binary?: CliBinaryIdentity }>;
 
   /**
