@@ -17,9 +17,16 @@
 .s-accounts .s-account-rows { display: grid; gap: var(--s-3); }
 
 /* One box per account (`.s-row` on --bg). The left edge says the state: signed in, not signed in, or not known. overflow stays visible: the used-by list and the hints float out of it. */
-.s-accounts .s-account-row { display: block; position: relative; min-height: 0; padding: var(--s-3) var(--s-4); border-left: 4px solid var(--ok); background: var(--bg); overflow: visible; }
-.s-account-row:has(.s-auth-state.is-not_signed_in) { border-left-color: var(--warn); }
-.s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old)) { border-left-color: var(--text-3); }
+/* The user's report on #3367 (house style #2330/#2332/#2489, decision 3536dae9): the state colour is the house straight
+   left bar — the `.lbar` shape from app.css (a 3px line, square, short of the corners) — never a border-left
+   curving into the row's rounded corners. Drawn here, on the row's own class, rather than by a class in the markup (#3407
+   review): this sheet loads apart from the shell and its markup, so a tab holding either older half still draws one bar
+   in its state's colour (older markup + this sheet: this bar; this markup is unchanged + an older sheet: the old edge),
+   never two. The 3px the bar takes is added to the row's padding. */
+.s-accounts .s-account-row { display: block; position: relative; min-height: 0; padding: var(--s-3) var(--s-4) var(--s-3) calc(var(--s-4) + 3px); background: var(--bg); overflow: visible; }
+.s-accounts .s-account-row::before { content: ""; position: absolute; left: 0; top: var(--s-2); bottom: var(--s-2); width: 3px; background: var(--ok); pointer-events: none; }
+.s-account-row:has(.s-auth-state.is-not_signed_in)::before { background: var(--warn); }
+.s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old))::before { background: var(--text-3); }
 .s-account-row details { margin-top: var(--s-3); }
 
 /* Layer 1: the title bar — name, state, default tag on the left; the buttons (`.s-actions`) on the right. */
