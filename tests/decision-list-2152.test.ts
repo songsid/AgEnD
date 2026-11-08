@@ -33,6 +33,7 @@ function fleet(db: SchedulerDb) {
   const sent: any[] = [];
   const fake: any = { scheduler: { db }, fleetConfig: { instances: { dev: { working_directory: WD } } }, logger: { warn() {}, info() {}, debug() {} },
     instanceIpcClients: new Map([["dev", { send: (m: unknown) => sent.push(m) }]]) };
+  fake.decisionProjectRootFor = (FleetManager.prototype as any).decisionProjectRootFor.bind(fake);   // #3454
   return {
     ipc(payload: Record<string, unknown>) {
       (FleetManager.prototype as any).handleDecisionCrud.call(fake, "dev", { type: "fleet_decision_list", fleetRequestId: "r1", payload, meta: { working_directory: WD } });

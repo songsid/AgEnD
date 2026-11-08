@@ -39,6 +39,7 @@ function fleet(db: SchedulerDb) {
   fake.checkToolPermission = (FleetManager.prototype as any).checkToolPermission.bind(fake);
   fake.decisionSupersedes = (FleetManager.prototype as any).decisionSupersedes.bind(fake);
   fake.decisionScopeFor = (FleetManager.prototype as any).decisionScopeFor.bind(fake);  // no teams: the default scope stays project
+  fake.decisionProjectRootFor = (FleetManager.prototype as any).decisionProjectRootFor.bind(fake);   // #3454
   return {
     async ipc(who: string, payload: Record<string, unknown>) {
       await (FleetManager.prototype as any).handleDecisionCrud.call(fake, who, { type: "fleet_decision_create", fleetRequestId: "r1", payload, meta: { working_directory: (instances as Record<string, { working_directory: string }>)[who]!.working_directory } });
