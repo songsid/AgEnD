@@ -71,6 +71,7 @@ const receipt: any = { mode, skew, source: execFileSync("git", ["-C", repo, "rev
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
 const oldRef = process.env.OLD_REF ?? "7ab23b6c6", old = (file: string) => execFileSync("git", ["-C", repo, "show", `${oldRef}:src/ui/${file}`], { encoding: "utf8", maxBuffer: 16 << 20 });
 let api: ReturnType<typeof createHubMemberPairingApi> | undefined, member: HubMemberClient | undefined, inboxDb: Database.Database | undefined, online = false, memberLive = true;
+const extraPairings: ReturnType<typeof createHubMemberPairingApi>[] = [];
 const contexts: any[] = [];
 const shot = async (p: any, name: string) => { await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png"); };
 async function context(c: any, oldClient = false) {
@@ -147,6 +148,30 @@ try {
       await other.p.locator("[data-pairing-notice]").first().waitFor(); await admin.p.locator("[data-pairing-notice]").first().waitFor();
       check(tag + " initiator excluded", await a.p.locator("[data-pairing-notice]").count() === 0);
       await shot(a.p, tag + "-connected"); await shot(other.p, tag + "-notice"); await geometry(a.p, tag + " connected"); await geometry(other.p, tag + " notice");
+      if (process.env.EXTRA_NOTICES === "1") {
+        // A second recorded local API boundary isolates real Hub outbox→existing member retention/ACK/presentation.
+        // The primary member above used actual browser Settings confirmations; this secondary proof is not a browser claim.
+        const eh = join(scratch, `notice-peer-${i}`); mkdirSync(eh, { mode: 0o700 });
+        const extra = createHubMemberPairingApi({ home: eh, enabled: () => memberLive, pollMs: 250 }); extraPairings.push(extra);
+        await a.p.getByRole("button", { name: c.lang === "en" ? "Connect another fleet" : "連接另一個 Fleet", exact: true }).click();
+        await a.p.fill("#quickFleetLabel", "Other laptop · 另一台筆電"); await a.p.locator("[data-quick-pairing] form button[type=submit]").click();
+        const secondCode = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").first().innerText()).trim();
+        check(tag + " secondary local API accepted", (await extra.connect({ address: memberOrigin, code: secondCode }, () => true)).ok);
+        const pending = extra.view(); if (pending.state !== "pending") throw Error("secondary pending missing");
+        await extra.confirmFingerprint(pending.fingerprint.digest, () => true);
+        await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).click();
+        await local.p.locator("[data-pairing-notice]").first().waitFor({ timeout: 20000 });
+        const nid = await local.p.locator("[data-pairing-notice]").first().getAttribute("data-pairing-notice");
+        await other.p.locator(`[data-pairing-notice="${nid}"]`).waitFor(); await admin.p.locator(`[data-pairing-notice="${nid}"]`).waitFor();
+        const readDb = new Database(join(home, "hub/hub.sqlite"), { readonly: true });
+        try { await local.p.waitForFunction(() => !!document.querySelector(".hub-security-notices a"));
+          const delivered = readDb.prepare("SELECT state FROM hub_pairing_notice_targets WHERE notice_id=? AND kind='fleet' AND target=?").get(nid, profile.fleetId) as any;
+          check(tag + " existing member retained before Hub delivery ACK", delivered?.state === "delivered");
+        } finally { readDb.close(); }
+        const href = await local.p.locator(".hub-security-notices a").first().getAttribute("href");
+        check(tag + " exact non-bearer review link", href === `${origin}/ui/hub?securityNotice=${nid}`);
+        await shot(local.p, tag + "-existing-fleet-notice"); await shot(admin.p, tag + "-administrator-notice"); await geometry(local.p, tag + " fleet notice");
+      }
       await other.p.locator("[data-pairing-notice] .btn-danger").first().click(); await other.p.getByText(c.lang === "en" ? "Revoked" : "已撤銷", { exact: true }).first().waitFor();
       check(tag + " one-click revoke no dialog", await other.p.locator("[role=dialog]").count() === 0); await local.ctx.close(); await other.ctx.close();
     } finally { await a.ctx.close(); }
@@ -160,7 +185,7 @@ try {
   check("no browser errors", receipt.errors.length === 0); check("no CSP violations", receipt.csp.length === 0); check("no foreign browser requests", receipt.foreign.length === 0); receipt.status = "PASS";
 } catch (e: any) { receipt.status = "FAIL"; receipt.error = e.stack; for (const ctx of contexts) for (const p of ctx.pages()) await shot(p, `FAIL-${receipt.shots.length}`).catch(() => {}); throw e; }
 finally {
-  writeFileSync(join(art, `${mode}${skew ? "-skew" : ""}-browser.json`), JSON.stringify(receipt, null, 2)); memberLive = false; api?.cancel(); await member?.close(); inboxDb?.close();
+  writeFileSync(join(art, `${mode}${skew ? "-skew" : ""}${process.env.EXTRA_NOTICES === "1" ? "-notices" : ""}-browser.json`), JSON.stringify(receipt, null, 2)); memberLive = false; api?.cancel(); extraPairings.forEach(p => p.cancel()); await member?.close(); inboxDb?.close();
   await fx.close(); await service.close(); await directory.close(); await peer.close(); certs.cleanup(); rmSync(scratch, { recursive: true, force: true });
   tls.connect = originalConnect; syncBuiltinESMExports();
 }

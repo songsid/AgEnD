@@ -64,6 +64,12 @@ describe("quick-pairing guide preserves each proof and user intent", () => {
     expect(txt(p)).toContain("Connected"); expect(txt(p)).toContain("Sharing new agents is not included");
     expect(c.confirmPairing).not.toHaveBeenCalled(); expect(p.root.querySelector("form")).toBe(null);
   });
+  it("can start another allowed fleet without replaying the completed attempt", async () => {
+    const c = fake({ quickPairing: async () => ({ ok: true, attempt: { ...pending, state: "claimed", connected: true } }) });
+    const changed = vi.fn(), p = await mount(c, ui.QuickPairingGuide, { allowed: true, onConnected: changed });
+    expect(changed).toHaveBeenCalledOnce(); fire(button(p, "Connect another fleet"), "click"); await settle(10);
+    expect(p.root.querySelector("form")).not.toBe(null); expect(c.createQuickPairing).not.toHaveBeenCalled();
+  });
 });
 
 describe("security notices and exact owner narrowing", () => {

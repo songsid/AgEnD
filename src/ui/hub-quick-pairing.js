@@ -66,7 +66,8 @@ export function QuickPairingGuide({ allowed = false, publishAllowed = false, onC
     ${!attempt ? allowed ? html`<form onSubmit=${create} class="col"><label for="quickFleetLabel">${hq("label")}</label>
       <input id="quickFleetLabel" value=${label} maxLength="120" required placeholder=${hq("labelExample")} onInput=${e => setLabel(e.target.value)} />
       <p class="note">${hq("labelHint")} ${hq("privacy")}</p><div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !label.trim()}>${hq(stopped ? "again" : "start")}</button></div></form>` : null
-      : attempt.connected ? html`<p class="note" role="status"><b>${hq("connected")}</b></p><h4>${hq("publish")}</h4><p class="note">${hq(publishAllowed ? "publishHint" : "publishNo")}</p>`
+      : attempt.connected ? html`<p class="note" role="status"><b>${hq("connected")}</b></p><h4>${hq("publish")}</h4><p class="note">${hq(publishAllowed ? "publishHint" : "publishNo")}</p>
+        ${allowed ? html`<div class="field-row"><button type="button" class="btn" onClick=${() => { generation.current++; setAttempt(null); }}>${hq("another")}</button></div>` : null}`
       : html`<ol class="hub-steps"><li class=${attempt.state === "offered" ? "now" : "done"}><div class="hub-step-body"><h4>${hq("localTitle")}</h4><p class="note">${hq("local")}</p>
         <span class="note">${hq("address")}</span><code class="hub-fp-full">${attempt.memberOrigin}</code>
         ${attempt.code ? html`<span class="note">${hq("code")}</span><code class="hub-fp-groups">${attempt.code}</code><button type="button" class="btn btn-sm" onClick=${() => copy("code", attempt.code)}>${hq(copied === "code" ? "copied" : "copy")}</button>` : html`<p class="note">${hq("waiting")}</p>`}
