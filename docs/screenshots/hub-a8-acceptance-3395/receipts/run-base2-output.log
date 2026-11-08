@@ -1,0 +1,10 @@
+(node:473531) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+A8-01 PASS
+A8-04 PASS
+A8-05 FAIL no private agents disclosed
+A8-06 FAIL no private agents disclosed
+A8-07 PASS
+A8-08 FAIL Cannot read properties of undefined (reading 'fill')
+BASE_STAGE_DONE
+{"status":"FAIL","stories":[{"id":"A8-01","status":"PASS","checks":2},{"id":"A8-04","status":"PASS","checks":24},{"id":"A8-05","status":"FAIL","error":"no private agents disclosed","checks":3},{"id":"A8-06","status":"FAIL","error":"no private agents disclosed","checks":3},{"id":"A8-07","status":"PASS","checks":32},{"id":"A8-08","status":"FAIL","error":"Cannot read properties of undefined (reading 'fill')","checks":2}],"shots":32}

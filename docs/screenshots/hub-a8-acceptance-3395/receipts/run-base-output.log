@@ -1,0 +1,142 @@
+(node:473279) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+browserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --host-resolver-rules=MAP dashboard.lan.example 127.0.0.1 --user-data-dir=/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/playwright_chromiumdev_profile-kkbtYO --remote-debugging-pipe --no-startup-window
+<launched> pid=473341
+[pid=473341][err] [473341:473341:1108/095703.503166:FATAL:chrome/browser/process_singleton_posix.cc:315] Socket path too long: /home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/org.chromium.Chromium.pqBc79/SingletonSocket.
+[pid=473341][err] [1108/095703.509679:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)
+[pid=473341][err] [1108/095703.509763:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: No such file or directory (2)
+[pid=473341][err] Received signal 6
+[pid=473341][err] #0 0x59349ad6fe33 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6e7ce32)
+[pid=473341][err] #1 0x59349fd93d34 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbea0d33)
+[pid=473341][err] #2 0x725b5b442520 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4251f)
+[pid=473341][err] #3 0x593497228569 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3335568)
+[pid=473341][err] #4 0x34bf0cca5eb9b800 <unknown>
+[pid=473341][err] #5 0x725b5b442476 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x42475)
+[pid=473341][err] #6 0x7ffcf89e2ec0 ([stack]+0xda19c668ebf)
+[pid=473341][err] #7 0x5934991a3cfb (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x52b0cfa)
+[pid=473341][err] #8 0x593497d91e36 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3e9ee35)
+[pid=473341][err] #9 0x59349fd8a205 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe97204)
+[pid=473341][err] #10 0x59349fd48ecd (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55ecc)
+[pid=473341][err] #11 0x59349fd48e1d (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55e1c)
+[pid=473341][err] #12 0x593498d21cf2 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x4e2ecf1)
+[pid=473341][err] #13 0x59349a777b99 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6884b98)
+[pid=473341][err] #14 0x59349a879e90 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6986e8f)
+[pid=473341][err] #15 0x59349a5730d1 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x66800d0)
+[pid=473341][err] #16 0x59349a573064 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6680063)
+[pid=473341][err] #17 0x59349abd8a79 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce5a78)
+[pid=473341][err] #18 0x59349abd7a93 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce4a92)
+[pid=473341][err] #19 0x593499ce059c (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5ded59b)
+[pid=473341][err] #20 0x593499cde6fe (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5deb6fd)
+[pid=473341][err] #21 0x593499cdb06f (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5de806e)
+[pid=473341][err] #22 0x725b5b429d90 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+[pid=473341][err]   r8: 00007ffcf89e2e00  r9: 0000000000000001 r10: 0000000000000008 r11: 0000000000000246
+[pid=473341][err]  r12: 0000000000000006 r13: 0000000000000016 r14: 00000000000000e7 r15: 00007ffcf89e34d0
+[pid=473341][err]   di: 00000000000738fd  si: 00000000000738fd  bp: 00000000000738fd  bx: 0000725b5a35f300
+[pid=473341][err]   dx: 0000000000000006  ax: 0000000000000000  cx: 0000725b5b4969bc  sp: 00007ffcf89e2d30
+[pid=473341][err]   ip: 0000725b5b4969bc efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000
+[pid=473341][err]  trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000
+[pid=473341][err] [end of stack trace]
+Call log:
+  - <launching> /home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --host-resolver-rules=MAP dashboard.lan.example 127.0.0.1 --user-data-dir=/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/playwright_chromiumdev_profile-kkbtYO --remote-debugging-pipe --no-startup-window
+  - <launched> pid=473341
+  - [pid=473341][err] [473341:473341:1108/095703.503166:FATAL:chrome/browser/process_singleton_posix.cc:315] Socket path too long: /home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/org.chromium.Chromium.pqBc79/SingletonSocket.
+  - [pid=473341][err] [1108/095703.509679:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)
+  - [pid=473341][err] [1108/095703.509763:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: No such file or directory (2)
+  - [pid=473341][err] Received signal 6
+  - [pid=473341][err] #0 0x59349ad6fe33 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6e7ce32)
+  - [pid=473341][err] #1 0x59349fd93d34 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbea0d33)
+  - [pid=473341][err] #2 0x725b5b442520 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4251f)
+  - [pid=473341][err] #3 0x593497228569 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3335568)
+  - [pid=473341][err] #4 0x34bf0cca5eb9b800 <unknown>
+  - [pid=473341][err] #5 0x725b5b442476 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x42475)
+  - [pid=473341][err] #6 0x7ffcf89e2ec0 ([stack]+0xda19c668ebf)
+  - [pid=473341][err] #7 0x5934991a3cfb (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x52b0cfa)
+  - [pid=473341][err] #8 0x593497d91e36 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3e9ee35)
+  - [pid=473341][err] #9 0x59349fd8a205 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe97204)
+  - [pid=473341][err] #10 0x59349fd48ecd (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55ecc)
+  - [pid=473341][err] #11 0x59349fd48e1d (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55e1c)
+  - [pid=473341][err] #12 0x593498d21cf2 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x4e2ecf1)
+  - [pid=473341][err] #13 0x59349a777b99 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6884b98)
+  - [pid=473341][err] #14 0x59349a879e90 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6986e8f)
+  - [pid=473341][err] #15 0x59349a5730d1 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x66800d0)
+  - [pid=473341][err] #16 0x59349a573064 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6680063)
+  - [pid=473341][err] #17 0x59349abd8a79 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce5a78)
+  - [pid=473341][err] #18 0x59349abd7a93 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce4a92)
+  - [pid=473341][err] #19 0x593499ce059c (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5ded59b)
+  - [pid=473341][err] #20 0x593499cde6fe (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5deb6fd)
+  - [pid=473341][err] #21 0x593499cdb06f (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5de806e)
+  - [pid=473341][err] #22 0x725b5b429d90 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+  - [pid=473341][err]   r8: 00007ffcf89e2e00  r9: 0000000000000001 r10: 0000000000000008 r11: 0000000000000246
+  - [pid=473341][err]  r12: 0000000000000006 r13: 0000000000000016 r14: 00000000000000e7 r15: 00007ffcf89e34d0
+  - [pid=473341][err]   di: 00000000000738fd  si: 00000000000738fd  bp: 00000000000738fd  bx: 0000725b5a35f300
+  - [pid=473341][err]   dx: 0000000000000006  ax: 0000000000000000  cx: 0000725b5b4969bc  sp: 00007ffcf89e2d30
+  - [pid=473341][err]   ip: 0000725b5b4969bc efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000
+  - [pid=473341][err]  trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000
+  - [pid=473341][err] [end of stack trace]
+  - [pid=473341] <gracefully close start>
+  - [pid=473341] <kill>
+  - [pid=473341] <will force kill>
+  - [pid=473341][err] [473349:473349:0100/000000.536233:ERROR:content/zygote/zygote_linux.cc:662] write: Broken pipe (32)
+  - [pid=473341] <process did exit: exitCode=null, signal=SIGABRT>
+  - [pid=473341] starting temporary directories cleanup
+  - [pid=473341] finished temporary directories cleanup
+  - [pid=473341] <gracefully close end>
+
+    at bootFixture (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/smoke-fixture/index.mts:158:25)
+    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-owned.mts:71:48) {
+  log: [
+    '  - <launching> /home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --host-resolver-rules=MAP dashboard.lan.example 127.0.0.1 --user-data-dir=/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/playwright_chromiumdev_profile-kkbtYO --remote-debugging-pipe --no-startup-window',
+    '  - <launched> pid=473341',
+    '  - [pid=473341][err] [473341:473341:1108/095703.503166:FATAL:chrome/browser/process_singleton_posix.cc:315] Socket path too long: /home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp/org.chromium.Chromium.pqBc79/SingletonSocket.',
+    '  - [pid=473341][err] [1108/095703.509679:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)',
+    '  - [pid=473341][err] [1108/095703.509763:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: No such file or directory (2)',
+    '  - [pid=473341][err] Received signal 6',
+    '  - [pid=473341][err] #0 0x59349ad6fe33 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6e7ce32)',
+    '  - [pid=473341][err] #1 0x59349fd93d34 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbea0d33)',
+    '  - [pid=473341][err] #2 0x725b5b442520 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4251f)',
+    '  - [pid=473341][err] #3 0x593497228569 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3335568)',
+    '  - [pid=473341][err] #4 0x34bf0cca5eb9b800 <unknown>',
+    '  - [pid=473341][err] #5 0x725b5b442476 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x42475)',
+    '  - [pid=473341][err] #6 0x7ffcf89e2ec0 ([stack]+0xda19c668ebf)',
+    '  - [pid=473341][err] #7 0x5934991a3cfb (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x52b0cfa)',
+    '  - [pid=473341][err] #8 0x593497d91e36 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x3e9ee35)',
+    '  - [pid=473341][err] #9 0x59349fd8a205 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe97204)',
+    '  - [pid=473341][err] #10 0x59349fd48ecd (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55ecc)',
+    '  - [pid=473341][err] #11 0x59349fd48e1d (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0xbe55e1c)',
+    '  - [pid=473341][err] #12 0x593498d21cf2 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x4e2ecf1)',
+    '  - [pid=473341][err] #13 0x59349a777b99 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6884b98)',
+    '  - [pid=473341][err] #14 0x59349a879e90 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6986e8f)',
+    '  - [pid=473341][err] #15 0x59349a5730d1 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x66800d0)',
+    '  - [pid=473341][err] #16 0x59349a573064 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6680063)',
+    '  - [pid=473341][err] #17 0x59349abd8a79 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce5a78)',
+    '  - [pid=473341][err] #18 0x59349abd7a93 (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x6ce4a92)',
+    '  - [pid=473341][err] #19 0x593499ce059c (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5ded59b)',
+    '  - [pid=473341][err] #20 0x593499cde6fe (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5deb6fd)',
+    '  - [pid=473341][err] #21 0x593499cdb06f (/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome+0x5de806e)',
+    '  - [pid=473341][err] #22 0x725b5b429d90 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)',
+    '  - [pid=473341][err]   r8: 00007ffcf89e2e00  r9: 0000000000000001 r10: 0000000000000008 r11: 0000000000000246',
+    '  - [pid=473341][err]  r12: 0000000000000006 r13: 0000000000000016 r14: 00000000000000e7 r15: 00007ffcf89e34d0',
+    '  - [pid=473341][err]   di: 00000000000738fd  si: 00000000000738fd  bp: 00000000000738fd  bx: 0000725b5a35f300',
+    '  - [pid=473341][err]   dx: 0000000000000006  ax: 0000000000000000  cx: 0000725b5b4969bc  sp: 00007ffcf89e2d30',
+    '  - [pid=473341][err]   ip: 0000725b5b4969bc efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000',
+    '  - [pid=473341][err]  trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000',
+    '  - [pid=473341][err] [end of stack trace]',
+    '  - [pid=473341] <gracefully close start>',
+    '  - [pid=473341] <kill>',
+    '  - [pid=473341] <will force kill>',
+    '  - [pid=473341][err] [473349:473349:0100/000000.536233:ERROR:content/zygote/zygote_linux.cc:662] write: Broken pipe (32)',
+    '  - [pid=473341] <process did exit: exitCode=null, signal=SIGABRT>',
+    '  - [pid=473341] starting temporary directories cleanup',
+    '  - [pid=473341] finished temporary directories cleanup',
+    '  - [pid=473341] <gracefully close end>'
+  ]
+}
+
+Node.js v22.22.2

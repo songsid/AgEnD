@@ -1,0 +1,11 @@
+await story('A8-11-revoke-held-answer',async()=>{
+ const before=deliveries.length;await asker.p.fill('#msgIn','Hold this mock answer across grant revocation');await click(asker.p,'#sendBtn','Send before grant revocation');await waitFor(()=>deliveries.length===before+1,'held input reaches representative');await new Promise(r=>setTimeout(r,200));
+ await owner.p.reload();await owner.p.getByRole('button',{name:'More for asker',exact:true}).click();await owner.p.getByRole('menuitem',{name:'Revoke…',exact:true}).click();await owner.p.locator('.dlg-actions .btn-danger').click();await owner.p.getByRole('button',{name:'More for asker',exact:true}).waitFor({state:'detached'});await shot(owner.p,'A8-11-grant-revoked');
+ receipt.heldAnswerResult=await reportHook({correlationId:deliveries.at(-1).correlationId,caller:'general',text:'HELD_SECRET_MUST_NOT_APPEAR',callerCurrent:()=>memberLive});check('late answer refuses',receipt.heldAnswerResult.ok===false);
+ await asker.p.reload();await asker.p.locator('.hub-chat').waitFor();await shot(asker.p,'A8-11-stale-room-after-revoke');check('late protected answer absent',await asker.p.getByText('HELD_SECRET_MUST_NOT_APPEAR',{exact:true}).count()===0);
+ // Exercise withdrawing separately, through the still-owned fleet's normal switch.
+ await local.p.reload();await local.p.locator('.hub-exposure.is-shared input').click();await local.p.locator('.hub-exposure.is-shared').waitFor({state:'detached'});await shot(local.p,'A8-11-local-withdrawn');check('withdraw saved locally',true);
+});
+await story('A8-14-stale-quick-quota',async()=>{
+ await ownerOther.p.fill('#quickFleetLabel','Stale-tab extra fleet');await ownerOther.p.locator('[data-quick-pairing] form button[type=submit]').click();await ownerOther.p.locator('[data-quick-pairing] .ui-error, [data-quick-pairing] [role=alert], [data-quick-pairing] .empty').first().waitFor({timeout:3000}).catch(()=>{});await new Promise(r=>setTimeout(r,1000));await shot(ownerOther.p,'A8-14-stale-tab-quota');check('stale tab obtains no new code',await ownerOther.p.locator('[data-quick-pairing] .hub-fp-groups').count()===0);receipt.staleQuickText=await ownerOther.p.locator('[data-quick-pairing]').innerText();
+});

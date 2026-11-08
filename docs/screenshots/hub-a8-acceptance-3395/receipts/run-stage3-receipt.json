@@ -1,0 +1,2282 @@
+{
+  "mode": "current",
+  "skew": false,
+  "source": "f61e3608cdf888396474a99d1c76f766c8bf314f",
+  "browser": "156.0.8078.4",
+  "boundary": "Exact frozen alpha sealed Hub+full member factories, production AD driver over synthetic TLS/BER LDAPS and actual browser sessions/Settings confirmations. Representative input handoff and model answer are simulated at explicit callbacks; actual consent, admission, journal, lease/release and WSS. No daemon IPC, real model, native CLI/account/live fleet or tmux.",
+  "stories": [
+    {
+      "id": "A8-01",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-04",
+      "status": "PASS",
+      "checks": 24
+    },
+    {
+      "id": "A8-05",
+      "status": "PASS",
+      "checks": 16
+    },
+    {
+      "id": "A8-06",
+      "status": "PASS",
+      "checks": 16
+    },
+    {
+      "id": "A8-07",
+      "status": "PASS",
+      "checks": 32
+    },
+    {
+      "id": "A8-08",
+      "status": "FAIL",
+      "error": "page.waitForFunction: Timeout 30000ms exceeded.",
+      "checks": 2
+    }
+  ],
+  "clicks": [
+    "Administration → Group permissions",
+    "Resolve owner group",
+    "Resolve Department A",
+    "Turn on draft",
+    "Save shown impact",
+    "Connect my fleet",
+    "Local Connect"
+  ],
+  "deliveries": [],
+  "holds": [],
+  "checks": [
+    {
+      "name": "unsaved policy stays Off",
+      "ok": true
+    },
+    {
+      "name": "two saved groups",
+      "ok": true
+    },
+    {
+      "name": "A8-04-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-desk-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 desk-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-desk-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 desk-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-desk-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 desk-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-phone-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 phone-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-phone-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 phone-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-phone-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 phone-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-05-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-desk-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 desk-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-desk-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 desk-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-desk-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 desk-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-phone-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 phone-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-phone-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 phone-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-phone-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 phone-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-desk-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 desk-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-desk-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 desk-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-desk-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 desk-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-phone-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 phone-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-phone-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 phone-light-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-phone-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 phone-dark-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-07-desk-light-en-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-desk-light-zh-TW-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-desk-dark-en-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-desk-dark-zh-TW-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-phone-light-en-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-phone-light-zh-TW-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-phone-dark-en-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-phone-dark-zh-TW-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-08-start no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-08-other-session no horizontal overflow",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "A8-01-impact-before-save.png",
+    "A8-01-saved.png",
+    "A8-04-desk-light-en.png",
+    "A8-04-desk-light-zh-TW.png",
+    "A8-04-desk-dark-en.png",
+    "A8-04-desk-dark-zh-TW.png",
+    "A8-04-phone-light-en.png",
+    "A8-04-phone-light-zh-TW.png",
+    "A8-04-phone-dark-en.png",
+    "A8-04-phone-dark-zh-TW.png",
+    "A8-05-desk-light-en.png",
+    "A8-05-desk-light-en-settled.png",
+    "A8-05-desk-light-zh-TW.png",
+    "A8-05-desk-light-zh-TW-settled.png",
+    "A8-05-desk-dark-en.png",
+    "A8-05-desk-dark-en-settled.png",
+    "A8-05-desk-dark-zh-TW.png",
+    "A8-05-desk-dark-zh-TW-settled.png",
+    "A8-05-phone-light-en.png",
+    "A8-05-phone-light-en-settled.png",
+    "A8-05-phone-light-zh-TW.png",
+    "A8-05-phone-light-zh-TW-settled.png",
+    "A8-05-phone-dark-en.png",
+    "A8-05-phone-dark-en-settled.png",
+    "A8-05-phone-dark-zh-TW.png",
+    "A8-05-phone-dark-zh-TW-settled.png",
+    "A8-06-desk-light-en.png",
+    "A8-06-desk-light-en-settled.png",
+    "A8-06-desk-light-zh-TW.png",
+    "A8-06-desk-light-zh-TW-settled.png",
+    "A8-06-desk-dark-en.png",
+    "A8-06-desk-dark-en-settled.png",
+    "A8-06-desk-dark-zh-TW.png",
+    "A8-06-desk-dark-zh-TW-settled.png",
+    "A8-06-phone-light-en.png",
+    "A8-06-phone-light-en-settled.png",
+    "A8-06-phone-light-zh-TW.png",
+    "A8-06-phone-light-zh-TW-settled.png",
+    "A8-06-phone-dark-en.png",
+    "A8-06-phone-dark-en-settled.png",
+    "A8-06-phone-dark-zh-TW.png",
+    "A8-06-phone-dark-zh-TW-settled.png",
+    "A8-07-desk-light-en-held.png",
+    "A8-07-desk-light-zh-TW-held.png",
+    "A8-07-desk-dark-en-held.png",
+    "A8-07-desk-dark-zh-TW-held.png",
+    "A8-07-phone-light-en-held.png",
+    "A8-07-phone-light-zh-TW-held.png",
+    "A8-07-phone-dark-en-held.png",
+    "A8-07-phone-dark-zh-TW-held.png",
+    "A8-08-start.png",
+    "A8-08-other-session.png",
+    "A8-08-FAIL-52.png",
+    "A8-08-FAIL-53.png",
+    "A8-08-FAIL-54.png"
+  ],
+  "errors": [],
+  "csp": [],
+  "foreign": [],
+  "api": [
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "catalogs": [
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    }
+  ],
+  "emptyWelcome": [
+    {
+      "login": "ungranted",
+      "case": "desk-light-en",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "desk-light-zh-TW",
+      "present": true
+    },
+    {
+      "login": "ungranted",
+      "case": "desk-dark-en",
+      "present": true
+    },
+    {
+      "login": "ungranted",
+      "case": "desk-dark-zh-TW",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "phone-light-en",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "phone-light-zh-TW",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "phone-dark-en",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "phone-dark-zh-TW",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "desk-light-en",
+      "present": true
+    },
+    {
+      "login": "owner",
+      "case": "desk-light-zh-TW",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "desk-dark-en",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "desk-dark-zh-TW",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "phone-light-en",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "phone-light-zh-TW",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "phone-dark-en",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "phone-dark-zh-TW",
+      "present": false
+    }
+  ],
+  "status": "FAIL"
+}

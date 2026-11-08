@@ -1,0 +1,1 @@
+receipt.expiryRetryViews=extraPairings.map(x=>x.view());for(const c of contexts)for(const p of c.pages())if(p.url().startsWith(fx.base)){receipt.expiryRetryUi=await p.locator('body').innerText();await shot(p,'A8-09-expired-retry-settled');console.log('EXPIRY_RETRY_UI',receipt.expiryRetryUi.slice(-3000));}

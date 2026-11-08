@@ -1,0 +1,10 @@
+peer.state.mode='ok';
+await story('A8-13-policy-off-on-manual-control',async()=>{
+ await admin.p.reload();await admin.p.locator('.hub-groups-state button').click();await admin.p.locator('.hub-groups-preview .btn-primary').waitFor();await shot(admin.p,'A8-13-off-impact');await admin.p.locator('.hub-groups-preview .btn-primary').click();await admin.p.locator('.hub-groups-preview').waitFor({state:'detached'});await admin.p.locator('.hub-groups-paused').waitFor();check('group-derived resources paused on off',await admin.p.locator('[data-paused]').count()>0);await shot(admin.p,'A8-13-off-paused');await waitFor(()=>online,'manual control reconnects online');check('manual control remains paired after group off',api.view().state==='paired');
+ const o=await context(cases[0]);await signIn(o.p,'owner');await o.p.locator('[data-welcome=no-actions]').waitFor();await shot(o.p,'A8-13-owner-off-no-actions');await o.ctx.close();
+ await admin.p.locator('.hub-groups-state button').click();await admin.p.locator('.hub-groups-preview .btn-primary').waitFor();await admin.p.locator('.hub-groups-preview .btn-primary').click();await admin.p.locator('.hub-groups-preview').waitFor({state:'detached'});check('enabling keeps suspended group resources awaiting Resume',await admin.p.locator('[data-paused]').count()>0);await shot(admin.p,'A8-13-on-still-paused');await waitFor(()=>online,'manual control online after on');
+});
+await story('A8-10-exact-revoke-manual-control',async()=>{
+ await ownerOther.p.locator('[data-pairing-notice] .btn-danger').first().click();await ownerOther.p.locator('[data-pairing-notice] .tag').first().waitFor();await shot(ownerOther.p,'A8-10-owner-exact-revoke');check('independent manual control remains online',online&&api.view().state==='paired');await globalThis.a8Manual.m.p.reload();await globalThis.a8Manual.m.p.locator('[data-fleet-status=active]').waitFor();await shot(globalThis.a8Manual.m.p,'A8-10-control-fleet-active');
+});
+receipt.finalStates={profileState:api.view().state,online,holds:receipt.holds};

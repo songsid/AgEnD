@@ -1,0 +1,123 @@
+{
+  "at": "2026-11-08T02:26:12.254072+00:00",
+  "source": "f61e3608cdf888396474a99d1c76f766c8bf314f",
+  "serviceClose": {
+    "allCloseCallsCompleted": true,
+    "source": "f61e3608cdf888396474a99d1c76f766c8bf314f",
+    "at": "2026-11-08T02:25:54.717Z"
+  },
+  "ports": [
+    {
+      "port": 43955,
+      "bindAvailable": false,
+      "error": "[Errno 98] Address already in use",
+      "reuseAddressBindAvailable": true,
+      "note": "plain bind blocked by TCP TIME_WAIT; no listener in ss, SO_REUSEADDR bind succeeds"
+    },
+    {
+      "port": 46045,
+      "bindAvailable": true
+    },
+    {
+      "port": 46859,
+      "bindAvailable": true
+    },
+    {
+      "port": 46860,
+      "bindAvailable": true
+    },
+    {
+      "port": 39797,
+      "bindAvailable": true
+    }
+  ],
+  "processes": [
+    {
+      "pid": 481356,
+      "name": "node",
+      "absent": true
+    },
+    {
+      "pid": 481374,
+      "name": "esbuild",
+      "absent": true
+    },
+    {
+      "pid": 481420,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481427,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481428,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481449,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481452,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481468,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481504,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 481517,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 489546,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 489565,
+      "name": "chrome",
+      "absent": true
+    },
+    {
+      "pid": 494197,
+      "name": "ps",
+      "absent": true
+    }
+  ],
+  "roots": [
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-stage4/browser-88PR4S",
+      "absent": true
+    },
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.t8a/smoke-fx-JkNdDa",
+      "absent": true
+    },
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/browser-GJzrDk",
+      "removedAbandonedOwnedScratch": true
+    },
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.t8a",
+      "removedDedicatedOwnedTemp": true
+    },
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-base/tmp",
+      "removedDedicatedOwnedTemp": true
+    }
+  ]
+}

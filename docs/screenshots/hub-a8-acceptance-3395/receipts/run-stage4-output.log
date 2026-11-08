@@ -1,0 +1,255 @@
+(node:481356) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+A8-01 PASS
+A8-04 PASS
+A8-05 PASS
+A8-06 PASS
+A8-07 PASS
+A8-08 PASS
+A8-02 FAIL locator.check: Clicking the checkbox did not change its state
+Call log:
+  - waiting for locator('.hub-exposure input[role=switch]')
+    - locator resolved to <input role="switch" type="checkbox" class="s-ui-toggle" aria-label="Share Acceptance agent · 驗收助手"/>
+  - attempting click action
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - performing click action
+    - click action done
+    - waiting for scheduled navigations to finish
+    - navigations have finished
+
+EXTENDED_STAGE_DONE
+A8-02-publication-grant-chat PASS
+CONTROL_DONE
+A8-03-other-department PASS
+A8-05-grant-boundary PASS
+A8-12-negative-restore-resume PASS
+CONTROL_DONE
+A8-11-revoke-held-answer FAIL locator.click: Timeout 12000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'More for asker', exact: true })
+    - locator resolved to <button type="button" class="icon-btn" aria-haspopup="menu" aria-expanded="false" title="More for asker" aria-label="More for asker">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <dialog open="" class="dlg" data-trust="dialog" aria-label="Allow someone to ask Acceptance agent · 驗收助手">…</dialog> intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <dialog open="" class="dlg" data-trust="dialog" aria-label="Allow someone to ask Acceptance agent · 驗收助手">…</dialog> intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    22 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <dialog open="" class="dlg" data-trust="dialog" aria-label="Allow someone to ask Acceptance agent · 驗收助手">…</dialog> intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+A8-14-stale-quick-quota PASS
+CONTROL_DONE
+A8-11-revoke-completion PASS
+A8-08-connected-matrix PASS
+CONTROL_DONE
+A8-09-pending-matrix-mismatch-stop FAIL locator.waitFor: Timeout 12000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'They match', exact: true }) to be visible
+
+CONTROL_DONE
+CONTROL_ERROR TypeError: x.url is not a function
+    at eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-stage4.mts:3:17352), <anonymous>:1:391)
+    at Array.map (<anonymous>)
+    at eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-stage4.mts:3:17352), <anonymous>:1:376)
+    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-stage4.mts:154:8)
+CONTROL_DONE
+A8-09-pending-continuation PASS
+CONTROL_DONE
+A8-15-manual-no-group-unknown PASS
+CONTROL_DONE
+A8-13-policy-off-on-manual-control PASS
+A8-10-exact-revoke-manual-control FAIL independent manual control remains online
+CONTROL_DONE
+A8-10-control-after-link-refresh PASS
+CLEAN_PROBE {"backpressure":[{"probe":1,"at":1794103960742,"personInflight":4,"total":4,"error":"backpressure","elapsed":0},{"probe":2,"at":1794103962404,"personInflight":4,"total":4,"error":"backpressure","elapsed":0},{"probe":3,"at":1794103964262,"personInflight":4,"total":4,"error":"backpressure","elapsed":0}],"responses":[{"probe":1,"at":1794103960746,"path":"/hub/v1/exposures","status":429,"retryAfter":"10","body":{"code":"backpressure"}},{"probe":1,"at":1794103960840,"path":"/hub/v1/rooms","status":403,"body":{"code":"denied"}},{"probe":2,"at":1794103962410,"path":"/hub/v1/exposures","status":429,"retryAfter":"10","body":{"code":"backpressure"}},{"probe":2,"at":1794103962511,"path":"/hub/v1/rooms","status":403,"body":{"code":"denied"}},{"probe":3,"at":1794103964267,"path":"/hub/v1/exposures","status":429,"retryAfter":"10","body":{"code":"backpressure"}},{"probe":3,"at":1794103964342,"path":"/hub/v1/rooms","status":403,"body":{"code":"denied"}}]}
+CONTROL_DONE
+EXPIRY_DEADLINE 2026-11-08T02:24:01.778Z
+A8-09-expiry-setup PASS
+A8-11-settled-revoked-room FAIL locator.waitFor: Timeout 12000ms exceeded.
+Call log:
+  - waiting for getByText('This chat has closed: your permission ended, or the agent is no longer shared.', { exact: true }) to be visible
+
+CONTROL_DONE
+A8-15-manual-above-automatic-quota FAIL locator.click: Error: strict mode violation: getByRole('button', { name: 'Approve…', exact: true }) resolved to 2 elements:
+    1) <button type="button" class="btn btn-sm btn-primary">Approve…</button> aka getByRole('button', { name: 'Approve…' }).first()
+    2) <button type="button" class="btn btn-sm btn-primary">Approve…</button> aka getByRole('button', { name: 'Approve…' }).nth(1)
+
+Call log:
+  - waiting for getByRole('button', { name: 'Approve…', exact: true })
+
+A8-15-ineligible-manual-refused PASS
+CONTROL_DONE
+A8-15-above-quota-completion FAIL second manual credential pinned
+CONTROL_DONE
+EXTRA_VIEWS [{"state":"unpaired"},{"state":"pending","memberOrigin":"https://127.0.0.1:46045","fingerprint":{"kind":"pairing","digest":"d00837c2a2e67b642b668608041c773d0d07071af822f6feb8a9f34dea0a4da6"},"expiresAt":1794104641778,"ownerConfirmed":null,"adminApproved":null,"localConfirmed":false},{"state":"held","hold":"unknown_outcome","memberOrigin":"https://127.0.0.1:46045","hubId":"afa4be44-1e79-4831-b7f2-7a18ea3f0102"}]
+LOCAL_PROGRESS Skip to the conversation
+AgEnD
+Fleet
+Needs you
+Notices
+Search
+Ctrl K
+New agent
+Instances
+Custom
+Edit
+GENERAL
+G
+C
+General 總管
+general
+Backend: Claude Code
+Filter: name, model, backend
+Status
+
+1 / 1
+
+Settings
+Session
+Settings
+v1.22.0
+Setup wizard
+Search settings — token, 語言, session…
+YOU
+Preferences
+Look
+FLEET
+Agents
+Runtime
+Shared agent settings
+Notifications
+Chat & connections
+Web dashboard
+Access & security
+Hub
+Advanced
+Hub
+Whole fleet
+
+Connect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.
+
+Hub membership
+
+Off by default. Enabling does not pair a Hub or share an agent; choose those separately below.
+
+Allow this fleet to connect to a Hub
+
+Turning this off stops new Hub work and answer disclosure. Existing agent conversations remain.
+
+Connect to a Hub
+
+A Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.
+
+On hold
+
+The last pairing step's result is unknown. Nothing runs until it is checked.
+
+https://127.0.0.1:46045
+
+Start over
+A8-14-retained-client-css PASS
+CONTROL_DONE
+CONTROL_ERROR ReferenceError: Database is not defined
+    at eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-stage4.mts:3:17352), <anonymous>:3:10)
+    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-acceptance/scripts/manual/hub-quick-pairing/a8-stage4.mts:154:8)
+CONTROL_DONE
+CLAIM_BUDGET_DIAGNOSTIC [{"since":1794104112262,"attempts":60}]
+A8-15-above-quota-production-poll PASS
+CONTROL_DONE
+A8-08-phone-connected-detail PASS
+CONTROL_DONE
+WAITING_NATURAL_EXPIRY 2026-11-08T02:24:01.778Z
+A8-09-natural-expiry FAIL page.waitForFunction: Timeout 12000ms exceeded.
+CONTROL_DONE
+EXPIRY_RETRY_UI Skip to the conversation
+AgEnD
+Fleet
+Needs you
+Notices
+Search
+Ctrl K
+New agent
+Instances
+Custom
+Edit
+GENERAL
+G
+C
+General 總管
+general
+Backend: Claude Code
+Filter: name, model, backend
+Status
+
+1 / 1
+
+Settings
+Session
+Settings
+v1.22.0
+Setup wizard
+Search settings — token, 語言, session…
+YOU
+Preferences
+Look
+FLEET
+Agents
+Runtime
+Shared agent settings
+Notifications
+Chat & connections
+Web dashboard
+Access & security
+Hub
+Advanced
+Hub
+Whole fleet
+
+Connect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.
+
+Confirmed, but applying it failed
+hub
+Connect this fleet to the Hub at https://127.0.0.1:46045
+It asks the Hub's owner and administrator to approve it
+
+Change could not be applied. Review the configuration and try again.
+
+Hub membership
+
+Off by default. Enabling does not pair a Hub or share an agent; choose those separately below.
+
+Allow this fleet to connect to a Hub
+
+Turning this off stops new Hub work and answer disclosure. Existing agent conversations remain.
+
+Connect to a Hub
+
+A Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.
+
+Hub address
+The https:// address your Hub administrator gave you.
+One-time pairing code
+Connect
+
+Waiting for your confirmation
+CONTROL_DONE
+A8-09-expired-reuse-refused-settled PASS
+CONTROL_DONE
+{"status":"FAIL","stories":[{"id":"A8-01","status":"PASS","checks":2},{"id":"A8-04","status":"PASS","checks":6},{"id":"A8-05","status":"PASS","checks":4},{"id":"A8-06","status":"PASS","checks":4},{"id":"A8-07","status":"PASS","checks":8},{"id":"A8-08","status":"PASS","checks":5},{"id":"A8-02","status":"FAIL","error":"locator.check: Clicking the checkbox did not change its state\nCall log:\n  - waiting for locator('.hub-exposure input[role=switch]')\n    - locator resolved to <input role=\"switch\" type=\"checkbox\" class=\"s-ui-toggle\" aria-label=\"Share Acceptance agent · 驗收助手\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n    - navigations have finished\n","checks":0},{"id":"A8-02-publication-grant-chat","status":"PASS","checks":1},{"id":"A8-03-other-department","status":"PASS","checks":2},{"id":"A8-05-grant-boundary","status":"PASS","checks":1},{"id":"A8-12-negative-restore-resume","status":"PASS","checks":2},{"id":"A8-11-revoke-held-answer","status":"FAIL","error":"locator.click: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'More for asker', exact: true })\n    - locator resolved to <button type=\"button\" class=\"icon-btn\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"More for asker\" aria-label=\"More for asker\">…</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    22 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n","checks":0},{"id":"A8-14-stale-quick-quota","status":"PASS","checks":1},{"id":"A8-11-revoke-completion","status":"PASS","checks":3},{"id":"A8-08-connected-matrix","status":"PASS","checks":8},{"id":"A8-09-pending-matrix-mismatch-stop","status":"FAIL","error":"locator.waitFor: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'They match', exact: true }) to be visible\n","checks":2},{"id":"A8-09-pending-continuation","status":"PASS","checks":10},{"id":"A8-15-manual-no-group-unknown","status":"PASS","checks":3},{"id":"A8-13-policy-off-on-manual-control","status":"PASS","checks":3},{"id":"A8-10-exact-revoke-manual-control","status":"FAIL","error":"independent manual control remains online","checks":1},{"id":"A8-10-control-after-link-refresh","status":"PASS","checks":1},{"id":"A8-09-expiry-setup","status":"PASS","checks":1},{"id":"A8-11-settled-revoked-room","status":"FAIL","error":"locator.waitFor: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByText('This chat has closed: your permission ended, or the agent is no longer shared.', { exact: true }) to be visible\n","checks":0},{"id":"A8-15-manual-above-automatic-quota","status":"FAIL","error":"locator.click: Error: strict mode violation: getByRole('button', { name: 'Approve…', exact: true }) resolved to 2 elements:\n    1) <button type=\"button\" class=\"btn btn-sm btn-primary\">Approve…</button> aka getByRole('button', { name: 'Approve…' }).first()\n    2) <button type=\"button\" class=\"btn btn-sm btn-primary\">Approve…</button> aka getByRole('button', { name: 'Approve…' }).nth(1)\n\nCall log:\n  - waiting for getByRole('button', { name: 'Approve…', exact: true })\n","checks":0},{"id":"A8-15-ineligible-manual-refused","status":"PASS","checks":1},{"id":"A8-15-above-quota-completion","status":"FAIL","error":"second manual credential pinned","checks":0},{"id":"A8-14-retained-client-css","status":"PASS","checks":2},{"id":"A8-15-above-quota-production-poll","status":"PASS","checks":2},{"id":"A8-08-phone-connected-detail","status":"PASS","checks":5},{"id":"A8-09-natural-expiry","status":"FAIL","error":"page.waitForFunction: Timeout 12000ms exceeded.","checks":1},{"id":"A8-09-expired-reuse-refused-settled","status":"PASS","checks":3}],"shots":134}

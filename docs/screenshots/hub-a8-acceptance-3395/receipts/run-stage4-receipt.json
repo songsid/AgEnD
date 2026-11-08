@@ -1,0 +1,7862 @@
+{
+  "mode": "current",
+  "skew": false,
+  "source": "f61e3608cdf888396474a99d1c76f766c8bf314f",
+  "browser": "156.0.8078.4",
+  "boundary": "Exact frozen alpha sealed Hub+full member factories, production AD driver over synthetic TLS/BER LDAPS and actual browser sessions/Settings confirmations. Representative input handoff and model answer are simulated at explicit callbacks; actual consent, admission, journal, lease/release and WSS. No daemon IPC, real model, native CLI/account/live fleet or tmux.",
+  "stories": [
+    {
+      "id": "A8-01",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-04",
+      "status": "PASS",
+      "checks": 6
+    },
+    {
+      "id": "A8-05",
+      "status": "PASS",
+      "checks": 4
+    },
+    {
+      "id": "A8-06",
+      "status": "PASS",
+      "checks": 4
+    },
+    {
+      "id": "A8-07",
+      "status": "PASS",
+      "checks": 8
+    },
+    {
+      "id": "A8-08",
+      "status": "PASS",
+      "checks": 5
+    },
+    {
+      "id": "A8-02",
+      "status": "FAIL",
+      "error": "locator.check: Clicking the checkbox did not change its state\nCall log:\n  - waiting for locator('.hub-exposure input[role=switch]')\n    - locator resolved to <input role=\"switch\" type=\"checkbox\" class=\"s-ui-toggle\" aria-label=\"Share Acceptance agent · 驗收助手\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n    - navigations have finished\n",
+      "checks": 0
+    },
+    {
+      "id": "A8-02-publication-grant-chat",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-03-other-department",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-05-grant-boundary",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-12-negative-restore-resume",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-11-revoke-held-answer",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'More for asker', exact: true })\n    - locator resolved to <button type=\"button\" class=\"icon-btn\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"More for asker\" aria-label=\"More for asker\">…</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    22 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <dialog open=\"\" class=\"dlg\" data-trust=\"dialog\" aria-label=\"Allow someone to ask Acceptance agent · 驗收助手\">…</dialog> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "checks": 0
+    },
+    {
+      "id": "A8-14-stale-quick-quota",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-11-revoke-completion",
+      "status": "PASS",
+      "checks": 3
+    },
+    {
+      "id": "A8-08-connected-matrix",
+      "status": "PASS",
+      "checks": 8
+    },
+    {
+      "id": "A8-09-pending-matrix-mismatch-stop",
+      "status": "FAIL",
+      "error": "locator.waitFor: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'They match', exact: true }) to be visible\n",
+      "checks": 2
+    },
+    {
+      "id": "A8-09-pending-continuation",
+      "status": "PASS",
+      "checks": 10
+    },
+    {
+      "id": "A8-15-manual-no-group-unknown",
+      "status": "PASS",
+      "checks": 3
+    },
+    {
+      "id": "A8-13-policy-off-on-manual-control",
+      "status": "PASS",
+      "checks": 3
+    },
+    {
+      "id": "A8-10-exact-revoke-manual-control",
+      "status": "FAIL",
+      "error": "independent manual control remains online",
+      "checks": 1
+    },
+    {
+      "id": "A8-10-control-after-link-refresh",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-09-expiry-setup",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-11-settled-revoked-room",
+      "status": "FAIL",
+      "error": "locator.waitFor: Timeout 12000ms exceeded.\nCall log:\n  - waiting for getByText('This chat has closed: your permission ended, or the agent is no longer shared.', { exact: true }) to be visible\n",
+      "checks": 0
+    },
+    {
+      "id": "A8-15-manual-above-automatic-quota",
+      "status": "FAIL",
+      "error": "locator.click: Error: strict mode violation: getByRole('button', { name: 'Approve…', exact: true }) resolved to 2 elements:\n    1) <button type=\"button\" class=\"btn btn-sm btn-primary\">Approve…</button> aka getByRole('button', { name: 'Approve…' }).first()\n    2) <button type=\"button\" class=\"btn btn-sm btn-primary\">Approve…</button> aka getByRole('button', { name: 'Approve…' }).nth(1)\n\nCall log:\n  - waiting for getByRole('button', { name: 'Approve…', exact: true })\n",
+      "checks": 0
+    },
+    {
+      "id": "A8-15-ineligible-manual-refused",
+      "status": "PASS",
+      "checks": 1
+    },
+    {
+      "id": "A8-15-above-quota-completion",
+      "status": "FAIL",
+      "error": "second manual credential pinned",
+      "checks": 0
+    },
+    {
+      "id": "A8-14-retained-client-css",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-15-above-quota-production-poll",
+      "status": "PASS",
+      "checks": 2
+    },
+    {
+      "id": "A8-08-phone-connected-detail",
+      "status": "PASS",
+      "checks": 5
+    },
+    {
+      "id": "A8-09-natural-expiry",
+      "status": "FAIL",
+      "error": "page.waitForFunction: Timeout 12000ms exceeded.",
+      "checks": 1
+    },
+    {
+      "id": "A8-09-expired-reuse-refused-settled",
+      "status": "PASS",
+      "checks": 3
+    }
+  ],
+  "clicks": [
+    "Administration → Group permissions",
+    "Resolve owner group",
+    "Resolve Department A",
+    "Turn on draft",
+    "Save shown impact",
+    "Connect my fleet",
+    "Local Connect",
+    "Confirm local fingerprint",
+    "Allow Department A asker",
+    "Send question",
+    "Send after group removal",
+    "Retry after group restore before Resume",
+    "Send after explicit Resume",
+    "Send before grant revocation"
+  ],
+  "deliveries": [
+    {
+      "agent": "general",
+      "correlationId": "hub-ee0fa44e-64cb-4a6d-9d12-34d39951fd7e"
+    },
+    {
+      "agent": "general",
+      "correlationId": "hub-2a42f0d0-c86e-464c-a70f-0bf385eb2aac"
+    },
+    {
+      "agent": "general",
+      "correlationId": "hub-31f3bcb2-14b1-4d91-b20e-61ca0ef12572"
+    }
+  ],
+  "holds": [],
+  "checks": [
+    {
+      "name": "unsaved policy stays Off",
+      "ok": true
+    },
+    {
+      "name": "two saved groups",
+      "ok": true
+    },
+    {
+      "name": "A8-04-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-04-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-04 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "none has contact guidance",
+      "ok": true
+    },
+    {
+      "name": "A8-05-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-05-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-05 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 desk-light-en actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-06-phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-06 phone-dark-zh-TW actual welcome flags",
+      "ok": true
+    },
+    {
+      "name": "A8-07-desk-light-en-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-07-phone-dark-zh-TW-held no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown visible",
+      "ok": true
+    },
+    {
+      "name": "both actions held",
+      "ok": true
+    },
+    {
+      "name": "retry recovers without resume",
+      "ok": true
+    },
+    {
+      "name": "A8-08-start no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "A8-08-other-session no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "actual fingerprints match",
+      "ok": true
+    },
+    {
+      "name": "full member has exposure API",
+      "ok": true
+    },
+    {
+      "name": "notices in other session/admin",
+      "ok": true
+    },
+    {
+      "name": "exact mock answer visible through full pipeline",
+      "ok": true
+    },
+    {
+      "name": "no protected answer shown to outsider",
+      "ok": true
+    },
+    {
+      "name": "no extra representative input",
+      "ok": true
+    },
+    {
+      "name": "same department without grant sees zero agents",
+      "ok": true
+    },
+    {
+      "name": "negative group causes no new input",
+      "ok": true
+    },
+    {
+      "name": "rejoin does not deliver before Resume",
+      "ok": true
+    },
+    {
+      "name": "stale tab obtains no new code",
+      "ok": true
+    },
+    {
+      "name": "late answer refuses",
+      "ok": true
+    },
+    {
+      "name": "late protected answer absent",
+      "ok": true
+    },
+    {
+      "name": "withdraw saved locally",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW pending no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "unknown does not create local profile",
+      "ok": true
+    },
+    {
+      "name": "mismatch cancels without credential",
+      "ok": true
+    },
+    {
+      "name": "manual exact owner/local fingerprint",
+      "ok": true
+    },
+    {
+      "name": "eligible no-group owner pairs with explicit admin even unknown membership",
+      "ok": true
+    },
+    {
+      "name": "manual approval grants no welcome actions",
+      "ok": true
+    },
+    {
+      "name": "group-derived resources paused on off",
+      "ok": true
+    },
+    {
+      "name": "manual control remains paired after group off",
+      "ok": true
+    },
+    {
+      "name": "enabling keeps suspended group resources awaiting Resume",
+      "ok": true
+    },
+    {
+      "name": "independent manual control remains online",
+      "ok": false
+    },
+    {
+      "name": "manual credential remains paired",
+      "ok": true
+    },
+    {
+      "name": "owner proof submitted while local proof intentionally withheld",
+      "ok": true
+    },
+    {
+      "name": "ineligible owner receives no offer",
+      "ok": true
+    },
+    {
+      "name": "final stale room discloses no held answer",
+      "ok": true
+    },
+    {
+      "name": "old client cannot manufacture allowed actions",
+      "ok": true
+    },
+    {
+      "name": "retained client phone no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "manual pins above automatic max using production 5s cadence",
+      "ok": true
+    },
+    {
+      "name": "two retained manual fleets count against one automatic slot",
+      "ok": true
+    },
+    {
+      "name": "phone-control exact fingerprints",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en connected detail no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW connected detail no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en connected detail no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW connected detail no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "expired owner-confirmed attempt never pins locally",
+      "ok": true
+    },
+    {
+      "name": "expired-code retry saved no credential",
+      "ok": true
+    },
+    {
+      "name": "known apply failure visible",
+      "ok": true
+    },
+    {
+      "name": "contradictory stale confirmation hint remains",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "A8-01-impact-before-save.png",
+    "A8-01-saved.png",
+    "A8-04-desk-light-en.png",
+    "A8-04-phone-dark-zh-TW.png",
+    "A8-05-desk-light-en.png",
+    "A8-05-desk-light-en-settled.png",
+    "A8-05-phone-dark-zh-TW.png",
+    "A8-05-phone-dark-zh-TW-settled.png",
+    "A8-06-desk-light-en.png",
+    "A8-06-desk-light-en-settled.png",
+    "A8-06-phone-dark-zh-TW.png",
+    "A8-06-phone-dark-zh-TW-settled.png",
+    "A8-07-desk-light-en-held.png",
+    "A8-07-phone-dark-zh-TW-held.png",
+    "A8-08-start.png",
+    "A8-08-other-session.png",
+    "A8-08-hub-fingerprint.png",
+    "A8-08-local-fingerprint.png",
+    "A8-08-connected.png",
+    "A8-08-local-connected.png",
+    "A8-02-FAIL-20.png",
+    "A8-02-FAIL-21.png",
+    "A8-02-FAIL-22.png",
+    "A8-02-FAIL-23.png",
+    "A8-02-owner-grant.png",
+    "A8-02-answered.png",
+    "A8-03-other-department-stale-room.png",
+    "A8-05-ungranted-picker.png",
+    "A8-12-complete-negative.png",
+    "A8-12-paused-asker.png",
+    "A8-12-restored-still-paused.png",
+    "A8-12-resumed-answer.png",
+    "A8-11-revoke-held-answer-FAIL-32.png",
+    "A8-11-revoke-held-answer-FAIL-33.png",
+    "A8-11-revoke-held-answer-FAIL-34.png",
+    "A8-11-revoke-held-answer-FAIL-35.png",
+    "A8-11-revoke-held-answer-FAIL-36.png",
+    "A8-14-stale-tab-quota.png",
+    "A8-11-grant-revoked.png",
+    "A8-11-stale-room-after-revoke.png",
+    "A8-11-local-withdrawn.png",
+    "A8-08-connected-desk-light-en.png",
+    "A8-08-connected-desk-light-zh-TW.png",
+    "A8-08-connected-desk-dark-en.png",
+    "A8-08-connected-desk-dark-zh-TW.png",
+    "A8-08-connected-phone-light-en.png",
+    "A8-08-connected-phone-light-zh-TW.png",
+    "A8-08-connected-phone-dark-en.png",
+    "A8-08-connected-phone-dark-zh-TW.png",
+    "A8-09-pending-desk-light-en.png",
+    "A8-09-pending-desk-light-zh-TW.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-51.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-52.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-53.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-54.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-55.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-56.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-57.png",
+    "A8-09-pending-matrix-mismatch-stop-FAIL-58.png",
+    "diagnostic-59.png",
+    "diagnostic-60.png",
+    "diagnostic-61.png",
+    "diagnostic-62.png",
+    "diagnostic-63.png",
+    "diagnostic-64.png",
+    "diagnostic-65.png",
+    "diagnostic-66.png",
+    "A8-09-pending-desk-light-en.png",
+    "A8-09-pending-desk-light-zh-TW.png",
+    "A8-09-pending-desk-dark-en.png",
+    "A8-09-pending-desk-dark-zh-TW.png",
+    "A8-09-pending-phone-light-en.png",
+    "A8-09-pending-phone-light-zh-TW.png",
+    "A8-09-pending-phone-dark-en.png",
+    "A8-09-pending-phone-dark-zh-TW.png",
+    "A8-09-pending-unknown.png",
+    "A8-09-mismatch-stopped.png",
+    "A8-15-explicit-admin-approval.png",
+    "A8-15-manual-local-online.png",
+    "A8-15-manual-no-self-service.png",
+    "A8-13-off-impact.png",
+    "A8-13-off-paused.png",
+    "A8-13-owner-off-no-actions.png",
+    "A8-13-on-still-paused.png",
+    "A8-10-owner-exact-revoke.png",
+    "A8-10-exact-revoke-manual-control-FAIL-85.png",
+    "A8-10-exact-revoke-manual-control-FAIL-86.png",
+    "A8-10-exact-revoke-manual-control-FAIL-87.png",
+    "A8-10-exact-revoke-manual-control-FAIL-88.png",
+    "A8-10-exact-revoke-manual-control-FAIL-89.png",
+    "A8-10-exact-revoke-manual-control-FAIL-90.png",
+    "A8-10-exact-revoke-manual-control-FAIL-91.png",
+    "A8-10-exact-revoke-manual-control-FAIL-92.png",
+    "A8-10-exact-revoke-manual-control-FAIL-93.png",
+    "A8-10-exact-revoke-manual-control-FAIL-94.png",
+    "A8-10-exact-revoke-manual-control-FAIL-95.png",
+    "A8-10-control-fleet-active.png",
+    "single-page-1.png",
+    "single-page-2.png",
+    "single-page-3.png",
+    "A8-09-pending-details-phone-light-en.png",
+    "A8-09-pending-details-phone-light-zh-TW.png",
+    "A8-09-pending-details-phone-dark-en.png",
+    "A8-09-pending-details-phone-dark-zh-TW.png",
+    "A8-09-expiry-before-local-proof.png",
+    "A8-11-settled-revoked-room-FAIL-105.png",
+    "A8-11-settled-revoked-room-FAIL-106.png",
+    "A8-11-settled-revoked-room-FAIL-107.png",
+    "A8-15-manual-above-automatic-quota-FAIL-108.png",
+    "A8-15-manual-above-automatic-quota-FAIL-109.png",
+    "A8-15-manual-above-automatic-quota-FAIL-110.png",
+    "A8-15-manual-above-automatic-quota-FAIL-111.png",
+    "A8-15-manual-above-automatic-quota-FAIL-112.png",
+    "A8-15-ineligible-refused.png",
+    "A8-15-above-quota-completion-FAIL-114.png",
+    "A8-15-above-quota-completion-FAIL-115.png",
+    "A8-15-above-quota-completion-FAIL-116.png",
+    "A8-15-above-quota-completion-FAIL-117.png",
+    "A8-15-above-quota-completion-FAIL-118.png",
+    "A8-11-revoked-room-final-settled.png",
+    "local-progress-120.png",
+    "A8-14-retained-client-phone-zh-dark.png",
+    "A8-15-manual-two-of-one.png",
+    "A8-15-second-manual-pinned-offline.png",
+    "A8-08-connected-details-phone-light-en.png",
+    "A8-08-connected-details-phone-light-zh-TW.png",
+    "A8-08-connected-details-phone-dark-en.png",
+    "A8-08-connected-details-phone-dark-zh-TW.png",
+    "A8-09-natural-expiry-hub.png",
+    "A8-09-natural-expiry-local.png",
+    "A8-09-natural-expiry-FAIL-130.png",
+    "A8-09-natural-expiry-FAIL-131.png",
+    "A8-09-expired-retry-settled.png",
+    "A8-09-expired-confirmed-failed-stale-hint.png"
+  ],
+  "errors": [],
+  "csp": [],
+  "foreign": [],
+  "api": [
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures/0948d9e4-790b-48e6-b3ae-f5925874a5f5/activity",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/grants",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/resources/resume",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures/0948d9e4-790b-48e6-b3ae-f5925874a5f5/activity",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 429,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/grants/d01e31d2-e0dd-4134-9be0-fb53b870a0d8",
+      "status": 200,
+      "method": "DELETE"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures/0948d9e4-790b-48e6-b3ae-f5925874a5f5/withdraw",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing/d8dd7ea8-b5a6-4686-ba30-4845f603e4e2/stop",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 503,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/fleets/7ca31a48-5f72-45bd-9f2f-64753f534211/revoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms/ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa/messages",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/hub/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/94d0aaea-d5cf-4957-abba-dbe02b698761/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/c0179d77-3342-4e6f-904f-79cf6f139ca9/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/c0179d77-3342-4e6f-904f-79cf6f139ca9/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/c0179d77-3342-4e6f-904f-79cf6f139ca9/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/c0179d77-3342-4e6f-904f-79cf6f139ca9/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 410,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "catalogs": [
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [
+          {
+            "id": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+            "fleetId": "7ca31a48-5f72-45bd-9f2f-64753f534211",
+            "owner": {
+              "realm": "example",
+              "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+            },
+            "displayName": "Acceptance agent · 驗收助手",
+            "revision": 1,
+            "state": "published",
+            "dataViewId": "agent",
+            "allowedTools": [],
+            "policyDigest": "1b7980fdd9d2f8de98bf1c15fc5d8ca2f94dc76732ef05101c453afca010680c",
+            "grants": [],
+            "quotaVisible": true,
+            "quota": {
+              "band": "unknown"
+            }
+          }
+        ],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [
+          {
+            "id": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+            "fleetId": "7ca31a48-5f72-45bd-9f2f-64753f534211",
+            "owner": {
+              "realm": "example",
+              "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+            },
+            "displayName": "Acceptance agent · 驗收助手",
+            "revision": 1,
+            "state": "published",
+            "dataViewId": "agent",
+            "allowedTools": [],
+            "policyDigest": "1b7980fdd9d2f8de98bf1c15fc5d8ca2f94dc76732ef05101c453afca010680c",
+            "grants": [
+              {
+                "id": "d01e31d2-e0dd-4134-9be0-fb53b870a0d8",
+                "revision": 1,
+                "owner": {
+                  "realm": "example",
+                  "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+                },
+                "exposureId": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+                "exposureRevision": 1,
+                "approvedBy": {
+                  "realm": "example",
+                  "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+                },
+                "approvedAt": 1794103544230,
+                "subject": {
+                  "kind": "person",
+                  "person": {
+                    "realm": "example",
+                    "objectId": "271e5e89-ab0d-4d27-831f-0497d58d2ca8"
+                  }
+                },
+                "permissions": [
+                  "ask",
+                  "read-own-room"
+                ],
+                "startsAt": 1794103544230,
+                "expiresAt": 1794708344230,
+                "state": "active",
+                "subjectName": "asker",
+                "subjectLogin": "asker"
+              }
+            ],
+            "quotaVisible": true,
+            "quota": {
+              "band": "unknown"
+            }
+          }
+        ],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": [
+          {
+            "exposure": {
+              "id": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+              "fleetId": "7ca31a48-5f72-45bd-9f2f-64753f534211",
+              "owner": {
+                "realm": "example",
+                "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+              },
+              "displayName": "Acceptance agent · 驗收助手",
+              "revision": 1,
+              "state": "published",
+              "dataViewId": "agent",
+              "allowedTools": [],
+              "policyDigest": "1b7980fdd9d2f8de98bf1c15fc5d8ca2f94dc76732ef05101c453afca010680c"
+            },
+            "grant": {
+              "id": "d01e31d2-e0dd-4134-9be0-fb53b870a0d8",
+              "revision": 1,
+              "owner": {
+                "realm": "example",
+                "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+              },
+              "exposureId": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+              "exposureRevision": 1,
+              "approvedBy": {
+                "realm": "example",
+                "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+              },
+              "approvedAt": 1794103544230,
+              "subject": {
+                "kind": "person",
+                "person": {
+                  "realm": "example",
+                  "objectId": "271e5e89-ab0d-4d27-831f-0497d58d2ca8"
+                }
+              },
+              "permissions": [
+                "ask",
+                "read-own-room"
+              ],
+              "startsAt": 1794103544230,
+              "expiresAt": 1794708344230,
+              "state": "active"
+            },
+            "ownerName": "owner"
+          }
+        ]
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [
+          {
+            "id": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+            "fleetId": "7ca31a48-5f72-45bd-9f2f-64753f534211",
+            "owner": {
+              "realm": "example",
+              "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+            },
+            "displayName": "Acceptance agent · 驗收助手",
+            "revision": 1,
+            "state": "published",
+            "dataViewId": "agent",
+            "allowedTools": [],
+            "policyDigest": "1b7980fdd9d2f8de98bf1c15fc5d8ca2f94dc76732ef05101c453afca010680c",
+            "grants": [
+              {
+                "id": "d01e31d2-e0dd-4134-9be0-fb53b870a0d8",
+                "revision": 1,
+                "owner": {
+                  "realm": "example",
+                  "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+                },
+                "exposureId": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+                "exposureRevision": 1,
+                "approvedBy": {
+                  "realm": "example",
+                  "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+                },
+                "approvedAt": 1794103544230,
+                "subject": {
+                  "kind": "person",
+                  "person": {
+                    "realm": "example",
+                    "objectId": "271e5e89-ab0d-4d27-831f-0497d58d2ca8"
+                  }
+                },
+                "permissions": [
+                  "ask",
+                  "read-own-room"
+                ],
+                "startsAt": 1794103544230,
+                "expiresAt": 1794708344230,
+                "state": "active",
+                "subjectName": "asker",
+                "subjectLogin": "asker"
+              }
+            ],
+            "quotaVisible": true,
+            "quota": {
+              "band": "unknown"
+            }
+          }
+        ],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [
+          {
+            "id": "0948d9e4-790b-48e6-b3ae-f5925874a5f5",
+            "fleetId": "7ca31a48-5f72-45bd-9f2f-64753f534211",
+            "owner": {
+              "realm": "example",
+              "objectId": "ee4e34fc-59fb-4d85-a156-2b8bd3e8e4e0"
+            },
+            "displayName": "Acceptance agent · 驗收助手",
+            "revision": 1,
+            "state": "published",
+            "dataViewId": "agent",
+            "allowedTools": [],
+            "policyDigest": "1b7980fdd9d2f8de98bf1c15fc5d8ca2f94dc76732ef05101c453afca010680c",
+            "grants": [],
+            "quotaVisible": true,
+            "quota": {
+              "band": "unknown"
+            }
+          }
+        ],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "status": 429,
+      "body": {
+        "code": "backpressure"
+      }
+    }
+  ],
+  "emptyWelcome": [
+    {
+      "login": "ungranted",
+      "case": "desk-light-en",
+      "present": false
+    },
+    {
+      "login": "ungranted",
+      "case": "phone-dark-zh-TW",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "desk-light-en",
+      "present": false
+    },
+    {
+      "login": "owner",
+      "case": "phone-dark-zh-TW",
+      "present": false
+    }
+  ],
+  "answerResult": {
+    "ok": true,
+    "message": "Delivered to the Hub asker."
+  },
+  "outsiderRoomText": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\noutsider\nInfo",
+  "resumeAnswer": {
+    "ok": true,
+    "message": "Delivered to the Hub asker."
+  },
+  "staleQuickText": "Your fleet or pairing limit is reached. Stop an unused attempt or revoke a fleet you no longer use, then try again.\n\nTry again\nFleet name\n\nA name you and your Hub admin will recognise. Connect only a fleet you control. Your other Hub sessions, connected fleets and Hub admin will be notified.\n\nConnect my fleet",
+  "heldAnswerResult": {
+    "ok": false,
+    "message": "Not delivered to the Hub asker: the question is no longer open (withdrawn, revoked, replaced, or the Hub is unreachable). The owner sees it in Needs you."
+  },
+  "openPageDiagnostics": [
+    {
+      "url": "https://127.0.0.1:43955/ui/hub/admin?view=groups",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\n\nStart one with New chat: it lists the agents someone allowed you to ask.\n\nadmin\nAdministration\nFLEET SECURITY NOTICES\n\nA new fleet was connected: Acceptance fleet · 驗收艦隊\n\nApproved by your Hub's group policy. 11/8/2026, 10:05:20 AM\n\nFleet ID 7ca31a48-5f72-45bd-9f2f-64753f534211\n\nStops this fleet's Hub access. Your other fleets and local agent work stay in place.\n\nRevoke this fleet\nGroup permissions\nExperimental\n\nMembers of these directory groups get these actions. Sign-in stays open to everyone in the directory; chatting with an agent still needs its owner's grant.\n\n← Administration\n\nResumed.\n\nOn\n\nOnly the actions below are allowed.\n\nTurn off\nGroups\nCN=Owners,DC=example,DC=test\nChat with agents\nShare agents\nConnect a fleet\nFleets\nRemove\nCN=Department A,DC=example,DC=test\nChat with agents\nShare agents\nConnect a fleet\nFleets\nRemove\nGroup (distinguished name)\nAdd group"
+    },
+    {
+      "url": "https://127.0.0.1:43955/ui/hub/exposures?agent=0948d9e4-790b-48e6-b3ae-f5925874a5f5&grant=1",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\n\nStart one with New chat: it lists the agents someone allowed you to ask.\n\nowner\nMy shared agents\nMy shared agents\nAcceptance agent · 驗收助手\nShared\n\nNo one may ask yet\n\nWho may ask\nAllow…\n\nNobody can ask it yet.\n\nSubscription quota\nShow quota to people asking\nShare this agent's availability band. Exact usage stays in your fleet.\nRecent questions\n\nWho asked and when, and whether it was answered. What they asked stays in your fleet's chat.\n\nA\nasker\nNov 8, 2026, 10:07 AM\nWaiting\nA\nasker\nNov 8, 2026, 10:06 AM\nAnswered\nA\nasker\nNov 8, 2026, 10:05 AM\nAnswered\nRefresh\nPause questions\n\nNo one can ask it until it is shared again. What was asked stays readable.\n\nPause…"
+    },
+    {
+      "url": "https://127.0.0.1:43955/ui/hub",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\n\nStart one with New chat: it lists the agents someone allowed you to ask.\n\nowner\nFLEET SECURITY NOTICES\n\nA new fleet was connected: Acceptance fleet · 驗收艦隊\n\nApproved by your Hub's group policy. 11/8/2026, 10:05:20 AM\n\nFleet ID 7ca31a48-5f72-45bd-9f2f-64753f534211\n\nStops this fleet's Hub access. Your other fleets and local agent work stay in place.\n\nRevoke this fleet\nChats\nWelcome, owner\nExample Team Hub\n\nWhat would you like to do?\n\nCHAT WITH AN AGENT\n\nAsk the agents their owners have shared with you.\n\nOpen chats\nCONNECT YOUR FLEET\n\nPair your own AgEnD with this Hub, then choose which agents to share.\n\nYour fleets: 0 of 1\n\nYour fleet or pairing limit is reached. Stop an unused attempt or revoke a fleet you no longer use, then try again.\n\nTry again\nFleet name\n\nA name you and your Hub admin will recognise. Connect only a fleet you control. Your other Hub sessions, connected fleets and Hub admin will be notified.\n\nConnect my fleet"
+    },
+    {
+      "url": "http://127.0.0.1:46859/settings/hub",
+      "body": "Skip to the conversation\nAgEnD\nFleet\nNeeds you\nNotices\nSearch\nCtrl K\nNew agent\nInstances\nCustom\nEdit\nGENERAL\nG\nC\nGeneral 總管\ngeneral\nBackend: Claude Code\nFilter: name, model, backend\nStatus\n\n1 / 1\n\nSettings\nSession\nSettings\nv1.22.0\nSetup wizard\nSearch settings — token, 語言, session…\nYOU\nPreferences\nLook\nFLEET\nAgents\nRuntime\nShared agent settings\nNotifications\nChat & connections\nWeb dashboard\nAccess & security\nHub\nAdvanced\nHub\nWhole fleet\n\nConnect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.\n\nHub membership\n\nOff by default. Enabling does not pair a Hub or share an agent; choose those separately below.\n\nAllow this fleet to connect to a Hub\n\nTurning this off stops new Hub work and answer disclosure. Existing agent conversations remain.\n\nConnect to a Hub\n\nA Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.\n\nWaiting for approval\n\nhttps://127.0.0.1:46045\n\nPairing fingerprint\n6584 5399 492f 60e7 1e40 d4a0 ac82 ef16\nShow the full fingerprint\n\nCompare it with the fingerprint on the Hub's screen. Both must match before you confirm there.\n\nIt matches the Hub's screen\n\nFinish the fingerprint check on the Hub too.\n\nOn the Hub, compare this fingerprint and confirm your pairing.\nThe Hub checks its group policy, or waits for its administrator's approval.\n\nThis page can't see their progress; it connects once both are done.\n\nExpires 10:18:17 AM\n\nCancel request"
+    },
+    {
+      "url": "https://127.0.0.1:43955/ui/hub?room=ab9bee50-e2cf-41c7-acc5-4ba98a3cc2fa",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\nA\nAcceptance agent · 驗收助手\nClosed\n10:07 AM\nasker\nA\nAcceptance agent · 驗收助手\nAnswers for owner\nClosed\n\nToo many requests just now. Wait a moment and try again.\n\nTry again\n\nThis chat has closed: your permission ended, or the agent is no longer shared.\n\nInfo\nA\nAcceptance agent · 驗收助手\nAnswers for owner\nWho sees this chat\nYou\nOnly you see this chat's history, while your permission lasts.\nowner\nYour questions show in owner's own fleet chat, marked with your Hub identity.\nAcceptance agent · 驗收助手\nIt shares one conversation with everyone allowed to ask it, so it may remember what others asked. Keep out what others mustn't know.\nHub administrator\nCan't see the content.\nNot here\n\nAcceptance agent · 驗收助手's files and changes, its terminal (View) and its tool progress: only owner sees them, in their own fleet.\n\nA chat has only you and this agent."
+    },
+    {
+      "url": "https://127.0.0.1:43955/ui/hub",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\n\nStart one with New chat: it lists the agents someone allowed you to ask.\n\nnegative\nChats\nWelcome, negative\nExample Team Hub\n\nWhat would you like to do?\n\nCHAT WITH AN AGENT\n\nAsk the agents their owners have shared with you.\n\nOpen chats\nCONNECT YOUR FLEET\n\nPair your own AgEnD with this Hub, then choose which agents to share.\n\nYour fleets: 0 of 1\n\nConfirm on your fleet\n\nOn your fleet's web page, open Settings → Hub. Turn on Hub membership, then use this member address and one-time code. Confirm the local prompt there.\n\nMember address\nhttps://127.0.0.1:46045\nOne-time code\na6495d24d6bc\nCopy\n\nExpires 11/8/2026, 10:18:17 AM\n\nCompare the fingerprints\n\nOn your fleet, open Settings → Hub → pending pairing. Compare its fingerprint with this one. Confirm locally on your fleet too.\n\n6584 5399 492f 60e7 1e40 d4a0 ac82 ef16\nSHA-256 +\nThey match\nThey differ\nStop pairing"
+    },
+    {
+      "url": "http://127.0.0.1:46859/settings/hub",
+      "body": "Skip to the conversation\nAgEnD\nFleet\nNeeds you\nNotices\nSearch\nCtrl K\nNew agent\nInstances\nCustom\nEdit\nGENERAL\nG\nC\nGeneral 總管\ngeneral\nBackend: Claude Code\nFilter: name, model, backend\nStatus\n\n1 / 1\n\nSettings\nSession\nSettings\nv1.22.0\nSetup wizard\nSearch settings — token, 語言, session…\nYOU\nPreferences\nLook\nFLEET\nAgents\nRuntime\nShared agent settings\nNotifications\nChat & connections\nWeb dashboard\nAccess & security\nHub\nAdvanced\nHub\nWhole fleet\n\nConnect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.\n\nHub membership\n\nOff by default. Enabling does not pair a Hub or share an agent; choose those separately below.\n\nAllow this fleet to connect to a Hub\n\nTurning this off stops new Hub work and answer disclosure. Existing agent conversations remain.\n\nConnect to a Hub\n\nA Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.\n\nWaiting for approval\n\nhttps://127.0.0.1:46045\n\nPairing fingerprint\n6584 5399 492f 60e7 1e40 d4a0 ac82 ef16\nShow the full fingerprint\n\nCompare it with the fingerprint on the Hub's screen. Both must match before you confirm there.\n\nIt matches the Hub's screen\n\nFinish the fingerprint check on the Hub too.\n\nOn the Hub, compare this fingerprint and confirm your pairing.\nThe Hub checks its group policy, or waits for its administrator's approval.\n\nThis page can't see their progress; it connects once both are done.\n\nExpires 10:18:17 AM\n\nCancel request"
+    },
+    {
+      "url": "https://127.0.0.1:43955/ui/hub",
+      "body": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\n\nStart one with New chat: it lists the agents someone allowed you to ask.\n\nnegative\nChats\nWelcome, negative\nExample Team Hub\n\nWhat would you like to do?\n\nThe directory didn't answer, so this can't be checked right now.\n\nTry again"
+    }
+  ],
+  "negativeViews": [
+    {
+      "state": "pending",
+      "memberOrigin": "https://127.0.0.1:46045",
+      "fingerprint": {
+        "kind": "pairing",
+        "digest": "65845399492f60e71e40d4a0ac82ef1678675a0b0ede06d032bb134db21c0047"
+      },
+      "expiresAt": 1794104297016,
+      "ownerConfirmed": null,
+      "adminApproved": null,
+      "localConfirmed": false
+    }
+  ],
+  "pendingMatrix": [
+    {
+      "case": "desk-light-en",
+      "ready": true
+    },
+    {
+      "case": "desk-light-zh-TW",
+      "ready": true
+    },
+    {
+      "case": "desk-dark-en",
+      "ready": true
+    },
+    {
+      "case": "desk-dark-zh-TW",
+      "ready": true
+    },
+    {
+      "case": "phone-light-en",
+      "ready": true
+    },
+    {
+      "case": "phone-light-zh-TW",
+      "ready": true
+    },
+    {
+      "case": "phone-dark-en",
+      "ready": true
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "ready": true
+    }
+  ],
+  "manualFleet": "afa4be44-1e79-4831-b7f2-7a18ea3f0102",
+  "finalStates": {
+    "manualProfile": "paired",
+    "manualOnline": true,
+    "holds": []
+  },
+  "singlePageCore": [
+    {
+      "probe": 1,
+      "at": 1794103960717,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": 1,
+      "at": 1794103960725,
+      "personInflight": 1,
+      "total": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": 1,
+      "at": 1794103960727,
+      "personInflight": 2,
+      "total": 2,
+      "elapsed": 54
+    },
+    {
+      "probe": 1,
+      "at": 1794103960741,
+      "personInflight": 3,
+      "total": 3,
+      "elapsed": 49
+    },
+    {
+      "probe": 1,
+      "at": 1794103960742,
+      "personInflight": 4,
+      "total": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": 1,
+      "at": 1794103960855,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": 2,
+      "at": 1794103962377,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 55
+    },
+    {
+      "probe": 2,
+      "at": 1794103962385,
+      "personInflight": 1,
+      "total": 1,
+      "elapsed": 59
+    },
+    {
+      "probe": 2,
+      "at": 1794103962388,
+      "personInflight": 2,
+      "total": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": 2,
+      "at": 1794103962402,
+      "personInflight": 3,
+      "total": 3,
+      "elapsed": 55
+    },
+    {
+      "probe": 2,
+      "at": 1794103962404,
+      "personInflight": 4,
+      "total": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": 2,
+      "at": 1794103962540,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": 3,
+      "at": 1794103964226,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": 3,
+      "at": 1794103964233,
+      "personInflight": 1,
+      "total": 1,
+      "elapsed": 65
+    },
+    {
+      "probe": 3,
+      "at": 1794103964245,
+      "personInflight": 2,
+      "total": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": 3,
+      "at": 1794103964259,
+      "personInflight": 3,
+      "total": 3,
+      "elapsed": 55
+    },
+    {
+      "probe": 3,
+      "at": 1794103964262,
+      "personInflight": 4,
+      "total": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": 3,
+      "at": 1794103964391,
+      "personInflight": 0,
+      "total": 0,
+      "elapsed": 57
+    }
+  ],
+  "singlePageResponses": [
+    {
+      "probe": 1,
+      "at": 1794103960511,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 1,
+      "at": 1794103960707,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 1,
+      "at": 1794103960746,
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "retryAfter": "10",
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "probe": 1,
+      "at": 1794103960786,
+      "path": "/hub/v1/notices",
+      "status": 200
+    },
+    {
+      "probe": 1,
+      "at": 1794103960786,
+      "path": "/hub/v1/notices/events",
+      "status": 200
+    },
+    {
+      "probe": 1,
+      "at": 1794103960842,
+      "path": "/hub/v1/me/welcome",
+      "status": 200
+    },
+    {
+      "probe": 1,
+      "at": 1794103960840,
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "body": {
+        "code": "denied"
+      }
+    },
+    {
+      "probe": 1,
+      "at": 1794103960912,
+      "path": "/hub/v1/quick-pairing",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962174,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962367,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962410,
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "retryAfter": "10",
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "probe": 2,
+      "at": 1794103962463,
+      "path": "/hub/v1/notices",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962465,
+      "path": "/hub/v1/notices/events",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962511,
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "body": {
+        "code": "denied"
+      }
+    },
+    {
+      "probe": 2,
+      "at": 1794103962519,
+      "path": "/hub/v1/me/welcome",
+      "status": 200
+    },
+    {
+      "probe": 2,
+      "at": 1794103962594,
+      "path": "/hub/v1/quick-pairing",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964019,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964216,
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964267,
+      "path": "/hub/v1/exposures",
+      "status": 429,
+      "retryAfter": "10",
+      "body": {
+        "code": "backpressure"
+      }
+    },
+    {
+      "probe": 3,
+      "at": 1794103964302,
+      "path": "/hub/v1/notices",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964309,
+      "path": "/hub/v1/notices/events",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964342,
+      "path": "/hub/v1/rooms",
+      "status": 403,
+      "body": {
+        "code": "denied"
+      }
+    },
+    {
+      "probe": 3,
+      "at": 1794103964370,
+      "path": "/hub/v1/me/welcome",
+      "status": 200
+    },
+    {
+      "probe": 3,
+      "at": 1794103964452,
+      "path": "/hub/v1/quick-pairing",
+      "status": 200
+    }
+  ],
+  "expiryOffer": {
+    "expiresAt": 1794104641778,
+    "started": 1794104041801
+  },
+  "ineligibleOffer": {
+    "status": 404,
+    "body": {
+      "code": "not-found"
+    }
+  },
+  "finalRevokedRoomText": "Skip to the conversation\nAgEnD Hub · Example Team Hub\nNew chat\nChats\nasker\n?\nCan ask\n\nYou're not allowed to do that (or no longer).\n\nTry again\n\nThis agent can't receive files yet.\n\nAsk\nYou're asking as yourself. The agent sees your Hub identity, not any authority over its owner's fleet.\nInfo\n?\nWho sees this chat\nYou\nOnly you see this chat's history, while your permission lasts.\n\nIt shares one conversation with everyone allowed to ask it, so it may remember what others asked. Keep out what others mustn't know.\nHub administrator\nCan't see the content.\nNot here\n\n's files and changes, its terminal (View) and its tool progress: only sees them, in their own fleet.\n\nA chat has only you and this agent.",
+  "extraViews": [
+    {
+      "state": "unpaired"
+    },
+    {
+      "state": "pending",
+      "memberOrigin": "https://127.0.0.1:46045",
+      "fingerprint": {
+        "kind": "pairing",
+        "digest": "d00837c2a2e67b642b668608041c773d0d07071af822f6feb8a9f34dea0a4da6"
+      },
+      "expiresAt": 1794104641778,
+      "ownerConfirmed": null,
+      "adminApproved": null,
+      "localConfirmed": false
+    },
+    {
+      "state": "held",
+      "hold": "unknown_outcome",
+      "memberOrigin": "https://127.0.0.1:46045",
+      "hubId": "afa4be44-1e79-4831-b7f2-7a18ea3f0102"
+    }
+  ],
+  "skewHits": 1,
+  "claimBudgetDiagnostic": [
+    {
+      "since": 1794104112262,
+      "attempts": 60
+    }
+  ],
+  "manualQuotaText": "Your fleets: 2 of 1",
+  "resources": {
+    "pid": 481356,
+    "ports": [
+      43955,
+      46045,
+      46859,
+      46860,
+      39797
+    ],
+    "roots": [
+      "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-acceptance/run-stage4/browser-88PR4S",
+      "/home/han/Projects/AgEnD-agend-dev-sol/.t8a/smoke-fx-JkNdDa"
+    ],
+    "processes": [
+      {
+        "pid": 481356,
+        "ppid": 481351,
+        "name": "node"
+      },
+      {
+        "pid": 481374,
+        "ppid": 481356,
+        "name": "esbuild"
+      },
+      {
+        "pid": 481420,
+        "ppid": 481356,
+        "name": "chrome"
+      },
+      {
+        "pid": 481427,
+        "ppid": 481420,
+        "name": "chrome"
+      },
+      {
+        "pid": 481428,
+        "ppid": 481420,
+        "name": "chrome"
+      },
+      {
+        "pid": 481449,
+        "ppid": 481427,
+        "name": "chrome"
+      },
+      {
+        "pid": 481452,
+        "ppid": 481420,
+        "name": "chrome"
+      },
+      {
+        "pid": 481468,
+        "ppid": 481428,
+        "name": "chrome"
+      },
+      {
+        "pid": 481504,
+        "ppid": 481428,
+        "name": "chrome"
+      },
+      {
+        "pid": 481517,
+        "ppid": 481428,
+        "name": "chrome"
+      },
+      {
+        "pid": 489546,
+        "ppid": 481428,
+        "name": "chrome"
+      },
+      {
+        "pid": 489565,
+        "ppid": 481428,
+        "name": "chrome"
+      },
+      {
+        "pid": 494197,
+        "ppid": 481356,
+        "name": "ps"
+      }
+    ]
+  },
+  "expiryRetryViews": [
+    {
+      "state": "unpaired"
+    },
+    {
+      "state": "held",
+      "hold": "expired",
+      "memberOrigin": "https://127.0.0.1:46045",
+      "hubId": "afa4be44-1e79-4831-b7f2-7a18ea3f0102"
+    },
+    {
+      "state": "held",
+      "hold": "unknown_outcome",
+      "memberOrigin": "https://127.0.0.1:46045",
+      "hubId": "afa4be44-1e79-4831-b7f2-7a18ea3f0102"
+    },
+    {
+      "state": "paired",
+      "binding": "d918467e557dedd52096f2a0e5b237113de2c27077b9f951fef4dc78af0141d8",
+      "hub": {
+        "hubId": "afa4be44-1e79-4831-b7f2-7a18ea3f0102",
+        "name": null,
+        "memberOrigin": "https://127.0.0.1:46045",
+        "webOrigin": "https://127.0.0.1:43955",
+        "fingerprint": {
+          "kind": "hub-key",
+          "digest": "65ec9890dc338247c7ca756d37c69f8a80f969416f058774a639e34903622922"
+        }
+      },
+      "link": "offline"
+    },
+    {
+      "state": "unpaired"
+    }
+  ],
+  "expiryRetryUi": "Skip to the conversation\nAgEnD\nFleet\nNeeds you\nNotices\nSearch\nCtrl K\nNew agent\nInstances\nCustom\nEdit\nGENERAL\nG\nC\nGeneral 總管\ngeneral\nBackend: Claude Code\nFilter: name, model, backend\nStatus\n\n1 / 1\n\nSettings\nSession\nSettings\nv1.22.0\nSetup wizard\nSearch settings — token, 語言, session…\nYOU\nPreferences\nLook\nFLEET\nAgents\nRuntime\nShared agent settings\nNotifications\nChat & connections\nWeb dashboard\nAccess & security\nHub\nAdvanced\nHub\nWhole fleet\n\nConnect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.\n\nConfirmed, but applying it failed\nhub\nConnect this fleet to the Hub at https://127.0.0.1:46045\nIt asks the Hub's owner and administrator to approve it\n\nChange could not be applied. Review the configuration and try again.\n\nHub membership\n\nOff by default. Enabling does not pair a Hub or share an agent; choose those separately below.\n\nAllow this fleet to connect to a Hub\n\nTurning this off stops new Hub work and answer disclosure. Existing agent conversations remain.\n\nConnect to a Hub\n\nA Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.\n\nHub address\nThe https:// address your Hub administrator gave you.\nOne-time pairing code\nConnect\n\nWaiting for your confirmation",
+  "expiredUiSettled": {
+    "at": 1794104742214,
+    "text": "Skip to the conversation\nAgEnD\nFleet\nNeeds you\nNotices\nSearch\nCtrl K\nNew agent\nInstances\nCustom\nEdit\nGENERAL\nG\nC\nGeneral 總管\ngeneral\nBackend: Claude Code\nFilter: name, model, backend\nStatus\n\n1 / 1\n\nSettings\nSession\nSettings\nv1.22.0\nSetup wizard\nSearch settings — token, 語言, session…\nYOU\nPreferences\nLook\nFLEET\nAgents\nRuntime\nShared agent settings\nNotifications\nChat & connections\nWeb dashboard\nAccess & security\nHub\nAdvanced\nHub\nWhole fleet\n\nConnect this fleet to a team Hub, compare its fingerprint, and choose which agents to share there.\n\nConfirmed, but applying it failed\nhub\nConnect this fleet to the Hub at https://127.0.0.1:46045\nIt asks the Hub's owner and administrator to approve it\n\nChange could not be applied. Review the configuration and try again.\n\nHub membership\n\nOff by default. Enabling does not pair a Hub or share an agent; choose those separately below.\n\nAllow this fleet to connect to a Hub\n\nTurning this off stops new Hub work and answer disclosure. Existing agent conversations remain.\n\nConnect to a Hub\n\nA Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.\n\nHub address\nThe https:// address your Hub administrator gave you.\nOne-time pairing code\nConnect\n\nWaiting for your confirmation"
+  },
+  "dbOutcome": {
+    "rooms": [
+      {
+        "state": "closed",
+        "count": 1
+      }
+    ],
+    "grants": [
+      {
+        "state": "revoked",
+        "count": 1
+      }
+    ],
+    "exposures": [
+      {
+        "state": "withdrawn",
+        "count": 1
+      }
+    ]
+  },
+  "finished": "2026-11-08T02:25:42.272Z",
+  "productSourceUnchanged": true,
+  "status": "FAIL"
+}
