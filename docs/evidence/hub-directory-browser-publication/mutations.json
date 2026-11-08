@@ -16,5 +16,6 @@
       "failures": 1
     }
   ],
-  "restored": true
+  "restored": true,
+  "scope": "Original adapter checkpoint; three implementation blobs unchanged after dependency and alpha sync. No new mutations claimed after sync."
 }

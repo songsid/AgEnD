@@ -1,7 +1,7 @@
 {
   "scope": "Private mounted HubSessions adapter; AD Save route and originating browser response remain absent",
   "focused": {
-    "passed": 239,
+    "passed": 247,
     "files": 5,
     "skipped": 0,
     "command": "vitest run tests/hub-compose.test.ts tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
@@ -25,5 +25,21 @@
     "passed": 2,
     "intentionallyUnselected": 37,
     "reason": "After the focused run, the expiry assertion was strengthened to bracket the synchronous release clock rather than allow a timing tolerance. Source is unchanged; both handoff cases rechecked."
+  },
+  "priorFocused": {
+    "passed": 239,
+    "files": 5,
+    "skipped": 0,
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
+  },
+  "syncedSelection": {
+    "passed": 2,
+    "intentionallyUnselected": 45
+  },
+  "sync": {
+    "parent": "Reviewed runtime dependency merged into alpha",
+    "resolution": "Retained both additive test blocks; duplicate squash conflicts retained the already combined code. Alpha merge changes no files.",
+    "implementation": "The three adapter implementation blobs are byte-identical to the original draft; original three mutation reversals carry with that scope.",
+    "types": "Source and test checks passed on the combined tree."
   }
 }
