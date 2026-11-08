@@ -5,6 +5,7 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { InteractionOwner } from "./backend/types.js";
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
+import { instanceTeams } from "./team-membership.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
@@ -2028,6 +2029,8 @@ export class InstanceLifecycle {
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
+    // Read at each spawn, like the peers below: joining or leaving a team changes the next launch's Active Decisions.
+    daemon.setDecisionTeams(() => instanceTeams(this.ctx.fleetConfig?.teams, name));
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(backendName === "kiro-cli"
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined

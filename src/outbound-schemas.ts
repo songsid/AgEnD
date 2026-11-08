@@ -172,8 +172,10 @@ export const TaskBoardArgs = z.object({
 export const PostDecisionArgs = z.object({
   title: NonEmptyString.describe("Short title for the decision"),
   content: NonEmptyString.describe("Full decision description"),
-  scope: z.enum(["project", "fleet"]).optional()
-    .describe("'project' (default) = same working directory. 'fleet' = all instances."),
+  scope: z.enum(["project", "team", "fleet"]).optional()
+    .describe("'team' = every member of a team, wherever they work (the default when you are in a team). 'project' = this exact working directory (the default when you are in no team). 'fleet' = every instance on the fleet: only for rules every team follows."),
+  team: z.string().optional()
+    .describe("The team for scope 'team' (one you are in). Default: your team, when you are in exactly one."),
   tags: z.array(z.string()).optional()
     .describe("Optional tags for categorization"),
   ttl_days: z.number().optional()

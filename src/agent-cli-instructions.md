@@ -49,7 +49,7 @@ agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the 
 agend-agent task comment M-3 "text"               # Comment on a card
 
 # Decisions
-agend-agent decision-post "title" "content"       # Post decision
+agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)
 agend-agent decision-list                         # List decisions (titles)
 agend-agent decision-get <id>                     # One decision's full text
 ```

@@ -249,13 +249,18 @@ export function sameProjectFamily(a: string, b: string): boolean {
  * `isDispatcher` (a general) opts out of that narrowing on purpose: it routes
  * work across all projects, so cross-project rules ("X 文件操作由 Y 負責") are
  * precisely what it must know. Narrowing a general would cause misrouting.
+ *
+ * `scope: "team"` reaches exactly the members of that team (`teams`, this instance's), wherever they work — a
+ * general included only when it is a member: a team's conventions are not routing rules.
  */
-export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; title: string }>(
+export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; team?: string | null; title: string }>(
   all: T[],
   workDir: string,
   isDispatcher = false,
+  teams: readonly string[] = [],
 ): T[] {
   return all.filter(d => {
+    if (d.scope === "team") return !!d.team && teams.includes(d.team);
     if (d.project_root === workDir) return true;   // own project, any scope
     if (d.scope !== "fleet") return false;         // project-scoped, elsewhere
     if (!d.project_root) return true;              // truly global
@@ -2498,6 +2503,9 @@ export class Daemon extends EventEmitter {
 
   /** The fleet's other same-backend instances' working directories, read at spawn (#984). */
   private peerWorkingDirectories: (() => string[]) | undefined;
+  /** This instance's teams (fleet.yaml), read at each spawn: their team decisions join its Active Decisions. */
+  private decisionTeams: (() => string[]) | undefined;
+  setDecisionTeams(teams: (() => string[]) | undefined): void { this.decisionTeams = teams; }
 
   setPeerWorkingDirectories(peers: (() => string[]) | undefined): void {
     this.peerWorkingDirectories = peers;
@@ -12197,7 +12205,7 @@ export class Daemon extends EventEmitter {
     let decisions: { title: string; content: string }[] | undefined;
     if (process.env.AGEND_DECISIONS) {
       try {
-        const all: { title: string; content: string; scope?: string; project_root?: string }[] = JSON.parse(process.env.AGEND_DECISIONS);
+        const all: { title: string; content: string; scope?: string; project_root?: string; team?: string | null }[] = JSON.parse(process.env.AGEND_DECISIONS);
         const workDir = this.config.working_directory;
         // `scope: "fleet"` used to bypass the project check entirely, so a
         // single-project worker inherited every other project's playbook (8 of
@@ -12206,7 +12214,9 @@ export class Daemon extends EventEmitter {
         // same project, or the same project family (worktrees/checkouts of one
         // repo). A general is exempt: it dispatches across all projects, so
         // cross-project routing rules are exactly what it needs.
-        decisions = selectRelevantDecisions(all, workDir, this.config.general_topic === true);
+        let teams: string[] = [];
+        try { teams = this.decisionTeams?.() ?? []; } catch { /* no team list: fleet and project decisions only */ }
+        decisions = selectRelevantDecisions(all, workDir, this.config.general_topic === true, teams);
         // Stable ordering so identical decision sets always build byte-identical
         // instructions — otherwise source ordering jitter flips the warmup hash.
         decisions.sort((a, b) => a.title.localeCompare(b.title));

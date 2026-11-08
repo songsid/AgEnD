@@ -38,6 +38,7 @@ function fleet(db: SchedulerDb) {
     instanceIpcClients: new Map(Object.keys(instances).map((n) => [n, { send: (m: unknown) => sent.push(m) }])) };
   fake.checkToolPermission = (FleetManager.prototype as any).checkToolPermission.bind(fake);
   fake.decisionSupersedes = (FleetManager.prototype as any).decisionSupersedes.bind(fake);
+  fake.decisionScopeFor = (FleetManager.prototype as any).decisionScopeFor.bind(fake);  // no teams: the default scope stays project
   return {
     async ipc(who: string, payload: Record<string, unknown>) {
       await (FleetManager.prototype as any).handleDecisionCrud.call(fake, who, { type: "fleet_decision_create", fleetRequestId: "r1", payload, meta: { working_directory: (instances as Record<string, { working_directory: string }>)[who]!.working_directory } });
