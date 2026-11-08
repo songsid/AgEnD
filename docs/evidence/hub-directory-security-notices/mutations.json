@@ -1,0 +1,119 @@
+{
+  "scope": "16 unique guard reversals, each run alone and assertion-caught; restored. Initial 15 were followed by early-availability refactor, then person/close reversals were repeated plus the new no-new-eligibility reversal.",
+  "cases": [
+    {
+      "guard": "person-authority",
+      "exitCode": 1,
+      "failed": 6,
+      "passed": 20,
+      "assertionFailures": 6
+    },
+    {
+      "guard": "permanent-close",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "exact-person",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "original-recipient",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "operation-payload",
+      "exitCode": 1,
+      "failed": 2,
+      "passed": 24,
+      "assertionFailures": 2
+    },
+    {
+      "guard": "post-audit-row",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "required-async-audit",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "ack-persistence",
+      "exitCode": 1,
+      "failed": 3,
+      "passed": 23,
+      "assertionFailures": 3
+    },
+    {
+      "guard": "query-snapshot",
+      "exitCode": 1,
+      "failed": 2,
+      "passed": 24,
+      "assertionFailures": 2
+    },
+    {
+      "guard": "older-history",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "unread-filter",
+      "exitCode": 1,
+      "failed": 2,
+      "passed": 24,
+      "assertionFailures": 2
+    },
+    {
+      "guard": "ack-idempotence",
+      "exitCode": 1,
+      "failed": 2,
+      "passed": 24,
+      "assertionFailures": 2
+    },
+    {
+      "guard": "post-audit-stamp",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "actor-method-snapshot",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    },
+    {
+      "guard": "redacted-actor",
+      "exitCode": 1,
+      "failed": 2,
+      "passed": 24,
+      "assertionFailures": 2
+    },
+    {
+      "guard": "no-new-eligibility-after-close",
+      "exitCode": 1,
+      "failed": 1,
+      "passed": 25,
+      "assertionFailures": 1
+    }
+  ],
+  "runs": 18,
+  "restored": true
+}
