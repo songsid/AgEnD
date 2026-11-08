@@ -290,6 +290,11 @@ export class HubRoomsService {
 
   /** The room's entries after `after`, for its asker only — both people and the grant re-checked; paced per session. */
   async read(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<readonly HubRoomEntryView[]> {
+    return (await this.readPage(ctx, roomId, after, sessionKey)).entries;
+  }
+
+  /** Keep the HTTP room projection under the same physical-work and disclosure fences as its history. */
+  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem }> {
     if (!Number.isSafeInteger(after) || after < 0) throw new HubProtocolError("invalid");
     this.core.check();
     const finish = this.polls.enter(sessionKey);
@@ -297,7 +302,7 @@ export class HubRoomsService {
     finally { finish(); }
   }
 
-  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<readonly HubRoomEntryView[]> {
+  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
@@ -336,10 +341,11 @@ export class HubRoomsService {
         ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
         ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
-    // Projection can cross a grant deadline too. Never publish a page under an expired/changed grant.
+    const view = await this.view(ctx, roomId);
+    // Content and the awaited room projection can cross a grant deadline. Check only after both settle.
     this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room"); }, permit);
     if (ctx.isCurrent && !ctx.isCurrent()) throw new HubProtocolError("revoked");
-    return entries;
+    return { entries, room: view };
   }
 
   /**

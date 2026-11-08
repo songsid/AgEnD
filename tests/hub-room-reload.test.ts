@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { HubRoomsService } from "../src/hub/rooms.js";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 
 type Rig = Awaited<ReturnType<typeof s3bRig>>;
@@ -100,4 +101,29 @@ it("rechecks expiry at disclosure after projecting the current content", async (
   const content=rig!.httpDeps.content,original=content.get.bind(content);
   content.get=ref=>{const value=original(ref);now+=101;return value;};
   const denied=await rig!.call(a,"GET",path);expect(denied.status).toBe(403);expect(denied.text).not.toContain("History survives");
+});
+
+it("holds the reservation through the real HTTP room-view continuation", async () => {
+  const {a,path}=await chat(), original=HubRoomsService.prototype.view;
+  let release!:()=>void,entered!:()=>void,count=0;const gate=new Promise<void>(r=>release=r),both=new Promise<void>(r=>entered=r);
+  const view=vi.spyOn(HubRoomsService.prototype,"view").mockImplementation(async function(this:HubRoomsService,ctx,roomId){
+    const value=await original.call(this,ctx,roomId);
+    if(count<2){count++;if(count===2)entered();await gate;}
+    return value;
+  });
+  const pending=[rig!.call(a,"GET",path),rig!.call(a,"GET",path)];
+  try{await both;expect((await rig!.call(a,"GET",path)).status).toBe(429);expect(count).toBe(2);}
+  finally{release();view.mockRestore();}
+  expect((await Promise.all(pending)).map(r=>r.status)).toEqual([200,200]);
+});
+it("cannot disclose history when a grant expires in the final awaited room view", async () => {
+  let now=1000;const {a,path,grant}=await chat({now:()=>now}),original=HubRoomsService.prototype.view;
+  rig!.db.prepare("UPDATE hub_grants SET expires_at=? WHERE id=?").run(now+100,grant.id);
+  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+  const view=vi.spyOn(HubRoomsService.prototype,"view").mockImplementation(async function(this:HubRoomsService,ctx,roomId){
+    const value=await original.call(this,ctx,roomId);entered();await gate;return value;
+  });
+  const pending=rig!.call(a,"GET",path);
+  try{await started;now+=101;}finally{release();view.mockRestore();}
+  const denied=await pending;expect(denied.status).toBe(403);expect(denied.text).not.toContain("History survives");
 });
