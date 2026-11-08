@@ -12,6 +12,7 @@ import { BIND_PASSWORD_REF } from "./init/layout.js";
 import { scalarString, person, validated } from "./validation.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
+import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
 
 type Actor = HubDirectoryDecisionRequest["actor"];
 export interface HubDirectoryProofContext {
@@ -104,7 +105,7 @@ export interface HubDirectorySettingsProof {
     ref: string; expiresAt: number; trust: null | { challenge: string; server: string; leafFingerprint: string; caFingerprints: string[]; systemRoots: boolean };
   }>;
   test(ref: string, confirmation: string | undefined, context: HubDirectoryProofContext): Promise<void>;
-  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext): Promise<{ receiptId: string; directoryEpoch: number }>;
+  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext, rotation?: HubDirectorySessionRotation): Promise<{ receiptId: string; directoryEpoch: number }>;
   cancel(ref: string, context: HubDirectoryProofContext): void;
   close(): void;
 }
@@ -241,7 +242,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
         caFingerprints: [...d.ca], systemRoots: copy.directory.caPem === undefined } : null };
     },
     async test(ref, confirmation, inputContext) { const ctx = context(inputContext), d = get(ref, ctx); confirmed(d, confirmation); await candidate(d, ctx); },
-    async apply(ref, input, inputContext) {
+    async apply(ref, input, inputContext, rotation) {
       const ctx = context(inputContext), d = get(ref, ctx), credentials = input.credentials && { ...input.credentials }, confirmation = input.confirmation;
       drafts.delete(ref); // Failed and cancelled saves also consume this exact preparation.
       confirmed(d, confirmation);
@@ -252,7 +253,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
       const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof);
       current(d, ctx);
-      return writer.commit(prepared.ref, ctx.actor, proof);
+      return writer.commit(prepared.ref, ctx.actor, proof, rotation);
     },
     cancel(ref, inputContext) { const ctx = context(inputContext); get(ref, ctx); drafts.delete(ref); },
     close() { stopped = true; drafts.clear(); recent.clear(); attempts.clear(); },

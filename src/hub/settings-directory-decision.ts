@@ -4,6 +4,7 @@
  * those images together with binding, floor/version, browser epoch, audit and FULL old-recipient notices.
  * File journals/signatures cannot substitute for this row. No production caller is composed yet.
  */
+import { takeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -38,7 +39,7 @@ export function parseHubDirectoryDecisionMetadata(raw: unknown) {
   return validated(z.strictObject({ actor: actorSchema, changes: changesSchema, recipients: recipientsSchema }), raw);
 }
 const operationSchema = requestSchema.extend({ kind: z.enum(["directory", "directory-compensation"]),
-  compensates: uuid.nullable(), previousGeneration: identifier, directoryEpoch: epoch, authorizationVersion: epoch });
+  compensates: uuid.nullable(), browserSession: z.strictObject({v:z.literal(1),previousSessionId:identifier,sessionId:identifier}).optional(), previousGeneration: identifier, directoryEpoch: epoch, authorizationVersion: epoch });
 export type HubDirectorySettingsOperation = z.infer<typeof operationSchema>;
 const noticeSchema = z.strictObject({ v: z.literal(1), id: uuid, operationId: uuid,
   kind: z.enum(["directory", "directory-compensation"]), phase: z.literal("applying"),
@@ -116,12 +117,15 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
   function assertExpected(expected: z.infer<typeof expectationSchema>) {
     if (!same(inspect(), expected)) throw new HubProtocolError("conflict");
   }
-  function decide(raw: HubDirectoryDecisionRequest, assertProof: () => void, compensation?: HubDirectorySettingsOperation): HubDirectorySettingsOperation {
+  function decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, compensation?: HubDirectorySettingsOperation, rotation?: HubDirectorySessionRotation): HubDirectorySettingsOperation {
     // Parse clones nested inputs before invoking any caller/audit callback. No mutable request may be published later.
     const input = validated(requestSchema, raw);
     if (db.inTransaction) throw new HubProtocolError("invalid"); // this must be the durable root decision, never a savepoint
-    return db.transaction(() => {
+    const transition = rotation ? takeHubDirectorySessionRotation(rotation, db, hubId, input.actor, input.expected.directoryEpoch) : undefined;
+    if (compensation && transition) throw new HubProtocolError("invalid");
+    const result = db.transaction(() => {
       synchronous(assertProof()); assertExpected(input.expected);
+      transition?.validate(transition.clock());
       const previous = policyRow(db), policy = previous.policy;
       if (previous.hub_id !== hubId || (input.actor.kind === "hub-administrator" && input.actor.person.realm !== policy.realm)) throw new HubProtocolError("denied");
       // Cosmetic rename v1 may have resealed the full Hub since the last directory decision. Its directory/secret
@@ -137,7 +141,7 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
       const nextEpoch = input.expected.directoryEpoch + 1, nextVersion = input.expected.authorizationVersion + 1;
       if (!Number.isSafeInteger(nextEpoch) || !Number.isSafeInteger(nextVersion)) throw new HubProtocolError("unavailable");
       const saved = validated(operationSchema, { ...input, kind: compensation ? "directory-compensation" : "directory",
-        compensates: compensation?.id ?? null, previousGeneration: policy.generation, directoryEpoch: nextEpoch, authorizationVersion: nextVersion });
+        compensates: compensation?.id ?? null, ...(transition ? {browserSession:transition.declaration} : {}), previousGeneration: policy.generation, directoryEpoch: nextEpoch, authorizationVersion: nextVersion });
       const notice = validated(noticeSchema, { v: 1, id: randomUUID(), operationId: input.id, kind: saved.kind, phase: "applying",
         actor: input.actor, at: input.at, changes: input.changes, recipients: input.recipients });
       transport.mutate({ at: input.at, requestId: input.actor.requestId,
@@ -156,7 +160,9 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         db.prepare("INSERT INTO hub_settings_security_notices VALUES(?,?,?)").run(notice.id, input.id, JSON.stringify(notice));
         for (const target of targetRows(notice.recipients)) db.prepare("INSERT INTO hub_settings_security_targets VALUES(?,?,?,'queued')").run(notice.id, target.kind, target.target);
       }); // existing floor-before-audit and same-DB write; any later rollback leaves a raised floor uncertain
-      synchronous(assertProof());
+      const finalProof = assertProof(); synchronous(finalProof);
+      // The shared writer returns its last clock sample, avoiding another callback after its final material/time check.
+      const transitionTime = typeof finalProof === "number" ? finalProof : transition?.clock();
       // Audit/proof callbacks may reenter. Recheck every authority image before the final callback-free transition.
       const state = transport.read(), latestPolicy = policyRow(db);
       const storedNotice = db.prepare("SELECT body FROM hub_settings_security_notices WHERE id=? AND operation_id=?")
@@ -168,17 +174,22 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         || !same(validated(noticeSchema, parseStrictJson(storedNotice.body)), notice)
         || !same((db.prepare("SELECT kind,target,state FROM hub_settings_security_targets WHERE notice_id=?").all(notice.id) as { kind: string; target: string; state: string }[])
           .sort((a, b) => canonicalArguments(a).localeCompare(canonicalArguments(b))), targetRows(notice.recipients))) throw new HubProtocolError("conflict");
+      const successor = transition?.validate(transitionTime!);
       if (advanceHubSessionEpoch(db, input.expected.directoryEpoch) !== nextEpoch) throw new HubProtocolError("uncertain");
+      if (successor) db.prepare("INSERT INTO hub_sessions(token_hash,id,person,created_at,seen_at,expires_at,state,directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
+        .run(successor.tokenHash, successor.id, successor.person, successor.at, successor.at, successor.expiresAt, nextEpoch);
       const changed = db.prepare("UPDATE hub_settings_head SET operation_id=?,directory_epoch=? WHERE singleton=1 AND directory_epoch=? AND operation_id IS ?")
         .run(input.id, nextEpoch, input.expected.directoryEpoch, input.expected.operationId);
       if (changed.changes !== 1) throw new HubProtocolError("conflict");
       return saved;
     }).immediate();
+    transition?.committed(result);
+    return result;
   }
   return {
     hubId,
     inspect,
-    decide(raw: HubDirectoryDecisionRequest, assertProof: () => void) { return decide(raw, assertProof); },
+    decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, rotation?: HubDirectorySessionRotation) { return decide(raw, assertProof, undefined, rotation); },
     /** A new operation restoring ONLY original content; current policy/denies/revokes/provenance are never rewound. */
     compensate(originalId: string, raw: HubDirectoryDecisionRequest, assertPreauthorizedIntent: () => void) {
       const original = operation(db, validated(uuid, originalId));

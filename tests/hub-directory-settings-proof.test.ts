@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps, type HubDirectoryProofSource } from "../src/hub/settings-directory-proof.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
+import type { HubDirectorySessionRotation } from "../src/hub/session-directory-transition.js";
 import type { HubDirectorySettingsCandidate } from "../src/hub/settings-commit.js";
 import { createHubGroupPolicyStore, groupPolicyMigration } from "../src/hub/group-policy/store.js";
 import { applyHubMigrations } from "../src/hub/db.js";
@@ -37,7 +38,7 @@ function fixture() {
   const pool = createHubGroupPolicyStore({ db, hubId: "proof-hub", realm: who.realm, generation: "generation", directory: old,
     audit: createHubAudit({ db, contentKey: randomBytes(32) }), current: () => true });
   const prepared = vi.fn((_: HubDirectorySettingsCandidate, _actor: unknown, proof: () => boolean) => { expect(proof()).toBe(true); return { ref: "writer-ref", expiresAt: now + 300_000 }; });
-  const commit = vi.fn((_ref: string, _actor: unknown, proof: () => boolean) => { expect(proof()).toBe(true); return { receiptId: randomUUID(), directoryEpoch: 1 }; });
+  const commit = vi.fn((_ref: string, _actor: unknown, proof: () => boolean, _rotation?: HubDirectorySessionRotation) => { expect(proof()).toBe(true); return { receiptId: randomUUID(), directoryEpoch: 1 }; });
   const probeTls = vi.fn<NonNullable<HubDirectoryProofDeps["probeTls"]>>(async () => "A".repeat(64)), createDirectory = vi.fn<HubDirectoryProofDeps["createDirectory"]>(() => next);
   const deps: HubDirectoryProofDeps = { source: () => source, now: () => now, withDirectoryRead: (key, read) => pool.withDirectoryRead(key, read), probeTls, createDirectory,
     writer: () => ({ prepare: prepared, commit, compensate: () => { throw Error("not part of this layer"); } }) };
@@ -256,4 +257,12 @@ describe("directory setting preparation authority", () => {
     for (let n = 0; n < 5; n++) await expect(r.save()).rejects.toMatchObject({ code: "denied" });
     await expect(r.save()).rejects.toMatchObject({ code: "busy" }); expect(r.old.signIn).toHaveBeenCalledTimes(5);
   });
+});
+
+// The handle is server-only and separate from candidate/body data. The SQL participant verifies its private provenance.
+it("passes the exact request-local rotation through the authority controller without serializing it into the candidate", async () => {
+  const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx), rotation = Object.freeze({ discard() {} });
+  await r.control.apply(p.ref, { credentials:r.credentials, confirmation:p.trust?.challenge }, r.ctx, rotation);
+  expect(r.commit.mock.calls[0]?.[3]).toBe(rotation);
+  expect(r.prepared.mock.calls[0]?.[0]).not.toHaveProperty("rotation");
 });

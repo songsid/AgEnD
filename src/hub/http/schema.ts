@@ -7,6 +7,7 @@
  */
 import type Database from "better-sqlite3";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
+import { HUB_SESSION_AUTHENTICATION_MIGRATION } from "../session-directory-transition.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../session-epoch.js";
 
 export interface HubHttpMigration { readonly component: string; readonly version: number; up(db: Database.Database): void }
@@ -90,4 +91,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   } }),
   HUB_BUTTONS_MIGRATION,
   HUB_SESSION_EPOCH_MIGRATION,
+  HUB_SESSION_AUTHENTICATION_MIGRATION,
 ]);
