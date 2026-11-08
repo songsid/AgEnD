@@ -1,4 +1,6 @@
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
+import { instanceTeams } from "./team-membership.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
@@ -278,6 +280,8 @@ export interface LifecycleContext {
    * instances. Absent means the complete roster cannot be proven (#1624).
    */
   kiroPeerWorkingDirectories?(name: string): string[];
+  /** The fleet's startup snapshot of active decisions; each daemon selects its own Active Decisions from it. */
+  activeDecisions?(): readonly ActiveDecisionRow[];
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
   /** Suppress only incident kinds caused by the active tmux server storm. */
@@ -1894,6 +1898,9 @@ export class InstanceLifecycle {
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
+    // Read at each spawn, like the peers below: joining or leaving a team changes the next launch's Active Decisions.
+    daemon.setDecisionTeams(() => instanceTeams(this.ctx.fleetConfig?.teams, name));
+    daemon.setDecisionSource(this.ctx.activeDecisions ? () => this.ctx.activeDecisions!() : undefined);
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(backendName === "kiro-cli"
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined

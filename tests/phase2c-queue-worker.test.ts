@@ -23,6 +23,8 @@ vi.mock("../src/daemon.js", async importOriginal => {
     constructor(public name: string) { super(); fake.created.push(this); }
     setDeliveryOutboxPort() {}
     setPeerWorkingDirectories() {}
+    setDecisionTeams() {}
+    setDecisionSource() {}
     setStatusEmojiAvoidList() {}
     setWorkLeaseCheck() {}
     seedActivityNow() {}

@@ -1,4 +1,5 @@
 import { readBoundedWebBody } from "./web-body.js";
+import { instanceTeams } from "./team-membership.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 /**
@@ -122,14 +123,8 @@ export function resolveInstanceIdentity(input: {
     tags: tags.filter((t): t is string => typeof t === "string"),
   };
 }
-/**
- * The teams an instance is a member of (fleet.yaml `teams.<name>.members`), in fleet.yaml's order — what the sidebar
- * groups it under first (#2172): an agent in a team sits with its team, whatever its tags say. Strings only.
- */
-export function instanceTeams(teams: Record<string, { members?: unknown }> | undefined | null, name: string): string[] {
-  if (!teams || typeof teams !== "object") return [];
-  return Object.keys(teams).filter(team => Array.isArray(teams[team]?.members) && (teams[team]!.members as unknown[]).includes(name));
-}
+// The teams an instance is in: what the sidebar groups it under first (#2172), whatever its tags say.
+export { instanceTeams };
 /** Profiles by instance, for a status read: only when profiles.db already exists — a status read never creates it. */
 export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow, "display_name" | "description" | "role" | "avatar_path">> {
   if (!existsSync(join(dataDir, "profiles.db"))) return new Map();
