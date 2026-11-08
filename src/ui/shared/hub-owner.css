@@ -40,5 +40,6 @@
 @media (max-width: 899px) {
   .hub-this-facts { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
   .hub-this-facts dd { margin-bottom: var(--s-2); }
-  .hub-this-actions .btn { min-height: var(--tap); }
+  /* A phone's Administration: every button and text field is a full touch target, so one class combination keeps one height. */
+  .hub-admin .btn, .hub-admin .field input { min-height: var(--tap); }
 }
