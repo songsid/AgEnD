@@ -53,11 +53,12 @@ export class HubTransportStore {
       return state;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
-  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState) => T): T {
+  /** owningDb is callback-scoped, for a same-transaction participant; never stash or use it after change returns. */
+  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState, owningDb: Database.Database) => T): T {
     let writing = false;
     try {
       return this.db.transaction(() => {
-        const state = this.read(), result = change(state);
+        const state = this.read(), result = change(state, this.db);
         if (result && typeof (result as { then?: unknown }).then === "function") throw new HubProtocolError();
         state.revision++;
         validated(stateSchema, state);
