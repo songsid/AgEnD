@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "case": "desk-light-en",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-light-zh-TW",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-dark-en",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-dark-zh-TW",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-light-en",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-light-zh-TW",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-dark-en",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "cleaned": true
+    }
+  ],
+  "limits": "owned scratch only, fake people/LDAPS, no real AD/account/CLI/native service/pilot",
+  "failures": [],
+  "cleaned": true
+}

@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "case": "desk-light-en",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "no-setup-request": "PASS",
+      "no-directory-bind": "PASS",
+      "no-hub-config": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "host-login": "PASS",
+      "baseline-has-no-setup": "PASS",
+      "no-setup-request": "PASS",
+      "no-directory-bind": "PASS",
+      "no-hub-config": "PASS",
+      "cleaned": true
+    }
+  ],
+  "skew": "old-shell",
+  "limits": "owned scratch only, fake people/LDAPS, no real AD/account/CLI/native service/pilot",
+  "failures": [],
+  "cleaned": true
+}

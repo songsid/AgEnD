@@ -4105,3 +4105,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .general-location-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; }
 .general-location-now > span { color: var(--text-2); }
 .general-location-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }
+
+/* Host setup uses the shared Settings form; long public fingerprints wrap on a phone. */
+.hub-setup code { overflow-wrap: anywhere; white-space: normal; min-width: 0; }
+.hub-setup .check { min-height: var(--tap); }
+
+.hub-setup-fingerprint > span { display: inline-block; white-space: nowrap; }
+@media (max-width: 600px) {
+  .hub-setup :is(input:not([type="checkbox"]), select) { min-height: var(--tap); }
+}
