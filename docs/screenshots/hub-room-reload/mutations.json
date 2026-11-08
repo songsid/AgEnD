@@ -1,0 +1,44 @@
+[
+  {
+    "name": "token-bound",
+    "file": "src/hub/room-read-pacer.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  {
+    "name": "physical-bound",
+    "file": "src/hub/room-read-pacer.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  {
+    "name": "release-once",
+    "file": "src/hub/room-read-pacer.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  {
+    "name": "spent-eviction",
+    "file": "src/hub/room-read-pacer.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  {
+    "name": "cross-room-bound",
+    "file": "src/hub/rooms.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28"
+  },
+  {
+    "name": "disclosure-expiry",
+    "file": "src/hub/rooms.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28"
+  }
+]

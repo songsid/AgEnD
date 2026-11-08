@@ -1,0 +1,78 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ ✓ tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 5ms
+ ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 2ms
+ × tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 5ms
+   → expected [Function] to throw an error
+ ✓ tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 1ms
+ × tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 17ms
+   → expected [Function] to throw an error
+ × tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 2ms
+   → expected [Function] to throw an error
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-read-pacer.test.ts:22:42
+     20|   const c = clock(), held = Array.from({ length: ROOM_READ_INFLIGHT },…
+     21|   c.advance(80_000);
+     22|   expect(() => c.pacer.enter("session")).toThrow("backpressure");
+       |                                          ^
+     23|   held[0]!(); held[0]!();
+     24|   const replacement = c.pacer.enter("session");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-read-pacer.test.ts:41:41
+     39|   // Fully replenished idle buckets were pruned; the physically held b…
+     40|   const second = c.pacer.enter("active");
+     41|   expect(() => c.pacer.enter("active")).toThrow("backpressure");
+       |                                         ^
+     42|   held(); second();
+     43| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-read-pacer.test.ts:47:39
+     45|   const c = clock(), old = c.pacer.enter("same");c.pacer.clear();
+     46|   const a = c.pacer.enter("same"), b = c.pacer.enter("same");old();
+     47|   expect(() => c.pacer.enter("same")).toThrow("backpressure");a();b();
+       |                                       ^
+     48| });
+     49|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 3 passed (6)
+   Start at  15:30:30
+   Duration  545ms (transform 138ms, setup 157ms, import 106ms, tests 34ms, environment 0ms)
+

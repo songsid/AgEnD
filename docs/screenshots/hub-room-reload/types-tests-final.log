@@ -1,0 +1,4 @@
+
+> @songsid/agend@1.22.0 typecheck:tests
+> tsc --noEmit -p tsconfig.test.json
+

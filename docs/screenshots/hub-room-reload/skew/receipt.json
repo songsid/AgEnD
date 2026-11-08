@@ -1,0 +1,104 @@
+{
+  "source": "48a305f7621c7b2f1977ee086e8fd03acc2d248d",
+  "sourceFiles": {
+    "src/hub/rooms.ts": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28",
+    "src/ui/panel-hub.js": "23ae52ea05d05a88690de304d206c9bead450d49b46fcba60dbae6de382c12c4",
+    "src/hub/room-read-pacer.ts": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  "mode": "retained-panel",
+  "retainedPanelSha256": "4678e29d84d5f36eeaf10de936fd554c47f78fc09c879877eca40b32aa51f3ff",
+  "browser": "156.0.8078.4",
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "retained panel/new server reload and reopen"
+      ],
+      "reloadStatus": 200,
+      "status": "PASS"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "retained panel/new server reload and reopen"
+      ],
+      "reloadStatus": 200,
+      "status": "PASS"
+    }
+  ],
+  "network": [
+    {
+      "tag": "desk-light-en",
+      "at": 1794123207717,
+      "path": "/hub/v1/rooms/0054a499-adc3-4ffb-852c-a9534ff7ee71/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794123208157,
+      "path": "/hub/v1/rooms/0054a499-adc3-4ffb-852c-a9534ff7ee71/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794123210386,
+      "path": "/hub/v1/rooms/0054a499-adc3-4ffb-852c-a9534ff7ee71/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794123213319,
+      "path": "/hub/v1/rooms/0054a499-adc3-4ffb-852c-a9534ff7ee71/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794123218077,
+      "path": "/hub/v1/rooms/f9ba388e-2fbb-4474-ad33-697939da8ffd/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794123218389,
+      "path": "/hub/v1/rooms/f9ba388e-2fbb-4474-ad33-697939da8ffd/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794123219939,
+      "path": "/hub/v1/rooms/f9ba388e-2fbb-4474-ad33-697939da8ffd/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794123222215,
+      "path": "/hub/v1/rooms/f9ba388e-2fbb-4474-ad33-697939da8ffd/messages",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "csp": [],
+  "scope": "Real HTTP/SQLite/auth/grants/history/lease release with synthetic directory and protocol-member replies; no API response replacement, real account/model/native/fleet.",
+  "cleaned": {
+    "browserClosed": true,
+    "httpsClosed": true,
+    "rigClosed": true,
+    "keyRootRemoved": true,
+    "port": 37139,
+    "pid": 905167
+  },
+  "status": "PASS"
+}

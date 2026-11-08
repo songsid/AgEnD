@@ -1,0 +1,58 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ × tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 10ms
+   → expected [Function] to throw an error
+ ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 1ms
+ ✓ tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 2ms
+ × tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 6ms
+   → expected [Function] to throw an error
+ ✓ tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 22ms
+ ✓ tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-read-pacer.test.ts:8:42
+      6|   const c = clock();
+      7|   for (let i = 0; i < ROOM_READ_BURST; i++) c.pacer.enter("session")();
+      8|   expect(() => c.pacer.enter("session")).toThrow("backpressure");
+       |                                          ^
+      9|   c.advance(step - 1); expect(() => c.pacer.enter("session")).toThrow(…
+     10|   c.advance(1); c.pacer.enter("session")();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-read-pacer.test.ts:32:36
+     30|   const c = clock();for (let i = 0; i < ROOM_READ_BURST; i++) c.pacer.…
+     31|   c.pacer.enter("b")(); c.set(-100_000);
+     32|   expect(() => c.pacer.enter("a")).toThrow("backpressure");
+       |                                    ^
+     33| });
+     34| it("bounds retained sessions and never evicts a spent or active allowa…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+   Start at  15:30:29
+   Duration  459ms (transform 74ms, setup 91ms, import 104ms, tests 43ms, environment 0ms)
+

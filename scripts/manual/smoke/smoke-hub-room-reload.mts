@@ -20,7 +20,7 @@ const server=createServer({key:readFileSync(join(keys,"hub/keys/tls-key.pem")),c
 await new Promise<void>((r,j)=>{server.once("error",j);server.listen(port,"127.0.0.1",r);});
 const pw=createRequire(pwDir+"/")("playwright-core");
 const browser=await pw.chromium.launch({executablePath:process.env.CHROME,args:["--no-sandbox"]});
-const receipt:any={source:execFileSync("git",["-C",repo,"rev-parse","HEAD"],{encoding:"utf8"}).trim(),sourceFiles:Object.fromEntries(["src/hub/rooms.ts","src/ui/panel-hub.js",...(process.env.BASELINE==="1"?[]:["src/hub/room-read-pacer.ts"])].map(f=>[f,createHash("sha256").update(readFileSync(join(repo,f))).digest("hex")])),mode:process.env.BASELINE==="1"?"baseline":"candidate",browser:browser.version(),cases:[],network:[],pageErrors:[],foreign:[],csp:[],scope:"Real HTTP/SQLite/auth/grants/history/lease release with synthetic directory and protocol-member replies; no API response replacement, real account/model/native/fleet."};
+const receipt:any={source:execFileSync("git",["-C",repo,"rev-parse","HEAD"],{encoding:"utf8"}).trim(),sourceFiles:Object.fromEntries(["src/hub/rooms.ts","src/ui/panel-hub.js",...(process.env.BASELINE==="1"?[]:["src/hub/room-read-pacer.ts"])].map(f=>[f,createHash("sha256").update(readFileSync(join(repo,f))).digest("hex")])),mode:process.env.BASELINE==="1"?"baseline":process.env.RETAINED_PANEL?"retained-panel":"candidate",retainedPanelSha256:process.env.RETAINED_PANEL?createHash("sha256").update(readFileSync(process.env.RETAINED_PANEL)).digest("hex"):undefined,browser:browser.version(),cases:[],network:[],pageErrors:[],foreign:[],csp:[],scope:"Real HTTP/SQLite/auth/grants/history/lease release with synthetic directory and protocol-member replies; no API response replacement, real account/model/native/fleet."};
 const owner=rig.addPerson("owner","Example Owner");
 const link=rig.link(randomUUID(),owner);
 const cs:any[]=[];
@@ -48,7 +48,7 @@ try{
   const grant=await rig.call(o,"POST","/hub/v1/grants",{exposureId:exposures[i]!.id,exposureRevision:1,login:"asker"+i,days:7});check(grant.status===200,"grant setup failed");
   const ctx=await browser.newContext({viewport:c.device==="phone"?{width:390,height:844}:{width:1366,height:900},isMobile:c.device==="phone",hasTouch:c.device==="phone",locale:c.lang==="en"?"en-US":"zh-TW",colorScheme:c.theme,ignoreHTTPSErrors:true});
   await ctx.addInitScript({content:`window.__name=fn=>fn;localStorage.setItem('agend_lang',${JSON.stringify(c.lang)});localStorage.setItem('agend_theme',${JSON.stringify(c.theme)});window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.violatedDirective));`});
-  await ctx.route("**/*",(route:any)=>{const u=new URL(route.request().url());if(u.origin!==origin){receipt.foreign.push(u.origin);return route.abort();}return route.continue();});
+  await ctx.route("**/*",(route:any)=>{const u=new URL(route.request().url());if(u.origin!==origin){receipt.foreign.push(u.origin);return route.abort();}if(process.env.RETAINED_PANEL&&u.pathname==="/ui/js/panel-hub.js")return route.fulfill({status:200,contentType:"application/javascript",body:readFileSync(process.env.RETAINED_PANEL,"utf8")});return route.continue();});
   const p=await ctx.newPage();p.setDefaultTimeout(15000);
   p.on("pageerror",(e:any)=>receipt.pageErrors.push(String(e)));
   p.on("response",(r:any)=>{if(new URL(r.url()).pathname.endsWith("/messages"))receipt.network.push({tag,at:Date.now(),path:new URL(r.url()).pathname,status:r.status(),method:r.request().method(),retryAfter:r.headers()["retry-after"]});});
@@ -62,6 +62,7 @@ try{
    await p.getByText(a,{exact:true}).waitFor();check(await p.getByText(q,{exact:true}).count()===1,"question lost/duplicated on reload");row.checks.push("reload returns current question and answer");
    const another=p.waitForResponse((r:any)=>new URL(r.url()).pathname===path&&r.request().method()==="GET");await p.goto(origin+"/ui/hub");await p.goto(roomURL);check((await another).status()===200,"reopen refused");await p.getByText(a,{exact:true}).waitFor();row.checks.push("reopen within10s shows chat");
    check(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"horizontal overflow");await shot(p,tag+"-reload-visible");
+   if(process.env.RETAINED_PANEL){receipt.csp.push(...await p.evaluate(()=>window.__csp));row.checks.push("retained panel/new server reload and reopen");row.status="PASS";continue;}
    const cookies=await ctx.cookies(),cookie=cookies.map((x:any)=>x.name+"="+x.value).join("; ");
    const original=rig.directory.checkEligibility.bind(rig.directory);let release!:()=>void,entered!:()=>void,count=0;
    const gate=new Promise<void>(r=>release=r),both=new Promise<void>(r=>entered=r);

@@ -1,0 +1,26 @@
+[
+  {
+    "run": "before",
+    "pid": 876602,
+    "pidAbsent": true,
+    "port": 42431,
+    "portBindable": true,
+    "keyRootsRemaining": 0
+  },
+  {
+    "run": "current",
+    "pid": 898339,
+    "pidAbsent": true,
+    "port": 35631,
+    "portBindable": true,
+    "keyRootsRemaining": 0
+  },
+  {
+    "run": "skew",
+    "pid": 905167,
+    "pidAbsent": true,
+    "port": 37139,
+    "portBindable": true,
+    "keyRootsRemaining": 0
+  }
+]
