@@ -7,7 +7,7 @@
  * Fixtures only; every CLI/native effect is a stub.
  */
 import { createServer, request, type Server } from "node:http";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,14 +25,16 @@ const dirs: string[] = [];
 const temp = () => { const dir = mkdtempSync(join(tmpdir(), "agend-profile-signin-")); dirs.push(dir); return dir; };
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 const profileHome = (dataDir: string, name: string) => resolve(dataDir, "credential-profiles", "claude-code", name);
+/** What Settings → Accounts → + Add account does (accounts-profiles.ts addAccountProfile): the account's own private folder. A sign-in never makes one. */
+const addAccount = (dataDir: string, name: string) => { mkdirSync(profileHome(dataDir, name), { recursive: true, mode: 0o700 }); return profileHome(dataDir, name); };
 
 const URL_OK = "https://claude.com/cai/oauth/authorize?state=test";
 const CLAUDE_CODE_PANE = `Browser didn't open? Use the url below to sign in\n${URL_OK}\nPaste code here if prompted >\n`;
 const CODE = "AbCd-1234_xyz";
 
 describe("the transport: which folder and variable a named account's sign-in gets", () => {
-  it("the profile's own folder: CLAUDE_CONFIG_DIR=<data dir>/credential-profiles/claude-code/<name>, created private; nothing else is added", () => {
-    const dir = temp();
+  it("the profile's own folder: CLAUDE_CONFIG_DIR=<data dir>/credential-profiles/claude-code/<name> (the folder Add made, kept private); nothing else is added", () => {
+    const dir = temp(); addAccount(dir, "CHY");
     expect(structuredSignInProfileEnvironment(dir, "claude-code", "CHY")).toEqual({ CLAUDE_CONFIG_DIR: profileHome(dir, "CHY") });
     expect(statSync(profileHome(dir, "CHY")).mode & 0o777).toBe(0o700);
     // Idempotent: a second sign-in of the same account finds its folder and keeps what is in it.
@@ -55,7 +57,7 @@ describe("the transport: which folder and variable a named account's sign-in get
       const dir = temp();
       for (const backend of ["codex", "kiro-cli"]) expect(() => structuredSignInProfileEnvironment(dir, backend, "CHY"), backend).toThrow("signin_profile_unsupported");
       expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
-      expect(() => new ProfileSignIns({ lock: new LoginWindowLock(), current: () => true, installed: async () => true, checkAuth: async () => "invalid", transport: () => { throw new Error("no"); } })
+      expect(() => new ProfileSignIns({ lock: new LoginWindowLock(), current: () => true, installed: async () => true, known: () => true, checkAuth: async () => "invalid", transport: () => { throw new Error("no"); } })
         .snapshot({}, { backend: "codex", profile: "CHY" })).toThrow("invalid_signin_target");
     } finally { widened.clear(); for (const b of before) widened.add(b); }
   });
@@ -64,12 +66,23 @@ describe("the transport: which folder and variable a named account's sign-in get
     expect(() => structuredSignInProfileEnvironment(dir, backend, "CHY")).toThrow("signin_profile_unsupported");
     expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
   });
-  it("a profile folder that is a link to somewhere else is refused: the login would be written to the shared one", () => {
+  it("a profile folder that is a link to somewhere else is not an account: the login would be written to the shared one", () => {
     const dir = temp(), shared = temp();
     mkdirSync(join(dir, "credential-profiles", "claude-code"), { recursive: true });
     symlinkSync(shared, profileHome(dir, "CHY"));
-    expect(() => structuredSignInProfileEnvironment(dir, "claude-code", "CHY")).toThrow("signin_profile_failed");
+    expect(() => structuredSignInProfileEnvironment(dir, "claude-code", "CHY")).toThrow("signin_profile_unknown");
     expect(lstatSync(profileHome(dir, "CHY")).isSymbolicLink()).toBe(true);
+  });
+  it("a sign-in never makes an account (#3418 review): a name with no folder, or one spelled differently from the folder, is refused and nothing is created — Add stays the only way", () => {
+    const dir = temp();
+    expect(() => structuredSignInProfileEnvironment(dir, "claude-code", "CHY")).toThrow("signin_profile_unknown");
+    expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
+    addAccount(dir, "CHY");
+    for (const other of ["chy", "Chy", "cHY"]) {
+      expect(() => structuredSignInProfileEnvironment(dir, "claude-code", other), other).toThrow("signin_profile_unknown");
+      expect(readdirSync(join(dir, "credential-profiles", "claude-code"))).toEqual(["CHY"]);   // no second folder, on a case-sensitive disk
+    }
+    expect(structuredSignInProfileEnvironment(dir, "claude-code", "CHY")).toEqual({ CLAUDE_CONFIG_DIR: profileHome(dir, "CHY") });
   });
 
   function nativeRig(options: { backend?: string; dataDir?: string } = {}) {
@@ -80,7 +93,7 @@ describe("the transport: which folder and variable a named account's sign-in get
   }
   const launched = (h: ReturnType<typeof nativeRig>) => vi.mocked(h.native.start).mock.calls[0]![0].command;
   it("a profile launch carries the PROFILE's variable and not the host's own; a launch with no profile still carries the host's (the default account is unchanged)", async () => {
-    const dir = temp();
+    const dir = temp(); addAccount(dir, "CHY");
     const named = nativeRig({ backend: "claude-code", dataDir: dir });
     await named.transport.start({ argv: ["claude", "auth", "login"], profile: "CHY" }, new AbortController().signal);
     expect(launched(named)).toContain(`'CLAUDE_CONFIG_DIR=${profileHome(dir, "CHY")}'`);
@@ -122,7 +135,7 @@ function rig(extra: Partial<ProfileSignInDeps> = {}) {
   const installed = vi.fn(async () => state.installed);
   const transportFor = vi.fn((_target: unknown) => transport);
   const events: unknown[] = [];
-  const c = new ProfileSignIns({ lock, current: who => who === owner && state.current, installed, checkAuth, transport: transportFor, changed: (e, _o, launched) => events.push({ ...e, launched }), ...extra });
+  const c = new ProfileSignIns({ lock, current: who => who === owner && state.current, installed, known: () => true, checkAuth, transport: transportFor, changed: (e, _o, launched) => events.push({ ...e, launched }), ...extra });
   return { c, owner, other, lock, state, transport, checkAuth, installed, transportFor, events, target: (profile = "CHY") => ({ backend: "claude-code", profile }) };
 }
 const login = (h: ReturnType<typeof rig>) => h.c.snapshot(h.owner, h.target()).login!;
@@ -241,6 +254,33 @@ describe("ProfileSignIns", () => {
     expect(await h.c.cancelAccount("claude-code", "CHY")).toBe(false);    // already over: nothing to end, the child is not reaped twice
     expect(h.transport.close).toHaveBeenCalledTimes(1);
   });
+  it("cancel ends only this session's own run, and — with the run's id — only that exact run (#3418 review): another session's close, or a stale id, leaves it running", async () => {
+    let h!: ReturnType<typeof rig>;
+    h = rig({ current: who => who === h.owner || who === h.other });   // two admin sessions are both current
+    const run = await h.c.begin(h.owner, h.target()); const id = run.login!.id;
+    // The other session's dialog closing: not its run.
+    await h.c.cancel(h.other, h.target()); await h.c.cancel(h.other, h.target(), id);
+    expect(h.c.signingIn("claude-code", "CHY")).toBe(true); expect(h.transport.close).not.toHaveBeenCalled();
+    // A stale or foreign id from the right session: not that run.
+    await h.c.cancel(h.owner, h.target(), "f".repeat(32));
+    expect(h.c.signingIn("claude-code", "CHY")).toBe(true); expect(h.transport.close).not.toHaveBeenCalled();
+    // The run's own id ends it; a second one sent late finds nothing to end.
+    await h.c.cancel(h.owner, h.target(), id);
+    expect(h.c.signingIn("claude-code", "CHY")).toBe(false); expect(h.transport.close).toHaveBeenCalledTimes(1); expect(h.lock.isHeld).toBe(false);
+    await h.c.cancel(h.owner, h.target(), id); expect(h.transport.close).toHaveBeenCalledTimes(1);
+    // Without an id the session's own cancel (the card's Cancel sign-in) still ends its run.
+    await h.c.begin(h.owner, h.target()); await h.c.cancel(h.owner, h.target());
+    expect(h.c.signingIn("claude-code", "CHY")).toBe(false); expect(h.transport.close).toHaveBeenCalledTimes(2);
+  });
+  it("a run that is not an account (no folder with exactly this name) is refused before the window is claimed, the probe runs or a child starts; a read is refused the same (#3418 review)", async () => {
+    const h = rig({ known: (_backend, profile) => profile === "CHY" });
+    for (const profile of ["chy", "Chy", "NEW"]) {
+      await expect(h.c.begin(h.owner, h.target(profile))).rejects.toThrow("signin_profile_unknown");
+      await expect(h.c.refresh(h.owner, h.target(profile))).rejects.toThrow("signin_profile_unknown");
+    }
+    expect(h.lock.isHeld).toBe(false); expect(h.checkAuth).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled(); expect(h.installed).not.toHaveBeenCalled();
+    await h.c.begin(h.owner, h.target("CHY")); expect(h.transport.start).toHaveBeenCalledTimes(1);
+  });
   it("a child that cannot be shown gone keeps the window reserved and blocks the next attempt (the account still counts as signing in)", async () => {
     const h = rig(); await h.c.begin(h.owner, h.target());
     h.transport.close.mockRejectedValue(new Error("private vendor text"));
@@ -301,9 +341,9 @@ describe("ProfileSignIns", () => {
 describe("the route: ?backend=claude-code&profile=<name>", () => {
   const rigs: { server: Server; service: ProfileSignIns }[] = [];
   afterEach(async () => { for (const r of rigs.splice(0)) { await r.service.close(); r.server.closeAllConnections(); await new Promise<void>(res => r.server.close(() => res())); } });
-  async function http() {
+  async function http(extra: Partial<ProfileSignInDeps> = {}) {
     const token = "scratch-fleet-token", sessions = new WebSessionStore({});
-    const h = rig({ current: owner => { const r = owner as { handle: string }; return sessions.findByHandle(r.handle) === owner && (owner as any).tier === "admin" && (owner as any).surface === "local" && sessions.isCurrent(owner as any, tokenEpoch(token)); } });
+    const h = rig({ current: owner => { const r = owner as { handle: string }; return sessions.findByHandle(r.handle) === owner && (owner as any).tier === "admin" && (owner as any).surface === "local" && sessions.isCurrent(owner as any, tokenEpoch(token)); }, ...extra });
     const service = h.c;
     const defaultService = { refresh: vi.fn(async () => ({})) };
     const context = { webToken: token, webSessions: sessions, profileSignIns: service, browserBackendSignIns: defaultService } as unknown as WebApiContext;
@@ -361,6 +401,25 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
     expect(second.status).toBe(409); expect(second.body).toEqual({ error: "signin_busy" });
     expect(h.transport.start).toHaveBeenCalledTimes(1);
   });
+  it("cancel may carry the run's id (32 hex): that run is ended; another id is accepted but ends nothing; anything else is a 400 (#3418 review)", async () => {
+    const h = await http();
+    const started = await h.call(Q, { operation: "start", backend: "claude-code" });
+    for (const bad of ["x", "A".repeat(32), "a".repeat(31), 5, null]) expect((await h.call(Q, { operation: "cancel", id: bad })).status, JSON.stringify(bad)).toBe(400);
+    const stale = await h.call(Q, { operation: "cancel", id: "f".repeat(32) });
+    expect(stale.status).toBe(200); expect(stale.body.login).toMatchObject({ phase: "code" }); expect(h.transport.close).not.toHaveBeenCalled();
+    const ended = await h.call(Q, { operation: "cancel", id: started.body.login.id });
+    expect(ended.body.login).toMatchObject({ phase: "failed", reason: "cancelled" }); expect(h.transport.close).toHaveBeenCalledTimes(1); expect(h.lock.isHeld).toBe(false);
+  });
+  it("a name that is not an existing account is refused before anything is read or reserved: 409 signin_profile_unknown, no probe, no CLI, no folder (#3418 review)", async () => {
+    const h = await http({ known: (_backend, profile) => profile === "CHY" });
+    for (const query of ["?backend=claude-code&profile=chy", "?backend=claude-code&profile=NEW"]) {
+      expect(await h.call(query)).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
+      expect(await h.call(query, { operation: "start", backend: "claude-code" })).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
+      expect(await h.call(query, { operation: "refresh" })).toMatchObject({ status: 409, body: { error: "signin_profile_unknown" } });
+    }
+    expect(h.checkAuth).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled(); expect(h.lock.isHeld).toBe(false);
+    expect((await h.call(Q)).status).toBe(200);   // the account that exists reads as before
+  });
   it("an error never carries a vendor's words or a path", async () => {
     const h = await http(); h.transport.start.mockRejectedValue(new Error("/home/x/.claude secret"));
     const started = await h.call(Q, { operation: "start", backend: "claude-code" });
@@ -372,7 +431,7 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
 describe("FleetManager", () => {
   function fleet() {
     vi.useFakeTimers();
-    const dir = temp();
+    const dir = temp(); addAccount(dir, "CHY");   // the account exists: Add made it
     writePendingBackendSignIns(dir, { version: 1, selected: ["claude-code"], pending: ["claude-code"] });
     const fm = new FleetManager(dir) as any; fm.fleetConfig = { defaults: {}, instances: {} };
     const sessions = new WebSessionStore({}); fm.webSessions = sessions; Object.defineProperty(fm, "webToken", { get: () => "scratch-token" });

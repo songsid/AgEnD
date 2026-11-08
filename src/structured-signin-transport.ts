@@ -1,11 +1,23 @@
 /** Native adapter for the closed driver. Tests inject TerminalBackend; never a fleet pane. */
-import { mkdtempSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { TmuxTerminalBackend, shellQuote, segmentInput, type TerminalBackend } from "./web-terminal.js";
 import type { StructuredSignInLaunch, StructuredSignInTransport } from "./structured-signin.js";
 import { credentialHomeSpec, credentialProfileEnv, credentialProfileHome, isCredentialProfileName, prepareCredentialProfileHome } from "./backend/credential-profile.js";
+
+/**
+ * Whether the account's folder is there, a real directory (never a link), with exactly this spelling (a case-insensitive disk finds `chy` for `CHY`, a case-sensitive one
+ * would make a second folder). Nothing is created. This module stays light (the setup host loads it and must reach no agent code), so this is the folder check only; the
+ * session's side (`accountFolderExists`, accounts-profiles.ts) adds AgEnD's-own checks and refuses before a run is reserved.
+ */
+function accountFolderThere(dataDir: string, backend: string, profile: string): boolean {
+  try {
+    const home = credentialProfileHome(dataDir, backend, profile), st = lstatSync(home);
+    return st.isDirectory() && !st.isSymbolicLink() && readdirSync(dirname(home)).includes(profile);
+  } catch { return false; }
+}
 
 /**
  * The backends whose NAMED accounts the dashboard signs in with the structured controls: Claude Code's only, whose login under a relocated `CLAUDE_CONFIG_DIR` was checked with
@@ -29,13 +41,15 @@ export function structuredSignInEnvironment(env: NodeJS.ProcessEnv): Record<stri
  * agent's launch use (`credentialProfileEnv`: `CLAUDE_CONFIG_DIR=<dataDir>/credential-profiles/claude-code/<name>`), so the login lands in that profile's own folder and
  * the default account's files are never touched. Only a NAME comes in (the closed profile-name check, no trimming, no path); the variable and the folder are this
  * module's. The folder is prepared as a launch prepares it (links, seeded settings, a symlinked home refused), so a profile is never signed in through a link to the
- * shared login. Throws `signin_profile_invalid` (not a name), `signin_profile_unsupported` (a backend whose login screen was not checked under a relocated home) or
+ * shared login. Throws `signin_profile_invalid` (not a name), `signin_profile_unsupported` (a backend whose login screen was not checked under a relocated home), `signin_profile_unknown` (no account folder with exactly this name) or
  * `signin_profile_failed` (the folder could not be made safely).
  */
 export function structuredSignInProfileEnvironment(dataDir: string, backend: string, profile: string): Record<string, string> {
   if (typeof profile !== "string" || !isCredentialProfileName(profile)) throw new Error("signin_profile_invalid");
   const spec = credentialHomeSpec(backend);
   if (!spec || !STRUCTURED_PROFILE_BACKENDS.has(backend)) throw new Error("signin_profile_unsupported");
+  // Add (Settings → Accounts → + Add account) is the only way an account is made, with its `exists` / `case_clash` / `unsafe_root` checks: a sign-in never makes a folder.
+  if (!accountFolderThere(dataDir, backend, profile)) throw new Error("signin_profile_unknown");
   try { prepareCredentialProfileHome(spec, credentialProfileHome(dataDir, backend, profile)); } catch { throw new Error("signin_profile_failed"); }
   const env = credentialProfileEnv(dataDir, backend, profile);
   if (!env) throw new Error("signin_profile_unsupported");

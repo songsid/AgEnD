@@ -34,6 +34,8 @@ export interface ProfileSignInDeps {
   /** The host's own login window: the one every credential writer shares. */
   lock: LoginWindowLock;
   installed(backend: StructuredBackend): Promise<boolean>;
+  /** The account exists with exactly this spelling (its folder, made by Add). A sign-in never creates an account, and never picks another spelling's folder. */
+  known(backend: StructuredBackend, profile: string): boolean;
   /** A token-free probe of THIS account's login (its folder's variable), never the default one's. */
   checkAuth(backend: StructuredBackend, profile: string): Promise<AuthCheckResult>;
   /** The dedicated PTY for one attempt, given the target (so it can be built for that profile's folder). */
@@ -66,6 +68,11 @@ export class ProfileSignIns {
   private valid(target: ProfileSignInTarget): asserts target is ProfileSignInTarget & { backend: StructuredBackend } {
     if (!target || typeof target.backend !== "string" || typeof target.profile !== "string" || !structuredSignInSupported(target.backend)
       || !STRUCTURED_PROFILE_BACKENDS.has(target.backend) || !isCredentialProfileName(target.profile)) throw new Error("invalid_signin_target");
+  }
+
+  /** Refused before anything is read or reserved: this is not an account (Add makes accounts), or it is one spelled differently. */
+  private account(target: ProfileSignInTarget & { backend: StructuredBackend }): void {
+    if (!this.deps.known(target.backend, target.profile)) throw new Error("signin_profile_unknown");
   }
 
   /** The probe, once at a time per account, cached until `force`. A probe that throws is "unknown", never a dead end. */
@@ -104,6 +111,7 @@ export class ProfileSignIns {
   async refresh(owner: object, target: ProfileSignInTarget, force = false): Promise<ProfileSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     this.valid(target);
+    this.account(target);
     await this.read(owner, target, force);
     return this.snapshot(owner, target);
   }
@@ -111,6 +119,7 @@ export class ProfileSignIns {
   async begin(owner: object, target: ProfileSignInTarget, relogin = false): Promise<ProfileSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     this.valid(target);
+    this.account(target);
     const previous = this.run;
     if (this.cleanupFailed(previous)) throw new Error("signin_cleanup_failed");
     if (previous && !this.terminal(previous)) {
@@ -147,11 +156,16 @@ export class ProfileSignIns {
     if (result !== "accepted") throw new Error(`signin_action_${result}`);
     return this.snapshot(owner, target);
   }
-  async cancel(owner: object, target: ProfileSignInTarget): Promise<ProfileSignInSnapshot> {
+  /**
+   * End this admin session's own sign-in of this account. `id` (the run's id, which only the session that started it sees): with it, only that exact run is ended — a dialog
+   * that closes sends the id of the run it started, so a second session's or a second tab's dialog closing never ends a run it did not start. Another session's run, or a
+   * stale id, is left running.
+   */
+  async cancel(owner: object, target: ProfileSignInTarget, id?: string): Promise<ProfileSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     this.valid(target);
     const run = this.run;
-    if (run && run.target.backend === target.backend && same(run.target.profile, target.profile)) {
+    if (run && run.owner === owner && run.target.backend === target.backend && same(run.target.profile, target.profile) && (id === undefined || run.session.view(owner).id === id)) {
       await run.session.cancel();
       if (this.cleanupFailed(run)) throw new Error("signin_cleanup_failed");
     }

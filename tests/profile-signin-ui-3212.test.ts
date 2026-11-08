@@ -151,13 +151,37 @@ it("Sign in → the link opens the provider's page → the code is pasted back i
 });
 
 describe("closing, cancelling and the console fallback end the sign-in", () => {
-  it("Close ends the account's sign-in (a cancel to its endpoint) so none is left running to refuse Remove", async () => {
-    answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};
+  /** The account's endpoint as a server keeps it: nothing running until a Sign in is pressed, then the run `waitingForCode`; a cancel ends it. */
+  const server = () => {
+    let state = snapshot();
+    return (r: Req) => {
+      if (r.url !== ENDPOINT) return {};
+      if (r.method === "POST" && r.body?.operation === "start") state = snapshot({ login: waitingForCode });
+      if (r.method === "POST" && r.body?.operation === "cancel") state = snapshot();
+      return state;
+    };
+  };
+  it("Close ends the run THIS dialog started — a cancel carrying that run's id — so none is left running to refuse Remove", async () => {
+    answer = server();
+    await open({ backend: "claude-code", profile: "CHY", onClose: closing() });
+    await press("Sign in");
+    expect(posts(ENDPOINT, "start")).toHaveLength(1);
+    reqs = [];
+    fire(btn("Close"), "click"); await settle(8);
+    expect(posts(ENDPOINT, "cancel").map(r => r.body)).toEqual([{ operation: "cancel", id: waitingForCode.id }]);
+    expect(posts(DEFAULT_ENDPOINT)).toEqual([]);
+  });
+  it("a dialog that started nothing ends nothing when it closes — not a run another session or another tab started, which it only shows (#3418 review)", async () => {
+    answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};   // a run is already going when the dialog opens
     await open({ backend: "claude-code", profile: "CHY", onClose: closing() });
     reqs = [];
     fire(btn("Close"), "click"); await settle(8);
-    expect(posts(ENDPOINT, "cancel")).toHaveLength(1);
-    expect(posts(DEFAULT_ENDPOINT)).toEqual([]);
+    expect(reqs.filter(r => r.method === "POST")).toEqual([]);
+    answer = r => r.url === ENDPOINT ? snapshot() : {};
+    await open({ backend: "claude-code", profile: "CHY", onClose: closing() });   // and one that opened on nothing and never pressed Sign in
+    reqs = [];
+    fire(btn("Close"), "click"); await settle(8);
+    expect(reqs.filter(r => r.method === "POST")).toEqual([]);
   });
   it("the cancel button inside the cards posts a cancel to the account's endpoint", async () => {
     answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};
@@ -173,11 +197,27 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
     fire(btn("Close"), "click"); await settle(8);
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
   });
-  it("Use console fallback ends the sign-in at the account's endpoint, then opens the older dialog for the SAME account", async () => {
-    answer = r => r.url === ENDPOINT ? snapshot() : {};
+  it("Use console fallback ends the run this dialog started, waits for that to be answered, then opens the older dialog for the SAME account — and closing then ends nothing more", async () => {
+    const inner = server(); let release!: () => void; const held = new Promise<void>(r => { release = r; });
+    answer = async r => { const out = inner(r); if (r.method === "POST" && r.body?.operation === "cancel") await held; return out; };
     await open({ backend: "claude-code", profile: "CHY" });
+    await press("Sign in");
+    reqs = [];
     fire(btn("Use console fallback"), "click"); await settle(8);
-    expect(posts(ENDPOINT, "cancel").length).toBeGreaterThanOrEqual(1);
+    expect(posts(ENDPOINT, "cancel").map(r => r.body)).toEqual([{ operation: "cancel", id: waitingForCode.id }]);
+    expect(shell.shellStore.get().dialog?.Component, "the older dialog waits for the cancel: its Sign in cannot meet a login window still held").not.toBe(S.SignInDialog);
+    release(); await settle(8);
+    expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
+    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "CHY" });
+    await p.unmount(); await settle(4);   // the shell takes this dialog off the page
+    expect(posts(ENDPOINT, "cancel")).toHaveLength(1);
+  });
+  it("Use console fallback with no run started here posts no cancel (it would end a run another tab runs) and still opens the older dialog", async () => {
+    answer = server();
+    await open({ backend: "claude-code", profile: "CHY" });
+    reqs = [];
+    fire(btn("Use console fallback"), "click"); await settle(8);
+    expect(reqs.filter(r => r.method === "POST")).toEqual([]);
     expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "CHY" });
   });

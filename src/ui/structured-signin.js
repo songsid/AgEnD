@@ -24,6 +24,7 @@ export const SIGNIN_STRINGS = {
     error_expired: "This login attempt expired. Start a new attempt.",
     error_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
     error_signin_busy: "Another sign-in is already running. Finish or cancel it, then try again.",
+    error_signin_profile_unknown: "This account has not been added yet. Use + Add account with this name in Settings → Accounts, then sign in.",
     error_auth_unconfirmed: "The CLI exited, but credentials could not be verified. Retry or sign in later.",
     error_provider_rejected: "The provider rejected this sign-in. Retry or sign in later.",
     // #3190 Part 3c: a profile on a paired computer (the dashboard's Accounts view).
@@ -60,6 +61,7 @@ export const SIGNIN_STRINGS = {
     error_expired: "這次登入已過期。請重新開始。",
     error_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
     error_signin_busy: "已有另一個登入正在進行。請等它結束或先取消，再試一次。",
+    error_signin_profile_unknown: "這個帳號還沒有新增。請先在 設定 → 帳號 用 + 新增帳號 加入同樣的名稱，再登入。",
     error_auth_unconfirmed: "CLI 已結束，但無法確認憑證。請重試或稍後登入。",
     error_provider_rejected: "平台拒絕了這次登入。請重試或稍後登入。",
     // #3190 Part 3c：配對電腦上的憑證設定檔（儀表板的「帳號」頁）。
@@ -91,8 +93,11 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * is the same screen for the default account and a named one. So the rest of what the first-install page needs is left out too: no "Check sign-ins" button (the cards read
  * themselves every second) and no "Sign in later" (nothing would remember it). `focus` (a backend id) then shows only that backend's card: the default account's checklist may
  * hold others. The setup page and the installer's `?backend_signins=` list do not pass `dialog`, and look as they did.
+ *
+ * `started` (run id → void): called with the id of the run a press of Sign in in THESE cards started (not one that was already running when they were drawn). The account dialog
+ * keeps it, to end exactly that run when it closes.
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {} } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -114,7 +119,7 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   async function perform(data) {
     if (busy || disposed) return;
     busy = true; generation++; message = ""; render();
-    try { const next = await request(data); if (!disposed) accept(next); }
+    try { const next = await request(data); if (!disposed) { accept(next); if (data?.operation === "start" && typeof next?.login?.id === "string") started(next.login.id); } }
     catch (error) { if (!disposed) message = String(error?.message || "error"); }
     finally { busy = false; if (!disposed) render(); }
   }

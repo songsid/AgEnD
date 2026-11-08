@@ -231,19 +231,22 @@ function Running({ login }) {
  * The Sign in dialog of Settings → Accounts, for the default account and (with `profile`, #3212) for a named account on this host: one press of Sign in, the
  * provider's page, the code pasted back. The title says which account (`Sign in to Claude Code · CHY` / `· Default sign-in`) and the two look the same, so the cards
  * leave out what only the first-install page needs (see `dialog` in structured-signin.js); the console fallback is a line of small text at the bottom. A named
- * account's sign-in lives as long as this dialog: closing it (Close, ×, Esc, or the fallback) ends the sign-in, so none is left running to refuse Remove or Sign out.
+ * account's sign-in lives as long as this dialog: closing it (Close, ×, Esc, or the fallback) ends the sign-in THIS dialog started — by its run id, never one another session or
+ * tab started — so none of its own is left running to refuse Remove or Sign out.
  * `backends` (the installer's `?backend_signins=` list) is the setup page's own list, drawn as it was.
  * Shared pieces only: Dialog, `.btn`, `.note`, the in-app confirmation (ui-confirm.js).
  */
 export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
   const root = useRef(null), close = onClose || closeDialog;
+  // The id of the run THIS dialog started (a named account's): closing the dialog ends exactly that run — never one another session or another tab started.
+  const run = useRef(null);
   const endpoint = profile ? profileSignInEndpoint(backend, profile) : "/ui/browser-backend-signins";
   const single = !backends;
   useEffect(() => {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), changed: next => {
+    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; }, changed: next => {
       if (!profile) {
         if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
         else if (!next.selected.includes(backend)) void cards.addBackend(backend);
@@ -254,12 +257,18 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     const unlisten = onLang(() => cards.relabel());
     return () => {
       unlisten(); cards.dispose();
-      if (profile) void post(endpoint, { operation: "cancel" }).then(() => refreshSignIn());   // nothing to end once it is over: the server answers with what is there
+      if (profile && run.current) void post(endpoint, { operation: "cancel", id: run.current }).then(() => refreshSignIn());   // that run only; nothing to end once it is over: the server answers with what is there
     };
   }, [backend, profile, backends]);
   const fallback = async (chosen = backend) => {
-    const result = await post(endpoint, { operation: "cancel" });
-    if (!result.ok) { toast(tn("failed")); return; }
+    // Awaited: the older dialog opens only once the sign-in is ended and the host's login window is free, so its Sign in cannot meet "another sign-in is running". A named
+    // account's: only the run this dialog started is ended (none started here: nothing to end, and one another tab runs is left alone); the default account's, as before.
+    const own = profile ? run.current : null;
+    if (!profile || own) {
+      const result = await post(endpoint, own ? { operation: "cancel", id: own } : { operation: "cancel" });
+      if (!result.ok) { toast(tn("failed")); return; }
+      run.current = null;   // ended here: closing this dialog has nothing left to end
+    }
     showDialog(SignInDialog, { backend: chosen, ...(profile && chosen === backend ? { profile } : {}) });
   };
   const actions = html`<div class="signin-browser-actions">

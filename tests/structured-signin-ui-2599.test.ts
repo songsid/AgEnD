@@ -135,3 +135,25 @@ it("`dialog`: a first read that fails leaves nothing to show, so it is said and 
   expect(h.nodes().filter(n => n.tag === "button").map(n => n.textContent)).toEqual(["Sign in"]);
   h.cards.dispose();
 });
+
+// #3418 review: the account dialog ends, when it closes, exactly the run its own Sign in started — so the cards say which run that was.
+it("`started` gets the id of the run a press of Sign in in these cards started — once, and not for what happens after", async () => {
+  const seen: string[] = [];
+  const h = browser({ dashboard: true, dialog: true, focus: "kiro-cli", started: (id: string) => { seen.push(id); } }); await h.flush();
+  expect(seen).toEqual([]);
+  await h.click("Sign in");
+  expect(seen).toEqual(["a".repeat(32)]);
+  await h.click("GitHub");   // an answer to the run's prompt, then more polls: still the one run, announced once
+  await h.poll(); await h.poll();
+  expect(seen).toEqual(["a".repeat(32)]);
+  h.cards.dispose();
+});
+it("`started` is not called for a run that was already going when the cards were drawn (another session's or tab's), nor for a cancel", async () => {
+  const seen: string[] = [];
+  const running = { backend: "kiro-cli", id: "b".repeat(32), revision: 5, phase: "method", choices: ["builder_id"], canAct: true };
+  const h = browser({ dashboard: true, dialog: true, focus: "kiro-cli", started: (id: string) => { seen.push(id); } }, { login: running }); await h.flush();
+  await h.poll();
+  await h.click("Cancel sign-in");
+  expect(seen).toEqual([]);
+  h.cards.dispose();
+});

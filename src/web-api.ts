@@ -1179,13 +1179,13 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
             z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
             z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
           ]) }),
-          z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+          z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional() }), z.strictObject({ operation: z.literal("refresh") }),
         ]).safeParse(body);
         if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
         const action = parsed.data;
         if (action.operation === "start") result = await accounts.begin(owner, account, action.relogin === true);
         else if (action.operation === "input") result = await accounts.input(owner, account, action.id, action.revision, action.action);
-        else if (action.operation === "cancel") result = await accounts.cancel(owner, account);
+        else if (action.operation === "cancel") result = await accounts.cancel(owner, account, action.id);
         else result = await accounts.refresh(owner, account, true);
       }
     } else if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return; }
@@ -1219,7 +1219,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
     json(res, 200, result);
   })().catch(error => {
     const code = error instanceof Error ? error.message : "";
-    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|busy|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist|target)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
+    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|busy|profile_unknown|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist|target)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
     if (!res.destroyed && !res.writableEnded) json(res, safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
   });
   return true;

@@ -478,7 +478,7 @@ import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome,
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
-import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
 import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
 import { MachineSignIns } from "./machine-signins.js";
@@ -20282,6 +20282,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
       installed: backend => this.isCliInstalledOffLoop(backend),
+      known: (backend, profile) => accountFolderExists(this.dataDir, backend, profile),
       checkAuth: (backend, profile) => {
         const env = credentialProfileEnv(this.dataDir, backend, profile);
         return env ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, env) : Promise.resolve("unknown" as const);
