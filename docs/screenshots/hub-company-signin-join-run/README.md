@@ -9,6 +9,7 @@ The PNGs come from the real Fleet Settings shell (app sidebar and second Setting
 | Cached assets | 2 scenarios, 21 checks | Current modules with alpha.8 `478bc61145acd3b44e4bf0f05588c42fe06a1831` CSS, app-shell, app-route, i18n, UI states, Hub client and Hub/quick strings. Desktop light EN and phone dark zh-TW complete the connection and return. |
 | Focused | 270/270, zero skips | Company join protocol, sealed receipts, HTTP/fake LDAPS, transport/trust, local crash/rejoin, Settings authority, mounted UI, notice mixed versions and existing group/composition/Hub/Settings suites. |
 | Final delta | 33/33 tests; 2 browser scenarios, 21 checks | Adds a shared, jittered backend polling window and recovery/repair wording. The desktop and phone happy paths pass again; both typechecks pass after this delta. |
+| Aligned alpha | 325/325, zero skips; both typechecks pass | Plain merge of alpha `7a34b6be1` adds the sealed directory-settings writer without changing the captured UI. The full focused set plus its directory-decision integration tests pass on merge head `584a206e9`. |
 | Mutations | 13/13 caught | Origin, purpose, owner AAD, delivery expiry, original local session, active journal, crash intent, retained manual quota, fresh eligibility, v2 ACK, v2 wire, invitation recipient and directory epoch. Each run reaches failing assertions; sources restore in `finally`. |
 | Types | Both pass | `npx tsc --noEmit`; `npx tsc --noEmit -p tsconfig.test.json`. |
 
