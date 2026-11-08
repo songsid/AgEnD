@@ -1,0 +1,40 @@
+(node:664473) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+A8-01 PASS
+P2-membership-no-reload PASS
+PASS2_INITIAL_READY
+NATURAL_EXPIRY_DEADLINE 2026-11-08T04:11:09.927Z
+P2-A8-09-natural-clock-start PASS
+P2-A8-05-06-full-matrix PASS
+P2-regression-none-HELD PASS
+CONTROL_DONE
+P2-A8-10-independent-manual-control PASS
+P2-A8-08-10-primary-quick-and-retained-notices PASS
+CONTROL_DONE
+P2-connected-phone-and-local-zh PASS
+CONTROL_DONE
+P2-regression-publish-grant-answer PASS
+P2-A8-12-complete-negative-restored-resume PASS
+P2-regression-revoke-held-answer PASS
+CONTROL_DONE
+P2-returning-notice-settled-welcome PASS
+CONTROL_DONE
+P2-A8-09-mismatch-Stop-phone PASS
+P2-A8-10-exact-revoke-retains-control PASS
+CONTROL_DONE
+CONTROL_ERROR SyntaxError: Unexpected token ':'
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a8-pass2/scripts/manual/hub-quick-pairing/pass2-owned.mts:144:211)
+CONTROL_DONE
+P2-support-Accounts-leftbar FAIL 5 straight account-state bars desk-light-en
+CONTROL_DONE
+ACCOUNTS_DEBUG [[{"account":"default","lbar":false,"border":"0px","width":"3px","radius":"0px","color":"rgb(26, 127, 55)","text":"Default sign-insigned infleet defaultSign in againMove agents hereSwitch accountSign outab***@example.com · Maxused by 1 agent7d37%"},{"account":"personal","lbar":false,"border":"0px","width":"3px","radius":"0px","color":"rgb(138, 90, 0)","text":"Account “personal”not signed inSign inRemoveused by no agent"},{"account":"lab","lbar":false,"border":"0px","width":"3px","radius":"0px","color":"rgb(105, 105, 105)","text":"Account “lab”not checkedSign inMove agents hereRemoveused by no agent"},{"account":"work","lbar":false,"border":"0px","width":"3px","radius":"0px","color":"rgb(26, 127, 55)","text":"Account “work”signed inSign in againSign outRemovecd***@example.com · Teamused by 1 agent—"},{"account":"spare","lbar":false,"border":"0px","width":"3px","radius":"0px","color":"rgb(138, 90, 0)","text":"Account “spare”not signed inSign inRemoveused by no agent—"}]]
+CONTROL_DONE
+P2-A8-12-paced-independent-room PASS
+CONTROL_DONE
+P2-support-Accounts-leftbar-computed-style PASS
+CONTROL_DONE
+EXPIRY_OBSERVE_BEGIN 1794110885995 1794111069927
+P2-A8-09-natural-expiry-and-new-code-recovery PASS
+CONTROL_DONE
+P2-regression-policy-off-on-and-retained-client PASS
+CONTROL_DONE

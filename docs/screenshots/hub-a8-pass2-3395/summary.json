@@ -1,0 +1,27 @@
+{
+  "source": "7c025c93980738e4f9ffa2a7f5891a8b63c978c5",
+  "ciRun": 42444268795,
+  "conclusion": "No new P1/P2 found in bounded Pass2 scope; existing P3 #3416 remains.",
+  "coreStories": 17,
+  "coreChecksPassed": 101,
+  "supplementalAccountsComputedChecksPassed": 2,
+  "rawTotalChecks": 104,
+  "rawFailedChecks": [
+    {
+      "name": "5 straight account-state bars desk-light-en",
+      "ok": false
+    }
+  ],
+  "rawStatus": "REVIEW_REQUIRED",
+  "calibrationDisclosure": "One stale Accounts .lbar-class assertion failed; computed-style replacement passed. One supplemental eval SyntaxError before execution is retained in output.log. Raw receipt is not rewritten green.",
+  "shots": 69,
+  "pageErrors": [],
+  "csp": [],
+  "foreignRequests": [],
+  "naturalExpiry": {
+    "started": 1794110474842,
+    "expiresAt": 1794111069927,
+    "finished": 1794111081794
+  },
+  "cleanup": "All14 recorded owned PIDs absent,5 ports reusable,2 scratch roots removed."
+}

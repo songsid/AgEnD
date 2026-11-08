@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-08T04:12:11.520100+00:00",
+  "source": "7c025c93980738e4f9ffa2a7f5891a8b63c978c5",
+  "liveOwnedPids": [],
+  "ports": [
+    {
+      "port": 36483,
+      "free": true
+    },
+    {
+      "port": 40059,
+      "free": true
+    },
+    {
+      "port": 33613,
+      "free": true
+    },
+    {
+      "port": 33614,
+      "free": true
+    },
+    {
+      "port": 33799,
+      "free": true
+    }
+  ],
+  "roots": [
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a8-pass2/run-7c025c93/browser-CWFHuQ",
+      "exists": false
+    },
+    {
+      "path": "/home/han/Projects/AgEnD-agend-dev-sol/.t8p2/smoke-fx-X68koO",
+      "exists": false
+    }
+  ],
+  "shortTmpRootRemoved": true,
+  "tmpCleanupNote": "Only owned tsx transform-cache files remained after service exit; exact owned .t8p2 directory removed."
+}

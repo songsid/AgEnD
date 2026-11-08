@@ -1,0 +1,525 @@
+{
+  "source": "7c025c93980738e4f9ffa2a7f5891a8b63c978c5",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "56e9052933979cfb95e9618e6589144d4de50ee56162370fca7603c601436359",
+      "bytes": 7068
+    },
+    {
+      "path": "accounts-debug.mjs",
+      "sha256": "81466b0f1b9991e4691dd38ca4fb4c4a192d4bdb03015c328f3464542f077925",
+      "bytes": 666
+    },
+    {
+      "path": "accounts-visual.mjs",
+      "sha256": "2c9a4039c4072deb28f68056d32c1d910dd410487be816df1a830d3c01361943",
+      "bytes": 2468
+    },
+    {
+      "path": "ci-green-before-run.json",
+      "sha256": "64389a346d509730b96f053b0df97540549c399ffe1df452a264bc45cfbb30d9",
+      "bytes": 24489
+    },
+    {
+      "path": "cleanup-independent.json",
+      "sha256": "b1e947750665da8f5d7ab43d20b35860263a0e71378067a97594fbae1c541361",
+      "bytes": 833
+    },
+    {
+      "path": "cleanup.json",
+      "sha256": "8453a00b8267d03d3e0df30536a8b09f8472505b0a0d13dc18611864afecc206",
+      "bytes": 128
+    },
+    {
+      "path": "command-1794110467914.mjs",
+      "sha256": "0cf7cbcd75f61159d18d04ca0fca437c9d96744f88378c4762d2c2d3ec2a5d10",
+      "bytes": 3933
+    },
+    {
+      "path": "command-1794110513104.mjs",
+      "sha256": "25af4eac129fd1312af4afb56641dc2ee301b34ed137668c7f562ec825e71165",
+      "bytes": 4460
+    },
+    {
+      "path": "command-1794110550078.mjs",
+      "sha256": "32befde6dce5db8f2d4e9a42cab7a31e4662cf7afc9459e21249f557f25c1f3a",
+      "bytes": 708
+    },
+    {
+      "path": "command-1794110560673.mjs",
+      "sha256": "c0136c467ddad99dff2144a3c1f4129702ea0e96c0ed45837203865ff33c5649",
+      "bytes": 5440
+    },
+    {
+      "path": "command-1794110617549.mjs",
+      "sha256": "971940c993842043f6c95bbe69ba3b0500f05f6999029d59ba2d2ed4c5605ae0",
+      "bytes": 495
+    },
+    {
+      "path": "command-1794110629060.mjs",
+      "sha256": "b89375ebc617d11c7394cb252c270962d63f8ff645cc203ad8ce5b94190af1ea",
+      "bytes": 2227
+    },
+    {
+      "path": "command-1794110652622.mjs",
+      "sha256": "103107fd2389f96127b1ea6bd3a43339a447fe74be07237527cb27c656cac0fc",
+      "bytes": 2471
+    },
+    {
+      "path": "command-1794110744415.mjs",
+      "sha256": "30e3c63c571ec03e0bcb34da39527405add4545641d84b45306bf673dc973e42",
+      "bytes": 2461
+    },
+    {
+      "path": "command-1794110758938.mjs",
+      "sha256": "81466b0f1b9991e4691dd38ca4fb4c4a192d4bdb03015c328f3464542f077925",
+      "bytes": 666
+    },
+    {
+      "path": "command-1794110771261.mjs",
+      "sha256": "3bb61cd8aebb86bb85f87cde3e84976e39a7f9f11abfbf36f1995d98d344cbd3",
+      "bytes": 3112
+    },
+    {
+      "path": "command-1794110851378.mjs",
+      "sha256": "2c9a4039c4072deb28f68056d32c1d910dd410487be816df1a830d3c01361943",
+      "bytes": 2468
+    },
+    {
+      "path": "command-1794110885995.mjs",
+      "sha256": "43bc2b8f3a1f5e1f5fe253e40c1b8c5a84f9a1a15eeaa165f5c8d038e6631be3",
+      "bytes": 1999
+    },
+    {
+      "path": "command-1794111094656.mjs",
+      "sha256": "5055a5336d40baf120ff34dbed511bc9c639b529f8b303357f1c93e2704d6e4d",
+      "bytes": 1461
+    },
+    {
+      "path": "driver.mts",
+      "sha256": "50f0212574ff2fa53834c35a071aec1630e06b21274a28b5df0c3407ac4c83b0",
+      "bytes": 19963
+    },
+    {
+      "path": "extra-visual.mjs",
+      "sha256": "32befde6dce5db8f2d4e9a42cab7a31e4662cf7afc9459e21249f557f25c1f3a",
+      "bytes": 708
+    },
+    {
+      "path": "output.log",
+      "sha256": "24d7f744a948e83bd3c2999e27eff6d48d657d3a7ed0bff6545ad14bfee77eaf",
+      "bytes": 2464
+    },
+    {
+      "path": "owned-processes-before-close.json",
+      "sha256": "80dcf8e778b7e0d856766af5b9eb6de68ea6c28fcf272bdc7c2c0997c4fbe668",
+      "bytes": 967
+    },
+    {
+      "path": "phase1.mjs",
+      "sha256": "0cf7cbcd75f61159d18d04ca0fca437c9d96744f88378c4762d2c2d3ec2a5d10",
+      "bytes": 3933
+    },
+    {
+      "path": "phase2.mjs",
+      "sha256": "25af4eac129fd1312af4afb56641dc2ee301b34ed137668c7f562ec825e71165",
+      "bytes": 4460
+    },
+    {
+      "path": "phase3-paced.mjs",
+      "sha256": "3bb61cd8aebb86bb85f87cde3e84976e39a7f9f11abfbf36f1995d98d344cbd3",
+      "bytes": 3112
+    },
+    {
+      "path": "phase3.mjs",
+      "sha256": "c0136c467ddad99dff2144a3c1f4129702ea0e96c0ed45837203865ff33c5649",
+      "bytes": 5440
+    },
+    {
+      "path": "phase4.mjs",
+      "sha256": "b89375ebc617d11c7394cb252c270962d63f8ff645cc203ad8ce5b94190af1ea",
+      "bytes": 2227
+    },
+    {
+      "path": "phase5.mjs",
+      "sha256": "43bc2b8f3a1f5e1f5fe253e40c1b8c5a84f9a1a15eeaa165f5c8d038e6631be3",
+      "bytes": 1999
+    },
+    {
+      "path": "phase6.mjs",
+      "sha256": "5055a5336d40baf120ff34dbed511bc9c639b529f8b303357f1c93e2704d6e4d",
+      "bytes": 1461
+    },
+    {
+      "path": "png/A8-01-impact-before-save.png",
+      "sha256": "58ec5c82bd9aa36b7a4be31ac6a44c1f9570177e20eef3723aa891fce5e403f6",
+      "bytes": 72476
+    },
+    {
+      "path": "png/A8-01-saved.png",
+      "sha256": "0c7142585f6e816711049e71f9a1e21c015f756b59616bdc76cb0a84cb421782",
+      "bytes": 62872
+    },
+    {
+      "path": "png/P2-A8-05-desk-dark-en.png",
+      "sha256": "d6efd7c7c5abe24588e570d1d11975d653ed9f872b121d068be69ac639c2ff2e",
+      "bytes": 47293
+    },
+    {
+      "path": "png/P2-A8-05-desk-dark-zh-TW.png",
+      "sha256": "fa11e77565d0deefd649b79c7b9e84c78f7e68a41133f98aba84e207e00a2d0a",
+      "bytes": 50187
+    },
+    {
+      "path": "png/P2-A8-05-desk-light-en.png",
+      "sha256": "0c9332db5160d9a397a4e18845dc9a5172beba47f53c71fe79b15634c8c5caf0",
+      "bytes": 47505
+    },
+    {
+      "path": "png/P2-A8-05-desk-light-zh-TW.png",
+      "sha256": "63c5f1e6fb539280b5e2b408077ace112d04bed9abb2d8d441a28beb7bcc0a92",
+      "bytes": 50792
+    },
+    {
+      "path": "png/P2-A8-05-phone-dark-en.png",
+      "sha256": "328ab1dda631e0d28a3b06c71c7e82da97c72c3df6936f3908b0fdf886914ed9",
+      "bytes": 37544
+    },
+    {
+      "path": "png/P2-A8-05-phone-dark-zh-TW.png",
+      "sha256": "ce8e9eef56fb06b7dcf9a5391b83df611b2c4cbcf64096e6aed0e03a1686c3bf",
+      "bytes": 39905
+    },
+    {
+      "path": "png/P2-A8-05-phone-light-en.png",
+      "sha256": "7a53a9053719233bac9447f15d8c768f7321e690112abf5a4aa86eb70cb99df6",
+      "bytes": 37905
+    },
+    {
+      "path": "png/P2-A8-05-phone-light-zh-TW.png",
+      "sha256": "9f830b2e14d100d1a9b3285fd77eb4be4362e692d045b500e103425297d7ad91",
+      "bytes": 40510
+    },
+    {
+      "path": "png/P2-A8-06-desk-dark-en.png",
+      "sha256": "c1cc7450175240b3e3bec6c18f09d71a06026e2dce7da81e29e43d6fa0cb1986",
+      "bytes": 46027
+    },
+    {
+      "path": "png/P2-A8-06-desk-dark-zh-TW.png",
+      "sha256": "1033ec00187a5891cdbbcf3164df9a4207c0f6442a05e631eca562b0047a33f6",
+      "bytes": 65010
+    },
+    {
+      "path": "png/P2-A8-06-desk-light-en.png",
+      "sha256": "af5deca49bc5101aeaeb773a5feae645d90702dbd0479a1da105fbf2f2846173",
+      "bytes": 58656
+    },
+    {
+      "path": "png/P2-A8-06-desk-light-zh-TW.png",
+      "sha256": "f707fad7395012b1225b29cb5175ce16deb0474a97b6f66dfbf85fa4f0bfbfe4",
+      "bytes": 49193
+    },
+    {
+      "path": "png/P2-A8-06-phone-dark-en.png",
+      "sha256": "c0dd7a562481d4876730c4b5b090ffbd2ae3c4b5119e45049de4090bdd486a99",
+      "bytes": 37966
+    },
+    {
+      "path": "png/P2-A8-06-phone-dark-zh-TW.png",
+      "sha256": "ed454bf441e9fbf01e169d3d358ec5397f16bdc74086998b278631fb601c1cf1",
+      "bytes": 38146
+    },
+    {
+      "path": "png/P2-A8-06-phone-light-en.png",
+      "sha256": "d826399ac1c08fd0156d2979246ada2518706bcf2a0e9c91a22b2cf56ac04e0d",
+      "bytes": 35608
+    },
+    {
+      "path": "png/P2-A8-06-phone-light-zh-TW.png",
+      "sha256": "29d71fb1f2ab3c574cfcbbd99e741b8ac1e8ab8f887513ff33d514246e8b21a1",
+      "bytes": 45754
+    },
+    {
+      "path": "png/P2-A8-09-code-accepted-local-not-done.png",
+      "sha256": "b16d399fc5f69c67575b1e52dbb398b2c995f7a15db44e3ff62bc88f798c188e",
+      "bytes": 83294
+    },
+    {
+      "path": "png/P2-A8-09-expired-code-next-step-desk-light-en.png",
+      "sha256": "dd9f54e3cca1b016daf5ff0acec816260e02851ae541c217bf9dc67d6a7e4a1e",
+      "bytes": 99086
+    },
+    {
+      "path": "png/P2-A8-09-expired-code-next-step-phone-dark-zh-TW.png",
+      "sha256": "99d8d08510ee8a14433b2e6f9854927718357547ce8d9e28f3636caab1f9b58a",
+      "bytes": 47397
+    },
+    {
+      "path": "png/P2-A8-09-hub-confirmed-local-not-done.png",
+      "sha256": "3e6b50a5c2d6826a2e87f332436c6402b02e900b038f00a0a9e79e98cf538d8c",
+      "bytes": 79836
+    },
+    {
+      "path": "png/P2-A8-09-natural-expiry-Hub.png",
+      "sha256": "0106be15605f30dabd444d3f76041e5c927a63eeca5bdd461e9193afb55c5fb0",
+      "bytes": 66887
+    },
+    {
+      "path": "png/P2-A8-09-natural-expiry-local.png",
+      "sha256": "a870357196d5cdd771dd83108781d8dd08a17a751d2b413b546b9f6b4d0ee9e1",
+      "bytes": 88258
+    },
+    {
+      "path": "png/P2-A8-09-phone-mismatch-stopped.png",
+      "sha256": "162947e2a0c9ece1ff2a8ecf5fc36a843ae810550777bda79a98715af8f1385d",
+      "bytes": 74682
+    },
+    {
+      "path": "png/P2-A8-09-phone-pending.png",
+      "sha256": "7d59077bf185d93d8cd7ab068d453f373ded93ce1be70fc9c21489cce76ff861",
+      "bytes": 93195
+    },
+    {
+      "path": "png/P2-A8-10-control-active.png",
+      "sha256": "b8d945375de8bcbb7f6c50599936520cadd01959c7b302d46785a553a72b5d56",
+      "bytes": 45764
+    },
+    {
+      "path": "png/P2-A8-10-exact-owner-revoke.png",
+      "sha256": "fbe66aae354c916a1cd0678b844820d2e241ec83da306530f1854f660ea885a2",
+      "bytes": 77293
+    },
+    {
+      "path": "png/P2-A8-12-durable-pause.png",
+      "sha256": "8d1dc86f10a120195a7f9b595657c43af648370ec3965572ef94a803507f940f",
+      "bytes": 81841
+    },
+    {
+      "path": "png/P2-A8-12-paced-removal-refused.png",
+      "sha256": "1e208afd3e157fbf804e70b090300090b5f31deaa9d4148603afa2a330424b06",
+      "bytes": 105473
+    },
+    {
+      "path": "png/P2-A8-12-paced-restored-refused.png",
+      "sha256": "b2a18aaf451527a09cda828fda561ae701785cff93ea3dced13f895cc6b0f862",
+      "bytes": 70539
+    },
+    {
+      "path": "png/P2-A8-12-paced-resumed-answer.png",
+      "sha256": "54d8ddd8b2a62d571407dceb6a069f38724c246b51559927e01f22bada7fcef8",
+      "bytes": 98929
+    },
+    {
+      "path": "png/P2-A8-12-restored-no-resume.png",
+      "sha256": "f78643f160f7fba3d893f9b969d4cfed7da9b42d00238520aeb47f817769c5c9",
+      "bytes": 70210
+    },
+    {
+      "path": "png/P2-A8-12-resumed-answer.png",
+      "sha256": "85d7f6f9f0e218575178449a9c6ce3429426985048798bd19e6dbb2ea2fe04fd",
+      "bytes": 109727
+    },
+    {
+      "path": "png/P2-A8-12-send-refused.png",
+      "sha256": "d6ec2ef02d1419a1799fdd96530daae56577da397561a22e4cb5a5fac79e4462",
+      "bytes": 100924
+    },
+    {
+      "path": "png/P2-A8-12-visible-exact-Resume.png",
+      "sha256": "7504fd20147da88c8c11ae71efcc007bff635f087182b15a9795def26c8c162f",
+      "bytes": 68138
+    },
+    {
+      "path": "png/P2-accounts-after-sheet-settled.png",
+      "sha256": "2796cfe261719e102e62a0b22a666f51fe150691e2049c61fa2ada70bb321883",
+      "bytes": 114584
+    },
+    {
+      "path": "png/P2-accounts-leftbar-desk-light-en.png",
+      "sha256": "0f4b9d4410541f52688f5cde10e050a2956b87f91de5e4d2d87badb33b4609a7",
+      "bytes": 114588
+    },
+    {
+      "path": "png/P2-accounts-leftbar-phone-dark-zh-TW.png",
+      "sha256": "32fcc9ff347874c7cf544c36b5d46efc39b0b398ab41c059743d36fe5bc13324",
+      "bytes": 49064
+    },
+    {
+      "path": "png/P2-active-owner-notice.png",
+      "sha256": "56f03e5112d1a3cd9adc2f3db293eb4e09263e3bc520c104b7e6fc09c69e240f",
+      "bytes": 78437
+    },
+    {
+      "path": "png/P2-connected-phone-en.png",
+      "sha256": "23ab79933b18af3a400fd63b179dd7cd75ce9949525f4685a013938b46fe3886",
+      "bytes": 40573
+    },
+    {
+      "path": "png/P2-control-manual-online.png",
+      "sha256": "8fbc06249d1f413e840ca3cb846011be1ff5dbec61a22a19f41afa39f3699e1f",
+      "bytes": 115483
+    },
+    {
+      "path": "png/P2-expiry-welcome.png",
+      "sha256": "e6f34d63dc5513f55f4c56c99505829da6206d868c3ee9e27070b4839904c979",
+      "bytes": 58944
+    },
+    {
+      "path": "png/P2-first-answer.png",
+      "sha256": "6b2032b90c1b1ef39c293d49a0cac46c2faf3d4c894b42e9e5cc5d3a092e6da1",
+      "bytes": 98778
+    },
+    {
+      "path": "png/P2-held.png",
+      "sha256": "a4e49cd5e6fd999b9e4d6cd86b535e7f8d99153a47a572240f3801284fcb2993",
+      "bytes": 45616
+    },
+    {
+      "path": "png/P2-local-online-phone-zh.png",
+      "sha256": "68204b0162c88fe8385d4fdae0c4036eeb338f8732c2de9b4b3c58aa3e385b93",
+      "bytes": 61661
+    },
+    {
+      "path": "png/P2-membership-on-desk-light-en.png",
+      "sha256": "bc4777e212d7ef08b64160f5dc2a297043aedfa04a54b4a37046782b8bfef95b",
+      "bytes": 102618
+    },
+    {
+      "path": "png/P2-membership-on-phone-dark-zh-TW.png",
+      "sha256": "ddb13e0975c7ff406e29dc40bfd9b838b799d7bfad129e5d904da4b19149b284",
+      "bytes": 53048
+    },
+    {
+      "path": "png/P2-none-desk-light-en.png",
+      "sha256": "a75553040725f5e1c7cac54418422f6a9593b46a1d63d1a8c3538b4204591141",
+      "bytes": 40028
+    },
+    {
+      "path": "png/P2-none-phone-dark-zh-TW.png",
+      "sha256": "c69b7ea7b3312aaca1ca196514536a17477d70a70c5386154e258f1ab80c6406",
+      "bytes": 35672
+    },
+    {
+      "path": "png/P2-outsider-stale-room.png",
+      "sha256": "bd70c1d1853fedc1af9341c76646252c3444bde8730bea24844588612fdee44f",
+      "bytes": 62867
+    },
+    {
+      "path": "png/P2-owner-active-session.png",
+      "sha256": "407c9eb2e5a8f7888fef6c5b4ef2da787940aa1eab266d571f7ed989ab1743a3",
+      "bytes": 46101
+    },
+    {
+      "path": "png/P2-policy-off.png",
+      "sha256": "df42a7471efcffa6b20336c8d1bbf8015e9d6e5be697a4800ce45bd73fc495a4",
+      "bytes": 100649
+    },
+    {
+      "path": "png/P2-policy-on-still-paused.png",
+      "sha256": "3daa583cff2e8e4f9cb25b361b90cd77293efec85a94804ec9e44756d6733788",
+      "bytes": 100647
+    },
+    {
+      "path": "png/P2-primary-connected.png",
+      "sha256": "7b7157bf987fc5fb6dd3f59d331052bb31c4812eabe0218947fd766696d3cfc8",
+      "bytes": 60436
+    },
+    {
+      "path": "png/P2-primary-local-online-no-stale-hint.png",
+      "sha256": "305f028b53b9b5cf66ad8030bc6736275dee9e4f04445f8a48507d604f7712db",
+      "bytes": 114950
+    },
+    {
+      "path": "png/P2-primary-pending.png",
+      "sha256": "d7953ea665d96c05cd09020255ee53a562be54623326c5fbbb927844bafbc21a",
+      "bytes": 82947
+    },
+    {
+      "path": "png/P2-primary-welcome.png",
+      "sha256": "af5deca49bc5101aeaeb773a5feae645d90702dbd0479a1da105fbf2f2846173",
+      "bytes": 58656
+    },
+    {
+      "path": "png/P2-retained-client-phone.png",
+      "sha256": "45e0218fe605b4466cff11fe5f318e9912291532204e9476fec2dadb784fb084",
+      "bytes": 44799
+    },
+    {
+      "path": "png/P2-returning-offline-session-notice.png",
+      "sha256": "554a77abff212162934cc1d9fd57e2cc90e5321060af6659c486bafb463edd24",
+      "bytes": 48520
+    },
+    {
+      "path": "png/P2-returning-offline-session-settled.png",
+      "sha256": "e709d6b2cc8e5f3d8ae5dbf1855e6988775d932ba68a7439d8ea63abeaa0f6c4",
+      "bytes": 75498
+    },
+    {
+      "path": "png/P2-revoked-room.png",
+      "sha256": "f17c8c3cb6ab4f2ccef001f19d55a250d4a45c6ea48ec1c56f563b96380812cf",
+      "bytes": 87659
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-48.png",
+      "sha256": "3e6b50a5c2d6826a2e87f332436c6402b02e900b038f00a0a9e79e98cf538d8c",
+      "bytes": 79836
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-49.png",
+      "sha256": "ad7b92d62903345253f079d82c718f8c0e89552b1d31b224f1f06d8a02c0d95a",
+      "bytes": 72804
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-50.png",
+      "sha256": "fbe66aae354c916a1cd0678b844820d2e241ec83da306530f1854f660ea885a2",
+      "bytes": 77293
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-51.png",
+      "sha256": "7049acb4950581a33e557316003d32114926346141087551a3eb43ff8f24b61d",
+      "bytes": 68560
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-52.png",
+      "sha256": "af6c4005011a32266cbfd2e6067c7de5f161edd816f4060300fc3c5dbd5d8efa",
+      "bytes": 119291
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-53.png",
+      "sha256": "358d039a4fe6787a6f97ba2c2ea4f68b06e63e9064a7ad4bcc41db550b45099c",
+      "bytes": 91806
+    },
+    {
+      "path": "png/P2-support-Accounts-leftbar-FAIL-54.png",
+      "sha256": "0f4b9d4410541f52688f5cde10e050a2956b87f91de5e4d2d87badb33b4609a7",
+      "bytes": 114588
+    },
+    {
+      "path": "receipt.json",
+      "sha256": "5562e46dfe2742b66615e1944188ce00ddaeb10b2014e7c2d67856e6f9c30454",
+      "bytes": 212505
+    },
+    {
+      "path": "retained-notice-settled.mjs",
+      "sha256": "971940c993842043f6c95bbe69ba3b0500f05f6999029d59ba2d2ed4c5605ae0",
+      "bytes": 495
+    },
+    {
+      "path": "secret-pattern-check.json",
+      "sha256": "1bbbd7fce717fef272528d783980c90efcbd0baa163c91a93aac2c23c9e1da8f",
+      "bytes": 294
+    },
+    {
+      "path": "summary.json",
+      "sha256": "708dd8e862283082dbb8e77a75157205e590a825d47d10a9bd62ec62a2a39913",
+      "bytes": 956
+    },
+    {
+      "path": "visual-review.md",
+      "sha256": "ed60323e165a6f16808aa36b4ff3e11f12a9d6125c3354e403dc04b92ce8cadb",
+      "bytes": 1753
+    }
+  ]
+}
