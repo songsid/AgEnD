@@ -103,7 +103,7 @@ register("signin", {
     listTitle: "登入",
     browserRunning: "正在這台機器登入 {0}",
     consoleFallback: "改用主控台備援",
-    listHint: "這台機器上每個 backend 的登入，以及代理使用的每個憑證設定檔。",
+    listHint: "這台機器上每個 backend 的登入，以及 Agent 使用的每個憑證設定檔。",
     stUsable: "已登入",
     stNotSignedIn: "未登入",
     stNotInstalled: "未安裝",

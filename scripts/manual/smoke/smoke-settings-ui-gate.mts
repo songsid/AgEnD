@@ -10,13 +10,17 @@
 //   - left-accent: no coloured left edge on a rounded box — a border-left wider than (or coloured unlike) the box's own top
 //               border while a left corner is rounded. The house style is the straight left bar (`.lbar`, #2330/#2332/#2489);
 //               a rounded border-left accent came back once in #3367's Accounts boxes (the user's report), so it fails here;
+//   - tap (phone width only; style guide rule 7, a ratchet): every interactive control in the column is at least --tap (44px)
+//               in both directions — a checkbox or radio by its label when it has one. Today's small controls are listed in
+//               ui-gate-tap-allowlist.json (section + where, with a count); a new one, or one more of a listed kind, fails.
+//               TAP_UPDATE=1 rewrites the list from this run (lower it after fixing; never raise it to pass a PR);
 //   - no page error, no CSP report, no horizontal scroll of the page.
 // GATE=ci (the CI job, < 5 min): desk light en + phone dark zh-TW, every section, the long-value pass, one middle width (1024).
 // GATE=full (local, ~10 min): the whole matrix (desk/phone × light/dark × en/zh-TW) and widths 900–1280.
 // Pictures of every section land in OUT (a failing CI run uploads them).
 //   PW_DIR=<dir with playwright-core> (or node_modules) REPO=<checkout> OUT=<dir> [GATE=ci|full] [CHROME=<chrome binary>] \
 //   FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, caseName, matrix, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
@@ -30,6 +34,10 @@ const SECTIONS: string[] = process.env.SECTIONS ? process.env.SECTIONS.split(","
 const CASES = GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
 const WIDTHS = GATE === "full" ? [900, 1024, 1180, 1280] : [1024];
 const LONG = "claude-opus-5-5-20261101-extended-context-preview-with-a-very-long-model-identifier [1m] (Windows PC DESKTOP-ABCDEFGHIJ)";
+
+const TAP_LIST = join(REPO, "scripts/manual/smoke/ui-gate-tap-allowlist.json");
+const tapAllowed: Record<string, number> = JSON.parse(readFileSync(TAP_LIST, "utf8"));
+const tapSeen: Record<string, number> = {};
 
 const r: Record<string, unknown> = { gate: GATE };
 const fail: string[] = [];
@@ -86,7 +94,17 @@ const MEASURE = `(() => {
     const round = (parseFloat(s.borderTopLeftRadius) || 0) > 0 || (parseFloat(s.borderBottomLeftRadius) || 0) > 0;
     if (edge && round) accents.push(path(el) + " " + s.borderLeftWidth + " " + s.borderLeftColor + " r" + s.borderTopLeftRadius);
   }
-  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8), accentCount: accents.length, pageX: document.documentElement.scrollWidth - innerWidth };
+  // Style guide rule 7: a phone tap target is at least --tap (44px) both ways; a checkbox or radio counts by its label.
+  const tap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")) || 44;
+  const small = {};
+  for (const el of col.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=switch], [role=tab], [role=checkbox]")) {
+    if (!vis(el) || el.disabled) continue;
+    const target = el.matches("input[type=checkbox], input[type=radio]") && el.closest("label") ? el.closest("label") : el;
+    const b = target.getBoundingClientRect();
+    if (Math.min(b.width, b.height) + 0.5 >= tap) continue;
+    const k = path(el); small[k] = (small[k] || 0) + 1;
+  }
+  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8), accentCount: accents.length, small, tap, pageX: document.documentElement.scrollWidth - innerWidth };
 })()`;
 
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 47510), instances: 12 });
@@ -120,6 +138,25 @@ async function selfTest(page: any): Promise<void> {
   const want = CONTROLS.filter(([, , bad]) => bad).map(([n]) => n);
   check("gate:left-accent-self-test", JSON.stringify(flagged) === JSON.stringify(want), { flagged, want });
 }
+/** The tap rule checks itself too: a 30px button is small, a 44px one isn't, and a checkbox counts by its 44px label. */
+async function tapSelfTest(page: any): Promise<void> {
+  // A string, like MEASURE: a named helper inside a compiled function would reach the page as an undefined __name.
+  await page.evaluate(`(() => {
+    const col = document.querySelector(".p-settings .panel-body > .col");
+    const box = document.createElement("div"); box.id = "ui-gate-tap-controls";
+    box.innerHTML = '<button class="ui-gate-tap-small">a</button><button class="ui-gate-tap-big">b</button><label class="ui-gate-tap-label"><input type="checkbox" class="ui-gate-tap-check"> c</label>';
+    col.appendChild(box);
+    for (const [sel, w, h] of [[".ui-gate-tap-small", "30px", "30px"], [".ui-gate-tap-big", "44px", "44px"], [".ui-gate-tap-label", "120px", "44px"]]) {
+      const el = box.querySelector(sel);
+      for (const [k, v] of [["display", "inline-block"], ["width", w], ["height", h], ["min-height", "0"], ["min-width", "0"], ["padding", "0"]]) el.style.setProperty(k, v);
+    }
+  })()`);
+  const m = await page.evaluate(MEASURE) as any;
+  await page.evaluate(() => document.getElementById("ui-gate-tap-controls")?.remove());
+  const flagged = Object.keys(m.small).map((k) => /\.ui-gate-tap-([\w-]+)$/.exec(k)?.[1]).filter(Boolean).sort();
+  check("gate:tap-self-test", JSON.stringify(flagged) === JSON.stringify(["small"]) && m.tap === 44, { flagged, tap: m.tap });
+}
+let tapSelfTested = false;
 let selfTested = false;
 try {
   for (const c of CASES) {
@@ -146,6 +183,16 @@ try {
       check(`${tag}:buttons`, mixed.length === 0, mixed);
       check(`${tag}:overflow`, drawn.overCount === 0 && opened.overCount === 0 && drawn.pageX <= 0 && opened.pageX <= 0, { drawn: drawn.over, opened: opened.over, pageX: [drawn.pageX, opened.pageX] });
       check(`${tag}:left-accent`, drawn.accentCount === 0 && opened.accentCount === 0, { drawn: drawn.accents, opened: opened.accents });
+      if (c.device === "phone") {
+        if (!tapSelfTested) { await tapSelfTest(page); tapSelfTested = true; }
+        const over: string[] = [];
+        for (const [where, n] of Object.entries(drawn.small as Record<string, number>)) {
+          const k = `${section} ${where}`;
+          tapSeen[k] = Math.max(tapSeen[k] ?? 0, n);
+          if (n > (tapAllowed[k] ?? 0)) over.push(`${k} ×${n} (allowed ${tapAllowed[k] ?? 0})`);
+        }
+        check(`${tag}:tap`, over.length === 0, over);
+      }
     }
     for (const width of WIDTHS) for (const section of SECTIONS) {
       if (c.device !== "desk") break;
@@ -164,6 +211,10 @@ try {
   fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);
 } finally {
   r.seconds = Math.round((Date.now() - started) / 1000);
+  if (process.env.TAP_UPDATE === "1") {
+    const merged = Object.fromEntries(Object.entries(tapSeen).sort(([a], [b]) => a.localeCompare(b)));
+    writeFileSync(TAP_LIST, JSON.stringify(merged, null, 1) + "\n"); console.log(`TAP_UPDATE: wrote ${Object.keys(merged).length} entries to ${TAP_LIST}`);
+  }
   writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 600)}`);
   console.log(fail.length ? `UI gate FAILED (${fail.length}) in ${r.seconds}s — pictures and result.json in ${OUT}` : `UI gate passed in ${r.seconds}s (${Object.keys(r).length - 2} checks)`);
