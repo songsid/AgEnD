@@ -100,7 +100,7 @@ it("a busy pane is never killed for the minimum-version repair", async () => {
 it("failed replacement readiness blocks delivery without granting another automatic attempt", async () => {
   const w = world(); w.d.trySpawnInsideGate.mockImplementation(async () => { w.d.launchAttempt++; return false; });
   await w.fire(); await w.fire(); expect(w.d.trySpawnInsideGate).toHaveBeenCalledOnce(); expect(w.warnings).toHaveLength(1);
-  expect(w.d.modelMinimumBlocked).toBe(true); expect(w.d.refuseFatalStartupDelivery({ reached: false })).toBe(true);
+  expect(w.d.modelMinimumBlocked).toBe(true); expect(w.d.healthCheckPaused).toBe(true); expect(w.d.refuseFatalStartupDelivery({ reached: false })).toBe(true);
   expect(readFileSync(join(w.root, "session-id"), "utf8")).toBe(sid);
 });
 it("queued delivery remains held while the final version read is in flight", async () => {
@@ -174,4 +174,27 @@ it.each(["paused","pausing","waking","spawning","health-held"])("an already %s d
   else w.d.pauseWakeState = state;
   await w.fire(); expect(w.d.resolveClaudeInstallPath).not.toHaveBeenCalled();
   expect(w.d.trySpawnInsideGate).not.toHaveBeenCalled();expect(w.warnings).toHaveLength(0);
+});
+
+it.each(["unexpected retry","concurrent launcher"])("a %s inside repair cannot pass its attempt window or affect the newer owner", async kind => {
+  const w = world(), respawn = vi.fn();
+  w.d.trySpawnInsideGate.mockImplementation(async (_reuse: boolean, _budget: number | undefined, admission: (attempt: number) => boolean) => {
+    const ownedAttempt = ++w.d.launchAttempt;
+    if (!admission(ownedAttempt)) throw new Error("initial admission refused");
+    respawn();
+    const otherAttempt = ++w.d.launchAttempt;
+    if (!admission(kind === "unexpected retry" ? otherAttempt : ownedAttempt)) throw new Error("superseded");
+    respawn(); return true;
+  });
+  await w.fire(); expect(respawn).toHaveBeenCalledOnce(); expect(w.d.modelMinimumRepairUsed).toBe(true);
+  expect(w.d.healthCheckPaused).toBe(false); expect(w.d.modelMinimumBlocked).toBe(false); expect(w.warnings).toHaveLength(0);
+});
+it("the restart uses the UUID checkpointed after the claim rather than a stale file", async () => {
+  const w = world(), stale = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  writeFileSync(join(w.root,"session-id"),stale);
+  w.backend.getSessionId = vi.fn(() => {
+    expect(w.d.modelMinimumRepairUsed).toBe(true); expect(w.d.spawning).toBe(true); return sid;
+  });
+  await w.fire(); expect(w.backend.getSessionId).toHaveBeenCalled(); expect(w.pins).toEqual([sid]);
+  expect(readFileSync(join(w.root,"session-id"),"utf8")).toBe(sid);
 });
