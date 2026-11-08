@@ -27,9 +27,11 @@ import { spawn } from "./child-process.js";
 import { parseClaudeAuthStatus } from "./claude-auth-status.js";
 import { writeFileAtomic } from "./backend/kiro-engine-ledger.js";
 import { isCredentialProfileName } from "./backend/credential-profile.js";
+import { hostIds, type HostCliWith } from "./cli-registry.js";
 
-export const KEEPALIVE_BACKENDS = Object.freeze(["claude-code", "codex"] as const);
-export type KeepAliveBackend = typeof KEEPALIVE_BACKENDS[number];
+/** The CLIs that have a "Keep sign-in alive" run (cli-registry.ts: `host.keepAlive`). */
+export const KEEPALIVE_BACKENDS: readonly KeepAliveBackend[] = Object.freeze(hostIds("keepAlive") as KeepAliveBackend[]);
+export type KeepAliveBackend = HostCliWith<"keepAlive">;
 export const isKeepAliveBackend = (b: unknown): b is KeepAliveBackend => typeof b === "string" && (KEEPALIVE_BACKENDS as readonly string[]).includes(b);
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;

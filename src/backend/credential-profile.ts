@@ -27,6 +27,7 @@
 import { constants as fsConstants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { hostFacts, hostIds } from "../cli-registry.js";
 import { kiroStoreHasLogin } from "./kiro-auth-store.js";
 
 /** Profile names become a directory; keep them boring. */
@@ -274,7 +275,7 @@ export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
  * login in the browser terminal with the profile's variable (#1699 part 2). Only those whose login TUI was checked
  * under a relocated home; the others' profiles are signed in on the host with credentialProfileLoginCommand.
  */
-export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(["claude-code"]);
+export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(hostIds("dashboardSignIn").filter(id => hostFacts(id, "dashboardSignIn")!.named));
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
   return CREDENTIAL_HOMES[backendName] ?? null;

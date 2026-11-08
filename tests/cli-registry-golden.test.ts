@@ -20,6 +20,7 @@ import { RUNTIME_SIGNIN_CLIS } from "../src/runtime-signin-transport.js";
 import { KEEPALIVE_BACKENDS } from "../src/signin-keepalive.js";
 import { STRUCTURED_SIGNIN_BACKENDS } from "../src/structured-signin.js";
 import { usageProviderIdForBackend } from "../src/usage/usage-api.js";
+import { defaultUsageProviderIds } from "../src/usage/providers.js";
 import { NATIVE_PROVIDER_IDS, nativeProvider, nativeProviderMcpSupported } from "../src/windows-cli-providers.js";
 
 describe("host lists, as they were", () => {
@@ -107,6 +108,7 @@ describe("host lists, as they were", () => {
       ["claude", "Claude"], ["codex", "Codex"], ["muse", "Muse"], ["grok", "Grok"], ["kiro", "Kiro"], ["antigravity", "Antigravity"],
     ]);
     expect(hostIds("usage").filter(id => hostFacts(id, "usage")!.profileRows)).toEqual(["claude-code", "codex", "kiro-cli"]);
+    expect(defaultUsageProviderIds()).toEqual(["claude", "codex", "muse", "grok", "kiro", "antigravity"]);
   });
 });
 

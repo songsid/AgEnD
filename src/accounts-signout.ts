@@ -21,13 +21,12 @@ import { credentialProfileEnv, credentialProfileHome } from "./backend/credentia
 import { claudeConfigDirFor, claudeKeychainService } from "./backend/claude-code.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { ownProfileFolder, realFs, type ProfileFs } from "./accounts-profiles.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
 
-/** The CLIs that can sign out from the dashboard, and how (their own logout; checked offline per CLI). */
-export const SIGN_OUT: Readonly<Record<string, { binary: string; args: readonly string[] }>> = Object.freeze({
-  "claude-code": { binary: "claude", args: ["auth", "logout"] },
-  codex: { binary: "codex", args: ["logout"] },
-  "kiro-cli": { binary: "kiro-cli", args: ["logout"] },
-});
+/** The CLIs that can sign out from the dashboard, and how (their own logout; checked offline per CLI). cli-registry.ts: `host.signOut`. */
+export const SIGN_OUT: Readonly<Record<string, { binary: string; args: readonly string[] }>> = Object.freeze(Object.fromEntries(
+  hostIds("signOut").map(id => { const { binary, args } = hostFacts(id, "signOut")!; return [id, { binary, args: [...args] }] as const; }),
+));
 /** Claude Code's unsuffixed Keychain item: the default sign-in's (macOS). */
 export const CLAUDE_DEFAULT_KEYCHAIN_SERVICE = "Claude Code-credentials";
 

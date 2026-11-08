@@ -12,7 +12,8 @@ export interface BrowserBackendSignInDeps {
   current(owner: object): boolean;
   installed(): Promise<readonly string[]>;
   checkAuth(backend: StructuredBackend): Promise<AuthCheckResult>;
-  checkConsoleAuth?(): Promise<AuthCheckResult>;
+  /** The sign-in check of a CLI the page names only the console command for (cli-registry.ts: `host.firstRunSignIn` with mode "console"). */
+  checkConsoleAuth?(backend: OnboardingBackend): Promise<AuthCheckResult>;
   transport(backend: StructuredBackend): StructuredSignInTransport;
   lock?: LoginWindowLock;
   changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object, launched: boolean): void;
@@ -82,7 +83,7 @@ export class BrowserBackendSignIns {
           for (const backend of selected) {
             const status = !installed.includes(backend) ? "not_installed" : this.loginMayWrite(backend) ? "unknown"
               : structuredSignInSupported(backend) ? await this.deps.checkAuth(backend)
-              : await this.deps.checkConsoleAuth?.() === "valid" ? "valid" : "console_only";
+              : await this.deps.checkConsoleAuth?.(backend) === "valid" ? "valid" : "console_only";
             if (!current()) return;
             checked[backend] = status;
           }

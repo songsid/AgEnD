@@ -56,6 +56,7 @@ import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
 import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
+import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS } from "./backend-signin-pending.js";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
@@ -1196,13 +1197,13 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
       const parsed = z.discriminatedUnion("operation", [
-        z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(["kiro-cli", "claude-code", "codex", "antigravity"])).max(4) }),
-        z.strictObject({ operation: z.literal("start"), backend: z.enum(["kiro-cli", "claude-code", "codex"]), relogin: z.boolean().optional() }),
+        z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS])).max(ONBOARDING_BACKENDS.length) }),
+        z.strictObject({ operation: z.literal("start"), backend: z.enum(ONBOARDING_BROWSER_BACKENDS as unknown as [typeof ONBOARDING_BROWSER_BACKENDS[number], ...typeof ONBOARDING_BROWSER_BACKENDS]), relogin: z.boolean().optional() }),
         z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
           z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
         ]) }),
-        z.strictObject({ operation: z.literal("skip"), backend: z.enum(["kiro-cli", "claude-code", "codex", "antigravity"]) }),
+        z.strictObject({ operation: z.literal("skip"), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]) }),
         z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
       ]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }

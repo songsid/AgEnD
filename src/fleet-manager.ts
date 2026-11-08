@@ -20425,7 +20425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
       },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
-      checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
+      checkConsoleAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       transport: () => createStructuredSignInTransport(),
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }

@@ -21,6 +21,7 @@ import { RUNTIME_SIGNIN_CLIS } from "../src/runtime-signin-transport.js";
 import { isKeepAliveBackend } from "../src/signin-keepalive.js";
 import { STRUCTURED_SIGNIN_BACKENDS, structuredSignInSupported } from "../src/structured-signin.js";
 import { usageProviderIdForBackend } from "../src/usage/usage-api.js";
+import { defaultUsageProviderIds } from "../src/usage/providers.js";
 import { dashboardSignInSupported } from "../src/web-backend-login.js";
 import { NATIVE_PROVIDER_IDS, isNativeProviderId, nativeProvider } from "../src/windows-cli-providers.js";
 
@@ -325,6 +326,10 @@ describe("every \"yes\" has the behaviour it promises, every \"no\" has none", (
       expect(usageProviderIdForBackend(id), id).toBe(hostFacts(id, "usage")?.providerId ?? null);
     }
     expect([...ACCOUNT_CLIS]).toEqual(hostIdsByRank("accountCard"));
+    // every provider the registry lists has a reader (the usage module refuses to load otherwise), and the panel lists exactly those, in the registry's order
+    expect(defaultUsageProviderIds()).toEqual(hostIdsByRank("usage").map(id => hostFacts(id, "usage")!.providerId));
+    // the installer's directories (behaviour) exist for every CLI that has an install command
+    for (const id of hostIds("install")) expect(typeof BACKEND_INSTALLATION_INFO[id]!.binDirs, id).toBe("function");
   });
 
   it("runtime.*: the Runtime's own tables list the same CLIs and say the same", () => {

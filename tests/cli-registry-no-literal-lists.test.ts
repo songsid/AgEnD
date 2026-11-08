@@ -28,7 +28,7 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   } },
   { why: "the names of the backends in configuration checks, schemas, commands and help text", files: {
     "src/config-validator.ts": 2, "src/config.ts": 2, "src/outbound-schemas.ts": 1, "src/backend/types.ts": 2, "src/bug-report-cli.ts": 1, "src/setup-wizard.ts": 1, "src/quickstart-api.ts": 1,
-    "src/topic-commands.ts": 2, "src/channel/adapters/discord.ts": 2, "src/tips.ts": 3, "src/cli.ts": 4, "src/ui/panel-fleet.js": 3,
+    "src/topic-commands.ts": 2, "src/channel/adapters/discord.ts": 2, "src/tips.ts": 3, "src/cli.ts": 3, "src/ui/panel-fleet.js": 3,
   } },
   { why: "per-backend behaviour switches (steer, effort, MCP mode)", files: { "src/steer-capability.ts": 1, "src/backend/launch-effort.ts": 1, "src/ui/settings-model.js": 3 } },
   { why: "display names, marks and colours", files: {
@@ -37,11 +37,14 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   { why: "code for Kiro that compares its id with the default backend's", files: { "src/kiro-engine-status.ts": 1, "src/kiro-migrate.ts": 2 } },
   { why: "quota notices (which backends have one)", files: { "src/quota-notice-config.ts": 1, "src/ui/settings-quota-notice.js": 1 } },
   { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },
-  { why: "accounts, sign-in, usage and Runtime lists: being derived from the registry (AGEND-115), the rest are behaviour keyed by CLI id", files: {
-    "src/accounts-view.ts": 2, "src/backend-signin-pending.ts": 1, "src/backend/credential-profile.ts": 1, "src/login-flows.ts": 1, "src/login-url.ts": 1, "src/runtime-cli-install.ts": 1,
-    "src/signin-keepalive.ts": 1, "src/structured-signin.ts": 2, "src/ui/accounts-manage.js": 1, "src/ui/accounts-view.js": 1, "src/ui/backend-signin.js": 3, "src/ui/runtime-cli-install.js": 2,
-    "src/ui/settings-dialogs.js": 2, "src/ui/structured-signin.js": 1, "src/usage/providers.ts": 2, "src/usage/usage-api.ts": 1, "src/web-api.ts": 7, "src/windows-cli-providers.ts": 4,
+  { why: "behaviour keyed by CLI id (credential homes, the login hosts a link may point at, usage readers): the keys are checked against the registry by cli-registry-completeness.test.ts", files: {
+    "src/backend/credential-profile.ts": 1, "src/login-url.ts": 1, "src/usage/providers.ts": 2, "src/runtime-cli-install.ts": 1,
   } },
+  { why: "the dashboard's scripts and the Windows Runtime's tables, still to be derived from the registry (AGEND-115 S3 and S4)", files: {
+    "src/ui/accounts-manage.js": 1, "src/ui/accounts-view.js": 1, "src/ui/backend-signin.js": 3, "src/ui/runtime-cli-install.js": 2, "src/ui/settings-dialogs.js": 2, "src/ui/structured-signin.js": 1,
+    "src/windows-cli-providers.ts": 4,
+  } },
+  { why: "web-api.ts: the backend names in a request schema, and which CLIs have a workspace follow", files: { "src/web-api.ts": 4 } },
 ];
 const ALLOWED: Record<string, number> = Object.assign({}, ...FAMILIES.map(f => f.files));
 
@@ -72,7 +75,8 @@ describe("no hand-written list of CLIs outside the registry", () => {
 
   it("the scanner sees what it is meant to see", () => {
     const counts = literalListCounts(root);
-    expect(counts["src/accounts-view.ts"]).toBeGreaterThan(0);
+    expect(counts["src/fleet-manager.ts"]).toBeGreaterThan(0);
+    expect(counts["src/accounts-view.ts"]).toBeUndefined();               // derived from the registry now
     expect(counts["src/cli-registry.ts"]).toBeUndefined();
     expect(counts["src/cli-spec-codex.ts"]).toBeUndefined();
   });

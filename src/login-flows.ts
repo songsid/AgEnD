@@ -39,6 +39,7 @@
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
 import { agyLoginScreenActive } from "./backend/antigravity.js";
 import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -306,19 +307,13 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   },
 };
 
-/** Chat-command aliases accepted by `/login <backend>`. */
-export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
-  "claude": "claude-code",
-  "claude-code": "claude-code",
-  "codex": "codex",
-  "grok": "grok",
-  "kiro": "kiro-cli",
-  "kiro-cli": "kiro-cli",
-  "agy": "antigravity",
-  "antigravity": "antigravity",
-  // opencode can be installed by `/login`, but has no sign-in flow.
-  "opencode": "opencode",
-};
+/**
+ * Chat-command aliases accepted by `/login <backend>`: every CLI's id and the other names its spec gives it (cli-registry.ts: `host.chatLogin`). That includes
+ * a CLI chat declines (`agy`) and one it can only install (`opencode`: no sign-in flow); the flow table above says which.
+ */
+export const LOGIN_BACKEND_ALIASES: Record<string, string> = Object.fromEntries(
+  hostIds("chatLogin").flatMap(id => [id, ...hostFacts(id, "chatLogin")!.aliases].map(name => [name, id] as const)),
+);
 
 /**
  * Extract the authorization URL and one-time code from joined pane text.

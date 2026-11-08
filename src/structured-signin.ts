@@ -8,18 +8,17 @@ import { performance } from "node:perf_hooks";
 import { LOGIN_FLOWS, extractLoginHint, type AuthCheckResult } from "./login-flows.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { linkableLoginUrl } from "./login-url.js";
+import { hostFacts, hostIdsByRank, type HostCliWith } from "./cli-registry.js";
 
-export const STRUCTURED_SIGNIN_BACKENDS = ["kiro-cli", "claude-code", "codex"] as const;
-export type StructuredBackend = typeof STRUCTURED_SIGNIN_BACKENDS[number];
+/** The CLIs whose sign-in is driven with browser controls (cli-registry.ts: `host.structuredSignIn`, in the order of its `rank`). */
+export type StructuredBackend = HostCliWith<"structuredSignIn">;
+export const STRUCTURED_SIGNIN_BACKENDS: readonly StructuredBackend[] = Object.freeze(hostIdsByRank("structuredSignIn") as StructuredBackend[]);
 export function structuredSignInSupported(backend: string): backend is StructuredBackend {
   return (STRUCTURED_SIGNIN_BACKENDS as readonly string[]).includes(backend);
 }
 
-const ARGV: Record<StructuredBackend, readonly string[]> = {
-  "kiro-cli": ["kiro-cli", "login"],
-  "claude-code": ["claude", "auth", "login"],
-  "codex": ["codex", "login", "--device-auth"],
-};
+/** The exact command each sign-in launches (cli-registry.ts: `host.structuredSignIn.argv`; pinned, literally, by tests/cli-registry-golden.test.ts). */
+const ARGV = Object.fromEntries(STRUCTURED_SIGNIN_BACKENDS.map(id => [id, hostFacts(id, "structuredSignIn")!.argv])) as Record<StructuredBackend, readonly string[]>;
 const TTL_MS = 10 * 60_000;
 const UNKNOWN_GRACE_MS = 5_000;
 const MAX_PANE = 64 * 1024;

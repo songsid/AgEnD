@@ -2463,11 +2463,11 @@ program
   .option("--backend-signins <backends>", "Selected backend IDs, comma-separated, for local browser sign-in")
   .option("--backend-signin-capabilities", "Print installer sign-in capabilities without starting setup")
   .action(async (opts: { reset?: boolean; port?: string; tunnel?: boolean; backendSignins?: string; backendSigninCapabilities?: boolean }) => {
+    const { onboardingBackends, ONBOARDING_BROWSER_BACKENDS, ONBOARDING_CONSOLE_BACKENDS } = await import("./backend-signin-pending.js");
     if (opts.backendSigninCapabilities) {
-      console.log(JSON.stringify({ version: 1, setup: true, dashboard: true, installer: true, backends: ["kiro-cli", "claude-code", "codex"], console: ["antigravity"] }));
+      console.log(JSON.stringify({ version: 1, setup: true, dashboard: true, installer: true, backends: ONBOARDING_BROWSER_BACKENDS, console: ONBOARDING_CONSOLE_BACKENDS }));
       return;
     }
-    const { onboardingBackends } = await import("./backend-signin-pending.js");
     const selected = opts.backendSignins === undefined ? undefined : onboardingBackends(opts.backendSignins.split(","));
     if (selected === null || (opts.tunnel && selected?.length)) {
       console.error("Backend sign-in requires canonical backend IDs and a local setup page (no --tunnel)."); process.exit(1);

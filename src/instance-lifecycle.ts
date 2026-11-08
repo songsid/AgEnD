@@ -8,6 +8,7 @@ import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo }
 import { instanceTeams } from "./team-membership.js";
 import type { ActiveDecisionRow } from "./daemon.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -92,37 +93,36 @@ export interface BackendInstallationInfo {
 
 const localBin = (home: string) => join(home, ".local", "bin");
 
-/** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
-export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
-  "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
+/**
+ * #1092: where each CLI's own installer puts its binary. Behaviour (it reads the environment and the home directory), so it stays here, keyed by CLI id; which CLIs
+ * there are, their binary and their install commands are the registry's (cli-registry.ts: `host.install`), and every one of them must have an entry here.
+ */
+const BIN_DIRS: Readonly<Record<string, NonNullable<BackendInstallationInfo["binDirs"]>>> = {
+  "claude-code": (_env, home) => [localBin(home)],
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
-  "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash", binDirs: (_env, home) => [localBin(home)] },
+  "kiro-cli": (_env, home) => [localBin(home)],
   // install.sh: BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"; codex there is
   // a symlink into ~/.codex/packages/standalone/current/bin (#1092).
-  codex: {
-    binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-    unattended: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
-    binDirs: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
-  },
-  opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash", binDirs: (_env, home) => [join(home, ".opencode", "bin")] },
-  antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
-  grok: {
-    binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash",
-    binDirs: (env, home) => [env.GROK_BIN_DIR, join(home, ".grok", "bin")].filter((d): d is string => !!d),
-  },
+  codex: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
+  opencode: (_env, home) => [join(home, ".opencode", "bin")],
+  antigravity: (_env, home) => [localBin(home)],
+  grok: (env, home) => [env.GROK_BIN_DIR, join(home, ".grok", "bin")].filter((d): d is string => !!d),
   // #1092: the muse launcher keeps its binary NEXT TO ITSELF. Piped into bash
   // it has no file of its own, so it downloaded the binary into the current
   // directory and then started muse there, leaving no `muse` command anywhere.
   // Its install mode (MUSE_LAUNCHER_INSTALL=1, read from the launcher) is run
   // on the launcher saved as ~/.local/bin/muse: it downloads beside it and
-  // exits without launching.
-  muse: {
-    binary: "muse",
-    install: 'mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"',
-    binDirs: (_env, home) => [localBin(home)],
-  },
+  // exits without launching (the command is in cli-spec-muse.ts).
+  muse: (_env, home) => [localBin(home)],
 };
+
+/** Shared CLI metadata used by startup validation and ClassicBot onboarding: the registry's binary and commands, with the installer's own directories. */
+export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = Object.fromEntries(hostIds("install").map(id => {
+  const facts = hostFacts(id, "install")!, binDirs = BIN_DIRS[id];
+  if (!binDirs) throw new Error(`BACKEND_INSTALLATION_INFO: ${id} has an install command in the registry but no installer directories`);
+  return [id, { binary: facts.binary, install: facts.command, ...(facts.unattended ? { unattended: facts.unattended } : {}), binDirs }] as const;
+}));
 
 /** Check one executable using the same PATH visible to the fleet process. */
 export function checkBinaryInstalled(binary: string): boolean {
