@@ -240,6 +240,20 @@ describe("fleet host memory wiring", () => {
     expect(read).toHaveBeenCalledTimes(reads);
   });
 
+  it("keeps the shutdown prefix synchronous while Hub setup cleanup is held, and awaits cleanup later",async()=>{
+    const {fm,internal}=make();fm.memoryPressure.start();
+    let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
+    const close=vi.fn(()=>pending),companyClose=vi.fn();internal.hubSetupController={close};internal.companyJoinController={close:companyClose};
+    const login=vi.spyOn(internal,"shutdownLoginWindows").mockImplementation(()=>new Promise<void>(()=>{}));
+    void fm.stopAll();
+    try {
+      expect(close).toHaveBeenCalledOnce();expect(companyClose).toHaveBeenCalledOnce();
+      expect(internal.hubSetupController).toBeNull();expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(0);expect(login).not.toHaveBeenCalled();
+      release();await vi.advanceTimersByTimeAsync(0);expect(login).toHaveBeenCalledOnce();
+    }finally{release();}
+  });
+
   it("monitors a single-instance cold start before its real gate holds any CLI", async () => {
     const { fm, internal, logger, read } = make(memory(100, 0));
     internal.startupComplete = false;

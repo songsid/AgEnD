@@ -40,7 +40,7 @@ export function bindSecretPath(home: string, ref: string): string | undefined {
 export function hubConfigPatches(plan: HubInitPlan, identity: HubIdentitySummary): RawConfigPatch[] {
   return [
     { path: ["hub", "enabled"], value: false },
-    { path: ["hub", "name"], value: plan.name },
+    plan.name === undefined ? { path: ["hub", "name"], remove: true } : { path: ["hub", "name"], value: plan.name },
     { path: ["hub", "hubId"], value: identity.hubId },
     { path: ["hub", "webOrigin"], value: plan.webOrigin },
     { path: ["hub", "memberOrigin"], value: plan.memberOrigin },

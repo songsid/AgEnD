@@ -70,6 +70,12 @@ function allFiles(dir: string): string[] {
 }
 
 describe("agend hub init — the whole flow", () => {
+  it("allows the same unnamed Hub as browser setup, without storing an empty name", async () => {
+    const t=setup();const {outcome,io}=await t.run(["",...addresses.slice(1),...tls(),...directoryAnswers(),...selectAdmin(),...tail]);
+    expect(outcome).toBe("initialized");expect(io.remaining()).toBe(0);
+    const cfg=yaml.load(readFileSync(join(t.home,"fleet.yaml"),"utf8")) as {hub:Record<string,unknown>};
+    expect(Object.hasOwn(cfg.hub,"name")).toBe(false);expect(cfg.hub.enabled).toBe(true);
+  });
   it("sets up a dedicated Hub: config with enabled last, private files, sealed manifest, service on request, pairing steps", async () => {
     const t = setup();
     const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
