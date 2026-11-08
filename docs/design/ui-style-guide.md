@@ -81,9 +81,9 @@ Don't:
 .my-row { border-left: 4px solid var(--ok); }  /* .s-row has border-radius: var(--r-md) */
 ```
 
-Checked by: **CI** — `tests/web-left-bar-2330.test.ts`. The test compares the last compound selector of each rule, so a
-rounded class from another rule on the same element (for example `.s-row` plus a new row class) can slip through. Reviewers
-check that case by eye.
+Checked by: **CI** — `tests/web-left-bar-2330.test.ts` compares the stylesheet rules, and the UI gate's `:left-accent`
+check measures what is drawn in every Settings section, which also catches a rounded class from another rule on the
+same element (for example `.s-row` plus a new row class; #3367, #3408). **Review** for pages outside Settings.
 
 ## 4. Tokens for spacing, type, radius and colour, in light and dark
 
@@ -103,9 +103,11 @@ Do: `color: var(--text-3); padding: var(--s-3) var(--s-4);`
 
 Don't: `color: #888; padding: 13px;`
 
-Checked by: **CI** for the tokens themselves (`tests/web-tokens-1408.test.ts`: light and dark define the same names, text
-meets 4.5:1 and focus/borders 3:1). **Review** for their use: nothing scans the stylesheets for literal colours or pixel
-sizes, and some older rules still have them.
+Checked by: **CI**. `tests/web-tokens-1408.test.ts` checks the tokens themselves (light and dark define the same names,
+text meets 4.5:1 and focus/borders 3:1). `tests/ui-css-literals-ratchet.test.ts` is a ratchet on their use: the literal
+colours (`#hex`, `rgb()`, `rgba()`, `hsl()`) and px font sizes that older rules still have are listed in
+`tests/ui-css-literals-allowlist.json`; a new one fails, including in a nested rule or written in capitals, and the list
+only shrinks: a literal that is gone must come off it, and `UPDATE_CSS_LITERALS=1` lowers it but refuses to raise it. **Review** for literal spacing and radius, which aren't scanned.
 
 ## 5. No inline styles
 
@@ -136,10 +138,18 @@ Checked by: **CI** — `tests/skeleton-loading-3290.test.ts` for the shared stat
 
 Every page works at a 390 px phone and a 1366 px desktop, in between (900–1366 px), and with long values (a long name,
 a long option). Nothing scrolls sideways. The layout switches to phone at 899 px (`max-width: 899px`). On a phone or a
-touch screen, inputs are at least 16px so iOS doesn't zoom, and controls aim for the `--tap` size (44px).
+touch screen, inputs are at least 16px so iOS doesn't zoom, and every interactive control is at least the `--tap` size
+(44px) in both directions; a checkbox or radio counts by its label.
 
-Checked by: **CI** — the UI gate's `:overflow` check (with every disclosure opened and a long option added) on Settings,
-and `tests/web-input-zoom-1611.test.ts`. **Review** for pages outside Settings, using the screenshots.
+A known inconsistency: some Settings rules from #3320 switch at `max-width: 600px` instead of 899 px. Don't copy the
+600 px query into new CSS; unifying the two is a separate change.
+
+Checked by: **CI** — on Settings, the UI gate's `:overflow` check (with every disclosure opened and a long option added),
+and its `:tap` check at phone width, a ratchet: the controls that are smaller today are listed in
+`scripts/manual/smoke/ui-gate-tap-allowlist.json`, and a new one fails, whether it is drawn at once or only shown when a
+disclosure opens. Disabled controls don't count. The list only shrinks: the full gate (`GATE=full`) fails on an
+allowance that no longer matches a small control. `tests/web-input-zoom-1611.test.ts` checks the
+16px inputs. **Review** for pages outside Settings, using the screenshots.
 
 ## 8. Every string in English and Traditional Chinese
 
@@ -179,6 +189,31 @@ error (#2907, `tests/named-link-test-2906.test.ts`).
 
 Checked by: **CI** for those surfaces; **Review** elsewhere.
 
+## 11. Agent and Fleet stay in English in Chinese text
+
+The Traditional Chinese text keeps the product terms in English: **Agent** and **Fleet**, never 代理 or 艦隊. General
+and Hub stay English too (decision 815bfe4a, the user's choice on 2026-11-08). Leave a space between the English term and
+the Chinese around it, as the existing strings do. 反向代理 (a reverse proxy) is a different thing and stays Chinese.
+
+Do: `"這個 Fleet 已關閉預覽"`, `"指令沒有送到 Agent"`
+
+Don't: `"這個艦隊已關閉預覽"`, `"指令沒有送到代理"`
+
+Checked by: **CI** — `tests/ui-zh-terms-815bfe4a.test.ts` scans every source file under `src/`.
+
+## 12. Icons from the shared set, no emoji icons in Settings
+
+Icons in Settings come from the shared line set: `Icon({ name, size })` in `src/ui/shared/ui-icons.js` (24px grid, 2px
+stroke, `currentColor`). Don't use an emoji as an icon there; the Settings redesign retired them
+(`docs/design/1408-app-shell.md`). An emoji that is the content itself (a person's message, a chosen persona emoji) is
+not an icon.
+
+Do: `` html`<${Icon} name="check" size=${16} />` ``
+
+Don't: `` html`<span class="s-ico">⚙️</span>` ``
+
+Checked by: **Review**.
+
 ## Evidence in the pull request
 
 A PR that adds or changes UI includes (decision 3536dae9):
@@ -193,14 +228,16 @@ A PR that adds or changes UI includes (decision 3536dae9):
 |---|---|---|
 | 1. Shared components | — | yes |
 | 2. One card frame per Settings section | UI gate `:frame` (within a section) | across sections, other pages |
-| 3. Straight left bar | `web-left-bar-2330` | a rounded class from another rule on the same element |
-| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast) | literal colours and sizes in new CSS |
+| 3. Straight left bar | `web-left-bar-2330`, UI gate `:left-accent` (Settings) | pages outside Settings |
+| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast), `ui-css-literals-ratchet` (no new literal colour or px font size) | literal spacing and radius |
 | 5. No inline styles | `web-csp-1300` | — |
 | 6. Loading / empty / failed | `skeleton-loading-3290` | new pages |
-| 7. Phone and desktop | UI gate `:overflow` (Settings), `web-input-zoom-1611` | pages outside Settings |
+| 7. Phone and desktop | UI gate `:overflow` and `:tap` (Settings), `web-input-zoom-1611` | pages outside Settings |
 | 8. EN and zh-TW | `i18n-ui-literals-2390` | wording |
 | 9. Same surface, minimal clicks | — | yes |
 | 10. Plain-words errors | `delivery-notices-i18n`, `named-link-test-2906` (their surfaces) | elsewhere |
+| 11. Agent / Fleet in zh-TW | `ui-zh-terms-815bfe4a` | — |
+| 12. Shared icons, no emoji icons (Settings) | — | yes |
 | Button sizes (Settings) | UI gate `:buttons` (one height per button class combination) | — |
 | No page errors or CSP reports (Settings) | UI gate `:no-errors` | — |
 
