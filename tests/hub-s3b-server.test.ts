@@ -263,8 +263,7 @@ describe("Hub rooms, dispatch, leases and answers (S3b)", () => {
     expect((await rig.call(o, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(404);
     expect((await rig.call(a, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(200);
     const again = await rig.call(a, "GET", `/hub/v1/rooms/${roomId}/messages`);
-    expect(again.status).toBe(429);
-    expect(again.headers.get("retry-after")).toBe("10");
+    expect(again.status).toBe(200); // A page reopen is not an abusive polling loop.
     await rig.call(o, "DELETE", `/hub/v1/grants/${grant.id}?revision=1`);
     const a2 = await rig.signIn("alex");                      // a fresh session: not paced
     expect((await rig.call(a2, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(403);
