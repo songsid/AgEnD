@@ -154,7 +154,7 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     await expect(claim(ADMIN.key)).resolves.toMatchObject({ status: "approved" });
     await expect(claim(ADMIN.key)).rejects.toThrow("denied");
     expect(r.deps.store.read().fleets).toHaveLength(2);
-    expect(r.db!.prepare("SELECT source,state FROM hub_group_resources WHERE kind='fleet'").all()).toEqual([
+    expect(r.db!.prepare("SELECT source,state FROM hub_group_resources").all()).toEqual([
       { source: "group", state: "active" }, { source: "group", state: "active" }]);
   });
   it("shows legacy only for intact never-enabled repair; enabled repair stays unavailable while sign-in and admin repair remain open", async () => {
