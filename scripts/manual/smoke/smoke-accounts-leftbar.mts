@@ -4,6 +4,9 @@
 // list (`/ui/accounts`) is answered in the page with fixture data covering every state — signed in, not signed in, not known
 // (unknown / not installed / too old) — and a paired computer's tray. Per case (desktop/phone × light/dark):
 //   - no account row has a border-left; each has the straight bar (`::before`, 3px, square) in its state's colour;
+//   SKEW (#3407 review: the sheet loads apart from the shell and its markup, so an open tab may hold either older half):
+//   - older markup + this sheet: still exactly one straight bar per row, in its state's colour;
+//   - this markup + the older sheet: the older 4px edge, and no second bar.
 //   - pictures of the Accounts block (OUT/<smoke>/<case>-<label>-accounts.png).
 //   LABEL=base serves accounts-view.js and accounts.css from OLD_REF (the before pictures).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [LABEL=base|branch] FONTCONFIG_FILE=/etc/fonts/fonts.conf \
@@ -14,7 +17,8 @@ import { join } from "node:path";
 import { bootFixture, caseName, matrix, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-accounts-leftbar";
-const LABEL = process.env.LABEL ?? "branch", BASE = LABEL === "base";
+const SKEW = process.env.SKEW ?? "";                       // "", "old-markup" or "old-sheet"
+const LABEL = (process.env.LABEL ?? "branch") + (SKEW ? "-skew-" + SKEW : ""), BASE = LABEL === "base";
 const OLD = process.env.OLD_REF ?? "songsid/release/2.3.5-alpha";
 const r: Record<string, unknown> = { label: LABEL };
 const fail: string[] = [];
@@ -43,6 +47,8 @@ try {
       await page.route(/\/accounts-view\.js(\?.*)?$/, (route: any) => route.fulfill(js(old("src/ui/accounts-view.js"))));
       await page.route(/\/assets\/accounts\.css(\?.*)?$/, (route: any) => route.fulfill(js(old("src/ui/shared/accounts.css"), "text/css")));
     }
+    if (SKEW === "old-markup") await page.route(/\/accounts-view\.js(\?.*)?$/, (route: any) => route.fulfill(js(old("src/ui/accounts-view.js"))));
+    if (SKEW === "old-sheet") await page.route(/\/assets\/accounts\.css(\?.*)?$/, (route: any) => route.fulfill(js(old("src/ui/shared/accounts.css"), "text/css")));
     await page.route(/\/ui\/accounts(\?.*)?$/, (route: any) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(VIEW) }));
     await page.goto(`${fx.base}/settings/agents`);
     await page.waitForSelector(".s-account-row", { state: "attached", timeout: 20000 });
@@ -60,8 +66,10 @@ try {
     const cspNow = await csp();
     if (BASE) { r[cn] = { rows, errs }; await ctx.close(); continue; }
     const colours = new Set(rows.map((x) => x.bar?.color));
-    check(cn, rows.length === 5 && rows.every((x) => x.lbar && x.borderLeft.startsWith("0px") && x.bar && x.bar.width === "3px" && x.bar.radius === "0px")
-      && colours.size === 3 && errs.length === 0 && cspNow.length === 0, { rows, colours: [...colours], errs, csp: cspNow });
+    const oneBar = rows.length === 5 && rows.every((x) => x.borderLeft.startsWith("0px") && x.bar && x.bar.width === "3px" && x.bar.radius === "0px") && colours.size === 3;
+    // The older sheet's look, whole: its 4px edge in three state colours, and no second bar from anything new.
+    const oldEdge = rows.length === 5 && rows.every((x) => x.borderLeft.startsWith("4px") && !x.bar);
+    check(cn, (SKEW === "old-sheet" ? oldEdge : oneBar) && errs.length === 0 && cspNow.length === 0, { rows, colours: [...colours], errs, csp: cspNow });
     await ctx.close();
   }
 } catch (e) { fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500); }
