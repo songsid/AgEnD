@@ -6,7 +6,7 @@
 // What people see is what the server says now: every list is read fresh, every change is checked again by the server
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
-import { PanelHeader, closeDrawer, setTitle } from "/assets/app-shell.js";
+import { DevicePrefs, PanelHeader, closeDrawer, isMacLike, searchShortcut, setTitle } from "/assets/app-shell.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
@@ -103,6 +103,9 @@ export function HubPanel({ route }) {
   if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   const notices = s?.features?.includes("quick-pairing-v1") && hubClient().quickPairingV1 ? html`<${PairingNotices} admin=${!!s.admin} />` : null;
+  // The sidebar's Notices row: the security notices as a page of their own (the same card, the panel's PageHead).
+  if (s && tab === "ask" && viewParam() === "notices" && notices) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
+    <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">${notices}</div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${notices}${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
@@ -231,6 +234,10 @@ function useRooms() {
 }
 const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
 const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
+/** cid-hub-shell-parity: the Notices page is /ui/hub?view=notices (the path every Hub listener and router already serves). */
+const viewParam = () => { try { return new URLSearchParams(location.search).get("view"); } catch { return null; } };
+export const NOTICES_PATH = "/ui/hub?view=notices";
+const noticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
@@ -264,7 +271,7 @@ export function HubNav({ onPick } = {}) {
     <div class="hub-sec">${hc("chats")}</div>
     ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
     ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
-    ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
+    ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChats")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
     <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
       <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>
@@ -274,6 +281,92 @@ export function HubNav({ onPick } = {}) {
       </a></li>`)}</ul>
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
+}
+
+/**
+ * cid-hub-shell-parity (the user: 「agend 排得很好看, agend hub 醜到不行」; approved mockup): the Hub's sidebar is the fleet
+ * dashboard's own — style guide rule 1, its shell components, not Hub-only ones. Icon rows (`side-row`): Conversations, My
+ * shared agents, Administration (the administrator only), Notices (only where the Hub offers its security notices), Search
+ * (Ctrl K: the conversation filter) and New conversation (`side-new`); then the conversation list under a `side-label`
+ * section, with a one-line empty state. The app shell mounts it (HubSidebar); an older shell keeps HubNav.
+ * Notices has no count: the Hub exposes the retained notices, not which of them this person has read.
+ */
+export function HubSide({ onPick } = {}) {
+  const s = useSession();
+  const rs = useRooms();
+  const { route } = useStore(navStore);
+  const [q, setQ] = useState("");
+  const [filtering, setFiltering] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const filter = useRef(null);
+  useEffect(() => { linkHubChatCss(); }, []);
+  const openFilter = () => { setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
+  // Ctrl K (⌘K): the conversation filter — the dashboard's search shortcut, on the Hub's own search (no fleet search here).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.isComposing || e.altKey || e.shiftKey || !(isMacLike() ? e.metaKey : e.ctrlKey) || (e.key || "").toLowerCase() !== "k") return;
+      if (typeof document !== "undefined" && document.querySelector("dialog[open]:not(.side-panel)")) return;
+      e.preventDefault(); openFilter();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  if (!s) return null;
+  const tab = route && route.panel === "hub" ? route.tab : "ask";
+  const view = viewParam(), current = roomParam();
+  const here = (key) => key === "notices" ? tab === "ask" && view === "notices" : key === "ask" ? tab === "ask" && view !== "notices" : tab === key;
+  const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
+  const row = (key, href, icon, label) => html`<a class=${`side-row${here(key) ? " active" : ""}`} href=${href} aria-current=${here(key) ? "page" : undefined}
+    onClick=${(e) => go(e, href)}><${Icon} name=${icon} /><span class="grow">${label}</span></a>`;
+  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  return html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
+      ${row("ask", "/ui/hub", "chat", hc("chats"))}
+      ${row("exposures", "/ui/hub/exposures", "globe", hc("mine"))}
+      ${s.admin ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
+      ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
+      <button type="button" class="side-row side-search" onClick=${openFilter} title=${`${hc("search")} (${searchShortcut()})`}
+        aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
+      <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
+    </nav>
+    <div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
+      <div class="inst-head"><h2 class="side-label">${hc("chats")}</h2>${rs.rooms.length ? html`<span class="count">${rs.rooms.length}</span>` : null}</div>
+      ${filtering || q ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filter} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
+        onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
+      ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
+      ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
+      ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
+      ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
+      <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
+        <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => go(e, roomPath(r.id))}>
+          <${Avatar} name=${r.exposureName} />
+          <span class="hub-room-text"><span class="t">${r.exposureName}</span><span class="s">${r.state === "closed" ? hc("tagClosed") : r.waiting ? hc("waiting") : r.ownerName ? hc("represents", r.ownerName) : ""}</span></span>
+          <span class="hub-room-side"><span class="time">${listTime(r.lastAt)}</span>${r.waiting ? html`<span class="pulse" title=${hc("waiting")}></span>` : null}</span>
+        </a></li>`)}</ul>
+    </div></div>
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}`;
+}
+
+/**
+ * cid-hub-shell-parity: the sidebar's foot, as the dashboard's — Settings (this device's theme and language: the shell's own
+ * DevicePrefs) and the session row ("Signed in", the person's name beside it), whose menu holds Sign out.
+ */
+export function HubFoot() {
+  const s = useSession();
+  const [busy, setBusy] = useState(false);
+  const prefs = html`<details class="prefs-pop hub-prefs"><summary class="side-row"><${Icon} name="settings" /><span class="grow">${hc("settings")}</span></summary>
+    <div data-trust="popover" class="pop" role="group" aria-label=${t("app.devicePrefs")}><${DevicePrefs} labels=${true} fields=${["theme", "language"]} /></div></details>`;
+  if (s === undefined) return html`${prefs}<div class="session"><${Skeleton} variant="inline" lines=${1} /></div>`;
+  if (!s) return prefs;
+  const out = async () => { setBusy(true); await hubClient().signOut(); setBusy(false); setSession(null); };
+  // Who is signed in heads the menu (the foot's row says "Signed in", as the dashboard's; its meta is not shown there).
+  const items = [
+    { key: "who", label: s.displayName, icon: "user", disabled: true },
+    { key: "mine", label: hc("mine"), icon: "globe", onSelect: () => navigate("/ui/hub/exposures") },
+    s.admin ? { key: "admin", label: hc("admin"), icon: "key", onSelect: () => navigate("/ui/hub/admin") } : null,
+    { key: "out", label: hc("signOut"), icon: "back", onSelect: out, disabled: busy },
+  ];
+  return html`${prefs}<div class="session hub-session-row"><${Menu} items=${items} label=${hc("signedIn")} cls="hub-session-menu" triggerClass="side-row"
+    trigger=${html`<span class="dot ok" aria-hidden="true"></span><span class="grow">${hc("signedIn")}</span><span class="meta" title=${s.displayName}>${s.displayName}</span>`} /></div>`;
 }
 
 /** New chat: the agents someone allowed this person to ask; Ask opens (or reopens) its room. */
@@ -327,7 +420,7 @@ function HubChats() {
     <div class="hub-home-list"><${HubNav} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true) }} /></div>`
       : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
-      ? html`<${Empty} icon="chat" title=${hc("noChats")} hint=${hc("noChatsHint")} />`
+      ? html`<${Empty} icon="chat" title=${hc("noChats")} />`
       : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;

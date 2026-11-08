@@ -121,7 +121,7 @@ describe("the shell", () => {
     await until(() => !pg.root.querySelector(".hub-switch"));
     expect(pg.root.querySelector(".hub-switch")).toBeNull();
   });
-  it("a Hub workspace: AgEnD Hub · its name; signed out, no conversation list and no fleet list; signed in, the chats and the menu; zh-TW", async () => {
+  it("a Hub workspace: the one-line brand (its name the tooltip); signed out, no conversation list and no fleet list; zh-TW", async () => {
     const fetched: string[] = [];
     const realFetch = g.fetch;
     g.fetch = async (url: string) => { fetched.push(String(url)); return { ok: true, status: 200, json: async () => ({ signedIn: false }), text: async () => "", headers: { get: () => null } }; };
@@ -129,19 +129,22 @@ describe("the shell", () => {
     client.setHubClient(client.createHubWebClient());
     hubPanel.resetHubSession();
     const pg = await app("hub", "/ui/hub/exposures", "Team Hub");
-    expect(pg.root.querySelector(".hub-brand")!.textContent).toBe("AgEnD Hub · Team Hub");
+    // cid-hub-shell-parity (the user's approved mockup): the dashboard's brand row — one line, never the name repeated.
+    expect([pg.root.querySelector(".side-head .brand")!.textContent, pg.root.querySelector(".side-head .brand")!.getAttribute("title"), pg.root.querySelector(".hub-brand")])
+      .toEqual(["AgEnD Hub", "Team Hub", null]);
     // #3226 B: the sidebar is the Hub module's conversation list — nothing of it while signed out (the page is the sign-in).
     await settle(10);
     expect([pg.root.querySelector(".side-nav .hub-nav"), pg.root.querySelectorAll(".side-nav a.side-row").length]).toEqual([null, 0]);
     expect(pg.root.querySelector("#instanceList")).toBeNull();
     // S3b: none of the fleet's bottom tabs or rails; the session row is the Hub's own (never /auth/session).
     expect([pg.root.querySelector("nav.tabs"), pg.root.querySelector(".u-rail-body")]).toEqual([null, null]);
-    await until(() => pg.root.querySelector(".hub-session"));
-    expect(pg.root.querySelector(".side-foot .hub-session")).not.toBeNull();
+    // Signed out, the foot is this device's Settings only (the Hub's own; never /auth/session).
+    await until(() => pg.root.querySelector(".side-foot .hub-prefs"));
+    expect([!!pg.root.querySelector(".side-foot .hub-prefs summary.side-row"), pg.root.querySelector(".side-foot .hub-session-row")]).toEqual([true, null]);
     expect(fetched.filter((u) => !u.startsWith("/hub/v1/") && !u.startsWith("/assets/"))).toEqual([]);
     } finally { g.fetch = realFetch; }
   });
-  it("signed in: the sidebar is the chats (New chat, the rooms, waiting marked) and the session's menu holds My shared agents and Administration; zh-TW", async () => {
+  it("signed in: the dashboard's rows, the chats under their section (waiting marked), and the session's menu (no Administration for a non-admin); zh-TW", async () => {
     const realFetch = g.fetch;
     const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: true, features: [] }];
     g.fetch = async (url: string) => {
@@ -153,16 +156,17 @@ describe("the shell", () => {
       client.setHubClient(client.createHubWebClient());
       hubPanel.resetHubSession();
       const pg = await app("hub", "/ui/hub", "Team Hub");
-      await until(() => pg.root.querySelector(".side-nav .hub-room-row"));
-      const row = pg.root.querySelector(".side-nav .hub-room-row")!;
+      await until(() => pg.root.querySelector(".hub-side-rooms .hub-room-row"));
+      const row = pg.root.querySelector(".hub-side-rooms .hub-room-row")!;
       expect([row.getAttribute("href"), row.querySelector(".t")!.textContent, row.querySelector(".s")!.textContent, !!row.querySelector(".pulse")])
         .toEqual(["/ui/hub?room=11111111-2222-4333-8444-555555555555", "Sales numbers", "Waiting for an answer", true]);
-      expect(pg.root.querySelector(".side-nav .hub-new")!.textContent).toBe("New chat");
-      await until(() => pg.root.querySelector(".side-foot .hub-session button"));
-      (pg.root.querySelector(".side-foot .hub-session button") as any).click(); await settle(5);
-      expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["My shared agents", "Administration", "Sign out"]);
+      expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My shared agents", "Search", "New chat"]);
+      expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("New chat");
+      await until(() => pg.root.querySelector(".side-foot .hub-session-row button"));
+      (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
+      expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex", "My shared agents", "Sign out"]);
       i18n.setLang("zh-TW", { store: false }); await settle(5);
-      expect(pg.root.querySelector(".side-nav .hub-new")!.textContent).toBe("新對話");
+      expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("新對話");
     } finally { g.fetch = realFetch; }
   });
 });
@@ -487,6 +491,7 @@ describe("alpha.6 feedback: the Hub's signed-out page", () => {
     expect(pg.document.body.classList.contains("hub-signed-out"), "the chrome is back once signed in").toBe(false);
   });
   it("#3318 review F1: signed out from the phone drawer's session menu, the drawer closes and <main> is not inert — the sign-in page takes input", async () => {
+    i18n.setLang("en", { store: false });              // its own language: an earlier test leaves the page in zh-TW
     let signedIn = true;
     const signed = { signedIn: true, displayName: "Alex", login: "alex", admin: false, csrf: "c".repeat(64), hub: { name: "Team Hub" } };
     client.setHubClient(client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
@@ -501,10 +506,10 @@ describe("alpha.6 feedback: the Hub's signed-out page", () => {
     mounted.push(pg);
     router.startRouter(pg.window);
     await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel }]]), onNewInstance() {} }));
-    await until(() => pg.root.querySelector(".side-foot .hub-session button"));
+    await until(() => pg.root.querySelector(".side-foot .hub-session-row button"));
     shell.openDrawer(); await settle(5);
     expect([shell.shellStore.get().drawer, pg.root.querySelector("#main")!.hasAttribute("inert")], "the drawer is open over an inert <main>").toEqual([true, true]);
-    (pg.root.querySelector(".side-foot .hub-session button") as any).click(); await settle(5);
+    (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
     const out = [...pg.root.querySelectorAll(".side-foot [role=menuitem]")].find((b: any) => b.textContent.trim() === "Sign out") as any;
     out.click();
     await until(() => pg.root.querySelector(".hub-signin-page"));

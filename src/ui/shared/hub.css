@@ -1,6 +1,5 @@
 /* AgEnD Hub P1, slice 3: the Hub pages' own stylesheet, linked by their lazy modules (hub-strings.js linkHubCss), so a
    tab opened before an upgrade (an app.css without these rules) draws them the same. Never loaded while the Hub is off. */
-.hub-brand-name { color: var(--text-2); font-weight: var(--fw-medium); }
 .hub-switch { display: flex; gap: 2px; margin: 0 var(--s-3) var(--s-2); padding: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
 .hub-switch-item { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-1); min-height: 28px; padding: 0 var(--s-2);
   border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text-2); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
