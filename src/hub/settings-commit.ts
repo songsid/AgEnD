@@ -37,6 +37,7 @@ import { BIND_PASSWORD_REF, BIND_SECRET_REL } from "./init/layout.js";
 import { resolveDirectoryConfig, type HubDirectoryConfig } from "./directory/config.js";
 import { canonicalArguments } from "./identity.js";
 import { scalarString } from "./validation.js";
+import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest, HubDirectorySettingsDecision, HubDirectorySettingsImage, HubDirectorySettingsOperation } from "./settings-directory-decision.js";
 import { parseHubDirectoryDecisionMetadata } from "./settings-directory-decision.js";
 
@@ -103,7 +104,7 @@ interface PreparedDirectory {
 export interface HubDirectorySettingsWriter {
   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
   prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
-  commit(ref: string, actor: DirectoryActor, current: () => boolean): { receiptId: string; directoryEpoch: number };
+  commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation): { receiptId: string; directoryEpoch: number };
   /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role. */
   compensate(originalId: string, currentIntent: (original: HubDirectorySettingsOperation) => boolean): { receiptId: string; directoryEpoch: number };
 }
@@ -245,10 +246,11 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     // Keep the exact private preimages for the original operation's bounded forward compensation, never an old DB.
     return { receiptId: op.id, directoryEpoch: op.directoryEpoch };
   };
-  const installDirectory = (p: PreparedDirectory, current: () => boolean, original?: HubDirectorySettingsOperation) => {
+  const installDirectory = (p: PreparedDirectory, current: () => boolean, original?: HubDirectorySettingsOperation, rotation?: HubDirectorySessionRotation) => {
     const checkTime = () => {
       const t = now();
       if (!Number.isSafeInteger(t) || t < p.createdAt || t >= p.expiresAt) throw new HubSettingsError("denied");
+      return t;
     };
     const check = () => {
       checkTime();
@@ -278,10 +280,10 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
         || !same(directoryImage(JSON.parse(readDirectoryFile(id, "new-hub")), readDirectoryFile(id, "new-manifest"), readDirectoryFile(id, "new-secret", 4096)), after)
         || sha(readDirectoryFile(id, "receipt")) !== request.receiptSha) throw new HubSettingsError("stale");
       // Proof and material checks may cross either bound; fence the callback-free SQL transition with a fresh sample.
-      checkTime();
+      return checkTime(); // the session participant shares this FINAL writer-owned sample
     };
     try {
-      if (original) decision().compensate(original.id, request, decisionCheck); else decision().decide(request, decisionCheck);
+      if (original) decision().compensate(original.id, request, decisionCheck); else decision().decide(request, decisionCheck, rotation);
     } catch (error) {
       try { if (!decision().lookup(id)) removeDirectoryPreparation(id); } catch { /* uncertainty keeps the index and private material */ }
       throw error;
@@ -319,12 +321,12 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt });
       return { ref, expiresAt };
     },
-    commit(ref, actor, current) {
+    commit(ref, actor, current, rotation) {
       const p = preparedDirectory.get(ref); preparedDirectory.delete(ref);
       if (!p) throw new HubSettingsError("expired");
       const fresh = parseHubDirectoryDecisionMetadata({ actor, changes: p.changes, recipients: p.recipients });
       if (!same({ ...p.actor, requestId: undefined }, { ...fresh.actor, requestId: undefined })) throw new HubSettingsError("denied");
-      return installDirectory({ ...p, actor: fresh.actor }, current);
+      return installDirectory({ ...p, actor: fresh.actor }, current, undefined, rotation);
     },
     compensate(originalId, currentIntent) {
       const d = decision(), original = d.operation(originalId);

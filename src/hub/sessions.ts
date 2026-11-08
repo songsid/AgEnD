@@ -17,6 +17,8 @@ import type { IncomingMessage } from "node:http";
 import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubActor, HubRequestContext, PersonKey } from "./types.js";
+import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
+import type { HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubCore } from "./http/core.js";
 
 /** Absolute and idle lifetimes of a Hub session. */
@@ -99,11 +101,23 @@ export class HubSessions {
         .run(id, person.realm, person.objectId, displayName, result.person.login.slice(0, LOGIN_MAX), now);
       db.prepare("INSERT INTO hub_sessions(token_hash, id, person, created_at, seen_at, expires_at, state, directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
         .run(digest(token), sessionId, id, now, now, now + HUB_SESSION_TTL, this.core.directoryEpoch);
+      db.prepare("INSERT INTO hub_session_authentication VALUES(?,?,?)").run(sessionId, this.core.directoryEpoch, now);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "session.signed-in", result: "completed" });
       if (firstAdmin) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "administrator.claimed", result: "completed" });
     });
     return { token, maxAgeMs: HUB_SESSION_TTL,
       view: { sessionId, person, displayName, login: result.person.login, admin: this.isAdmin(person), csrf: hubCsrfOf(token) } };
+  }
+
+  /** Internal server adapters only; never mounted as token/ref lookup routes. */
+  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): number | null {
+    return recentHubDirectoryAuthentication(this.core, actor);
+  }
+  prepareDirectoryRotation(token: string, actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): HubDirectorySessionRotation {
+    return prepareHubDirectorySessionRotation(this.core, token, actor);
+  }
+  completeDirectoryRotation(rotation: HubDirectorySessionRotation, operationId: string) {
+    return completeHubDirectorySessionRotation(this.core, rotation, operationId);
   }
 
   /** The current session of this token, or null (ended, expired, idle, or the server fenced). Refreshes "seen". */
