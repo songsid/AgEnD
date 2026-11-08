@@ -412,6 +412,7 @@ import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./we
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
+import { hubInitializationSession } from "./authority/hub-initialization.js";
 import { companyJoinSession } from "./authority/company-join.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
@@ -1638,7 +1639,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberExposureApi: import("./hub/member/exposure-api.js").HubMemberExposureApi | null = null;
   hubMemberExposures(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null { return this.hubMemberExposureApi; }
   attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
-  /** S3c PR B: the member's pairing API, attached by S5's member composition (null: no Hub member here). */
+  /** M-2687: local host-session setup; controller creation stays lazy while the Hub is off. */
+  private hubSetupController: import("./hub/init/web.js").HubWebInitializer | null = null;
+  private hubSetupInit: Promise<import("./hub/init/web.js").HubWebInitializer> | null = null;
+  hubSetupSession(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null {
+    const token=this.webToken,sessions=this.webSessions,epoch=this.webAuthorityState().epoch;
+    return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
+      &&token===this.webToken&&sessions===this.webSessions&&epoch===this.webAuthorityState().epoch});
+  }
+  async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
+    this.hubSetupInit??=(async()=>{
+      const {createHubWebInitializer}=await import("./hub/init/web.js");
+      if(this.shuttingDown)throw Error("Fleet is stopping");
+      const controller=createHubWebInitializer({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),
+        writeFleet:patches=>this.saveFleetConfig(patches),committed:()=>this.applyHubSwitches()});
+      this.hubSetupController=controller;return controller;
+    })();
+    try{return await this.hubSetupInit;}catch(error){this.hubSetupInit=null;throw error;}
+  }
+  /** The member's company sign-in controller; separate from host-owned Hub initialization. */
   private companyJoinController: import("./hub/join/local.js").CompanyJoinController | null = null;
   private companyJoinInit: Promise<import("./hub/join/local.js").CompanyJoinController> | null = null;
   private companyObservedMembership: boolean | null = null;
@@ -2304,7 +2323,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
   /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
-  hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true; }
+  hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true || this.hubSetupController?.pending() === true; }
   /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
   hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 
@@ -25075,6 +25094,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     }
+    try { await this.hubSetupController?.close(); }
+    catch { this.logger.warn("Hub setup scratch cleanup is unconfirmed; setup remains fenced"); }
+    this.hubSetupController=null; this.hubSetupInit=null;
     this.companyJoinController?.close(); this.companyJoinController = null; this.companyJoinInit = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;

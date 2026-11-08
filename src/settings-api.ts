@@ -1,3 +1,4 @@
+import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
 import { hubPreviewPatch, hubPreviewSettingsView, hubRunPatch, hubRunView } from "./hub-host-settings.js";
 import { setNoticeMode } from "./notice-delivery.js";
@@ -97,6 +98,8 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  hubSetupSession?(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null;
+  hubSetup?():Promise<import("./hub/init/web.js").HubWebInitializer>;
   hubCompanySession?(req: IncomingMessage): import("./hub/join/local-journal.js").JoinLocalSession | null;
   hubCompanyJoin?(): Promise<import("./hub/join/local.js").CompanyJoinController>;
   invalidateHubCompanyJoin?(): void;
@@ -1074,6 +1077,8 @@ export function handleSettingsRequest(
     }
     json(res, 405, { error: "method_not_allowed" }); return true;
   }
+
+  if(handleHubWebInitHttp(req,res,url,ctx))return true;
 
   // M-2682 (leader, cid-hubname-ui): "Run this Hub" — hub.enabled, not sealed: the ordinary save; the runtime mounts or stops the
   // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); never over the public link.

@@ -12,7 +12,7 @@ import type { HubInitPlan } from "./types.js";
 export interface HubBrowserMaterial { certFile: string; keyFile: string; cleanup(): void }
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
-/** Recover only material explicitly generated for this saved init plan; imported files are never owned here. */
+/** Recover only material explicitly generated for this saved init plan; external CLI certificate files are never owned here. */
 export function recoverBrowserCertificate(home: string, origin: string, files: HubInitPlan["webTls"]): HubBrowserMaterial | null {
   if (files.generated !== true) return null;
   const dir = dirname(files.certFile);
@@ -66,5 +66,24 @@ export async function createBrowserCertificate(home: string, origin: string): Pr
     const current = lstatSync(dir);
     if (current.isDirectory() && !current.isSymbolicLink() && current.ino === identity.ino && current.dev === identity.dev) rmSync(dir, { recursive: true });
     throw err;
+  }
+}
+
+/** Uploaded PEMs are write-only and staged by the server; the browser never chooses a filesystem path. */
+export function importBrowserCertificate(home: string, origin: string, input: { certPem:string; keyPem:string }, now=Date.now()): HubBrowserMaterial {
+  if (Buffer.byteLength(input.certPem)>65536 || Buffer.byteLength(input.keyPem)>16384
+    || !checkBrowserTls(input.certPem,input.keyPem,origin,now).ok) throw Error("browser_certificate_invalid");
+  privatePath(home,"",true);
+  const dir=mkdtempSync(join(home,".hub-browser-")), identity=lstatSync(dir);
+  const files={certFile:join(dir,"cert.pem"),keyFile:join(dir,"key.pem"),generated:true as const};
+  try {
+    writeFileSync(files.certFile,input.certPem,{flag:"wx",mode:0o600});
+    writeFileSync(files.keyFile,input.keyPem,{flag:"wx",mode:0o600});
+    writeFileSync(join(dir,"material.json"),JSON.stringify({v:1,origin,certSha256:digest(input.certPem),keySha256:digest(input.keyPem)}),{flag:"wx",mode:0o600});
+    return recoverBrowserCertificate(home,origin,files)!;
+  } catch(error) {
+    const current=lstatSync(dir);
+    if(current.isDirectory()&&!current.isSymbolicLink()&&current.ino===identity.ino&&current.dev===identity.dev)rmSync(dir,{recursive:true});
+    throw error;
   }
 }

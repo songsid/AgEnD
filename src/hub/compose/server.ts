@@ -1,3 +1,4 @@
+import { HUB_WEB_INIT_AUDIT_MIGRATION, importHubWebInitAudit } from "../init/web-audit-import.js";
 /**
  * S5b server factory (S-51; docs/design/hub-composition.md §5 "Server"). Called by S1's HubMount only after the sealed
  * manifest verified. Builds, in order: the private DB and its migrations, the Hub-instance binding, floors and content
@@ -269,7 +270,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         floor.initialize();
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
-      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
+      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
         retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
         groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION, HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
@@ -282,6 +283,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const uow = createHubUnitOfWork(db);
       const store = new HubTransportStore(db, { floor, appendAudit: (record, database) => audit.appendInTransaction(record, database) });
       if (state === "new") store.initialize();
+      // Required bootstrap evidence is durable in the Hub chain before either listener opens.
+      importHubWebInitAudit({ home: options.home, db, audit, hubId: settings.hubId, version: store.read().revocationVersion });
 
       // 3. S2 directory with the service password from the one accepted private file.
       if (!bindSecretPath(options.home, settings.directory.bindPasswordRef)) throw new HubStateError("hub-directory-secret", "hub.directory.bindPasswordRef is not the private bind file");
