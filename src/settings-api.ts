@@ -1,4 +1,5 @@
 import { officeInputPatch } from "./dashboard-permissions.js";
+import { hubPreviewPatch, hubPreviewSettingsView } from "./hub-preview-settings.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
@@ -96,6 +97,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** The running Hub's host-owner retention policy; absent while off/unavailable. */
   hubBrowserCertificate?(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null;
   hubRetention?(): import("./hub/retention.js").HubRetentionControl | null;
+  /** M-2682: an unfinished sealed-settings commit (hub/settings-commit.ts) — Hub setting saves wait until it is recovered. */
+  hubSettingsBusy?(): boolean;
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
@@ -1008,6 +1011,39 @@ export function handleSettingsRequest(
     }
     if (path === "/api/settings/hub/browser-certificate" && method === "GET") {
       try { json(res, 200, { ok: true, certificate: control.read() }); } catch (err) { refused(err); }
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  // M-2682: "HTML previews on this Hub" — hub.web.preview_port, outside the sealed digest: the ordinary save (no reseal), checked
+  // against the Hub's own rule, this fleet's ports and a free bind. Host owner only, confirmed like retention; never over the public link.
+  if (path === "/api/settings/hub/preview") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      json(res, 200, { ok: true, ...hubPreviewSettingsView(ctx.getRawFleetConfig()) }); return true;
+    }
+    if (method === "PUT") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 1024).then(async bytes => {
+        let body: unknown; try { body = JSON.parse(bytes.toString("utf8")); } catch { return json(res, 400, { ok: false, error: "invalid_port" }); }
+        const plan = await hubPreviewPatch(ctx.getRawFleetConfig(), body, { busy: () => ctx.hubSettingsBusy?.() === true });
+        if ("refused" in plan) {
+          return json(res, plan.refused === "not_hosted" ? 404 : plan.refused === "busy" || plan.refused === "port_in_use" || plan.refused === "port_conflict" ? 409 : 400, { ok: false, error: plan.refused });
+        }
+        try {
+          execution.assert();
+          if (!settingsRequestLocalAdmin(req) || ctx.hubSettingsBusy?.() === true) throw Error("unavailable");
+          settingsWrite(req, () => ctx.saveFleetConfig([plan.patch]));
+        } catch (err) {
+          ctx.logger.warn({ err }, "settings: Hub preview save refused");
+          return json(res, 503, { ok: false, error: "unsaved" });
+        }
+        json(res, 200, { ok: true, ...hubPreviewSettingsView(ctx.getRawFleetConfig()) });
+      }).catch(() => json(res, 400, { ok: false, error: "invalid_port" }));
       return true;
     }
     json(res, 405, { error: "method_not_allowed" }); return true;

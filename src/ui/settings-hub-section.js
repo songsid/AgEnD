@@ -54,7 +54,8 @@ export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
   return html`<div class="s-hub-section">
     <${Lazy} load=${() => import("./settings-hub-membership.js")} pick=${(m) => m.HubMembershipSettings} />
     ${hubHost ? html`<${Lazy} load=${() => import("./settings-hub-retention.js")} pick=${(m) => m.HubRetentionSettings} />
-      <${Lazy} load=${() => import("./settings-hub-browser-certificate.js")} pick=${(m) => m.HubBrowserCertificateSettings} />` : null}
+      <${Lazy} load=${() => import("./settings-hub-browser-certificate.js")} pick=${(m) => m.HubBrowserCertificateSettings} />
+      <${Lazy} load=${() => import("./settings-hub-preview.js")} pick=${(m) => m.HubPreviewSettings} />` : null}
     ${groupsHref ? html`<${GroupPermissionsRow} href=${groupsHref} />` : null}
   </div>`;
 }
