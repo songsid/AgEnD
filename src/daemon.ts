@@ -1,5 +1,6 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
+import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
@@ -1847,6 +1848,12 @@ export class Daemon extends EventEmitter {
    * when a startup scan reaches a real ready prompt, or on wake().
    */
   private fatalStartupBlocked = false;
+  /** #3441: one repair budget survives every automatic spawn on this daemon. */
+  private modelMinimumRepairUsed = false;
+  private modelMinimumFlight: Promise<void> | null = null;
+  private modelMinimumBlocked = false;
+  private modelMinimumUpdateNotified = false;
+  private cliRepairSessionId: string | undefined;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
   /** Optional per-instance localhost relay used to observe Muse usage events. */
@@ -4893,6 +4900,14 @@ export class Daemon extends EventEmitter {
 
   /** Arm the recovery gates and emit one detected error pattern. */
   private emitErrorPattern(ep: ErrorPattern, key: string, pane: string, now: number): void {
+    const minimum = !this.nativePaneLifecycle && this.backend?.binaryName === "claude" && ep.type === "outdated_cli" ? claudeMinimumError(pane) : null;
+    if (minimum) {
+      this.lastErrorNotifiedAt.set(key, now);
+      void this.handleClaudeModelMinimum(minimum).catch(err => {
+        this.logger.warn({ reason: String(err) }, "CLI launch repair failed");
+      });
+      return;
+    }
     // #2795: auth text on the pane proves nothing about the credentials (22 of 22 such matches on the main host were
     // conversation text). It arms nothing here; it only asks the lifecycle's token-free check, and a failing check
     // arms the auth state through confirmAuthFailure().
@@ -10127,8 +10142,8 @@ export class Daemon extends EventEmitter {
    * moment the flag clears.
    */
   private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
-    if (!this.fatalStartupBlocked) return false;
-    this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
+    if (!this.fatalStartupBlocked && !this.modelMinimumBlocked) return false;
+    this.logger.error("Delivery refused — CLI startup or executable integrity is held");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
     return true;
   }
@@ -12348,6 +12363,7 @@ export class Daemon extends EventEmitter {
       effort: (this.config as InstanceConfig & { effort?: string }).effort,
       kiroUi: this.config.kiro_ui,
       skipResume: this.skipResume,
+      ...(this.cliRepairSessionId ? { resumeSessionId: this.cliRepairSessionId } : {}),
       instructions,
       agentMode: isCliMode ? "cli" : "mcp",
       agentPort: isCliMode ? agentPort : undefined,
@@ -13200,14 +13216,14 @@ export class Daemon extends EventEmitter {
    * Handles confirmation dialogs (trust folder, bypass permissions).
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
-  private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+  private async trySpawn(reuseWindow = false, startupTimeoutMs?: number, repairAdmission?: (attempt: number) => boolean): Promise<boolean> {
     const recoveryOwner = this.collateralOomRecovery ? this.interactionOwner() : null;
     const enter = () => {
       if (recoveryOwner && (!sameInteractionOwner(recoveryOwner, this.interactionOwner())
         || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
         throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
       }
-      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs).catch(err => {
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs, repairAdmission).catch(err => {
         // Includes an in-place binary replacement during asynchronous launch preparation.
         if (err instanceof KiroCompatibilityError) this.emit("kiro_compatibility_hold", err.message);
         throw err;
@@ -13228,6 +13244,97 @@ export class Daemon extends EventEmitter {
     if (ready) await this.ensureKiroSessionProof();
     this.startupAdmission?.();
     return ready;
+  }
+
+  /** Resolve the installed launcher; never run Claude to discover its version. */
+  private async resolveClaudeInstallPath(): Promise<string | null> {
+    const { binaryProbe } = await import("./binary-probe.js");
+    const { resolveBackendBinary } = await import("./backend-availability.js");
+    binaryProbe.invalidate("claude");
+    return await resolveBackendBinary("claude-code") ?? null;
+  }
+
+  private async installedClaudeVersion(path: string): Promise<string | null> {
+    const { staticBackendVersion } = await import("./backend-availability.js");
+    return staticBackendVersion("claude-code", path);
+  }
+
+  /** #3441: only the CLI's own refusal can request this one, non-renewable repair. */
+  private handleClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
+    if (this.modelMinimumRepairUsed || this.modelMinimumBlocked || this.backend?.binaryName !== "claude"
+      || !this.backend.refreshLaunchBinary) return Promise.resolve();
+    if (this.modelMinimumFlight) return this.modelMinimumFlight;
+    const flight = this.repairClaudeModelMinimum(minimum).finally(() => {
+      if (this.modelMinimumFlight === flight) this.modelMinimumFlight = null;
+    });
+    this.modelMinimumFlight = flight;
+    return flight;
+  }
+
+  private async repairClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
+    const tmux = this.tmux, backend = this.backend, window = tmux?.getWindowId();
+    let spawn = this.spawnGeneration, claimed = false;
+    const fence = this.launchFenceEpoch, attempt = this.launchAttempt, phase = this.pauseWakeState;
+    const baseCurrent = () => this.tmux === tmux && this.backend === backend && tmux?.getWindowId() === window
+      && this.spawnGeneration === spawn && this.launchFenceEpoch === fence && this.pauseWakeState === phase
+      && !this.startupAborted && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen;
+    const current = () => baseCurrent() && this.launchAttempt === attempt;
+    const failed = () => new Error(t("inst.cli_repair_failed"));
+    try {
+      // Read the newly resolved install, not a cached old prefix or the running image.
+      const path = await this.resolveClaudeInstallPath(); if (!current()) return;
+      const version = path ? await this.installedClaudeVersion(path) : null; if (!current()) return;
+      if (!version || cliVersionBelow(version, minimum.required)) {
+        if (!this.modelMinimumUpdateNotified) {
+          this.modelMinimumUpdateNotified = true;
+          this.logger.warn({ required: minimum.required, installed: version }, "Claude Code needs an update for this model");
+          this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_update_needed", minimum.required) });
+        }
+        return;
+      }
+      await this.paneWriteLock.run(async () => {
+        if (!current()) return;
+        if (!await this.isPaneAuthoritativelyIdle()) throw failed();
+        if (!current()) return;
+        // Claim before yielding the write lock; queued delivery remains held until readiness settles.
+        this.modelMinimumRepairUsed = true;
+        this.beginSpawn(); claimed = true; spawn = this.spawnGeneration;
+      });
+      if (!claimed || !current()) return;
+      await this.checkpointSessionId(); if (!current()) return;
+      let session: string | undefined;
+      if (!this.skipResume) {
+        try {
+          const value = readFileSync(join(this.instanceDir, "session-id"), "utf8").trim();
+          if (/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) session = value;
+        } catch { /* Unknown is not permission to select another conversation. */ }
+      }
+      if (!session) throw failed();
+      // Recheck disk evidence after checkpointing; an update may have changed it while we waited.
+      const finalVersion = await this.installedClaudeVersion(path!); if (!current()) return;
+      if (!finalVersion || cliVersionBelow(finalVersion, minimum.required)) throw failed();
+      if (!await this.isPaneAuthoritativelyIdle()) throw failed();
+      if (!current()) return;
+      this.logger.warn({ running: minimum.running, required: minimum.required, installed: finalVersion },
+        "Claude model-version refusal — attempting one same-session restart");
+      backend!.refreshLaunchBinary!(path!);
+      this.cliRepairSessionId = session;
+      const ready = await this.trySpawn(true, undefined, next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
+      this.cliRepairSessionId = undefined;
+      if (!baseCurrent() || this.launchAttempt !== attempt + 1) return;
+      if (!ready) throw failed();
+      this.logger.info("Claude model-version restart completed; session retained");
+      this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repaired") });
+    } catch (error) {
+      if (!baseCurrent()) return;
+      this.modelMinimumBlocked = true;
+      this.healthCheckPaused = true;
+      this.logger.error({ reason: error instanceof Error ? error.message : String(error) }, "Claude model-version repair held; no automatic retry");
+      this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repair_failed") });
+    } finally {
+      this.cliRepairSessionId = undefined;
+      if (claimed) this.endSpawn();
+    }
   }
 
   /**
@@ -13406,10 +13513,12 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+  private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number, repairAdmission?: (attempt: number) => boolean): Promise<boolean> {
     if (this.nativePaneLifecycle) throw Error("Native relaunch requires its owned exit and a new lifecycle reservation");
+    let expectedAttempt = this.launchAttempt;
+    const admit = () => { this.startupAdmission?.(); if (repairAdmission && !repairAdmission(expectedAttempt)) throw new Error("CLI repair superseded by another launch, pause or stop"); };
     this.assertSessionOomAdmission();
-    this.startupAdmission?.();
+    admit();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
 
@@ -13432,7 +13541,7 @@ export class Daemon extends EventEmitter {
     try { await this.backend!.prepareLaunch?.(backendConfig); } catch { /* unknown capability → the backend's conservative form */ }
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
-    this.startupAdmission?.();
+    admit();
     this.assertSessionOomAdmission();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
@@ -13496,12 +13605,13 @@ export class Daemon extends EventEmitter {
     // The CLI's own shell sets a zero coredump_filter first (#1113): this pane
     // may belong to a tmux server the fleet did not start, which would hand
     // the CLI its own (full) filter instead of the fleet's.
-    this.startupAdmission?.();
+    admit();
     const cmd = coredumpFilterLaunchPrefix() + `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
-    this.launchAttempt++;
-    await this.prepareQuotaReplayHistory(reuseWindow); this.startupAdmission?.();
+    expectedAttempt = ++this.launchAttempt;
+    admit();
+    await this.prepareQuotaReplayHistory(reuseWindow); admit();
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
     // A launch that cannot paint a passive transient (Codex: a fresh start
@@ -13525,12 +13635,12 @@ export class Daemon extends EventEmitter {
     if (this.stormWindow?.observeServerAlive(await this.paneHost.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
-    this.startupAdmission?.();
+    admit();
     let windowId: string;
     this.assertSessionOomAdmission();
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
-      await this.tmux!.respawnWindow(cmd, resolvedCwd);
+      await this.tmux!.respawnWindow(cmd, resolvedCwd, repairAdmission ? admit : undefined);
       windowId = this.tmux!.getWindowId();
     } else {
       // A crash respawn makes a brand new window. The dead one stays registered
@@ -13539,7 +13649,7 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
-    this.startupAdmission?.();
+    admit();
     this.writeWindowId(windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
@@ -13574,6 +13684,7 @@ export class Daemon extends EventEmitter {
       await new Promise(r => setTimeout(r, 10_000));
     }
 
+    admit();
     // Dismiss confirmation dialogs and verify CLI reached prompt.
     // With remain-on-exit, isWindowAlive() returns true even for dead panes,
     // but a startup crash would already be caught by waitForOutput/waitForIdle above.

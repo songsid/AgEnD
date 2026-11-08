@@ -13,7 +13,7 @@ export type PaneOutputEventName = `output:${string}`;
 export interface Pane {
   getLastInputDiagnostic?(): PaneInputDiagnostic | null;
   createWindow(command: string, cwd: string, windowName?: string): Promise<string>;
-  respawnWindow(command: string, cwd: string): Promise<void>;
+  respawnWindow(command: string, cwd: string, admission?: () => void): Promise<void>;
   killWindow(): Promise<void>;
   killWindowConfirmed(): Promise<boolean>;
   isWindowAlive(): Promise<boolean>;

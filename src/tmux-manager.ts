@@ -335,15 +335,18 @@ export class TmuxManager implements Pane {
   }
 
   /** Restart the process inside the existing window, preserving its window id. */
-  async respawnWindow(command: string, cwd: string): Promise<void> {
+  async respawnWindow(command: string, cwd: string, admission?: () => void): Promise<void> {
     if (!this.windowId) throw new Error("Cannot respawn tmux window without a window id");
     // Apply before respawn so the new CLI sees the intended COLUMNS/LINES from
     // its first frame. Reapplying is idempotent and repairs external drift.
+    admission?.();
     await this.applyLogicalSize();
+    admission?.();
     await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "-c", cwd, command,
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+    admission?.();
   }
 
   /**
