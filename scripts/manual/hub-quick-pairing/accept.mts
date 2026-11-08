@@ -4,7 +4,7 @@
  * REPO=$PWD OUT=<PNG dir> PW_DIR=<playwright-core directory> CHROME=<audited Chromium> npx tsx <this file>
  * MODE=before retains the pre-S90 UI modules; SKEW=1 retains old CSS/client on the current server.
  */
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomUUID, randomBytes } from "node:crypto";
@@ -29,6 +29,7 @@ import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../../
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../../../src/hub/audit/index.js";
 
 const repo = process.env.REPO!, out = process.env.OUT!, mode = process.env.MODE ?? "current", skew = process.env.SKEW === "1";
+const progressFix = process.env.PROGRESS_FIX === "1";
 if (!repo || !out) throw Error("REPO and OUT required");
 mkdirSync(out, { recursive: true }); const art = join(repo, ".artifacts/quick-pairing"); mkdirSync(art, { recursive: true });
 const scratch = mkdtempSync(join(art, "browser-")); chmodSync(scratch, 0o700);
@@ -62,7 +63,8 @@ const plan = { name: "Example Team Hub", webOrigin: origin, memberOrigin, webLis
 const init = createHubInitializer({ home, identity: hubIdentityProvider(), probe: { pidAlive: () => false } });
 const confirmation = await init.prepareConfirmation(plan, { bindPassword: "Dummy-service-only" }); await init.commit(plan, confirmation.reference);
 const cfg = (yaml.load(readFileSync(join(home, "fleet.yaml"), "utf8")) as any).hub;
-const service = await createHubServerFactory({ home, components: { http: S3B_HTTP_ENTRY }, createDirectory: () => directory, report: () => {}, log: () => {} })(cfg, () => true);
+let expiryOffset = 0; // Fixture-only controlled expiry; browser/Settings clocks and production TTL stay unchanged.
+const service = await createHubServerFactory({ home, now: () => Date.now() + expiryOffset, components: { http: S3B_HTTP_ENTRY }, createDirectory: () => directory, report: () => {}, log: () => {} })(cfg, () => true);
 await service.start();
 const fmPort = await freeHubPort(); const fx = await bootFixture({ port: fmPort, instances: 1, classic: false });
 fx.fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
@@ -73,7 +75,10 @@ const oldRef = process.env.OLD_REF ?? "7ab23b6c6", old = (file: string) => execF
 let api: ReturnType<typeof createHubMemberPairingApi> | undefined, member: HubMemberClient | undefined, inboxDb: Database.Database | undefined, online = false, memberLive = true;
 const extraPairings: ReturnType<typeof createHubMemberPairingApi>[] = [];
 const contexts: any[] = [];
-const shot = async (p: any, name: string) => { await p.evaluate(() => document.fonts.ready); await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png"); };
+const shot = async (p: any, name: string) => {
+  if (progressFix && !/local-step|expired-confirmation|FAIL-/.test(name)) return;
+  await p.evaluate(() => document.fonts.ready); await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png");
+};
 async function context(c: any, oldClient = false) {
   const ctx = await fx.browser.newContext({ viewport: c.device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 900 },
     isMobile: c.device === "phone", hasTouch: c.device === "phone", locale: c.lang === "en" ? "en-US" : "zh-TW", colorScheme: c.theme, ignoreHTTPSErrors: true }); contexts.push(ctx);
@@ -82,6 +87,7 @@ async function context(c: any, oldClient = false) {
     const u = new URL(r.request().url()); if (![origin, fx.base].includes(u.origin)) { receipt.foreign.push(u.origin); return r.abort(); }
     let retained: string | null = null;
     if (mode === "before" && ["/ui/js/panel-hub.js", "/ui/js/hub-welcome.js", "/ui/js/hub-client.js"].includes(u.pathname)) retained = u.pathname.slice(7);
+    if (mode === "before-progress" && ["/ui/js/settings-hub.js", "/ui/js/hub-client.js", "/ui/js/hub-quick-pairing.js"].includes(u.pathname)) retained = u.pathname.slice(7);
     if (oldClient && u.pathname === "/ui/js/hub-client.js") retained = "hub-client.js";
     if (skew && ["/assets/app.css", "/assets/hub.css", "/assets/hub-owner.css", "/assets/hub-groups.css", "/assets/app-shell.js"].includes(u.pathname)) retained = "shared/" + u.pathname.slice(8);
     if (retained) { receipt.skewHits = (receipt.skewHits ?? 0) + 1; return r.fulfill({ contentType: retained.endsWith(".css") ? "text/css" : "text/javascript", body: old(retained) }); }
@@ -102,7 +108,7 @@ async function attachMember(index: number) {
   memberLive = false; await member?.close(); member = undefined; fx.fm.hubPairingNotices = null;
   inboxDb?.close(); inboxDb = undefined; online = false; memberLive = true;
   const mh = join(scratch, `member-${index}`); mkdirSync(mh, { mode: 0o700 });
-  api = createHubMemberPairingApi({ home: mh, enabled: () => memberLive, link: () => online ? "online" : "offline", pollMs: 250,
+  api = createHubMemberPairingApi({ home: mh, now: () => Date.now() + expiryOffset, enabled: () => memberLive, link: () => online ? "online" : "offline", pollMs: 250,
     notices: () => fx.fm.hubPairingNotices?.() ?? [], bindingChanged: () => {
       if (api?.view().state !== "paired" || member) return;
       const hubId = api.boundHub()!.hubId; inboxDb = new Database(join(mh, "notice-test.sqlite"));
@@ -124,6 +130,7 @@ try {
   await admin.p.locator(".hub-group-row input[type=number]").fill("8"); await admin.p.locator(".hub-groups-state button").click();
   await admin.p.locator(".hub-groups-preview .btn-primary").click(); await admin.p.locator(".hub-groups-preview").waitFor({ state: "detached" });
   for (const [i, c] of cases.entries()) {
+    expiryOffset = 0;
     const tag = `${mode}${skew ? "-skew" : ""}-${caseName(c)}`, owner = users[i + 1], a = await context(c);
     try {
       await signIn(a.p, owner.login); await a.p.locator(".hub-welcome-card").first().waitFor();
@@ -143,6 +150,13 @@ try {
       await local.p.locator("#hub-connect form button[type=submit]").click(); await apply(local.p, ".hub-local-confirm");
       check(tag + " fleet requested theme and language", await local.p.evaluate(({ theme, lang }: any) => document.documentElement.dataset.theme === theme && document.documentElement.lang === (lang === "zh-TW" ? "zh-Hant" : lang), c));
       await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).waitFor();
+      if (progressFix) {
+        await a.p.reload(); await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).waitFor();
+        const step = a.p.locator("[data-quick-pairing] .hub-steps li").first(); await step.scrollIntoViewIfNeeded();
+        check(tag + " local completion mark matches observable proof", (await step.getAttribute("class")) === (mode === "before-progress" ? "done" : "now"));
+        check(tag + " local proof actually withheld", api!.view().state === "pending" && (api!.view() as any).localConfirmed === false);
+        await shot(a.p, tag + "-local-step");
+      }
       const shown = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").last().innerText()).replace(/\s/g, ""), localShown = (await local.p.locator(".hub-pending .hub-fp-groups").innerText()).replace(/\s/g, "");
       check(tag + " exact same fingerprint", shown === localShown && shown.length === 32);
       await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).scrollIntoViewIfNeeded();
@@ -156,6 +170,30 @@ try {
       await other.p.locator("[data-pairing-notice]").first().waitFor(); await admin.p.locator("[data-pairing-notice]").first().waitFor();
       check(tag + " initiator excluded", await a.p.locator("[data-pairing-notice]").count() === 0);
       await shot(a.p, tag + "-connected"); await shot(other.p, tag + "-notice"); await geometry(a.p, tag + " connected"); await geometry(other.p, tag + " notice");
+      if (progressFix) {
+        await a.p.getByRole("button", { name: c.lang === "en" ? "Connect another fleet" : "連接另一個 Fleet", exact: true }).click();
+        await a.p.fill("#quickFleetLabel", "Expiry control"); await a.p.locator("[data-quick-pairing] form button[type=submit]").click();
+        const expiringCode = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").first().innerText()).trim();
+        const expiredHome = await attachMember(1000 + i);
+        await local.p.goto(fx.base + "/settings/hub"); await local.p.fill("#hubAddress", memberOrigin); await local.p.fill("#hubCode", expiringCode);
+        await local.p.locator("#hub-connect form button[type=submit]").click(); await apply(local.p, ".hub-local-confirm");
+        const expiredHubId = api!.boundHub()!.hubId;
+        await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).click();
+        check(tag + " expiry local proof still withheld", (api!.view() as any).localConfirmed === false);
+        expiryOffset = 600_001;
+        receipt.expiryBoundary = "Hub/member injected test clock advances past the unchanged 10-minute TTL; no browser/Settings fake clock and no natural-time claim. Sentinel #3395 separately proved natural expiry.";
+        await local.p.locator(".hub-held").waitFor(); check(tag + " expired pending has no credential", !existsSync(join(expiredHome, "hub-member", expiredHubId, "pairing.json")));
+        await local.p.locator(".hub-held button").click(); await local.p.fill("#hubAddress", memberOrigin); await local.p.fill("#hubCode", expiringCode);
+        await local.p.locator("#hub-connect form button[type=submit]").click();
+        // The real host-owned confirmation/replay fails against the real Hub's expired-code check.
+        await apply(local.p, ".pending-card.failed");
+        const result = local.p.locator(mode === "before-progress" ? "#hub-connect > p[role=status]" : "#hub-connect > p[role=alert]"); await result.waitFor();
+        const message = await result.innerText();
+        check(tag + " expired failure copy settled", mode === "before-progress" ? /Waiting for your confirmation|等待你的確認/.test(message) : /new code|新的代碼/.test(message));
+        check(tag + " expired attempt remains unpaired and credential-free", api!.view().state === "unpaired" && !existsSync(join(expiredHome, "hub-member", expiredHubId, "pairing.json")));
+        await result.scrollIntoViewIfNeeded(); await shot(local.p, tag + "-expired-confirmation"); await geometry(local.p, tag + " expired confirmation");
+        expiryOffset = 0;
+      }
       if (process.env.EXTRA_NOTICES === "1") {
         // A second recorded local API boundary isolates real Hub outbox→existing member retention/ACK/presentation.
         // The primary member above used actual browser Settings confirmations; this secondary proof is not a browser claim.
@@ -221,7 +259,7 @@ try {
       check(tag + " one-click revoke no dialog", await other.p.locator("[role=dialog]").count() === 0); await local.ctx.close(); await other.ctx.close();
     } finally { await a.ctx.close(); }
   }
-  if (mode !== "before") {
+  if (mode !== "before" && !progressFix) {
     const stale = await context(cases[0], true); await signIn(stale.p, users[1].login); await stale.p.locator(".hub-welcome-card").first().waitFor();
     check("old client hides quick actions", await stale.p.locator("[data-quick-pairing]").count() === 0); await shot(stale.p, "skew-old-client-welcome");
   }
