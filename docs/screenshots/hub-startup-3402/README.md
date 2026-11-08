@@ -55,19 +55,25 @@ directory, pilot or trust store.
 - Four selected fail-first cases failed by assertion on the baseline (35 other
   cases deliberately unselected): duplicate notice GET, full-page peak five,
   welcome backpressure wording and the missing catalog retry/empty guidance.
-- Seven focused suites: 171/171 assertions passed, zero skips; production build
+- Nine focused suites after sync/review fixes: 219/219 assertions passed, zero skips; production build
   and test TypeScript checks passed.
-- Nine individual guard reversals each caused assertion failures: duplicate
+- Nine initial guard reversals each caused assertion failures (re-run after the fixes): duplicate
   snapshot bootstrap, retained-client GET/stream overlap, unsupported
   EventSource snapshot mark, welcome busy text, hidden catalog refusal, welcome
   delay, admin busy text, admin delay, and admin timer cancellation.
+- Eight additional review reversals each assertion-fail: unobserved CLOSED stream,
+  wrongly treating CONNECTING as terminal, removed GET fallback, fixed-ten-second
+  welcome/admin delay, welcome queued-generation guard, welcome unmount cleanup,
+  and notice unmount cleanup. Three-second, zero/missing-header and stale-timer
+  controls pin the previously unproven delay/lifetime guards. The new refused-
+  stream test also assertion-fails before the fix (52 controls passed).
 
 ## Source-bound browser evidence
 
-Source `12880158f5d15137a863360cf2d16fc6d53b16bc`:
+Source `512696d08080d2db4b4788a4327a41461168ef38` (after the clean alpha sync and review fixes):
 24 fresh pages (eight desktop/phone × language × theme combinations, three each)
 all show the empty-agent hint, have no 429, and attempt at most four concurrent
-Core eligibility reads. There are 51 explicit browser checks, three separate
+Core eligibility reads. There are 54 explicit browser checks, three separate
 real-429/recovery controls, and two retained-module controls. The normal startup
 and genuine-capacity controls are recorded separately in `startup-receipt.json`.
 
@@ -87,7 +93,14 @@ strings. Retained old notice consumers need a refresh to get the startup fix.
 
 `startup-cleanup.json` records completed closure and zero physical directory
 reads left. No browser errors, CSP violations or foreign requests occurred.
-`checks.json` records focused/mutation counts and hashes of the 14 representative
+A separate listener control opens 64 owned, CA-verified notice streams. The
+browser's next stream gets actual 429/Retry-After 10; a fresh authenticated GET
+returns 200, explicit reconnect status remains visible, and the stream reopens
+with 200 after capacity is released and the retry delay passes. No notice rows
+are seeded in this listener control; the mounted production-client regression
+pins delivery of a fake notice through the fallback GET.
+
+`checks.json` records focused/mutation counts and hashes of the 15 representative
 PNGs. Browser receipts bind the source commit; the follow-up evidence commit
 changes docs/screenshots only.
 
@@ -98,9 +111,12 @@ changes docs/screenshots only.
 | `*-busy-ungranted.png` | Real backpressure, explicit busy text |
 | `*-busy-admin*.png` | Editor busy state and automatic recovery |
 | `skew-*.png` | Current UI with retained client/translation module |
+| `notice-stream-cap-retrying.png` | Actual stream-cap refusal and GET fallback |
 
-An image-only review of all 14 samples found no blocking visual issue or private
-data. Phone EN captures end across the lower Connect card edge; its text is
+An image-only review of the initial 14 samples and the three changed/new samples
+found no blocking visual issue or private data. The stream-cap capture shows
+reconnecting status while the welcome placeholders are still loading; the
+listener control separately waits for recovery and the empty-agent hint. Phone EN captures end across the lower Connect card edge; its text is
 readable, but these static captures do not prove vertical scrolling behavior.
 
 Physical driver peak alone is insufficient evidence: the broken baseline also

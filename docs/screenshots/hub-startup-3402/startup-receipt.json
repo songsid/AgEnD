@@ -1,7 +1,7 @@
 {
   "mode": "current",
   "skew": false,
-  "source": "12880158f5d15137a863360cf2d16fc6d53b16bc",
+  "source": "512696d08080d2db4b4788a4327a41461168ef38",
   "browser": "141.0.7390.37",
   "boundary": "Startup-only: sealed Hub HTTPS, production AD driver over owned synthetic verified TLS/BER peer, real browser. Direct owned Chromium only; no fleet fixture, member, agent, model, daemon, native CLI or account runs.",
   "stories": [
@@ -198,6 +198,18 @@
       "ok": true
     },
     {
+      "name": "notice cap: refused stream recovers snapshot through GET",
+      "ok": true
+    },
+    {
+      "name": "notice-stream-cap-retrying no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "notice cap: stream reopens after capacity released",
+      "ok": true
+    },
+    {
       "name": "skew-hub-client.js current empty guidance and bounded reads",
       "ok": true
     },
@@ -259,6 +271,7 @@
     "phone-dark-zh-TW-busy-ungranted-recovered.png",
     "desk-light-en-busy-admin.png",
     "desk-light-en-busy-admin-recovered.png",
+    "notice-stream-cap-retrying.png",
     "skew-hub-client.js.png",
     "skew-hub-group-strings.js.png"
   ],
@@ -298,6 +311,11 @@
     },
     {
       "path": "/hub/v1/admin/group-policy/resolve",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/admin/group-policy/preview",
       "status": 200,
       "method": "POST"
     },
@@ -1087,13 +1105,13 @@
       "method": "GET"
     },
     {
-      "path": "/hub/v1/quick-pairing",
-      "status": 200,
+      "path": "/hub/v1/exposures",
+      "status": 429,
       "method": "GET"
     },
     {
-      "path": "/hub/v1/exposures",
-      "status": 429,
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
       "method": "GET"
     },
     {
@@ -1178,6 +1196,36 @@
     },
     {
       "path": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
       "status": 200,
       "method": "GET"
     },
@@ -1273,22 +1321,22 @@
       "probe": "desk-light-zh-TW-1",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 2,
-      "driverPeak": 2
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "desk-light-zh-TW-2",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 3,
-      "driverPeak": 3
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "desk-light-zh-TW-3",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 3,
-      "driverPeak": 3
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "desk-dark-en-1",
@@ -1322,15 +1370,15 @@
       "probe": "desk-dark-zh-TW-2",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 3,
-      "driverPeak": 3
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "desk-dark-zh-TW-3",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 2,
-      "driverPeak": 2
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "phone-light-en-1",
@@ -1371,15 +1419,15 @@
       "probe": "phone-light-zh-TW-3",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 4,
-      "driverPeak": 4
+      "attemptedPeak": 3,
+      "driverPeak": 3
     },
     {
       "probe": "phone-dark-en-1",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 2,
-      "driverPeak": 2
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "phone-dark-en-2",
@@ -1406,61 +1454,61 @@
       "probe": "phone-dark-zh-TW-2",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 3,
-      "driverPeak": 3
+      "attemptedPeak": 4,
+      "driverPeak": 4
     },
     {
       "probe": "phone-dark-zh-TW-3",
       "emptyHint": true,
       "busy": [],
-      "attemptedPeak": 3,
-      "driverPeak": 3
+      "attemptedPeak": 4,
+      "driverPeak": 4
     }
   ],
   "core": [
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800712,
+      "at": 1794107637165,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 56
+      "elapsed": 69
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800723,
+      "at": 1794107637180,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 58
+      "elapsed": 66
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800755,
+      "at": 1794107637220,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 79
+      "elapsed": 86
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800758,
+      "at": 1794107637223,
       "attemptedConcurrent": 4,
       "admittedBefore": 3,
       "totalBefore": 3,
-      "elapsed": 83
+      "elapsed": 89
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106801007,
+      "at": 1794107637494,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 53
+      "elapsed": 49
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802140,
+      "at": 1794107638905,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
@@ -1468,991 +1516,1001 @@
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802155,
+      "at": 1794107638910,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 55
+      "elapsed": 91
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802183,
+      "at": 1794107638930,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802185,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 61
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802345,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-light-en-3",
-      "at": 1794106803542,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 72
-    },
-    {
-      "probe": "desk-light-en-3",
-      "at": 1794106803556,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-light-en-3",
-      "at": 1794106803596,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-light-en-3",
-      "at": 1794106803597,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 60
-    },
-    {
-      "probe": "desk-light-en-3",
-      "at": 1794106803754,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 56
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106804940,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106804968,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805024,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805028,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 60
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805176,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806691,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806710,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 57
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806750,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 60
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806752,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 73
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806911,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808172,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 62
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808206,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 60
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808259,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 73
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808260,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 66
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808429,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809684,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 61
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809705,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809735,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 67
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809737,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809894,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810614,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810623,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810656,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810658,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810801,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106811991,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 65
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812006,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812034,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 66
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812036,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 56
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812206,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812944,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812964,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812990,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 63
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812993,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 65
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813154,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814341,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814363,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 48
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814398,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 63
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814399,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 56
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814568,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816203,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 56
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816220,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816277,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
       "elapsed": 64
     },
     {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816279,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 68
+      "probe": "desk-light-en-2",
+      "at": 1794107638932,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 84
     },
     {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816459,
+      "probe": "desk-light-en-2",
+      "at": 1794107639120,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 48
+      "elapsed": 51
     },
     {
-      "probe": "phone-light-en-1",
-      "at": 1794106817581,
+      "probe": "desk-light-en-3",
+      "at": 1794107639902,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 55
+      "elapsed": 71
     },
     {
-      "probe": "phone-light-en-1",
-      "at": 1794106817591,
+      "probe": "desk-light-en-3",
+      "at": 1794107639922,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
+      "elapsed": 61
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107639957,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 77
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107639960,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 84
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107640164,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641564,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
       "elapsed": 57
     },
     {
-      "probe": "phone-light-en-1",
-      "at": 1794106817621,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817623,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817776,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-light-en-2",
-      "at": 1794106818521,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-light-en-2",
-      "at": 1794106818532,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 61
-    },
-    {
-      "probe": "phone-light-en-2",
-      "at": 1794106818575,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 81
-    },
-    {
-      "probe": "phone-light-en-2",
-      "at": 1794106818576,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 72
-    },
-    {
-      "probe": "phone-light-en-2",
-      "at": 1794106818746,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 49
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106819854,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 54
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106819867,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 56
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106819896,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106819898,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 67
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106820066,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821345,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821370,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 52
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821405,
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641585,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
       "elapsed": 51
     },
     {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821406,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 55
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821564,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822738,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 61
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822764,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 56
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822807,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 79
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822809,
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641612,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
       "elapsed": 66
     },
     {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822970,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 49
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824132,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824154,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 52
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824175,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 80
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824177,
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641614,
       "attemptedConcurrent": 4,
       "admittedBefore": 3,
       "totalBefore": 3,
       "elapsed": 71
     },
     {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824348,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 52
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825512,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 57
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825531,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825610,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 62
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825616,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825757,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826864,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826872,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 54
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826896,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 62
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826898,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 54
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106827048,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827756,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 59
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827770,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 57
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827793,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827794,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 60
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827939,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 62
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828655,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828678,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 62
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828727,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 78
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828728,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 68
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828903,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 55
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829953,
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641786,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 53
     },
     {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829982,
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107642995,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643012,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 54
+      "elapsed": 52
     },
     {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830023,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 69
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830025,
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643033,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 74
+      "elapsed": 62
     },
     {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830203,
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643034,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643195,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 48
     },
     {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831436,
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644104,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 55
+      "elapsed": 58
     },
     {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831458,
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644123,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
       "elapsed": 55
     },
     {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831502,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 61
-    },
-    {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831504,
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644154,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 69
+      "elapsed": 61
     },
     {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831670,
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644156,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 64
+    },
+    {
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644325,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 49
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106832998,
+      "probe": "desk-dark-en-1",
+      "at": 1794107645853,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 74
+      "elapsed": 67
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833032,
+      "probe": "desk-dark-en-1",
+      "at": 1794107645875,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 59
+      "elapsed": 63
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833058,
+      "probe": "desk-dark-en-1",
+      "at": 1794107645906,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 61
+      "elapsed": 82
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833060,
+      "probe": "desk-dark-en-1",
+      "at": 1794107645909,
       "attemptedConcurrent": 4,
       "admittedBefore": 3,
       "totalBefore": 3,
-      "elapsed": 73
+      "elapsed": 90
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833234,
+      "probe": "desk-dark-en-1",
+      "at": 1794107646115,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647597,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647609,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647630,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 57
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647632,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 60
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647776,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648442,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648452,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648467,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 63
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648469,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 56
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648603,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649317,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649335,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649355,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 59
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649357,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 52
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649504,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650129,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650148,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 58
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650171,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650173,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 54
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650333,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651198,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 57
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833738,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 1531
-    },
-    {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833743,
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651218,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 1548
+      "elapsed": 51
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833746,
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651246,
       "attemptedConcurrent": 3,
       "admittedBefore": 2,
       "totalBefore": 2,
-      "elapsed": 1540
+      "elapsed": 72
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833748,
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651248,
       "attemptedConcurrent": 4,
       "admittedBefore": 3,
       "totalBefore": 3,
-      "elapsed": 1531
+      "elapsed": 66
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651405,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652508,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652520,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652545,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652547,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652677,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "phone-light-en-2",
+      "at": 1794107653351,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 60
+    },
+    {
+      "probe": "phone-light-en-2",
+      "at": 1794107653367,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 59
+    },
+    {
+      "probe": "phone-light-en-2",
+      "at": 1794107653399,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 75
+    },
+    {
+      "probe": "phone-light-en-2",
+      "at": 1794107653401,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 65
+    },
+    {
+      "probe": "phone-light-en-2",
+      "at": 1794107653593,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654715,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654728,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654743,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654744,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654868,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655636,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655669,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 60
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655703,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 61
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655705,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655897,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657042,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657073,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657115,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 87
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657117,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 78
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657347,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658737,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658773,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 59
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658811,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 101
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658813,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 71
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107659037,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107659961,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107659974,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107659991,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107659993,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107660124,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 59
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107660835,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107660848,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107660880,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 73
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107660882,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 60
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107661043,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662248,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662259,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662273,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662278,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662428,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 66
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663082,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663102,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663139,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663141,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663287,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664561,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664592,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664611,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 59
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664612,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 64
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664772,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666000,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666028,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666041,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666042,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 60
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666202,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 56
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833817,
+      "at": 1794107667299,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 86
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667330,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 52
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667345,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 56
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667347,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667480,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 1396
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667490,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 1374
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667492,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 1366
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667493,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 1378
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667494,
+      "attemptedConcurrent": 5,
+      "admittedBefore": 4,
+      "totalBefore": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667532,
+      "attemptedConcurrent": 5,
+      "admittedBefore": 4,
+      "totalBefore": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667535,
       "attemptedConcurrent": 5,
       "admittedBefore": 4,
       "totalBefore": 4,
@@ -2461,7 +2519,103 @@
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833819,
+      "at": 1794107677601,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 67
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107677605,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 70
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107677787,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678881,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 62
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678916,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 66
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678928,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 86
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678930,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 100
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679126,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679591,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 1378
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679592,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 1367
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679593,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 1383
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679594,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 1370
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679637,
       "attemptedConcurrent": 5,
       "admittedBefore": 4,
       "totalBefore": 4,
@@ -2469,2458 +2623,3397 @@
       "elapsed": 0
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106843843,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679638,
+      "attemptedConcurrent": 5,
+      "admittedBefore": 4,
+      "totalBefore": 4,
+      "error": "backpressure",
+      "elapsed": 0
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107689694,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 185
+      "elapsed": 79
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106843844,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107689696,
       "attemptedConcurrent": 2,
       "admittedBefore": 1,
       "totalBefore": 1,
-      "elapsed": 171
+      "elapsed": 70
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106844115,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107689872,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 60
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690614,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 68
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690624,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690629,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 64
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690823,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 1478
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690825,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 1463
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690827,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 1453
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690829,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 1466
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690909,
+      "attemptedConcurrent": 5,
+      "admittedBefore": 4,
+      "totalBefore": 4,
+      "error": "backpressure",
+      "elapsed": 1
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107700921,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107701989,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 55
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702002,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 65
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702031,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 60
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702033,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 72
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702183,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 53
     },
     {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845243,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 59
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845308,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 78
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845366,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 81
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845368,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 70
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845565,
+      "probe": "notice-stream-cap",
+      "at": 1794107702677,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 56
     },
     {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845967,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 1375
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845968,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 1386
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845969,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 1380
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845970,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 1390
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106846010,
-      "attemptedConcurrent": 5,
-      "admittedBefore": 4,
-      "totalBefore": 4,
-      "error": "backpressure",
-      "elapsed": 0
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106846011,
-      "attemptedConcurrent": 5,
-      "admittedBefore": 4,
-      "totalBefore": 4,
-      "error": "backpressure",
-      "elapsed": 0
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856051,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 72
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856054,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 62
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856216,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857256,
+      "probe": "notice-stream-cap",
+      "at": 1794107702742,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 50
     },
     {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857271,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 61
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857274,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857459,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 1458
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857461,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 1473
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857462,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 1482
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857463,
-      "attemptedConcurrent": 4,
-      "admittedBefore": 3,
-      "totalBefore": 3,
-      "elapsed": 1463
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857535,
-      "attemptedConcurrent": 5,
-      "admittedBefore": 4,
-      "totalBefore": 4,
-      "error": "backpressure",
-      "elapsed": 0
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106867554,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 56
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106868989,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 56
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869015,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 56
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869059,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 59
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869061,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 62
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869078,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 54
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869210,
+      "probe": "notice-stream-cap",
+      "at": 1794107702799,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 48
     },
     {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870492,
+      "probe": "notice-stream-cap",
+      "at": 1794107702855,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
-      "elapsed": 59
+      "elapsed": 48
     },
     {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870567,
-      "attemptedConcurrent": 1,
-      "admittedBefore": 0,
-      "totalBefore": 0,
-      "elapsed": 89
-    },
-    {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870640,
-      "attemptedConcurrent": 2,
-      "admittedBefore": 1,
-      "totalBefore": 1,
-      "elapsed": 99
-    },
-    {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870642,
-      "attemptedConcurrent": 3,
-      "admittedBefore": 2,
-      "totalBefore": 2,
-      "elapsed": 89
-    },
-    {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870840,
+      "probe": "notice-stream-cap",
+      "at": 1794107702908,
       "attemptedConcurrent": 1,
       "admittedBefore": 0,
       "totalBefore": 0,
       "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702963,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703015,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703070,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703124,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703181,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 100
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703287,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703347,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 61
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703426,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 58
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703491,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703544,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703598,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703660,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703713,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703770,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703826,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703881,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703936,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703991,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704046,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704102,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704158,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704222,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704279,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 57
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704344,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704402,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704456,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704510,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704564,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704617,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704670,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704725,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704781,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704837,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704894,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704948,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705000,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705059,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 76
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705142,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705197,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 55
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705259,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 57
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705342,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 62
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705419,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 62
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705491,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705550,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705606,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705662,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705715,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705770,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705825,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705884,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705944,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706001,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706057,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706116,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706175,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706229,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706289,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706354,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706410,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706846,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 57
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706887,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706925,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 72
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706927,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107707078,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107716952,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 48
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718081,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 51
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718099,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718138,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 70
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718139,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 63
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718162,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 56
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718301,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 52
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719383,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 53
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719418,
+      "attemptedConcurrent": 2,
+      "admittedBefore": 1,
+      "totalBefore": 1,
+      "elapsed": 57
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719429,
+      "attemptedConcurrent": 3,
+      "admittedBefore": 2,
+      "totalBefore": 2,
+      "elapsed": 69
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719431,
+      "attemptedConcurrent": 4,
+      "admittedBefore": 3,
+      "totalBefore": 3,
+      "elapsed": 61
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719590,
+      "attemptedConcurrent": 1,
+      "admittedBefore": 0,
+      "totalBefore": 0,
+      "elapsed": 55
     }
   ],
   "driver": [
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800712,
+      "at": 1794107637165,
       "active": 1,
-      "elapsed": 53
+      "elapsed": 61
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800723,
+      "at": 1794107637180,
       "active": 2,
-      "elapsed": 54
+      "elapsed": 63
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800755,
+      "at": 1794107637220,
       "active": 3,
-      "elapsed": 76
-    },
-    {
-      "probe": "desk-light-en-1",
-      "at": 1794106800758,
-      "active": 4,
       "elapsed": 81
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106801007,
-      "active": 1,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802140,
-      "active": 1,
-      "elapsed": 59
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802155,
-      "active": 2,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802183,
-      "active": 3,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-light-en-2",
-      "at": 1794106802185,
+      "at": 1794107637223,
       "active": 4,
-      "elapsed": 55
+      "elapsed": 86
     },
     {
-      "probe": "desk-light-en-2",
-      "at": 1794106802345,
+      "probe": "desk-light-en-1",
+      "at": 1794107637494,
       "active": 1,
       "elapsed": 46
     },
     {
-      "probe": "desk-light-en-3",
-      "at": 1794106803542,
+      "probe": "desk-light-en-2",
+      "at": 1794107638905,
       "active": 1,
-      "elapsed": 70
+      "elapsed": 56
     },
     {
-      "probe": "desk-light-en-3",
-      "at": 1794106803556,
+      "probe": "desk-light-en-2",
+      "at": 1794107638910,
       "active": 2,
-      "elapsed": 51
+      "elapsed": 88
     },
     {
-      "probe": "desk-light-en-3",
-      "at": 1794106803596,
+      "probe": "desk-light-en-2",
+      "at": 1794107638930,
       "active": 3,
-      "elapsed": 52
+      "elapsed": 56
     },
     {
-      "probe": "desk-light-en-3",
-      "at": 1794106803597,
+      "probe": "desk-light-en-2",
+      "at": 1794107638932,
       "active": 4,
-      "elapsed": 57
+      "elapsed": 82
     },
     {
-      "probe": "desk-light-en-3",
-      "at": 1794106803754,
-      "active": 1,
-      "elapsed": 54
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106804940,
-      "active": 1,
-      "elapsed": 47
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106804968,
-      "active": 2,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805024,
-      "active": 1,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805028,
-      "active": 2,
-      "elapsed": 57
-    },
-    {
-      "probe": "desk-light-zh-TW-1",
-      "at": 1794106805176,
+      "probe": "desk-light-en-2",
+      "at": 1794107639120,
       "active": 1,
       "elapsed": 48
     },
     {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806691,
+      "probe": "desk-light-en-3",
+      "at": 1794107639902,
+      "active": 1,
+      "elapsed": 66
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107639922,
+      "active": 2,
+      "elapsed": 59
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107639957,
+      "active": 3,
+      "elapsed": 72
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107639960,
+      "active": 4,
+      "elapsed": 82
+    },
+    {
+      "probe": "desk-light-en-3",
+      "at": 1794107640164,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641564,
+      "active": 1,
+      "elapsed": 52
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641585,
+      "active": 2,
+      "elapsed": 48
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641612,
+      "active": 3,
+      "elapsed": 64
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641614,
+      "active": 4,
+      "elapsed": 69
+    },
+    {
+      "probe": "desk-light-zh-TW-1",
+      "at": 1794107641786,
       "active": 1,
       "elapsed": 50
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806710,
-      "active": 2,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806750,
-      "active": 2,
-      "elapsed": 57
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806752,
-      "active": 3,
-      "elapsed": 63
-    },
-    {
-      "probe": "desk-light-zh-TW-2",
-      "at": 1794106806911,
+      "at": 1794107642995,
       "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643012,
+      "active": 2,
       "elapsed": 48
     },
     {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808172,
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643033,
+      "active": 3,
+      "elapsed": 59
+    },
+    {
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643034,
+      "active": 4,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-light-zh-TW-2",
+      "at": 1794107643195,
       "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644104,
+      "active": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644123,
+      "active": 2,
       "elapsed": 53
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808206,
-      "active": 2,
-      "elapsed": 56
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808259,
-      "active": 2,
-      "elapsed": 70
-    },
-    {
-      "probe": "desk-light-zh-TW-3",
-      "at": 1794106808260,
+      "at": 1794107644154,
       "active": 3,
+      "elapsed": 58
+    },
+    {
+      "probe": "desk-light-zh-TW-3",
+      "at": 1794107644156,
+      "active": 4,
       "elapsed": 62
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808429,
-      "active": 1,
-      "elapsed": 48
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809684,
-      "active": 1,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809705,
-      "active": 2,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809735,
-      "active": 3,
-      "elapsed": 64
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809737,
-      "active": 4,
-      "elapsed": 55
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809894,
+      "at": 1794107644325,
       "active": 1,
       "elapsed": 47
     },
     {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810614,
+      "probe": "desk-dark-en-1",
+      "at": 1794107645853,
+      "active": 1,
+      "elapsed": 60
+    },
+    {
+      "probe": "desk-dark-en-1",
+      "at": 1794107645875,
+      "active": 2,
+      "elapsed": 60
+    },
+    {
+      "probe": "desk-dark-en-1",
+      "at": 1794107645906,
+      "active": 3,
+      "elapsed": 78
+    },
+    {
+      "probe": "desk-dark-en-1",
+      "at": 1794107645909,
+      "active": 4,
+      "elapsed": 84
+    },
+    {
+      "probe": "desk-dark-en-1",
+      "at": 1794107646115,
       "active": 1,
       "elapsed": 49
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810623,
+      "at": 1794107647597,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647609,
       "active": 2,
+      "elapsed": 47
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647630,
+      "active": 3,
+      "elapsed": 54
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647632,
+      "active": 4,
+      "elapsed": 58
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647776,
+      "active": 1,
       "elapsed": 48
     },
     {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810657,
-      "active": 3,
-      "elapsed": 47
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810658,
-      "active": 4,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810801,
+      "probe": "desk-dark-en-3",
+      "at": 1794107648442,
       "active": 1,
-      "elapsed": 47
+      "elapsed": 49
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106811991,
-      "active": 1,
+      "at": 1794107648452,
+      "active": 2,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648467,
+      "active": 3,
       "elapsed": 61
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812006,
-      "active": 2,
-      "elapsed": 55
+      "at": 1794107648469,
+      "active": 4,
+      "elapsed": 54
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812034,
-      "active": 3,
-      "elapsed": 63
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812036,
-      "active": 4,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812206,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812944,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812964,
-      "active": 2,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812990,
-      "active": 3,
-      "elapsed": 58
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812993,
-      "active": 4,
-      "elapsed": 63
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813154,
-      "active": 1,
-      "elapsed": 46
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814341,
-      "active": 1,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814363,
-      "active": 2,
-      "elapsed": 46
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814398,
-      "active": 2,
-      "elapsed": 60
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814399,
-      "active": 3,
-      "elapsed": 53
-    },
-    {
-      "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814568,
-      "active": 1,
-      "elapsed": 52
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816203,
-      "active": 1,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816220,
-      "active": 2,
-      "elapsed": 49
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816277,
-      "active": 1,
-      "elapsed": 59
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816279,
-      "active": 2,
-      "elapsed": 65
-    },
-    {
-      "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816459,
-      "active": 1,
-      "elapsed": 45
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817581,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817591,
-      "active": 2,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817621,
-      "active": 3,
-      "elapsed": 60
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817623,
-      "active": 4,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-light-en-1",
-      "at": 1794106817776,
+      "at": 1794107648603,
       "active": 1,
       "elapsed": 48
     },
     {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649317,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649335,
+      "active": 2,
+      "elapsed": 52
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649355,
+      "active": 3,
+      "elapsed": 57
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649357,
+      "active": 4,
+      "elapsed": 50
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649504,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650129,
+      "active": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650148,
+      "active": 2,
+      "elapsed": 55
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650171,
+      "active": 3,
+      "elapsed": 48
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650173,
+      "active": 4,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-zh-TW-2",
+      "at": 1794107650333,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651198,
+      "active": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651218,
+      "active": 2,
+      "elapsed": 48
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651246,
+      "active": 3,
+      "elapsed": 71
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651248,
+      "active": 4,
+      "elapsed": 63
+    },
+    {
+      "probe": "desk-dark-zh-TW-3",
+      "at": 1794107651405,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652509,
+      "active": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652520,
+      "active": 2,
+      "elapsed": 51
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652545,
+      "active": 3,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652547,
+      "active": 4,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-light-en-1",
+      "at": 1794107652677,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
       "probe": "phone-light-en-2",
-      "at": 1794106818521,
+      "at": 1794107653351,
       "active": 1,
       "elapsed": 57
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818532,
+      "at": 1794107653367,
       "active": 2,
-      "elapsed": 59
+      "elapsed": 56
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818575,
+      "at": 1794107653399,
       "active": 3,
-      "elapsed": 77
+      "elapsed": 72
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818576,
+      "at": 1794107653401,
       "active": 4,
-      "elapsed": 68
+      "elapsed": 63
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818746,
+      "at": 1794107653593,
       "active": 1,
       "elapsed": 46
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819854,
+      "at": 1794107654715,
       "active": 1,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654728,
+      "active": 2,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654743,
+      "active": 3,
       "elapsed": 51
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819867,
+      "at": 1794107654744,
+      "active": 4,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654868,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655636,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655669,
       "active": 2,
+      "elapsed": 58
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655703,
+      "active": 2,
+      "elapsed": 59
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655705,
+      "active": 3,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-light-zh-TW-1",
+      "at": 1794107655897,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657042,
+      "active": 1,
       "elapsed": 53
     },
     {
-      "probe": "phone-light-en-3",
-      "at": 1794106819896,
-      "active": 3,
-      "elapsed": 60
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657073,
+      "active": 2,
+      "elapsed": 47
     },
     {
-      "probe": "phone-light-en-3",
-      "at": 1794106819898,
-      "active": 4,
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657115,
+      "active": 2,
+      "elapsed": 85
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657117,
+      "active": 3,
+      "elapsed": 72
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657347,
+      "active": 1,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658737,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658773,
+      "active": 2,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658811,
+      "active": 2,
+      "elapsed": 93
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107658813,
+      "active": 3,
       "elapsed": 65
     },
     {
-      "probe": "phone-light-en-3",
-      "at": 1794106820066,
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107659037,
+      "active": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107659961,
       "active": 1,
       "elapsed": 54
     },
     {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821345,
-      "active": 1,
-      "elapsed": 47
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821370,
-      "active": 2,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821405,
-      "active": 2,
-      "elapsed": 48
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821406,
-      "active": 3,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-light-zh-TW-1",
-      "at": 1794106821564,
-      "active": 1,
-      "elapsed": 48
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822738,
-      "active": 1,
-      "elapsed": 55
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822764,
-      "active": 2,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822807,
-      "active": 2,
-      "elapsed": 77
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822809,
-      "active": 3,
-      "elapsed": 60
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822970,
-      "active": 1,
-      "elapsed": 46
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824132,
-      "active": 1,
-      "elapsed": 47
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824154,
-      "active": 2,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824175,
-      "active": 3,
-      "elapsed": 77
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824177,
-      "active": 4,
-      "elapsed": 66
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824348,
-      "active": 1,
-      "elapsed": 48
-    },
-    {
       "probe": "phone-dark-en-1",
-      "at": 1794106825512,
-      "active": 1,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825531,
-      "active": 2,
-      "elapsed": 59
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825610,
-      "active": 1,
-      "elapsed": 58
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825616,
-      "active": 2,
-      "elapsed": 61
-    },
-    {
-      "probe": "phone-dark-en-1",
-      "at": 1794106825757,
-      "active": 1,
-      "elapsed": 47
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826864,
-      "active": 1,
-      "elapsed": 48
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826872,
+      "at": 1794107659974,
       "active": 2,
       "elapsed": 52
     },
     {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826896,
+      "probe": "phone-dark-en-1",
+      "at": 1794107659991,
       "active": 3,
-      "elapsed": 60
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106826898,
-      "active": 4,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106827048,
-      "active": 1,
       "elapsed": 52
     },
     {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827756,
+      "probe": "phone-dark-en-1",
+      "at": 1794107659993,
+      "active": 4,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-en-1",
+      "at": 1794107660124,
       "active": 1,
-      "elapsed": 56
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827770,
-      "active": 2,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827793,
-      "active": 3,
       "elapsed": 47
     },
     {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827794,
-      "active": 4,
+      "probe": "phone-dark-en-2",
+      "at": 1794107660835,
+      "active": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107660848,
+      "active": 2,
       "elapsed": 55
     },
     {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827939,
-      "active": 1,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828655,
-      "active": 1,
-      "elapsed": 60
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828678,
-      "active": 2,
-      "elapsed": 56
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828727,
-      "active": 2,
-      "elapsed": 75
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828728,
-      "active": 3,
-      "elapsed": 64
-    },
-    {
-      "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828903,
-      "active": 1,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829953,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829982,
-      "active": 2,
-      "elapsed": 48
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830023,
-      "active": 2,
-      "elapsed": 63
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830025,
+      "probe": "phone-dark-en-2",
+      "at": 1794107660880,
       "active": 3,
       "elapsed": 71
     },
     {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830203,
+      "probe": "phone-dark-en-2",
+      "at": 1794107660882,
+      "active": 4,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107661043,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662248,
+      "active": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662259,
+      "active": 2,
+      "elapsed": 53
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662273,
+      "active": 3,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662278,
+      "active": 4,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662428,
+      "active": 1,
+      "elapsed": 63
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663082,
       "active": 1,
       "elapsed": 45
     },
     {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831436,
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663102,
+      "active": 2,
+      "elapsed": 48
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663139,
+      "active": 2,
+      "elapsed": 51
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663141,
+      "active": 3,
+      "elapsed": 56
+    },
+    {
+      "probe": "phone-dark-zh-TW-1",
+      "at": 1794107663287,
       "active": 1,
-      "elapsed": 52
+      "elapsed": 48
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664561,
+      "active": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664592,
+      "active": 2,
+      "elapsed": 50
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664611,
+      "active": 3,
+      "elapsed": 57
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664612,
+      "active": 4,
+      "elapsed": 62
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664772,
+      "active": 1,
+      "elapsed": 47
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831458,
-      "active": 2,
-      "elapsed": 52
+      "at": 1794107666000,
+      "active": 1,
+      "elapsed": 47
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831502,
+      "at": 1794107666028,
       "active": 2,
+      "elapsed": 51
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666041,
+      "active": 3,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666042,
+      "active": 4,
       "elapsed": 58
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831504,
-      "active": 3,
-      "elapsed": 65
-    },
-    {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831670,
+      "at": 1794107666202,
       "active": 1,
-      "elapsed": 46
+      "elapsed": 53
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106832998,
+      "at": 1794107667299,
       "active": 1,
-      "elapsed": 69
+      "elapsed": 84
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833032,
+      "at": 1794107667330,
       "active": 2,
-      "elapsed": 56
+      "elapsed": 49
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833058,
+      "at": 1794107667345,
       "active": 3,
       "elapsed": 54
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833060,
+      "at": 1794107667347,
       "active": 4,
-      "elapsed": 70
+      "elapsed": 47
     },
     {
       "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833234,
+      "at": 1794107667480,
+      "active": 1,
+      "elapsed": 1394
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667490,
+      "active": 2,
+      "elapsed": 1372
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667492,
+      "active": 3,
+      "elapsed": 1363
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107667493,
+      "active": 4,
+      "elapsed": 1376
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107677601,
+      "active": 1,
+      "elapsed": 63
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107677605,
+      "active": 2,
+      "elapsed": 67
+    },
+    {
+      "probe": "desk-light-en-busy-ungranted",
+      "at": 1794107677787,
+      "active": 1,
+      "elapsed": 52
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678881,
+      "active": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678916,
+      "active": 2,
+      "elapsed": 61
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678928,
+      "active": 3,
+      "elapsed": 81
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107678930,
+      "active": 4,
+      "elapsed": 96
+    },
+    {
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679126,
       "active": 1,
       "elapsed": 50
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833738,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679591,
       "active": 1,
-      "elapsed": 1526
+      "elapsed": 1376
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833743,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679592,
       "active": 2,
-      "elapsed": 1546
+      "elapsed": 1365
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833746,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679593,
       "active": 3,
-      "elapsed": 1538
+      "elapsed": 1380
     },
     {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106833748,
+      "probe": "phone-dark-zh-TW-busy-ungranted",
+      "at": 1794107679594,
       "active": 4,
-      "elapsed": 1529
-    },
-    {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106843843,
-      "active": 1,
-      "elapsed": 176
-    },
-    {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106843844,
-      "active": 2,
-      "elapsed": 51
-    },
-    {
-      "probe": "desk-light-en-busy-ungranted",
-      "at": 1794106844115,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845243,
-      "active": 1,
-      "elapsed": 50
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845308,
-      "active": 1,
-      "elapsed": 70
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845366,
-      "active": 2,
-      "elapsed": 75
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845368,
-      "active": 3,
-      "elapsed": 51
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845565,
-      "active": 1,
-      "elapsed": 53
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845967,
-      "active": 1,
       "elapsed": 1368
     },
     {
       "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845968,
-      "active": 2,
-      "elapsed": 1384
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845969,
-      "active": 3,
-      "elapsed": 1377
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106845970,
-      "active": 4,
-      "elapsed": 1387
-    },
-    {
-      "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856051,
+      "at": 1794107689694,
       "active": 1,
-      "elapsed": 70
+      "elapsed": 75
     },
     {
       "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856054,
+      "at": 1794107689696,
       "active": 2,
-      "elapsed": 53
+      "elapsed": 61
     },
     {
       "probe": "phone-dark-zh-TW-busy-ungranted",
-      "at": 1794106856216,
+      "at": 1794107689873,
       "active": 1,
-      "elapsed": 50
+      "elapsed": 56
     },
     {
       "probe": "desk-light-en-busy-admin",
-      "at": 1794106857256,
+      "at": 1794107690614,
       "active": 1,
-      "elapsed": 46
+      "elapsed": 66
     },
     {
       "probe": "desk-light-en-busy-admin",
-      "at": 1794106857271,
+      "at": 1794107690624,
       "active": 2,
-      "elapsed": 59
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857274,
-      "active": 3,
       "elapsed": 52
     },
     {
       "probe": "desk-light-en-busy-admin",
-      "at": 1794106857459,
-      "active": 1,
-      "elapsed": 1455
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857461,
-      "active": 2,
-      "elapsed": 1469
-    },
-    {
-      "probe": "desk-light-en-busy-admin",
-      "at": 1794106857462,
+      "at": 1794107690629,
       "active": 3,
-      "elapsed": 1477
+      "elapsed": 60
     },
     {
       "probe": "desk-light-en-busy-admin",
-      "at": 1794106857463,
+      "at": 1794107690823,
+      "active": 1,
+      "elapsed": 1476
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690825,
+      "active": 2,
+      "elapsed": 1459
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690827,
+      "active": 3,
+      "elapsed": 1450
+    },
+    {
+      "probe": "desk-light-en-busy-admin",
+      "at": 1794107690829,
       "active": 4,
-      "elapsed": 1460
+      "elapsed": 1463
     },
     {
       "probe": "desk-light-en-busy-admin",
-      "at": 1794106867554,
+      "at": 1794107700921,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107701989,
+      "active": 1,
+      "elapsed": 52
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702002,
+      "active": 2,
+      "elapsed": 63
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702031,
+      "active": 3,
+      "elapsed": 57
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702033,
+      "active": 4,
+      "elapsed": 69
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702183,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702677,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702742,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702799,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702855,
+      "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702908,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107702963,
+      "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703015,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703070,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703124,
+      "active": 1,
+      "elapsed": 44
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703181,
+      "active": 1,
+      "elapsed": 97
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703287,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703347,
+      "active": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703426,
+      "active": 1,
+      "elapsed": 54
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703491,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703544,
+      "active": 1,
+      "elapsed": 44
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703598,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703660,
+      "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703713,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703770,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703826,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703881,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703936,
+      "active": 1,
+      "elapsed": 44
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107703991,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704046,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704102,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704158,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704222,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704279,
+      "active": 1,
+      "elapsed": 53
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704344,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704402,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704456,
+      "active": 1,
+      "elapsed": 45
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704510,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704564,
+      "active": 1,
+      "elapsed": 44
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704617,
+      "active": 1,
+      "elapsed": 43
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704670,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704725,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704781,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704837,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704894,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107704948,
+      "active": 1,
+      "elapsed": 44
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705000,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705059,
+      "active": 1,
+      "elapsed": 74
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705142,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705198,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705259,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705342,
+      "active": 1,
+      "elapsed": 55
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705419,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705491,
+      "active": 1,
+      "elapsed": 50
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705550,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705606,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705662,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705715,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705770,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705825,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705884,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107705944,
+      "active": 1,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706001,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706057,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706116,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706175,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706229,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706289,
+      "active": 1,
+      "elapsed": 48
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706354,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706410,
+      "active": 1,
+      "elapsed": 47
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706846,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706887,
+      "active": 2,
+      "elapsed": 49
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706925,
+      "active": 2,
+      "elapsed": 69
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107706927,
+      "active": 3,
+      "elapsed": 56
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107707078,
+      "active": 1,
+      "elapsed": 51
+    },
+    {
+      "probe": "notice-stream-cap",
+      "at": 1794107716952,
+      "active": 1,
+      "elapsed": 46
+    },
+    {
+      "probe": "skew-hub-client.js",
+      "at": 1794107718081,
       "active": 1,
       "elapsed": 48
     },
     {
       "probe": "skew-hub-client.js",
-      "at": 1794106868989,
-      "active": 1,
-      "elapsed": 51
-    },
-    {
-      "probe": "skew-hub-client.js",
-      "at": 1794106869015,
+      "at": 1794107718099,
       "active": 2,
-      "elapsed": 53
+      "elapsed": 50
     },
     {
       "probe": "skew-hub-client.js",
-      "at": 1794106869060,
+      "at": 1794107718138,
       "active": 2,
-      "elapsed": 56
+      "elapsed": 68
     },
     {
       "probe": "skew-hub-client.js",
-      "at": 1794106869061,
+      "at": 1794107718139,
       "active": 3,
       "elapsed": 60
     },
     {
       "probe": "skew-hub-client.js",
-      "at": 1794106869078,
+      "at": 1794107718162,
       "active": 3,
-      "elapsed": 51
+      "elapsed": 52
     },
     {
       "probe": "skew-hub-client.js",
-      "at": 1794106869210,
+      "at": 1794107718301,
       "active": 1,
-      "elapsed": 46
+      "elapsed": 49
     },
     {
       "probe": "skew-hub-group-strings.js",
-      "at": 1794106870492,
+      "at": 1794107719383,
       "active": 1,
-      "elapsed": 51
+      "elapsed": 50
     },
     {
       "probe": "skew-hub-group-strings.js",
-      "at": 1794106870567,
-      "active": 1,
-      "elapsed": 86
-    },
-    {
-      "probe": "skew-hub-group-strings.js",
-      "at": 1794106870640,
+      "at": 1794107719418,
       "active": 2,
-      "elapsed": 95
+      "elapsed": 54
     },
     {
       "probe": "skew-hub-group-strings.js",
-      "at": 1794106870642,
+      "at": 1794107719429,
       "active": 3,
-      "elapsed": 83
+      "elapsed": 66
     },
     {
       "probe": "skew-hub-group-strings.js",
-      "at": 1794106870840,
+      "at": 1794107719431,
+      "active": 4,
+      "elapsed": 59
+    },
+    {
+      "probe": "skew-hub-group-strings.js",
+      "at": 1794107719590,
       "active": 1,
-      "elapsed": 48
+      "elapsed": 52
     }
   ],
   "responses": [
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800486,
+      "at": 1794107636896,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800701,
+      "at": 1794107637161,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800793,
+      "at": 1794107637258,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800913,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "desk-light-en-1",
-      "at": 1794106800936,
+      "at": 1794107637416,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106800994,
+      "at": 1794107637417,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-light-en-1",
+      "at": 1794107637483,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-1",
-      "at": 1794106801064,
+      "at": 1794107637547,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106801888,
+      "at": 1794107638595,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802131,
+      "at": 1794107638884,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802217,
+      "at": 1794107639029,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802269,
+      "at": 1794107639102,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802333,
+      "at": 1794107639112,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802334,
+      "at": 1794107639112,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-2",
-      "at": 1794106802399,
+      "at": 1794107639184,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803313,
+      "at": 1794107639634,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803531,
+      "at": 1794107639884,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803621,
+      "at": 1794107639991,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803682,
+      "at": 1794107640085,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803742,
+      "at": 1794107640145,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803742,
+      "at": 1794107640147,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-en-3",
-      "at": 1794106803815,
+      "at": 1794107640227,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106804689,
+      "at": 1794107641279,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106804932,
+      "at": 1794107641556,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106805032,
+      "at": 1794107641641,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106805062,
+      "at": 1794107641704,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106805156,
+      "at": 1794107641768,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106805157,
+      "at": 1794107641769,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-1",
-      "at": 1794106805231,
+      "at": 1794107641847,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806431,
+      "at": 1794107642743,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806683,
+      "at": 1794107642985,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806772,
+      "at": 1794107643068,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806832,
+      "at": 1794107643121,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806890,
+      "at": 1794107643177,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806891,
+      "at": 1794107643177,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-2",
-      "at": 1794106806966,
+      "at": 1794107643247,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106807916,
+      "at": 1794107643792,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808156,
+      "at": 1794107644091,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808273,
+      "at": 1794107644182,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808301,
+      "at": 1794107644236,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808408,
+      "at": 1794107644294,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808412,
+      "at": 1794107644296,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-light-zh-TW-3",
-      "at": 1794106808484,
+      "at": 1794107644379,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809438,
+      "at": 1794107645536,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809672,
+      "at": 1794107645839,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809773,
+      "at": 1794107645948,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809822,
+      "at": 1794107646030,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809881,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "desk-dark-en-1",
-      "at": 1794106809883,
+      "at": 1794107646099,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-1",
-      "at": 1794106809973,
+      "at": 1794107646106,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-dark-en-1",
+      "at": 1794107646174,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810393,
+      "at": 1794107647278,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810604,
+      "at": 1794107647583,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810678,
+      "at": 1794107647665,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810731,
+      "at": 1794107647714,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810790,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "desk-dark-en-2",
-      "at": 1794106810791,
+      "at": 1794107647757,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-2",
-      "at": 1794106810860,
+      "at": 1794107647758,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-dark-en-2",
+      "at": 1794107647830,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106811760,
+      "at": 1794107648217,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106811982,
+      "at": 1794107648429,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812081,
+      "at": 1794107648510,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812138,
+      "at": 1794107648552,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812167,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "desk-dark-en-3",
-      "at": 1794106812171,
+      "at": 1794107648595,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-en-3",
-      "at": 1794106812270,
+      "at": 1794107648595,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-dark-en-3",
+      "at": 1794107648669,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812734,
+      "at": 1794107649085,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106812936,
+      "at": 1794107649310,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813023,
+      "at": 1794107649393,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813072,
+      "at": 1794107649429,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813134,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813135,
+      "at": 1794107649480,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-1",
-      "at": 1794106813206,
+      "at": 1794107649482,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "desk-dark-zh-TW-1",
+      "at": 1794107649556,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814133,
+      "at": 1794107649902,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814332,
+      "at": 1794107650122,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814417,
+      "at": 1794107650211,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814465,
+      "at": 1794107650247,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814536,
+      "at": 1794107650296,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814537,
+      "at": 1794107650297,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-2",
-      "at": 1794106814626,
+      "at": 1794107650395,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106815840,
+      "at": 1794107650919,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816196,
+      "at": 1794107651188,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816290,
+      "at": 1794107651275,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816352,
+      "at": 1794107651331,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816420,
+      "at": 1794107651383,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816433,
+      "at": 1794107651384,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "desk-dark-zh-TW-3",
-      "at": 1794106816512,
+      "at": 1794107651461,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817359,
+      "at": 1794107652299,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817577,
+      "at": 1794107652501,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817652,
+      "at": 1794107652578,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817716,
+      "at": 1794107652628,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817754,
+      "at": 1794107652667,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817764,
+      "at": 1794107652668,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-1",
-      "at": 1794106817831,
+      "at": 1794107652731,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818297,
+      "at": 1794107653118,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818509,
+      "at": 1794107653333,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818601,
+      "at": 1794107653439,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818680,
+      "at": 1794107653505,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818734,
+      "at": 1794107653583,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818734,
+      "at": 1794107653584,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-2",
-      "at": 1794106818798,
+      "at": 1794107653653,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819615,
+      "at": 1794107654507,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819846,
+      "at": 1794107654706,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819931,
+      "at": 1794107654789,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106819985,
+      "at": 1794107654834,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106820051,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-light-en-3",
-      "at": 1794106820052,
+      "at": 1794107654858,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-en-3",
-      "at": 1794106820147,
+      "at": 1794107654860,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-light-en-3",
+      "at": 1794107654920,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821100,
+      "at": 1794107655328,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821332,
+      "at": 1794107655615,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821426,
+      "at": 1794107655739,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821480,
+      "at": 1794107655770,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821530,
+      "at": 1794107655839,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821547,
+      "at": 1794107655852,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-1",
-      "at": 1794106821621,
+      "at": 1794107655950,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106822505,
+      "at": 1794107656823,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106822728,
+      "at": 1794107657033,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106822827,
+      "at": 1794107657139,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106822891,
+      "at": 1794107657179,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106822953,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-light-zh-TW-2",
-      "at": 1794106822953,
+      "at": 1794107657288,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-2",
-      "at": 1794106823023,
+      "at": 1794107657289,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-light-zh-TW-2",
+      "at": 1794107657413,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106823894,
+      "at": 1794107658400,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106824124,
+      "at": 1794107658722,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106824211,
+      "at": 1794107658837,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106824261,
+      "at": 1794107658923,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106824320,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-light-zh-TW-3",
-      "at": 1794106824325,
+      "at": 1794107658991,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-light-zh-TW-3",
-      "at": 1794106824405,
+      "at": 1794107658997,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-light-zh-TW-3",
+      "at": 1794107659099,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825279,
+      "at": 1794107659682,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825497,
+      "at": 1794107659953,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825604,
+      "at": 1794107660032,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825666,
+      "at": 1794107660078,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825738,
+      "at": 1794107660111,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825744,
+      "at": 1794107660113,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-1",
-      "at": 1794106825813,
+      "at": 1794107660188,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106826630,
+      "at": 1794107660589,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106826855,
+      "at": 1794107660824,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106826931,
+      "at": 1794107660911,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106826979,
+      "at": 1794107660969,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106827034,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-dark-en-2",
-      "at": 1794106827035,
+      "at": 1794107661028,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-2",
-      "at": 1794106827120,
+      "at": 1794107661029,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-en-2",
+      "at": 1794107661100,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106827520,
+      "at": 1794107662032,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106827744,
+      "at": 1794107662237,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106827833,
+      "at": 1794107662318,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106827889,
+      "at": 1794107662374,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106827916,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-dark-en-3",
-      "at": 1794106827917,
+      "at": 1794107662406,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-en-3",
-      "at": 1794106828005,
+      "at": 1794107662406,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-en-3",
+      "at": 1794107662501,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828394,
+      "at": 1794107662844,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828637,
+      "at": 1794107663073,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828748,
+      "at": 1794107663156,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828789,
+      "at": 1794107663203,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828880,
+      "at": 1794107663252,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828881,
+      "at": 1794107663265,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-1",
-      "at": 1794106828963,
+      "at": 1794107663342,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829724,
+      "at": 1794107664307,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106829943,
+      "at": 1794107664551,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830042,
+      "at": 1794107664648,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830073,
+      "at": 1794107664692,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830177,
-      "path": "/hub/v1/exposures",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830178,
+      "at": 1794107664749,
       "path": "/hub/v1/me/welcome",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-2",
-      "at": 1794106830254,
+      "at": 1794107664751,
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-2",
+      "at": 1794107664825,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831137,
+      "at": 1794107665745,
       "path": "/hub/v1/session",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831425,
+      "at": 1794107665990,
       "path": "/hub/v1/session",
       "method": "POST",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831519,
+      "at": 1794107666086,
       "path": "/hub/v1/notices/events",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831569,
+      "at": 1794107666122,
       "path": "/hub/v1/rooms",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831637,
-      "path": "/hub/v1/me/welcome",
-      "method": "GET",
-      "status": 200
-    },
-    {
-      "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831642,
+      "at": 1794107666183,
       "path": "/hub/v1/exposures",
       "method": "GET",
       "status": 200
     },
     {
       "probe": "phone-dark-zh-TW-3",
-      "at": 1794106831725,
+      "at": 1794107666183,
+      "path": "/hub/v1/me/welcome",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "probe": "phone-dark-zh-TW-3",
+      "at": 1794107666266,
       "path": "/hub/v1/quick-pairing",
       "method": "GET",
       "status": 200
@@ -5146,6 +6239,13 @@
         "mine": [],
         "askable": []
       }
+    },
+    {
+      "status": 200,
+      "body": {
+        "mine": [],
+        "askable": []
+      }
     }
   ],
   "busyControls": [
@@ -5155,19 +6255,19 @@
       "responses": [
         {
           "status": 429,
-          "at": 1794106833824,
+          "at": 1794107667538,
           "retryAfter": "10"
         },
         {
           "status": 200,
-          "at": 1794106844098
+          "at": 1794107677765
         }
       ],
       "occupiedStatuses": [
         200,
         200,
         200,
-        200
+        429
       ],
       "retainedStrings": true
     },
@@ -5177,12 +6277,12 @@
       "responses": [
         {
           "status": 429,
-          "at": 1794106846016,
+          "at": 1794107679641,
           "retryAfter": "10"
         },
         {
           "status": 200,
-          "at": 1794106856203
+          "at": 1794107689847
         }
       ],
       "occupiedStatuses": [
@@ -5199,12 +6299,12 @@
       "responses": [
         {
           "status": 429,
-          "at": 1794106857538,
+          "at": 1794107690912,
           "retryAfter": "10"
         },
         {
           "status": 200,
-          "at": 1794106867615
+          "at": 1794107700981
         }
       ],
       "occupiedStatuses": [
@@ -5217,6 +6317,28 @@
     }
   ],
   "skewHits": 4,
+  "noticeControl": {
+    "heldStreams": 64,
+    "responses": [
+      {
+        "path": "/hub/v1/notices/events",
+        "status": 429,
+        "at": 1794107706877,
+        "retryAfter": "10"
+      },
+      {
+        "path": "/hub/v1/notices",
+        "status": 200,
+        "at": 1794107706942
+      },
+      {
+        "path": "/hub/v1/notices/events",
+        "status": 200,
+        "at": 1794107717005
+      }
+    ],
+    "status": "PASS"
+  },
   "skewControls": [
     {
       "file": "hub-client.js",
@@ -5225,7 +6347,7 @@
     },
     {
       "file": "hub-group-strings.js",
-      "attemptedPeak": 3,
+      "attemptedPeak": 4,
       "emptyHint": true
     }
   ],
