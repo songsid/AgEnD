@@ -199,6 +199,8 @@ try {
           const oldAck = other.p.waitForResponse((r: any) => r.url().endsWith(`/notices/${ids[0]}/ack`) && r.status() === 200, { timeout: 30_000 });
           await other.p.locator(".hub-security-notices summary").click();
           check(tag + " Hub history initial batch bounded", await other.p.locator("[data-pairing-notice]").count() === 100);
+          await other.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).scrollIntoViewIfNeeded();
+          await shot(other.p, tag + "-hub-history-control");
           await other.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).click();
           await other.p.locator(`[data-pairing-notice="${ids[0]}"]`).scrollIntoViewIfNeeded(); await oldAck;
           check(tag + " exact old Hub ACK and history reachable", await other.p.locator(`[data-pairing-notice="${ids[0]}"]`).count() === 1);
@@ -206,6 +208,8 @@ try {
           await local.p.waitForFunction(() => document.querySelector(".hub-security-notices summary")?.textContent?.includes("(101)"), undefined, { timeout: 30_000 });
           await local.p.locator(".hub-security-notices summary").click();
           check(tag + " member history initial batch bounded", await local.p.locator("[data-pairing-notice]").count() === 100);
+          await local.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).scrollIntoViewIfNeeded();
+          await shot(local.p, tag + "-member-history-control");
           await local.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).click();
           await local.p.locator(`[data-pairing-notice="${ids[0]}"]`).scrollIntoViewIfNeeded();
           const olderText = await local.p.locator(`[data-pairing-notice="${ids[0]}"]`).innerText();
