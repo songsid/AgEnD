@@ -91,6 +91,8 @@ The Hub records a security notice for your other signed-in sessions, the Hub adm
 
 The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
 
+The administrator can still explicitly approve ordinary manual pairing when a colleague has no self-service group allowance or their group membership cannot be checked. The directory account must remain enabled and eligible. A deliberate person exclusion for **Connect a fleet** still blocks it; the administrator must lift that exclusion first. Manual approval grants no Chat, Share or self-service permission. It may exceed the person's fleet limit, but retained manual fleets count against later self-service pairing and all Hub capacity limits.
+
 ## 4. Turn off, pause and resume
 
 - **Turn the policy off:** **Turn off** in the editor, then save. Until you save, the editor shows *"Not saved"* and *"Turns off when you save; what depends on it is paused."* **Undo** cancels it. After saving: *"Switched off — resources paused"*.
