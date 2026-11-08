@@ -129,12 +129,27 @@ async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string;
   const onPath = await firstNpmOnPath(pathEnv);
   if (onPath && dirname(onPath) !== ownBin && dirname(onPath) !== nodeDir) candidates.push({ npmDir: dirname(onPath), label: `${onPath} (first on PATH, ahead of ${ownBin})` });
   const tried: string[] = [];
+  const realRoot = async (answer: NpmAnswer): Promise<string | null> => {
+    if (!answer) return null;
+    try { return await deps.realpath(answer.root); } catch { return answer.root; }
+  };
   for (const c of candidates) {
     const answer = await askNpm(deps, { PATH: [c.npmDir, ownBin, pathEnv].filter(Boolean).join(delimiter) });
-    let root: string | null = null;
-    if (answer) { try { root = await deps.realpath(answer.root); } catch { root = answer.root; } }
+    const root = await realRoot(answer);
     tried.push(`${c.label} → ${root ?? "no answer"}`);
-    if (answer && root === expected) return { ...answer, ...(c.npmDir ? { npmDir: c.npmDir } : {}) };
+    if (!answer || root !== expected) continue;
+    // #3443 review: the launch's `${1%/*}` is the bin of the prefix npm REPORTS (agend = <prefix>/bin/agend), which a
+    // symlinked prefix makes differ from the bin guessed from the real root. Proved again in that exact PATH, or refused.
+    const launchBin = join(answer.prefix, "bin");
+    if (launchBin !== ownBin) {
+      const again = await askNpm(deps, { PATH: [c.npmDir, launchBin, pathEnv].filter(Boolean).join(delimiter) });
+      const againRoot = await realRoot(again);
+      if (!again || againRoot !== expected || again.prefix !== answer.prefix) {
+        tried.push(`${c.label}, in the launch PATH (${launchBin} first) → ${againRoot ?? "no answer"}`);
+        continue;
+      }
+    }
+    return { ...answer, ...(c.npmDir ? { npmDir: c.npmDir } : {}) };
   }
   return { reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${expected} (tried ${tried.join("; ")})` };
 }
