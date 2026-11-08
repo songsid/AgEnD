@@ -207,7 +207,8 @@ describe("directory setting preparation authority", () => {
     let entered = 0; const allEntered = deferred<void>();
     r.next.checkEligibility.mockImplementation(async () => { if (++entered === 4) allEntered.resolve(); return held.promise; });
     r.next.close.mockImplementation(() => closed.promise);
-    const contexts = Array.from({ length: 4 }, () => ({ ...r.ctx, signal: new AbortController().signal }));
+    const controllers = Array.from({ length: 4 }, () => new AbortController());
+    const contexts = controllers.map(controller => ({ ...r.ctx, signal: controller.signal }));
     const pending: Promise<unknown>[] = [];
     // Prepare every draft before occupying the cap; normal startup is not serialized to hide admission.
     const pages = [];
@@ -216,8 +217,8 @@ describe("directory setting preparation authority", () => {
     await allEntered.promise;
     const blocked = r.control.apply(pages[4]!.ref, { credentials: r.credentials, confirmation: pages[4]!.trust!.challenge }, r.ctx);
     await expect(blocked).rejects.toMatchObject({ code: "unavailable" }); expect(entered).toBe(4);
-    r.live(false); held.resolve({ eligible: true, person: person() }); await vi.waitFor(() => expect(r.next.close).toHaveBeenCalledTimes(4));
-    r.live(true);
+    controllers.forEach(controller => controller.abort());
+    held.resolve({ eligible: true, person: person() }); await vi.waitFor(() => expect(r.next.close).toHaveBeenCalledTimes(4));
     await expect(r.control.prepare(r.candidate(), r.ctx)).rejects.toMatchObject({ code: "unavailable" }); // closing still owns all four slots
     closed.resolve(); await Promise.all(pending); expect(r.commit).not.toHaveBeenCalled();
     r.next.checkEligibility.mockResolvedValue({ eligible: true, person: person() }); r.next.close.mockResolvedValue();
