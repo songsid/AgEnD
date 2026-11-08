@@ -78,6 +78,21 @@ async function rig(supported = true) {
 }
 
 describe("quick pairing on the composed HTTPS surface", () => {
+  it("exposes older retained history and ACKs an exact owned old notice on the authenticated HTTPS route", async () => {
+    const r=await rig(),ids:string[]=[];
+    r.db!.transaction(()=>{for(let i=0;i<101;i++){
+      const id=randomUUID(),fleetId=randomUUID();ids.push(id);
+      const body={id,fleetId,generation:1,label:`Earlier ${i}`,at:100+i,source:"group",revoked:true};
+      r.db!.prepare("INSERT INTO hub_pairing_notices VALUES(?,?,?,?,?,?)").run(id,fleetId,1,personKeyString(ADMIN.key),"recorded-other-session",JSON.stringify(body));
+      r.db!.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'person',?,'queued')").run(id,personKeyString(ADMIN.key));
+    }}).immediate();
+    const list=await r.call(r.admin,"GET","/hub/v1/notices");expect(list.status).toBe(200);expect(list.json.notices).toHaveLength(101);
+    expect(list.json.notices.at(-1).id).toBe(ids[0]);
+    expect((await r.call(r.admin,"POST",`/hub/v1/notices/${ids[0]}/ack`)).status).toBe(200);
+    const other=await r.signIn(r.colleague.login);
+    expect((await r.call(other,"POST",`/hub/v1/notices/${ids[0]}/ack`)).status).toBe(404);
+    expect((await r.call(null,"POST",`/hub/v1/notices/${ids[0]}/ack`)).status).toBe(401);
+  });
   it("is off until explicit group activation, and keeps browser CSRF/session/person boundaries", async () => {
     const r = await rig(), other = await r.signIn(r.colleague.login);
     expect(r.admin.view.features).toContain("quick-pairing-v1");

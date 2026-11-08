@@ -182,6 +182,35 @@ try {
         await adminShot.p.locator(`[data-pairing-notice="${nid}"]`).waitFor();
         await local.p.locator(`[data-pairing-notice="${nid}"]`).scrollIntoViewIfNeeded();
         await shot(local.p, tag + "-existing-fleet-notice"); await shot(adminShot.p, tag + "-administrator-notice"); await geometry(local.p, tag + " fleet notice"); await adminShot.ctx.close();
+        if (process.env.HISTORY === "1") {
+          // Recorded retained history only: no synthetic grant, session, pairing approval or new credential.
+          // The normal browser journey/second-member delivery above remains the admission evidence.
+          const historyDb = new Database(join(home, "hub/hub.sqlite")), ids: string[] = [];
+          try { historyDb.transaction(() => { for (let j = 0; j < 101; j++) {
+            const id = randomUUID(), fleetId = randomUUID(); ids.push(id);
+            const notice = { id, fleetId, generation: 1, label: `Earlier fleet ${j} · 歷史 Fleet ${j}`, at: Date.now() - 200_000 + j, source: "group", revoked: true };
+            historyDb.prepare("INSERT INTO hub_pairing_notices(rowid,id,fleet_id,generation,owner,initiating_session,body) VALUES(?,?,?,?,?,?,?)")
+              .run(-10000 + i * 101 + j, id, fleetId, 1, `example/${owner.id}`, "recorded-historical-session", JSON.stringify(notice));
+            for (const person of [owner, users[0]]) historyDb.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'person',?,'queued')").run(id, `example/${person.id}`);
+            historyDb.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'fleet',?,'queued')").run(id, profile.fleetId);
+          } }).immediate(); } finally { historyDb.close(); }
+          receipt.recordedHistory = (receipt.recordedHistory ?? 0) + 101;
+          await other.p.reload(); await other.p.locator("[data-pairing-notice]").first().waitFor();
+          const oldAck = other.p.waitForResponse((r: any) => r.url().endsWith(`/notices/${ids[0]}/ack`) && r.status() === 200, { timeout: 30_000 });
+          await other.p.locator(".hub-security-notices summary").click();
+          check(tag + " Hub history initial batch bounded", await other.p.locator("[data-pairing-notice]").count() === 100);
+          await other.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).click();
+          await other.p.locator(`[data-pairing-notice="${ids[0]}"]`).scrollIntoViewIfNeeded(); await oldAck;
+          check(tag + " exact old Hub ACK and history reachable", await other.p.locator(`[data-pairing-notice="${ids[0]}"]`).count() === 1);
+          await shot(other.p, tag + "-older-hub-history");
+          await local.p.waitForFunction(() => document.querySelector(".hub-security-notices summary")?.textContent?.includes("(101)"), undefined, { timeout: 30_000 });
+          await local.p.locator(".hub-security-notices summary").click();
+          check(tag + " member history initial batch bounded", await local.p.locator("[data-pairing-notice]").count() === 100);
+          await local.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).click();
+          await local.p.locator(`[data-pairing-notice="${ids[0]}"]`).scrollIntoViewIfNeeded();
+          check(tag + " retained older member review link", await local.p.locator(`[data-pairing-notice="${ids[0]}"] a`).getAttribute("href") === `${origin}/ui/hub?securityNotice=${ids[0]}`);
+          await shot(local.p, tag + "-older-member-history"); await geometry(other.p, tag + " old Hub history"); await geometry(local.p, tag + " old member history");
+        }
       }
       await other.p.locator("[data-pairing-notice] .btn-danger").first().click(); await other.p.getByText(c.lang === "en" ? "Revoked" : "已撤銷", { exact: true }).first().waitFor();
       check(tag + " one-click revoke no dialog", await other.p.locator("[role=dialog]").count() === 0); await local.ctx.close(); await other.ctx.close();

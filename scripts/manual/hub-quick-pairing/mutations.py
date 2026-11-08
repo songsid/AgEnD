@@ -45,6 +45,9 @@ cases = [
     ("required-notice-queue", "src/hub/pairing.ts", core, replace('this.options.quick.enqueue(database,', '(() => undefined)(database,')),
     ("exact-owner-revoke", "src/hub/pairing.ts", core, owner_bypass),
     ("notice-session-privacy", "src/hub/pairing-notices.ts", notice, replace("WHERE t.kind='person' AND t.target=? AND n.initiating_session<>? ORDER BY", "WHERE (t.kind='person' AND t.target=? AND n.initiating_session<>?) OR 1=1 ORDER BY")),
+    ("hub-history-reachable", "src/hub/pairing-notices.ts", notice, replace("ORDER BY n.rowid DESC LIMIT 1024", "ORDER BY n.rowid DESC LIMIT 100")),
+    ("member-history-reachable", "src/hub/member/pairing-notices.ts", inbox, replace("ORDER BY rowid DESC LIMIT 1024", "ORDER BY rowid DESC LIMIT 100")),
+    ("history-batch-progress", "src/ui/hub-quick-pairing.js", "tests/hub-quick-pairing-ui.test.ts", replace("setHistoryCount(n => n + 100)", "setHistoryCount(n => n)")),
     ("member-retains-before-ack", "src/hub/member/pairing-notices.ts", inbox, ack_before_retention),
     ("notice-capability-send", "src/hub/server.ts", "tests/hub-pairing-notices-network.test.ts", replace('    if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");', '    /* mutant sends notice to older peer */')),
 ]

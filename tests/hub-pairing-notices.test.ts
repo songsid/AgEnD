@@ -67,6 +67,30 @@ async function quick(w:ReturnType<typeof fixture>,label="Lab"){
  const result=await w.service.claim({pairingId:p.pairingId,fleetId:p.fleetId,claimSecret:p.claimSecret});if(result.status!=="approved")throw Error("quick not approved");return result;
 }
 describe("durable quick-pairing security notice outbox",()=>{
+ it("keeps history beyond the first hundred reachable and authorizes an exact older ACK independently",async()=>{
+  const w=fixture(),ids:string[]=[];
+  w.db.transaction(()=>{for(let i=0;i<101;i++){
+   const id=randomUUID(),fleetId=randomUUID();ids.push(id);
+   const body={id,fleetId,generation:1,label:`History ${i}`,at:100+i,source:"group",revoked:false};
+   w.db.prepare("INSERT INTO hub_pairing_notices VALUES(?,?,?,?,?,?)").run(id,fleetId,1,`example/${w.owner.objectId}`,"first-session",JSON.stringify(body));
+   w.db.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'person',?,'queued')").run(id,`example/${w.owner.objectId}`);
+  }}).immediate();
+  const ctx=session(w,w.owner,"history-session"),rows=await w.notices.forSession(ctx);
+  expect(rows).toHaveLength(101);expect(rows.at(-1)?.id).toBe(ids[0]);
+  w.append.mockClear();
+  await expect(w.notices.acknowledgeSession(ctx,ids[0]!)).resolves.toBeUndefined();
+  expect(w.append.mock.calls.map(([event])=>event.action)).toEqual(["pairing.notice-delivered"]);
+  expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE notice_id=? AND kind='session' AND target=?").get(ids[0],"history-session")).toEqual({state:"delivered"});
+  await expect(w.notices.acknowledgeSession(session(w,w.other,"stranger"),ids[0]!)).rejects.toThrow("not-found");
+  await expect(w.notices.acknowledgeSession(session(w,w.owner,"first-session"),ids[0]!)).rejects.toThrow("not-found");
+  await expect(w.notices.acknowledgeSession({...ctx,current:async()=>({kind:"directory",person:w.other,sessionId:"history-session"})},ids[0]!)).rejects.toThrow("revoked");
+ });
+ it("fences an exact older ACK after its session expires during the eligibility await",async()=>{
+  const w=fixture();w.enable();await quick(w);const n=(await w.notices.forSession(session(w,w.owner,"other-session")))[0]!;
+  let live=true;const held=gate<PersonKey>(),ctx={...session(w,w.owner,"held-ack"),isCurrent:()=>live,requirePerson:()=>held.promise};
+  const work=w.notices.acknowledgeSession(ctx,n.id),failed=expect(work).rejects.toThrow("revoked");live=false;held.resolve(w.owner);await failed;
+  expect(w.db.prepare("SELECT * FROM hub_pairing_notice_targets WHERE kind='session'").all()).toEqual([]);
+ });
  it("queues owner, admin and existing fleet with credential/audit; excludes only the initiating session",async()=>{
   const w=fixture();w.enable(2);const manual=await w.approved();await w.service.claim(manual.input);const made=await quick(w,"<img src=x onerror=alert(1)>");
   expect(w.db.prepare("SELECT kind,target,state FROM hub_pairing_notice_targets ORDER BY kind,target").all()).toEqual(expect.arrayContaining([

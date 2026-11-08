@@ -21,6 +21,12 @@ function setup() {
   return { db, audit, changed, send, link, inbox, notice, fence: () => { current = false; } };
 }
 describe("member security notice retention before acknowledgement", () => {
+  it("keeps every retained notice reachable after ACK, including older history beyond one hundred", async () => {
+    const w=setup();w.send.mockImplementation(async()=>{});
+    for(let i=0;i<101;i++) await w.inbox.receive({...w.notice,id:randomUUID(),label:`History ${i}`},w.link);
+    expect(w.send).toHaveBeenCalledTimes(101);expect(w.inbox.list()).toHaveLength(101);
+    expect(w.inbox.list().at(-1)?.label).toBe("History 0");
+  });
   it("retains once before ACK, safely replays a lost ACK and persists across reader reconstruction", async () => {
     const w = setup(); await w.inbox.receive(w.notice, w.link); await w.inbox.receive(w.notice, w.link);
     expect(w.send).toHaveBeenCalledTimes(2); expect(w.audit).toHaveBeenCalledOnce(); expect(w.changed).toHaveBeenCalledTimes(2);

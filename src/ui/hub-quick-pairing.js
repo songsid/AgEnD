@@ -120,6 +120,7 @@ export function OwnedFleetRevoke({ fleet, onRevoked }) {
 export function PairingNotices({ admin = false, memberNotices = null, memberOrigin = null }) {
   const c = hubClient(), live = useRef(true), acked = useRef(new Set());
   const [notices, setNotices] = useState(memberNotices || []);
+  const [historyOpen, setHistoryOpen] = useState(false), [historyCount, setHistoryCount] = useState(99);
   const load = async () => { const r = await c.pairingNotices(); if (live.current && r.ok) setNotices(r.notices || []); };
   useEffect(() => {
     live.current = true;
@@ -127,15 +128,27 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
     void load(); const off = c.subscribePairingNotices(rows => { if (live.current) setNotices(rows); });
     return () => { live.current = false; off(); };
   }, [memberNotices]);
-  useEffect(() => { if (!memberNotices) for (const n of notices) if (!acked.current.has(n.id)) {
-    acked.current.add(n.id); void c.acknowledgePairingNotice(n.id).then(r => { if (!r.ok) acked.current.delete(n.id); });
-  } }, [notices, memberNotices]);
-  if (!notices.length) return null;
   const requested = new URLSearchParams(location.search).get("securityNotice"), target = notices.find(n => n.id === requested) || notices[0];
   const older = notices.filter(n => n !== target);
+  useEffect(() => {
+    if (memberNotices || !target) return;
+    let cancelled = false;
+    // A collapsed history is not shown. Bound rendering and ACK fan-out even at the 1024-record retention cap.
+    void (async () => { for (const n of [target, ...(historyOpen ? older.slice(0, historyCount) : [])]) {
+      if (cancelled || !live.current) return;
+      if (acked.current.has(n.id)) continue;
+      acked.current.add(n.id);
+      try { if (!(await c.acknowledgePairingNotice(n.id)).ok) acked.current.delete(n.id); }
+      catch { acked.current.delete(n.id); }
+    } })();
+    return () => { cancelled = true; };
+  }, [notices, memberNotices, historyOpen, historyCount]);
+  if (!target) return null;
   return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>
     <${Notice} key=${target.id} notice=${target} admin=${admin} memberOrigin=${memberOrigin} after=${load} />
-    ${older.length ? html`<details><summary>${hq("previous")} (${older.length})</summary>${older.map(n => html`<${Notice} key=${n.id} notice=${n} admin=${admin} memberOrigin=${memberOrigin} after=${load} />`)}</details>` : null}
+    ${older.length ? html`<details onToggle=${e => setHistoryOpen(e.currentTarget.open)}><summary>${hq("previous")} (${older.length})</summary>
+      ${older.slice(0, historyCount).map(n => html`<${Notice} key=${n.id} notice=${n} admin=${admin} memberOrigin=${memberOrigin} after=${load} />`)}
+      ${historyCount < older.length ? html`<button type="button" class="btn btn-sm" onClick=${() => setHistoryCount(n => n + 100)}>${hq("more")}</button>` : null}</details>` : null}
   </aside>`;
 }
 

@@ -12,7 +12,7 @@ beforeAll(async () => {
   const p = page({ url: "http://127.0.0.1:19290/ui/hub", storage: { agend_lang: "en" } });
   client = await import("/ui/js/hub-client.js"); ui = await import("/ui/js/hub-quick-pairing.js"); p.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); });
+afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); vi.unstubAllGlobals(); });
 function fake(over: Record<string, unknown> = {}): any {
   return {
     quickPairing: vi.fn(async () => ({ ok: true, attempt: null, memberOrigin: "https://hub.example.test:9443" })),
@@ -73,6 +73,39 @@ describe("quick-pairing guide preserves each proof and user intent", () => {
 });
 
 describe("security notices and exact owner narrowing", () => {
+  it("keeps the notice EventSource on the separate Hub workspace and uses only the member's existing private poll", async () => {
+    const streams:any[]=[];
+    class Stream {
+      handlers:Record<string,(e:any)=>void>={};close=vi.fn();
+      constructor(readonly path:string){streams.push(this);}
+      addEventListener(name:string,fn:(e:any)=>void){this.handlers[name]=fn;}
+    }
+    vi.stubGlobal("EventSource",Stream);
+    const seen=vi.fn(),hub=client.createHubWebClient(),off=hub.subscribePairingNotices(seen);
+    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]);
+    streams[0].handlers.notices({data:JSON.stringify({notices:[notice]})});expect(seen).toHaveBeenCalledWith([notice]);
+    off();expect(streams[0].close).toHaveBeenCalledOnce();
+    const api=vi.fn(async()=>({ok:true,body:{pairing:{state:"unpaired"},notices:[notice]}}));
+    const timers={setTimeout:vi.fn(()=>1),clearTimeout:vi.fn()};
+    const member=client.createMemberClient({confirm:{api},timers,doc:{hidden:false}});
+    await member.pairing();expect(api).toHaveBeenCalledExactlyOnceWith("/api/hub/member/pairing");
+    expect(member.pairingNotices()).toEqual([notice]);const stop=member.subscribe(()=>{});stop();
+    expect(streams).toHaveLength(1);expect(timers.clearTimeout).toHaveBeenCalledOnce();
+  });
+  it("reveals older history in bounded batches and ACKs it only when shown", async () => {
+    const rows=Array.from({length:201},(_,i)=>({...notice,id:`history-${i}`,label:`History ${i}`}));
+    const c=fake({pairingNotices:async()=>({ok:true,notices:rows})}),p=await mount(c,ui.PairingNotices,{});
+    expect(c.acknowledgePairingNotice.mock.calls).toEqual([["history-0"]]);
+    const details=p.root.querySelector("details");details.open=true;fire(details,"toggle");await settle(30);
+    expect(p.root.querySelectorAll("[data-pairing-notice]")).toHaveLength(100);
+    expect(button(p,"Show older notices")).not.toBeUndefined();
+    fire(button(p,"Show older notices"),"click");await settle(30);
+    expect(p.root.querySelectorAll("[data-pairing-notice]")).toHaveLength(200);
+    fire(button(p,"Show older notices"),"click");await settle(30);
+    expect(p.root.querySelectorAll("[data-pairing-notice]")).toHaveLength(201);expect(txt(p)).toContain("History 200");
+    expect(button(p,"Show older notices")).toBeUndefined();
+    expect(c.acknowledgePairingNotice).toHaveBeenCalledWith("history-200");
+  });
   it("renders an untrusted label as text and revokes only the displayed fleet/generation in one click", async () => {
     const c = fake(), p = await mount(c, ui.PairingNotices, {});
     expect(txt(p)).toContain(notice.label); expect(p.root.querySelector("img")).toBe(null);

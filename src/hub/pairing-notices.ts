@@ -92,7 +92,7 @@ export class HubPairingNotices {
     return this.options.db.transaction(() => {
       this.check(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
       const rows = this.options.db.prepare(`SELECT n.* FROM hub_pairing_notices n JOIN hub_pairing_notice_targets t ON t.notice_id=n.id
-        WHERE t.kind='person' AND t.target=? AND n.initiating_session<>? ORDER BY n.rowid DESC LIMIT 100`).all(person, actor.sessionId) as NoticeRow[];
+        WHERE t.kind='person' AND t.target=? AND n.initiating_session<>? ORDER BY n.rowid DESC LIMIT 1024`).all(person, actor.sessionId) as NoticeRow[];
       const notices = rows.map(row => this.view(row));
       for (const notice of notices) this.audit(this.options.db, "pairing.notice-disclosed", notice.fleetId, who, ctx.requestId, "allowed");
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
@@ -101,16 +101,18 @@ export class HubPairingNotices {
   }
   async acknowledgeSession(ctx: HubRequestContext, noticeId: string): Promise<void> {
     validated(uuid, noticeId);
-    const mine = await this.forSession(ctx), notice = mine.find(n => n.id === noticeId);
-    if (!notice) throw new HubProtocolError("not-found");
-    const actor = await ctx.current();
-    if (actor.kind !== "directory" || ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+    const who = await ctx.requirePerson(), actor = await ctx.current(); this.check();
+    if (actor.kind !== "directory" || ctx.isCurrent?.() !== true || personKeyString(actor.person) !== personKeyString(who)) throw new HubProtocolError("revoked");
     this.options.db.transaction(() => {
       this.check(); const db = this.options.db;
-      const recipient = db.prepare(`SELECT 1 FROM hub_pairing_notice_targets t JOIN hub_pairing_notices n ON n.id=t.notice_id
+      const recipient = db.prepare(`SELECT n.* FROM hub_pairing_notice_targets t JOIN hub_pairing_notices n ON n.id=t.notice_id
         WHERE t.notice_id=? AND t.kind='person' AND t.target=? AND n.initiating_session<>?`).get(noticeId, personKeyString(actor.person), actor.sessionId);
       if (!recipient) throw new HubProtocolError("not-found");
-      if (db.prepare("SELECT 1 FROM hub_pairing_notice_targets WHERE notice_id=? AND kind='session' AND target=? AND state='delivered'").get(noticeId, actor.sessionId)) return;
+      const notice = this.view(recipient as NoticeRow);
+      if (db.prepare("SELECT 1 FROM hub_pairing_notice_targets WHERE notice_id=? AND kind='session' AND target=? AND state='delivered'").get(noticeId, actor.sessionId)) {
+        if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+        return;
+      }
       this.audit(db, "pairing.notice-delivered", notice.fleetId, actor.person, ctx.requestId);
       db.prepare("INSERT OR REPLACE INTO hub_pairing_notice_targets VALUES(?,'session',?,'delivered')").run(noticeId, actor.sessionId);
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");

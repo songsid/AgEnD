@@ -52,6 +52,12 @@ members receive no new frame and their target remains queued. Per-Hub and member
 new automatic credentials/ACKs rather than discard an unread offline security notice. This conservative capacity needs
 operator attention before saturation; no silent eviction is implemented.
 
+Hub and member reads expose the complete bounded retained history (at most 1024 records), not an unreachable newest-100
+window. The page starts with 100 rendered notices; its folded history adds 100 at a time with **Show older notices**.
+An exact Hub ACK checks current person/session and the exact recipient row independently of any list window. The page
+ACKs only the displayed notice or expanded history, sequentially; collapsed rows do not cause an ACK request burst.
+Transport ACK still means durable member retention, and every such retained notice remains reachable in Settings.
+
 `POST /hub/v1/fleets/:id/revoke` narrows the current owner's exact fleet generation. It remains usable after losing
 self-service permission, requires current eligibility plus same-origin/CSRF, checks ownership before any link effect
 and again inside the commit, then fences the named fleet and refreshes other links after commit. Administrator notices

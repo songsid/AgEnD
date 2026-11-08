@@ -19,7 +19,8 @@ export function createHubPairingNoticeInbox(options: {
   const check = () => { if (!options.current()) throw new HubProtocolError("unavailable"); };
   return {
     list(): HubPairingNotice[] {
-      check(); return (options.db.prepare("SELECT body FROM hub_pairing_notice_inbox ORDER BY rowid DESC LIMIT 100").all() as { body: string }[])
+      // Matches the retention cap: an acknowledged retained notice must remain reachable in Settings history.
+      check(); return (options.db.prepare("SELECT body FROM hub_pairing_notice_inbox ORDER BY rowid DESC LIMIT 1024").all() as { body: string }[])
         .map(row => validated(pairingNoticeSchema, parseStrictJson(row.body)));
     },
     async receive(input: HubPairingNotice, link: HubMemberLink): Promise<void> {
