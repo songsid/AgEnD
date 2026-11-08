@@ -26,8 +26,9 @@ import type { HubLinkContext } from "./server.js";
 import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./catalog.js";
 import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
+import { RoomReadPacer, ROOM_READ_BURST } from "./room-read-pacer.js";
 
-/** One accepted poll per room and session in this window (hub.md §5: at most once per ten seconds). */
+/** The normal client poll interval; the shared session allowance replenishes over this interval. */
 export const ROOM_POLL_MS = 10_000;
 const ENVELOPE_MS = 120_000;
 const RANK: Record<string, number> = { queued: 1, delivered: 2, consumed: 3, answered: 4 };
@@ -69,7 +70,7 @@ const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); i
 export class HubRoomsService {
   /** The newest link seen per fleet (from S1's receive): dispatch uses it only while it is current. */
   private readonly links = new Map<string, HubLinkContext>();
-  private readonly polls = new Map<string, number>();
+  private readonly polls = new RoomReadPacer(ROOM_POLL_MS / ROOM_READ_BURST);
   private readonly flushing = new Set<string>();
   readonly buttons: HubButtonsService;
   constructor(private readonly core: HubCore, private readonly policy: HubPolicyService) {
@@ -290,18 +291,22 @@ export class HubRoomsService {
   /** The room's entries after `after`, for its asker only — both people and the grant re-checked; paced per session. */
   async read(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<readonly HubRoomEntryView[]> {
     if (!Number.isSafeInteger(after) || after < 0) throw new HubProtocolError("invalid");
-    const asker = await ctx.requirePerson(), me = personKeyString(asker), now = this.core.now();
+    this.core.check();
+    const finish = this.polls.enter(sessionKey);
+    try { return await this.readCurrent(ctx, roomId, after); }
+    finally { finish(); }
+  }
+
+  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<readonly HubRoomEntryView[]> {
+    const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
-    const pace = `${sessionKey}:${roomId}`, last = this.polls.get(pace);
-    if (last !== undefined && now - last < ROOM_POLL_MS) throw new HubProtocolError("backpressure");
-    this.polls.set(pace, now);
-    if (this.polls.size > 8192) for (const [k, v] of this.polls) if (now - v >= ROOM_POLL_MS) this.polls.delete(k);
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
     const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
     const rows = this.core.atomic((db) => {
+      const now = this.core.now(); // A grant may have expired while the directory/group checks were in flight.
       const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow;
       const e = readExposure(db, r.exposure_id), g = readGrant(db, r.grant_id);
       if (r.state !== "active" || !e || !g) throw new HubProtocolError("revoked");
@@ -331,7 +336,10 @@ export class HubRoomsService {
         ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
         ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
-    permit.assertCurrent(); return entries;
+    // Projection can cross a grant deadline too. Never publish a page under an expired/changed grant.
+    this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room"); }, permit);
+    if (ctx.isCurrent && !ctx.isCurrent()) throw new HubProtocolError("revoked");
+    return entries;
   }
 
   /**
