@@ -208,7 +208,8 @@ try {
           check(tag + " member history initial batch bounded", await local.p.locator("[data-pairing-notice]").count() === 100);
           await local.p.getByRole("button", { name: c.lang === "en" ? "Show older notices" : "顯示更早的通知", exact: true }).click();
           await local.p.locator(`[data-pairing-notice="${ids[0]}"]`).scrollIntoViewIfNeeded();
-          check(tag + " retained older member review link", await local.p.locator(`[data-pairing-notice="${ids[0]}"] a`).getAttribute("href") === `${origin}/ui/hub?securityNotice=${ids[0]}`);
+          const olderText = await local.p.locator(`[data-pairing-notice="${ids[0]}"]`).innerText();
+          check(tag + " retained older member record remains visible", olderText.includes("Earlier fleet 0") && olderText.includes(c.lang === "en" ? "Revoked" : "已撤銷"));
           await shot(local.p, tag + "-older-member-history"); await geometry(other.p, tag + " old Hub history"); await geometry(local.p, tag + " old member history");
         }
       }
