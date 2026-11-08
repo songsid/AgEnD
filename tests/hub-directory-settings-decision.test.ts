@@ -449,6 +449,21 @@ describe("directory-v2 uses the SAME sealed settings writer", () => {
     expect(r.policy().denies).toEqual(latest.denies); expect(r.decision.notices()).toHaveLength(2);
     expect(r.db.prepare("SELECT state FROM hub_sessions").get()).toEqual({ state: "ended" });
   });
+  it.each(["expired", "staged-expiry", "final-expiry", "in-time"])("binds the compensation intent deadline through final SQL: %s", async mode => {
+    const r = await writerRig(), w = r.writer();
+    const saved = w.directory!.commit(w.directory!.prepare(r.candidate(), r.actor, () => true).ref, r.actor, () => true);
+    const floor = r.floor.read(); let proofs = 0;
+    const intent = () => { if (mode === "final-expiry" && ++proofs === 4) r.tick(1); return true; };
+    if (mode === "staged-expiry") r.stagedOnce(() => { r.tick(1); });
+    if (mode === "in-time") {
+      expect(w.directory!.compensate(saved.receiptId, () => true, 1001).directoryEpoch).toBe(2);
+    } else {
+      expect(() => w.directory!.compensate(saved.receiptId, intent, mode === "expired" ? 1000 : 1001)).toThrow(mode === "expired" ? /expired/ : /denied/);
+      expect(r.db.prepare("SELECT directory_epoch FROM hub_settings_head").get()).toEqual({ directory_epoch: 1 });
+      expect(r.db.prepare("SELECT count(*) n FROM hub_settings_security_notices").get()).toEqual({ n: 1 });
+      if (mode === "final-expiry") { expect(r.floor.read()).toBeGreaterThan(floor); expect(w.pending()).toBe(true); expect(() => r.decision.inspect()).toThrow(/uncertain/); }
+    }
+  });
   it("a later rename remains usable and is never overwritten by old directory compensation", async () => {
     const r = await writerRig(), w = r.writer();
     const done = w.directory!.commit(w.directory!.prepare(r.candidate(), r.actor, () => true).ref, r.actor, () => true);

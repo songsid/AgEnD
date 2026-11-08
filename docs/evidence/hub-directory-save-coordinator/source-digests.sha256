@@ -1,0 +1,7 @@
+dcc29b8ee4cf8a01dcdd4bcb9e60edb2e0a389abf8133d86f584b7a73d2a12de  src/hub/settings-directory-save.ts
+8550aeeab26fe080a36a58aeffca0513cfde5b8e9f0734b2208d103715db22a7  src/hub/settings-directory-proof.ts
+5740d175ee9621c9b92137449d60dedf9658f0baa788aaa0fd99e47894bf1aa4  src/hub/settings-commit.ts
+1208bdf28e34f68a6d5738eea0f3016f527f9896a5a7cbe89ab5d00edcc179bf  tests/hub-directory-save.test.ts
+5735e69211dc4f27c171fdf2ee47bfb1674c6fc5602b7832d2a4d119b706a8d1  tests/hub-directory-settings-proof.test.ts
+cf2611a916976e08c5e020a878faaedb61ad1cf4b9d995ec5e31fbd5d6645c6e  tests/hub-directory-settings-decision.test.ts
+06172eda981b5a34ba8a29eeeb473f1b375a8b8af834338876353136c585f543  tests/hub-compose.test.ts

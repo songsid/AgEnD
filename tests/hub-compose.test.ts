@@ -14,7 +14,7 @@ import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
-import { createHubServerFactory, type HubHttp, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
+import { createHubServerFactory, hubServerDatabasePlan, type HubHttp, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
 import { HubDirectoryResponseOwner, type HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
@@ -30,6 +30,9 @@ import { atomicWriteFileSync } from "../src/atomic-write.js";
 import { hubSetCookie } from "../src/hub/sessions.js";
 import { SERVER_SET } from "../src/hub/compose/storage.js";
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
+import { createHubDirectorySaveCoordinator } from "../src/hub/settings-directory-save.js";
+import { withHubDirectoryRecovery } from "../src/hub/settings-directory-recovery.js";
+import type { HubDirectorySettingsDecision } from "../src/hub/settings-directory-decision.js";
 
 const roots: string[] = [];
 beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
@@ -659,11 +662,12 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined;
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
+  let borrowed: HubDirectorySettingsDecision | null = null, refuseNextDirectory = false, coldBorrows = 0;
   const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return wrap(real.createHubHttp(deps), deps); } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
     writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
-      directoryDecision: () => runtime?.directoryDecision() ?? null,
+      directoryDecision: () => borrowed ?? runtime?.directoryDecision() ?? null,
       saveHub(patches) {
         const next = structuredClone(hub.config.hub);
         for (const patch of patches) { if (patch.remove) delete next[patch.path[1]!]; else next[patch.path[1]!] = patch.value; }
@@ -673,7 +677,8 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
       step(point) { if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
     });
     runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer,
-      createDirectory: () => { creates++; return { realm: "corp", signIn: async (login, password) => {
+      createDirectory: config => { creates++; if (refuseNextDirectory && config.url === "ldaps://next.example.test") throw Error("owned replacement mount refusal");
+        return { realm: "corp", signIn: async (login, password) => {
           await signInGate?.();
           return login === ADMIN.login && password === "Dummy-browser-only" ? { ok: true, person: ADMIN } : { ok: false, reason: "invalid-credentials" };
         },
@@ -692,7 +697,15 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
     crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current);
   };
   return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; },
-    get creates() { return creates; }, get eligibility() { return eligibility; }, holdSignIn(gate?: () => Promise<void>) { signInGate = gate; }, entry, build, commit, candidate, actor };
+    get creates() { return creates; }, get eligibility() { return eligibility; }, get coldBorrows() { return coldBorrows; },
+    refuseNextDirectory() { refuseNextDirectory = true; },
+    withDecision<T>(work: (decision: HubDirectorySettingsDecision) => T): T {
+      const mounted = runtime!.directoryDecision(); if (mounted) return work(mounted);
+      const { settings, migrations } = hubServerDatabasePlan(hub.config.hub, entry.migrations); coldBorrows++;
+      return withHubDirectoryRecovery({ home: hub.home, hubId: settings.hubId, memberOrigin: settings.memberOrigin, migrations }, decision => {
+        borrowed = decision; try { return work(decision); } finally { borrowed = null; }
+      });
+    }, holdSignIn(gate?: () => Promise<void>) { signInGate = gate; }, entry, build, commit, candidate, actor };
 }
 
 describe.skipIf(process.platform === "win32")("directory decision joins the mounted runtime", () => {
@@ -945,7 +958,7 @@ async function directoryResponseRig(manual = false) {
     });
     return true;
   } }));
-  return { ...r, begin: (cookie?: string) => directoryBrowser(r.hub, cookie, {}, "/test-only/owned-response"), entered, attempting };
+  return { ...r, get coldBorrows() { return r.coldBorrows; }, begin: (cookie?: string) => directoryBrowser(r.hub, cookie, {}, "/test-only/owned-response"), entered, attempting };
 }
 
 describe.skipIf(process.platform === "win32")("directory response survives its owning listener remount", () => {
@@ -1043,6 +1056,53 @@ describe.skipIf(process.platform === "win32")("directory response survives its o
       expect(stopped).toBe(false);
       release!(); await stopping; expect(stopped).toBe(true); expect(await pending).toBeNull();
     } finally { release?.(); close.mockRestore(); ownerClose.mockRestore(); await stopping; await r.runtime.close(); await pending; }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("private Save orchestration with real SQL and HTTPS", () => {
+  it.each(["ready", "restored"] as const)("returns %s on the original response without reviving an old session", async outcome => {
+    const r = await directoryResponseRig(true), originalDirectory = structuredClone(r.hub.config.hub.directory);
+    let pending: ReturnType<typeof r.begin> | undefined;
+    let coordinator: ReturnType<typeof createHubDirectorySaveCoordinator> | undefined, running = true;
+    try {
+      const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" }); expect(signed.status).toBe(200);
+      const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1), db = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+      let sessionId: string;
+      try { sessionId = (db.prepare("SELECT id FROM hub_sessions WHERE token_hash=?").get(createHash("sha256").update(token).digest("hex")) as { id: string }).id; }
+      finally { db.close(); }
+      const actor = { kind: "hub-administrator" as const, person: ADMIN.key, sessionId, requestId: randomUUID() };
+      const old = r.runtime.directorySettings()!, sessions = old.sessions(), rotation = sessions.prepareDirectoryRotation(token, actor);
+      const proof = createHubDirectorySettingsProof({ source: old.source, withDirectoryRead: old.withDirectoryRead,
+        recentAuthentication: a => sessions.recentAuthentication(a), writer: () => r.writer.directory!,
+        createDirectory: () => ({ realm: "corp", signIn: async () => { throw Error("personal credentials reached candidate"); },
+          checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }), probeTls: async () => "a".repeat(64) });
+      coordinator = createHubDirectorySaveCoordinator({ hubId: String(r.hub.config.hub.hubId), proof,
+        mounted: () => r.runtime.directorySettings(), writer: () => r.writer.directory!, withDecision: async work => r.withDecision(work),
+        remount: () => r.runtime.apply(r.hub.config), current: () => running });
+      const candidate = r.candidate(), context = { actor, current: () => true };
+      const draft = await proof.prepare({ ...candidate, changes: [...candidate.changes] }, context);
+      if (outcome === "restored") r.refuseNextDirectory();
+      pending = r.begin(signed.cookie); const capture = await r.attempting;
+      const saved = await coordinator.apply(draft.ref, { confirmation: draft.trust!.challenge }, context, { capture: () => capture(old.current), rotation });
+      const result = await pending; pending = undefined;
+      expect(saved.state).toBe(outcome); expect(result.json.state).toBe(outcome); expect(result.status).toBe(outcome === "ready" ? 200 : 503);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready"); expect((await directoryBrowser(r.hub, signed.cookie)).json.signedIn).toBe(false);
+      const after = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+      try {
+        const epoch = outcome === "ready" ? 1 : 2;
+        expect(after.prepare("SELECT directory_epoch FROM hub_settings_head").get()).toEqual({ directory_epoch: epoch });
+        expect(after.prepare("SELECT count(*) n FROM hub_settings_operations").get()).toEqual({ n: epoch });
+        expect(after.prepare("SELECT count(*) n FROM hub_settings_security_notices").get()).toEqual({ n: epoch });
+        expect(after.prepare("SELECT count(*) n FROM hub_sessions WHERE state='active'").get()).toEqual({ n: outcome === "ready" ? 1 : 0 });
+      } finally { after.close(); }
+      if (outcome === "ready") {
+        expect((await directoryBrowser(r.hub, result.cookie)).json).toMatchObject({ signedIn: true, admin: true });
+      } else {
+        expect(r.hub.config.hub.directory).toEqual(originalDirectory); expect(result.cookie).toBe("");
+        const counters = r.withDecision(d => ({ compensation: d.operation(saved.receiptId).compensates, head: d.inspect() }));
+        expect(counters.compensation).toEqual(expect.any(String)); expect(r.coldBorrows).toBeGreaterThan(0);
+      }
+    } finally { running = false; await coordinator?.close(); await r.runtime.close(); await pending?.catch(() => {}); }
   });
 });
 

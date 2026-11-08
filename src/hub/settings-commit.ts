@@ -105,8 +105,9 @@ export interface HubDirectorySettingsWriter {
   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
   prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
   commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation): { receiptId: string; directoryEpoch: number };
-  /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role. */
-  compensate(originalId: string, currentIntent: (original: HubDirectorySettingsOperation) => boolean): { receiptId: string; directoryEpoch: number };
+  /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role.
+   * An optional orchestration deadline is checked by the writer's final clock, not just before an await. */
+  compensate(originalId: string, currentIntent: (original: HubDirectorySettingsOperation) => boolean, expiresAt?: number): { receiptId: string; directoryEpoch: number };
 }
 
 const sha = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
@@ -343,7 +344,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       if (!same({ ...p.actor, requestId: undefined }, { ...fresh.actor, requestId: undefined })) throw new HubSettingsError("denied");
       return installDirectory({ ...p, actor: fresh.actor }, current, undefined, rotation);
     },
-    compensate(originalId, currentIntent) {
+    compensate(originalId, currentIntent, expiresAt) {
       const d = decision(), original = d.operation(originalId);
       if (d.inspect().operationId !== original.id || original.kind !== "directory" || !currentProof(() => currentIntent(structuredClone(original)))) throw new HubSettingsError("denied");
       if (!same(directoryImage(), original.after)) throw new HubSettingsError("stale");
@@ -351,8 +352,9 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       // This is the preauthorized old CONTENT, not a DB/floor/session restore. The SQL participant retains newer security.
       if (sha(canonical(next)) !== original.before.configSha || hubPlanDigest(next) !== original.before.configDigest || sha(secret) !== original.before.bindSecretSha) throw new HubSettingsError("recovery");
       const t = now();
+      if (expiresAt !== undefined && (!Number.isSafeInteger(expiresAt) || expiresAt <= t)) throw new HubSettingsError("expired");
       return installDirectory({ actor: original.actor, expected: d.inspect(), before: directoryImage(), next, secret,
-        generation: original.previousGeneration, changes: original.changes, recipients: original.recipients, createdAt: t, expiresAt: t + PREPARED_MS },
+        generation: original.previousGeneration, changes: original.changes, recipients: original.recipients, createdAt: t, expiresAt: Math.min(t + PREPARED_MS, expiresAt ?? Infinity) },
       () => currentIntent(structuredClone(original)), original);
     },
   };

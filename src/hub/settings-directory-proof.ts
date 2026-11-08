@@ -105,7 +105,7 @@ export interface HubDirectorySettingsProof {
     ref: string; expiresAt: number; trust: null | { challenge: string; server: string; leafFingerprint: string; caFingerprints: string[]; systemRoots: boolean };
   }>;
   test(ref: string, confirmation: string | undefined, context: HubDirectoryProofContext): Promise<void>;
-  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext, rotation?: HubDirectorySessionRotation): Promise<{ receiptId: string; directoryEpoch: number }>;
+  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext, rotation?: HubDirectorySessionRotation, beforeCommit?: () => void): Promise<{ receiptId: string; directoryEpoch: number }>;
   cancel(ref: string, context: HubDirectoryProofContext): void;
   close(): void;
 }
@@ -242,7 +242,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
         caFingerprints: [...d.ca], systemRoots: copy.directory.caPem === undefined } : null };
     },
     async test(ref, confirmation, inputContext) { const ctx = context(inputContext), d = get(ref, ctx); confirmed(d, confirmation); await candidate(d, ctx); },
-    async apply(ref, input, inputContext, rotation) {
+    async apply(ref, input, inputContext, rotation, beforeCommit) {
       const ctx = context(inputContext), d = get(ref, ctx), credentials = input.credentials && { ...input.credentials }, confirmation = input.confirmation;
       drafts.delete(ref); // Failed and cancelled saves also consume this exact preparation.
       confirmed(d, confirmation);
@@ -252,6 +252,11 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       await candidate(d, ctx); current(d, ctx);
       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
       const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof);
+      const effect: unknown = beforeCommit?.();
+      if (effect && (typeof effect === "object" || typeof effect === "function") && typeof (effect as { then?: unknown }).then === "function") {
+        try { (effect as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
+        refuse("invalid");
+      }
       current(d, ctx);
       return writer.commit(prepared.ref, ctx.actor, proof, rotation);
     },

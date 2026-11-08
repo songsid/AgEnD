@@ -54,6 +54,31 @@ function fixture() {
 }
 
 describe("directory setting preparation authority", () => {
+  it("acquires the response only after candidate validation and immediately before the synchronous writer commit", async () => {
+    const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx), captured = vi.fn(() => {
+      expect(r.prepared).toHaveBeenCalledOnce(); expect(r.next.close).toHaveBeenCalledOnce(); expect(r.commit).not.toHaveBeenCalled();
+    });
+    await r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, captured);
+    expect(captured).toHaveBeenCalledOnce(); expect(r.commit).toHaveBeenCalledOnce();
+  });
+  it.each(["revoked", "expired", "throw", "async"])("a %s response capture cannot cross the writer decision", async mode => {
+    const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx);
+    const capture = () => {
+      if (mode === "revoked") r.live(false);
+      if (mode === "expired") r.tick(300_000);
+      if (mode === "throw") throw Error("response disconnected");
+      if (mode === "async") return Promise.resolve();
+    };
+    await expect(r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, capture)).rejects.toThrow();
+    expect(r.commit).not.toHaveBeenCalled();
+    await expect(r.control.apply(p.ref, {}, r.ctx)).rejects.toMatchObject({ code: "expired" });
+  });
+  it("refused candidate validation never acquires a response", async () => {
+    const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx), capture = vi.fn();
+    r.next.checkEligibility.mockResolvedValue({ eligible: false, reason: "disabled" });
+    await expect(r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, capture)).rejects.toThrow();
+    expect(capture).not.toHaveBeenCalled(); expect(r.commit).not.toHaveBeenCalled();
+  });
   it("inspects without LDAP credentials, returns only a bound trust challenge, and delegates the eventual save to the shared writer", async () => {
     const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx);
     expect(p.trust).toMatchObject({ server: "ldaps://new.example.test:636", leafFingerprint: "A".repeat(64), caFingerprints: [], systemRoots: true });
