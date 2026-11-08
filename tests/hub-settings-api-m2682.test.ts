@@ -61,8 +61,11 @@ describe("Administration → This Hub", () => {
     expect(seen).toEqual([]);
     for (const [code, status] of [["stale", 409], ["denied", 403], ["unavailable", 503], ["invalid", 400]] as const) {
       refuse = code;
+      const before = rig.audits.length;
       const r = await rig.call(admin, "POST", "/hub/v1/admin/hub/name/commit", { ref: "ref-1" });
       expect([r.status, r.json]).toEqual([status, { ok: false, code }]);
+      // the attempt's outcome beside its held record (Fable #3426 N2)
+      expect(rig.audits.slice(before).filter((a: any) => a.action === "hub.settings.rename").map((a: any) => [a.result, a.reasonCode ?? null])).toEqual([["held", null], ["denied", code]]);
     }
     expect((await rig.call(admin, "GET", "/hub/v1/admin/hub/name/commit")).status).toBe(405);
   });

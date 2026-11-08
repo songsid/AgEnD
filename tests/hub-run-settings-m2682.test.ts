@@ -9,7 +9,7 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import { hubRunPatch, hubRunView } from "../src/hub-host-settings.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
-import { createSettingsReplay } from "../src/settings-request-capability.js";
+import { cacheSettingsBody, createSettingsReplay } from "../src/settings-request-capability.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 
@@ -18,16 +18,18 @@ const caps: SettingsExecution[] = [];
 afterEach(() => { for (const cap of caps.splice(0)) cap.close(); });
 const hubRaw = (enabled = true) => ({ hub: { enabled, hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a" } });
 
-async function call(o: { method?: string; replay?: boolean; admin?: boolean; gateway?: boolean; json?: unknown; raw?: any; busy?: boolean; localAdmin?: () => boolean } = {}) {
+async function call(o: { method?: string; replay?: boolean; continuation?: boolean; busySeq?: boolean[]; admin?: boolean; gateway?: boolean; json?: unknown; raw?: any; busy?: boolean; localAdmin?: () => boolean } = {}) {
   const body = Buffer.from(JSON.stringify(o.json ?? { enabled: false })), method = o.method ?? "PUT";
   const cap = new SettingsExecution({ current: () => true, snapshot: () => null }); caps.push(cap);
   const req = o.replay ? createSettingsReplay({ method, url: path, body, binding: "owner", localAdmin: o.localAdmin ?? (() => o.admin !== false) }, cap)
     : Object.assign(new EventEmitter(), { method, url: path, headers: o.admin === false ? { cookie: "__Host-agend_hub_fake=x" } : { "x-agend-token": "tok" } }) as unknown as IncomingMessage;
+  // A server-owned continuation with a local admin, but not a confirmed replay (Fable #3426 F2.1).
+  if (o.continuation) cacheSettingsBody(req, body, cap, "owner", () => true);
   if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
   let raw = o.raw ?? hubRaw();
   const saves: unknown[] = [];
   const ctx = { webToken: "tok", webSessions: null, fleetConfig: { defaults: {}, instances: {} }, logger: { warn: vi.fn() },
-    getRawFleetConfig: () => raw, hubSettingsBusy: () => o.busy === true,
+    getRawFleetConfig: () => raw, hubSettingsBusy: () => (o.busySeq ? o.busySeq.shift() ?? true : o.busy === true),
     saveFleetConfig: (patches: Array<{ path: string[]; value?: unknown }>) => { saves.push(patches); for (const p of patches) raw = { ...raw, hub: { ...raw.hub, enabled: p.value } }; } };
   const response = await new Promise<{ status: number; body: any }>((resolve) => {
     let status = 0;
@@ -54,6 +56,10 @@ describe("Run this Hub (M-2682)", () => {
     expect(await call({ method: "GET" })).toMatchObject({ status: 200, body: { ok: true, initialized: true, enabled: true } });
     expect((await call({ method: "GET", admin: false })).status).toBe(403);
     expect((await call({ method: "GET", gateway: true })).status).toBe(403);
+  });
+  it("a local-admin continuation that isn't a confirmed replay is refused and saves nothing", async () => {
+    const r = await call({ continuation: true, json: { enabled: false } });
+    expect([r.status, r.body.error, r.saves]).toEqual([403, "admin_confirmation_required", []]);
   });
   it("saves only as a confirmed replay, exactly hub.enabled", async () => {
     for (const options of [{}, { replay: true, admin: false }, { replay: true, gateway: true }]) {

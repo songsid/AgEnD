@@ -25,7 +25,7 @@ export interface HubSettingsHttpRequest {
   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
   send(status: number, body: unknown): void;
   /** Synchronous audit append (its own transaction); throws when it can't be recorded. */
-  audit(event: { requestId: string; actor: Extract<HubActor, { kind: "directory" }>; action: string; result: "held" | "completed"; reasonCode?: string }): void;
+  audit(event: { requestId: string; actor: Extract<HubActor, { kind: "directory" }>; action: string; result: "held" | "completed" | "denied"; reasonCode?: string }): void;
 }
 const STATUS: Record<string, number> = { invalid: 400, unchanged: 409, stale: 409, expired: 409, busy: 409, denied: 403, unavailable: 503, recovery: 503 };
 
@@ -64,7 +64,13 @@ export async function handleHubSettingsHttp(deps: HubSettingsHttpDeps | undefine
     if (typeof body.ref !== "string") throw new HubSettingsError("invalid");
     // No await from here: the audit, the commit and its record run as one synchronous step.
     q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "held" });
-    const done = deps.writer.commit(body.ref, who, () => q.ctx.current());
+    let done: ReturnType<HubSettingsWriter["commit"]>;
+    try { done = deps.writer.commit(body.ref, who, () => q.ctx.current()); }
+    catch (e) {
+      // The attempt's outcome beside its held record (Fable #3426 N2): why it didn't commit. Best effort, as the completed record.
+      if (e instanceof HubSettingsError) try { q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "denied", reasonCode: e.code }); } catch { /* the held record remains */ }
+      throw e;
+    }
     // The rename is committed and its receipt kept; a failure to add this second record doesn't undo it.
     try { q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "completed", reasonCode: done.receiptId }); } catch { /* the held record and the receipt remain */ }
     q.send(200, { ok: true, summary: done.summary });

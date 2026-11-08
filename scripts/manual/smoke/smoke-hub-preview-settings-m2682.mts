@@ -1,4 +1,4 @@
-// M-2682 part B: fleet Settings → Hub → "HTML previews on this Hub", on the shared Settings fixture (the product's web server
+// M-2682: fleet Settings → Hub → "HTML previews on this Hub" and "Run this Hub", on the shared Settings fixture (the product's web server
 // from an in-process FleetManager, scratch home, loopback only). The fixture runs no Hub, so this page's read of fleet.yaml is
 // given a `hub:` block in the browser, and /api/settings/hub/preview answers in the browser too (the server's checks:
 // tests/hub-preview-settings*-m2682.test.ts). Pictures and checks, 8-case matrix: off with a suggested port; switched on;
@@ -36,6 +36,14 @@ try {
       view = { ...view, enabled: body.enabled, port: body.enabled ? body.port : null };
       return json(200, view);
     });
+    // M-2682: Run this Hub (hub.enabled) — stopping asks once (the shared confirmation), then saves.
+    let run = { ok: true, initialized: true, enabled: true };
+    const runPuts: unknown[] = [];
+    await page.route((u: URL) => u.pathname === "/api/settings/hub/run", async (route: any) => {
+      const json = (status: number, body: unknown) => route.fulfill({ status, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) });
+      if (route.request().method() === "GET") return json(200, run);
+      const body = JSON.parse(route.request().postData() || "{}"); runPuts.push(body); run = { ...run, enabled: body.enabled }; return json(200, run);
+    });
     await page.goto(fx.base + "/settings/hub");
     await page.waitForSelector(".hub-preview-settings form", { timeout: 15000 });
     const card = async () => page.evaluate(`(() => { const c = document.querySelector(".hub-preview-settings"); c.scrollIntoView({ block: "center" }); const b = c.getBoundingClientRect();
@@ -65,6 +73,21 @@ try {
     const saved = await card();
     await page.screenshot({ path: join(OUT, `${name}-saved.png`) });
     check(`${name}:saved`, JSON.stringify(puts.at(-1)) === JSON.stringify({ enabled: true, port: 9443 }) && saved.status === (zh ? "已儲存。Hub 會重新載入以套用。" : "Saved. The Hub reloads to apply it.") && saved.button.disabled === true, { puts, saved });
+    // Run this Hub: stopping asks once; Cancel keeps it running; confirming saves it off; turning on doesn't ask.
+    await page.evaluate(`document.querySelector(".hub-run-settings").scrollIntoView({ block: "center" })`);
+    await page.click("#hubRunOn"); await page.waitForSelector("[data-confirm=yes]", { timeout: 8000 });
+    await page.screenshot({ path: join(OUT, `${name}-run-stop-ask.png`) });
+    const ask = await page.evaluate(`document.querySelector("dialog[open]")?.innerText || ""`) as string;
+    await page.click("dialog[open] .btn:not([data-confirm])"); await page.waitForTimeout(300);
+    const kept = { puts: runPuts.length, on: await page.evaluate(`document.querySelector("#hubRunOn").checked`) };
+    await page.click("#hubRunOn"); await page.waitForSelector("[data-confirm=yes]", { timeout: 8000 }); await page.click("[data-confirm=yes]"); await page.waitForTimeout(500);
+    const stopped = { puts: [...runPuts], on: await page.evaluate(`document.querySelector("#hubRunOn").checked`), status: await page.evaluate(`document.querySelector(".hub-run-settings [role=status]")?.textContent`) };
+    await page.screenshot({ path: join(OUT, `${name}-run-stopped.png`) });
+    await page.click("#hubRunOn"); await page.waitForTimeout(500);
+    const dialogs = await page.evaluate(`document.querySelectorAll("dialog[open]").length`);
+    check(`${name}:run`, ask.includes(zh ? "要停止這個 Hub 嗎？" : "Stop this Hub?") && kept.puts === 0 && kept.on === true
+      && JSON.stringify(stopped.puts) === JSON.stringify([{ enabled: false }]) && stopped.on === false && stopped.status === (zh ? "Hub 已停止。" : "The Hub is stopped.")
+      && dialogs === 0 && JSON.stringify(runPuts.at(-1)) === JSON.stringify({ enabled: true }), { ask: ask.slice(0, 120), kept, stopped, dialogs, runPuts });
     check(`${name}:no-errors`, errs.length === 0 && (await csp()).length === 0, { errs, csp: await csp() });
     await ctx.close();
   }

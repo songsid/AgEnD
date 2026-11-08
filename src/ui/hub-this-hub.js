@@ -27,6 +27,7 @@ register("hubThisHub", {
     err_busy: "Another change to the Hub's settings is still finishing. Try again in a moment.",
     err_denied: "Only this Hub's administrator can rename it. Sign in again and retry.",
     err_unavailable: "The Hub's settings can't be changed right now: its sealed settings don't check out. Ask the host owner to look at the Hub.",
+    err_recovery: "The rename didn't finish cleanly, and the Hub may stop until it is put right. Don't retry: ask the host owner to check the Hub on its computer.",
     err_failed: "The name wasn't saved. Try again.",
   },
   "zh-TW": {
@@ -45,12 +46,13 @@ register("hubThisHub", {
     err_busy: "Hub 設定的另一項變更還在完成中，請稍後再試。",
     err_denied: "只有這個 Hub 的管理員可以改名。請重新登入後再試。",
     err_unavailable: "目前無法變更 Hub 的設定：它的密封設定檢查不通過。請主機擁有者檢查 Hub。",
+    err_recovery: "改名沒有順利完成，Hub 可能會停止，直到問題排除。請不要重試，請主機擁有者在那台電腦上檢查 Hub。",
     err_failed: "名稱沒有儲存，請再試一次。",
   },
 });
 const ht = (k, ...a) => t(`hubThisHub.${k}`, ...a);
 const INSTALL = new Set(["dedicated", "same-user-pilot"]);
-const ERR = new Set(["invalid", "unchanged", "stale", "expired", "busy", "denied", "unavailable"]);
+const ERR = new Set(["invalid", "unchanged", "stale", "expired", "busy", "denied", "unavailable", "recovery"]);
 const errText = (r) => ht(`err_${ERR.has(r.code) ? r.code : "failed"}`);
 
 /** After a rename the Hub reloads itself; wait until it answers with the new name, then reload this page (its brand). */

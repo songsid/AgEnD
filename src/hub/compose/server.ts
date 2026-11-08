@@ -139,7 +139,8 @@ const listen = (v: unknown, label: string) => {
   return { host: o.host, port: o.port as number };
 };
 
-function settingsOf(cfg: Record<string, unknown>): ServerSettings {
+/** The mount's parse of the hub.* block (exported for its tests). */
+export function settingsOf(cfg: Record<string, unknown>): ServerSettings {
   const tls = obj(cfg.webTls);
   const admin = obj(cfg.administrator);
   const retention = obj(cfg.retention);

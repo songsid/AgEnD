@@ -193,16 +193,21 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       writeJournal(journal); step("staged");
 
       // The commit point: the image is still the one prepared, and the person and session still hold.
-      const again = image();
-      if (again.digest !== p.oldDigest || again.manifestSha !== p.manifestSha || !current()) { cleanup(id); throw new HubSettingsError("stale"); }
+      // Any refusal here (the pair changed, stopped verifying, or the session ended) cancels: the staged files go, nothing in
+      // force was touched, and no journal is left to make the next commit wait.
+      let again: ReturnType<typeof image> | null = null;
+      try { again = image(); } catch { /* the pair no longer verifies: as stale */ }
+      if (!again || again.digest !== p.oldDigest || again.manifestSha !== p.manifestSha || !current()) { cleanup(id); throw new HubSettingsError("stale"); }
       writeJournal({ ...journal, phase: "committed" }); step("committed");
 
       // Past the commit point a failure leaves the journal committed: the next Hub apply calls recover() first, which
       // finishes the change (or refuses, overwriting nothing). Until then the running Hub keeps its mounted settings.
       writePrivate("hub", MANIFEST, manifestText); step("manifest");
       deps.saveHub(namePatch(name)); step("config");
-      const done = image();
-      if (done.digest !== p.newDigest) throw new HubSettingsError("recovery", "the saved settings differ from the sealed ones");
+      // What was saved must be exactly what was sealed, and the pair must verify; anything else past the commit point is a
+      // recovery (the journal stays committed; recover() then finishes it or refuses, overwriting nothing).
+      if (hubPlanDigest(obj(deps.readHub())) !== p.newDigest) throw new HubSettingsError("recovery", "the saved settings differ from the sealed ones");
+      try { image(); } catch { throw new HubSettingsError("recovery", "the new pair does not verify"); }
       finish({ ...journal, phase: "committed" });
       return { receiptId: id, summary: { field: "name", from, to: name } };
     },

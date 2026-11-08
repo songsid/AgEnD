@@ -8,7 +8,7 @@ import { EventEmitter } from "node:events";
 import { createServer } from "node:net";
 import type { IncomingMessage } from "node:http";
 import { handleSettingsRequest } from "../src/settings-api.js";
-import { createSettingsReplay } from "../src/settings-request-capability.js";
+import { cacheSettingsBody, createSettingsReplay } from "../src/settings-request-capability.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 
@@ -19,16 +19,18 @@ const freePort = async () => { const s = createServer(); await new Promise<void>
 const hubRaw = () => ({ health_port: 19280, hub: { enabled: true, webOrigin: "https://hub.example.test:8444", memberOrigin: "https://hub.example.test:8443",
   webListen: { host: "127.0.0.1", port: 8444 }, memberListen: { host: "127.0.0.1", port: 8443 } } });
 
-async function call(o: { method?: string; replay?: boolean; admin?: boolean; gateway?: boolean; json?: unknown; raw?: any; busy?: boolean; localAdmin?: () => boolean } = {}) {
+async function call(o: { method?: string; replay?: boolean; continuation?: boolean; busySeq?: boolean[]; admin?: boolean; gateway?: boolean; json?: unknown; raw?: any; busy?: boolean; localAdmin?: () => boolean } = {}) {
   const body = Buffer.from(JSON.stringify(o.json ?? { enabled: false })), method = o.method ?? "PUT";
   const cap = new SettingsExecution({ current: () => true, snapshot: () => null }); caps.push(cap);
   const req = o.replay ? createSettingsReplay({ method, url: path, body, binding: "owner", localAdmin: o.localAdmin ?? (() => o.admin !== false) }, cap)
     : Object.assign(new EventEmitter(), { method, url: path, headers: o.admin === false ? { cookie: "__Host-agend_hub_fake=x" } : { "x-agend-token": "tok" } }) as unknown as IncomingMessage;
+  // A server-owned continuation with a local admin, but not a confirmed replay (Fable #3426 F2.1).
+  if (o.continuation) cacheSettingsBody(req, body, cap, "owner", () => true);
   if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
   let raw = o.raw ?? hubRaw();
   const saves: unknown[] = [];
   const ctx = { webToken: "tok", webSessions: null, fleetConfig: { defaults: {}, instances: {} }, logger: { warn: vi.fn() },
-    getRawFleetConfig: () => raw, hubSettingsBusy: () => o.busy === true,
+    getRawFleetConfig: () => raw, hubSettingsBusy: () => (o.busySeq ? o.busySeq.shift() ?? true : o.busy === true),
     saveFleetConfig: (patches: Array<{ path: string[]; value?: unknown; remove?: boolean }>) => {
       saves.push(patches);
       for (const p of patches) { const web = { ...(raw.hub.web ?? {}) }; if (p.remove) delete web.preview_port; else web.preview_port = p.value; raw = { ...raw, hub: { ...raw.hub, web } }; }
@@ -47,6 +49,10 @@ describe("host route: HTML previews on this Hub (M-2682)", () => {
     expect(await call({ method: "GET" })).toMatchObject({ status: 200, body: { ok: true, hosted: true, enabled: false, port: null, suggested: 8445 } });
     expect((await call({ method: "GET", admin: false })).status).toBe(403);
     expect((await call({ method: "GET", gateway: true })).status).toBe(403);
+  });
+  it("a local-admin continuation that isn't a confirmed replay is refused and saves nothing (Fable #3426 F2.1)", async () => {
+    const r = await call({ continuation: true, json: { enabled: false } });
+    expect([r.status, r.body.error, r.saves]).toEqual([403, "admin_confirmation_required", []]);
   });
   it("saves only as a confirmed replay; then writes exactly hub.web.preview_port", async () => {
     const port = await freePort();
@@ -67,6 +73,10 @@ describe("host route: HTML previews on this Hub (M-2682)", () => {
       const r = await call({ replay: true, json, ...extra });
       expect([r.status, r.body.error, r.saves]).toEqual([status, code, []]);
     }
+    // A sealed-settings commit starting while the bind probe ran: the re-check at the save refuses (Fable #3426 F2.2).
+    const port = await freePort();
+    const raced = await call({ replay: true, json: { enabled: true, port }, busySeq: [false, true] });
+    expect([raced.status, raced.body.error, raced.saves]).toEqual([503, "unsaved", []]);
     const localAdmin = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
     const r = await call({ replay: true, json: { enabled: false }, localAdmin });
     expect([r.status, r.body.error, r.saves]).toEqual([503, "unsaved", []]);

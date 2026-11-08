@@ -83,8 +83,8 @@ describe("rename and clear, resealed", () => {
   });
 });
 
+const code = (f: () => unknown) => { try { f(); return "none"; } catch (e) { return (e as HubSettingsError).code; } };
 describe("refusals before the commit point leave everything as it was", () => {
-  const code = (f: () => unknown) => { try { f(); return "none"; } catch (e) { return (e as HubSettingsError).code; } };
   it("unchanged, expired, reused, another session or person, a session that ended", () => {
     const w = writer();
     expect(code(() => w.prepare({ kind: "rename", name: "AgEnD Hub pilot" }, actor()))).toBe("unchanged");
@@ -117,6 +117,22 @@ describe("refusals before the commit point leave everything as it was", () => {
     const a = w.prepare({ kind: "rename", name: "A" }, actor());
     expect(code(() => w.commit(a.ref, actor(), () => live))).toBe("stale");
     expect(hub.name).toBe("AgEnD Hub pilot"); expect(readFileSync(manifestPath(), "utf8")).toBe(initialManifest); expect(leftovers()).toEqual([false, 0]);
+  });
+  it("the commit point re-reads the pair: a change by another process after staging cancels it (Fable #3426 F1.1)", () => {
+    for (const change of [
+      () => writeFileSync(manifestPath(), initialManifest + " ", { mode: 0o600 }),           // the manifest
+      () => { hub.retention = { contentDays: 31, eventDays: 90 }; },                            // hub.* (the pair no longer verifies)
+    ]) {
+      const before = structuredClone(hub);
+      const w = writer({ step: (s) => { if (s === "staged") change(); } });
+      const a = w.prepare({ kind: "rename", name: "A" }, actor());
+      const manifestAtStage = () => readFileSync(manifestPath(), "utf8");
+      expect(code(() => w.commit(a.ref, actor(), () => true))).toBe("stale");
+      expect(leftovers()).toEqual([false, 0]);                    // staged files and journal gone: nothing waits on it
+      expect(hub.name).toBe("AgEnD Hub pilot");                   // nothing in force written by the writer
+      expect(manifestAtStage()).not.toContain('"planDigest": "' + hubPlanDigest({ ...before, name: "A" }));
+      writeFileSync(manifestPath(), initialManifest, { mode: 0o600 }); hub = before;
+    }
   });
   it("a sealed pair that doesn't verify is not renamed", () => {
     hub.name = "edited by hand";
@@ -166,6 +182,22 @@ describe("a crash at any step: recover() before the next mount leaves a coherent
     writeFileSync(manifestPath(), initialManifest + " ", { mode: 0o600 });
     expect(() => writer().recover()).toThrow(/manifest changed outside/);
     expect(readFileSync(manifestPath(), "utf8")).toBe(initialManifest + " ");
+  });
+  it("recover() refuses a staged manifest that changed: nothing written, the manifest in force unchanged (Fable #3426 F1.2)", () => {
+    const crash = writer({ step: (s) => { if (s === "committed") throw new Error("crash"); } });
+    expect(() => crash.commit(crash.prepare({ kind: "rename", name: "After" }, actor()).ref, actor(), () => true)).toThrow("crash");
+    const dir = join(home, "hub/settings-staged"), staged = readdirSync(dir).find((f) => f.endsWith(".manifest.json"))!;
+    writeFileSync(join(dir, staged), readFileSync(join(dir, staged), "utf8").replace('"v": 1', '"v": 1 '), { mode: 0o600 });
+    expect(() => writer().recover()).toThrow(expect.objectContaining({ code: "recovery" }));
+    expect(readFileSync(manifestPath(), "utf8")).toBe(initialManifest);
+    expect(hub.name).toBe("AgEnD Hub pilot");
+    expect(writer().pending()).toBe(true);
+  });
+  it("a save that writes something else than the sealed change is caught: recovery, journal kept, no receipt (Fable #3426 F1.3)", () => {
+    const w = writer({ saveHub: (patches) => { for (const p of patches) if (!p.remove) hub[p.path[1]!] = p.value; hub.coexistence = "same-user-pilot"; } });
+    expect(() => w.commit(w.prepare({ kind: "rename", name: "After" }, actor()).ref, actor(), () => true)).toThrow(expect.objectContaining({ code: "recovery" }));
+    expect(JSON.parse(readFileSync(join(home, SETTINGS_JOURNAL), "utf8")).phase).toBe("committed");
+    expect(existsSync(join(home, "hub/settings-receipts"))).toBe(false);
   });
   it("a second commit waits while one is unfinished", () => {
     const crash = writer({ step: (s) => { if (s === "committed") throw new Error("crash"); } });
