@@ -658,12 +658,17 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 });
 
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
-async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http) {
+async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
+  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean } = {}) {
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
-  let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined;
+  let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined, lastHttp: HubHttp;
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
   let borrowed: HubDirectorySettingsDecision | null = null, refuseNextDirectory = false, coldBorrows = 0;
-  const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return wrap(real.createHubHttp(deps), deps); } };
+  const people = [ADMIN, ...options.people ?? []];
+  const entry: HubHttpEntry = { ...real, createHubHttp(deps) {
+    lastDeps = { ...deps, ...(options.noGroupHttp ? { groupHttp: undefined } : {}), ...(options.noDirectoryNotices ? { directoryNotices: undefined } : {}) };
+    lastHttp = wrap(real.createHubHttp(lastDeps), lastDeps); return lastHttp;
+  } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
     writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
@@ -680,9 +685,11 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
       createDirectory: config => { creates++; if (refuseNextDirectory && config.url === "ldaps://next.example.test") throw Error("owned replacement mount refusal");
         return { realm: "corp", signIn: async (login, password) => {
           await signInGate?.();
-          return login === ADMIN.login && password === "Dummy-browser-only" ? { ok: true, person: ADMIN } : { ok: false, reason: "invalid-credentials" };
+          const person = people.find(p => p.login === login);
+          return person && password === "Dummy-browser-only" ? { ok: true, person } : { ok: false, reason: "invalid-credentials" };
         },
-        checkEligibility: async () => { eligibility++; return { eligible: true, person: ADMIN }; }, close: async () => {} }; } });
+        checkEligibility: async key => { eligibility++; const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId);
+          return person ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} }; } });
     return runtime;
   };
   build();
@@ -696,7 +703,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
     const mounted = runtime!.directorySettings()!, draft = writer!.directory!.prepare({ ...candidate(), changes: [...candidate().changes] }, actor, mounted.current);
     crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current);
   };
-  return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; },
+  return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; }, get http() { return lastHttp!; },
     get creates() { return creates; }, get eligibility() { return eligibility; }, get coldBorrows() { return coldBorrows; },
     refuseNextDirectory() { refuseNextDirectory = true; },
     withDecision<T>(work: (decision: HubDirectorySettingsDecision) => T): T {
@@ -867,17 +874,135 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
 
 
 /** Ordinary verified HTTPS only; no intercepted API responses or personal credentials. */
-function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown, path = "/hub/v1/session") {
-  return new Promise<{ status: number; json: any; cookie: string }>((resolve, reject) => {
+function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown, path = "/hub/v1/session",
+  options: { method?: string; headers?: Record<string, string> } = {}) {
+  return new Promise<{ status: number; json: any; cookie: string; cache: string }>((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port: hub.webPort, path, servername: "hub.example.test", ca: hub.caPem,
-      agent: false, method: body === undefined ? "GET" : "POST", headers: { Origin: String(hub.config.hub.webOrigin),
-        ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) } }, res => {
+      agent: false, method: options.method ?? (body === undefined ? "GET" : "POST"), headers: { Origin: String(hub.config.hub.webOrigin),
+        ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...options.headers } }, res => {
       let text = ""; res.setEncoding("utf8"); res.on("data", data => { text += data; });
-      res.on("end", () => { try { resolve({ status: res.statusCode!, json: JSON.parse(text), cookie: res.headers["set-cookie"]?.[0]?.split(";")[0] ?? "" }); } catch (error) { reject(error); } });
+      res.on("end", () => { try { resolve({ status: res.statusCode!, json: text ? JSON.parse(text) : null,
+        cookie: res.headers["set-cookie"]?.[0]?.split(";")[0] ?? "", cache: res.headers["cache-control"] ?? "" }); } catch (error) { reject(error); } });
     });
     req.on("error", reject); req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
+
+const NOTICE_READER: typeof ADMIN = { ...ADMIN, key: { realm: "corp", objectId: "11111111-1111-4111-8111-111111111111" },
+  login: "notice-reader", displayName: "Fictional Reader", dn: "uid=notice-reader,dc=example,dc=test" };
+const NOTICE_OTHER: typeof ADMIN = { ...NOTICE_READER, key: { realm: "corp", objectId: "22222222-2222-4222-8222-222222222222" },
+  login: "notice-other", displayName: "Fictional Other", dn: "uid=notice-other,dc=example,dc=test" };
+const NOTICE_PATH = "/hub/v1/security-notices/directory";
+async function directoryNoticeCommit(r: Awaited<ReturnType<typeof directoryRuntimeRig>>, n: number, remount = true) {
+  const source = r.runtime.directorySettings()!, candidate = r.candidate();
+  const draft = r.writer.directory!.prepare({ ...candidate, directory: { ...candidate.directory, url: `ldaps://notice-${n}.example.test` },
+    bindPassword: `Dummy-notice-bind-${n}`, changes: [...candidate.changes],
+    recipients: [{ kind: "host", sink: "owner-needs-you" }, { kind: "person", person: NOTICE_READER.key }] }, r.actor, source.current);
+  r.writer.directory!.commit(draft.ref, r.actor, source.current);
+  const id = r.runtime.directoryDecision()!.notices().at(-1)!.id;
+  if (remount) { await r.runtime.apply(r.hub.config); expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready"); }
+  return id;
+}
+const noticeSignIn = (r: Awaited<ReturnType<typeof directoryRuntimeRig>>, who = NOTICE_READER) =>
+  directoryBrowser(r.hub, undefined, { login: who.login, password: "Dummy-browser-only" });
+
+describe.skipIf(process.platform === "win32")("directory security notices on real HTTPS", () => {
+  it("allows only original eligible recipients with groups absent; ACK is CSRF protected, independent and durable", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER, NOTICE_OTHER], noGroupHttp: true });
+    try {
+      const old = await noticeSignIn(r), id = await directoryNoticeCommit(r, 1), reader = await noticeSignIn(r);
+      expect(reader.status).toBe(200); expect(reader.json.admin).toBe(false);
+      expect(reader.json.features).toContain("directory-security-notices-v1"); expect(reader.json.features).not.toContain("group-policy-v1");
+      expect(r.http.features).toContain("directory-security-notices-v1");
+      expect((await directoryBrowser(r.hub, undefined, undefined, NOTICE_PATH)).status).toBe(401);
+      expect((await directoryBrowser(r.hub, old.cookie, undefined, NOTICE_PATH)).status).toBe(401);
+      const admin = await noticeSignIn(r, ADMIN), other = await noticeSignIn(r, NOTICE_OTHER);
+      for (const browser of [admin, other]) {
+        expect((await directoryBrowser(r.hub, browser.cookie, undefined, NOTICE_PATH)).json.items).toEqual([]);
+        expect((await directoryBrowser(r.hub, browser.cookie, {}, `${NOTICE_PATH}/${id}/ack`, { headers: { "X-AgEnD-Hub-CSRF": browser.json.csrf } })).status).toBe(404);
+      }
+      const page = await directoryBrowser(r.hub, reader.cookie, undefined, NOTICE_PATH);
+      expect(page.status).toBe(200); expect(page.cache).toContain("no-store");
+      expect(page.json.items).toEqual([{ id, operationId: r.runtime.directoryDecision()!.inspect().operationId,
+        kind: "directory", phase: "applying", at: expect.any(Number), actor: { kind: "host-owner" }, changes: ["server", "secret"], acknowledged: false }]);
+      expect((await directoryBrowser(r.hub, reader.cookie, {}, `${NOTICE_PATH}/${id}/ack`)).status).toBe(403);
+      expect((await directoryBrowser(r.hub, reader.cookie, {}, `${NOTICE_PATH}/${id}/ack`, { headers: {
+        "X-AgEnD-Hub-CSRF": reader.json.csrf, Origin: "https://other.example.test" } })).status).toBe(403);
+      expect((await directoryBrowser(r.hub, reader.cookie, {}, `${NOTICE_PATH}/${id}/ack`, { headers: { "X-AgEnD-Hub-CSRF": reader.json.csrf } })).status).toBe(200);
+      expect((await directoryBrowser(r.hub, reader.cookie, undefined, `${NOTICE_PATH}?unread=1`)).json.items).toEqual([]);
+      await r.runtime.close(); r.build(); await r.runtime.apply(r.hub.config);
+      expect((await directoryBrowser(r.hub, reader.cookie, undefined, NOTICE_PATH)).json.items[0]).toMatchObject({ id, acknowledged: true });
+      const db = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+      try { expect(db.prepare("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='host'").get(id)).toEqual({ state: "queued" }); }
+      finally { db.close(); }
+    } finally { await r.runtime.close(); }
+  });
+  it("serves older pages and exact older ACK, while refusing malformed query, method and disabled eligibility", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    try {
+      const first = await directoryNoticeCommit(r, 1), second = await directoryNoticeCommit(r, 2), reader = await noticeSignIn(r);
+      const page = (await directoryBrowser(r.hub, reader.cookie, undefined, `${NOTICE_PATH}?limit=1`)).json;
+      expect(page.items.map((n: { id: string }) => n.id)).toEqual([second]); expect(page.nextBefore).toBe(second);
+      expect((await directoryBrowser(r.hub, reader.cookie, undefined, `${NOTICE_PATH}?before=${second}&limit=1`)).json.items[0].id).toBe(first);
+      expect((await directoryBrowser(r.hub, reader.cookie, {}, `${NOTICE_PATH}/${first}/ack`, { headers: { "X-AgEnD-Hub-CSRF": reader.json.csrf } })).status).toBe(200);
+      for (const query of ["limit=101", "limit=0", "limit=one", "limit=1&limit=2", "unread=yes", "before=invalid", "target=other"]) {
+        expect((await directoryBrowser(r.hub, reader.cookie, undefined, `${NOTICE_PATH}?${query}`)).status).toBe(400);
+      }
+      expect((await directoryBrowser(r.hub, reader.cookie, {}, NOTICE_PATH)).status).toBe(405);
+      expect((await directoryBrowser(r.hub, reader.cookie, undefined, `${NOTICE_PATH}/${first}/ack`)).status).toBe(405);
+      const eligibility = vi.spyOn(r.deps.directory, "checkEligibility").mockResolvedValue({ eligible: false, reason: "disabled" });
+      try { expect((await directoryBrowser(r.hub, reader.cookie, undefined, NOTICE_PATH)).status).toBe(401); }
+      finally { eligibility.mockRestore(); }
+    } finally { await r.runtime.close(); }
+  });
+  it("omits its mark and returns 404 with an older entry missing the notice adapter", async () => {
+    const r = await directoryRuntimeRig(undefined, { noDirectoryNotices: true });
+    try {
+      const browser = await noticeSignIn(r, ADMIN);
+      expect(browser.json.features).not.toContain("directory-security-notices-v1");
+      expect(r.http.features).not.toContain("directory-security-notices-v1");
+      expect((await directoryBrowser(r.hub, browser.cookie, undefined, NOTICE_PATH)).status).toBe(404);
+      expect((await directoryBrowser(r.hub, browser.cookie, {}, `${NOTICE_PATH}/${randomUUID()}/ack`, { headers: { "X-AgEnD-Hub-CSRF": browser.json.csrf } })).status).toBe(404);
+    } finally { await r.runtime.close(); }
+  });
+  it.each(["read", "ack"] as const)("rechecks the actual browser session after a held %s settles", async kind => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] }); let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { entered = resolve; });
+    let pending: ReturnType<typeof directoryBrowser> | undefined;
+    try {
+      const id = await directoryNoticeCommit(r, 1), reader = await noticeSignIn(r), notices = r.deps.directoryNotices!;
+      const originalRead = notices.forSession.bind(notices), originalAck = notices.acknowledgeSession.bind(notices);
+      const spy = kind === "read" ? vi.spyOn(notices, "forSession").mockImplementation(async (...args) => {
+        const page = await originalRead(...args); entered(); await held; return page;
+      }) : vi.spyOn(notices, "acknowledgeSession").mockImplementation(async (...args) => { await originalAck(...args); entered(); await held; });
+      try {
+        pending = directoryBrowser(r.hub, reader.cookie, kind === "ack" ? {} : undefined,
+          kind === "ack" ? `${NOTICE_PATH}/${id}/ack` : NOTICE_PATH, { headers: { "X-AgEnD-Hub-CSRF": reader.json.csrf } });
+        await ready;
+        expect((await directoryBrowser(r.hub, reader.cookie, undefined, "/hub/v1/session", { method: "DELETE", headers: { "X-AgEnD-Hub-CSRF": reader.json.csrf } })).status).toBe(200);
+        release(); expect((await pending).status).toBe(401); pending = undefined;
+        const db = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+        try { expect(db.prepare("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='person'").get(id))
+          .toEqual({ state: kind === "ack" ? "delivered" : "queued" }); }
+        finally { db.close(); }
+      } finally { release(); await pending?.catch(() => {}); spy.mockRestore(); }
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("answers unavailable when a real directory decision fences a held disclosure before its response", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] }); let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { entered = resolve; });
+    let pending: ReturnType<typeof directoryBrowser> | undefined;
+    try {
+      await directoryNoticeCommit(r, 1); const reader = await noticeSignIn(r), notices = r.deps.directoryNotices!, original = notices.forSession.bind(notices);
+      const spy = vi.spyOn(notices, "forSession").mockImplementation(async (...args) => { const page = await original(...args); entered(); await held; return page; });
+      try {
+        pending = directoryBrowser(r.hub, reader.cookie, undefined, NOTICE_PATH); await ready;
+        await directoryNoticeCommit(r, 2, false); release();
+        expect(await pending).toMatchObject({ status: 503, json: { code: "unavailable" } }); pending = undefined;
+      } finally { release(); await pending?.catch(() => {}); spy.mockRestore(); }
+    } finally { release(); await r.runtime.close(); }
+  });
+});
 
 describe.skipIf(process.platform === "win32")("directory browser facade belongs to its mounted generation", () => {
   it("releases only the committed successor once after remount; old cookies and held old sign-in remain revoked", async () => {

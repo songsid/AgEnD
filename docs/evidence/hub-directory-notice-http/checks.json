@@ -1,0 +1,21 @@
+{
+  "scope": "Real sealed Hub/runtime/shared writer/SQLite and CA-verified loopback HTTPS; dummy in-process directory, no browser/live/pilot/native operation.",
+  "focused": {
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-directory-notices.test.ts tests/hub-quick-pairing-http.test.ts tests/changelog-fragments.test.ts",
+    "passed": 167,
+    "failed": 0,
+    "skipped": 0
+  },
+  "restored": {
+    "command": "vitest run tests/hub-compose.test.ts -t \"directory security notices on real HTTPS\"",
+    "passed": 6,
+    "failed": 0,
+    "deliberatelyUnselected": 55
+  },
+  "types": {
+    "source": "tsc --noEmit: exit 0",
+    "tests": "tsc --noEmit -p tsconfig.test.json: exit 0"
+  },
+  "attribution": "After the 167-test run, test-only changes corrected the dummy missing-user reason to the valid disabled enum, exposed the fixture HTTP object, and added explicit mark and committed-ACK assertions. The final six HTTPS cases and both type programs passed; production source stayed unchanged.",
+  "cleanup": "All owned runtimes/listeners and read-only inspectors close; existing afterEach removes scratch homes. No external directory/account is contacted."
+}

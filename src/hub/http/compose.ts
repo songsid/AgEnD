@@ -141,7 +141,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
     const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
-      ...(deps.companyJoin ? ["company-join-v1"] : [])];
+      ...(deps.companyJoin ? ["company-join-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : [])];
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
@@ -184,6 +184,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (method === "DELETE") { csrf(); sessions.signOut(ctx.token); return send(res, 200, { signedIn: false }, { "Set-Cookie": hubClearCookie(deps.config.hubId) }); }
       throw new HttpError(405, "method");
+    }
+    if (deps.directoryNotices) {
+      const notices = deps.directoryNotices;
+      if (path === "/hub/v1/security-notices/directory") {
+        if (method !== "GET") throw new HttpError(405, "method");
+        signedIn();
+        for (const key of query.keys()) if (!["before", "limit", "unread"].includes(key) || query.getAll(key).length !== 1) throw new HubProtocolError("invalid");
+        if (query.has("unread") && !["0", "1"].includes(query.get("unread")!)) throw new HubProtocolError("invalid");
+        const page = await guard(() => notices.forSession(ctx, {
+          ...(query.has("before") ? { before: uuid(query.get("before")) } : {}),
+          ...(query.has("limit") ? { limit: int(query.get("limit")) } : {}),
+          ...(query.has("unread") ? { unread: query.get("unread") === "1" } : {}),
+        }));
+        if (!live()) throw new HubProtocolError("unavailable");
+        signedIn(); return send(res, 200, page);
+      }
+      if ((r = m(/^\/hub\/v1\/security-notices\/directory\/([^/]+)\/ack$/))) {
+        if (method !== "POST") throw new HttpError(405, "method");
+        csrf(); await guard(() => notices.acknowledgeSession(ctx, uuid(r![1])));
+        if (!live()) throw new HubProtocolError("unavailable");
+        signedIn(); return send(res, 200, { ok: true });
+      }
     }
     if (deps.pairingNotices && deps.groupHttp) {
       const notices = deps.pairingNotices;
@@ -509,7 +531,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+    handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : [])]),
     async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }
