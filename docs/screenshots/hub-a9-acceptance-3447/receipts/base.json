@@ -1,0 +1,1209 @@
+{
+  "head": "64dede5189d4d0b11c578c80d2f6d6d36a863ff7",
+  "browser": "156.0.8078.4",
+  "started": "2026-11-08T13:02:18.385Z",
+  "stories": [],
+  "screenshots": [
+    "A9-01-desk-signed-out",
+    "A9-02-desk-home-settled",
+    "A9-06-desk-default-off",
+    "A9-01-phone-signed-out",
+    "A9-02-phone-home-settled",
+    "A9-06-phone-default-off",
+    "A9-07-desk-policy-preview",
+    "A9-07-desk-policy-saved",
+    "A9-06-desk-enabled",
+    "A9-06-phone-enabled",
+    "A9-08-desk-fleet-start",
+    "A9-08-desk-hub-signin",
+    "A9-08-desk-connected",
+    "A9-08-desk-joined",
+    "A9-08-phone-fleet-start",
+    "A9-08-phone-hub-signin",
+    "A9-08-phone-connected",
+    "A9-08-phone-joined",
+    "A9-09-desk-outsider-refused",
+    "A9-09-phone-outsider-refused",
+    "A9-10-desk-first-use",
+    "A9-11-desk-identity-stopped",
+    "A9-11-phone-identity-stopped",
+    "A9-04-phone-drawer",
+    "A9-04-phone-session-menu",
+    "A9-02-desk-shared",
+    "A9-03-desk-notices",
+    "A9-02-desk-shared",
+    "A9-02-desk-notices",
+    "A9-12-desk-renamed",
+    "A9-12-phone-info",
+    "A9-12-desk-cleared",
+    "A9-12-phone-cleared",
+    "A9-13-desk-host-settings",
+    "A9-13-desk-preview-off",
+    "A9-13-desk-preview-refusal",
+    "A9-14-desk-stop-confirm",
+    "A9-14-desk-stop-refused",
+    "A9-14-phone-stop-confirm",
+    "A9-14-phone-stop-refused",
+    "A9-13-phone-preview-refusal",
+    "A9-16-desk-none",
+    "A9-16-phone-none",
+    "A9-16-desk-full",
+    "A9-16-phone-full",
+    "A9-16-desk-held",
+    "A9-16-desk-recovered",
+    "A9-04-phone-drawer-settled",
+    "A9-04-phone-drawer-closed",
+    "A9-02-desk-shared",
+    "A9-02-desk-notices",
+    "A9-02-desk-admin",
+    "A9-02-desk-chats",
+    "A9-02-phone-shared",
+    "A9-02-phone-notices",
+    "A9-02-phone-admin",
+    "A9-02-phone-chats",
+    "A9-05-desk-revoke-confirm",
+    "A9-05-phone-revoke-confirm",
+    "A9-05-phone-revoked",
+    "A9-05-desk-revoked",
+    "A9-16-desk-ask-only-policy",
+    "A9-16-desk-ask-only",
+    "A9-16-phone-ask-only",
+    "A9-18-desk-published-stale-hint",
+    "A9-18-phone-published-stale-hint",
+    "A9-18-desk-owner-grant",
+    "A9-18-raw-mock-wait",
+    "A9-18-desk-granted-answer",
+    "A9-18-phone-granted-answer",
+    "A9-18-desk-group-refused",
+    "A9-18-desk-admin-paused",
+    "A9-18-phone-admin-paused",
+    "A9-18-desk-resumed-answer",
+    "A9-18-phone-published-stale-hint-detail",
+    "A9-18-desk-grant-menu",
+    "A9-18-desk-grant-revoke-confirm",
+    "A9-18-desk-grant-revoked",
+    "A9-18-desk-held-answer-fenced",
+    "A9-01-desk-logged-out",
+    "A9-01-phone-logged-out"
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "commands": [
+    {
+      "n": 1,
+      "status": "PASS",
+      "value": {
+        "pages": [
+          {
+            "device": "desk",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "phone",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          }
+        ],
+        "policyUI": "saved",
+        "companyEnabledUI": true
+      }
+    },
+    {
+      "n": 2,
+      "status": "PASS",
+      "value": [
+        {
+          "device": "desk",
+          "submissions": 2,
+          "online": "online",
+          "hubText": "連接 Hub\n\n連接 驗收 Fleet desk\n\nFleet 位址: http://127.0.0.1:54780\n\nFleet 已連接。返回 Fleet 設定後，可自行選擇要分享的 Agent。\n\n返回 Fleet 設定",
+          "binding": true
+        },
+        {
+          "device": "phone",
+          "submissions": 2,
+          "online": "online",
+          "hubText": "連接 Hub\n\n連接 驗收 Fleet phone\n\nFleet 位址: http://127.0.0.1:54790\n\nFleet 已連接。返回 Fleet 設定後，可自行選擇要分享的 Agent。\n\n返回 Fleet 設定",
+          "binding": true
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "status": "PASS",
+      "value": {
+        "outsiders": [
+          {
+            "device": "desk",
+            "refused": true,
+            "binding": false,
+            "text": "連接 Hub\n\n連接 外部部門 Fleet desk\n\nFleet 位址: http://127.0.0.1:54800\n\n返回 Fleet 設定\n\n你的公司帳號沒有連接這個 Fleet 的權限，請洽 Hub 管理員。\n\n再試一次"
+          },
+          {
+            "device": "phone",
+            "refused": true,
+            "binding": false,
+            "text": "連接 Hub\n\n連接 外部部門 Fleet phone\n\nFleet 位址: http://127.0.0.1:54810\n\n返回 Fleet 設定\n\n你的公司帳號沒有連接這個 Fleet 的權限，請洽 Hub 管理員。\n\n再試一次"
+          }
+        ],
+        "firstTrustText": "設定\nv1.22.0\n設定精靈\n搜尋設定 —— token、語言、session…\n你自己\n偏好\n外觀\n整個 FLEET\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n已確認——套用中…\n連接 Hub\nConnect this Fleet to Hub https://dashboard.lan.example:46727 using your company account. Agent sharing stays separate.\n\n由你的帳號確認（這個瀏覽器已通過網頁驗證），也會通知 General。\n\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n等待本機授權確認…\n\nHub 位址或公司連結\n貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。\nFleet 名稱\n\n首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。\n\n以公司帳號登入\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
+        "dialogs": []
+      }
+    },
+    {
+      "n": 4,
+      "status": "PASS",
+      "value": {
+        "fleet": "設定\nv1.22.0\n設定精靈\n搜尋設定 —— token、語言、session…\n你自己\n偏好\n外觀\n整個 FLEET\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n請在 Hub 頁面完成公司帳號登入。\n以公司帳號登入\n取消連接\n開啟 Hub\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
+        "popup": "https://dashboard.lan.example:46727/ui/hub?join=ba2eb006-5100-45ae-ac13-6b5e3f96401c",
+        "buttons": [
+          {
+            "text": "",
+            "disabled": false
+          },
+          {
+            "text": "搜尋Ctrl K",
+            "disabled": false
+          },
+          {
+            "text": "新增 Agent",
+            "disabled": false
+          },
+          {
+            "text": "自訂",
+            "disabled": false
+          },
+          {
+            "text": "編輯",
+            "disabled": false
+          },
+          {
+            "text": "",
+            "disabled": false
+          },
+          {
+            "text": "狀態",
+            "disabled": false
+          },
+          {
+            "text": "清除",
+            "disabled": false
+          },
+          {
+            "text": "登入狀態Chrome on Linux",
+            "disabled": false
+          },
+          {
+            "text": "設定精靈",
+            "disabled": false
+          },
+          {
+            "text": "",
+            "disabled": false
+          },
+          {
+            "text": "取消連接",
+            "disabled": false
+          }
+        ]
+      }
+    },
+    {
+      "n": 5,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('h1') to be visible\u001b[22m\n\n    at eval (<anonymous>:8:58)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 6,
+      "status": "PASS",
+      "value": {
+        "changedIdentityRefused": true,
+        "requestCountUnchanged": true,
+        "binding": false,
+        "popup": "http://127.0.0.1:54820/settings/hub?joinWait=ab77a90c-8e96-4b5c-9c5e-e4a3a925fa5d"
+      }
+    },
+    {
+      "n": 7,
+      "status": "PASS",
+      "value": [
+        {
+          "device": "desk",
+          "nav": [
+            {
+              "text": "AgEnD Hub",
+              "href": "/ui/hub",
+              "height": 24
+            },
+            {
+              "text": "對話",
+              "href": "/ui/hub",
+              "height": 36
+            },
+            {
+              "text": "我分享的 Agent",
+              "href": "/ui/hub/exposures",
+              "height": 36
+            },
+            {
+              "text": "管理",
+              "href": "/ui/hub/admin",
+              "height": 36
+            },
+            {
+              "text": "通知",
+              "href": "/ui/hub?view=notices",
+              "height": 36
+            }
+          ],
+          "body": "對話\n\n歡迎，alice Company-join test Hub\n你想做什麼？"
+        },
+        {
+          "device": "phone",
+          "nav": [
+            {
+              "text": "AgEnD Hub",
+              "href": "/ui/hub",
+              "height": 24
+            },
+            {
+              "text": "對話",
+              "href": "/ui/hub",
+              "height": 36
+            },
+            {
+              "text": "我分享的 Agent",
+              "href": "/ui/hub/exposures",
+              "height": 36
+            },
+            {
+              "text": "管理",
+              "href": "/ui/hub/admin",
+              "height": 36
+            },
+            {
+              "text": "通知",
+              "href": "/ui/hub?view=notices",
+              "height": 36
+            }
+          ],
+          "body": "對話\n新對話\n對話\n\n還沒有對話\n\n歡迎，alice Company-join test Hub\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：0 / 8\n\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('carol').first() to be visible\u001b[22m\n\n    at eval (<anonymous>:7:150)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 9,
+      "status": "PASS",
+      "value": {
+        "url": "https://dashboard.lan.example:46727/ui/hub?view=notices",
+        "text": "通知\n\n有新的 Fleet 連接到這個 Hub 時，會在這裡通知你。如果你不認得它，請撤銷。\n\nFLEET 安全通知\n\n已連接新的 Fleet：驗收 Fleet phone\n\n由 Hub 群組規則核准。 2026年11月8日 晚上9:45\n\nFleet ID 48df6720-c7bf-4713-b17d-bbe63adf6bdb\n\n停止這個 Fleet 的 Hub 存取。你的其他 Fleet 和本機 Agent 工作不受影響。\n\n撤銷此 Fleet\n較早的通知 (1)",
+        "classes": [],
+        "titles": [
+          "通知"
+        ]
+      }
+    },
+    {
+      "n": 10,
+      "status": "ERROR",
+      "error": "SyntaxError: missing ) after argument list\n    at new Function (<anonymous>)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:26)"
+    },
+    {
+      "n": 11,
+      "status": "ERROR",
+      "error": "TypeError: Cannot read properties of undefined (reading 'value')\n    at eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:3:5915), <anonymous>:5:188)\n    at runNextTicks (node:internal/process/task_queues:64:5)\n    at process.processImmediate (node:internal/timers:452:9)\n    at process.callbackTrampoline (node:internal/async_hooks:130:17)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 12,
+      "status": "PASS",
+      "value": {
+        "url": "http://127.0.0.1:54830/settings/hub",
+        "names": [
+          {
+            "name": "agend_session_b8113247d4687b06",
+            "domain": "127.0.0.1",
+            "path": "/"
+          }
+        ],
+        "base": "http://127.0.0.1:54830"
+      }
+    },
+    {
+      "n": 13,
+      "status": "PASS",
+      "value": {
+        "positive": [
+          {
+            "action": "prepare",
+            "status": 400,
+            "code": "invalid"
+          },
+          {
+            "action": "test",
+            "status": 400,
+            "code": "invalid"
+          },
+          {
+            "action": "commit",
+            "status": 400,
+            "code": "invalid"
+          }
+        ],
+        "refused": [
+          {
+            "name": "non-host admin",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "non-host admin",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "non-host admin",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "guest",
+            "action": "prepare",
+            "status": 401,
+            "code": "guest_scope_empty"
+          },
+          {
+            "name": "guest",
+            "action": "test",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "guest",
+            "action": "commit",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "forwarded",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "forwarded",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "forwarded",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "public hostname",
+            "action": "prepare",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public hostname",
+            "action": "test",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public hostname",
+            "action": "commit",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "prepare",
+            "status": 401,
+            "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "test",
+            "status": 401,
+            "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "commit",
+            "status": 401,
+            "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+          }
+        ],
+        "remote": [
+          {
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          },
+          {
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          },
+          {
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          }
+        ],
+        "stateUnchanged": true,
+        "fixtureBoundary": "Real routes/D3 auth/TCP. Guest is fixture session, public link uses production bound gateway context on an owned forwarding listener; no tunnel process or external remote host."
+      }
+    },
+    {
+      "n": 14,
+      "status": "ERROR",
+      "error": "locator.waitFor: Error: strict mode violation: locator('.hub-company-join input') resolved to 2 elements:\n    1) <input role=\"switch\" type=\"checkbox\" class=\"s-ui-toggle\"/> aka getByRole('switch', { name: '允許以公司帳號連接 Fleet' })\n    2) <input autocomplete=\"off\"/> aka getByLabel('公司登入名稱')\n\nCall log:\n\u001b[2m  - waiting for locator('.hub-company-join input') to be visible\u001b[22m\n\n    at eval (<anonymous>:9:69)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 15,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('已儲存').first() to be visible\u001b[22m\n\n    at eval (<anonymous>:7:109)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 16,
+      "status": "PASS",
+      "value": {
+        "input": "",
+        "buttons": [
+          {
+            "text": "儲存名稱",
+            "disabled": true
+          }
+        ],
+        "text": "這個 Hub\n沒有名稱\n\n名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。\n\nHub 名稱\n最多 64 個字元。\n儲存名稱\nHub ID\n3f0d28a7-9485-4da5-8a48-09c17142fc6f\n成員金鑰指紋\n6e95 95ef 4b0a d0c8 e036 9e61 252f add1\n有人把 Fleet 配對到這個 Hub 時，會比對這組指紋。\n簽發金鑰\nad28e968d15cfbf1abc30963a62cf77abc9d348f805ae3d853bd86b04fc6aecb\nAgEnD 版本\n1.22.0\n安裝方式\n專用：這台電腦只執行 Hub\n在設定 Hub 時選定。",
+        "dialogs": []
+      }
+    },
+    {
+      "n": 17,
+      "status": "PASS",
+      "value": {
+        "clearPersisted": true,
+        "hostText": "設定\nv1.22.0\n設定精靈\n搜尋設定 —— token、語言、session…\n你自己\n偏好\n外觀\n整個 FLEET\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\nHub 位址或公司連結\n貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。\nFleet 名稱\n\n首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。\n\n以公司帳號登入\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。\n\n執行這個 Hub\n\n關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。\n\n這個 Hub 正在執行\nHub 紀錄保留期間\n\n請選擇 1 到 3650 天。縮短天數後，下次每日清理可能永久刪除較早的紀錄；延長天數無法還原已刪除的紀錄。\n\n提問與回答內容（天）\n事件紀錄（天）\n儲存保留期間\nHub 瀏覽器憑證\n\n這只會變更瀏覽器 HTTPS；成員配對及其傳輸憑證保持不變。\n\nSHA-256 指紋\nC4:C0:CB:D8:08:D3:4A:6E:ED:B0:36:63:38:9C:B4:4F:7E:69:00:E3:59:6E:3D:F1:B9:2F:75:3E:48:13:9A:3F\n到期時間\nNov 10 13:02:18 2026 GMT\n產生新的自簽憑證\n匯入憑證與私鑰\n準備替換憑證\n這個 Hub 的 HTML 預覽\n\n開啟後，Agent 在 Hub 對話中傳送的 HTML 頁面可以開成預覽。Hub 用另一個連接埠提供預覽，使用者的瀏覽器必須連得到這個連接埠。\n\n允許 HTML 預覽\n儲存預覽設定\n群組權限 實驗性\n\n讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet。在 Hub 上以管理員身分登入後設定。\n\n在 Hub 上開啟",
+        "port": 0
+      }
+    },
+    {
+      "n": 18,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('已儲存。Hub 會重新載入以套用。', { exact: true }) to be visible\u001b[22m\n\n    at eval (<anonymous>:5:360)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 19,
+      "status": "PASS",
+      "value": {
+        "card": "這個 Hub 的 HTML 預覽\n\n開啟後，Agent 在 Hub 對話中傳送的 HTML 頁面可以開成預覽。Hub 用另一個連接埠提供預覽，使用者的瀏覽器必須連得到這個連接埠。\n\n允許 HTML 預覽\n預覽連接埠\n1 到 65535，不能是 Hub 或這個 Fleet 自己使用的連接埠。\n儲存預覽設定\n\n無法儲存預覽設定。請重新整理後再試。",
+        "on": true,
+        "port": "37341",
+        "holds": []
+      }
+    },
+    {
+      "n": 20,
+      "status": "PASS",
+      "value": {
+        "status": 403,
+        "body": {
+          "error": "admin_confirmation_required"
+        }
+      }
+    },
+    {
+      "n": 21,
+      "status": "PASS",
+      "value": [
+        {
+          "device": "desk",
+          "status": 403,
+          "body": {
+            "error": "admin_confirmation_required"
+          },
+          "enabled": true,
+          "text": "執行這個 Hub\n\n關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。\n\n這個 Hub 正在執行\n\n無法儲存這項變更。請重新整理後再試。"
+        },
+        {
+          "device": "phone",
+          "status": 403,
+          "body": {
+            "error": "admin_confirmation_required"
+          },
+          "enabled": true,
+          "text": "執行這個 Hub\n\n關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。\n\n這個 Hub 正在執行\n\n無法儲存這項變更。請重新整理後再試。"
+        }
+      ]
+    },
+    {
+      "n": 22,
+      "status": "PASS",
+      "value": {
+        "hostOwnerPositive": {
+          "status": 200,
+          "body": {
+            "v": 1,
+            "initialized": true,
+            "incomplete": false,
+            "existingFleet": false
+          }
+        },
+        "phone": {
+          "status": 403,
+          "body": {
+            "error": "admin_confirmation_required"
+          }
+        },
+        "savedPreview": null
+      }
+    },
+    {
+      "n": 23,
+      "status": "PASS",
+      "value": {
+        "welcome": [
+          {
+            "kind": "none",
+            "device": "desk",
+            "text": "歡迎，dan\n你想做什麼？\n\n你的帳號可以登入，但還沒有允許任何動作。 請聯絡你的 Hub 管理員。\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n請聯絡你的 Hub 管理員。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n請聯絡你的 Hub 管理員。"
+          },
+          {
+            "kind": "none",
+            "device": "phone",
+            "text": "新對話\n對話\n\n歡迎，dan\n你想做什麼？\n\n你的帳號可以登入，但還沒有允許任何動作。 請聯絡你的 Hub 管理員。\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n請聯絡你的 Hub 管理員。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n請聯絡你的 Hub 管理員。"
+          },
+          {
+            "kind": "full",
+            "device": "desk",
+            "text": "歡迎，carol\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：2 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 使用中撤銷此 Fleet\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+          },
+          {
+            "kind": "full",
+            "device": "phone",
+            "text": "新對話\n對話\n\n還沒有對話\n\n歡迎，carol\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：2 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 使用中撤銷此 Fleet\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+          }
+        ],
+        "heldThenRetry": true
+      }
+    },
+    {
+      "n": 24,
+      "status": "PASS",
+      "value": {
+        "drawerOpenClose": true,
+        "pages": [
+          {
+            "device": "desk",
+            "name": "shared",
+            "titles": [
+              "我分享的 Agent"
+            ],
+            "noticeLead": 0
+          },
+          {
+            "device": "desk",
+            "name": "notices",
+            "titles": [
+              "通知"
+            ],
+            "noticeLead": 1
+          },
+          {
+            "device": "desk",
+            "name": "admin",
+            "titles": [
+              "管理"
+            ],
+            "noticeLead": 0
+          },
+          {
+            "device": "desk",
+            "name": "chats",
+            "titles": [
+              "對話"
+            ],
+            "noticeLead": 0
+          },
+          {
+            "device": "phone",
+            "name": "shared",
+            "titles": [
+              "我分享的 Agent"
+            ],
+            "noticeLead": 0
+          },
+          {
+            "device": "phone",
+            "name": "notices",
+            "titles": [
+              "通知"
+            ],
+            "noticeLead": 1
+          },
+          {
+            "device": "phone",
+            "name": "admin",
+            "titles": [
+              "管理"
+            ],
+            "noticeLead": 0
+          },
+          {
+            "device": "phone",
+            "name": "chats",
+            "titles": [
+              "對話"
+            ],
+            "noticeLead": 0
+          }
+        ]
+      }
+    },
+    {
+      "n": 25,
+      "status": "PASS",
+      "value": {
+        "dialog": "請確認\n\n要撤銷「驗收 Fleet phone」嗎？它會立即失去 Hub 存取。你的其他 Fleet 和本機 Agent 工作不受影響。\n\n取消\n撤銷此 Fleet",
+        "buttons": [
+          {
+            "text": "",
+            "attr": null
+          },
+          {
+            "text": "取消",
+            "attr": null
+          },
+          {
+            "text": "撤銷此 Fleet",
+            "attr": "yes"
+          }
+        ]
+      }
+    },
+    {
+      "n": 26,
+      "status": "PASS",
+      "value": {
+        "cancelKeptOnline": true,
+        "targetState": "revoked",
+        "otherState": "online",
+        "text": "歡迎，carol\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：1 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 已撤銷\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+      }
+    },
+    {
+      "n": 27,
+      "status": "PASS",
+      "value": {
+        "askOnly": [
+          {
+            "device": "desk",
+            "text": "歡迎，dan\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的存取權不包含連接 Fleet。"
+          },
+          {
+            "device": "phone",
+            "text": "新對話\n對話\n\n還沒有對話\n\n歡迎，dan\n你想做什麼？\n\n與 AGENT 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 FLEET\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的存取權不包含連接 Fleet。"
+          }
+        ]
+      }
+    },
+    {
+      "n": 28,
+      "status": "PASS",
+      "value": {
+        "exposures": "公開的 Agent\n\n每個 Agent 預設都不公開。公開後，Agent 會在自己的對話中回答 Hub 的提問，使用它自己的資料夾和設定允許的工具。需要核准的動作仍會交給你。\n\nGeneral 總管 general",
+        "controls": [
+          {
+            "checked": false,
+            "disabled": false,
+            "role": "switch"
+          }
+        ]
+      }
+    },
+    {
+      "n": 29,
+      "status": "PASS",
+      "value": {
+        "text": "公開的 Agent\n\n每個 Agent 預設都不公開。公開後，Agent 會在自己的對話中回答 Hub 的提問，使用它自己的資料夾和設定允許的工具。需要核准的動作仍會交給你。\n\nGeneral 總管 general\n已公開：Hub 的提問會送到這個 Agent 自己的對話。\n允許他人提問…\n\n已送出確認：請在 General 的聊天或設定中確認，才會公開。",
+        "link": "https://dashboard.lan.example:46727/ui/hub/exposures?agent=c6d45e32-8c26-4114-bdce-82beb70f05a4&grant=1"
+      }
+    },
+    {
+      "n": 30,
+      "status": "PASS",
+      "value": {
+        "shareText": "公開的 Agent\n\n每個 Agent 預設都不公開。公開後，Agent 會在自己的對話中回答 Hub 的提問，使用它自己的資料夾和設定允許的工具。需要核准的動作仍會交給你。\n\nGeneral 總管 general\n已公開：Hub 的提問會送到這個 Agent 自己的對話。\n允許他人提問…\n\n已送出確認：請在 General 的聊天或設定中確認，才會公開。",
+        "grantDialog": "允許提問 General 總管\n對方的登入名稱\n對方登入這個 Hub 用的帳號。\n期限\n1 天\n7 天\n30 天\n90 天\n取消\n允許",
+        "fields": [
+          {
+            "id": "",
+            "type": "text",
+            "placeholder": null
+          }
+        ]
+      }
+    },
+    {
+      "n": 31,
+      "status": "ERROR",
+      "error": "locator.fill: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('dialog[open] input[type=text]')\u001b[22m\n\n    at eval (<anonymous>:3:105)\n    at eval (<anonymous>:7:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 32,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 25000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('這是隔離模型的測試回答。', { exact: true }) to be visible\u001b[22m\n\n    at eval (<anonymous>:4:363)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 33,
+      "status": "PASS",
+      "value": {
+        "room": "G\nGeneral 總管\n代表 carol 回答\n可提問\ndan\n下午10:29\n⊘\n\n驗收部門權限與回答\n\n下午10:29\n結果未知：可能已回答，也可能沒有。\n問 General 總管\n你是以自己的身分提問。Agent 只看到你的 Hub 身分，不代表擁有者 Fleet 的任何授權。\n資訊\nG\nGeneral 總管\n代表 carol 回答\n訂閱額度\n可用狀態\n充足\n只分享概略的可用狀態。\n你的權限\n可以\n提問、看自己的紀錄\n期限\n2026年11月15日 還有 7 天\n誰看得到這段對話\n你\n這個聊天室的紀錄只有你看得到，而且只在權限有效期間。\ncarol\n你的問題會出現在 carol 的 fleet 聊天裡，標示你的 Hub 身分。\nGeneral 總管\n它和其他有權限的人共用同一段對話，可能記得別人問過的事。別放不想讓別人知道的內容。\nHub 管理員\n看不到內容。\n這裡沒有\n\nGeneral 總管 的檔案與變更、終端機畫面（View）、工具進度：只有 carol 在自己的 fleet 看得到。\n\n一個聊天室只有你和這個 Agent。",
+        "inputs": 1,
+        "reports": [
+          {
+            "ok": false,
+            "message": "Not delivered to the Hub asker: the question is no longer open (withdrawn, revoked, replaced, or the Hub is unreachable). The owner sees it in Needs you."
+          },
+          {
+            "ok": true,
+            "message": "Delivered to the Hub asker."
+          },
+          {
+            "ok": true,
+            "message": "Delivered to the Hub asker."
+          }
+        ],
+        "member": "online",
+        "deliveryMethodOverridden": "async(input)=>{if(!input.stillCurrent()||!(await input.beforeInput()))"
+      }
+    },
+    {
+      "n": 34,
+      "status": "PASS",
+      "value": {
+        "grantByUI": true,
+        "actualMockInputs": 2,
+        "latestRelease": {
+          "ok": true,
+          "message": "Delivered to the Hub asker."
+        },
+        "roomURL": "https://dashboard.lan.example:46727/ui/hub?room=7db1e7ea-8695-499d-8b50-8f1f53ede326"
+      }
+    },
+    {
+      "n": 35,
+      "status": "PASS",
+      "value": {
+        "negativeStatus": 403,
+        "restoredWithoutResumeStatus": 403,
+        "inputsUnchanged": true,
+        "paused": "已暫停\n\n先前由群組允許、目前暫停。確認仍然需要後再逐一恢復。\n\nFleet\n8a33b04e-61f7-4cf8-a700-81da2c16e278\ncarol\n恢復",
+        "buttons": [
+          "恢復"
+        ]
+      }
+    },
+    {
+      "n": 36,
+      "status": "PASS",
+      "value": {
+        "explicitResumeByUI": true,
+        "deliveredInputCount": 3,
+        "lastReport": {
+          "ok": true,
+          "message": "Delivered to the Hub asker."
+        }
+      }
+    },
+    {
+      "n": 37,
+      "status": "ERROR",
+      "error": "locator.waitFor: Error: strict mode violation: getByText('qa-asker', { exact: true }) resolved to 2 elements:\n    1) <strong>qa-asker</strong> aka getByRole('strong').filter({ hasText: 'qa-asker' })\n    2) <code>qa-asker</code> aka getByRole('code').filter({ hasText: 'qa-asker' })\n\nCall log:\n\u001b[2m  - waiting for getByText('qa-asker', { exact: true }) to be visible\u001b[22m\n\n    at eval (<anonymous>:4:152)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 38,
+      "status": "ERROR",
+      "error": "locator.waitFor: Error: strict mode violation: locator('strong').getByText('qa-asker', { exact: true }) resolved to 4 elements:\n    1) <strong>qa-asker</strong> aka locator('span').filter({ hasText: 'qa-askerqa-asker · 到 2026年11月' }).getByRole('strong')\n    2) <strong>qa-asker</strong> aka locator('span').filter({ hasText: 'qa-asker2026年11月8日 晚上10:37' }).getByRole('strong')\n    3) <strong>qa-asker</strong> aka locator('span').filter({ hasText: 'qa-asker2026年11月8日 晚上10:36' }).getByRole('strong')\n    4) <strong>qa-asker</strong> aka locator('span').filter({ hasText: 'qa-asker2026年11月8日 晚上10:32' }).getByRole('strong')\n\nCall log:\n\u001b[2m  - waiting for locator('strong').getByText('qa-asker', { exact: true }) to be visible\u001b[22m\n\n    at eval (<anonymous>:3:117)\n    at eval (<anonymous>:5:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-acceptance/scripts/manual/a9-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 39,
+      "status": "PASS",
+      "value": {
+        "candidates": [
+          {
+            "text": "qa-asker\nqa-asker · 到 2026年11月15日（還有 7 天）",
+            "parent": "hub-row-text",
+            "grand": "s-row hub-row",
+            "buttons": [
+              ""
+            ]
+          },
+          {
+            "text": "qa-asker\n2026年11月8日 晚上10:37",
+            "parent": "hub-row-text",
+            "grand": "s-row hub-row",
+            "buttons": []
+          },
+          {
+            "text": "qa-asker\n2026年11月8日 晚上10:36",
+            "parent": "hub-row-text",
+            "grand": "s-row hub-row",
+            "buttons": []
+          },
+          {
+            "text": "qa-asker\n2026年11月8日 晚上10:32",
+            "parent": "hub-row-text",
+            "grand": "s-row hub-row",
+            "buttons": []
+          }
+        ]
+      }
+    },
+    {
+      "n": 40,
+      "status": "PASS",
+      "value": {
+        "menus": [
+          "撤銷…"
+        ],
+        "buttons": [
+          {
+            "text": "",
+            "aria": "隱藏側邊欄"
+          },
+          {
+            "text": "搜尋Ctrl K",
+            "aria": null
+          },
+          {
+            "text": "新對話",
+            "aria": null
+          },
+          {
+            "text": "已登入carol",
+            "aria": "已登入"
+          },
+          {
+            "text": "允許提問…",
+            "aria": null
+          },
+          {
+            "text": "",
+            "aria": "dan 的更多動作"
+          },
+          {
+            "text": "",
+            "aria": "qa-asker 的更多動作"
+          },
+          {
+            "text": "撤銷…",
+            "aria": null
+          },
+          {
+            "text": "重新整理",
+            "aria": null
+          },
+          {
+            "text": "暫停…",
+            "aria": null
+          }
+        ]
+      }
+    },
+    {
+      "n": 41,
+      "status": "PASS",
+      "value": {
+        "dialog": "請確認\n\n要撤銷 qa-asker 的權限嗎？對方的對話會關閉。\n\n取消\n撤銷",
+        "buttons": [
+          {
+            "text": "",
+            "attr": null
+          },
+          {
+            "text": "取消",
+            "attr": null
+          },
+          {
+            "text": "撤銷",
+            "attr": "yes"
+          }
+        ]
+      }
+    },
+    {
+      "n": 42,
+      "status": "PASS",
+      "value": {
+        "revokeByUI": true,
+        "heldAnswerRefused": {
+          "ok": false,
+          "message": "Not delivered to the Hub asker: the question is no longer open (withdrawn, revoked, replaced, or the Hub is unreachable). The owner sees it in Needs you."
+        },
+        "protectedTextAbsent": true
+      }
+    },
+    {
+      "n": 43,
+      "status": "PASS",
+      "value": {
+        "logout": [
+          {
+            "device": "desk",
+            "signedOut": true
+          },
+          {
+            "device": "phone",
+            "signedOut": true
+          }
+        ],
+        "resources": {
+          "nodePid": 1595658,
+          "hubHome": "/tmp/agend-company-join-F8jO4a",
+          "fleetHomes": [
+            "/tmp/smoke-fx-ZaNKYL",
+            "/tmp/smoke-fx-hnmEAH",
+            "/tmp/smoke-fx-80YL9l",
+            "/tmp/smoke-fx-6hqytB",
+            "/tmp/smoke-fx-fLxusr",
+            "/tmp/smoke-fx-sE7jAQ"
+          ],
+          "origins": [
+            "https://dashboard.lan.example:46727",
+            "https://dashboard.lan.example:37301",
+            "http://127.0.0.1:35501",
+            "http://127.0.0.1:54780",
+            "http://127.0.0.1:54790",
+            "http://127.0.0.1:54800",
+            "http://127.0.0.1:54810",
+            "http://127.0.0.1:54820",
+            "http://127.0.0.1:54830"
+          ]
+        }
+      }
+    }
+  ],
+  "scope": "Actual sealed Hub/FleetManager/HubRuntime/settings writer/production LDAP over dummy TLS-BER peer. Real Chrome public web paths. No response stubs, live accounts/fleet/pilot/native/model requests.",
+  "security": {
+    "positive": [
+      {
+        "action": "prepare",
+        "status": 400,
+        "code": "invalid"
+      },
+      {
+        "action": "test",
+        "status": 400,
+        "code": "invalid"
+      },
+      {
+        "action": "commit",
+        "status": 400,
+        "code": "invalid"
+      }
+    ],
+    "refused": [
+      {
+        "name": "non-host admin",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "non-host admin",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "non-host admin",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "guest",
+        "action": "prepare",
+        "status": 401,
+        "code": "guest_scope_empty"
+      },
+      {
+        "name": "guest",
+        "action": "test",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "guest",
+        "action": "commit",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "forwarded",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "forwarded",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "forwarded",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "public hostname",
+        "action": "prepare",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public hostname",
+        "action": "test",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public hostname",
+        "action": "commit",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "prepare",
+        "status": 401,
+        "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "test",
+        "status": 401,
+        "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "commit",
+        "status": 401,
+        "code": "No session — open the dashboard link again (cookies must be enabled for this site)"
+      }
+    ],
+    "remote": [
+      {
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      },
+      {
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      },
+      {
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      }
+    ],
+    "stateUnchanged": true,
+    "fixtureBoundary": "Real routes/D3 auth/TCP. Guest is fixture session, public link uses production bound gateway context on an owned forwarding listener; no tunnel process or external remote host."
+  },
+  "ownedResources": {
+    "nodePid": 1595658,
+    "hubHome": "/tmp/agend-company-join-F8jO4a",
+    "fleetHomes": [
+      "/tmp/smoke-fx-ZaNKYL",
+      "/tmp/smoke-fx-hnmEAH",
+      "/tmp/smoke-fx-80YL9l",
+      "/tmp/smoke-fx-6hqytB",
+      "/tmp/smoke-fx-fLxusr",
+      "/tmp/smoke-fx-sE7jAQ"
+    ],
+    "origins": [
+      "https://dashboard.lan.example:46727",
+      "https://dashboard.lan.example:37301",
+      "http://127.0.0.1:35501",
+      "http://127.0.0.1:54780",
+      "http://127.0.0.1:54790",
+      "http://127.0.0.1:54800",
+      "http://127.0.0.1:54810",
+      "http://127.0.0.1:54820",
+      "http://127.0.0.1:54830"
+    ]
+  },
+  "cleanup": {
+    "at": "2026-11-08T14:45:45.086Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 1595658
+  }
+}

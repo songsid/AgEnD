@@ -1,0 +1,4 @@
+const a=globalThis.a9,p=a.revokePage;await p.locator('dialog[open]').getByRole('button',{name:'取消',exact:true}).click();a.check(a.members[1].fx.fm.hubMemberLink==='online','Cancel revoked the member');
+await a.revokeRow.getByRole('button',{name:'撤銷此 Fleet',exact:true}).click();await p.locator('dialog[open]').waitFor();await p.setViewportSize({width:390,height:844});await a.shot(p,'A9-05-phone-revoke-confirm');
+await p.locator('dialog[open] [data-confirm=yes]').click();await p.waitForFunction(()=>!document.querySelector('dialog[open]'));await p.getByText('已撤銷',{exact:false}).first().waitFor();
+await a.shot(p,'A9-05-phone-revoked');await p.setViewportSize({width:1366,height:900});await a.shot(p,'A9-05-desk-revoked');a.check(a.members[0].fx.fm.hubMemberLink==='online','Another member was revoked');return{cancelKeptOnline:true,targetState:a.members[1].fx.fm.hubMemberLink,otherState:a.members[0].fx.fm.hubMemberLink,text:await p.locator('.hub-home').innerText()};

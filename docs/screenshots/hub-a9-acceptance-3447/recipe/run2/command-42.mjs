@@ -1,0 +1,3 @@
+const a=globalThis.a9,p=a.owner.page;await p.locator('dialog[open] [data-confirm=yes]').click();await p.locator('dialog[open]').waitFor({state:'detached'});const held=a.heldMock;
+const result=await a.members[0].fx.fm.hubReport({correlationId:held.input.correlationId,caller:held.input.agent,text:'這段被撤銷後的暫存回答不得出現。',callerCurrent:held.callerCurrent});a.check(result?.ok===false,'Held answer was released after grant revoke');a.check(await a.asker.page.getByText('這段被撤銷後的暫存回答不得出現。',{exact:true}).count()===0,'Revoked answer appeared');await a.shot(p,'A9-18-desk-grant-revoked');await a.shot(a.asker.page,'A9-18-desk-held-answer-fenced');a.holdModelReply=false;
+return{revokeByUI:true,heldAnswerRefused:result,protectedTextAbsent:true};

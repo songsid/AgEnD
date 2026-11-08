@@ -1,0 +1,1 @@
+const a=globalThis.a9,p=a.asker.page;await a.shot(p,'A9-18-raw-mock-wait');return{room:await p.locator('main').last().innerText(),inputs:a.mockInputs.length,reports:a.mockReports,member:a.members[0].fx.fm.hubMemberLink,deliveryMethodOverridden:a.members[0].fx.fm.deliverHubQuestion.toString().slice(0,70)};

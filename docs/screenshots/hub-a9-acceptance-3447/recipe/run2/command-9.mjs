@@ -1,0 +1,1 @@
+const a=globalThis.a9,p=a.admins[0].p;await a.shot(p,'A9-03-desk-notices');return {url:p.url(),text:await p.locator('main').last().innerText(),classes:await p.locator('main section').evaluateAll(es=>es.map(e=>e.className)),titles:await p.locator('h1').allTextContents()};

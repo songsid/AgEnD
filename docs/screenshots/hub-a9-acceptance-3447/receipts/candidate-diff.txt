@@ -1,0 +1,8 @@
+ scripts/manual/smoke-fixture/index.mts             |   4 +-
+ .../manual/smoke/smoke-hub-host-switches-3451.mts  |  72 +++++++++++++
+ src/locale.ts                                      |   8 ++
+ src/settings-effect.ts                             |  19 ++++
+ src/ui/settings-hub-preview.js                     |   4 +-
+ src/ui/settings-hub-run.js                         |   2 +-
+ tests/hub-host-switches-gate-3451.test.ts          | 116 +++++++++++++++++++++
+ 7 files changed, 222 insertions(+), 3 deletions(-)

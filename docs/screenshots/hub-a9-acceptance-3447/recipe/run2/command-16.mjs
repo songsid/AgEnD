@@ -1,0 +1,1 @@
+const a=globalThis.a9,p=a.admins[0].p;return{input:await p.locator('#hubThisName').inputValue(),buttons:await p.locator('.hub-this-hub button').evaluateAll(es=>es.map(e=>({text:e.textContent,disabled:e.disabled}))),text:await p.locator('.hub-this-hub').innerText(),dialogs:await p.locator('dialog[open]').allTextContents()};

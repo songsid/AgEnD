@@ -1,0 +1,51 @@
+{
+  "nodeExited": true,
+  "ownedPidsRecorded": 107,
+  "liveOwnedPids": [],
+  "rootsRemoved": true,
+  "ports": [
+    {
+      "port": 46727,
+      "free": true
+    },
+    {
+      "port": 37301,
+      "free": true
+    },
+    {
+      "port": 35501,
+      "free": true
+    },
+    {
+      "port": 54780,
+      "free": true
+    },
+    {
+      "port": 54790,
+      "free": true
+    },
+    {
+      "port": 54800,
+      "free": true
+    },
+    {
+      "port": 54810,
+      "free": true
+    },
+    {
+      "port": 54820,
+      "free": true
+    },
+    {
+      "port": 54830,
+      "free": true
+    }
+  ],
+  "driver": {
+    "at": "2026-11-08T14:45:45.086Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 1595658
+  }
+}

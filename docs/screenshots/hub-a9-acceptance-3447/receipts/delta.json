@@ -1,0 +1,622 @@
+{
+  "head": "923ccf98bb70be7ebbb6c8ae639a0a1b15e07dd8",
+  "browser": "156.0.8078.4",
+  "started": "2026-11-08T15:33:38.678Z",
+  "stories": [],
+  "screenshots": [
+    "DELTA-A9-13-desk-preview-saved",
+    "DELTA-A9-14-desk-stop-confirm",
+    "DELTA-A9-14-desk-stopped",
+    "DELTA-A9-14-desk-restarted",
+    "DELTA-A9-13-desk-preview-off",
+    "DELTA-A9-13-phone-preview-saved",
+    "DELTA-A9-14-phone-stop-confirm",
+    "DELTA-A9-14-phone-stopped",
+    "DELTA-A9-14-phone-restarted",
+    "DELTA-A9-13-phone-preview-off",
+    "DELTA-shell-desk-welcome",
+    "DELTA-shell-desk-admin",
+    "DELTA-shell-desk-notices",
+    "DELTA-shell-phone-welcome",
+    "DELTA-shell-phone-admin",
+    "DELTA-shell-phone-notices"
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "commands": [
+    {
+      "n": 1,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('Hub 已啟動。', { exact: true }) to be visible\u001b[22m\n\n    at eval (<anonymous>:16:82)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-fixed/scripts/manual/a9-acceptance/driver.mts:63:20)"
+    },
+    {
+      "n": 2,
+      "status": "PASS",
+      "value": {
+        "cases": [
+          {
+            "device": "desk",
+            "hostMode": "web-only/no General",
+            "previewSavedAndReloaded": true,
+            "actualPreviewListenerOpened": true,
+            "cancelKeptRunning": true,
+            "stopPersistedAndListenerClosed": true,
+            "startPersistedAndListenerReopened": true,
+            "previewOffClosedPort": true
+          },
+          {
+            "device": "phone",
+            "hostMode": "web-only/no General",
+            "previewSavedAndReloaded": true,
+            "actualPreviewListenerOpened": true,
+            "cancelKeptRunning": true,
+            "stopPersistedAndListenerClosed": true,
+            "startPersistedAndListenerReopened": true,
+            "previewOffClosedPort": true
+          }
+        ],
+        "responses": [
+          {
+            "device": "desk",
+            "path": "/api/settings/hub/preview",
+            "status": 202
+          },
+          {
+            "device": "desk",
+            "path": "/api/settings/hub/run",
+            "status": 202
+          },
+          {
+            "device": "desk",
+            "path": "/api/settings/hub/run",
+            "status": 202
+          },
+          {
+            "device": "desk",
+            "path": "/api/settings/hub/preview",
+            "status": 202
+          },
+          {
+            "device": "phone",
+            "path": "/api/settings/hub/preview",
+            "status": 202
+          },
+          {
+            "device": "phone",
+            "path": "/api/settings/hub/run",
+            "status": 202
+          },
+          {
+            "device": "phone",
+            "path": "/api/settings/hub/run",
+            "status": 202
+          },
+          {
+            "device": "phone",
+            "path": "/api/settings/hub/preview",
+            "status": 202
+          }
+        ],
+        "hubIdentityRetained": true
+      }
+    },
+    {
+      "n": 3,
+      "status": "PASS",
+      "value": {
+        "positive": [
+          {
+            "action": "prepare",
+            "status": 400,
+            "code": "invalid"
+          },
+          {
+            "action": "test",
+            "status": 400,
+            "code": "invalid"
+          },
+          {
+            "action": "commit",
+            "status": 400,
+            "code": "invalid"
+          }
+        ],
+        "refused": [
+          {
+            "name": "non-host admin",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "non-host admin",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "non-host admin",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "guest",
+            "action": "prepare",
+            "status": 401,
+            "code": "guest_scope_empty"
+          },
+          {
+            "name": "guest",
+            "action": "test",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "guest",
+            "action": "commit",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "forwarded",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "forwarded",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "forwarded",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "tunnel",
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required"
+          },
+          {
+            "name": "public hostname",
+            "action": "prepare",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public hostname",
+            "action": "test",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public hostname",
+            "action": "commit",
+            "status": 403,
+            "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "prepare",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "test",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          },
+          {
+            "name": "public gateway context with host-cookie replay",
+            "action": "commit",
+            "status": 401,
+            "code": "Session expired or signed out — sign in again"
+          }
+        ],
+        "remote": [
+          {
+            "action": "prepare",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          },
+          {
+            "action": "test",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          },
+          {
+            "action": "commit",
+            "status": 403,
+            "code": "host_session_required",
+            "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+          }
+        ],
+        "stateUnchanged": true,
+        "fixtureBoundary": "Real routes/D3 auth/TCP. Guest is fixture session, public link uses production bound gateway context on an owned forwarding listener; no tunnel process or external remote host."
+      }
+    },
+    {
+      "n": 4,
+      "status": "ERROR",
+      "error": "TypeError: Cannot read properties of undefined (reading 'password')\n    at Object.hub (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-fixed/scripts/manual/a9-acceptance/driver.mts:37:145)\n    at async eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-fixed/scripts/manual/a9-acceptance/driver.mts:3:6046), <anonymous>:4:54)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a9-fixed/scripts/manual/a9-acceptance/driver.mts:63:20)"
+    },
+    {
+      "n": 5,
+      "status": "PASS",
+      "value": {
+        "shell": [
+          {
+            "device": "desk",
+            "page": "welcome",
+            "titles": [
+              "對話"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "desk",
+            "page": "admin",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "desk",
+            "page": "notices",
+            "titles": [
+              "通知"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "phone",
+            "page": "welcome",
+            "titles": [
+              "對話"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "phone",
+            "page": "admin",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "phone",
+            "page": "notices",
+            "titles": [
+              "通知"
+            ],
+            "overflow": false
+          }
+        ],
+        "resources": {
+          "nodePid": 1721424,
+          "hubHome": "/tmp/agend-company-join-7H4jZy",
+          "fleetHomes": [
+            "/tmp/smoke-fx-LFbYUQ"
+          ],
+          "origins": [
+            "https://dashboard.lan.example:41189",
+            "https://dashboard.lan.example:43557",
+            "http://127.0.0.1:45653",
+            "http://127.0.0.1:54780"
+          ]
+        }
+      }
+    }
+  ],
+  "scope": "Actual sealed Hub/FleetManager/HubRuntime/settings writer/production LDAP over dummy TLS-BER peer. Real Chrome public web paths. No response stubs, live accounts/fleet/pilot/native/model requests.",
+  "delta": {
+    "cases": [
+      {
+        "device": "desk",
+        "hostMode": "web-only/no General",
+        "previewSavedAndReloaded": true,
+        "actualPreviewListenerOpened": true,
+        "cancelKeptRunning": true,
+        "stopPersistedAndListenerClosed": true,
+        "startPersistedAndListenerReopened": true,
+        "previewOffClosedPort": true
+      },
+      {
+        "device": "phone",
+        "hostMode": "web-only/no General",
+        "previewSavedAndReloaded": true,
+        "actualPreviewListenerOpened": true,
+        "cancelKeptRunning": true,
+        "stopPersistedAndListenerClosed": true,
+        "startPersistedAndListenerReopened": true,
+        "previewOffClosedPort": true
+      }
+    ],
+    "responses": [
+      {
+        "device": "desk",
+        "path": "/api/settings/hub/preview",
+        "status": 202
+      },
+      {
+        "device": "desk",
+        "path": "/api/settings/hub/run",
+        "status": 202
+      },
+      {
+        "device": "desk",
+        "path": "/api/settings/hub/run",
+        "status": 202
+      },
+      {
+        "device": "desk",
+        "path": "/api/settings/hub/preview",
+        "status": 202
+      },
+      {
+        "device": "phone",
+        "path": "/api/settings/hub/preview",
+        "status": 202
+      },
+      {
+        "device": "phone",
+        "path": "/api/settings/hub/run",
+        "status": 202
+      },
+      {
+        "device": "phone",
+        "path": "/api/settings/hub/run",
+        "status": 202
+      },
+      {
+        "device": "phone",
+        "path": "/api/settings/hub/preview",
+        "status": 202
+      }
+    ],
+    "hubIdentityRetained": true
+  },
+  "security": {
+    "positive": [
+      {
+        "action": "prepare",
+        "status": 400,
+        "code": "invalid"
+      },
+      {
+        "action": "test",
+        "status": 400,
+        "code": "invalid"
+      },
+      {
+        "action": "commit",
+        "status": 400,
+        "code": "invalid"
+      }
+    ],
+    "refused": [
+      {
+        "name": "non-host admin",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "non-host admin",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "non-host admin",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "guest",
+        "action": "prepare",
+        "status": 401,
+        "code": "guest_scope_empty"
+      },
+      {
+        "name": "guest",
+        "action": "test",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "guest",
+        "action": "commit",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "forwarded",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "forwarded",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "forwarded",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "tunnel",
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required"
+      },
+      {
+        "name": "public hostname",
+        "action": "prepare",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public hostname",
+        "action": "test",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public hostname",
+        "action": "commit",
+        "status": 403,
+        "code": "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "prepare",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "test",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      },
+      {
+        "name": "public gateway context with host-cookie replay",
+        "action": "commit",
+        "status": 401,
+        "code": "Session expired or signed out — sign in again"
+      }
+    ],
+    "remote": [
+      {
+        "action": "prepare",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      },
+      {
+        "action": "test",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      },
+      {
+        "action": "commit",
+        "status": 403,
+        "code": "host_session_required",
+        "sourceKind": "actual assigned non-loopback local TCP source to owned loopback listener"
+      }
+    ],
+    "stateUnchanged": true,
+    "fixtureBoundary": "Real routes/D3 auth/TCP. Guest is fixture session, public link uses production bound gateway context on an owned forwarding listener; no tunnel process or external remote host."
+  },
+  "ownedResources": {
+    "nodePid": 1721424,
+    "hubHome": "/tmp/agend-company-join-7H4jZy",
+    "fleetHomes": [
+      "/tmp/smoke-fx-LFbYUQ"
+    ],
+    "origins": [
+      "https://dashboard.lan.example:41189",
+      "https://dashboard.lan.example:43557",
+      "http://127.0.0.1:45653",
+      "http://127.0.0.1:54780"
+    ]
+  },
+  "shell": [
+    {
+      "device": "desk",
+      "page": "welcome",
+      "titles": [
+        "對話"
+      ],
+      "overflow": false
+    },
+    {
+      "device": "desk",
+      "page": "admin",
+      "titles": [
+        "管理"
+      ],
+      "overflow": false
+    },
+    {
+      "device": "desk",
+      "page": "notices",
+      "titles": [
+        "通知"
+      ],
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "page": "welcome",
+      "titles": [
+        "對話"
+      ],
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "page": "admin",
+      "titles": [
+        "管理"
+      ],
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "page": "notices",
+      "titles": [
+        "通知"
+      ],
+      "overflow": false
+    }
+  ],
+  "cleanup": {
+    "at": "2026-11-08T15:40:22.439Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 1721424
+  }
+}

@@ -1,0 +1,577 @@
+{
+  "mode": "current",
+  "skew": false,
+  "source": "64dede5189d4d0b11c578c80d2f6d6d36a863ff7",
+  "browser": "156.0.8078.4",
+  "boundary": "Real sealed Hub HTTPS/WSS, production AD driver over recorded fake LDAPS (only connector redirects requested636 to owned ephemeral port, TLS verification unchanged), fleet web server/Settings confirmation/pairing API, empty pinned member inventory. No daemon/native/CLI/model/live account or tmux.",
+  "checks": [
+    {
+      "name": "current-desk-light-zh-TW one-time code",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW quick address label",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW code no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW fleet requested theme and language",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW local completion mark matches observable proof",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW local proof actually withheld",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW exact same fingerprint",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW compare names real fleet card",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW comparison no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW pinned credential persisted",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW initiator excluded",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW notice no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW expiry local proof still withheld",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW expired pending has no credential",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW expired failure copy settled",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW expired attempt remains unpaired and credential-free",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW expired confirmation no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW confirmed revoke dialog closed",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW admin address label",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW admin code no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW one-time code",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW quick address label",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW code no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW fleet requested theme and language",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW local completion mark matches observable proof",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW local proof actually withheld",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW exact same fingerprint",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW compare names real fleet card",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW comparison no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW pinned credential persisted",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW initiator excluded",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW connected no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW notice no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW expiry local proof still withheld",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW expired pending has no credential",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW expired failure copy settled",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW expired attempt remains unpaired and credential-free",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW expired confirmation no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW confirmed revoke dialog closed",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW admin address label",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW admin code no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "actual verified LDAPS membership controls",
+      "ok": true
+    },
+    {
+      "name": "directory requested DC636",
+      "ok": true
+    },
+    {
+      "name": "no browser errors",
+      "ok": true
+    },
+    {
+      "name": "no CSP violations",
+      "ok": true
+    },
+    {
+      "name": "no foreign browser requests",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "current-desk-light-zh-TW-code.png",
+    "current-desk-light-zh-TW-local-step.png",
+    "current-desk-light-zh-TW-fingerprint.png",
+    "current-desk-light-zh-TW-local-confirmation.png",
+    "current-desk-light-zh-TW-connected.png",
+    "current-desk-light-zh-TW-notice.png",
+    "current-desk-light-zh-TW-expired-confirmation.png",
+    "current-desk-light-zh-TW-admin-code.png",
+    "current-phone-dark-zh-TW-code.png",
+    "current-phone-dark-zh-TW-local-step.png",
+    "current-phone-dark-zh-TW-fingerprint.png",
+    "current-phone-dark-zh-TW-local-confirmation.png",
+    "current-phone-dark-zh-TW-connected.png",
+    "current-phone-dark-zh-TW-notice.png",
+    "current-phone-dark-zh-TW-expired-confirmation.png",
+    "current-phone-dark-zh-TW-admin-code.png"
+  ],
+  "errors": [],
+  "csp": [],
+  "foreign": [],
+  "api": [
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/5e25666e-2420-4c0a-ae13-de25e4097783/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/5e25666e-2420-4c0a-ae13-de25e4097783/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 410,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/fleets/17460b55-a91e-45e6-b413-df4bc9b38158/revoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/confirm",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/d2273aa5-d806-4aaf-bc78-47e2d81626e1/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/d2273aa5-d806-4aaf-bc78-47e2d81626e1/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices/events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/notices/d2273aa5-d806-4aaf-bc78-47e2d81626e1/ack",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/ui/notices/list",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/hub/v1/quick-pairing",
+      "status": 410,
+      "method": "GET"
+    },
+    {
+      "path": "/api/hub/member/pairing/connect",
+      "status": 202,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/fleets/5c511d3f-5b38-4e0b-a439-dffc413a5a49/revoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "path": "/hub/v1/notices",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "expiryBoundary": "Hub/member injected test clock advances past the unchanged 10-minute TTL; no browser/Settings fake clock and no natural-time claim. Sentinel #3395 separately proved natural expiry.",
+  "status": "PASS"
+}

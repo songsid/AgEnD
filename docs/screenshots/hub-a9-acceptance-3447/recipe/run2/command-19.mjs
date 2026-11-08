@@ -1,0 +1,1 @@
+const a=globalThis.a9,p=a.hostFleet.page;return{card:await p.locator('.hub-preview-settings').innerText(),on:await p.locator('#hubPreviewOn').isChecked(),port:await p.locator('#hubPreviewPort').inputValue(),saved:a.r.fm.getRawFleetConfig().hub.preview,holds:a.r.runtime.currentHolds()};

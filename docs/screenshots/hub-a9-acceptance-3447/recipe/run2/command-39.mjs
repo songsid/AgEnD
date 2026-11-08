@@ -1,0 +1,1 @@
+const a=globalThis.a9,p=a.owner.page;return{candidates:await p.locator('strong').filter({hasText:'qa-asker'}).evaluateAll(es=>es.map(e=>({text:e.parentElement.innerText,parent:e.parentElement.className,grand:e.parentElement.parentElement.className,buttons:[...e.parentElement.parentElement.querySelectorAll('button')].map(b=>b.textContent)})))};

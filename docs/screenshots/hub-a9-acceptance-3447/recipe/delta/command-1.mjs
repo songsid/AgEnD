@@ -1,0 +1,18 @@
+const a=globalThis.a9,{createServer,connect}=await import('node:net');
+async function probe(port){return new Promise(yes=>{const s=connect({host:'127.0.0.1',port});s.setTimeout(1000);s.once('connect',()=>{s.destroy();yes(true)});s.once('error',()=>yes(false));s.once('timeout',()=>{s.destroy();yes(false)})})}
+async function until(fn,label){const end=Date.now()+20000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,75))}throw Error(label)}
+a.delta=[];a.deltaResponses=[];a.probe=probe;a.until=until;
+for(const device of ['desk','phone']){
+ const f=await a.fleetPage(a.r.fm,a.r.fleetOrigin,device,device==='phone'?'dark':'light'),p=f.page;
+ p.on('response',r=>{if(new URL(r.url()).pathname.startsWith('/api/settings/hub/')&&r.request().method()==='PUT')a.deltaResponses.push({device,path:new URL(r.url()).pathname,status:r.status()})});
+ await p.locator('#hubRunOn').waitFor();const reserve=createServer();await new Promise(yes=>reserve.listen(0,'127.0.0.1',yes));const port=reserve.address().port;await new Promise(yes=>reserve.close(yes));
+ await p.locator('.hub-preview-settings').scrollIntoViewIfNeeded();await p.locator('#hubPreviewOn').click();await p.fill('#hubPreviewPort',String(port));await p.locator('.hub-preview-settings button[type=submit]').click();await p.getByText('已儲存。Hub 會重新載入以套用。',{exact:true}).waitFor();await until(()=>probe(port),'Preview listener did not open');
+ await a.shot(p,'DELTA-A9-13-'+device+'-preview-saved');a.check(a.r.fm.getRawFleetConfig().hub.web.preview_port===port,'Preview port missing on disk config');
+ await p.reload();await p.locator('#hubPreviewPort').waitFor();a.check(await p.locator('#hubPreviewPort').inputValue()===String(port),'Preview reload lost port');
+ await p.locator('.hub-run-settings').scrollIntoViewIfNeeded();await p.locator('#hubRunOn').click();await p.locator('dialog[open]').waitFor();await a.shot(p,'DELTA-A9-14-'+device+'-stop-confirm');await p.locator('dialog[open]').getByRole('button',{name:'取消',exact:true}).click();a.check(a.r.fm.getRawFleetConfig().hub.enabled===true,'Cancel stopped Hub');
+ await p.locator('#hubRunOn').click();await p.locator('dialog[open] [data-confirm=yes]').click();await p.getByText('Hub 已停止。',{exact:true}).waitFor();const hubPort=Number(new URL(a.r.webOrigin).port);await until(async()=>!(await probe(hubPort)),'Hub web listener remained open after Stop');a.check(a.r.fm.getRawFleetConfig().hub.enabled===false,'Stop not persisted');await a.shot(p,'DELTA-A9-14-'+device+'-stopped');
+ await p.locator('#hubRunOn').click();await p.getByText('Hub 已啟動。',{exact:true}).waitFor();await until(()=>probe(hubPort),'Hub web listener did not reopen');a.check(a.r.fm.getRawFleetConfig().hub.enabled===true,'Start not persisted');await a.shot(p,'DELTA-A9-14-'+device+'-restarted');
+ await p.reload();await p.locator('#hubPreviewOn').waitFor();await p.locator('#hubPreviewOn').click();await p.locator('.hub-preview-settings button[type=submit]').click();await p.getByText('已儲存。Hub 會重新載入以套用。',{exact:true}).waitFor();await until(async()=>!(await probe(port)),'Disabled preview port stayed open');await p.locator('.hub-preview-settings').scrollIntoViewIfNeeded();await a.shot(p,'DELTA-A9-13-'+device+'-preview-off');
+ a.delta.push({device,hostMode:'web-only/no General',previewSavedAndReloaded:true,actualPreviewListenerOpened:true,cancelKeptRunning:true,stopPersistedAndListenerClosed:true,startPersistedAndListenerReopened:true,previewOffClosedPort:true});
+}
+a.check(a.deltaResponses.every(x=>x.status!==403),'Confirmation route still403');return{delta:a.delta,responses:a.deltaResponses};

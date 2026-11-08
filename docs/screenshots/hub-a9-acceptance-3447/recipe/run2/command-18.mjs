@@ -1,0 +1,7 @@
+const a=globalThis.a9,p=a.hostFleet.page,{createServer,connect}=await import('node:net');
+const reserve=createServer();await new Promise(yes=>reserve.listen(0,'127.0.0.1',yes));const port=reserve.address().port;await new Promise(yes=>reserve.close(yes));a.previewPort=port;
+await p.locator('.hub-preview-settings').scrollIntoViewIfNeeded();await a.shot(p,'A9-13-desk-preview-off');await p.locator('#hubPreviewOn').click();await p.locator('#hubPreviewPort').waitFor();await p.fill('#hubPreviewPort',String(port));await p.locator('.hub-preview-settings button[type=submit]').click();await p.getByText('已儲存。Hub 會重新載入以套用。',{exact:true}).waitFor();
+await p.reload();await p.locator('#hubPreviewPort').waitFor();a.check(await p.locator('#hubPreviewOn').isChecked(),'Preview switch did not persist');a.check(await p.locator('#hubPreviewPort').inputValue()===String(port),'Preview port did not persist');await p.locator('.hub-preview-settings').scrollIntoViewIfNeeded();await a.shot(p,'A9-13-desk-preview-saved');
+const socket=connect({host:'127.0.0.1',port});await new Promise((yes,no)=>{socket.once('connect',yes);socket.once('error',no)});socket.destroy();
+a.hostPhone=await a.fleetPage(a.r.fm,a.r.fleetOrigin,'phone','dark');await a.hostPhone.page.locator('#hubPreviewPort').waitFor();await a.hostPhone.page.locator('.hub-preview-settings').scrollIntoViewIfNeeded();await a.shot(a.hostPhone.page,'A9-13-phone-preview-saved');
+return{previewEnabled:true,portPersisted:true,actualOwnedPortAcceptsTCP:true,hubReady:a.r.runtime.serverHealth(a.r.fm.getRawFleetConfig().hub)};

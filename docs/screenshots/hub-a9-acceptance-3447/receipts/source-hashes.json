@@ -1,0 +1,18 @@
+{
+  "64dede5189d4d0b11c578c80d2f6d6d36a863ff7": {
+    "src/hub/rooms.ts": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40",
+    "src/hub/http/compose.ts": "a1f12078d60300c2fbc27988cf8807b4cb04a58b988a0edd81cf1762fb6e338e",
+    "src/hub/join/client.ts": "b54e47cf56cf9b26262da15a739067c06ab01f249effc1445517a9a1a90b697c",
+    "src/ui/settings-hub-run.js": "2364c299797c916a472784db382ffacae23a501e4d591a04d03ee157ffeb22d0",
+    "src/ui/settings-hub-preview.js": "d353fea926564b78cac09de51fd28d3ad1e01e6cbdeeaff27ca283c0b760c4ba",
+    "src/settings-effect.ts": "9e40aa4c53dc71e2a5f88985b6ad3f84904dd162aec0766ddcfaf29f046a487d"
+  },
+  "923ccf98bb70be7ebbb6c8ae639a0a1b15e07dd8": {
+    "src/hub/rooms.ts": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40",
+    "src/hub/http/compose.ts": "a1f12078d60300c2fbc27988cf8807b4cb04a58b988a0edd81cf1762fb6e338e",
+    "src/hub/join/client.ts": "b54e47cf56cf9b26262da15a739067c06ab01f249effc1445517a9a1a90b697c",
+    "src/ui/settings-hub-run.js": "e2580c571941fb966eaa1ae4eb42a6674f5ecc4c773fb5028c9c1e4df8529beb",
+    "src/ui/settings-hub-preview.js": "1850171cb1ed3d1b62c95013f1857b165bf3c708c142d3262f6ce09d0950be69",
+    "src/settings-effect.ts": "d2d2870732da8a291e18104f7d5e87f09cc1bbf5e131a937b245783fc9c5bdab"
+  }
+}

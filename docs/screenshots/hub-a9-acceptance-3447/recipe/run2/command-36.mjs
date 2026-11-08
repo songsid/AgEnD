@@ -1,0 +1,4 @@
+const a=globalThis.a9,adm=a.admins[0].p;await adm.locator('.hub-groups-paused').getByRole('button',{name:'恢復',exact:true}).click();await adm.locator('.hub-groups-paused').waitFor({state:'detached'});const p=a.asker.page;
+await p.fill('#msgIn','管理員明確恢復後的提問');await p.locator('#sendBtn').click();await p.getByText('這是隔離模型的測試回答。',{exact:true}).nth(1).waitFor({timeout:25000});await a.shot(p,'A9-18-desk-resumed-answer');
+const mp=a.members[0].page;await mp.setViewportSize({width:390,height:844});await mp.getByText('已送出確認：請在 General 的聊天或設定中確認，才會公開。',{exact:true}).scrollIntoViewIfNeeded();await a.shot(mp,'A9-18-phone-published-stale-hint-detail');await mp.setViewportSize({width:1366,height:900});
+return{explicitResumeByUI:true,deliveredInputCount:a.mockInputs.length,lastReport:a.mockReports.at(-1)};

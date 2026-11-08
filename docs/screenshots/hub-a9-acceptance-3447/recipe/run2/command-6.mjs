@@ -1,0 +1,12 @@
+const a=globalThis.a9,m=a.first;
+await m.page.getByRole('button',{name:'取消連接',exact:true}).click();await m.page.getByText('已取消連接',{exact:false}).first().waitFor();
+const {generateKeyPairSync}=await import('node:crypto');const{signCompanyDescriptor}=await import(process.env.REPO+'/src/hub/join/descriptor.ts');
+const meta=(await a.r.call(null,'GET','/hub/v1/join/metadata')).body,key=generateKeyPairSync('ed25519');
+const descriptor=signCompanyDescriptor({...meta.hub,issuerPublicKey:key.publicKey.export({type:'spki',format:'pem'}).toString()},key.privateKey);
+const address=a.r.webOrigin+'/join-info#hub='+Buffer.from(JSON.stringify(descriptor)).toString('base64url');
+await m.page.locator('#hubCompanyAddress').waitFor();await m.page.fill('#hubCompanyAddress',address);await m.page.fill('#hubCompanyFleetName','身分已變更 Fleet');
+const before=a.r.db.prepare('SELECT COUNT(*) n FROM hub_company_join_requests').get().n;
+const popup=m.ctx.waitForEvent('page');await m.page.getByRole('button',{name:'以公司帳號登入',exact:true}).click();const hp=await popup;
+await m.page.getByText('Hub 的身分與先前不同',{exact:false}).waitFor();a.check(!a.currentBinding(m.fx.fm.dataDir),'Changed identity became connected');const after=a.r.db.prepare('SELECT COUNT(*) n FROM hub_company_join_requests').get().n;a.check(before===after,'Changed identity issued a Hub request');
+await a.shot(m.page,'A9-11-desk-identity-stopped');await m.page.setViewportSize({width:390,height:844});await a.shot(m.page,'A9-11-phone-identity-stopped');
+return{changedIdentityRefused:true,requestCountUnchanged:before===after,binding:false,popup:hp.isClosed()?'closed':hp.url()};

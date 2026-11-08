@@ -1,0 +1,31 @@
+{
+  "nodeExited": true,
+  "ownedPidsRecorded": 31,
+  "liveOwnedPids": [],
+  "rootsRemoved": true,
+  "ports": [
+    {
+      "port": 41189,
+      "free": true
+    },
+    {
+      "port": 43557,
+      "free": true
+    },
+    {
+      "port": 45653,
+      "free": true
+    },
+    {
+      "port": 54780,
+      "free": true
+    }
+  ],
+  "driver": {
+    "at": "2026-11-08T15:40:22.439Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 1721424
+  }
+}
