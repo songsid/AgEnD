@@ -4,7 +4,7 @@
  * host's one writer for sealed settings (settings-commit.ts). Two steps: prepare answers a redacted summary and an opaque
  * reference bound to this session and person; commit takes only that reference. Nothing else of hub.* is changed here.
  *
- *   GET  /hub/v1/admin/hub                → { name, hubId, memberSpkiSha256, issuerKeyId, version, rename }
+ *   GET  /hub/v1/admin/hub                → { name, hubId, memberSpkiSha256, issuerKeyId, version, coexistence, rename }
  *   POST /hub/v1/admin/hub/name/prepare   { name: string | null } → { ref, summary, expiresAt }
  *   POST /hub/v1/admin/hub/name/commit    { ref } → { ok, summary }   (the Hub then reloads with its new name)
  */
@@ -12,7 +12,9 @@ import { HubSettingsError, type HubSettingsWriter } from "./settings-commit.js";
 import type { HubActor } from "./types.js";
 
 export interface HubSettingsHttpDeps {
-  info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null }>;
+  info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null;
+    /** How this Hub was installed (hub.coexistence: a dedicated host, or beside a fleet); a setup-time choice, shown read-only. */
+    coexistence?: string | null }>;
   /** The name this Hub was mounted with ("" = none). */
   name: string;
   writer?: HubSettingsWriter;

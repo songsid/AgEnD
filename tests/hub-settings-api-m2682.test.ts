@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { HubSettingsError, type HubSettingsWriter } from "../src/hub/settings-commit.js";
 
-const INFO = { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "a".repeat(64), issuerKeyId: "k".repeat(16), version: "2.3.5-alpha.9" };
+const INFO = { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "a".repeat(64), issuerKeyId: "k".repeat(16), version: "2.3.5-alpha.9", coexistence: "dedicated" };
 let rig: any, rigOff: any, rigRead: any, admin: any, bo: any, seen: Array<[string, unknown]>, refuse: string | null;
 const writer: HubSettingsWriter = {
   prepare(op, actor) { seen.push(["prepare", { op, actor }]); if (refuse) throw new HubSettingsError(refuse as never); return { ref: "ref-1", summary: { field: "name", from: "Team Hub", to: op.name }, expiresAt: 1 }; },

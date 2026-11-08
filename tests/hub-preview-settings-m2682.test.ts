@@ -1,11 +1,11 @@
 /**
- * M-2682 part B: fleet Settings → Hub → HTML previews on this Hub (src/hub-preview-settings.ts) — the view, and the patch for
+ * M-2682 part B: fleet Settings → Hub → HTML previews on this Hub (src/hub-host-settings.ts) — the view, and the patch for
  * a requested state with its conflict checks: the Hub's own rule (as the mount applies it), this fleet's ports, a free bind,
  * and an unfinished sealed-settings commit.
  */
 import { createServer } from "node:net";
 import { describe, expect, it } from "vitest";
-import { hubPreviewPatch, hubPreviewSettingsView, portFree } from "../src/hub-preview-settings.js";
+import { hubPreviewPatch, hubPreviewSettingsView, portFree } from "../src/hub-host-settings.js";
 
 const raw = (hub: Record<string, unknown> = {}, top: Record<string, unknown> = {}) => ({ health_port: 19280, ...top, hub: {
   enabled: true, webOrigin: "https://hub.example.test:8444", memberOrigin: "https://hub.example.test:8443",

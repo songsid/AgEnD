@@ -32,7 +32,7 @@ const settingsMod = await import(REPO + "/src/hub/settings-commit.ts");
 const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
 const port = Number(process.env.HP ?? 48990), origin = `https://127.0.0.1:${port}`;
-const INFO = { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", issuerKeyId: "ed25519-7Qm2xLk9pV4sT8wR1nB6yH3jF5cD0aZe", version: "2.3.5-alpha.9" };
+const INFO = { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", issuerKeyId: "ed25519-7Qm2xLk9pV4sT8wR1nB6yH3jF5cD0aZe", version: "2.3.5-alpha.9", coexistence: "dedicated" };
 const rig = await s3bRig({ webOrigin: origin, hubSettings: { info: INFO, writer } });
 const keys = mkdtempSync(join(OUT, ".keys-")); chmodSync(keys, 0o700);
 await provisionHubIdentity({ home: keys, memberOrigin: origin });
@@ -70,7 +70,7 @@ try {
       await page.screenshot({ path: join(OUT, `${tag}-card.png`) });
       const zh = c.lang === "zh-TW";
       check(`${tag}:card`, m.input === "Team Hub" && m.text.includes(INFO.hubId) && m.text.includes("9f86 d081 884c 7d65") && m.text.includes(INFO.issuerKeyId)
-        && m.text.includes("2.3.5-alpha.9") && m.text.includes(zh ? "這個 Hub" : "This Hub") && m.text.includes(zh ? "移除名稱" : "Remove name")
+        && m.text.includes("2.3.5-alpha.9") && m.text.includes(zh ? "專用：這台電腦只執行 Hub" : "Dedicated: this computer runs only the Hub") && m.text.includes(zh ? "這個 Hub" : "This Hub") && m.text.includes(zh ? "移除名稱" : "Remove name")
         && m.over.length === 0 && m.pageX <= 0 && m.buttons[0][1] === true, m);
       // a long name: stays inside the card; Save enables
       await page.fill("#hubThisName", "Platform Reliability Engineering — Quarterly Architecture Reviews");

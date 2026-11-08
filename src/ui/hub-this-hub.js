@@ -1,6 +1,6 @@
 // M-2682: Hub Administration → This Hub, for the Hub's configured administrator. What this Hub is (read-only: its name, Hub ID,
 // the member key fingerprint members compare when they pair, the issuer key id and the AgEnD version) and its name, changed
-// or removed here instead of in the host's configuration (721ca0c3). The server reseals the Hub's settings with its own key
+// or removed here instead of in the host's configuration (721ca0c3). How it was installed (hub.coexistence) is shown, not edited. The server reseals the Hub's settings with its own key
 // and reloads the Hub with the new name; this card then reloads the page so the brand shows it. One click, no extra dialog:
 // a name is not a security decision. Its own lazy module with its own words, so an older tab or server simply leaves it out.
 // Shared components: card, field, btn, note, err, Skeleton.
@@ -18,6 +18,8 @@ register("hubThisHub", {
     saved: "Saved. The Hub is reloading with its new name.", removed: "Name removed. The Hub is reloading.",
     hubId: "Hub ID", memberKey: "Member key fingerprint", memberKeyHint: "People compare this when they pair a fleet with this Hub.",
     issuerKey: "Issuer key", version: "AgEnD version", unknown: "Unknown",
+    install: "Installed as", install_dedicated: "Dedicated: this computer runs only the Hub", "install_same-user-pilot": "Beside a fleet, under the same user",
+    installHint: "Chosen when the Hub was set up.",
     err_invalid: "Use 1 to 64 characters, without line breaks or control characters.",
     err_unchanged: "That is already this Hub's name.",
     err_stale: "The Hub's settings changed meanwhile. Check the name and save again.",
@@ -34,6 +36,8 @@ register("hubThisHub", {
     saved: "已儲存。Hub 正在以新名稱重新載入。", removed: "已移除名稱。Hub 正在重新載入。",
     hubId: "Hub ID", memberKey: "成員金鑰指紋", memberKeyHint: "有人把 Fleet 配對到這個 Hub 時，會比對這組指紋。",
     issuerKey: "簽發金鑰", version: "AgEnD 版本", unknown: "不明",
+    install: "安裝方式", install_dedicated: "專用：這台電腦只執行 Hub", "install_same-user-pilot": "與 Fleet 共用同一個使用者",
+    installHint: "在設定 Hub 時選定。",
     err_invalid: "請輸入 1 到 64 個字元，不能有換行或控制字元。",
     err_unchanged: "這已經是這個 Hub 的名稱。",
     err_stale: "Hub 的設定剛剛有變更。請確認名稱後再儲存一次。",
@@ -45,6 +49,7 @@ register("hubThisHub", {
   },
 });
 const ht = (k, ...a) => t(`hubThisHub.${k}`, ...a);
+const INSTALL = new Set(["dedicated", "same-user-pilot"]);
 const ERR = new Set(["invalid", "unchanged", "stale", "expired", "busy", "denied", "unavailable"]);
 const errText = (r) => ht(`err_${ERR.has(r.code) ? r.code : "failed"}`);
 
@@ -98,6 +103,7 @@ export function ThisHubCard() {
       <dt>${ht("memberKey")}</dt><dd><code class="hub-fp-groups" title=${info.memberSpkiSha256}>${compareGroups(info.memberSpkiSha256)}</code><small class="note">${ht("memberKeyHint")}</small></dd>
       <dt>${ht("issuerKey")}</dt><dd><code>${info.issuerKeyId}</code></dd>
       <dt>${ht("version")}</dt><dd>${info.version || ht("unknown")}</dd>
+      ${info.coexistence ? html`<dt>${ht("install")}</dt><dd>${INSTALL.has(info.coexistence) ? ht(`install_${info.coexistence}`) : html`<code>${info.coexistence}</code>`}<small class="note">${ht("installHint")}</small></dd>` : null}
     </dl>
   </section>`;
 }

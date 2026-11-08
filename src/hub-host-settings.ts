@@ -74,3 +74,22 @@ export async function hubPreviewPatch(rawConfig: unknown, body: unknown, opts: {
   if (current !== port && !(await (opts.free ?? portFree)(String(obj(hub.webListen).host), port))) return { refused: "port_in_use" };
   return { patch: { path: ["hub", "web", "preview_port"], value: port } };
 }
+
+/**
+ * M-2682 (leader, cid-hubname-ui): fleet Settings → Hub → "Run this Hub" — hub.enabled, host owner only. Not sealed (the
+ * initialization manifest's digest leaves `enabled` out), so the ordinary save; the runtime mounts or stops the Hub on it.
+ * Only an initialized Hub (hub.hubId set) can be switched on; while a sealed-settings commit is unfinished, it waits.
+ */
+export interface HubRunView { initialized: boolean; enabled: boolean }
+export function hubRunView(rawConfig: unknown): HubRunView {
+  const hub = obj(obj(rawConfig).hub);
+  return { initialized: typeof hub.hubId === "string" && hub.hubId !== "", enabled: hub.enabled === true };
+}
+export function hubRunPatch(rawConfig: unknown, body: unknown, opts: { busy?: () => boolean } = {}):
+  { patch: { path: string[]; value: boolean } } | { refused: "not_initialized" | "invalid" | "busy" } {
+  const b = obj(body);
+  if (typeof b.enabled !== "boolean") return { refused: "invalid" };
+  if (!hubRunView(rawConfig).initialized) return { refused: "not_initialized" };
+  if (opts.busy?.()) return { refused: "busy" };
+  return { patch: { path: ["hub", "enabled"], value: b.enabled } };
+}

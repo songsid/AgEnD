@@ -70,7 +70,7 @@ export interface HubHttpDeps {
   preview?: Readonly<HubPreviewView>;
   config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
   /** M-2682: Hub Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. */
-  hubSettings?: Readonly<{ info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null }>; writer?: HubSettingsWriter }>;
+  hubSettings?: Readonly<{ info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null; coexistence?: string | null }>; writer?: HubSettingsWriter }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
   transport(): Pick<HubServerTransport, "send"> | null;
@@ -365,7 +365,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         now,
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
         config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
-        hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null }),
+        hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null,
+          coexistence: typeof cfg.coexistence === "string" ? cfg.coexistence : null }),
           ...(options.settingsWriter ? { writer: options.settingsWriter } : {}) }),
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),

@@ -1,5 +1,5 @@
 import { officeInputPatch } from "./dashboard-permissions.js";
-import { hubPreviewPatch, hubPreviewSettingsView } from "./hub-preview-settings.js";
+import { hubPreviewPatch, hubPreviewSettingsView, hubRunPatch, hubRunView } from "./hub-host-settings.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
@@ -1011,6 +1011,37 @@ export function handleSettingsRequest(
     }
     if (path === "/api/settings/hub/browser-certificate" && method === "GET") {
       try { json(res, 200, { ok: true, certificate: control.read() }); } catch (err) { refused(err); }
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  // M-2682 (leader, cid-hubname-ui): "Run this Hub" — hub.enabled, not sealed: the ordinary save; the runtime mounts or stops the
+  // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); never over the public link.
+  if (path === "/api/settings/hub/run") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      json(res, 200, { ok: true, ...hubRunView(ctx.getRawFleetConfig()) }); return true;
+    }
+    if (method === "PUT") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 256).then(bytes => {
+        let body: unknown; try { body = JSON.parse(bytes.toString("utf8")); } catch { return json(res, 400, { ok: false, error: "invalid" }); }
+        const plan = hubRunPatch(ctx.getRawFleetConfig(), body, { busy: () => ctx.hubSettingsBusy?.() === true });
+        if ("refused" in plan) return json(res, plan.refused === "not_initialized" ? 404 : plan.refused === "busy" ? 409 : 400, { ok: false, error: plan.refused });
+        try {
+          execution.assert();
+          if (!settingsRequestLocalAdmin(req)) throw Error("unavailable");
+          settingsWrite(req, () => ctx.saveFleetConfig([plan.patch]));
+        } catch (err) {
+          ctx.logger.warn({ err }, "settings: Hub run switch save refused");
+          return json(res, 503, { ok: false, error: "unsaved" });
+        }
+        json(res, 200, { ok: true, ...hubRunView(ctx.getRawFleetConfig()) });
+      }).catch(() => json(res, 400, { ok: false, error: "invalid" }));
       return true;
     }
     json(res, 405, { error: "method_not_allowed" }); return true;
