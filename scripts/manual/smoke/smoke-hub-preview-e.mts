@@ -100,7 +100,7 @@ async function room(h: Awaited<ReturnType<typeof hub>>, a: Awaited<ReturnType<ty
   await a.page.fill("#hubLogin", "alex"); await a.page.fill("#hubPassword", "pw-alex");
   await a.page.click(".hub-signin button[type=submit]");
   await a.page.waitForSelector(".hub-home", { timeout: 10000 });
-  await a.page.click(c.device === "desk" ? ".sidebar .side-new" : ".hub-home .hub-new");
+  await a.page.click(c.device === "desk" ? ".sidebar .side-new" : ".hub-home .side-new");
   await a.page.waitForSelector(".hub-pick-row", { timeout: 10000 });
   await a.page.evaluate(`[...document.querySelectorAll(".hub-pick-row")].find((x) => x.querySelector(".t").textContent === ${JSON.stringify(agent)}).querySelector("button").click()`);
   await a.page.waitForSelector(".hub-chat-main", { timeout: 10000 });

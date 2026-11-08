@@ -17,7 +17,7 @@ register("hubQuick", {
     denied: "Connecting a fleet is not available to you. Contact your Hub admin.", conflict: "An administrator's pairing code is already waiting for you. Use that code, or ask the admin for help.",
     limit: "Your fleet or pairing limit is reached. Stop an unused attempt or revoke a fleet you no longer use, then try again.", retry: "Retry", failed: "This action could not finish. Retry.",
     notices: "Fleet security notices", notice: "A new fleet was connected: {0}", approved: "Approved by your Hub's group policy.",
-    revoke: "Revoke this fleet", revoked: "Revoked", revokeHint: "Stops this fleet's Hub access. Your other fleets and local agent work stay in place.",
+    revoke: "Revoke this fleet", revokeAsk: "Revoke {0}? It loses its Hub access at once. Your other fleets and local agent work stay in place.", revoked: "Revoked", revokeHint: "Stops this fleet's Hub access. Your other fleets and local agent work stay in place.",
     review: "Review and revoke on the Hub", previous: "Earlier notices", more: "Show older notices", fleetId: "Fleet ID", revokeFailed: "The fleet could not be revoked. Sign in again if your session ended, then retry.",
   },
   "zh-TW": {
@@ -35,8 +35,8 @@ register("hubQuick", {
     expired: "這次配對已過期或被取代，無法再連接 Fleet。請重新開始。", unavailable: "目前無法確認權限或連線。請重試；此頁無法確認配對是否已完成。",
     denied: "你目前無法連接 Fleet。請聯絡 Hub 管理員。", conflict: "管理員已為你建立配對代碼。請使用該代碼，或請管理員協助。",
     limit: "已達 Fleet 或配對數量上限。請停止未使用的配對，或撤銷不再使用的 Fleet，再重試。", retry: "重試", failed: "這次操作未能完成，請重試。",
-    notices: "Fleet 安全通知", notice: "已連接新的 Fleet：{0}", approved: "由 Hub 群組規則核准。", revoke: "撤銷此 Fleet", revoked: "已撤銷",
-    revokeHint: "停止這個 Fleet 的 Hub 存取。你的其他 Fleet 和當地 Agent 工作不受影響。", review: "在 Hub 查看並撤銷", previous: "較早的通知", more: "顯示更早的通知", fleetId: "Fleet ID",
+    notices: "Fleet 安全通知", notice: "已連接新的 Fleet：{0}", approved: "由 Hub 群組規則核准。", revoke: "撤銷此 Fleet", revokeAsk: "要撤銷「{0}」嗎？它會立即失去 Hub 存取。你的其他 Fleet 和本機 Agent 工作不受影響。", revoked: "已撤銷",
+    revokeHint: "停止這個 Fleet 的 Hub 存取。你的其他 Fleet 和本機 Agent 工作不受影響。", review: "在 Hub 查看並撤銷", previous: "較早的通知", more: "顯示更早的通知", fleetId: "Fleet ID",
     revokeFailed: "無法撤銷此 Fleet。如果登入已結束，請重新登入後再重試。",
   },
 });

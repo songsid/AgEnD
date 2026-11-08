@@ -95,29 +95,34 @@ const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConf
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
   const s = useSession();
-  useEffect(() => { linkHubCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
-  useEffect(() => { setTitle(hw(TITLES[tab])); }, [tab]);
+  useStore(navStore);                               // ?view= changes without a new route
+  const view = viewParam();
+  // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
+  useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
+  // The tab's title is the page's name, as the sidebar row and the panel header say it (Argon #17); a room names itself
+  // (HubRoomView) and Group permissions its own page (hub-group-policy.js).
+  const pageName = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : view === "notices" ? hc("noticesTitle") : hc("chats");
+  useEffect(() => { if (!(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam()]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
   // Signed out: the sign-in page alone (no panel header, no chat chrome).
   if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
-  const notices = s?.features?.includes("quick-pairing-v1") && hubClient().quickPairingV1 ? html`<${PairingNotices} admin=${!!s.admin} />` : null;
-  // On a page the notices stand in the page's own column (the cards' width and gutter at every breakpoint; an empty column
-  // is not drawn — hub.css).
-  const column = (inner) => html`<div class="col hub-owner hub-notices-col">${inner}</div>`;
-  // The sidebar's Notices row: the security notices as a page of their own (the same card, the panel's PageHead).
-  if (s && tab === "ask" && viewParam() === "notices" && notices) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
+  // The security notices are a page of their own — the sidebar's Notices row — and shown nowhere else (the leader on Argon
+  // #1/#5: no card pinned above every page, no badge; the user declined unread marks).
+  if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
-      ${column(html`<${PairingNotices} admin=${!!s.admin} empty=${html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />`)}</div></div>`;
+      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${hc("noticesLead")}</p>
+        <${PairingNotices} admin=${!!s.admin} empty=${html`<${Empty} icon="bell" title=${hc("noNotices")} />`} /></div></div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
-  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${notices}${body}</div></div>`;
-  // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
-  const pageTitle = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : hw(TITLES[tab]);
+  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
+  // #3226 C: My shared agents and Administration are Settings-like pages. The panel's header names the page once, its scope
+  // beside it ("Yours" / "This Hub"); the page itself opens with its lead — no second title repeating the first (Argon #7).
+  const scope = s && tab === "exposures" && !agentParam() ? ho("scopeYou") : s && tab === "admin" && s.admin && view !== "groups" ? ho("scopeHub") : null;
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
-    <${PanelHeader} title=${s ? pageTitle : hw(TITLES[tab])} />
-    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${s && notices ? column(notices) : notices}${body}</div>
+    <${PanelHeader} title=${pageName} sub=${scope ? html`<span class="s-scope">${scope}</span>` : null} />
+    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${body}</div>
   </div>`;
 }
 
@@ -318,12 +323,13 @@ export function HubSide({ onPick } = {}) {
   }, []);
   if (!s) return null;
   const tab = route && route.panel === "hub" ? route.tab : "ask";
-  const view = viewParam(), current = roomParam();
+  const view = viewParam();
   const here = (key) => key === "notices" ? tab === "ask" && view === "notices" : key === "ask" ? tab === "ask" && view !== "notices" : tab === key;
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
   const row = (key, href, icon, label) => html`<a class=${`side-row${here(key) ? " active" : ""}`} href=${href} aria-current=${here(key) ? "page" : undefined}
     onClick=${(e) => go(e, href)}><${Icon} name=${icon} /><span class="grow">${label}</span></a>`;
-  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  // On the chats' own home (no room open, no filter) the page already says "No chats yet": the list doesn't say it twice (Argon #19).
+  const home = tab === "ask" && view !== "notices" && !roomParam();
   return html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${row("ask", "/ui/hub", "chat", hc("chats"))}
       ${row("exposures", "/ui/hub/exposures", "globe", hc("mine"))}
@@ -333,13 +339,28 @@ export function HubSide({ onPick } = {}) {
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
       <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
     </nav>
-    <div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
+    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} />
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}`;
+}
+
+/**
+ * The conversation list, as the dashboard draws its roster (`view-roster inst-nav > side-section`, the section's label and
+ * count, one-line empty states) — the sidebar's (HubSide) and, on a phone, the chats' home page's (with its own New chat
+ * row and the filter always shown): one drawing, not two (Argon #9). `quietEmpty`: the page beside it already says "No chats yet".
+ */
+function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null }) {
+  const current = roomParam();
+  const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
+  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const always = !!onNew;                              // the home page's list: its filter is always there (when there's a list to filter)
+  return html`<div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
+      ${onNew ? html`<button type="button" class="side-row side-new" onClick=${onNew}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>` : null}
       <div class="inst-head"><h2 class="side-label">${hc("chats")}</h2>${rs.rooms.length ? html`<span class="count">${rs.rooms.length}</span>` : null}</div>
-      ${filtering || q ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filter} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
+      ${filtering || q || (always && rs.rooms.length) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
       ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
       ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
-      ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
+      ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length && !quietEmpty ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
       ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
       <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
         <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => go(e, roomPath(r.id))}>
@@ -347,7 +368,15 @@ export function HubSide({ onPick } = {}) {
           <span class="hub-room-text"><span class="t">${r.exposureName}</span><span class="s">${r.state === "closed" ? hc("tagClosed") : r.waiting ? hc("waiting") : r.ownerName ? hc("represents", r.ownerName) : ""}</span></span>
           <span class="hub-room-side"><span class="time">${listTime(r.lastAt)}</span>${r.waiting ? html`<span class="pulse" title=${hc("waiting")}></span>` : null}</span>
         </a></li>`)}</ul>
-    </div></div>
+    </div></div>`;
+}
+
+/** The phone's chats home: the same roster, with New chat at its head and the filter in place. */
+function HubHomeList() {
+  const rs = useRooms();
+  const [q, setQ] = useState(""), [filtering, setFiltering] = useState(false), [picking, setPicking] = useState(false);
+  const filter = useRef(null);
+  return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onNew=${() => setPicking(true)} />
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}`;
 }
 
@@ -363,11 +392,10 @@ export function HubFoot() {
   if (s === undefined) return html`${prefs}<div class="session"><${Skeleton} variant="inline" lines=${1} /></div>`;
   if (!s) return prefs;
   const out = async () => { setBusy(true); await hubClient().signOut(); setBusy(false); setSession(null); };
-  // Who is signed in heads the menu (the foot's row says "Signed in", as the dashboard's; its meta is not shown there).
+  // Who is signed in heads the menu — their name and sign-in name (the foot's row says "Signed in", as the dashboard's) — then
+  // Sign out. My shared agents and Administration are the sidebar's own rows, not repeated here (Argon #10).
   const items = [
-    { key: "who", label: s.displayName, icon: "user", disabled: true },
-    { key: "mine", label: hc("mine"), icon: "globe", onSelect: () => navigate("/ui/hub/exposures") },
-    s.admin ? { key: "admin", label: hc("admin"), icon: "key", onSelect: () => navigate("/ui/hub/admin") } : null,
+    { key: "who", label: s.login && s.login !== s.displayName ? `${s.displayName} (${s.login})` : s.displayName, icon: "user", disabled: true },
     { key: "out", label: hc("signOut"), icon: "back", onSelect: out, disabled: busy },
   ];
   return html`${prefs}<div class="session hub-session-row"><${Menu} items=${items} label=${hc("signedIn")} cls="hub-session-menu" triggerClass="side-row"
@@ -422,7 +450,7 @@ function HubChats() {
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
-    <div class="hub-home-list"><${HubNav} /></div>
+    <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true) }} /></div>`
       : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} />`
@@ -715,7 +743,8 @@ function HubMine() {
   // Keyed by the agent: another ?agent= is another page (its reads, its dialog), and a late answer for the previous one
   // lands nowhere (useRead's own liveness ends with that page).
   if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
-  return html`<div class="col hub-owner"><${PageHead} title=${hc("mine")} scope=${ho("scopeYou")} lead=${ho("mineLead")} />
+  // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
+  return html`<div class="col hub-owner"><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
@@ -836,7 +865,8 @@ function HubAdminPage({ groups = false } = {}) {
   useEffect(() => { linkHubChatCss(); linkHubOwnerCss(); }, []);
   const create = async (e) => {
     e.preventDefault();
-    if (!login.trim()) return;
+    // The button is always ready (a disabled one reads as grey, "broken" — Argon #16): an empty field just takes the focus.
+    if (!login.trim()) { (typeof document !== "undefined" ? document.getElementById("hubOwnerLogin") : null)?.focus(); return; }
     setMsg(null);
     const r = await hubClient().createPairing(login.trim());
     if (!r.ok) { setMsg(errText(r)); return; }
@@ -856,11 +886,12 @@ function HubAdminPage({ groups = false } = {}) {
     if (!r.ok) setMsg(errText(r));
     reload();
   };
-  if (!view || (view.error && !view.fleets)) return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
+  const lead = html`<p class="s-page-lead hub-page-lead">${ho("adminLead")}</p>`;
+  if (!view || (view.error && !view.fleets)) return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">${view?.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />`
       : html`<section class="card"><h3>${ho("pairSteps")}</h3><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section>`}</div></div>`;
   const fleets = view.fleets || [], pairings = view.pairings || [];
-  return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
+  return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">
       ${groups ? html`<${GroupPermissionsEntry} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
@@ -868,8 +899,8 @@ function HubAdminPage({ groups = false } = {}) {
       <section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
-            <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
-              <button type="submit" class="btn btn-sm" disabled=${!login.trim()}>${ho("makeCode")}</button></form>
+            <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
+              <button type="submit" class="btn btn-sm btn-primary">${ho("makeCode")}</button></form>
             ${offer ? html`<div class="hub-offer" role="status"><small class="note">${ho("codeFor", offer.login)}</small><code class="hub-code">${offer.code}</code><small class="note">${hw("expires", when(offer.expiresAt))}</small>
               ${offer.memberOrigin ? html`<div class="field"><span>${ho("memberAddress")}</span><span class="hub-origin"><code>${offer.memberOrigin}</code></span><small class="note">${ho("memberAddressHint")}</small></div>
                 <button type="button" class="btn btn-sm" onClick=${async () => { const ok = await copyText(`${ho("memberAddress")}: ${offer.memberOrigin}\n${ho("codeFor", offer.login)}: ${offer.code}\n${hw("expires", when(offer.expiresAt))}`); toast(ho(ok ? "handoffCopied" : "handoffCopyFailed"), !ok); }}><${Icon} name="copy" size=${14} />${ho("copyHandoff")}</button>`

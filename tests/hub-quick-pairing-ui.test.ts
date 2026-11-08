@@ -175,7 +175,7 @@ describe("security notices and exact owner narrowing", () => {
     expect(button(p,"Show older notices")).toBeUndefined();
     expect(c.acknowledgePairingNotice).toHaveBeenCalledWith("history-200");
   });
-  it("renders an untrusted label as text and revokes only the displayed fleet/generation in one click", async () => {
+  it("renders an untrusted label as text and revokes only the displayed fleet/generation once confirmed", async () => {
     const c = fake(), p = await mount(c, ui.PairingNotices, {});
     expect(txt(p)).toContain(notice.label); expect(p.root.querySelector("img")).toBe(null);
     expect(c.acknowledgePairingNotice).toHaveBeenCalledExactlyOnceWith(ID);
@@ -192,5 +192,17 @@ describe("security notices and exact owner narrowing", () => {
     const c = fake(), done = vi.fn(), p = await mount(c, ui.OwnedFleetRevoke, { fleet: { id: FLEET, generation: 7, status: "suspended" }, onRevoked: done });
     fire(button(p, "Revoke this fleet"), "click"); await settle(20);
     expect(c.revokeOwnFleet).toHaveBeenCalledExactlyOnceWith(FLEET, 7); expect(done).toHaveBeenCalledOnce();
+  });
+  it("Argon #4 (the leader's ruling): the owner's own-fleet Revoke asks first — No revokes nothing, Yes revokes once", async () => {
+    const c = fake(), done = vi.fn();
+    const p = await mount(c, ui.OwnedFleetRevoke, { fleet: { id: FLEET, generation: 7, status: "active", label: "Olivia's laptop" }, onRevoked: done });
+    // The harness answers confirmDialog through the page's confirm (tests/helpers/app-harness.ts): stand in for the person.
+    const asked: string[] = []; let yes = false;
+    vi.stubGlobal("confirm", (m: string) => { asked.push(m); return yes; });
+    fire(button(p, "Revoke this fleet"), "click"); await settle(20);
+    expect([asked.length, asked[0]?.includes("Olivia's laptop"), c.revokeOwnFleet.mock.calls.length, done.mock.calls.length]).toEqual([1, true, 0, 0]);
+    yes = true;
+    fire(button(p, "Revoke this fleet"), "click"); await settle(20);
+    expect([asked.length, c.revokeOwnFleet.mock.calls, done.mock.calls.length]).toEqual([2, [[FLEET, 7]], 1]);
   });
 });
