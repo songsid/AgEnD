@@ -14,6 +14,7 @@ Its notice crosses the real negotiated WSS link into the first member's SQLite i
 | `before/` | Previous UI modules on current backend; eight desktop/phone × light/dark × EN/zh-TW cases | 21 | 8 |
 | `current/` | Full pairing journey, same fingerprint, saved pin, ready connection, refreshed own-fleet row, other-session/admin notices, one-click exact revoke; eight cases | 70 | 41 |
 | `notices/` | Additional connected-fleet retention/ACK and review link; desktop light EN and phone dark zh-TW | 30 | 15 |
+| `aligned/` | Repeat the notice/browser journey after plain-merging #3397 @92e9f08ca; source `43e3bd547c7c1f33ebf51a4afa23b5bd5f92ec1a` | 30 | 15 |
 | `skew/` | Cached pre-S90 CSS and app shell; desktop light EN and phone dark zh-TW, plus an old Hub client that hides quick actions | 22 | 11 |
 
 Every run checks browser errors, CSP violations and foreign requests (all zero), plus verified LDAPS controls and horizontal overflow. CJK capture uses Noto Sans CJK TC. Images include short-lived codes and credentials only from dummy fixtures; all listeners, browsers and scratch state are removed afterward.
@@ -41,7 +42,7 @@ Use `scripts/manual/hub-quick-pairing/accept.mts` with `REPO`, `OUT`, `PW_DIR`, 
 Default `MATRIX=full`; `MODE=before`, `EXTRA_NOTICES=1 MATRIX=quick` and `SKEW=1 MATRIX=quick` select the other rows.
 The script refuses foreign browser requests and uses private homes and inert CLI stubs.
 
-Focused validation: 335/335 tests across 23 suites, zero skips; both production and test typechecks; changelog guard and scoped diff check.
+Focused validation: 335/335 tests before the final dependency sync; 338/338 across the same 23 suites after it, zero skips; both production and test typechecks; changelog guard and scoped diff check.
 Fail-first validation recorded ten executed test failures before implementation. `scripts/manual/hub-quick-pairing/mutations.py` caught 12/12 mutations through executed failed assertions: group-only admission, quota boundary, admin headroom, one offer, fingerprint, admin wait, authoritative denial, required notice transaction, exact owner revoke, session privacy, retain-before-ACK and capability guard.
 Local JSON/log receipts stay uncommitted; the evidence committed here is PNGs.
 
