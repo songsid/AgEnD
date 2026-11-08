@@ -84,6 +84,21 @@ export class WebNotices {
     return notice;
   }
 
+  /**
+   * #3373 review P2: a notice that must be on disk before anything acts on it (a web-only fleet's restart trace). Kept and
+   * returned only when it was written; otherwise it is not kept at all (null) — never a trace that a restart forgets.
+   */
+  addDurable(input: { kind: NoticeKind; text: string; instance?: string }): WebNotice | null {
+    const before = { items: [...this.items], next: this.next };
+    const notice: WebNotice = Object.freeze({ id: this.next++, at: this.now(), kind: input.kind, text: input.text.slice(0, NOTICE_TEXT_MAX),
+      ...(input.instance ? { instance: input.instance } : {}) });
+    this.items.push(notice);
+    if (this.items.length > NOTICES_MAX) this.items.splice(0, this.items.length - NOTICES_MAX);
+    if (this.flush()) return notice;
+    this.items = before.items; this.next = before.next;
+    return null;
+  }
+
   /** The newest notice of a kind, if one is kept (e.g. not to repeat the same update notice every day). */
   latest(kind: NoticeKind): WebNotice | null {
     for (let i = this.items.length - 1; i >= 0; i--) if (this.items[i]!.kind === kind) return this.items[i]!;
@@ -111,13 +126,15 @@ export class WebNotices {
     return { items: [...this.items].reverse(), seen: this.seen, unread: this.unread() };
   }
 
-  private flush(): void {
+  private flush(): boolean {
     try {
       atomicWriteFileSync(this.path, JSON.stringify({ v: 1, next: this.next, seen: this.seen, items: this.items }) + "\n", { mode: 0o600 });
       this.warned = false;
+      return true;
     } catch (err) {
       if (!this.warned) this.log.warn({ err: (err as Error).message, path: this.path }, "Web notices could not be saved; a restart forgets the newest");
       this.warned = true;
+      return false;
     }
   }
 }

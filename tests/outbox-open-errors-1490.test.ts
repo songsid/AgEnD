@@ -58,7 +58,7 @@ describe("durable outbox boot failures preserve evidence and explain recovery", 
     expect(files.map(hash)).toEqual(before); expect(readdirSync(f.root)).toEqual(["delivery-outbox.db"]);
     expect(f.log).toHaveBeenCalledWith(expect.objectContaining({ kind: "corrupt", dbPath: f.path }), failure.message);
   });
-  it.each([["SQLITE_BUSY", "busy", "transaction finish"], ["ERR_DLOPEN_FAILED", "abi", "agend update --force"], ["EACCES", "other", "permissions"]])("%s gives its own recovery and preserves the native cause", (code, kind, hint) => {
+  it.each([["SQLITE_BUSY", "busy", "transaction finish"], ["ERR_DLOPEN_FAILED", "abi", "Driver repair is not available here; replacing the database will not fix it."], ["EACCES", "other", "permissions"]])("%s gives its own recovery and preserves the native cause", (code, kind, hint) => {
     const f = fixture(); writeFileSync(f.path, "existing evidence");
     writeFileSync(`${f.path}-wal`, "journal evidence"); writeFileSync(`${f.path}-shm`, "shared memory evidence");
     const paths = [f.path, `${f.path}-wal`, `${f.path}-shm`], before = paths.map(hash);
@@ -107,7 +107,7 @@ describe("durable outbox boot failures preserve evidence and explain recovery", 
   });
   it("the diagnostic and recovery instructions exist in both locales", () => {
     setLocale("zh-TW"); const error = new OutboxOpenError("/fixture/outbox", coded("ERR_DLOPEN_FAILED"));
-    expect(error.message).toContain("/fixture/outbox"); expect(error.message).toContain("agend update --force"); expect(error.message).toContain("請勿刪除或重設");
+    expect(error.message).toContain("/fixture/outbox"); expect(error.message).toContain("這裡無法修復驅動；替換資料庫也無法解決。"); expect(error.message).toContain("請勿刪除或重設");
     expect(error.message).not.toContain("delivery.outbox_");
   });
 });

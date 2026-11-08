@@ -819,9 +819,9 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing. Restart now is a separate button when a Settings job exists. This muted hint is the no-job case
- * only (a hand edit of fleet.yaml): chat fleets send /restart in General; web-only fleets are told to restart AgEnD,
- * with no command. web-claude will add a button for that case separately.
+ * offers nothing. S-92 (#3326 D1): Restart now whenever the page can restart — with no Settings job behind it (a hand
+ * edit) too: the server makes the job (`restartRunner(null)`). The muted hint (#3363's words: chat fleets send /restart in
+ * General, web-only fleets are told to restart AgEnD, no command) is for a page that cannot restart.
  */
 function RestartLine() {
   const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
@@ -833,13 +833,13 @@ function RestartLine() {
   if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
-  const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  const canRestart = typeof restartRunner === "function";
   // connections === 0 is web-only; null is unknown — do not name General.
-  const hint = !pending.jobId
-    ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost")
-    : null;
+  const hint = !canRestart ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost") : null;
   const restart = async () => {
-    if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
+    // S-92: on a fleet with no chat connection the restart is announced in the dashboard's Notices, not a chat channel.
+    const message = t(connections === 0 ? "app.restartConfirmWebOnly" : "app.restartConfirm");
+    if (!(await confirmDialog({ title: t("app.restartNow"), message, confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
     let res;
     try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }

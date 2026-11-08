@@ -402,6 +402,21 @@ export class SignInKeepAlive {
     return { ok: true };
   }
 
+  /** True when `r` recorded `needs_sign_in` / `not_renewed`, but the sign-in's file now holds a fresh valid token. */
+  private signedInSince(backend: KeepAliveBackend, home: string | null, r: KeepAliveRecord | undefined): boolean {
+    if (!home || !r || (r.outcome !== "needs_sign_in" && r.outcome !== "not_renewed")) return false;
+    const now = this.now();
+    if (backend === "claude-code") {
+      const m = readClaudeMeta(home);
+      return m.state === "ok" && !claudeDead(m) && m.expiresAt !== undefined && m.expiresAt > now && (r.expiresAt === undefined || m.expiresAt > r.expiresAt);
+    }
+    const m = readCodexMeta(join(home, "auth.json"));
+    return m.state === "ok" && m.hasRefresh && (
+      (m.accessExp !== undefined && m.accessExp > now && (r.expiresAt === undefined || m.accessExp > r.expiresAt))
+      || (m.lastRefresh !== undefined && m.lastRefresh > (r.lastRefresh ?? r.lastAt ?? 0))
+    );
+  }
+
   /** The Accounts row's part: the setting, the last run, and the dates read now from the sign-in's own file. */
   view(backend: string, profile: string | null): KeepAliveView | undefined {
     if (!isKeepAliveBackend(backend)) return undefined;
@@ -413,14 +428,28 @@ export class SignInKeepAlive {
       if (backend === "claude-code") { const m = readClaudeMeta(home); if (m.state === "ok") { endsAt = m.endsAt ?? endsAt; expiresAt = m.expiresAt ?? expiresAt; } }
       else { const m = readCodexMeta(join(home, "auth.json")); if (m.state === "ok") { expiresAt = m.accessExp ?? expiresAt; planType = m.planType ?? planType; } }
     }
+    const staleSignIn = this.signedInSince(backend, home, r);
     return {
       enabled: e?.enabled === true, ...(backend === "claude-code" ? { fallback: e?.fallback === true } : {}),
       ...(endsAt !== undefined && endsAt > 0 ? { endsAt: iso(endsAt) } : {}), ...(expiresAt !== undefined && expiresAt > 0 ? { expiresAt: iso(expiresAt) } : {}),
-      ...(r?.lastAt !== undefined ? { lastAt: iso(r.lastAt) } : {}), ...(r?.outcome ? { lastOutcome: r.outcome } : {}), ...(planType ? { planType } : {}),
+      ...(!staleSignIn && r?.lastAt !== undefined ? { lastAt: iso(r.lastAt) } : {}),
+      ...(!staleSignIn && r?.outcome ? { lastOutcome: r.outcome } : {}),
+      ...(planType ? { planType } : {}),
     };
   }
 
-  attention(): KeepAliveAttention[] { return attentionOf(this.entries, this.now()); }
+  attention(): KeepAliveAttention[] {
+    // A failure recorded before the person signed in again is not asked about any more. Its dates are the OLD sign-in's too: without the outcome, an old
+    // end date in the past would be said as "ended" right after a new sign-in, so the end date is the file's own now.
+    const entries = this.entries.map(e => {
+      const home = this.deps.homeOf(e.backend, e.profile);
+      if (!home || !e.enabled || !this.signedInSince(e.backend, home, e.record)) return e;
+      const { outcome: _o, attentionSince: _a, endsAt: _e, ...rest } = e.record!;
+      const live = this.datesOf(e.backend, home);
+      return { ...e, record: { ...rest, ...(live.endsAt ? { endsAt: live.endsAt } : {}) } };
+    });
+    return attentionOf(entries, this.now());
+  }
 
   /** One pass: every switched-on sign-in not looked at for about a day (or just the one switched on), one at a time. */
   tick(opts: { force?: boolean; only?: { backend: KeepAliveBackend; profile: string | null } } = {}): Promise<void> {

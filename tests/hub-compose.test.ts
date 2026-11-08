@@ -581,6 +581,20 @@ describe.skipIf(process.platform === "win32")("Hub retention composition", () =>
     expect(runtime.retentionSettings()).toBeNull();
     expect(runtime.browserCertificateSettings()).toBeNull();
   });
+  // #3298 S-89 (#3372 N2, Fable G2): the factory → runtime step of "the Settings row only when this Hub has group permissions".
+  it.each([[[] as string[], false], [["group-policy-v1"], true]])("an http entry reporting %j: groupPermissionsAvailable() is %s while running, false after close", async (features, on) => {
+    const hub = await initializedHub(), http = fakeHttp();
+    const entry: HubHttpEntry = { ...http.entry, createHubHttp: (deps) => ({ ...http.entry.createHubHttp(deps), features }) };
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => entry },
+      createDirectory: () => ({ realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
+        checkEligibility: async () => ({ eligible: false, reason: "unavailable" }), close: async () => {} }) });
+    expect(runtime.groupPermissionsAvailable()).toBe(false);
+    try {
+      await runtime.apply(hub.config);
+      expect(runtime.groupPermissionsAvailable()).toBe(on);
+    } finally { await runtime.close(); }
+    expect(runtime.groupPermissionsAvailable()).toBe(false);                     // the withdraw ran on teardown
+  });
 });
 
 

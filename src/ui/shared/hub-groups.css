@@ -1,0 +1,26 @@
+/* #3298 S-89: the Hub's signed-in welcome and Administration → Group permissions. Its own stylesheet (linked by
+   hub-group-strings.js) so a tab holding an older hub-chat.css or hub-owner.css still draws these pages. Built on the shared
+   card / s-row / field / btn / tag pieces; only the layout of the two entries and the group rows is here. */
+.hub-home.has-welcome .hub-home-pick.hub-home-welcome { align-items: flex-start; justify-content: flex-start; overflow-y: auto; }
+.hub-welcome-page { width: 100%; max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-3); }
+.hub-welcome { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
+.hub-welcome-card { display: flex; flex-direction: column; gap: var(--s-2); min-height: 180px; }
+.hub-welcome-card h3 { font-size: var(--fs-lg, 1.15rem); margin: 0; }
+.hub-welcome-actions { margin-top: auto; display: flex; gap: var(--s-2); }
+.hub-groups-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.hub-welcome-card.is-off h3 { color: var(--text-2); }
+.hub-welcome-fleets { margin: 0; padding-left: var(--s-4); }
+@media (max-width: 899px) {
+  /* A phone shows the welcome first, then the chat list under it. */
+  .hub-home.has-welcome { flex-direction: column; overflow-y: auto; }
+  .hub-home.has-welcome .hub-home-pick.hub-home-welcome { display: block; flex: none; padding: var(--s-3); }
+  .hub-home.has-welcome .hub-home-list { flex: none; overflow: visible; }
+}
+/* A group's DN takes its own full line; its permissions, fleets and Remove wrap under it (hub-owner.css rows don't wrap). */
+.hub-rows .s-row.hub-row.hub-group-row { flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
+.hub-rows .s-row.hub-row.hub-group-row > .hub-row-text { flex: 1 1 100%; }
+.hub-group-dn { overflow-wrap: anywhere; }
+.hub-group-cap { display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
+.hub-group-fleets { display: inline-flex; align-items: center; gap: var(--s-1); }
+.hub-group-fleets input { width: 4.5em; }
+.hub-groups-impact ul { margin: var(--s-1) 0 var(--s-2); padding-left: var(--s-4); }

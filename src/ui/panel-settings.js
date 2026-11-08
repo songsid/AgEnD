@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
@@ -420,7 +421,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
-    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} />`
+    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
     : html`<${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
@@ -1402,7 +1403,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
           ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
-          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${overPublicLink} hubHost=${!!ctx.fleet.hub?.hubId} />` : null}
+          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${overPublicLink} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
@@ -1574,17 +1575,19 @@ function OperationCard({ op, schema }) {
   const needsRestart = rows.some((r) => r.status === "restart-required");
   const failedRows = rows.some((r) => r.status === "failed");
   const mismatch = schema && schema.fleet_signature_mismatch;
+  // S-92: a fleet with no chat connection — its restart is recorded in the dashboard's Notices, not a chat channel.
+  const webOnly = useStore(appStore).connections === 0;
   const title = op.phase === "failed" ? tn("applyPartial") : fleetRestarting ? tn("restartFleetTitle") : busy ? tn("applying")
     : failedRows ? tn("applyPartial") : needsRestart ? tn("applyRestartNeeded") : tn("applyDone");
   const note = op.phase === "failed" ? (op.error === "busy" ? tn("applyBusy") : op.error ? tn("applyStepFailed", applyErrorText(op.error)) : "")
     : fleetRestarting ? tn("restartFleetWaiting") : op.lostJob ? tn("applyLostJob")
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
-    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
+    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn(webOnly ? "applyRestartHintWebOnly" : "applyRestartHint") : "";
   const lease = useLease("operation-card");
   const restart = async () => {
     // The yes is for the job this card shows: it restarts AgEnD for that job only, and only while the card stands.
     const forJob = { opId: op.id, jobId: op.job && op.job.id };
-    if (!(await ask(tn("restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
+    if (!(await ask(tn(webOnly ? "restartFleetConfirmWebOnly" : "restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
     if (!lease.current()) return;
     setRestarting(true);
     const res = await restartFleet(forJob);

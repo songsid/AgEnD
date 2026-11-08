@@ -21,24 +21,25 @@ register("accountsManage", {
     err_unsafe_root: "The accounts folder on this host isn't a plain folder of this account, so nothing was created.",
     err_backend: "This CLI has no named accounts.", err_failed: "That didn't work. Try again.",
     added: "Account “{0}” added.", addedHostSignIn: "Account “{0}” added. Send /login in chat, or ask General.",
-    remove: "Remove…", removeTitle: "Remove the {0} account “{1}”?",
+    remove: "Remove", removeTitle: "Remove the {0} account “{1}”?",
     removeLead: "This deletes the account's folder on this host: its sign-in.", removeLeadClaude: "This deletes the account's folder on this host: its sign-in and its own copies of conversations.",
     removeAfter: "Agents can't use it afterwards.", sep: " ",
     inUse: "Still used by — move each to another account first:", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot room {0}", inUseDefault: "The fleet default for {0} agents",
     move: "Move…", roomHow: "Change it in that room's ClassicBot settings (its credential_profile).",
     typeLabel: "Type {0} to confirm", removeGo: "Remove", removing: "Removing…", removed: "Account “{0}” removed.",
+    cancelAndRemove: "Cancel sign-in and remove",
     err_confirm: "Type the account's name exactly.", err_in_use: "Something still uses this account.", err_signing_in: "A sign-in for this account is running. Wait for it to end, or cancel it.",
     err_missing: "This account's folder is no longer there.", err_unsafe: "This account's folder isn't a plain folder of this account inside AgEnD's accounts folder, so nothing was deleted.",
     err_default_home: "That is the CLI's default sign-in, which is never deleted here.",
     err_users_unknown: "AgEnD can't read the ClassicBot settings, so it can't tell whether a room uses this account. Fix classicBot.yaml, then try again.",
-    signOut: "Sign out…", switchAccount: "Switch account…", signOutTitle: "Sign out of {0}'s {1}?", switchTitle: "Switch {0}'s default sign-in?",
+    signOut: "Sign out", switchAccount: "Switch account", signOutTitle: "Sign out of {0}'s {1}?", switchTitle: "Switch {0}'s default sign-in?",
     signOutLead: "AgEnD runs {0}'s own logout for this account on the host. Its conversations stay.",
     switchLead: "AgEnD signs this account out with {0}'s own logout, then opens Sign in for the account you want. Agents using it restart on the new account once you've signed in.",
     stopUsers: "Using it now — they stop working until it's signed in again:", nobody: "No agent, ClassicBot room or fleet default uses it.",
     signOutGo: "Sign out", switchGo: "Sign out and sign in", signingOut: "Signing out…", signedOut: "Signed out.",
     keychainLeft: "Signed out, but a Keychain item for this account is still on this Mac. Remove it in Keychain Access.",
     removedKeychainLeft: "Account “{0}” removed, but a Keychain item for it is still on this Mac. Remove it in Keychain Access.",
-    err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout didn't succeed. Try again, or run it on the host.",
+    err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout did not succeed. Try again here.",
     defName: "default sign-in", acctName: "account “{0}”",
     // #3190 Part 3c: an account on a paired computer (its Runtime does the work; the computer's owner has to allow it there).
     addTitleMachine: "Add a {0} account on {1}", addLeadMachine: "A named account is a separate sign-in kept on {0}. Name it, then sign it in here. Its folder is made by that computer's Runtime.",
@@ -62,24 +63,25 @@ register("accountsManage", {
     err_unsafe_root: "這台主機的帳號資料夾不是這個使用者的一般資料夾，所以沒有建立任何東西。",
     err_backend: "這個 CLI 沒有具名帳號。", err_failed: "沒有成功，請再試一次。",
     added: "已新增帳號「{0}」。", addedHostSignIn: "已新增帳號「{0}」。請在聊天傳 /login，或請 General。",
-    remove: "移除…", removeTitle: "要移除 {0} 帳號「{1}」嗎？",
+    remove: "移除", removeTitle: "要移除 {0} 帳號「{1}」嗎？",
     removeLead: "這會刪除這台主機上該帳號的資料夾：它的登入。", removeLeadClaude: "這會刪除這台主機上該帳號的資料夾：它的登入，以及它自己的對話副本。",
     removeAfter: "之後 Agent 就不能使用它。", sep: "",
     inUse: "仍在使用中，請先把每一項移到其他帳號：", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot 房間 {0}", inUseDefault: "{0} Agent 的 Fleet 預設帳號",
     move: "移動…", roomHow: "請在該房間的 ClassicBot 設定（credential_profile）中更改。",
     typeLabel: "輸入 {0} 以確認", removeGo: "移除", removing: "正在移除…", removed: "已移除帳號「{0}」。",
+    cancelAndRemove: "取消登入並移除",
     err_confirm: "請正確輸入帳號名稱。", err_in_use: "仍有項目在使用這個帳號。", err_signing_in: "這個帳號正在登入。請等它結束，或取消它。",
     err_missing: "這個帳號的資料夾已經不在了。", err_unsafe: "這個帳號的資料夾不是 AgEnD 帳號資料夾裡、屬於這個使用者的一般資料夾，所以沒有刪除任何東西。",
     err_default_home: "那是 CLI 的預設登入，這裡永遠不會刪除它。",
     err_users_unknown: "AgEnD 無法讀取 ClassicBot 設定，所以無法確定是否有房間在使用這個帳號。請先修正 classicBot.yaml 再試一次。",
-    signOut: "登出…", switchAccount: "切換帳號…", signOutTitle: "要登出 {0} 的{1}嗎？", switchTitle: "要切換 {0} 的預設登入嗎？",
+    signOut: "登出", switchAccount: "切換帳號", signOutTitle: "要登出 {0} 的{1}嗎？", switchTitle: "要切換 {0} 的預設登入嗎？",
     signOutLead: "AgEnD 會在主機上用 {0} 自己的登出指令登出這個帳號。它的對話會保留。",
     switchLead: "AgEnD 會用 {0} 自己的登出指令登出這個帳號，然後開啟「登入」讓你登入想用的帳號。登入後，使用它的 Agent 會以新帳號重新啟動。",
     stopUsers: "目前使用中——在重新登入前它們都無法運作：", nobody: "沒有 Agent、ClassicBot 房間或 Fleet 預設在使用它。",
     signOutGo: "登出", switchGo: "登出並登入", signingOut: "正在登出…", signedOut: "已登出。",
     keychainLeft: "已登出，但這台 Mac 上仍有這個帳號的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
     removedKeychainLeft: "已移除帳號「{0}」，但這台 Mac 上仍有它的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
-    err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請再試一次，或在主機上執行。",
+    err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請在這裡再試一次。",
     defName: "預設登入", acctName: "帳號「{0}」",
     // #3190 Part 3c：配對電腦上的帳號（由那台電腦的 Runtime 執行；需要電腦的擁有者在那裡允許）。
     addTitleMachine: "在 {1} 新增 {0} 帳號", addLeadMachine: "具名帳號是保存在 {0} 上的另一組登入。先取名，再在這裡登入。它的資料夾由那台電腦的 Runtime 建立。",
@@ -163,22 +165,38 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [errCode, setErrCode] = useState("");
   const [users, setUsers] = useState(row.usedBy);    // the server's answer replaces it when it knows better
   const live = useLive();
   const machine = row.scope && row.scope.kind === "machine" ? row.scope : null;   // #3190 Part 3c: an account on a paired computer
   const inUse = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
+  const finishRemove = (r) => {
+    if (r.ok) { toast(r.keychainLeft ? tm("removedKeychainLeft", row.profile) : tm("removed", row.profile), !r.keychainLeft); onClose(); onRemoved(); return; }
+    if (r.error === "in_use" && r.users) setUsers(r.users);
+    setErrCode(r.error || "");
+    setErr(errText(r));
+  };
   const go = async () => {
     if (busy || inUse || typed !== row.profile) return;
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setErrCode("");
     const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed, ...(machine ? { machine: machine.id } : {}) });
     if (!live.current) return;
     setBusy(false);
-    if (r.ok) { toast(r.keychainLeft ? tm("removedKeychainLeft", row.profile) : tm("removed", row.profile), !r.keychainLeft); onClose(); onRemoved(); return; }
-    if (r.error === "in_use" && r.users) setUsers(r.users);
-    setErr(errText(r));
+    finishRemove(r);
+  };
+  const cancelAndRemove = async () => {
+    if (busy || inUse || typed !== row.profile) return;
+    setBusy(true); setErr(""); setErrCode("");
+    // #3321 review: one request, bound to this account — the server ends the sign-in of THIS account (never another one's, which a separate generic cancel would
+    // have ended) and removes it; what still signs in refuses as before.
+    const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed, cancelSignIn: true });
+    if (!live.current) return;
+    setBusy(false);
+    finishRemove(r);
   };
   const moveBtn = (user) => html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
   return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
+    ${errCode === "signing_in" && !machine ? html`<button type="button" class="btn" disabled=${busy || inUse || typed !== row.profile} onClick=${cancelAndRemove}>${tm("cancelAndRemove")}</button>` : null}
     <button type="button" class="btn btn-danger" disabled=${busy || inUse || typed !== row.profile} onClick=${go}>${busy ? tm("removing") : tm("removeGo")}</button>`}>
     <p>${machine ? tm("removeLeadMachine", machine.name) : cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
@@ -186,7 +204,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
       ${users.fleetDefault ? html`<li><span>${machine ? tm("inUseMachineDefault") : tm("inUseDefault", label)}</span>${machine ? null : moveBtn({ kind: "default" })}</li>` : null}
       ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small></li>`)}
     </ul></div>` : html`<div class="field"><label for="acctRemoveName">${tm("typeLabel", row.profile)}</label>
-      <input id="acctRemoveName" value=${typed} autocomplete="off" spellcheck=${false} onInput=${(e) => { setTyped(e.target.value); setErr(""); }}
+      <input id="acctRemoveName" value=${typed} autocomplete="off" spellcheck=${false} onInput=${(e) => { setTyped(e.target.value); setErr(""); setErrCode(""); }}
         onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }} /></div>`}
     ${err ? html`<p class="err" role="alert">${err}</p>` : null}
   </${Dialog}>`;

@@ -1,3 +1,4 @@
+import { t } from "./locale.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -698,7 +699,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (chans.length > 1) {
       const defaults = isObj(config.defaults) ? config.defaults : undefined;
       for (const id of adaptersWithoutGeneral(config.instances as Parameters<typeof adaptersWithoutGeneral>[0], chans as unknown as ChannelLike[], defaults)) {
-        warn("instances", `no general_topic instance for connection "${id}" — messages there outside an agent's topic have no dispatcher (add a General with channel_id: ${id}, or run \`agend quickstart\` → Add another platform)`);
+        warn("instances", t("config.general_missing", id));
       }
     }
   }

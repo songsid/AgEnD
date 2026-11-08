@@ -16,7 +16,12 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { HubProtocolError } from "./validation.js";
+import { z } from "zod";
+import { HubProtocolError, epoch, identifier, person as personSchema, uuid, validated } from "./validation.js";
+import { exposureSchema } from "./protocol.js";
+import { HubGroupAuthorizationError, type HubGroupEnrollmentPermit, type HubGroupPermit } from "./group-policy/authorization.js";
+import { HubGroupPolicyError } from "./group-policy/store.js";
+import { HubGroupEnrollmentRefusal } from "./group-policy/resources.js";
 import { personKeyString } from "./identity.js";
 import type { HubExposure, HubExposureSnapshot, HubGrant, HubRequestContext, PersonKey } from "./types.js";
 import type { HubLinkContext } from "./server.js";
@@ -25,6 +30,7 @@ import { personFromString, type HubCore, type HubOperationPermit } from "./http/
 /** P1 grants last at most this long; the owner chooses within it. */
 export const GRANT_MAX_MS = 365 * 24 * 60 * 60_000;
 const PERMISSIONS = ["ask", "read-own-room"] as const;
+const snapshotSchema = z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) });
 
 interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
@@ -61,7 +67,10 @@ export class HubCatalogService {
   constructor(private readonly core: HubCore) {}
 
   /** A member's complete catalog revision, from its authenticated link (S1 already refused another fleet or owner). */
-  receiveSnapshot(snapshot: HubExposureSnapshot, link: HubLinkContext): void {
+  async receiveSnapshot(input: HubExposureSnapshot, incoming: HubLinkContext, requestId: string = randomUUID()): Promise<void> {
+    // Capture the complete payload and the current callback before any group-directory await.
+    const snapshot = validated(snapshotSchema, input), current = incoming.current.bind(incoming);
+    const link = { fleetId: validated(uuid, incoming.fleetId), owner: validated(personSchema, incoming.owner), current };
     const now = this.core.now(), owner = personKeyString(link.owner), dig = snapshotDigest(snapshot);
     const ids = new Set<string>();
     for (const e of snapshot.exposures) {
@@ -69,13 +78,19 @@ export class HubCatalogService {
       ids.add(e.id);
     }
     if (!link.current()) throw new HubProtocolError("stale");
-    this.core.atomic((db, tx) => {
-      const cursor = db.prepare("SELECT revision, digest FROM hub_catalog_cursor WHERE fleet_id=?").get(link.fleetId) as { revision: number; digest: string } | undefined;
-      if (cursor && snapshot.revision < cursor.revision) throw new HubProtocolError("stale");
-      if (cursor && snapshot.revision === cursor.revision) {
-        if (cursor.digest !== dig) throw new HubProtocolError("conflict");
-        return;                                            // the same revision again: nothing changes
-      }
+    const image = (db: Database.Database) => ({
+      cursor: db.prepare("SELECT revision,digest,at FROM hub_catalog_cursor WHERE fleet_id=?").get(link.fleetId) ?? null,
+      rows: db.prepare("SELECT * FROM hub_exposures WHERE fleet_id=? ORDER BY id").all(link.fleetId),
+    });
+    const before = this.core.atomic(db => image(db));
+    const cursor = before.cursor as { revision: number; digest: string } | null;
+    if (cursor && snapshot.revision < cursor.revision) throw new HubProtocolError("stale");
+    if (cursor && snapshot.revision === cursor.revision) {
+      if (cursor.digest !== dig) throw new HubProtocolError("conflict");
+      return; // A byte-identical retransmission neither creates provenance nor consults groups again.
+    }
+    const oldRows = before.rows as (ExposureRow & { updated_at: number })[];
+    const validateBindings = (db: Database.Database) => {
       for (const e of snapshot.exposures) {
         const old = readExposure(db, e.id);
         if (old && (old.fleet_id !== link.fleetId || old.owner !== owner)) throw new HubProtocolError("denied");
@@ -83,28 +98,109 @@ export class HubCatalogService {
         if (old && e.revision === old.revision && (old.policy_digest !== e.policyDigest || old.data_view_id !== e.dataViewId
           || old.allowed_tools !== JSON.stringify([...e.allowedTools]))) throw new HubProtocolError("conflict");
       }
-      const listed = new Set(snapshot.exposures.map((e) => e.id));
-      const absent = (db.prepare("SELECT id FROM hub_exposures WHERE fleet_id=? AND state<>'withdrawn'").all(link.fleetId) as { id: string }[])
-        .filter((r) => !listed.has(r.id));
-      for (const r of absent) db.prepare("UPDATE hub_exposures SET state='withdrawn', updated_at=? WHERE id=?").run(now, r.id);
-      // Leaving "published" (withdrawn by absence or by state) ends its grants and rooms: a later re-publish, even at the
-      // same revision, needs the owner to grant again — consent never revives from history.
-      const ended = [...absent.map((r) => r.id), ...snapshot.exposures.filter((e) => e.state !== "published").map((e) => e.id)];
-      for (const id of ended) {
-        db.prepare("UPDATE hub_grants SET state='revoked', revision=revision+1 WHERE exposure_id=? AND state='active'").run(id);
-        db.prepare("UPDATE hub_rooms SET state='closed' WHERE exposure_id=? AND state<>'closed'").run(id);
-      }
-      for (const e of snapshot.exposures) {
-        db.prepare(`INSERT INTO hub_exposures(id, fleet_id, owner, display_name, revision, state, data_view_id, allowed_tools, policy_digest, updated_at)
-          VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, revision=excluded.revision, state=excluded.state,
-          data_view_id=excluded.data_view_id, allowed_tools=excluded.allowed_tools, policy_digest=excluded.policy_digest, updated_at=excluded.updated_at`)
-          .run(e.id, e.fleetId, owner, e.displayName, e.revision, e.state, e.dataViewId, JSON.stringify([...e.allowedTools]), e.policyDigest, now);
-      }
-      db.prepare(`INSERT INTO hub_catalog_cursor(fleet_id, revision, digest, at) VALUES(?,?,?,?)
-        ON CONFLICT(fleet_id) DO UPDATE SET revision=excluded.revision, digest=excluded.digest, at=excluded.at`).run(link.fleetId, snapshot.revision, dig, now);
-      this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot", result: "completed",
-        fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: absent.length ? "withdrawn" : undefined });
+    };
+    this.core.atomic(validateBindings); // Ordinary malformed/stale consent never reaches the group-refusal narrowing path.
+    const publishing = snapshot.exposures.filter(e => {
+      const old = oldRows.find(r => r.id === e.id);
+      return e.state === "published" && (!old || e.revision > old.frozen_through)
+        && (!old || old.state !== "published" || old.frozen_through >= old.revision || old.revision !== e.revision);
     });
+    const groups = this.core.deps.groups, prepared: HubGroupEnrollmentPermit[] = [];
+    let fleetPermit: HubGroupPermit | undefined, serializedFleet: string | undefined;
+    const ctx = { requestId: validated(identifier, requestId), current: () => this.core.live() && link.current() };
+    let expectedImage = JSON.stringify(before);
+    const permit = { assertCurrent: () => {
+      if (!ctx.current() || this.core.deps.groups !== groups) throw new HubProtocolError("unavailable");
+      fleetPermit?.assertCurrent(); for (const p of prepared) p.assertCurrent();
+      if (serializedFleet !== undefined && JSON.stringify(this.core.deps.store.read().fleets.find(f => f.id === link.fleetId)) !== serializedFleet) throw new HubProtocolError("stale");
+      if (JSON.stringify(this.core.atomic(db => image(db))) !== expectedImage) throw new HubProtocolError("conflict");
+    } };
+    // A publication refusal cannot keep an independently withdrawn agent reachable. Apply only reductions
+    // to the prior exact material, retaining the cursor so the complete snapshot can be retried later.
+    const narrowRefused = () => {
+      const requested = new Map(snapshot.exposures.map(e => [e.id, e]));
+      const narrowed = oldRows.filter(row => row.state !== "withdrawn" && (!requested.has(row.id) || requested.get(row.id)!.state !== "published"));
+      if (!narrowed.length) return;
+      let written = false;
+      const narrowingPermit = { assertCurrent: () => {
+        if (!ctx.current() || this.core.deps.groups !== groups) throw new HubProtocolError("unavailable");
+        if (serializedFleet !== undefined && JSON.stringify(this.core.deps.store.read().fleets.find(f => f.id === link.fleetId)) !== serializedFleet) throw new HubProtocolError("stale");
+        this.core.atomic(db => {
+          if (JSON.stringify(image(db)) !== expectedImage) throw new HubProtocolError("conflict");
+          if (written) for (const row of narrowed) {
+            if (db.prepare("SELECT 1 FROM hub_grants WHERE exposure_id=? AND state='active'").get(row.id)
+              || db.prepare("SELECT 1 FROM hub_rooms WHERE exposure_id=? AND state<>'closed'").get(row.id)) throw new HubProtocolError("conflict");
+          }
+        });
+      } };
+      this.core.atomic((db, tx) => {
+        validateBindings(db);
+        for (const row of narrowed) {
+          const state = requested.get(row.id)?.state ?? "withdrawn";
+          db.prepare("UPDATE hub_exposures SET state=?,frozen_through=MAX(frozen_through,?),updated_at=? WHERE id=?")
+            .run(state, state === "frozen" ? row.revision : row.frozen_through, now, row.id);
+          db.prepare("UPDATE hub_grants SET state='revoked',revision=revision+1 WHERE exposure_id=? AND state='active'").run(row.id);
+          db.prepare("UPDATE hub_rooms SET state='closed' WHERE exposure_id=? AND state<>'closed'").run(row.id);
+        }
+        expectedImage = JSON.stringify(image(db)); written = true;
+        this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot-narrowed", result: "completed",
+          fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: "publication-refused" });
+      }, narrowingPermit);
+    };
+    let preparedAll = false;
+    try {
+      if (groups && publishing.length) {
+        const fleet = this.core.deps.store.read().fleets.find(f => f.id === link.fleetId);
+        if (!fleet || personKeyString(fleet.owner) !== owner) throw new HubProtocolError("revoked");
+        serializedFleet = JSON.stringify(fleet);
+        fleetPermit = await groups.check({ kind: "fleet", id: fleet.id, revision: fleet.generation, owner: fleet.owner }, ctx);
+        if (fleetPermit.source !== "legacy" && (fleet.status !== "active" || !fleet.credentialHash)) throw new HubProtocolError("revoked");
+        // A legacy fleet permit already binds the never-enabled/repair policy and epoch. It creates no provenance.
+        if (fleetPermit.source !== "legacy") for (const exposure of publishing) {
+          prepared.push(await groups.prepareEnrollment({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx));
+        }
+      }
+      preparedAll = true;
+      this.core.atomic((db, tx) => {
+        const cursor = db.prepare("SELECT revision, digest FROM hub_catalog_cursor WHERE fleet_id=?").get(link.fleetId) as { revision: number; digest: string } | undefined;
+        if (cursor && snapshot.revision < cursor.revision) throw new HubProtocolError("stale");
+        if (cursor && snapshot.revision === cursor.revision) {
+          if (cursor.digest !== dig) throw new HubProtocolError("conflict");
+          return;                                            // the same revision again: nothing changes
+        }
+        validateBindings(db);
+        const listed = new Set(snapshot.exposures.map((e) => e.id));
+        const absent = (db.prepare("SELECT id FROM hub_exposures WHERE fleet_id=? AND state<>'withdrawn'").all(link.fleetId) as { id: string }[])
+          .filter((r) => !listed.has(r.id));
+        for (const r of absent) db.prepare("UPDATE hub_exposures SET state='withdrawn', updated_at=? WHERE id=?").run(now, r.id);
+        // Leaving "published" (withdrawn by absence or by state) ends its grants and rooms: a later re-publish, even at the
+        // same revision, needs the owner to grant again — consent never revives from history.
+        const ended = [...absent.map((r) => r.id), ...snapshot.exposures.filter((e) => e.state !== "published").map((e) => e.id)];
+        for (const id of ended) {
+          db.prepare("UPDATE hub_grants SET state='revoked', revision=revision+1 WHERE exposure_id=? AND state='active'").run(id);
+          db.prepare("UPDATE hub_rooms SET state='closed' WHERE exposure_id=? AND state<>'closed'").run(id);
+        }
+        for (const e of snapshot.exposures) {
+          db.prepare(`INSERT INTO hub_exposures(id, fleet_id, owner, display_name, revision, state, data_view_id, allowed_tools, policy_digest, updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, revision=excluded.revision, state=excluded.state,
+            data_view_id=excluded.data_view_id, allowed_tools=excluded.allowed_tools, policy_digest=excluded.policy_digest, updated_at=excluded.updated_at`)
+            .run(e.id, e.fleetId, owner, e.displayName, e.revision, e.state, e.dataViewId, JSON.stringify([...e.allowedTools]), e.policyDigest, now);
+        }
+        db.prepare(`INSERT INTO hub_catalog_cursor(fleet_id, revision, digest, at) VALUES(?,?,?,?)
+          ON CONFLICT(fleet_id) DO UPDATE SET revision=excluded.revision, digest=excluded.digest, at=excluded.at`).run(link.fleetId, snapshot.revision, dig, now);
+        // Capture only our own SQL result, before invoking either registration or snapshot audit callbacks.
+        expectedImage = JSON.stringify(image(db));
+        for (const p of prepared) p.commit(db);
+        this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot", result: "completed",
+          fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: absent.length ? "withdrawn" : undefined });
+      }, permit);
+    } catch (error) {
+      if (!preparedAll && error instanceof HubGroupPolicyError) narrowRefused();
+      if ((error instanceof HubGroupAuthorizationError && ["denied", "resume-required"].includes(error.reason))
+        || (error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")) throw new HubProtocolError("denied");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
+    }
   }
 
   /** What this person may see: their own exposures (with the grants on them) and what is granted to them now. */

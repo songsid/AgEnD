@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { APPLY_FLEET_TARGET, ApplyJobStore, type ApplyJob } from "../src/apply-job.js";
+import { APPLY_FLEET_TARGET, ApplyJobStore, viewOf, type ApplyJob } from "../src/apply-job.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
@@ -651,5 +651,209 @@ describe("the settings page keeps the two restarts apart", () => {
     // The toast stack is the page's, so an earlier test's toast may still be on screen: the newest one is last.
     const toasts = p.root.querySelectorAll(".toast") as any[];
     expect(toasts.at(-1)!.textContent).toBe(tn("restartFleetRateLimited", "too soon", 7));
+  });
+});
+
+// ── S-92 (#3326 D1): Restart AgEnD on the notice with no Settings job behind it, and on a web-only fleet ────────────────
+describe("S-92: the pending changes' own restart (no Settings job behind it — a hand edit)", () => {
+  /** A chat fleet whose fleet.yaml was edited by hand: a restart is pending, and no job carries it. */
+  function handEdited(dir: string) {
+    const lines = (locale: string) => ["channel:", "  type: telegram", "  bot_token_env: TELEGRAM_BOT_TOKEN", "  group_id: '123'", "defaults:", `  locale: ${locale}`, "instances: {}", ""];
+    const { fm, configPath } = fleetWith(dir, lines("en"));
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    const sendText = vi.fn(async () => ({ chatId: "123", messageId: "m1", threadId: undefined }));
+    (fm as unknown as { adapter: unknown }).adapter = { id: "telegram", sendText };
+    const fullRestart = vi.spyOn(fm, "requestFullRestart").mockResolvedValue(true);
+    writeFileSync(configPath, lines("zh-TW").join("\n"));
+    expect(fm.settingsRestartPending()).toEqual({ keys: ["defaults.locale"], job_id: null });
+    return { fm, configPath, sendText, fullRestart };
+  }
+  it("a job is made to carry it, then the same path as a Save's restart: announced in General, launched, the row consumed", async () => {
+    const dir = tempDir();
+    const { fm, sendText, fullRestart } = handEdited(dir);
+    const result = await fm.requestSettingsSelfRestart(null, "key-s92-handedit-1");
+    expect(result).toMatchObject({ ok: true });
+    const job = fm.applyJobs.get((result as { jobId: string }).jobId)!;
+    expect([job.restart_key, job.targets.find(r => r.target === APPLY_FLEET_TARGET)!.status]).toEqual(["key-s92-handedit-1", "running"]);
+    expect([sendText.mock.calls.length, fullRestart.mock.calls.length, readSelfRestartAttempts(dir).length]).toEqual([1, 1, 1]);
+  });
+  it("asked again (a retried key): the same answer; a new key while it runs: refused, and no second job", async () => {
+    const dir = tempDir();
+    const { fm, fullRestart } = handEdited(dir);
+    const first = await fm.requestSettingsSelfRestart(null, "key-s92-handedit-2") as { jobId: string };
+    expect(await fm.requestSettingsSelfRestart(null, "key-s92-handedit-2")).toMatchObject({ ok: true, jobId: first.jobId, reused: true });
+    const jobs = fm.applyJobs.all().length;
+    expect(await fm.requestSettingsSelfRestart(null, "key-s92-handedit-3")).toMatchObject({ ok: false, status: 409, error: "a restart is already running" });
+    expect([fm.applyJobs.all().length, fullRestart.mock.calls.length]).toEqual([jobs, 1]);
+  });
+  it("nothing pending (or the change reverted): refused, and no job is made", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = handEdited(dir);
+    writeFileSync(configPath, ["channel:", "  type: telegram", "  bot_token_env: TELEGRAM_BOT_TOKEN", "  group_id: '123'", "defaults:", "  locale: en", "instances: {}", ""].join("\n"));
+    expect(await fm.requestSettingsSelfRestart(null, "key-s92-nothing")).toMatchObject({ ok: false, status: 409 });
+    expect(fm.applyJobs.all()).toHaveLength(0);
+  });
+  it("a Save's job that carries it is used — none is made", async () => {
+    const dir = tempDir();
+    const { fm, job, fullRestart } = await fleetWithPendingRestart(dir);
+    const before = fm.applyJobs.all().length;
+    expect(await fm.requestSettingsSelfRestart(null, "key-s92-savejob")).toMatchObject({ ok: true, jobId: job.id });
+    expect([fm.applyJobs.all().length, fullRestart.mock.calls.length]).toEqual([before, 1]);
+  });
+});
+
+describe("S-92: a web-only fleet restarts from Settings, its trace the dashboard's fleet Notice (leader's ruling)", () => {
+  function webOnly(dir: string) {
+    const { fm, configPath } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+    const any = fm as any;
+    const notices: string[] = [];
+    const record = vi.spyOn(any, "recordWebNoticeDurable").mockImplementation((_kind: unknown, text: unknown) => { notices.push(String(text)); return true; });
+    vi.spyOn(any, "recordWebNotice").mockImplementation((_kind: unknown, text: unknown) => { notices.push(String(text)); return true; });
+    const webRestart = vi.spyOn(any, "requestWebFullRestart").mockResolvedValue(true);
+    const chatRestart = vi.spyOn(fm, "requestFullRestart");
+    return { fm, any, notices, record, webRestart, chatRestart };
+  }
+  it("announced as a fleet Notice and logged, the attempt recorded first, launched with the web's own target — no chat needed", async () => {
+    const dir = tempDir();
+    const { fm, notices, webRestart, chatRestart } = webOnly(dir);
+    let attemptsAtLaunch = -1;
+    webRestart.mockImplementation(async () => { attemptsAtLaunch = readSelfRestartAttempts(dir).length; return true; });
+    const result = await fm.requestSettingsSelfRestart(null, "key-s92-webonly-1");
+    expect(result).toMatchObject({ ok: true });
+    expect(notices).toEqual(["🔄🔄 AgEnD is restarting — requested from the Settings page."]);
+    expect([attemptsAtLaunch, webRestart.mock.calls.length, chatRestart.mock.calls.length]).toEqual([1, 1, 0]);
+  });
+  it("the notice cannot be recorded: refused in plain words (no command), nothing launched, the attempt still spent", async () => {
+    const dir = tempDir();
+    const { fm, record, webRestart } = webOnly(dir);
+    record.mockReturnValue(false);
+    const result = await fm.requestSettingsSelfRestart(null, "key-s92-webonly-2") as { ok: false; status: number; error: string };
+    expect([result.ok, result.status, result.error]).toEqual([false, 503, "couldn't record the restart; try again"]);
+    expect(result.error).not.toMatch(/agend|`/);
+    expect([webRestart.mock.calls.length, readSelfRestartAttempts(dir).length]).toEqual([0, 1]);
+  });
+  it("every other guard holds: the rate limit", async () => {
+    const dir = tempDir();
+    const { fm, webRestart } = webOnly(dir);
+    recordSelfRestartAttempt(dir);
+    expect(await fm.requestSettingsSelfRestart(null, "key-s92-webonly-3")).toMatchObject({ ok: false, status: 429 });
+    expect(webRestart).not.toHaveBeenCalled();
+  });
+  it("the web's tracked reload: a marker naming the web, and a refusal said as a fleet Notice (never a chat edit)", async () => {
+    const dir = tempDir();
+    const { fm, any, notices, webRestart } = webOnly(dir);
+    webRestart.mockRestore();
+    vi.spyOn(any, "waitForFullRestartIdleGrace").mockResolvedValue(undefined);
+    any.fullRestartLauncher = vi.fn(async () => { throw new Error("spawn failed"); });
+    expect(await any.requestWebFullRestart()).toBe(false);
+    expect(notices.at(-1)).toBe("❌ Full process reload could not start; the current fleet is still running. Check the fleet log and retry.");
+    expect(existsSync(join(dir, "update-in-progress.json")) && JSON.parse(readFileSync(join(dir, "update-in-progress.json"), "utf8")).progress?.target?.adapterId === "web-settings", "the marker it owned is cleared").toBe(false);
+    // …and launched: the helper runs with a marker that names the web.
+    let marker: any = null;
+    any.fullRestartLauncher = vi.fn(async () => { marker = JSON.parse(readFileSync(join(dir, "update-in-progress.json"), "utf8")); return { completion: new Promise(() => {}) }; });
+    expect(await any.requestWebFullRestart()).toBe(true);
+    expect([marker?.progress?.operation, marker?.progress?.target?.adapterId]).toEqual(["full-restart", "web-settings"]);
+  });
+});
+
+describe("S-92: the fleet that comes up from a web-only Settings restart says it is back, as a fleet Notice", () => {
+  it("only for a full restart whose marker names the web — never a chat restart, an update, or a plain boot", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    const any = fm as any, notices: string[] = [];
+    vi.spyOn(any, "recordWebNotice").mockImplementation((_k: unknown, text: unknown) => { notices.push(String(text)); return true; });
+    const at = (operation: string, adapterId: string, surface?: "web") => ({ progress: { operation, stage: "starting", target: { ...(surface ? { surface } : {}), adapterId, chatId: "c", messageId: "m" } } });
+    expect(await any.announceWebRestartDone(at("full-restart", "web-settings", "web"))).toBe(true);
+    expect(notices).toEqual([expect.stringMatching(/^✅ AgEnD is back — the restart requested from the Settings page is done \(version .+\)\.$/)]);
+    // #3373 review P3: a chat connection may itself be called "web-settings": known by the surface, never the id.
+    for (const other of [at("full-restart", "telegram"), at("full-restart", "web-settings"), at("update", "web-settings", "web"), null]) expect(await any.announceWebRestartDone(other)).toBe(false);
+    expect(notices).toHaveLength(1);
+  });
+});
+
+describe("#3373 review: the web restart's trace is on disk, its job settles, a late helper failure is said", () => {
+  function webOnlyReal(dir: string) {
+    const { fm, configPath } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+    const any = fm as any;
+    vi.spyOn(any, "waitForFullRestartIdleGrace").mockResolvedValue(undefined);
+    return { fm, any, configPath };
+  }
+  const texts = (any: any) => (any.webNoticeStore()?.view().items ?? []).map((n: any) => n.text);
+  it("P2: the real notice store cannot write: refused (503, plain words), nothing launched, and no notice kept", async () => {
+    const dir = tempDir();
+    const { fm, any } = webOnlyReal(dir);
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(dir, "web-notices.json"));                         // a directory where the file goes: every write fails
+    any.fullRestartLauncher = vi.fn(async () => ({ completion: new Promise(() => {}) }));
+    const result = await fm.requestSettingsSelfRestart(null, "key-3373-p2-disk") as { ok: boolean; status: number; error: string };
+    expect([result.ok, result.status, result.error]).toEqual([false, 503, "couldn't record the restart; try again"]);
+    expect(any.fullRestartLauncher).not.toHaveBeenCalled();
+    expect(texts(any)).not.toContain("🔄🔄 AgEnD is restarting — requested from the Settings page.");
+  });
+  it("P2: a consumed restart job runs until the next process settles it — then a second restart (no Settings job) is offered again", async () => {
+    const dir = tempDir();
+    const { fm, any, configPath } = webOnlyReal(dir);
+    any.fullRestartLauncher = vi.fn(async () => ({ completion: new Promise(() => {}) }));
+    const first = await fm.requestSettingsSelfRestart(null, "key-3373-p2-first") as { ok: true; jobId: string };
+    expect(first.ok).toBe(true);
+    expect(fm.applyJobs.get(first.jobId)!.status, "its job runs while its restart does").toBe("running");
+    expect(await fm.requestSettingsSelfRestart(null, "key-3373-p2-while")).toMatchObject({ ok: false, status: 409, error: "a restart is already running" });
+    // The next process: the store read again, the job (another pid's) settled by the restart, the config adopted.
+    fm.applyJobs.update(first.jobId, (job: ApplyJob) => { job.pid = process.pid + 1; });
+    const reread = new ApplyJobStore(dir);
+    reread.settleAfterRestart();
+    expect(reread.get(first.jobId)).toMatchObject({ status: "done" });
+    any.applyJobStoreCache = reread;
+    any.loadConfig(configPath); (fm as unknown as { finishStartup(): void }).finishStartup();
+    writeFileSync(configPath, ["defaults:", "  locale: en", "instances: {}", ""].join("\n"));
+    writeFileSync(join(dir, "self-restart.json"), JSON.stringify({ attempts: [] }));   // the rate limit's window long past
+    rmSync(join(dir, "update-in-progress.json"), { force: true });
+    const second = await fm.requestSettingsSelfRestart(null, "key-3373-p2-second");
+    expect(second).toMatchObject({ ok: true });
+    expect((second as { jobId: string }).jobId).not.toBe(first.jobId);
+  });
+  it.each([["exits non-zero before the hand-off", { code: 1, signal: null }, true], ["hands off (code 0)", { code: 0, signal: null }, false]])(
+    "P2: a helper that %s — a failure is said as a fleet Notice and its job settles failed; a hand-off says nothing", async (_n, result, failed) => {
+      const dir = tempDir();
+      const { fm, any } = webOnlyReal(dir);
+      let finish!: (r: unknown) => void;
+      any.fullRestartLauncher = vi.fn(async () => ({ completion: new Promise((r) => { finish = r; }) }));
+      const accepted = await fm.requestSettingsSelfRestart(null, "key-3373-p2-late") as { ok: true; jobId: string };
+      expect(accepted.ok).toBe(true);
+      finish(result); await new Promise((r) => setTimeout(r, 20));
+      const failText = "❌ Full process reload could not start; the current fleet is still running. Check the fleet log and retry.";
+      expect(texts(any).includes(failText)).toBe(failed);
+      expect(fm.applyJobs.get(accepted.jobId)!.status).toBe(failed ? "failed" : "running");
+    });
+});
+
+describe("#3373 review P3: a restart's time counts from when it was asked, not from the Save it uses", () => {
+  it("a Save from twenty minutes ago, restarted now: not 'still restarting', and its time is the restart's", async () => {
+    const dir = tempDir();
+    const { fm, job } = await fleetWithPendingRestart(dir);
+    fm.applyJobs.update(job.id, (j: ApplyJob) => { j.startedAt -= 20 * 60_000; if (j.finishedAt) j.finishedAt -= 20 * 60_000; });
+    expect((await fm.requestSettingsSelfRestart(job.id, "key-3373-p3-age")).ok).toBe(true);
+    const view = viewOf(fm.applyJobs.get(job.id)!);
+    expect([view.status, view.overdue, view.message, view.elapsed_ms < 60_000]).toEqual(["running", false, "", true]);
+    // …and past the restart's own deadline it says so, counted from the restart.
+    const late = viewOf(fm.applyJobs.get(job.id)!, fm.applyJobs.get(job.id)!.restartStartedAt! + 301_000);
+    expect([late.overdue, late.message]).toEqual([true, "Still restarting (301s)"]);
+  });
+});
+
+describe("S-92: POST /api/settings/restart-fleet with pending: true", () => {
+  it("the literal true asks for the pending changes' restart (job null); anything else still needs a job id", async () => {
+    const dir = tempDir();
+    const called = vi.fn(async (jobId: string | null) => ({ ok: true as const, jobId: jobId ?? "made" }));
+    const ctx = apiContext(dir, called as never);
+    const ok = await request("/api/settings/restart-fleet", ctx, "POST", { headers: { "idempotency-key": "key-s92-route-1" }, body: { pending: true, confirm: "restart-agend" } });
+    expect([ok.status, called.mock.calls[0]?.[0]]).toEqual([202, null]);
+    const truthy = await request("/api/settings/restart-fleet", ctx, "POST", { headers: { "idempotency-key": "key-s92-route-2" }, body: { pending: "true", confirm: "restart-agend" } });
+    const noConfirm = await request("/api/settings/restart-fleet", ctx, "POST", { headers: { "idempotency-key": "key-s92-route-3" }, body: { pending: true } });
+    expect([truthy.status, noConfirm.status, called.mock.calls.length]).toEqual([400, 400, 1]);
   });
 });

@@ -144,13 +144,13 @@ export function createHubGroupResources(options: {
   return {
     read(input: HubGroupResource) { assert({ requestId: "read", current: () => true }); policy.read(); return row(capture(input)); },
     /** Only the pre-enable inventory may be grandfathered; no typed person/HTTP path may call this. */
-    captureManual(input: HubGroupResource, incoming: GroupCheckContext): void {
-      const r = capture(input), ctx = snapshotContext(incoming);
+    captureManual(input: HubGroupResource, incoming: GroupCheckContext, confirmedBy?: PersonKey): void {
+      const r = capture(input), ctx = snapshotContext(incoming), actor = confirmedBy ? validated(person, confirmedBy) : r.owner;
       db.transaction(() => {
         assert(ctx); const p = policy.read();
-        if (p.state !== "never-enabled" || r.kind === "asker" || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+        if (p.state !== "never-enabled" || r.kind === "asker" || r.owner.realm !== p.realm || actor.realm !== p.realm) throw new HubGroupPolicyError("invalid");
         const before = row(r); if (before) { if (before.source !== "manual") throw new HubGroupPolicyError("conflict"); return; }
-        record(r, r.owner, "group-resource.manual-captured", ctx, { source: "manual" });
+        record(r, actor, "group-resource.manual-captured", ctx, { source: "manual" });
         db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'manual','active',1)").run(keyOf(r), JSON.stringify(r));
       }).immediate();
     },
@@ -163,6 +163,14 @@ export function createHubGroupResources(options: {
     check(input: HubGroupResource, incoming: GroupCheckContext) { return check(input, incoming); },
     /** Caller must freshly authenticate the configured administrator and confirm the exact resource. */
     resume(input: HubGroupResource, actor: PersonKey, incoming: GroupCheckContext) { return check(input, incoming, actor); },
+    /** Exact confirmed batch narrowing. Caller owns the outer same-DB policy/version transaction and administrator check. */
+    suspend(input: HubGroupResource, actor: PersonKey, incoming: GroupCheckContext): void {
+      const r = capture(input), who = validated(person, actor), ctx = snapshotContext(incoming);
+      if (!db.inTransaction) throw new HubGroupPolicyError("invalid");
+      assert(ctx); const p = policy.read(), before = row(r);
+      if (!before || p.state === "never-enabled" || who.realm !== p.realm || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+      update(before, "suspended", who, ctx);
+    },
     /** Same outer transaction as a confirmed switch-off: policy off/on never silently resumes group resources. */
     suspendAll(incoming: GroupCheckContext): number {
       const ctx = snapshotContext(incoming);

@@ -7,7 +7,7 @@
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { PanelHeader, closeDrawer, setTitle } from "/assets/app-shell.js";
-import { lang, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -32,6 +32,21 @@ import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quo
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+// #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
+// when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
+// The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
+register("hubGroupsNote", {
+  en: { unavailable: "Group permissions aren't available on this Hub yet. Update the Hub, then try again." },
+  "zh-TW": { unavailable: "這個 Hub 還沒有群組權限。請更新 Hub 後再試。" },
+});
+const groupPolicyOn = (session, client) => !!session && Array.isArray(session.features) && session.features.includes("group-policy-v1")
+  && !!client && client.groupPolicyV1 === true;
+function LazyGroups({ pick, props }) {
+  const [C, setC] = useState(null), [failed, setFailed] = useState(false);
+  useEffect(() => { let live = true; Promise.all([import("./hub-welcome.js"), import("./hub-group-policy.js"), import("./hub-group-strings.js")])
+    .then(([w, p, g]) => { if (live) setC(() => pick({ ...w, ...p, ...g })); }, () => { if (live) setFailed(true); }); return () => { live = false; }; }, []);
+  return failed ? null : C ? html`<${C} ...${props} />` : html`<${Skeleton} variant="rows" lines=${3} />`;
+}
 
 const TITLES = { ask: "askTitle", exposures: "exposuresTitle", admin: "adminTitle" };
 /** P1 room polling: at most once per ten seconds, one request at a time, paused while the page is hidden (hub.md §5). */
@@ -196,7 +211,10 @@ function useRead(read) {
 export const ROOMS_MS = 30_000;
 export function refreshRooms() {
   return roomsReading ??= hubClient().rooms().then((r) => {
-    roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
+    // With group permissions on, a person whose groups don't include chatting is refused the list: that is their access, shown
+    // by the welcome, not a failure (Cairn #3372) — the list stays empty and quiet. Every chat action still asks the server.
+    if (!r.ok && (r.code === "denied" || r.code === "revoked") && groupPolicyOn(session, hubClient())) roomsStore.set({ loaded: true, rooms: [], error: null, denied: true });
+    else roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
   }, () => roomsStore.set({ ...roomsStore.get(), loaded: true, error: hw("errFailed") })).finally(() => { roomsReading = null; });
 }
 /** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
@@ -244,7 +262,7 @@ export function HubNav({ onPick } = {}) {
     <div class="hub-sec">${hc("chats")}</div>
     ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
     ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
-    ${rs.loaded && !rs.error && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
+    ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
     <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
       <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>
@@ -295,17 +313,21 @@ function NewChatDialog({ onClose }) {
 function HubChats() {
   useStore(navStore);                               // ?room= changes without a new route
   const rs = useRooms();
+  const s = useSession();
+  const [picking, setPicking] = useState(false);
   useEffect(() => { linkHubChatCss(); }, []);
   const id = roomParam();
   const room = id ? rs.rooms.find((r) => r.id === id) || (rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
-  <div class="hub-home">
+  <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubNav} /></div>
-    <div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
+    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, onChats: () => setPicking(true) }} /></div>`
+      : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} hint=${hc("noChatsHint")} />`
-      : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>
+      : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
 }
 
@@ -684,10 +706,22 @@ function AllowDialog({ x, act, onClose }) {
 
 // ── Administration ──
 function HubAdmin({ admin }) {
+  useStore(navStore);                               // ?view= changes without a new route
+  const s = useSession();
   if (!admin) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
-  return html`<${HubAdminPage} />`;
+  if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
+  // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
+  const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
+  return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
+    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} />`;
 }
-function HubAdminPage() {
+/** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
+function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
+/** #3298 S-89: the prominent entry to Group permissions at the top of Administration (discovery without docs). */
+function GroupPermissionsEntry() {
+  return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
+}
+function HubAdminPage({ groups = false } = {}) {
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -721,6 +755,7 @@ function HubAdminPage() {
   const fleets = view.fleets || [], pairings = view.pairings || [];
   return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
     <div class="s-section-layout">
+      ${groups ? html`<${GroupPermissionsEntry} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><h3>${ho("pairSteps")}</h3>

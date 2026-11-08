@@ -96,7 +96,7 @@ describe("Sign out… and Switch account… (#3212 PR 3)", () => {
     answer = () => ({ status: 500, body: { error: "failed" } });
     rowOf("claude-code", "work").querySelector(".s-account-signout").click(); await settle(6);
     btn(dialog(), "Sign out").click(); await settle(10);
-    expect(text(dialog().querySelector(".err"))).toBe("Claude Code's logout didn't succeed. Try again, or run it on the host.");
+    expect(text(dialog().querySelector(".err"))).toBe("Claude Code's logout did not succeed. Try again here.");
     answer = () => ({ status: 200, body: { signedOut: "work", keychainLeft: true } });
     btn(dialog(), "Sign out").click(); await settle(12);
     expect(toastText()).toContain("a Keychain item for this account is still on this Mac");
@@ -134,7 +134,7 @@ describe("Sign out… and Switch account… (#3212 PR 3)", () => {
   it("zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
-    expect([text(rowOf("claude-code", "default").querySelector(".s-account-switch")), text(rowOf("claude-code", "work").querySelector(".s-account-signout"))]).toEqual(["切換帳號…", "登出…"]);
+    expect([text(rowOf("claude-code", "default").querySelector(".s-account-switch")), text(rowOf("claude-code", "work").querySelector(".s-account-signout"))]).toEqual(["切換帳號", "登出"]);
     rowOf("claude-code", "work").querySelector(".s-account-signout").click(); await settle(6);
     expect(text(dialog())).toContain("要登出 Claude Code 的帳號「work」嗎？");
   });

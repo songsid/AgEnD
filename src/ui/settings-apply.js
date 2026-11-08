@@ -213,12 +213,16 @@ async function watch(o, id) {
  * A full AgEnD restart for a job that needs one: its own confirmation (the caller's), its own key, one at a time. The
  * job's fleet row moves to "running" on the server; that job is watched again.
  */
-/** POST /api/settings/restart-fleet for `jobId`, with its own key: { ok, status, body } (a lost answer: status 0). */
+/**
+ * POST /api/settings/restart-fleet for `jobId`, with its own key: { ok, status, body } (a lost answer: status 0). `jobId`
+ * null (S-92): the pending changes' own restart, when no Settings job carries it (a hand edit) — the server makes one.
+ * The confirmation is this request's value; the person only clicks (and answers the restart's own dialog).
+ */
 async function postRestart(jobId) {
   const key = newKey("restart");
   try {
     return await api("/api/settings/restart-fleet", { method: "POST", headers: { "Idempotency-Key": key },
-      body: JSON.stringify({ job_id: jobId, confirm: "restart-agend", idempotency_key: key }) });
+      body: JSON.stringify({ ...(jobId ? { job_id: jobId } : { pending: true }), confirm: "restart-agend", idempotency_key: key }) });
   } catch { return { ok: false, status: 0, body: null }; }
 }
 
@@ -247,11 +251,14 @@ export async function restartFleet(forJob) {
  * become the operation, so its card and line follow the restart as they follow any other (a refusal leaves the banner
  * as it was). The caller asked first.
  */
-export async function restartPendingChanges(jobId) {
+export async function restartPendingChanges(asked) {
   if (operationActive()) return { ok: false, busy: true };
-  if (op && op.job && op.job.id === jobId) return restartFleet({ opId: op.id, jobId });
-  const res = await postRestart(jobId);
+  if (asked && op && op.job && op.job.id === asked) return restartFleet({ opId: op.id, jobId: asked });
+  const res = await postRestart(asked || null);
   if (!res.ok || operationActive()) return res;
+  // The job that carries it: the one asked for, or (S-92) the one the server made for it.
+  const jobId = asked || (res.body && typeof res.body.job_id === "string" ? res.body.job_id : null);
+  if (!jobId) return res;
   toast(t("settings.restartFleetStarted"));
   let fresh = null;
   try { fresh = await api(`/api/settings/apply/${encodeURIComponent(jobId)}`); } catch { fresh = null; }

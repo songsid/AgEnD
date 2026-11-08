@@ -250,7 +250,7 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
   const [step, setStep] = useState(resume ? { kind: "login" } : { kind: "checking" });
   const [busy, setBusy] = useState(false);
   const shown = shownOf(backend, profile);
-  const close = onClose || closeDialog;
+  const dismiss = onClose || closeDialog;
   useEffect(() => {
     if (resume) return undefined;
     let gone = false;
@@ -262,6 +262,14 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
     return () => { gone = true; };
   }, []);
   const login = s.login;
+  const close = () => {
+    if (step.kind === "login" && login && login.mine && login.phase === "running" && login.terminal && login.accessCode) {
+      // #3321 review: for the sign-in this dialog was showing, and only if the server finds it still that run, still this session's, its terminal still unopened —
+      // not "whatever is running", which a page that read two seconds ago can no longer know. A run that is gone or replaced is left alone.
+      void post("/ui/backend-login/cancel", { run: login.id, ifUnopened: true }).then(() => refreshSignIn());
+    }
+    dismiss();
+  };
   const live = step.kind === "login" && login && login.phase === "running";
   // While a running sign-in is on screen, read it every 2 s too (a page without the stream still sees it move).
   useEffect(() => {
@@ -282,6 +290,7 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
     setBusy(false);
     toast((r.body && r.body.message) || tn("cancelled"));
     void refreshSignIn();
+    dismiss();
   };
   let body, actions;
   if (step.kind === "checking" || step.kind === "starting") {

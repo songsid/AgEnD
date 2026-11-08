@@ -102,6 +102,9 @@ export class HubRuntime {
   browserCertificateSettings(): import("./browser-certificate.js").HubBrowserCertificateControl | null { return this.browserCertificateControl; }
   private retentionControl: import("./retention.js").HubRetentionControl | null = null;
   retentionSettings(): import("./retention.js").HubRetentionControl | null { return this.retentionControl; }
+  /** #3298 S-89: the mounted Hub offers group permissions (S-88's control is composed). Marks this fleet's pages only. */
+  private groupPermissions = 0;
+  groupPermissionsAvailable(): boolean { return this.groupPermissions > 0; }
   private readonly mount: HubMount;
   private view: string | null = null;
   /** The newest configuration view asked for (admitted), which may still be waiting behind a running apply. */
@@ -136,6 +139,11 @@ export class HubRuntime {
           retentionReady: control => {
             this.retentionControl = control;
             return () => { if (this.retentionControl === control) this.retentionControl = null; };
+          },
+          groupPermissionsReady: () => {
+            this.groupPermissions++;
+            let done = false;
+            return () => { if (!done) { done = true; this.groupPermissions--; } };
           },
         report: (code, detail) => {
           this.reported = { side: "server", code, detail };

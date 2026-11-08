@@ -13,6 +13,7 @@
  * - `receive(frame, link)` is S1's HubServer callback for an authenticated member link.
  * - `close()` forgets the links. S5 closes the DB.
  */
+import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +40,9 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js"]);
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
+  // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
+  "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -51,6 +54,8 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
+  readonly features: readonly string[];
 }
 
 class SignedOut extends Error {}
@@ -128,19 +133,21 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       try { return await work(); } catch (e) { if (e instanceof HubProtocolError && e.code === "revoked" && !sessions.session(ctx.token)) throw new SignedOut(); throw e; }
     };
     const m = (re: RegExp) => re.exec(path);
+    // The session's capability mark: present only when the group routes are composed (presentation only — a mark confers nothing).
+    const features = deps.groupHttp ? { features: [GROUP_POLICY_FEATURE] } : {};
     let r: RegExpExecArray | null;
 
     if (path === "/hub/v1/session") {
       if (method === "GET") {
         const s = sessions.session(ctx.token);
-        return send(res, 200, s ? { signedIn: true, displayName: s.displayName, login: s.login, admin: s.admin, csrf: s.csrf, hub: { name: deps.config.name } }
+        return send(res, 200, s ? { signedIn: true, displayName: s.displayName, login: s.login, admin: s.admin, csrf: s.csrf, hub: { name: deps.config.name }, ...features }
           : { signedIn: false, hub: { name: deps.config.name } });
       }
       if (method === "POST") {
         const b = await body();
         const out = await sessions.signIn(b.login, b.password);
         const { csrf: token, ...view } = out.view;
-        return send(res, 200, { signedIn: true, displayName: view.displayName, login: view.login, admin: view.admin, csrf: token, hub: { name: deps.config.name } },
+        return send(res, 200, { signedIn: true, displayName: view.displayName, login: view.login, admin: view.admin, csrf: token, hub: { name: deps.config.name }, ...features },
           { "Set-Cookie": hubSetCookie(deps.config.hubId, out.token, out.maxAgeMs) });
       }
       if (method === "DELETE") { csrf(); sessions.signOut(ctx.token); return send(res, 200, { signedIn: false }, { "Set-Cookie": hubClearCookie(deps.config.hubId) }); }
@@ -265,6 +272,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (!HEX64.test(fp)) throw new HubProtocolError("invalid");
       await guard(() => deps.pairing.confirmOwner(ctx, uuid(r![1]), fp)); return send(res, 200, { ok: true });
     }
+    // #3298 S-89: the group routes (404 until S-88's control is composed), ahead of the other admin routes.
+    if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value) => send(res, status, value),
+      // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
+      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
     if (path.startsWith("/hub/v1/admin/")) return admin(req, res, path, ctx, method, signedIn, csrf, body, guard);
     throw new HttpError(404, "not-found");
   }
@@ -359,7 +370,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     quota.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
-      case "exposure.snapshot": catalog.receiveSnapshot(frame.payload, link); quota.prune(); return;
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "receipt": return { ...reply, type: "receipt", payload: rooms.receipt(frame.payload, link) };
       case "answer": return { ...reply, type: "receipt", payload: await rooms.answer(frame.payload, link) };
@@ -385,7 +396,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
   rooms.buttons.start();
   return {
-    handle, receive,
+    handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE] : []),
     async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

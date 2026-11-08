@@ -154,7 +154,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
-  requestSettingsSelfRestart?(jobId: string, key: string): Promise<SelfRestartResult>;
+  /** `jobId` null (S-92): the pending changes' own restart — the restart notice with no Settings job behind it. */
+  requestSettingsSelfRestart?(jobId: string | null, key: string): Promise<SelfRestartResult>;
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
@@ -1594,8 +1595,9 @@ export function handleSettingsRequest(
         json(res, 400, { error: 'confirm must be the literal "restart-agend"' });
         return;
       }
-      const jobId = typeof body.job_id === "string" ? body.job_id : "";
-      if (!jobId) { json(res, 400, { error: "job_id required" }); return; }
+      // S-92: `pending: true` (the literal) asks for the pending changes' restart when no Settings job carries it.
+      const jobId = typeof body.job_id === "string" && body.job_id ? body.job_id : body.pending === true ? null : "";
+      if (jobId === "") { json(res, 400, { error: "job_id required" }); return; }
 
       const result = await ctx.requestSettingsSelfRestart!(jobId, key);
       if (result.ok) {

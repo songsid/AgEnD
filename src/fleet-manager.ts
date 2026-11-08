@@ -96,6 +96,7 @@ import {
   type UpdateMarkerIdentity,
   type UpdateProgressOperation,
   type UpdateProgressState,
+  type UpdateProgressTarget,
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
@@ -476,7 +477,7 @@ import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
-import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
 import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
@@ -694,6 +695,11 @@ const CANCEL_BTN_MAX_LIFETIME_MS = 24 * 60 * 60_000;
 const STALE_CANCEL_CLICK_COOLDOWN_MS = 10_000;
 /** Orphaned-button ledger, swept at startup. Lives in the fleet data dir. */
 const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
+/**
+ * S-92: the restart marker's target for a web-only fleet's Settings restart (no chat message carries its progress). It is
+ * known by its `surface: "web"` (#3373 review P3: never by this id, which a chat connection could also be called).
+ */
+const WEB_RESTART_TARGET = "web-settings";
 /**
  * How often the cancel button's text is refreshed with elapsed working time.
  *
@@ -2224,6 +2230,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
+  hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 
   private observeRuntimeSwitches(): void {
     setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);
@@ -9646,37 +9654,73 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(threadId ? { threadId } : {}),
       messageId,
     };
+    return this.launchTrackedFullRestart(target, text => this.reportFullRestartFailure(adapter, chatId, threadId, messageId, text),
+      () => this.startUpdateProgressMonitor(adapter));
+  }
+
+  /**
+   * S-92: the same tracked reload for a web-only fleet's Settings restart — no chat message to carry its progress: the
+   * marker names the web (WEB_RESTART_TARGET), a refusal is a fleet Notice, and the next fleet says it is back as one.
+   */
+  private async requestWebFullRestart(onLateFailure?: (detail: string) => void): Promise<boolean> {
+    const target = { surface: "web" as const, adapterId: WEB_RESTART_TARGET, chatId: WEB_RESTART_TARGET, messageId: `settings-${Date.now()}` };
+    const say = async (text: string): Promise<void> => { this.recordWebNotice("fleet", text); };
+    // No progress monitor reads the marker for the web: a helper that fails after its launch is said here, and settled.
+    return this.launchTrackedFullRestart(target, say, null, (detail) => {
+      void say(t("restart.full_launch_failed"));
+      onLateFailure?.(detail);
+    });
+  }
+
+  /**
+   * S-92: a fleet (with no chat connection) that comes up from a web-only Settings restart says it is back as a fleet
+   * Notice — the restart was announced as one. Anything else (a chat restart, an update, a plain boot): nothing here.
+   */
+  private async announceWebRestartDone(pending: { progress: UpdateProgressState } | null): Promise<boolean> {
+    if (!pending || updateProgressOperation(pending.progress) !== "full-restart" || pending.progress.target.surface !== "web") return false;
+    const { createRequire } = await import("node:module");
+    const version = createRequire(import.meta.url)("../package.json").version ?? "unknown";
+    return this.recordWebNotice("fleet", t("restart.settings_done", version));
+  }
+
+  private async launchTrackedFullRestart(
+    target: UpdateProgressTarget,
+    fail: (text: string) => Promise<void>,
+    startMonitor: (() => void) | null,
+    /** After the launch: the helper failed before the hand-off (with no progress monitor to say so). */
+    lateFailure?: (detail: string) => void,
+  ): Promise<boolean> {
     // This check is synchronous with the marker write below. A second command
     // cannot slip through between them on Node's event loop and replace the
     // first command's delivery target or launch a competing restart helper.
     if (this.shuttingDown || isUpdateInProgress(this.dataDir)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart refused because another planned restart is active");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart refused because another planned restart is active");
+      await fail(t("restart.full_busy"));
       return false;
     }
     if (!persistFullRestartProgress(this.dataDir, target)) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker could not be persisted — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker could not be persisted — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     const ownedMarker = readUpdateProgress(this.dataDir);
     if (!ownedMarker) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker disappeared after persistence — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker disappeared after persistence — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     this.lastUpdateProgressText = null;
-    this.startUpdateProgressMonitor(adapter);
+    startMonitor?.();
     await this.waitForFullRestartIdleGrace();
 
     // An update can begin while the idle wait yields. Never launch a second
     // process replacement against a marker we no longer own.
     if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart superseded during idle wait — reload refused");
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart superseded during idle wait — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      await fail(t("restart.full_busy"));
       return false;
     }
 
@@ -9686,7 +9730,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Full restart helper failed to spawn — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
@@ -9703,6 +9747,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;
       this.logger.error({ result }, "Full restart helper exited before the fleet began shutting down");
       setUpdateProgressStage(this.dataDir, "failed", { error: detail });
+      lateFailure?.(detail);
     });
     return true;
   }
@@ -10446,7 +10491,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
-        if (pendingUpdateProgress) {
+        if (pendingUpdateProgress && pendingUpdateProgress.progress.target.surface !== "web") {
           const saved = pendingUpdateProgress.progress.target;
           const target: RestartProgressTarget = {
             adapter: this.adapters.get(saved.adapterId),
@@ -10639,6 +10684,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
+    } else {
+      await this.announceWebRestartDone(pendingUpdateProgress);
     }
     // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
     // quick link — Settings shows it on this computer).
@@ -16679,6 +16726,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /** #3373 review P2: recordWebNotice for a notice that must be on disk first — true only once it was written. */
+  private recordWebNoticeDurable(kind: NoticeKind, text: string): boolean {
+    if (!this.webOnlyPromptPlace()) return false;
+    const store = this.webNoticeStore();
+    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text) }) ?? null;
+    if (!notice) return false;
+    this.emitSseEvent("notice", { notice, unread: store!.unread() });
+    return true;
+  }
+
   private static readonly FLEET_ERROR_THROTTLE_MS = 10 * 60_000;
   private fleetErrorNotices = new Map<string, { at: number; suppressed: number }>();
 
@@ -20193,7 +20250,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
-        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, null);   // its file changed, whoever is watching: a "needs sign-in" left from before is no longer the answer
+        }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -20225,7 +20285,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
-      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
+      cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
@@ -20321,8 +20381,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       diskProfiles.set(backend, rows);
     }
     const { agents, classic, fleetDefaults } = this.accountUses();
-    // Weekly usage, from the usage panel's own (cached, never forced) read.
+    // Weekly and short-window (5h) usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
+    const shortWindow = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
     for (const backend of ACCOUNT_CLIS) {
       const pid = usageProviderIdForBackend(backend); if (!pid) continue;
@@ -20332,8 +20393,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
       for (const provider of payload?.providers ?? []) {
-        const at = ids.get(provider.id); const w = at ? weeklyUsage(provider as never) : undefined;
-        if (at && w) usage.set(at, w);
+        const at = ids.get(provider.id); if (!at) continue;
+        const w = weeklyUsage(provider as never); if (w) usage.set(at, w);
+        const sh = shortUsage(provider as never); if (sh) shortWindow.set(at, sh);
       }
     } catch { /* the view without usage */ }
     // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
@@ -20349,7 +20411,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+  }
+
+  /**
+   * A sign-in just finished for this account: look at its Keep sign-in alive setting once now (when it is on), so what the Accounts row says about
+   * "the last check" is not the one from before the sign-in. Never awaited, and never allowed to fail the sign-in's own follow-up.
+   */
+  private keepAliveAfterSignIn(backend: string, profile: string | null): void {
+    if (!isKeepAliveBackend(backend)) return;
+    // Building the service can throw as well as the check, and the follow-up of a sign-in (waking its agents) must not depend on either.
+    const failed = (err: unknown) => { try { this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"); } catch { /* nothing to say it to */ } };
+    try { this.keepAliveService().tick({ only: { backend, profile } }).catch(failed); } catch (err) { failed(err); }
   }
 
   /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
@@ -20548,10 +20621,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<RemoveResult | MachineAccountResult> {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor, opts?: { cancelSignIn?: true }): Promise<RemoveResult | MachineAccountResult> {
     if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
+    // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
+    if (opts?.cancelSignIn && validCredentialProfileName(name) && await this.loginController?.cancelAccount(backend, name).catch(() => false)) {
+      this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
+    }
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
     // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
     // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
@@ -21127,6 +21205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** #1699 part 2: the login just signed in — a profile, or null for the backend's default one. */
     profile: string | null = null,
   ): Promise<PostLoginRecovery> {
+    this.keepAliveAfterSignIn(backend, profile ?? null);
     const woken: string[] = [];
     const restarted: string[] = [];
     const pending: string[] = [];
@@ -25506,7 +25585,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * audit notice — and only once all of that holds is the attempt written to
    * disk and fsynced, before anything spawns.
    */
-  async requestSettingsSelfRestart(jobId: string, key: string): Promise<SelfRestartResult> {
+  async requestSettingsSelfRestart(requestedJobId: string | null, key: string): Promise<SelfRestartResult> {
     // A retry after a lost response must not restart a second time. The key is
     // recorded on the job, which survives the restart it triggers.
     const already = this.applyJobs.findByRestartKey(key);
@@ -25524,6 +25603,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
     }
 
+    // S-92 (#3326 D1): a restart asked for the pending changes themselves (`requestedJobId` null) — the restart notice
+    // with no Settings job behind it (a hand edit of fleet.yaml). Only when a fleet-level restart is pending
+    // (settingsRestartPending, the notice's own test): its newest job carries it, else one is made here to carry it, once
+    // (the next ask finds that one). Everything below is the same path as a Save's restart.
+    let jobId = requestedJobId;
+    if (jobId === null) {
+      // One already asked for is in flight (its row "running"): never a second job, nor a second restart.
+      // #3373 review P2: a consumed restart job (and its row) runs until the next process settles it (settleAfterRestart)
+      // or its launch fails (finish) — so this sees only a restart still in flight, never an old one.
+      if (this.applyJobs.all().some(item => item.restart_key && item.targets.some(r => r.target === APPLY_FLEET_TARGET && r.status === "running"))) {
+        return { ok: false, status: 409, error: "a restart is already running" };
+      }
+      const pending = this.settingsRestartPending();
+      if (!pending) return { ok: false, status: 409, error: "no fleet-level change is pending any more" };
+      if (pending.job_id) jobId = pending.job_id;
+      else {
+        const made = this.applyJobs.create(`restart-pending:${key}`, [{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+        this.applyJobs.setTargetStatus(made.id, APPLY_FLEET_TARGET, "restart-required");
+        this.applyJobs.finish(made.id);
+        this.logger.info({ jobId: made.id, keys: pending.keys }, "Settings restart for pending changes with no Settings job: a job now carries it");
+        jobId = made.id;
+      }
+    }
     const job = this.applyJobs.get(jobId);
     const row = job?.targets.find(item => item.target === APPLY_FLEET_TARGET);
     if (!job || !row || row.status !== "restart-required") {
@@ -25574,8 +25676,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the admins are. Refusing when it cannot be posted is the same rule as
     // refusing when the progress marker cannot be written: no untraceable
     // restarts.
-    const notice = await this.postSelfRestartNotice();
-    if (!notice) {
+    // S-92 (leader's ruling, cid-a6-ui-feedback): a web-only fleet has no General to announce it in — its trace is the
+    // dashboard's own fleet Notice (where its admins are) plus the log line below. Every other guard above and below is
+    // the same. A chat fleet is unchanged: General is the trace.
+    const webOnly = this.isWebOnlyFleet();
+    const notice = webOnly ? null : await this.postSelfRestartNotice();
+    if (webOnly) {
+      if (!this.recordWebNoticeDurable("fleet", t("restart.settings_triggered"))) {
+        this.logger.error({ jobId }, "Could not record the Settings-triggered restart as a fleet Notice — refusing to restart silently");
+        return { ok: false, status: 503, error: "couldn't record the restart; try again" };
+      }
+      this.logger.info({ jobId, trace: "web-notice" }, "Settings-triggered restart announced as a fleet Notice (web-only fleet)");
+    } else if (!notice) {
       return {
         ok: false,
         status: 409,
@@ -25588,12 +25700,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.applyJobs.update(jobId, current => {
       const target = current.targets.find(item => item.target === APPLY_FLEET_TARGET);
       if (target) target.status = "running";
+      // #3373 review P2: the job runs again while its restart does (its deadline is the restart's): the next process
+      // settles it (settleAfterRestart only touches running jobs), a failed launch finishes it.
+      current.status = "running";
+      delete current.finishedAt;
+      current.restartStartedAt = Date.now();         // its time counts from now, not from the Save (#3373 review P3)
       current.restart_key = key;
       current.deadlineMs = SELF_RESTART_DEADLINE_MS;
     });
     this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
 
-    const launched = await this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId)
+    // #3373 review P2: a web restart's helper that fails after it was launched (the answer already said "restarting") is
+    // said as a fleet Notice by requestWebFullRestart, and its job settles here as failed.
+    const settleLateFailure = (detail: string): void => {
+      this.applyJobs.setTargetStatus(jobId!, APPLY_FLEET_TARGET, "failed", detail);
+      this.applyJobs.finish(jobId!, detail);
+      this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId!)!));
+    };
+    const launched = await (notice ? this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId) : this.requestWebFullRestart(settleLateFailure))
       .catch(err => {
         this.logger.error({ err }, "Settings-triggered self restart failed to launch");
         return false;

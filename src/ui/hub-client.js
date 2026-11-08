@@ -264,6 +264,20 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
     approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
     revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
+    // #3298 S-89 (experimental, off unless the session lists "group-policy-v1"): group permissions, admin only; the welcome, any
+    // signed-in person (display only — every action still asks the server).
+    groupPolicy() { return call("GET", "/hub/v1/admin/group-policy"); },
+    resolveGroup(dn) { return call("POST", "/hub/v1/admin/group-policy/resolve", { dn }); },
+    previewGroupPolicy(policy) { return call("POST", "/hub/v1/admin/group-policy/preview", { policy }); },
+    /** The policy that was previewed and that preview's digest: the server applies only its own sealed candidate for them. */
+    saveGroupPolicy(policy, previewDigest) { return call("PUT", "/hub/v1/admin/group-policy", { policy, previewDigest }); },
+    /** One exact paused resource: its own revision, and the policy and suspension-record (lifecycle) revisions the page was shown. */
+    resumeGroupResource(resource, expectedPolicyRevision, expectedLifecycleRevision) {
+      return call("POST", "/hub/v1/admin/group-policy/resources/resume", { resource, expectedPolicyRevision, expectedLifecycleRevision });
+    },
+    welcome() { return call("GET", "/hub/v1/me/welcome"); },
+    /** This client has the group permissions calls (a cached older client does not: the pages then hide them). */
+    groupPolicyV1: true,
   };
 }
 

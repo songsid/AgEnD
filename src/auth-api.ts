@@ -163,7 +163,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
     "instance-switch.js",
     // #1523 N3: every page's header tools (text size, usage), the usage dialog they open, and the read stream it shares with View.
-    "header-tools.js", "usage-dialog.js", "read-stream.js",
+    "header-tools.js", "usage-dialog.js", "usage-meter.js", "read-stream.js",
     // #2585: the docked side panel in the usage rail's place (the shell's right-hand column).
     "side-panel.js",
     // #1665: the host-kept preferences and their browser cache.
@@ -210,6 +210,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
   "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
+  // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).
+  "hub-groups.css": { file: join("shared", "hub-groups.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
@@ -749,7 +751,7 @@ export function handleAuthRequest(
 }
 
 export const REVOCATION_NOT_DURABLE_MESSAGE =
-  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign out again, or rotate the token (agend web-token rotate).";
+  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. This page cannot repair session storage.";
 
 /**
  * A revocation that holds only in memory is reported as a failure (500), never as "ok": the browser is
