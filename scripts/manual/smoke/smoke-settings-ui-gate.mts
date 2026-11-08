@@ -7,6 +7,9 @@
 //               and a button sized to the input controls of its own row is that row's control size);
 //   - overflow: nothing reaches past the content column — as drawn, with every drawer open, and with a long real value in every
 //               select (a long model / computer / agent name: a select is as wide as its longest option unless bounded);
+//   - left-accent: no coloured left edge on a rounded box — a border-left wider than (or coloured unlike) the box's own top
+//               border while a left corner is rounded. The house style is the straight left bar (`.lbar`, #2330/#2332/#2489);
+//               a rounded border-left accent came back once in #3367's Accounts boxes (the user's report), so it fails here;
 //   - no page error, no CSP report, no horizontal scroll of the page.
 // GATE=ci (the CI job, < 5 min): desk light en + phone dark zh-TW, every section, the long-value pass, one middle width (1024).
 // GATE=full (local, ~10 min): the whole matrix (desk/phone × light/dark × en/zh-TW) and widths 900–1280.
@@ -63,7 +66,18 @@ const MEASURE = `(() => {
     if (peers.some((f) => vis(f) && Math.abs(Math.round(f.getBoundingClientRect().height) - h) <= 1)) continue;
     (kinds[cls] ||= {})[h] = (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 24);
   }
-  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, pageX: document.documentElement.scrollWidth - innerWidth };
+  // The user's report on #3367: a coloured left edge on a rounded box (a border-left curving into its corners) — never the
+  // house style, which is the straight left bar (.lbar). A box's own all-round border (same width and colour as its top) passes.
+  const accents = [];
+  for (const el of col.querySelectorAll("*")) {
+    if (!vis(el)) continue;
+    const s = getComputedStyle(el), lw = parseFloat(s.borderLeftWidth) || 0;
+    if (lw < 2 || s.borderLeftStyle === "none" || s.borderLeftColor === "transparent" || /rgba\([^)]*,\s*0\)$/.test(s.borderLeftColor)) continue;
+    const edge = lw > (parseFloat(s.borderTopWidth) || 0) || s.borderLeftColor !== s.borderTopColor;
+    const round = (parseFloat(s.borderTopLeftRadius) || 0) > 0 || (parseFloat(s.borderBottomLeftRadius) || 0) > 0;
+    if (edge && round) accents.push(path(el) + " " + s.borderLeftWidth + " " + s.borderLeftColor + " r" + s.borderTopLeftRadius);
+  }
+  return { over: over.slice(0, 8), overCount: over.length, cards, kinds, accents: accents.slice(0, 8), accentCount: accents.length, pageX: document.documentElement.scrollWidth - innerWidth };
 })()`;
 
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 47510), instances: 12 });
@@ -91,6 +105,7 @@ try {
       const mixed = Object.entries(drawn.kinds as Record<string, Record<string, string>>).filter(([, hs]) => Object.keys(hs).length > 1);
       check(`${tag}:buttons`, mixed.length === 0, mixed);
       check(`${tag}:overflow`, drawn.overCount === 0 && opened.overCount === 0 && drawn.pageX <= 0 && opened.pageX <= 0, { drawn: drawn.over, opened: opened.over, pageX: [drawn.pageX, opened.pageX] });
+      check(`${tag}:left-accent`, drawn.accentCount === 0 && opened.accentCount === 0, { drawn: drawn.accents, opened: opened.accents });
     }
     for (const width of WIDTHS) for (const section of SECTIONS) {
       if (c.device !== "desk") break;

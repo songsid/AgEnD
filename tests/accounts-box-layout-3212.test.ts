@@ -401,9 +401,13 @@ describe("the stylesheets: the theme's colours only, layers float, the box does 
   it("the buttons group hides when empty; a computer's “—” usage is not drawn; the status bar is the theme's --ok, --warn or --text-3", () => {
     expect(css).toContain(".s-account-row .s-actions:empty { display: none; }");
     expect(rule(css, ".s-account-usage.is-none")).toContain("display: none");
-    expect(rule(css, ".s-accounts .s-account-row")).toContain("border-left: 4px solid var(--ok)");
-    expect(rule(css, ".s-account-row:has(.s-auth-state.is-not_signed_in)")).toContain("border-left-color: var(--warn)");
-    expect(rule(css, ".s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old))")).toContain("border-left-color: var(--text-3)");
+    // The user's report on #3367: the state colour is the house straight bar (`.lbar`, #2330), never a border-left on the
+    // rounded row — the row carries the class, this sheet only colours it.
+    expect(rule(css, ".s-accounts .s-account-row")).toContain("--lbar-color: var(--ok)");
+    expect(rule(css, ".s-account-row:has(.s-auth-state.is-not_signed_in)")).toContain("--lbar-color: var(--warn)");
+    expect(rule(css, ".s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old))")).toContain("--lbar-color: var(--text-3)");
+    expect(css).not.toMatch(/border-left(?:-color)?\s*:/);
+    expect(readFileSync(new URL("../src/ui/accounts-view.js", import.meta.url), "utf8")).toContain('class="s-row s-account-row lbar"');
   });
   it("Keep sign-in alive's foot is one wrapping line", () => {
     expect(rule(ka, ".s-account-keepalive")).toContain("flex-wrap: wrap");
