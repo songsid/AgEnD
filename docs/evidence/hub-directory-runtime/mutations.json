@@ -1,0 +1,65 @@
+{
+  "mutants": [
+    {
+      "guard": "live-epoch",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "physical-participant",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "pending-apply",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "held-import",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "recovery-ticket",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "apply-cancellation",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "shared-pool",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "required-registry",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "secret-bytes",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "fleet-cancel",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "fleet-refusal",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "before-driver",
+      "assertionCaught": true,
+      "failures": 1
+    }
+  ],
+  "restored": true
+}

@@ -12,7 +12,7 @@ let rig: any, rigOff: any, rigRead: any, admin: any, bo: any, seen: Array<[strin
 const writer: HubSettingsWriter = {
   prepare(op, actor) { seen.push(["prepare", { op, actor }]); if (refuse) throw new HubSettingsError(refuse as never); return { ref: "ref-1", summary: { field: "name", from: "Team Hub", to: op.name }, expiresAt: 1 }; },
   commit(ref, actor, current) { seen.push(["commit", { ref, actor, current: current() }]); if (refuse) throw new HubSettingsError(refuse as never); return { receiptId: "11111111-1111-4111-8111-111111111111", summary: { field: "name", from: "Team Hub", to: "Ops" } }; },
-  recover() {}, pending: () => false,
+  recover() {}, pending: () => false, pendingDirectory: () => false,
 };
 beforeAll(async () => {
   rig = await s3bRig({ hubSettings: { info: INFO, writer } });

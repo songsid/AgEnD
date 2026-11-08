@@ -16,11 +16,17 @@ import { sealHubInitialization, verifyHubInitialization } from "../src/hub/initi
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
 
-const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any }));
+const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any, recovery: "normal" }));
 vi.mock("../src/hub/runtime.js", () => ({
   HubRuntime: class {
     constructor(options: unknown) { hub.options = options; }
     refresh() { return Promise.resolve(); }
+    directoryDecision() { return null; }
+    recoverSettings() {
+      if (hub.recovery === "throw") return Promise.reject(Error("recovery refused"));
+      if (hub.recovery === "cancelled") return Promise.resolve(false);
+      hub.options.settingsWriter.recover(); return Promise.resolve(true);
+    }
     apply(config: unknown) { hub.applied.push(structuredClone(config)); return Promise.resolve(); }
     fence() {} close() { return Promise.resolve(); }
     currentHolds() { return []; }
@@ -32,7 +38,7 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const MEMBER = "https://hub.example.test:8443", ADMIN = { realm: "corp", objectId: "0f1e2d3c-4b5a-4968-8776-655443322110" };
 const actor = { person: ADMIN, sessionId: "s1", requestId: "r1" };
 const roots: string[] = [];
-afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; });
+afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; hub.recovery = "normal"; });
 const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 async function harness() {
@@ -61,6 +67,7 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     const { path, fm, verifies } = await harness();
     const writer = hub.options.settingsWriter;
     expect(writer).toBeTruthy();
+    expect(writer.directory).toBeDefined();
     expect(hub.options.version === null || typeof hub.options.version === "string").toBe(true);
     writer.commit(writer.prepare({ kind: "rename", name: "Design Hub" }, actor).ref, actor, () => true);
     const text = readFileSync(path, "utf8");
@@ -91,5 +98,14 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     expect(verifies()).toBe(true);
     expect(hub.applied.length).toBeGreaterThan(0);
     expect(hub.applied.every((c: any) => c.hub.name === "After")).toBe(true);   // never applied with the half-written pair
+  });
+  it.each(["cancelled", "throw"])("a %s recovery never falls through to a normal Hub apply", async mode => {
+    const { root, fm } = await harness();
+    const crashed = createHubSettingsWriter({ home: root, readHub: () => fm.rawFleetConfig.hub, saveHub: p => fm.saveFleetConfig(p),
+      step: point => { if (point === "committed") throw Error("stop"); } });
+    expect(() => crashed.commit(crashed.prepare({ kind: "rename", name: "After" }, actor).ref, actor, () => true)).toThrow("stop");
+    hub.applied = []; hub.recovery = mode;
+    await fm.applyHubSwitches(); await settle();
+    expect(hub.applied).toEqual([]); expect(hub.options.settingsWriter.pending()).toBe(true);
   });
 });

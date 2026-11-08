@@ -138,6 +138,8 @@ export interface HubSettingsWriter {
   recover(): void;
   /** A journal is present: an interrupted commit waits for recover(). */
   pending(): boolean;
+  /** Read/validate the existing journal without exposing its private material. */
+  pendingDirectory(): boolean;
   directory?: HubDirectorySettingsWriter;
 }
 
@@ -358,6 +360,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   const pending = () => existsSync(file(SETTINGS_JOURNAL));
   return {
     pending,
+    pendingDirectory: () => readJournal()?.v === 2,
     ...(deps.directoryDecision ? { directory: directoryWriter } : {}),
 
     prepare(op, actor) {

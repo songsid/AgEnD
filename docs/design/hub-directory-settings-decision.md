@@ -1,6 +1,6 @@
 # Directory settings: one SQL decision, one sealed writer
 
-Internal M-2687 / [#3425](https://github.com/songsid/AgEnD/issues/3425) foundation on the session epoch from #3430 and shared writer from #3426. **No directory route, production participant/migration, setup UI or automatic compensation is composed by this slice.** Rename v1 keeps its existing file-journal decision.
+Internal M-2687 / [#3425](https://github.com/songsid/AgEnD/issues/3425) foundation on the session epoch from #3430 and shared writer from #3426. **The original foundation did not compose production callers.** [Runtime publication](hub-directory-runtime-publication.md) now registers its participant and migration; AD authority routes and automatic compensation remain uncomposed. Rename v1 keeps its existing file-journal decision.
 
 `createHubSettingsWriter` gains an optional directory operation only when supplied the existing Hub's SQL decision participant. It refuses another Hub's participant. There is no second file writer, generic reseal, role flag from a browser, or independent secret writer. The configured administrator equality is checked internally; the future caller must additionally acquire and repeatedly assert the complete operation-specific proof.
 
