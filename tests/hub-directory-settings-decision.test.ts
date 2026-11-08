@@ -636,7 +636,7 @@ describe("cold directory recovery (internal, no production caller)", () => {
     else expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
     expect(() => r.verifies()).not.toThrow();
   });
-  it.each(["new-set", "database", "floor", "key", "key-bytes", "identity", "binding", "registry", "unknown-version", "old-version", "new-version", "head", "epoch", "raised-floor", "notices"])("refuses %s before callback and never initializes missing authority", async fault => {
+  it.each(["new-set", "database", "floor", "key", "key-bytes", "identity", "binding", "registry", "unknown-version", "old-version", "new-version", "head", "epoch", "raised-floor", "notices", "operations", "targets"])("refuses %s before callback and never initializes missing authority", async fault => {
     const { r, options } = await coldRecoveryRig();
     if (fault === "identity") {
       options.hubId = randomUUID();
@@ -653,12 +653,19 @@ describe("cold directory recovery (internal, no production caller)", () => {
     if (fault === "epoch") r.db.exec("DELETE FROM hub_directory_epoch");
     if (fault === "raised-floor") r.floor.raise(1);
     if (fault === "notices") r.db.exec("DROP TABLE hub_settings_security_notices");
+    if (fault === "operations") r.db.exec("DROP TABLE hub_settings_operations");
+    if (fault === "targets") r.db.exec("DROP TABLE hub_settings_security_targets");
     r.db.close();
     const paths = [options.stateSet.database, ...options.stateSet.floors, ...options.stateSet.keys];
     const absent = fault === "new-set" ? paths : fault === "database" ? [paths[0]!] : fault === "floor" ? [paths[1]!] : fault === "key" ? [paths[2]!] : [];
     for (const rel of absent) rmSync(join(r.home, rel));
     let calls = 0;
-    expect(() => withHubDirectoryRecovery(options, () => { calls++; })).toThrow(); expect(calls).toBe(0);
+    const recover = () => withHubDirectoryRecovery(options, () => { calls++; });
+    const codes: Record<string, string> = { "new-version": "hub-state-newer", "unknown-version": "hub-state-newer",
+      registry: "hub-state-mismatch", "old-version": "hub-state-mismatch" };
+    if (codes[fault]) expect(recover).toThrowError(expect.objectContaining({ code: codes[fault] }));
+    else expect(recover).toThrow();
+    expect(calls).toBe(0);
     for (const rel of absent) expect(existsSync(join(r.home, rel))).toBe(false);
   });
   it("closes the physical DB on callback errors and rejects async escape", async () => {

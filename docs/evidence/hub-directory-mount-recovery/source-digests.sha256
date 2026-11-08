@@ -5,4 +5,4 @@ bcacc4f3bd245a146b027d4a10f5ee71345082549ac874e5c8775fd26401554e  src/hub/settin
 5e740fea5c0f2e16c8ef673179cc88cd67c53c7d4fb6a0f9ef372a207a5ae198  src/hub/settings-directory-decision.ts
 a1fcec4b2426862b5693e956f4f650d8ef747db21255e19b5675aab5790fea72  src/hub/settings-directory-mount.ts
 c11dd15cdc543f9095767f5fa57dd4581c1b668e97a3bc5e9141c8ef01e4e1e6  src/hub/settings-directory-recovery.ts
-ccf2e02ed9561a68e56b2947d48e51f4d312b2944a069c7df04466aa12c21358  tests/hub-directory-settings-decision.test.ts
+0714f09164390e49b93fbb215625c7e63e3c6f519c49e92ef4c5b1577958135f  tests/hub-directory-settings-decision.test.ts

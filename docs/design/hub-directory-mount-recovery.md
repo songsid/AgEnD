@@ -10,7 +10,7 @@ The barrier captures the durable directory head and browser epoch. A loss of own
 
 The internal source stamp also includes policy and transport revisions. A policy change invalidates a pending directory proof without requiring a directory remount. A valid cosmetic rename can mount under the unchanged directory/secret boundary with a new full seal.
 
-The SQL decision intentionally updates policy/version before its final proof. Reading those own changes as an unrelated source change would reject every composed save. The same decision instance therefore exposes a copied **synchronous proof basis** only while it invokes its proof callback. It checks the original expectation before opening that scope and checks the exact resulting rows after the callback. Source capture uses this basis for its stamp and group list. It cannot escape an await, be modified through the returned copy, or replace the final SQL CAS. Reentrant or unrelated changes still roll back, retaining an advanced floor as uncertain.
+The SQL decision intentionally updates policy/version before its final proof. Reading those own changes as an unrelated source change would reject every composed save. The same decision instance therefore exposes a copied **synchronous proof basis** only while it invokes its proof callback. It checks the original expectation before opening that scope and checks the exact resulting rows after the callback. Source capture uses the copied expectation for its stamp; the policy snapshot is reserved for the later source adapter. It cannot escape an await, be modified through the returned copy, or replace the final SQL CAS. Reentrant or unrelated changes still roll back, retaining an advanced floor as uncertain.
 
 ## Cold recovery
 
