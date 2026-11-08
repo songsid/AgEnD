@@ -1,6 +1,6 @@
 # Hub quick pairing acceptance (S-90)
 
-Captured with Chromium 156.0.8078.4 from source `b2775d9c03404feffe5a18a8f1c3ebab4c9e5fcc`.
+Initial matrix captured with Chromium 156.0.8078.4 from source `b2775d9c03404feffe5a18a8f1c3ebab4c9e5fcc`.
 The production Hub and fleet web listeners are real; their homes, SQLite databases, certificates and all accounts are scratch fixtures.
 The production AD driver uses a recorded fake LDAPS wire peer. Only its connector redirects the requested loopback DC port 636 to our owned ephemeral port; TLS verification and critical extended-DN controls stay enabled.
 
@@ -51,3 +51,22 @@ Local JSON/log receipts stay uncommitted; the evidence committed here is PNGs.
 Group permissions remain off until the Hub administrator explicitly enables them. No deployment or policy activation is part of this change.
 New schema components are `s90-pairing-notices` on the Hub and `s90-pairing-inbox` on members. An older strict binary needs matching pre-upgrade private state and monotonic-floor backups; do not reset an independent floor to admit stale state.
 The outbox/inbox refuse new automatic credentials/ACKs at their bounded capacity rather than silently discard security notices. Older members' queued notices stay pending until they support delivery.
+
+## Review R1: reachable retained history and alpha alignment
+
+#3397 landed as `614fb69fb34c8e663ae1947ece0898736ea5dcc4`. The plain alpha merge is `9dfe2d476`; its four squash-history conflicts preserve the pre-fix S-90 source/test patch byte for byte (SHA256 `d296cb65e35136a1d648707dec198c7cb126d81020c668408a7127275e3593ef`).
+
+The review fix removes the unreachable newest-100 window. Hub and member return the complete retained set, capped at the same 1024-record retention limit. The page initially renders 100 records and adds 100 with **Show older notices**. Collapsed history does not generate session ACKs; expanded ACKs run sequentially. An exact Hub ACK authenticates its recipient row and current person/session directly, independently of listing or disclosure of other rows.
+
+Three new tests executed and failed before the fix. Afterward: **373/373 tests across 24 files, zero skips**, both typechecks, and **15/15 executed assertion mutants** pass. This includes the original one-stream test, now pinned to the separate Hub workspace while preserving the fleet's one stream; member notices continue through the existing private Settings poll. No production stream code changed for that CI correction.
+
+| R1 run | Source | Checks | PNGs |
+|---|---|---:|---:|
+| `history/` | `2ef6623f500184c4fe8397924de6aa5695463fdf` | 42 | 19 |
+| `history-skew/` | `337586555` (same production fix; adds control captures) | 42 | 23 |
+
+Both runs repeat the real primary pairing journey and the existing-member notice journey on desktop light EN and phone dark zh-TW. The history extension seeds **101 recorded revoked historical notices** per case into the owned fixture DB, without creating a session, grant, pairing approval or credential. The Hub delivers these retained rows to the existing member over the real negotiated transport. The browser expands history, verifies the initial 100-record bound, reaches the oldest record, and receives an exact old Hub ACK with HTTP 200. Revoked historical rows show their status, rather than a live-fleet revoke link.
+
+[Older Hub history, phone dark zh-TW](history/current-phone-dark-zh-TW-older-hub-history.png) · [Older member history](history/current-phone-dark-zh-TW-older-member-history.png) · [Cached-CSS Hub history control](history-skew/current-skew-phone-dark-zh-TW-hub-history-control.png) · [Cached-CSS member history control](history-skew/current-skew-phone-dark-zh-TW-member-history-control.png).
+
+Add `EXTRA_NOTICES=1 HISTORY=1 MATRIX=quick` to the reproduction command above; add `SKEW=1` for the cached-asset row. The initial eight-case matrix and before evidence above retain their original source/scope. R1 reruns are additional evidence, not a claim that all previous captures were taken on the new head.
