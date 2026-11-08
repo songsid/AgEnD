@@ -104,7 +104,7 @@ try {
     await a.page.waitForSelector(".hub-home", { timeout: 10000 });
     await a.page.screenshot({ path: shot(`${tag}-1-home`) });
     // New chat: what is granted, who it answers for.
-    await a.page.click(c.device === "desk" ? ".sidebar .side-new" : ".hub-home .hub-new");
+    await a.page.click(c.device === "desk" ? ".sidebar .side-new" : ".hub-home .side-new");
     await a.page.waitForSelector(".hub-pick-row", { timeout: 10000 });
     const picks = await a.page.evaluate(`[...document.querySelectorAll(".hub-pick-row .t")].map((x) => x.textContent)`);
     await a.page.screenshot({ path: shot(`${tag}-2-new-chat`) });
@@ -199,7 +199,7 @@ try {
     await a.page.screenshot({ path: shot(`${tag}-7-list-and-menu`) });
     await a.page.keyboard.press("Escape");
     check(`${tag}-chat`, picks.includes("Sales numbers") && picks.includes("Design guide") && emptyOk && /one conversation|同一段對話/.test(notice) && shownAtOnce && tick.length > 0
-      && sent && answered && marks.code && marks.sender === agent && list.includes(agent) && menu.length === 3
+      && sent && answered && marks.code && marks.sender === agent && list.includes(agent) && menu.length === 2
       && layout.right <= 2 && layout.composerGap < 140 && !layout.stillWaiting
       && (c.device === "desk" ? rail.title && rail.cards >= 3 && rail.closedAfterReload && rail.reopened : rail.sheet && rail.cards >= 3)
       && a.errs.length === 0 && a.foreign.length === 0 && (await a.csp()).length === 0,

@@ -227,12 +227,15 @@ Build a Hub sidebar part from the dashboard's classes, never a Hub-only look:
 | Places | `.side-nav > a.side-row` with an `Icon` and `span.grow`; the current page is `.active` |
 | Search, New chat | `button.side-row.side-search` (with its `kbd.kbd-hint` shortcut), `button.side-row.side-new`, never a bordered pill |
 | A count | `.nav-count`, only for something the Hub really counts. Notices has none: the Hub keeps no read state |
-| The conversation list | `.view-roster.inst-nav > .side-section`, headed by `.inst-head > h2.side-label`; empty: one `p.side-empty` line |
-| The foot | `.side-foot`: `details.prefs-pop` (Settings: theme and language) and the session row; its menu opens upward |
-| A page | `PanelHeader` with the page's title, then cards in the page's column; the security notices card stands in that column too |
+| The conversation list | `.view-roster.inst-nav > .side-section`, headed by `.inst-head > h2.side-label`; empty: one `p.side-empty` line, said once per screen (not in the sidebar when the page beside it already says it). A phone's chats home draws the same roster (`HubRoomList`), not a list of its own |
+| The foot | `.side-foot`: `details.prefs-pop` (Settings: theme and language) and the session row. Its menu names the person (name and sign-in name) and holds Sign out — not the nav's rows again — and opens upward, inside the sidebar |
+| A page | Named once: `PanelHeader` carries the title (its scope as `.s-scope` in the `sub` slot) and the tab's title is the same name; the page opens with its lead (`p.s-page-lead.hub-page-lead`), never a `PageHead` repeating the header. A sub-page with its own subject (an agent, Group permissions) puts `a.hub-crumb` above its `PageHead` |
+| The page's frame | Cards in the page's column (`.col.hub-owner`); the page body is the only gutter (`.hub-page-body > .col` adds none) |
+| Security notices | On the Notices page only, under its header — never pinned above other pages |
+| A destructive action | `confirmDialog({ danger: true })`, as everywhere else (revoking a fleet). A reversible one (removing the Hub's name) asks nothing |
 
-A new Hub place is a row in `HubSide` (`src/ui/panel-hub.js`). Another feature passes its row as
-`{ route, labelKey, icon, visible(session) }` to the sidebar's owner instead of adding markup there.
+A new Hub place is a row in `HubSide` (`src/ui/panel-hub.js`). Another feature asks the sidebar's owner to add its row
+(route, label, icon, who sees it) instead of adding markup there.
 
 Don't: `` html`<a class="brand hub-brand">AgEnD Hub<span class="hub-brand-name"> · ${name}</span></a>` `` (two lines
 on a phone), `` html`<button class="btn hub-new">New chat</button>` `` in the sidebar.
@@ -240,8 +243,10 @@ on a phone), `` html`<button class="btn hub-new">New chat</button>` `` in the si
 Checked by: **CI** — the Hub shell gate (`scripts/manual/smoke/smoke-hub-shell-gate.mts`): the brand is one line,
 every nav row has one height and one icon inset, exactly one row is current, Search and New chat are side-rows, no
 count on Notices, the list's empty state is one line, the foot sits at the bottom, the session menu and Settings open
-on the screen, one card frame per Hub page, the notices card in the page's column, and the page asks the Hub for
-nothing but its own files. `tests/hub-shell-parity.test.ts` checks the same markup in a mini DOM.
+on the screen and inside the sidebar, one card frame per Hub page, the notices card in the page's column and on the
+Notices page only, one title per page and the tab named the same, one gutter, a phone's chats home drawing the sidebar's
+roster, a signed-out page showing the sign-in alone, and the page asking the Hub for nothing but its own files.
+`tests/hub-shell-parity.test.ts` checks the same markup in a mini DOM.
 
 ## Evidence in the pull request
 

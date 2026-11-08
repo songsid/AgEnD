@@ -185,7 +185,7 @@ try {
     // Without it a phone keeps hub-chat.css's own landing (the chat list; the side pane hidden): the welcome is there but not drawn.
     await s.page.waitForSelector(".hub-welcome-card", { timeout: 10000, state: "attached" }); await s.page.waitForTimeout(300);
     const vis = await s.page.evaluate(`document.querySelectorAll(".hub-welcome-card").length === 2 && !!document.querySelector('.hub-welcome-card[data-entry="chat"] .btn')
-      && (innerWidth >= 900 || !!document.querySelector(".hub-new"))`);
+      && (innerWidth >= 900 || !!document.querySelector(".hub-home .side-new"))`);
     await s.page.screenshot({ path: shot(`${tag}-no-groups-css-welcome`), fullPage: true });
     check(`${tag}-no-groups-css`, vis && s.errs.length === 0 && (await s.csp()).length === 0, { vis, errs: s.errs });
     await s.ctx.close();
