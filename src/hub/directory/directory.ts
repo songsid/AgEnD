@@ -13,6 +13,7 @@
  * password is refused before the network (to LDAP it would be an unauthenticated bind that "succeeds").
  */
 import { isIP } from "node:net";
+import { X509Certificate } from "node:crypto";
 import { AD_EXTENDED_DN, extendedGroupIds, type PolicyGroupLookup, type PolicyGroupFacts } from "./groups.js";
 import * as net from "node:net";
 import * as tls from "node:tls";
@@ -38,6 +39,8 @@ export interface HubDirectoryOptions {
   readonly onDiagnostic?: (event: HubDirectoryDiagnostic) => void;
   /** Test seam for expiry checks. */
   readonly now?: () => number;
+  /** Internal settings proof only: normal TLS checks PLUS the exact leaf confirmed for a changed target/trust. */
+  readonly expectedServerFingerprint?: string;
 }
 
 class InsecureTransportError extends Error {
@@ -92,7 +95,7 @@ class Session {
     readonly client: LdapClient,
   ) {}
 
-  static async open(cfg: ResolvedDirectoryConfig): Promise<Session> {
+  static async open(cfg: ResolvedDirectoryConfig, expectedServerFingerprint?: string): Promise<Session> {
     const { Client } = await loadLdapts();
     let session: Session | undefined;
     const tlsOptions = (): tls.ConnectionOptions => ({
@@ -101,7 +104,14 @@ class Session {
       minVersion: "TLSv1.2",
       host: cfg.host,
       ...(isIP(cfg.host) ? {} : { servername: cfg.host }),
-      checkServerIdentity: tls.checkServerIdentity,
+      checkServerIdentity: (name, cert) => {
+        const error = tls.checkServerIdentity(name, cert);
+        if (error) return error;
+        if (expectedServerFingerprint && (!cert.raw || new X509Certificate(cert.raw).fingerprint256.replace(/:/g, "").toUpperCase() !== expectedServerFingerprint)) {
+          return new InsecureTransportError("hub directory: the confirmed server certificate changed");
+        }
+        return undefined;
+      },
     });
     const client = new Client({
       url: cfg.url,
@@ -172,6 +182,8 @@ class Session {
 
 export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets, options: HubDirectoryOptions = {}): HubDirectory {
   const cfg = resolveDirectoryConfig(config);
+  const expectedServerFingerprint = options.expectedServerFingerprint?.replace(/:/g, "").toUpperCase();
+  if (expectedServerFingerprint !== undefined && !/^[0-9A-F]{64}$/.test(expectedServerFingerprint)) throw new HubDirectoryConfigError("hub directory: invalid server fingerprint");
   if (!secrets || typeof secrets.bindPassword !== "string" || !validPassword(secrets.bindPassword)) {
     throw new HubDirectoryConfigError("hub directory: the service account password is missing");
   }
@@ -205,7 +217,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
   };
 
   const openService = async (): Promise<Session> => {
-    const session = await Session.open(cfg);
+    const session = await Session.open(cfg, expectedServerFingerprint);
     try {
       await session.bind(cfg.bindDn, bindPassword);
       return session;
@@ -305,6 +317,28 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       finally { await service?.close(); }
     },
 
+    async checkPolicyGroup(key: PersonKey): Promise<PolicyGroupLookup> {
+      const who = key && Object.freeze({ realm: key.realm, objectId: key.objectId });
+      if (!groupSupport) return { ok: false, reason: "unsupported" };
+      if (closed || !who || who.realm !== cfg.realm || !objectIdMatch("ad", who.objectId)) return { ok: false, reason: "unknown" };
+      let service: Session | undefined;
+      try {
+        service = await openService();
+        const { AndFilter, EqualityFilter, FilterParser } = await loadLdapts();
+        const filter = new AndFilter({ filters: [FilterParser.parseString("(objectClass=group)"), new EqualityFilter(objectIdMatch("ad", who.objectId)!)] });
+        const attrs = ["objectGUID", "groupType"];
+        const found = await service.search(filter, attrs, ["objectGUID"], "sub", cfg.baseDn, undefined, true);
+        if (closed || found.length > 1) return { ok: false, reason: "unknown" };
+        const entry = found[0];
+        if (!entry) return { ok: false, reason: "not-found" };
+        if (!withinGroupBase(entry.dn, cfg.baseDn) || !groupEntry(entry, who.objectId)) return { ok: false, reason: "not-security-group" };
+        const again = await service.search(filter, attrs, ["objectGUID"], "base", entry.dn, undefined, true);
+        if (closed || again.length !== 1 || !groupEntry(again[0]!, who.objectId) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
+        return { ok: true, group: Object.freeze({ key: who, dn: again[0]!.dn }) };
+      } catch { report("group-lookup", "unknown"); return { ok: false, reason: "unknown" }; }
+      finally { await service?.close(); }
+    },
+
     async readPolicyGroups(key: PersonKey): Promise<PolicyGroupFacts> {
       // Capture caller-owned identity before any await; later replacement cannot retarget a result.
       const who = key && Object.freeze({ realm: key.realm, objectId: key.objectId });
@@ -367,7 +401,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         const { entry, objectId } = selected;
 
         // The password goes to the directory once, on its own connection, for the DN the service search found.
-        const user = await Session.open(cfg);
+        const user = await Session.open(cfg, expectedServerFingerprint);
         try {
           await user.bind(entry.dn, password);
         } catch (err) {

@@ -27,6 +27,17 @@ afterAll(() => certs?.cleanup());
 async function start() { peer = await groupWirePeer(certs!.leaf); f.port = peer.port; }
 
 describe("group-policy real LDAPS listener smoke", () => {
+  it("revalidates a configured group by GUID after rename and refuses a replacement at its old DN", async () => {
+    await start(); const d = directory();
+    peer.state.labels.set(GROUP_A, "CN=Renamed,DC=example,DC=test"); peer.state.labels.set(GROUP_B, GROUP_DN);
+    expect(await d.checkPolicyGroup!({ realm: "example", objectId: GROUP_A })).toEqual({ ok: true,
+      group: { key: { realm: "example", objectId: GROUP_A }, dn: "CN=Renamed,DC=example,DC=test" } });
+    expect(peer.searches.map(s => s.scope)).toEqual([2, 0]);
+    expect(peer.searches.every(s => s.sizeLimit === 2 && s.deref === 0)).toBe(true);
+    peer.state.labels.delete(GROUP_A);
+    expect(await d.checkPolicyGroup!({ realm: "example", objectId: GROUP_A })).toEqual({ ok: false, reason: "not-found" });
+    expect(await d.resolvePolicyGroup!(GROUP_DN)).toMatchObject({ ok: true, group: { key: { objectId: GROUP_B } } });
+  });
   it("sends the actual critical control BER and refuses the recreated old DN in the same read", async () => {
     await start(); const d = directory(), found = await d.resolvePolicyGroup!(GROUP_DN);
     expect(found).toEqual({ ok: true, group: { key: { realm: "example", objectId: GROUP_A }, dn: GROUP_DN } });
