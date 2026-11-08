@@ -1,0 +1,45 @@
+{
+  "mutants": [
+    {
+      "guard": "startup-material-all",
+      "assertionCaught": true,
+      "failures": 2
+    },
+    {
+      "guard": "startup-final-material",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "runtime-server-scope",
+      "assertionCaught": true,
+      "failures": 2
+    },
+    {
+      "guard": "mount-server-scope",
+      "assertionCaught": true,
+      "failures": 2
+    },
+    {
+      "guard": "member-startup-disconnect",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "pending-apply-member-fence",
+      "assertionCaught": true,
+      "failures": 2
+    },
+    {
+      "guard": "exact-disposer",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "retained-member-image",
+      "assertionCaught": true,
+      "failures": 2
+    }
+  ],
+  "restored": true
+}

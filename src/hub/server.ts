@@ -70,6 +70,8 @@ export class HubServer {
     return parseStrictJson(Buffer.concat(chunks), 2048);
   }
   private async http(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // A still-bound old generation is temporarily unavailable, not a missing endpoint. Never read a body or mint work.
+    if (!this.current()) { this.response(res, 503, { code: "unavailable" }); return; }
     if (this.options.companyJoin && this.machine(req) && req.headers.authorization === undefined
       && req.method === "POST" && /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.test(req.url ?? "")) {
       if (++this.accepting > HUB_LIMITS.pending) { this.accepting--; this.response(res, 429, { code: "backpressure" }); return; }

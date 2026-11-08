@@ -120,7 +120,7 @@ function refused(port: number): Promise<boolean> {
   });
 }
 
-function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory">> = {}) {
+function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory" | "directoryReady">> = {}) {
   const reports: { code: string; detail: string }[] = [];
   const directories: { bindPassword: string }[] = [];
   const create = createHubServerFactory({
@@ -718,6 +718,17 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
       expect(r.runtime.directoryDecision()).toBe(participant); // Still owns the physical DB, despite logical revocation.
       expect(r.runtime.serverHealth(oldConfig)).toBe("unavailable");
       expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(503);
+      const machine = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: r.hub.memberPort, servername: "hub.example.test",
+          ca: readFileSync(join(r.hub.home, "hub/keys/tls-cert.pem")), path: "/hub/v1/join/challenge", method: "POST", agent: false,
+          headers: { "Content-Type": "application/json", "Content-Length": 2 } }, res => {
+          let body = ""; res.setEncoding("utf8"); res.on("data", value => { body += value; });
+          res.on("end", () => resolve({ status: res.statusCode!, body }));
+        });
+        req.on("error", reject); req.end("{}");
+      });
+      // This epoch/head advance is the real writer decision, not the corruption-only direct epoch control.
+      expect(machine).toEqual({ status: 503, body: JSON.stringify({ code: "unavailable" }) });
       await r.runtime.apply(r.hub.config);
       expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
       expect(r.runtime.directorySettings()!.source()).toMatchObject({ epoch: 1, bindPassword: "Dummy-next-bind-only", config: { url: "ldaps://next.example.test" } });
@@ -916,5 +927,104 @@ describe.skipIf(process.platform === "win32")("directory browser facade belongs 
     const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry } });
     try { await runtime.apply(hub.config); expect(runtime.directorySettings()).not.toBeNull(); expect(() => runtime.directorySettings()!.sessions()).toThrow(); }
     finally { await runtime.close(); }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("directory runtime review regressions", () => {
+  it.each(["member-await", "before-publication"])("refuses changed material at %s without publishing the directory control", async stage => {
+    const hub = await initializedHub(), http = fakeHttp(), published = vi.fn(() => vi.fn());
+    let release!: () => void, entered!: () => void;
+    const wait = new Promise<void>(r => { release = r; }), ready = new Promise<void>(r => { entered = r; });
+    const originalStart = HubServer.prototype.start;
+    const start = vi.spyOn(HubServer.prototype, "start").mockImplementation(async function(this: HubServer) {
+      if (stage === "member-await") { entered(); await wait; }
+      return originalStart.call(this);
+    });
+    const change = () => atomicWriteFileSync(join(hub.home, "hub/secrets/directory-bind"), "Changed-during-start", { mode: 0o600 });
+    const f = factory(hub.home, http.entry, { directoryReady: published,
+      retentionReady: () => { if (stage === "before-publication") change(); return () => {}; } });
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, createServer: f.create });
+    try {
+      const applying = runtime.apply(hub.config);
+      if (stage === "member-await") { await ready; change(); release(); }
+      await applying;
+      expect(start).toHaveBeenCalledOnce(); expect(published).not.toHaveBeenCalled();
+      expect(runtime.directorySettings()).toBeNull(); expect(runtime.serverHealth(hub.config.hub)).toBe("unavailable");
+      expect(await refused(hub.webPort)).toBe(true); expect(await refused(hub.memberPort)).toBe(true);
+    } finally { release(); await runtime.close(); start.mockRestore(); }
+  });
+
+  it.each(["recovery", "pending-apply"])("%s holds only this server, retaining the unrelated member link and honoring member disconnect", async mode => {
+    const hub = await initializedHub(), config = { ...hub.config, hub_member: { enabled: true, hub: "other.example.test" } };
+    const writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub, saveHub: () => {} });
+    const server = { start: vi.fn(async () => {}), close: vi.fn(async () => {}), fence: vi.fn() };
+    const member = { start: vi.fn(async () => {}), close: vi.fn(async () => {}), fence: vi.fn() };
+    let memberCurrent!: () => boolean;
+    const createMember = vi.fn(async (_cfg, current: () => boolean) => { memberCurrent = current; return member; });
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, settingsWriter: writer,
+      createServer: async () => server, createMember });
+    const pending = vi.spyOn(writer, "pending"), recover = vi.spyOn(writer, "recover");
+    try {
+      await runtime.apply(config); expect(memberCurrent()).toBe(true); member.fence.mockClear();
+      pending.mockReturnValue(true); recover.mockImplementation(() => { throw Error("owned refusal"); });
+      if (mode === "recovery") await expect(runtime.recoverSettings(config)).rejects.toThrow("owned refusal");
+      else await runtime.apply(config);
+      expect(memberCurrent()).toBe(true); expect(member.fence).not.toHaveBeenCalled(); expect(member.close).not.toHaveBeenCalled();
+      expect(createMember).toHaveBeenCalledOnce(); expect(server.close).toHaveBeenCalledOnce();
+      expect(runtime.currentHolds()).toContainEqual(expect.objectContaining({ side: "server", reason: "settings-recovery" }));
+      await runtime.apply({ ...config, hub_member: { enabled: false } });
+      expect(memberCurrent()).toBe(false); expect(member.close).toHaveBeenCalledOnce(); expect(createMember).toHaveBeenCalledOnce();
+    } finally { pending.mockRestore(); recover.mockRestore(); await runtime.close(); }
+  });
+
+  it("an initially held server still admits the independently configured member", async () => {
+    const hub = await initializedHub(), member = { start: vi.fn(async () => {}), close: vi.fn(async () => {}), fence: vi.fn() };
+    const writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub, saveHub: () => {} });
+    const pending = vi.spyOn(writer, "pending").mockReturnValue(true), server = vi.fn(async () => member);
+    let current!: () => boolean;
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, settingsWriter: writer, createServer: server,
+      createMember: async (_cfg, live) => { current = live; return member; } });
+    try {
+      await runtime.apply({ ...hub.config, hub_member: { enabled: true } });
+      expect(member.start).toHaveBeenCalledOnce(); expect(current()).toBe(true); expect(server).not.toHaveBeenCalled();
+      expect(runtime.serverHealth(hub.config.hub)).toBe("unavailable");
+    } finally { pending.mockRestore(); await runtime.close(); }
+  });
+
+  it.each(["factory", "start"])("a server-only hold during a held %s cannot cancel the member startup or a newer pending apply", async phase => {
+    const hub = await initializedHub(), config = { ...hub.config, hub_member: { enabled: true } };
+    let entered!: () => void, release!: () => void, memberCurrent!: () => boolean;
+    const ready = new Promise<void>(r => { entered = r; }), held = new Promise<void>(r => { release = r; });
+    const pause = async () => { entered(); await held; };
+    const server = { start: vi.fn(async () => { if (phase === "start") await pause(); }), close: vi.fn(async () => {}), fence: vi.fn() };
+    const member = { start: vi.fn(async () => {}), close: vi.fn(async () => {}), fence: vi.fn() };
+    const writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub, saveHub: () => {} });
+    const pending = vi.spyOn(writer, "pending"), recover = vi.spyOn(writer, "recover");
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, settingsWriter: writer,
+      createServer: async () => { if (phase === "factory") await pause(); return server; },
+      createMember: async (_cfg, current) => { memberCurrent = current; return member; } });
+    try {
+      const first = runtime.apply(config); await ready;
+      pending.mockReturnValue(true); recover.mockImplementation(() => { throw Error("owned refusal"); });
+      const refusing = expect(runtime.recoverSettings(config)).rejects.toThrow("owned refusal");
+      const latest = runtime.apply({ ...config, hub: { ...hub.config.hub, name: "Held new server config" } });
+      release(); await first; await latest; await refusing;
+      expect(member.start).toHaveBeenCalledOnce(); expect(memberCurrent()).toBe(true); expect(member.close).not.toHaveBeenCalled();
+      expect(server.start).toHaveBeenCalledTimes(phase === "factory" ? 0 : 1); expect(server.close).toHaveBeenCalledOnce();
+      expect(runtime.serverHealth(hub.config.hub)).toBe("unavailable");
+    } finally { release(); pending.mockRestore(); recover.mockRestore(); await runtime.close(); }
+  });
+
+  it("an old captured disposer cannot withdraw a later directory publication", async () => {
+    const module = await import("../src/hub/compose/server.js"), original = module.createHubServerFactory;
+    let publish!: NonNullable<import("../src/hub/compose/server.js").HubServerFactoryOptions["directoryReady"]>;
+    const spy = vi.spyOn(module, "createHubServerFactory").mockImplementation(options => { publish = options.directoryReady!; return original(options); });
+    const hub = await initializedHub(), runtime = new HubRuntime({ home: hub.home, log: () => {} });
+    const first = { current: () => true } as import("../src/hub/settings-directory-runtime.js").HubMountedDirectory;
+    const second = { current: () => true } as import("../src/hub/settings-directory-runtime.js").HubMountedDirectory;
+    try {
+      const oldDispose = publish(first), newDispose = publish(second); oldDispose();
+      expect(runtime.directorySettings()).toBe(second); newDispose(); expect(runtime.directorySettings()).toBeNull();
+    } finally { spy.mockRestore(); await runtime.close(); }
   });
 });
