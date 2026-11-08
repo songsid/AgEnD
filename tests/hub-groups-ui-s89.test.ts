@@ -112,6 +112,8 @@ describe("the welcome: shaped by what the person may do now", () => {
     const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 2, fleets: [] } }) });
     const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
     expect(text(pg.root.querySelector('[data-welcome="nothing-shared"]'))).toBe("No agents have been shared with you yet. An agent's owner has to give you access.");
+    // Argon #6: no "Open chats" button that would open an empty list.
+    expect(pg.root.querySelector('[data-entry="chat"] .btn')).toBe(null);
     expect(text(pg.root.querySelector('[data-welcome="fleets"]'))).toBe("Your fleets: 0 of 2");
     expect(text(pg.root.querySelector('[data-entry="connect"]'))).not.toMatch(/automatic|instantly/i);          // no quick-pairing promise before S-90
   });
@@ -136,7 +138,8 @@ describe("the welcome: shaped by what the person may do now", () => {
     expect(n).toBe(2);
   });
   it("legacy (group permissions never enabled): today's behaviour — chat by grants, connect through the admin's pairing", async () => {
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "legacy", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "deny", maxFleets: 0, fleets: [] } }) });
+    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "legacy", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "deny", maxFleets: 0, fleets: [] } }),
+      catalog: async () => ({ ok: true, askable: [{ exposure: { id: "e1" }, grant: { id: "g1" } }] }) });
     const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
     expect(pg.root.querySelector('[data-entry="chat"] .btn')).not.toBe(null);
     expect(text(pg.root.querySelector('[data-entry="connect"]'))).toContain("Your Hub admin pairs fleets for you.");

@@ -30,11 +30,15 @@ beforeAll(async () => {
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); });
 
 /** A Hub workspace page signed in as `who`, its client answering the session, the rooms and the notices. */
-async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[]; name?: string | null; path?: string; lang?: string } = {}) {
+const calls: string[] = [];
+const NOTICE = { id: "n1", label: "Olivia's laptop", at: Date.UTC(2026, 10, 8, 6, 0), fleetId: "f1", generation: 1, revoked: false };
+async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[]; name?: string | null; path?: string; lang?: string; notices?: unknown[] } = {}) {
   const session = { signedIn: true, displayName: "Alex", login: "alex", admin: !!o.admin, csrf: "c".repeat(64), features: o.features ?? [] };
+  calls.length = 0;
   const c = client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
     const key = `${init.method || "GET"} ${path.split("?")[0]}`;
-    const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: [] }
+    calls.push(key);
+    const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
       : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
   } });
@@ -92,24 +96,32 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: false, features: [] },
       { id: "21111111-2222-4333-8444-555555555555", exposureId: "e2", grantId: "g2", state: "active", exposureName: "Design guide", ownerName: "Olivia", lastAt: 2, waiting: false, features: [] }];
     const pg = await hub({ rooms });
-    await until(() => pg.root.querySelectorAll(".hub-side-rooms .hub-room-row").length === 2);
-    expect([pg.root.querySelector(".hub-side-filter"), pg.root.querySelector(".hub-side-rooms .inst-head .count")!.textContent]).toEqual([null, "2"]);
+    await until(() => pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row").length === 2);
+    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelector("#sidebar .hub-side-rooms .inst-head .count")!.textContent]).toEqual([null, "2"]);
     fire(pg.document as any, "keydown", { key: "k", ctrlKey: true });
     await settle(10);
-    const input = pg.root.querySelector(".hub-side-filter input") as any;
+    const input = pg.root.querySelector("#sidebar .hub-side-filter input") as any;
     expect(!!input).toBe(true);
     input.value = "design"; fire(input, "input"); await settle(5);
-    expect([...pg.root.querySelectorAll(".hub-side-rooms .hub-room-row .t")].map((x: any) => x.textContent)).toEqual(["Design guide"]);
+    expect([...pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row .t")].map((x: any) => x.textContent)).toEqual(["Design guide"]);
     fire(input, "keydown", { key: "Escape" }); await settle(5);
-    expect([pg.root.querySelector(".hub-side-filter"), pg.root.querySelectorAll(".hub-side-rooms .hub-room-row").length]).toEqual([null, 2]);
+    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row").length]).toEqual([null, 2]);
+    // Argon #9: the phone's home page draws the same roster (its filter in place, its own New chat row) — not the old list.
+    expect([pg.root.querySelectorAll(".hub-home-list .hub-side-rooms .hub-room-row").length, !!pg.root.querySelector(".hub-home-list .hub-side-filter input"),
+      !!pg.root.querySelector(".hub-home-list .side-new"), pg.root.querySelector(".hub-home-list .hub-nav")]).toEqual([2, true, true, null]);
   });
-  it("no conversation yet: one line in the sidebar and on the page — no paragraph (zh-TW)", async () => {
+  it("no conversation yet: said once per screen, in one line — no paragraph (zh-TW)", async () => {
     const pg = await hub({ lang: "zh-TW" });
-    await until(() => pg.root.querySelector(".hub-side-rooms .side-empty"));
-    // One line wherever the list is empty: the sidebar's, and the home page's own list (a phone's).
-    expect([pg.root.querySelector(".hub-side-rooms .side-empty")!.textContent, [...pg.root.querySelectorAll(".hub-list-empty")].map((p: any) => p.textContent)]).toEqual(["還沒有對話", ["還沒有對話"]]);
     await until(() => pg.root.querySelector(".hub-home-pick .empty-title"));
-    expect([pg.root.querySelector(".hub-home-pick .empty-title")!.textContent, pg.root.querySelector(".hub-home-pick .empty-hint")]).toEqual(["還沒有對話", null]);
+    // On the chats' home the page says it (a wide screen: the centre; a phone: its own list) — the sidebar's list doesn't
+    // repeat it there (Argon #19).
+    expect([pg.root.querySelector("#sidebar .side-empty"), pg.root.querySelector(".hub-home-list .side-empty")!.textContent,
+      pg.root.querySelector(".hub-home-pick .empty-title")!.textContent, pg.root.querySelector(".hub-home-pick .empty-hint")]).toEqual([null, "還沒有對話", "還沒有對話", null]);
+    await pg.unmount(); mounted.splice(0); pg.restore();
+    // Elsewhere (My shared agents) the sidebar's list says it, in one line.
+    const other = await hub({ lang: "zh-TW", path: "/ui/hub/exposures" });
+    await until(() => other.root.querySelector("#sidebar .side-empty"));
+    expect(other.root.querySelector("#sidebar .side-empty")!.textContent).toBe("還沒有對話");
   });
   it("the foot: Settings (this device's theme and language) and the session row — Signed in, its menu naming the person first", async () => {
     const pg = await hub({ admin: true });
@@ -118,6 +130,54 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
       .toEqual(["Settings", "Signed in"]);
     expect([...pg.root.querySelectorAll(".side-foot .hub-prefs select")].length).toBe(2);   // theme and language — no fleet-only field
     (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
-    expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex", "My shared agents", "Administration", "Sign out"]);
+    // The person (name and sign-in name), then Sign out — the nav's own rows aren't repeated here (Argon #10).
+    expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex (alex)", "Sign out"]);
+  });
+});
+
+describe("Argon's review of the Hub shell (cid-hub-ux-fixes)", () => {
+  const qp = ["quick-pairing-v1"];
+  it("#1/#5: the security notices show on the Notices page only — under its header, never pinned above Chats, My shared agents or Administration", async () => {
+    for (const path of ["/ui/hub", "/ui/hub/exposures", "/ui/hub/admin"]) {
+      const pg = await hub({ admin: true, features: qp, notices: [NOTICE], path });
+      await until(() => pg.root.querySelector(".p-hub .panel-body"));
+      await settle(20);
+      expect(pg.root.querySelector(".hub-security-notices"), path).toBe(null);
+      await pg.unmount(); mounted.splice(0); pg.restore();
+    }
+    const pg = await hub({ admin: true, features: qp, notices: [NOTICE], path: "/ui/hub?view=notices" });
+    await until(() => pg.root.querySelector(".p-hub-notices .hub-security-notices"));
+    const card = pg.root.querySelector(".hub-security-notices")!;
+    expect([!!card.closest(".panel-body"), pg.root.querySelector(".p-hub-notices > header.panel-head h1")!.textContent, !!pg.root.querySelector(".p-hub-notices .hub-page-lead")])
+      .toEqual([true, "Notices", true]);
+  });
+  it("#4: revoking a fleet from its notice asks first; No revokes nothing, Yes revokes", async () => {
+    const asked: string[] = [];
+    const answer = { yes: false };
+    const pg = await hub({ admin: true, features: qp, notices: [NOTICE], path: "/ui/hub?view=notices" });
+    // The harness answers confirmDialog through the page's confirm (tests/helpers/app-harness.ts): stand in for the person.
+    const was = g.confirm; g.confirm = (m: string) => { asked.push(m); return answer.yes; };
+    try {
+      await until(() => pg.root.querySelector(".hub-security-notices .btn-danger"));
+      (pg.root.querySelector(".hub-security-notices .btn-danger") as any).click();
+      await settle(20);
+      expect([asked.length, asked[0]?.includes("Olivia's laptop"), calls.filter((k) => k.startsWith("POST") && k.includes("revoke"))]).toEqual([1, true, []]);
+      answer.yes = true;
+      (pg.root.querySelector(".hub-security-notices .btn-danger") as any).click();
+      await settle(20);
+      expect(calls.filter((k) => k.startsWith("POST") && k.includes("revoke"))).toEqual(["POST /hub/v1/admin/fleets/f1/revoke"]);
+    } finally { g.confirm = was; }
+  });
+  it("#7/#17: each page is named once — the panel header and the tab say the same name; no second title under it", async () => {
+    const cases: Array<[string, string]> = [["/ui/hub", "Chats"], ["/ui/hub/exposures", "My shared agents"], ["/ui/hub/admin", "Administration"], ["/ui/hub?view=notices", "Notices"]];
+    for (const [path, name] of cases) {
+      const pg = await hub({ admin: true, features: qp, path });
+      await until(() => pg.root.querySelector(".p-hub header.panel-head h1"));
+      await settle(20);
+      const h1 = pg.root.querySelector(".p-hub header.panel-head h1")!.textContent;
+      const again = [...pg.root.querySelectorAll(".p-hub .s-page-head h2")].map((x: any) => x.textContent).filter((t) => t === h1);
+      expect([h1, again, pg.document.title], path).toEqual([name, [], `${name} · AgEnD`]);
+      await pg.unmount(); mounted.splice(0); pg.restore();
+    }
   });
 });

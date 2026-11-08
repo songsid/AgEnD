@@ -3,6 +3,9 @@
 /* ── My shared agents and Administration (#3226 C): Settings' page layout ── */
 .hub-page-body { padding: var(--s-4) max(var(--s-5), env(safe-area-inset-right)) var(--s-6) max(var(--s-5), env(safe-area-inset-left)); }
 .hub-owner { width: 100%; max-width: 860px; min-width: 0; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-3); }
+/* The page body is the gutter (the dashboard's: 20 px, 16 px on a phone); its column adds none — a .col's own padding
+   on top of it was a double gutter (Argon #11: 32 px on a phone). */
+.hub-page-body > .col { padding: 0; }
 .hub-crumb { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--text-2); font-size: var(--fs-sm); text-decoration: none; width: fit-content; }
 .hub-rows { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
 .hub-rows .s-row.hub-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: nowrap; background: var(--surface-2); }
@@ -26,7 +29,7 @@
 .hub-steps > li.now::before { background: var(--text); color: var(--bg); }
 .hub-step-body > span { display: flex; flex-direction: column; gap: 2px; }
 .hub-step-form { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; width: 100%; }
-.hub-step-form .field { margin: 0; flex: 1; min-width: 12em; }
+.hub-step-form .field { margin: 0; flex: 1 1 14em; min-width: 14em; }   /* a phone: the button wraps under the field, never squeezing it */
 .hub-steps .hub-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; margin: 0; padding: 0; }
 .hub-steps > li::before { align-self: flex-start; margin-top: 1px; }
 .hub-steps .hub-offer > * { text-align: start; align-self: flex-start; justify-self: start; margin-left: 0; }   /* hub.css's `.hub-steps small` auto margin would push a short line right */
@@ -43,3 +46,6 @@
   /* A phone's Administration: every button and text field is a full touch target, so one class combination keeps one height. */
   .hub-admin .btn, .hub-admin .field input { min-height: var(--tap); }
 }
+.hub-page-lead { margin: 0; }
+/* A phone's page-level controls are tap targets (--tap): the chats home's New chat row and a sub-page's crumb. */
+@media (max-width: 600px) { .hub-home-list .side-new, .hub-crumb { min-height: var(--tap); } .hub-crumb { min-width: var(--tap); } }
