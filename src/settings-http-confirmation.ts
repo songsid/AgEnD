@@ -14,6 +14,7 @@ export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
   /** Only an authenticated local web administrator supplies this; setup/header/public principals do not. */
   localAdmin?(): boolean;
+  localSession?: import("./hub/join/local-journal.js").JoinLocalSession;
 }
 export interface SettingsBaseline extends SettingsEffectContext { fingerprint: string }
 /**
@@ -54,6 +55,8 @@ export class SettingsHttpConfirmation {
     /** A running Fleet may admit an ordinary New Agent request from its current local-dashboard admin.
      * Still uses the store's exact request claim, replay and execution fences; never grants this to agent requests. */
     directAgentCreation?: boolean;
+    /** Only Fleet company Start: the original host operator folds consent into Start even with General present. */
+    directCompanyJoin?: boolean;
   }) {}
   handle(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler): boolean {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
@@ -149,7 +152,7 @@ export class SettingsHttpConfirmation {
     }
     if (!principal?.current()) throw new SettingsConfirmationError(401, "session_required");
     const binding = requestSessionBinding(req), snapshot = settingsFingerprint(this.options.snapshot());
-    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin };
+    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, localSession: principal.localSession };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
@@ -158,10 +161,10 @@ export class SettingsHttpConfirmation {
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
       unchanged: async () => (await this.options.baseline()).fingerprint === baseline.fingerprint && settingsFingerprint(this.options.snapshot()) === snapshot,
-      apply: async (_current, execution) => {
+      apply: async (_current, execution, confirmedCurrent) => {
         // Recheck after replay/body/queue awaits in the real handler and actual job.
         execution.assert();
-        const replay = createSettingsReplay(payload, execution);
+        const replay = createSettingsReplay({ ...payload, confirmedCurrent }, execution);
         const response = await new Promise<{ status: number; body: any }>((yes, no) => {
           const collector = new Response(replay);
           collector.end = ((chunk: any) => {
@@ -196,8 +199,11 @@ export class SettingsHttpConfirmation {
       && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
     const direct = this.options.directAgentCreation === true && ordinaryCreate && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true;
-    const self = result.reused ? null : direct
-      ? { label: principal.label, current: () => localAdmin?.() === true }
+    const companyDirect = this.options.directCompanyJoin === true && method === "POST"
+      && url.pathname === "/api/hub/member/company-join/start" && principal.source === "web_session"
+      && !gatewayRequestContext(req) && principal.localSession?.hostHere === true && principal.localSession.current();
+    const self = result.reused ? null : direct || companyDirect
+      ? { label: principal.label, current: () => localAdmin?.() === true && (!companyDirect || principal.localSession?.current() === true) }
       : this.options.selfConfirm?.(req, result.view.id) ?? null;
     if (self) {
       const decided = this.store.decide(result.view.id, "confirm", { ...self, via: "web" });

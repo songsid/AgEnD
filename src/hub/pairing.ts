@@ -8,6 +8,7 @@ import type Database from "better-sqlite3";
 import { HubGroupAuthorizationError, type HubGroupAuthorization, type HubGroupEnrollmentPermit } from "./group-policy/authorization.js";
 import { HubGroupPolicyError } from "./group-policy/store.js";
 import { HubGroupEnrollmentRefusal } from "./group-policy/resources.js";
+import { automaticFleetSlots } from "./enrollment-budget.js";
 const TTL = 10 * 60_000;
 const secret = () => randomBytes(32).toString("hex");
 export interface HubPairingIdentity {
@@ -24,7 +25,7 @@ export function displayHubFingerprint(fingerprint: string): string {
 const pairBody = z.strictObject({ code: z.string().regex(/^[a-f0-9]{12}$/) });
 const claimBody = z.strictObject({ pairingId: uuid, fleetId: uuid, claimSecret: token });
 export interface HubQuickPairingNotice {
-  fleetId: string; generation: number; owner: PersonKey; label: string; at: number; initiatingSessionId: string;
+  fleetId: string; generation: number; owner: PersonKey; label: string; at: number; initiatingSessionId: string; source?: "group" | "manual";
 }
 const quickBody = z.strictObject({ label: plain(120).refine(s => s.trim().length > 0) });
 export class HubPairingService {
@@ -36,7 +37,9 @@ export class HubPairingService {
     enrollment?: { prepare: HubGroupAuthorization["prepareEnrollment"]; prepareManual?: HubGroupAuthorization["prepareManualEnrollment"];
       atomic<T>(work: (database: Database.Database) => T): T };
     /** Required durable outbox. Delivery begins only after the credential transaction has committed. */
-    quick?: { enqueue(database: Database.Database, notice: HubQuickPairingNotice, state: HubTransportState): void; committed(): void } }) {}
+    quick?: { enqueue(database: Database.Database, notice: HubQuickPairingNotice, state: HubTransportState): void; committed(): void };
+    /** New company joins reserve against the SAME personal slots and global automatic headroom. */
+    automaticReservations?: { count(owner: PersonKey): number; retained(): number } }) {}
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private check(): void { if (!this.options.enabled()) throw new HubProtocolError("unavailable"); }
   private audit(actor: HubActor | { kind: "member"; fleetId: string }, action: string, requestId: string) {
@@ -49,10 +52,7 @@ export class HubPairingService {
     row.attempts = Math.min(row.attempts + 1, maximum + 1); return row.attempts <= maximum;
   }
   private slots(state: HubTransportState, owner: PersonKey, except?: string): number {
-    const key = personKeyString(owner);
-    return state.fleets.filter(f => f.status === "active" && f.credentialHash && personKeyString(f.owner) === key).length
-      + state.pairings.filter(p => p.automatic && p.id !== except && p.expiresAt > this.now() && (p.state === "offered" || p.state === "pending")
-        && personKeyString(p.owner) === key).length;
+    return automaticFleetSlots(state, owner, this.now(), this.options.automaticReservations?.count(owner) ?? 0, except);
   }
   private preparationError(error: unknown): never {
     if ((error instanceof HubGroupAuthorizationError && error.reason === "denied")
@@ -108,7 +108,8 @@ export class HubPairingService {
         if (own.some(p => !p.automatic)) throw new HubProtocolError("conflict");
         // Replace, never accumulate, this person's automatic reservations. Old code/claim secrets stop matching.
         state.pairings = state.pairings.filter(p => !own.some(old => old.id === p.id));
-        if (state.pairings.length >= 48) throw new HubProtocolError("backpressure");
+        if ((this.options.automaticReservations?.count(owner) ?? 0) > 0) throw new HubProtocolError("conflict");
+        if (state.pairings.length + (this.options.automaticReservations?.retained() ?? 0) >= 48) throw new HubProtocolError("backpressure");
         if (this.slots(state, owner) >= permit.maxFleets) throw new HubProtocolError("backpressure");
         state.pairings.push({ id, owner, codeHash: sha256(code), expiresAt, fleetId, claimHash: null, fingerprint: null,
           ownerConfirmed: false, adminApproved: false, state: "offered", automatic: { label, initiatingSessionId: sessionId } });
@@ -137,7 +138,7 @@ export class HubPairingService {
     const id = randomUUID(), code = randomBytes(6).toString("hex"), expiresAt = this.now() + TTL;
     this.options.store.mutate(this.audit(admin, "pairing.created", ctx.requestId), state => {
       state.pairings = state.pairings.filter(p => p.expiresAt > this.now());
-      if (state.pairings.length >= 64) throw new HubProtocolError("backpressure");
+      if (state.pairings.length + (this.options.automaticReservations?.retained() ?? 0) >= 64) throw new HubProtocolError("backpressure");
       state.pairings.push({ id, owner: { ...owner }, codeHash: sha256(code), expiresAt, fleetId: null, claimHash: null, fingerprint: null,
         ownerConfirmed: false, adminApproved: false, state: "offered" });
     });

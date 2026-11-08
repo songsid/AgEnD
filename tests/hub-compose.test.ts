@@ -21,6 +21,7 @@ import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
 import { readHubSecretFile } from "../src/hub/init/secret-file.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
+import { HUB_SESSION_EPOCH_MIGRATION } from "../src/hub/session-epoch.js";
 
 const roots: string[] = [];
 beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
@@ -63,7 +64,7 @@ async function initializedHub(bindPassword = BIND) {
 function fakeHttp() {
   const state: { deps: HubHttpDeps | null; closed: number } = { deps: null, closed: 0 };
   const entry: HubHttpEntry = {
-    migrations: [{ component: "s3-http", version: 1, up: (db) => db.exec("CREATE TABLE IF NOT EXISTS s3_rooms(id TEXT PRIMARY KEY)") }],
+    migrations: [{ component: "s3-http", version: 1, up: (db) => db.exec("CREATE TABLE IF NOT EXISTS s3_rooms(id TEXT PRIMARY KEY); CREATE TABLE hub_sessions(id TEXT PRIMARY KEY)") }, HUB_SESSION_EPOCH_MIGRATION],
     createHubHttp(deps) {
       state.deps = deps;
       return {
@@ -229,7 +230,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-browser-tls", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s7-attachments", "s90-pairing-notices"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s7-attachments", "s90-pairing-notices"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 

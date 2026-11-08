@@ -13,6 +13,7 @@ import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { namedTestLane, runNamedLinkTest, type NamedLinkTestDeps, type NamedTestResult } from "../src/tunnel/named-link-test.js";
 import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
 import { ManagedTunnel } from "../src/tunnel/manager.js";
@@ -342,12 +343,40 @@ describe("#2906 at launch: a registered tunnel whose self-probe cannot connect i
 });
 
 describe("#2906 wording (the user: never 公司 / company)", () => {
-  it("no locale string, server or page, says 公司, company or corporate", () => {
+  const literalCopy = (source: string) => {
+    const out: string[] = [], ast = ts.createSourceFile("copy.ts", source, ts.ScriptTarget.Latest, true);
+    const add = (text: string) => {
+      // Ignore technical tokens/attributes, but retain copy displayed by fields, tooltips and accessibility labels.
+      if (/^(?:\.?\.?\/)/.test(text) || text === "company-join-v1") return;
+      out.push(text.replace(/<[^>]*>/g, tag => [...tag.matchAll(/\s(?:placeholder|title|aria-label|aria-description|alt)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)]
+        .map(match => match[1] ?? match[2]).join(" ")));
+    };
+    const visit = (node: ts.Node) => {
+      if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
+      if (ts.isStringLiteralLike(node)) { add(node.text); return; }
+      if (ts.isTemplateExpression(node)) { add(node.head.text); for (const part of node.templateSpans) { add(part.literal.text); visit(part.expression); } return; }
+      ts.forEachChild(node, visit);
+    };
+    visit(ast); return out;
+  };
+  it("checks visible copy rather than imports or interpolation variables, and still catches network marketing copy", () => {
+    const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<p>${company.message}</p>`; const b = "Company network";');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it.each(["placeholder", "title", "aria-label"])("keeps visible %s copy while ignoring technical HTML attributes", attribute => {
+    const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<input class="company-field" data-company="company" ' + attribute + '="Company network" />`;');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it("keeps network copy free of 公司/company/corporate; #3423 explicitly permits company sign-in wording", () => {
     const files = ["src/locale.ts", ...readdirSync("src/ui").filter(f => f.endsWith(".js")).map(f => `src/ui/${f}`),
       ...readdirSync("src/ui/shared").filter(f => f.endsWith(".js")).map(f => `src/ui/shared/${f}`)];
-    // Only quoted strings (what a person reads), not comments.
-    const hits = files.flatMap(f => (readFileSync(f, "utf8").match(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g) ?? [])
-      .filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s)).map(s => `${f}: ${s.slice(0, 80)}`));
+    // The later approved #3423 supplies this narrowly named dictionary, two confirmation messages and two search rows.
+    // Other network/help/settings copy retains #2906; "corporate" has no exception.
+    const hits = files.flatMap(f => {
+      const source = readFileSync(f, "utf8").replace(/^\s*"hub\.companyJoin\.(?:confirm|repair)":.*$/gm, "")
+        .replace(/^\s*\["hub\.company-(?:address|name)".*$/gm, "");
+      return literalCopy(source).filter(s => /\bcorporate\b/i.test(s) || f !== "src/ui/hub-company-join-strings.js" && /公司|\bcompany\b/i.test(s)).map(s => `${f}: ${s.slice(0, 80)}`);
+    });
     expect(hits).toEqual([]);
   });
 });

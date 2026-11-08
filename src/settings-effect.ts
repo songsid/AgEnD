@@ -33,6 +33,7 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
+import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -51,6 +52,7 @@ export interface SettingsEffectContext {
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
@@ -141,6 +143,27 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
+      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
+  }
+  if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) {
+    const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust");
+    let target: string;
+    try {
+      if (repair) {
+        if (Object.keys(b).length !== 1 || typeof b.address !== "string") throw Error();
+        const address = parseCompanyAddress(b.address); if (!address.expected || address.invitation) throw Error();
+        target = address.webOrigin;
+      } else if (start) {
+        if (Object.keys(b).some(k => !["address", "label", "handoffId"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
+        if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
+        target = parseCompanyAddress(b.address).webOrigin;
+      } else {
+        if (Object.keys(b).length !== 1 || typeof b.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(b.operationId)) throw Error();
+        target = b.operationId;
+      }
+    } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)], affectedConnections: [],
       authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);

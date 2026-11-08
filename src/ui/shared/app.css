@@ -1266,6 +1266,7 @@ img.amb-p { object-fit: contain; }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
+  .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
   .kv { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {

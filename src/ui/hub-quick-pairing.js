@@ -1,3 +1,4 @@
+import { hj } from "./hub-company-join-strings.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -101,7 +102,7 @@ function Notice({ notice, admin = false, memberOrigin = null, after = () => {} }
   };
   let href = null;
   if (memberOrigin) { try { const origin = new URL(memberOrigin); if (origin.protocol === "https:") href = `${origin.origin}/ui/hub?securityNotice=${encodeURIComponent(notice.id)}`; } catch { /* no link */ } }
-  return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${hq("approved")} ${time(notice.at)}</p>
+  return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${notice.source === "manual" ? hj("manualApproved") : hq("approved")} ${time(notice.at)}</p>
     <p class="note">${hq("fleetId")} <code class="hub-fp-full">${notice.fleetId}</code></p>
     <p class="note">${hq("revokeHint")}</p>
     ${notice.revoked ? html`<span class="tag">${hq("revoked")}</span>` : href ? html`<a class="btn" target="_blank" rel="noopener noreferrer" href=${href}>${hq("review")}</a>`

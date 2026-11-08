@@ -92,7 +92,9 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       assert(ctx.current);
       if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== serializedPolicy) throw new HubGroupPolicyError("conflict");
     };
-    if (before.state === "never-enabled") {
+    const retainedManual = operation === "check" && (db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?")
+      .get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source === "manual";
+    if (before.state === "never-enabled" && !retainedManual) {
       if (operation === "resume") throw new HubGroupPolicyError("invalid");
       return Object.freeze({ source: "legacy" as const, assertCurrent() {
         policyCurrent(); if (version() !== epoch) throw new HubGroupPolicyError("conflict");
@@ -153,6 +155,22 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     } });
   };
   return {
+    /** New automatic/manual issuance needs fresh immutable-owner eligibility before any underlying Fleet exists.
+     * Share the policy's physical 4/person,32/total directory pool; a permit is only a final synchronous fence. */
+    async prepareOwnerEligibility(input: PersonKey, incoming: GroupCheckContext) {
+      const owner = validated(person, input), ctx = capture(incoming); assert(ctx.current);
+      if (owner.realm !== administrator.realm || !options.directory) throw new HubGroupAuthorizationError("denied");
+      const policy = policyOf(), image = JSON.stringify(policy.read()), binding = JSON.stringify(bindingOf()), epoch = version();
+      const assertCurrent = () => { assert(ctx.current);
+        if (policyOf() !== policy || JSON.stringify(policy.read()) !== image || JSON.stringify(bindingOf()) !== binding || version() !== epoch)
+          throw new HubGroupPolicyError("conflict");
+      };
+      const result = await policy.withDirectoryRead(owner, () => options.directory!.checkEligibility(Object.freeze({ ...owner })));
+      assertCurrent();
+      if (!result.eligible) throw new HubGroupAuthorizationError(result.reason === "unavailable" ? "held" : "denied");
+      if (personKeyString(result.person.key) !== personKeyString(owner)) throw new HubGroupAuthorizationError("denied");
+      return Object.freeze({ assertCurrent });
+    },
     /** Display-only exact lifecycle projection: no directory read, allowance, audit or provenance mutation. */
     resourceState(input: HubGroupResource) {
       const resource = parseHubGroupResource(input); assert(() => true);

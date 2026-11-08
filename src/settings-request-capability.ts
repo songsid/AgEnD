@@ -1,18 +1,19 @@
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
+import type { JoinLocalAuthority, JoinLocalSession } from "./hub/join/local-journal.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 
-interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean }
+interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }
 const continuations = new WeakMap<object, Continuation>();
 const bodies = new WeakMap<object, Buffer>();
 const replays = new WeakSet<object>();
 export function isSettingsReplay(req: object): boolean { return replays.has(req); }
 /** Only server code creates a replay; bearer cookies/tokens are never replayed. */
-export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean }, execution: SettingsExecution): IncomingMessage {
+export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }, execution: SettingsExecution): IncomingMessage {
   const req = Readable.from([]) as unknown as IncomingMessage;
   req.method = input.method; req.url = input.url; replays.add(req);
   req.headers = input.key ? { "idempotency-key": input.key } : {};
-  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin });
+  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin, localSession: input.localSession, confirmedCurrent: input.confirmedCurrent });
   return req;
 }
 export function settingsRequestExecution(req: object): SettingsExecution | undefined { return continuations.get(req)?.execution; }
@@ -38,4 +39,10 @@ export function cachedSettingsBody(req: object): Buffer | undefined {
 export function settingsWrite<T>(req: object, effect: () => T, final = true): T {
   const execution = settingsRequestExecution(req);
   return execution ? final ? execution.commit(effect) : execution.mutate(effect) : effect();
+}
+
+/** Original cookie-session and independent confirmer; minted only by the Settings replay. Never inferred from its headers. */
+export function settingsRequestJoinAuthority(req: object): JoinLocalAuthority | undefined {
+  const c = continuations.get(req);
+  return c?.localSession && c.confirmedCurrent ? { session: c.localSession, confirmedCurrent: c.confirmedCurrent } : undefined;
 }

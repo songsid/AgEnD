@@ -45,6 +45,10 @@ import { browserCertificateMigration, createHubBrowserCertificateControl, type H
 import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
 import { createHubPreviewHandler, hubPreviewSettings, hubPreviewView, type HubPreviewSettings, type HubPreviewView } from "../preview.js";
 import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../attachments/store.js";
+import { HUB_COMPANY_JOIN_MIGRATION } from "../join/store.js";
+import { signCompanyInvitation } from "../join/invitation.js";
+import { signCompanyDescriptor } from "../join/descriptor.js";
+import { HubCompanyJoin } from "../join/service.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
   database: "hub/hub.sqlite",
@@ -61,6 +65,7 @@ export interface HubHttpDeps {
   attachments?: HubAttachmentStore;
   directory: HubDirectory;
   pairing: HubPairingService;
+  companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   pairingNotices?: HubPairingNotices;
@@ -266,7 +271,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
         retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
-        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION, HUB_PAIRING_NOTICES_MIGRATION]);
+        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION, HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -316,6 +321,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live, now, transport: () => memberServer });
       pairingNotices.start();
       teardown.add("pairing security notices", () => pairingNotices.close());
+      const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
+        webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
+      const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices,
+        identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
+        certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
+        eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
         store,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
@@ -328,6 +339,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           prepareManual: (resource, approvedBy, ctx) => groups.prepareManualEnrollment(resource, approvedBy, ctx),
           atomic: work => db.transaction(() => work(db)).immediate() },
         quick: { enqueue: pairingNotices.enqueue, committed: pairingNotices.committed },
+        automaticReservations: { count: owner => companyJoin.records.reservations(owner), retained: () => companyJoin.retained() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
@@ -337,6 +349,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           store.mutate({ at: now(), requestId: randomBytes(16).toString("hex"), actor: { kind: "local-host" },
             action: "group-policy.authorization-changed", result: "completed" }, state => {
             const next = policy().read();
+            companyJoin.policyUpdated(next);
             // The same policy-change transaction cancels known off/denied automatic reservations, never manual ones.
             const denied = new Set(next.denies.filter(d => d.deny.includes("pair_fleet")).map(d => personKeyString(d.person)));
             state.pairings = state.pairings.filter(p => !p.automatic || !["offered", "pending"].includes(p.state)
@@ -358,6 +371,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         attachments,
         directory,
         pairing,
+        companyJoin,
         groups,
         groupHttp: { control: groupControl, welcome: groupWelcome },
         pairingNotices,
@@ -379,6 +393,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         memberOrigin: settings.memberOrigin,
         listen: settings.memberListen,
         pairing,
+        companyJoin,
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),
