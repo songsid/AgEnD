@@ -388,6 +388,15 @@ function HubSwitcherSlot() {
   return mod ? html`<${mod} />` : null;
 }
 
+// Fleet-only lazy boundary: the Hub module graph never reaches member Settings or its private inbox.
+function MemberPairingNoticesSlot() {
+  const [Component, setComponent] = useState(null);
+  useEffect(() => { let live = true; import("/ui/js/hub-quick-pairing.js").then(m => {
+    if (live && m.MemberPairingNotices) setComponent(() => m.MemberPairingNotices);
+  }, () => {}); return () => { live = false; }; }, []);
+  return Component ? html`<${Component} />` : null;
+}
+
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
@@ -1003,6 +1012,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       <${StartupLine} />
+      ${viewOnly || guest || hub || !hubMarks().member || (nav.route?.panel === "settings" && nav.route.section === "hub") ? null : html`<${MemberPairingNoticesSlot} />`}
       ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}

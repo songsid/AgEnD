@@ -4,7 +4,9 @@ import { BerReader, BerWriter } from "ldapts";
 import { guidStringToBytes } from "../../src/hub/directory/profiles.js";
 export const GROUP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", GROUP_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=Owners,DC=example,DC=test";
-export async function groupWirePeer(material: { cert: string; key: string }) {
+/** Optional recorded users also exercise production browser sign-in/eligibility; dummy passwords only. */
+export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
+export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[]) {
   const sockets = new Set<TLSSocket>(), binds: string[] = [], searches: any[] = [];
   const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged", memberships: [GROUP_A],
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
@@ -36,7 +38,12 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
       try { while (buffer.length) {
         if (buffer.length < 2) return; const r = new BerReader(buffer); r.readSequence(); if (r.remain < r.length) return;
         const frameLength = r.offset + r.length, id = r.readInt()!, tag = r.readSequence();
-        if (tag === 0x60) { r.readInt(); const dn = r.readString()!; r.readString(0x80); binds.push(dn); result(id, 0x61); }
+        if (tag === 0x60) {
+          r.readInt(); const dn = r.readString()!, password = r.readString(0x80); binds.push(dn);
+          const user = users?.find(u => u.dn.toLowerCase() === dn.toLowerCase());
+          result(id, 0x61, users && !(dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
+            && !(user && user.password === password) ? 49 : 0);
+        }
         else if (tag === 0x42) socket.end();
         else if (tag === 0x63) {
           const base = r.readString(), scope = r.readEnumeration(), deref = r.readEnumeration(), sizeLimit = r.readInt(); r.readInt(); r.readBoolean();
@@ -47,14 +54,20 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
             while (r.offset < controlsEnd) { r.readSequence(); const controlEnd = r.offset + r.length, oid = r.readString(), critical = r.readBoolean(), value = r.readString(0x04, true); controls.push({ oid, critical, hex: value?.toString("hex") }); if (r.offset !== controlEnd) throw Error("Invalid control boundary"); }
           }
           searches.push({ base, scope, deref, sizeLimit, attributes, controls, filter: parsed });
+          const personGuid = equality(parsed, "objectGUID"), login = equality(parsed, "sAMAccountName")?.toString();
+          const user = users?.find(u => personGuid ? personGuid.equals(guidStringToBytes(u.id)!) : u.login.toLowerCase() === login?.toLowerCase());
+          const personAttributes = (selected?: GroupWireUser): Record<string, Array<string | Buffer>> => ({
+            objectGUID: [guidStringToBytes(selected?.id ?? PERSON_ID)!], userAccountControl: [selected?.eligible === false ? "514" : "512"],
+            sAMAccountName: [selected?.login ?? "person"], displayName: [selected?.login ?? "Person"],
+          });
           if (controls.length) {
             state.beforeMembership?.();
             if (state.mode === "outage") socket.destroy();
             else if (state.mode === "unsupported") result(id, 0x65, 12);
             else {
-              const attrs: Record<string, Array<string | Buffer>> = { objectGUID: [guidStringToBytes(PERSON_ID)!], userAccountControl: ["512"], sAMAccountName: ["person"] };
-              if (state.mode !== "missing") attrs[state.mode === "ranged" ? "memberOf;range=0-1499" : "memberOf"] = state.memberships.map(g => state.mode === "plain" ? state.labels.get(g)! : `<GUID=${g}>;${state.labels.get(g)}`);
-              entry(id, "CN=Person,DC=example,DC=test", attrs);
+              const attrs = personAttributes(user);
+              if (state.mode !== "missing") attrs[state.mode === "ranged" ? "memberOf;range=0-1499" : "memberOf"] = (user?.groups ?? state.memberships).map(g => state.mode === "plain" ? state.labels.get(g)! : `<GUID=${g}>;${state.labels.get(g)}`);
+              if (!users || user) entry(id, user?.dn ?? "CN=Person,DC=example,DC=test", attrs);
               if (state.mode === "referral") reply(id, 0x73, w => w.writeString("ldaps://other.invalid"));
               result(id, 0x65);
             }
@@ -62,6 +75,7 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
             const raw = equality(parsed, "objectGUID");
             const selected = [...state.labels].find(([guid, dn]) => scope === 0 ? dn.toLowerCase() === base?.toLowerCase() : raw?.equals(guidStringToBytes(guid)!));
             if (selected) entry(id, selected[1], { objectGUID: [guidStringToBytes(selected[0])!], groupType: ["-2147483646"] });
+            else if (user) entry(id, user.dn, personAttributes(user));
             result(id, 0x65);
           }
         } else throw Error(`Unexpected inert-LDAP operation ${tag}`);

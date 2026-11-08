@@ -933,7 +933,7 @@ export function handleSettingsRequest(
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
-    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view() }); return true; }
+    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: api.notices?.() ?? [] }); return true; }
     if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
     if (step && method === "POST") {
       const execution = settingsRequestExecution(req);

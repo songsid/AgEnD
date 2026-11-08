@@ -37,6 +37,7 @@ import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
 import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 import { HubMemberFiles } from "../member/attachments.js";
+import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
 
 export function memberSet(hubId: string): HubStateSet {
   const base = `hub-member/${hubId}`;
@@ -74,6 +75,8 @@ export interface HubMemberFactoryOptions {
   representative: HubRepresentativeHost;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
+  /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
+  attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;
   /** The member link as S3c's pairing view shows it: online after a completed handshake, revoked when the Hub said so. */
   linkState?(state: "online" | "offline" | "revoked"): void;
@@ -237,6 +240,7 @@ export function createMemberReceive(deps: {
   journal: Pick<HubMemberJournal, "acknowledge">;
   live(): boolean;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
+  notices?: { receive: ReturnType<typeof createHubPairingNoticeInbox>["receive"] };
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
@@ -248,6 +252,7 @@ export function createMemberReceive(deps: {
     }
     if (frame.type === "revoke") return deps.admission.fence(frame.payload);
     if (frame.type === "receipt") return deps.journal.acknowledge(frame.payload);
+    if (frame.type === "pairing.notice" && deps.notices) return deps.notices.receive(frame.payload, l);
     deps.log("warn", "Hub frame not expected on the member", { type: frame.type });
     throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);
   };
@@ -339,6 +344,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution },
         exposureMods.store.HUB_EXPOSURE_MIGRATION,
         HUB_REPRESENTATIVE_MIGRATION,
+        HUB_PAIRING_INBOX_MIGRATION,
       ]);
       bindHubInstance(db, hubId, state, now());
 
@@ -446,7 +452,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         hold: (messageId, reason) => options.log("warn", "Hub question held", { messageId, reason }),
         now,
       });
-      const receive = createMemberReceive({ admission, journal, live, log: options.log });
+      const notices = createHubPairingNoticeInbox({ db, audit, current: live, now,
+        changed: () => options.pokeAttention() });
+      options.attachPairingNotices?.(() => notices.list());
+      teardown.add("security notices", () => options.attachPairingNotices?.(null));
+      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices });
       client = new HubMemberClient({
         home: options.home,
         hubId,

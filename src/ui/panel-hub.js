@@ -14,6 +14,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { PairingNotices } from "./hub-quick-pairing.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
@@ -101,13 +102,14 @@ export function HubPanel({ route }) {
   // Signed out: the sign-in page alone (no panel header, no chat chrome).
   if (s === null) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-signin"><${HubSignIn} /></div>`;
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
+  const notices = s?.features?.includes("quick-pairing-v1") && hubClient().quickPairingV1 ? html`<${PairingNotices} admin=${!!s.admin} />` : null;
   // The chats draw their own header (the room's); the other pages keep the panel's.
-  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
+  if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${notices}${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages (their own PageHead under the panel's header).
   const pageTitle = tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : hw(TITLES[tab]);
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
     <${PanelHeader} title=${s ? pageTitle : hw(TITLES[tab])} />
-    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${body}</div>
+    <div data-trust="panel-content" class=${`panel-body ${s ? "hub-page-body" : "hub-body"}`}>${notices}${body}</div>
   </div>`;
 }
 
@@ -323,7 +325,7 @@ function HubChats() {
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubNav} /></div>
-    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, onChats: () => setPicking(true) }} /></div>`
+    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true) }} /></div>`
       : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} hint=${hc("noChatsHint")} />`
       : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}

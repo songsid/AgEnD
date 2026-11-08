@@ -143,9 +143,9 @@ describe("the member card's pairing (S3c PR B)", () => {
   it("pending with unknown Hub progress: the two steps as instructions (no marks); the local check before, its line after", async () => {
     const confirmFingerprint = vi.fn(async (d: string) => ({ ok: true, pairing: { ...PENDING, localConfirmed: true }, digest: d }));
     const pg = await cardWith(fake(PENDING, { confirmFingerprint }));
-    expect(pg.root.querySelector(".hub-steps-lead")!.textContent).toBe("Still needed on the Hub:");
+    expect(pg.root.querySelector(".hub-steps-lead")!.textContent).toBe("Finish the fingerprint check on the Hub too.");
     expect(pg.root.querySelectorAll(".hub-steps-unknown li").map((li: any) => li.textContent)).toEqual([
-      "Your confirmation: sign in to the Hub, open My exposures and confirm this fingerprint.", "The Hub administrator's approval of this fingerprint."]);
+      "On the Hub, compare this fingerprint and confirm your pairing.", "The Hub checks its group policy, or waits for its administrator's approval."]);
     expect(pg.root.querySelectorAll(".hub-steps-unknown svg").length).toBe(0);
     (pg.root.querySelector(".hub-local-confirm") as any).click();
     await until(() => pg.root.querySelector(".hub-local-confirmed"));

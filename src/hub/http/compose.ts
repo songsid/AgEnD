@@ -42,7 +42,7 @@ export type { HubHttpDeps, HubTxDatabase };
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
 export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
-  "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js"]);
+  "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -117,6 +117,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const live = () => !closed && core.live();
   /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
   const uploading = new Map<string, number>(); let uploadingTotal = 0;
+  const streams = new Set<() => void>();
 
   /** One API request: method and path enumerated, mutations same-origin with the session's CSRF token. */
   async function api(req: IncomingMessage, res: ServerResponse, path: string, query: URLSearchParams): Promise<void> {
@@ -134,7 +135,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // The session's capability mark: present only when the group routes are composed (presentation only — a mark confers nothing).
-    const features = deps.groupHttp ? { features: [GROUP_POLICY_FEATURE] } : {};
+    const features = deps.groupHttp ? { features: [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] } : {};
     let r: RegExpExecArray | null;
 
     if (path === "/hub/v1/session") {
@@ -152,6 +153,69 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (method === "DELETE") { csrf(); sessions.signOut(ctx.token); return send(res, 200, { signedIn: false }, { "Set-Cookie": hubClearCookie(deps.config.hubId) }); }
       throw new HttpError(405, "method");
+    }
+    if (deps.pairingNotices && deps.groupHttp) {
+      const notices = deps.pairingNotices;
+      if (path === "/hub/v1/quick-pairing") {
+        if (method === "POST") {
+          csrf(); const b = await body();
+          const offer = await guard(() => deps.pairing.createQuick(ctx, b));
+          return send(res, 200, { ...offer, memberOrigin: deps.config.memberOrigin });
+        }
+        if (method !== "GET") throw new HttpError(405, "method");
+        signedIn(); const who = personKeyString(await guard(() => ctx.requirePerson())), wanted = query.get("id");
+        const state = deps.store.read();
+        const attempt = [...state.pairings].reverse().find(p => p.automatic && personKeyString(p.owner) === who && p.expiresAt > core.now()
+          && (!wanted || p.id === wanted) && ["offered", "pending", "claimed"].includes(p.state));
+        if (wanted && !attempt) throw new HubProtocolError("expired");
+        return send(res, 200, { attempt: attempt ? { id: attempt.id, state: attempt.state, fingerprint: attempt.fingerprint,
+          expiresAt: attempt.expiresAt, ownerConfirmed: attempt.ownerConfirmed,
+          connected: attempt.state === "claimed" && !!attempt.fleetId && rooms.features(attempt.fleetId) !== null,
+          fleetId: attempt.fleetId } : null, memberOrigin: deps.config.memberOrigin });
+      }
+      if ((r = m(/^\/hub\/v1\/quick-pairing\/([^/]+)\/stop$/))) {
+        if (method !== "POST") throw new HttpError(405, "method");
+        csrf(); await guard(() => deps.pairing.stopQuick(ctx, uuid(r![1]))); return send(res, 200, { ok: true });
+      }
+      if ((r = m(/^\/hub\/v1\/fleets\/([^/]+)\/revoke$/))) {
+        if (method !== "POST") throw new HttpError(405, "method");
+        csrf(); const b = await body(); await guard(() => deps.pairing.revokeOwned(ctx, uuid(r![1]), int(b.generation)));
+        notices.committed(); return send(res, 200, { ok: true });
+      }
+      if (path === "/hub/v1/notices") {
+        if (method !== "GET") throw new HttpError(405, "method");
+        signedIn(); return send(res, 200, { notices: await guard(() => notices.forSession(ctx)) });
+      }
+      if ((r = m(/^\/hub\/v1\/notices\/([^/]+)\/ack$/))) {
+        if (method !== "POST") throw new HttpError(405, "method");
+        csrf(); await guard(() => notices.acknowledgeSession(ctx, uuid(r![1]))); return send(res, 200, { ok: true });
+      }
+      if (path === "/hub/v1/notices/events") {
+        if (method !== "GET") throw new HttpError(405, "method");
+        signedIn(); if (streams.size >= 64) throw new HubProtocolError("backpressure");
+        const initial = await guard(() => notices.forSession(ctx));
+        if (streams.size >= 64 || !live() || ctx.isCurrent?.() !== true) throw new HubProtocolError("backpressure");
+        res.writeHead(200, { ...API_HEADERS, "Content-Type": "text/event-stream; charset=utf-8", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+        let ended = false, running = false, dirty = false;
+        const close = () => { if (ended) return; ended = true; off(); clearInterval(heartbeat); streams.delete(close); res.end(); };
+        const push = async () => {
+          if (ended) return;
+          if (running) { dirty = true; return; }
+          running = true;
+          try {
+            do {
+              dirty = false; const rows = await notices.forSession(ctx);
+              if (ended || !ctx.isCurrent?.()) return close();
+              res.write(`event: notices\ndata: ${JSON.stringify({ notices: rows })}\n\n`);
+            } while (dirty);
+          } catch { close(); } finally { running = false; }
+        };
+        const off = notices.subscribe(() => void push());
+        const heartbeat = setInterval(() => { if (!live() || !ctx.isCurrent?.()) close(); else res.write(": heartbeat\n\n"); }, 15_000); heartbeat.unref();
+        streams.add(close); res.on("close", close);
+        res.write(`event: notices\ndata: ${JSON.stringify({ notices: initial })}\n\n`);
+        return;
+      }
     }
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
       if (method === "GET") {
@@ -314,7 +378,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = /^\/hub\/v1\/admin\/fleets\/([^/]+)\/revoke$/.exec(path))) {
       if (method !== "POST") throw new HttpError(405, "method");
-      csrf(); await guard(() => deps.pairing.revoke(ctx, uuid(r![1]))); return send(res, 200, { ok: true });
+      csrf(); await guard(() => deps.pairing.revoke(ctx, uuid(r![1]))); deps.pairingNotices?.committed(); return send(res, 200, { ok: true });
     }
     if ((r = /^\/hub\/v1\/admin\/exposures\/([^/]+)\/freeze$/.exec(path))) {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -368,10 +432,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (!live() || !link.current()) throw new HubProtocolError("stale");
     rooms.noteLink(link);
     quota.noteLink(link);
+    deps.pairingNotices?.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
       case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
+      case "pairing.notice-ack":
+        if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
+        deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
       case "receipt": return { ...reply, type: "receipt", payload: rooms.receipt(frame.payload, link) };
       case "answer": return { ...reply, type: "receipt", payload: await rooms.answer(frame.payload, link) };
       case "authorize.request": return { ...reply, type: "authorize.result", payload: await policy.authorize(frame.payload, link) };
@@ -390,13 +458,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const t = setTimeout(() => {
       if (!live() || !link.current()) return;
       void rooms.flush(link.fleetId).then((sent) => { if (!sent && attempt < 5) flushSoon(link, attempt + 1); }, () => {});
+      void deps.pairingNotices?.flushFleet(link).catch(() => {});
     }, attempt === 0 ? 0 : 100 * attempt);
     t.unref?.();
   }
 
   rooms.buttons.start();
   return {
-    handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE] : []),
-    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    handle, receive, features: Object.freeze(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+    async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

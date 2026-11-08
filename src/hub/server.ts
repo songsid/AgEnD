@@ -113,6 +113,7 @@ export class HubServer {
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "pairing.notice-ack" && (!context.features.has("pairing-notices-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
     const result = await this.options.receive(frame, context);
     if (!context.current()) return;
@@ -126,6 +127,7 @@ export class HubServer {
     const connection = this.connections.get(fleetId);
     if (!connection?.ready || !connection.context.current() || frame.linkEpoch !== connection.context.linkEpoch
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
+    if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */

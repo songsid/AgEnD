@@ -2,13 +2,15 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { epoch, hash, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
+import { epoch, hash, person, uuid, identifier, plain, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import type { HubAuditRecord } from "./types.js";
 const pairing = z.strictObject({ id: uuid, owner: person, codeHash: hash.nullable(), expiresAt: epoch,
   fleetId: uuid.nullable(), claimHash: hash.nullable(), fingerprint: hash.nullable(), ownerConfirmed: z.boolean(), adminApproved: z.boolean(),
-  state: z.enum(["offered", "pending", "claimed", "revoked"]) });
+  state: z.enum(["offered", "pending", "claimed", "revoked"]),
+  /** Only self-service offers carry this server-authenticated origin; never an administrator approval. */
+  automatic: z.strictObject({ label: plain(120), initiatingSessionId: identifier }).optional() });
 const fleet = z.strictObject({ id: uuid, owner: person, credentialHash: hash.nullable(), generation: epoch,
-  status: z.enum(["active", "revoked"]) });
+  status: z.enum(["active", "revoked"]), label: plain(120).optional() });
 const stateSchema = z.strictObject({ v: z.literal(1), revision: epoch, revocationVersion: epoch, nextLinkEpoch: epoch,
   pairings: z.array(pairing).max(64), fleets: z.array(fleet).max(256),
   buckets: z.array(z.strictObject({ key: hash, since: epoch, attempts: epoch })).max(1024) });

@@ -10,6 +10,7 @@ import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
 import { hubClient, hubName } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
+import { OwnedFleetRevoke, QuickPairingGuide } from "./hub-quick-pairing.js";
 
 const FLEET_STATUS = { active: "fleetActive", suspended: "fleetPaused", revoked: "fleetRevoked", unknown: "fleetUnknown" };
 
@@ -25,7 +26,7 @@ export function reasonText(entry, fallback) {
  * `onChats` opens the chat list (the caller's own navigation). `askable` is how many agents are shared with this person
  * (the catalog's own count), so a new owner with nothing shared reads "No agents have been shared with you yet".
  */
-export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }) {
+export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/hub?chats=1") }) {
   const c = hubClient();
   const [w, setW] = useState(null), [askable, setAskable] = useState(null), [error, setError] = useState(false);
   const live = useRef(true);
@@ -45,7 +46,9 @@ export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }
   const chat = w.chat || {}, connect = w.connect || {};
   const chatOk = legacy || chat.state === "allow", connectOk = !legacy && connect.state === "allow";
   const fleets = Array.isArray(connect.fleets) ? connect.fleets : [], max = Number(connect.maxFleets) || 0;
-  const atLimit = connectOk && max > 0 && fleets.filter((f) => f.status !== "revoked").length >= max;
+  const quickOn = quick && c.quickPairingV1;
+  const used = fleets.filter((f) => f.status !== "revoked").length;
+  const atLimit = connectOk && max > 0 && used >= max;
   const noActions = !legacy && chat.state !== "allow" && connect.state !== "allow" && chat.state !== "unknown" && connect.state !== "unknown";
   const unknown = !legacy && (chat.state === "unknown" || connect.state === "unknown");
   return html`<div class="col hub-welcome-page">${head}
@@ -60,12 +63,14 @@ export function HubWelcome({ name, onChats = () => navigate("/ui/hub?chats=1") }
       </section>
       <section class=${`card hub-welcome-card${connectOk ? "" : " is-off"}`} data-entry="connect" aria-disabled=${connectOk ? "false" : "true"}>
         <h3>${hg("connectTitle")}</h3><p class="note">${hg("connectHint")}</p>
-        ${connectOk && max > 0 ? html`<p class="note" data-welcome="fleets">${hg("connectFleets", fleets.filter((f) => f.status !== "revoked").length, max)}</p>` : null}
-        ${fleets.length ? html`<ul class="hub-welcome-fleets">${fleets.map((f) => html`<li key=${f.id}>${f.label || f.id} <span class=${`tag${f.status === "active" ? " ok" : f.status === "suspended" || f.status === "unknown" ? " warn" : ""}`} data-fleet-status=${f.status}>${hg(FLEET_STATUS[f.status] || "fleetUnknown")}</span></li>`)}</ul>` : null}
+        ${connectOk && max > 0 ? html`<p class="note" data-welcome="fleets">${hg("connectFleets", used, max)}</p>` : null}
+        ${fleets.length ? html`<ul class="hub-welcome-fleets">${fleets.map((f) => html`<li key=${f.id}><span class="hub-fp-full">${f.label || f.id}</span> <span class=${`tag${f.status === "active" ? " ok" : f.status === "suspended" || f.status === "unknown" ? " warn" : ""}`} data-fleet-status=${f.status}>${hg(FLEET_STATUS[f.status] || "fleetUnknown")}</span>
+          ${quickOn ? html`<${OwnedFleetRevoke} fleet=${f} onRevoked=${load} />` : null}</li>`)}</ul>` : null}
         ${legacy ? html`<p class="note">${hg("connectManual")}</p>`
           : !connectOk ? html`<p class="note">${chat.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
           : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`
-          : html`<p class="note">${hg("connectManual")}</p>`}
+          : !quick || !c.quickPairingV1 ? html`<p class="note">${hg("connectManual")}</p>` : null}
+        ${quickOn ? html`<${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} />` : null}
       </section>
     </div>
     ${!legacy && w.publish && w.publish.state !== "allow" && connectOk ? html`<p class="note" data-welcome="publish">${hg("publishNot")}</p>` : null}

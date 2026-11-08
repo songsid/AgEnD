@@ -37,6 +37,7 @@ const CODE = /^[a-f0-9]{12}$/;
 
 export interface HubMemberPairingDeps {
   home: string;
+  notices?(): import("../types.js").HubPairingNotice[];
   /** S5's client lifecycle (absent: offline). */
   link?(): "online" | "offline";
   /** A composition hold (S5), if any. */
@@ -167,6 +168,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
 
   return {
     view,
+    notices: () => deps.notices?.() ?? [],
     /** Start pairing (a confirmed Settings replay's continuation): S1 persists the pending claim at once. */
     async connect(input: { address: unknown; code: unknown }, current: () => boolean): Promise<{ ok: true; pairing: HubPairingView } | { ok: false; error: HubConnectError }> {
       const origin = typeof input.address === "string" ? httpsOrigin(input.address) : null;
