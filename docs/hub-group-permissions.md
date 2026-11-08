@@ -56,9 +56,9 @@ If no one loses anything, it says *"No one loses anything they can do now."* If 
 
 Then choose **Save**, or **Turn on and save** the first time. *"Saved."* confirms it. Saving applies exactly the change the check showed:
 
-- If something changed since the check (a membership, a share, a save from another tab), the Hub refuses the save, says *"Something changed since this was checked. Check again."*, and checks again for you. Look at the new result and save again.
+- If a group membership in the directory changed since the check, the Hub refuses the save, says *"Something changed since this was checked. Check again."*, and checks again for you. Look at the new result and save again.
 - If you waited too long, it says *"This check expired. Check again."*
-- If group permissions were saved meanwhile from another tab or session: *"Someone else changed group permissions. Reload to see their version."*
+- If group permissions were saved from another tab or session, or fleets or shared agents changed on the Hub in the meantime: *"Someone else changed group permissions. Reload to see their version."*
 
 ## 2. What a colleague sees after signing in
 
