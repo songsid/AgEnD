@@ -48,4 +48,4 @@
 }
 .hub-page-lead { margin: 0; }
 /* A phone's page-level controls are tap targets (--tap): the chats home's New chat row and a sub-page's crumb. */
-@media (max-width: 600px) { .hub-home-list .side-new, .hub-crumb { min-height: var(--tap); } }
+@media (max-width: 600px) { .hub-home-list .side-new, .hub-crumb { min-height: var(--tap); } .hub-crumb { min-width: var(--tap); } }
