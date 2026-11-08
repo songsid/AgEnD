@@ -1,4 +1,4 @@
-import { CLAUDE_MINIMUM_ERROR } from "../cli-launch-inspect.js";
+import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
@@ -1098,7 +1098,6 @@ export class ClaudeCodeBackend implements CliBackend {
     this.binaryPath = resolveBinary("claude");
   }
 
-  launchBinaryPath(): string { return this.binaryPath; }
   refreshLaunchBinary(path: string): void { this.binaryPath = path; }
 
   /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */

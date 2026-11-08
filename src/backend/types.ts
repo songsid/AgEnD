@@ -1045,9 +1045,7 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
-  /** Resolved executable used by this backend, for offline owned-process launch inspection. */
-  launchBinaryPath?(): string;
-  /** A fresh resolver result, used only after a positively replaced launch is fenced for one repair. */
+  /** A fresh installed launcher, used by the one same-session model-version repair. */
   refreshLaunchBinary?(path: string): void;
 
   probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[]; binary?: CliBinaryIdentity }>;

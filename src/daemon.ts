@@ -1,5 +1,4 @@
-import { probeClaudeLaunch } from "./cli-launch-probe.js";
-import { claudeMinimumError, cliVersionBelow, sameCliProcess, type CliLaunchSnapshot } from "./cli-launch-inspect.js";
+import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
@@ -1833,11 +1832,10 @@ export class Daemon extends EventEmitter {
    */
   private fatalStartupBlocked = false;
   /** #3441: one repair budget survives every automatic spawn on this daemon. */
-  private cliLaunchRepairUsed = false;
-  private cliLaunchIntegrityFlight: Promise<void> | null = null;
-  private cliLaunchIntegrityBlocked = false;
-  private cliLaunchUpdateNotified = false;
-  private cliLaunchFailureNotified = false;
+  private modelMinimumRepairUsed = false;
+  private modelMinimumFlight: Promise<void> | null = null;
+  private modelMinimumBlocked = false;
+  private modelMinimumUpdateNotified = false;
   private cliRepairSessionId: string | undefined;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
@@ -4746,7 +4744,7 @@ export class Daemon extends EventEmitter {
     const minimum = this.backend?.binaryName === "claude" && ep.type === "outdated_cli" ? claudeMinimumError(pane) : null;
     if (minimum) {
       this.lastErrorNotifiedAt.set(key, now);
-      void this.checkCliLaunchIntegrity(false, minimum).catch(err => {
+      void this.handleClaudeModelMinimum(minimum).catch(err => {
         this.logger.warn({ reason: String(err) }, "CLI launch repair failed");
       });
       return;
@@ -9862,7 +9860,7 @@ export class Daemon extends EventEmitter {
    * moment the flag clears.
    */
   private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
-    if (!this.fatalStartupBlocked && !this.cliLaunchIntegrityBlocked) return false;
+    if (!this.fatalStartupBlocked && !this.modelMinimumBlocked) return false;
     this.logger.error("Delivery refused — CLI startup or executable integrity is held");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
     return true;
@@ -12747,8 +12745,6 @@ export class Daemon extends EventEmitter {
     // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
     // deliveries — and outside the spawn gate, which it does not need.
     this.startupAdmission?.();
-    if (ready && !repairAdmission) await this.checkCliLaunchIntegrity(true, undefined, startupTimeoutMs);
-    this.startupAdmission?.();
     if (ready) await this.ensureBackendAgent();
     this.startupAdmission?.();
     if (ready) await this.ensureKiroSessionProof();
@@ -12756,33 +12752,32 @@ export class Daemon extends EventEmitter {
     return ready;
   }
 
-  /** #3441: metadata only, on a bounded worker; never execute Claude for a version probe. */
-  private async inspectCliLaunch(path = this.backend?.launchBinaryPath?.()): Promise<CliLaunchSnapshot | null> {
-    const tmux = this.tmux;
-    if (!tmux || !path || process.platform !== "linux") return null;
-    const pid = await TmuxManager.getPanePid(this.tmuxSessionName, tmux.getWindowId());
-    return pid ? probeClaudeLaunch(pid, path) : null;
-  }
-
-  private async refreshCliLaunchPath(): Promise<string | null> {
+  /** Resolve the installed launcher; never run Claude to discover its version. */
+  private async resolveClaudeInstallPath(): Promise<string | null> {
     const { binaryProbe } = await import("./binary-probe.js");
     const { resolveBackendBinary } = await import("./backend-availability.js");
     binaryProbe.invalidate("claude");
     return await resolveBackendBinary("claude-code") ?? null;
   }
 
-  /** Both startup and the CLI's own minimum-version refusal use this one non-renewable repair budget. */
-  private checkCliLaunchIntegrity(startup: boolean, minimum?: { running: string; required: string }, startupTimeoutMs?: number): Promise<void> {
-    if (this.cliLaunchIntegrityBlocked || this.backend?.binaryName !== "claude" || !this.backend.launchBinaryPath || !this.backend.refreshLaunchBinary) return Promise.resolve();
-    if (this.cliLaunchIntegrityFlight) return this.cliLaunchIntegrityFlight;
-    const flight = this.repairCliLaunch(startup, minimum, startupTimeoutMs).finally(() => {
-      if (this.cliLaunchIntegrityFlight === flight) this.cliLaunchIntegrityFlight = null;
+  private async installedClaudeVersion(path: string): Promise<string | null> {
+    const { staticBackendVersion } = await import("./backend-availability.js");
+    return staticBackendVersion("claude-code", path);
+  }
+
+  /** #3441: only the CLI's own refusal can request this one, non-renewable repair. */
+  private handleClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
+    if (this.modelMinimumRepairUsed || this.modelMinimumBlocked || this.backend?.binaryName !== "claude"
+      || !this.backend.refreshLaunchBinary) return Promise.resolve();
+    if (this.modelMinimumFlight) return this.modelMinimumFlight;
+    const flight = this.repairClaudeModelMinimum(minimum).finally(() => {
+      if (this.modelMinimumFlight === flight) this.modelMinimumFlight = null;
     });
-    this.cliLaunchIntegrityFlight = flight;
+    this.modelMinimumFlight = flight;
     return flight;
   }
 
-  private async repairCliLaunch(startup: boolean, minimum?: { running: string; required: string }, startupTimeoutMs?: number): Promise<void> {
+  private async repairClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
     const tmux = this.tmux, backend = this.backend, window = tmux?.getWindowId();
     let spawn = this.spawnGeneration, claimed = false;
     const fence = this.launchFenceEpoch, attempt = this.launchAttempt, phase = this.pauseWakeState;
@@ -12790,91 +12785,58 @@ export class Daemon extends EventEmitter {
       && this.spawnGeneration === spawn && this.launchFenceEpoch === fence && this.pauseWakeState === phase
       && !this.startupAborted && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen;
     const current = () => baseCurrent() && this.launchAttempt === attempt;
-    const updateNeeded = (required: string) => {
-      if (!this.cliLaunchUpdateNotified) {
-        this.cliLaunchUpdateNotified = true;
-        this.logger.warn({ required }, "Claude Code installed on disk is too old or its version cannot be verified");
-        this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_update_needed", required) });
-      }
-    };
-    const failed = () => new UnsupportedCliError(t("inst.cli_repair_failed"));
+    const failed = () => new Error(t("inst.cli_repair_failed"));
     try {
-      const initial = await this.paneWriteLock.run(async () => {
-        // The process may still use a previously resolved prefix. The error's
-        // required version must be compared with today's installed package.
-        const installedPath = minimum ? await this.refreshCliLaunchPath() : undefined;
-        if (!current()) return null;
-        const value = await this.inspectCliLaunch(installedPath ?? undefined);
-        if (!current() || !value) return null;
-        if (minimum && !installedPath) value.installed = null;
-        // A restored error row cannot restart a process already proven to meet that requirement.
-        if (minimum && value.process.version && !cliVersionBelow(value.process.version, minimum.required) && !value.process.reason) return null;
-        if (minimum && (!value.installed?.version || cliVersionBelow(value.installed.version, minimum.required))) {
-          updateNeeded(minimum.required); return null;
+      // Read the newly resolved install, not a cached old prefix or the running image.
+      const path = await this.resolveClaudeInstallPath(); if (!current()) return;
+      const version = path ? await this.installedClaudeVersion(path) : null; if (!current()) return;
+      if (!version || cliVersionBelow(version, minimum.required)) {
+        if (!this.modelMinimumUpdateNotified) {
+          this.modelMinimumUpdateNotified = true;
+          this.logger.warn({ required: minimum.required, installed: version }, "Claude Code needs an update for this model");
+          this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_update_needed", minimum.required) });
         }
-        if (!value.process.reason && !minimum) return null;
-        if (this.cliLaunchRepairUsed) throw failed();
-        if (!await this.isPaneAuthoritativelyIdle()) throw failed();
-        if (!current()) return null;
-        // Claim under write exclusion: no delivery can race the idle proof, and a healthy/unknown check never resets the launch owner.
-        this.cliLaunchRepairUsed = true;
-        this.beginSpawn(); claimed = true; spawn = this.spawnGeneration;
-        return value;
-      });
-      if (!initial) return;
-      let observed = initial;
-      const original = observed;
-      // An npm rename window can leave the stable launcher absent. Wait boundedly for that exact install, not a CLI probe.
-      const deadline = performance.now() + 10_000;
-      while (!observed.installed) {
-        if (performance.now() >= deadline) throw failed();
-        await new Promise(r => setTimeout(r, Math.min(250, Math.max(0, deadline - performance.now()))));
-        if (!current()) return;
-        const next = await this.inspectCliLaunch();
-        if (!current()) return;
-        if (performance.now() >= deadline) throw failed();
-        if (!next || !sameCliProcess(original, next)) return;
-        observed = next;
+        return;
       }
-      this.logger.warn({ reason: original.process.reason ?? "model-minimum", running: minimum?.running, required: minimum?.required },
-        "CLI launch was replaced or incompatible — attempting one same-session restart");
+      await this.paneWriteLock.run(async () => {
+        if (!current()) return;
+        if (!await this.isPaneAuthoritativelyIdle()) throw failed();
+        if (!current()) return;
+        // Claim before yielding the write lock; queued delivery remains held until readiness settles.
+        this.modelMinimumRepairUsed = true;
+        this.beginSpawn(); claimed = true; spawn = this.spawnGeneration;
+      });
+      if (!claimed || !current()) return;
       await this.checkpointSessionId(); if (!current()) return;
       let session: string | undefined;
       if (!this.skipResume) {
-        try { const value = readFileSync(join(this.instanceDir, "session-id"), "utf8").trim();
-          if (/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) session = value; } catch { /* Unknown is not permission to select another conversation. */ }
-        if (!session) throw failed();
+        try {
+          const value = readFileSync(join(this.instanceDir, "session-id"), "utf8").trim();
+          if (/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) session = value;
+        } catch { /* Unknown is not permission to select another conversation. */ }
       }
-      const path = await this.refreshCliLaunchPath(); if (!current()) return;
-      if (!path) throw failed();
-      const final = await this.inspectCliLaunch(path); if (!current()) return;
-      if (!final || !sameCliProcess(original, final)) return;
-      if (!final.installed || (minimum && (!final.installed.version || cliVersionBelow(final.installed.version, minimum.required)))) throw failed();
+      if (!session) throw failed();
+      // Recheck disk evidence after checkpointing; an update may have changed it while we waited.
+      const finalVersion = await this.installedClaudeVersion(path!); if (!current()) return;
+      if (!finalVersion || cliVersionBelow(finalVersion, minimum.required)) throw failed();
       if (!await this.isPaneAuthoritativelyIdle()) throw failed();
       if (!current()) return;
-      backend!.refreshLaunchBinary!(path);
+      this.logger.warn({ running: minimum.running, required: minimum.required, installed: finalVersion },
+        "Claude model-version refusal — attempting one same-session restart");
+      backend!.refreshLaunchBinary!(path!);
       this.cliRepairSessionId = session;
-      const ready = await this.trySpawn(true, startupTimeoutMs, next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
+      const ready = await this.trySpawn(true, undefined, next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
       this.cliRepairSessionId = undefined;
       if (!baseCurrent() || this.launchAttempt !== attempt + 1) return;
-      const replacement = await this.inspectCliLaunch(path);
-      if (!baseCurrent() || this.launchAttempt !== attempt + 1) return;
-      if (!ready || !replacement || replacement.process.reason
-        || minimum && (!replacement.process.version || cliVersionBelow(replacement.process.version, minimum.required))) throw failed();
-      this.logger.info("CLI replacement restart verified; session retained");
+      if (!ready) throw failed();
+      this.logger.info("Claude model-version restart completed; session retained");
       this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repaired") });
     } catch (error) {
       if (!baseCurrent()) return;
-      // A failed repair is never a failed resume: preserve the pin instead of
-      // letting startup's normal fresh-session fallback launch again.
-      if (startup) throw error instanceof UnsupportedCliError ? error : failed();
-      this.cliLaunchIntegrityBlocked = true;
+      this.modelMinimumBlocked = true;
       this.healthCheckPaused = true;
-      if (!this.cliLaunchFailureNotified) {
-        this.cliLaunchFailureNotified = true;
-        this.logger.error({ reason: error instanceof Error ? error.message : String(error) }, "CLI repair held; automatic restart budget exhausted");
-        this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repair_failed") });
-      }
+      this.logger.error({ reason: error instanceof Error ? error.message : String(error) }, "Claude model-version repair held; no automatic retry");
+      this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repair_failed") });
     } finally {
       this.cliRepairSessionId = undefined;
       if (claimed) this.endSpawn();
