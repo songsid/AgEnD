@@ -17,6 +17,7 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-fp-label { font-size: var(--fs-sm); color: var(--text-2); }
 .hub-fp-groups { font-family: var(--font-mono); font-size: var(--fs-md); letter-spacing: .04em; word-spacing: .3em; overflow-wrap: anywhere; }
 .hub-fp-full { font-family: var(--font-mono); font-size: var(--fs-xs); overflow-wrap: anywhere; color: var(--text-2); }
+.hub-security-notices { flex: none; max-height: 38vh; overflow: auto; }
 .hub-fp .btn-link { justify-self: start; }
 .hub-steps-lead { margin: var(--s-1) 0 0; }
 .hub-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }

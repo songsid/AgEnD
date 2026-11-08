@@ -44,7 +44,8 @@ export function createHubGroupWelcome(options: HubGroupWelcomeOptions): (ctx: Gr
     const who = await ctx.requirePerson();
     if (!current()) throw gone();
     const own = options.fleets().filter((f) => f.owner.realm === who.realm && f.owner.objectId === who.objectId);
-    const rows: FleetRow[] = own.map((f) => ({ id: f.id, label: typeof f.label === "string" ? f.label.slice(0, 120) : null, status: f.status === "active" ? "active" : "revoked" }));
+    const rows: FleetRow[] = own.map((f) => ({ id: f.id, label: typeof f.label === "string" ? f.label.slice(0, 120) : null,
+      ...(Number.isSafeInteger(f.generation) ? { generation: f.generation } : {}), status: f.status === "active" ? "active" : "revoked" }));
     const readiness = options.readiness();
     if (readiness === "unavailable") throw gone();
     const legacy = (): GroupWelcomeResponse => ({ ok: true, v: 1, mode: "legacy", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "deny", maxFleets: 0, fleets: rows } });

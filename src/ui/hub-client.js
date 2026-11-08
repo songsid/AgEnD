@@ -259,6 +259,19 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
     chooseButtons(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/buttons`, input); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
+    quickPairingV1: true,
+    createQuickPairing(label) { return call("POST", "/hub/v1/quick-pairing", { label }); },
+    quickPairing(pairingId) { return call("GET", `/hub/v1/quick-pairing${pairingId ? `?id=${id(pairingId)}` : ""}`); },
+    stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
+    revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
+    pairingNotices() { return call("GET", "/hub/v1/notices"); },
+    acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
+    subscribePairingNotices(fn) {
+      if (typeof EventSource === "undefined") return () => {};
+      const events = new EventSource("/hub/v1/notices/events");
+      events.addEventListener("notices", (event) => { try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
+      return () => events.close();
+    },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
@@ -289,6 +302,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
  * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
  */
 export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
+  let pairingNotices = [];
   const listed = async () => {
     const r = await confirm.api("/api/hub/member/exposures");
     return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
@@ -298,7 +312,8 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
     const r = await confirm.api("/api/hub/member/pairing");
-    if (r.ok && r.body && r.body.pairing) return r.body.pairing;
+    if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
+    pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
   };
   const step = async (name, body) => {
@@ -322,6 +337,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   return {
     stub: false, member: true,
     pairing: pairingNow,
+    pairingNotices: () => pairingNotices,
     async connect({ address, code }) {
       const a = String(address || "").trim(), c = String(code || "").trim();
       if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };

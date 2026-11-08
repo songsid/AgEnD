@@ -145,7 +145,7 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     expect((await r.call(r.admin, "POST", `${r.path}/resources/resume`, resume)).json).toMatchObject({ ok: true, state: "active" });
     expect((await r.call(r.admin, "GET", r.path)).json.paused).toEqual([]);
     await r.save({ ...await r.readPolicy(), denies: [{ person: ADMIN.key, deny: ["pair_fleet"] }] });
-    expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toEqual([{ id: pending.fleetId, label: null, status: "suspended" }]);
+    expect((await r.call(r.admin, "GET", "/hub/v1/me/welcome")).json.connect.fleets).toEqual([{ id: pending.fleetId, generation: 1, label: null, status: "suspended" }]);
   });
   it.each(["none", "unknown"])("preserves explicit admin-approved manual pairing with %s self-service membership", async mode => {
     const r = await rig(); await r.save(await r.proposal());

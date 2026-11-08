@@ -40,6 +40,8 @@ export interface HubHttpDeps {
    * the routes answer 404 and the session carries no "group-policy-v1" mark (the pages show nothing of it).
    */
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  /** S-90: durable credential-transaction outbox, independent of a group's current operational allowance. */
+  pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
   store: HubTransportStore;
   config: HubHttpConfig;
   preview?: Readonly<import("../preview.js").HubPreviewView>;

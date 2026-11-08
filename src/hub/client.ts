@@ -142,6 +142,7 @@ export class HubMemberClient implements HubMemberTransport {
   }
   private async dispatch(frame: HubServerFrame, view: HubMemberLink): Promise<void> {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
+    if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;

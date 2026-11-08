@@ -1,0 +1,43 @@
+// Separate words so a cached earlier hub-strings module cannot expose raw keys.
+import { register, t } from "/assets/app-i18n.js";
+register("hubQuick", {
+  en: {
+    start: "Connect my fleet", label: "Fleet name", labelHint: "A name you and your Hub admin will recognise.",
+    labelExample: "For example, my laptop", privacy: "Connect only a fleet you control. Your other Hub sessions, connected fleets and Hub admin will be notified.",
+    localTitle: "Confirm on your fleet", local: "On your fleet's web page, open Settings → Hub. Turn on Hub membership, then use this member address and one-time code. Confirm the local prompt there.",
+    remoteSteps: "Finish the fingerprint check on the Hub too.", ownerStep: "On the Hub, compare this fingerprint and confirm your pairing.", policyStep: "The Hub checks its group policy, or waits for its administrator's approval.",
+    address: "Member address", code: "One-time code", copy: "Copy", copied: "Copied", expires: "Expires {0}",
+    compareTitle: "Compare the fingerprints", compare: "On your fleet, open Settings → Hub → pending pairing. Compare its fingerprint with this one. Confirm locally on your fleet too.",
+    match: "They match", mismatch: "They differ", mismatchStop: "The fingerprints differ. Pairing is stopped; no connection was approved. Start again only after checking the address.",
+    stop: "Stop pairing", stopped: "Pairing stopped", again: "Start again", waiting: "Waiting for your fleet's code and local confirmation…",
+    another: "Connect another fleet",
+    claim: "Waiting for your fleet's pinned connection…", connected: "Connected", publish: "Share agents on your fleet", publishHint: "On your fleet, open Settings → Hub → Shared agents. Choose only the agents you want to share and confirm there. Nothing is shared automatically.",
+    publishNo: "Your fleet is connected. Sharing new agents is not included in your current permissions; contact your Hub admin.",
+    expired: "This attempt expired or was replaced. It cannot connect a fleet. Start again.", unavailable: "Permissions or the connection can't be checked right now. Retry; this page can't confirm whether pairing finished.",
+    denied: "Connecting a fleet is not available to you. Contact your Hub admin.", conflict: "An administrator's pairing code is already waiting for you. Use that code, or ask the admin for help.",
+    limit: "Your fleet or pairing limit is reached. Stop an unused attempt or revoke a fleet you no longer use, then try again.", retry: "Retry", failed: "This action could not finish. Retry.",
+    notices: "Fleet security notices", notice: "A new fleet was connected: {0}", approved: "Approved by your Hub's group policy.",
+    revoke: "Revoke this fleet", revoked: "Revoked", revokeHint: "Stops this fleet's Hub access. Your other fleets and local agent work stay in place.",
+    review: "Review and revoke on the Hub", previous: "Earlier notices", more: "Show older notices", fleetId: "Fleet ID", revokeFailed: "The fleet could not be revoked. Sign in again if your session ended, then retry.",
+  },
+  "zh-TW": {
+    start: "連接我的 Fleet", label: "Fleet 名稱", labelHint: "取一個你和 Hub 管理員都認得的名字。", labelExample: "例如：我的筆電",
+    privacy: "只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。",
+    localTitle: "在你的 Fleet 確認", local: "在你的 Fleet 網頁開啟「設定 → Hub」，啟用 Hub 成員資格，填入以下成員位址和一次性代碼，並在當地確認提示。",
+    remoteSteps: "也要在 Hub 完成指紋比對。", ownerStep: "在 Hub 比對這個指紋，並確認你的配對。", policyStep: "Hub 會檢查群組規則，或等待管理員核准。",
+    address: "成員位址", code: "一次性代碼", copy: "複製", copied: "已複製", expires: "有效至 {0}",
+    compareTitle: "比對指紋", compare: "在你的 Fleet 開啟「設定 → Hub → 等待配對」，將當地指紋與下方逐一比對，也要在你的 Fleet 確認。",
+    match: "指紋相符", mismatch: "指紋不同", mismatchStop: "指紋不同，已停止配對，沒有核准連線。請先檢查位址，再重新開始。",
+    stop: "停止配對", stopped: "已停止配對", again: "重新開始", waiting: "等待你的 Fleet 使用代碼並在當地確認…", claim: "等待你的 Fleet 建立已固定憑證的連線…",
+    another: "連接另一個 Fleet",
+    connected: "已連接", publish: "在你的 Fleet 分享 Agent", publishHint: "在你的 Fleet 開啟「設定 → Hub → 已分享的 Agent」，選擇你要分享的 Agent 並在當地確認。不會自動分享任何 Agent。",
+    publishNo: "Fleet 已連接，但你目前的權限不包含分享新的 Agent。請聯絡 Hub 管理員。",
+    expired: "這次配對已過期或被取代，無法再連接 Fleet。請重新開始。", unavailable: "目前無法確認權限或連線。請重試；此頁無法確認配對是否已完成。",
+    denied: "你目前無法連接 Fleet。請聯絡 Hub 管理員。", conflict: "管理員已為你建立配對代碼。請使用該代碼，或請管理員協助。",
+    limit: "已達 Fleet 或配對數量上限。請停止未使用的配對，或撤銷不再使用的 Fleet，再重試。", retry: "重試", failed: "這次操作未能完成，請重試。",
+    notices: "Fleet 安全通知", notice: "已連接新的 Fleet：{0}", approved: "由 Hub 群組規則核准。", revoke: "撤銷此 Fleet", revoked: "已撤銷",
+    revokeHint: "停止這個 Fleet 的 Hub 存取。你的其他 Fleet 和當地 Agent 工作不受影響。", review: "在 Hub 查看並撤銷", previous: "較早的通知", more: "顯示更早的通知", fleetId: "Fleet ID",
+    revokeFailed: "無法撤銷此 Fleet。如果登入已結束，請重新登入後再重試。",
+  },
+});
+export const hq = (key, ...args) => t(`hubQuick.${key}`, ...args);

@@ -12,6 +12,8 @@ import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from
 import { hw, linkHubCss } from "./hub-strings.js";
 import { guidanceFor } from "./hub-provider-guidance.js";
 import { AGENT_CHOICE } from "./hub-agent-copy.js";
+import { PairingNotices } from "./hub-quick-pairing.js";
+import { hq } from "./hub-quick-strings.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
@@ -115,8 +117,8 @@ export function HubConnectCard() {
         : p.localConfirmed === true ? html`<p class="note hub-local-confirmed">${hw("localConfirmed")}</p>` : null}
       ${p.ownerConfirmed === null && p.adminApproved === null
         // S3c: the member cannot see the Hub's progress — the two steps as instructions, no marks.
-        ? html`<p class="hub-steps-lead">${hw("hubStillNeeded")}</p>
-          <ul class="hub-steps hub-steps-unknown"><li><span>${hw("ownerStepHub")}</span></li><li><span>${hw("adminStepHub")}</span></li></ul>
+        ? html`<p class="hub-steps-lead">${hq("remoteSteps")}</p>
+          <ul class="hub-steps hub-steps-unknown"><li><span>${hq("ownerStep")}</span></li><li><span>${hq("policyStep")}</span></li></ul>
           <p class="note">${hw("hubProgressHidden")}</p>`
         : html`<p class="hub-steps-lead">${hw("pendingSteps")}</p>
           <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>`}
@@ -162,6 +164,7 @@ export function HubConnectCard() {
     <p class="note">${hw("lead")}</p>
     ${client.stub ? html`<p class="note hub-preview" role="note">${hw("preview")}</p>` : null}
     ${body}
+    ${p?.state === "paired" && client.pairingNotices?.().length ? html`<${PairingNotices} memberNotices=${client.pairingNotices()} memberOrigin=${safeWebOrigin(p)} />` : null}
     ${msg && waitingForPairing(msg, p) ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
     ${p && p.state === "paired" ? html`<${HubExposures} key=${`${p.binding}|${p.hub.hubId}|${p.hub.fingerprint?.digest}|${safeWebOrigin(p)}`} client=${client} pairing=${p} />` : null}
   </section>`;

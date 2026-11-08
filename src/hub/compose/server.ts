@@ -26,10 +26,11 @@ import { resolveDirectoryConfig, type HubDirectory, type HubDirectoryConfig } fr
 import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyBinding, type HubGroupPolicyStore } from "../group-policy/store.js";
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
+import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
 import { createHubGroupWelcome } from "../group-policy/welcome.js";
-import { signAsker, canonicalArguments, sha256 } from "../identity.js";
+import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -61,6 +62,7 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   groups?: HubGroupAuthorization;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  pairingNotices?: HubPairingNotices;
   store: HubTransportStore;
   current(): HubMode;
   now?: () => number;
@@ -254,7 +256,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
         retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
-        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION]);
+        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION, HUB_PAIRING_NOTICES_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -300,6 +302,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
       teardown.add("group authorization", () => groups.close());
       const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
+      const pairingNotices = new HubPairingNotices({ db, store, administrator: settings.administrator, directory, audit,
+        current: live, now, transport: () => memberServer });
+      pairingNotices.start();
+      teardown.add("pairing security notices", () => pairingNotices.close());
       const pairing = new HubPairingService({
         store,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
@@ -311,6 +317,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         enrollment: { prepare: (resource, ctx) => groups.prepareEnrollment(resource, ctx),
           prepareManual: (resource, approvedBy, ctx) => groups.prepareManualEnrollment(resource, approvedBy, ctx),
           atomic: work => db.transaction(() => work(db)).immediate() },
+        quick: { enqueue: pairingNotices.enqueue, committed: pairingNotices.committed },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
@@ -318,7 +325,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         advanceAuthorization: database => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group policy transaction is unavailable");
           store.mutate({ at: now(), requestId: randomBytes(16).toString("hex"), actor: { kind: "local-host" },
-            action: "group-policy.authorization-changed", result: "completed" }, state => { state.revocationVersion++; });
+            action: "group-policy.authorization-changed", result: "completed" }, state => {
+            const next = policy().read();
+            // The same policy-change transaction cancels known off/denied automatic reservations, never manual ones.
+            const denied = new Set(next.denies.filter(d => d.deny.includes("pair_fleet")).map(d => personKeyString(d.person)));
+            state.pairings = state.pairings.filter(p => !p.automatic || !["offered", "pending"].includes(p.state)
+              || (next.state === "enabled" && !denied.has(personKeyString(p.owner))));
+            state.revocationVersion++;
+          });
         }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
       teardown.add("group policy confirmation", () => groupControl.close());
       const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
@@ -336,6 +350,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         pairing,
         groups,
         groupHttp: { control: groupControl, welcome: groupWelcome },
+        pairingNotices,
         store,
         current: () => mode,
         now,

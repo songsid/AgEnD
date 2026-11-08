@@ -1636,6 +1636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
   /** S3c PR B: the member's pairing API, attached by S5's member composition (null: no Hub member here). */
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
+  private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   attachHubMemberPairing(api: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null): void { this.hubMemberPairingApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
@@ -1976,6 +1977,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
+          attachPairingNotices: read => { this.hubPairingNotices = read; },
           pokeAttention: () => this.needsYou?.poke(),
           linkState: state => { this.hubMemberLink = state; },
         },
@@ -2000,6 +2002,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.hubMemberBinding = currentBinding;
     this.attachHubMemberPairing(createHubMemberPairingApi({
       home: this.dataDir,
+      notices: () => this.hubPairingNotices?.() ?? [],
       enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
       link: () => (this.hubMemberLink === "online" ? "online" : "offline"),
       hold: () => (this.hubMemberLink === "revoked" ? "revoked" : null),
