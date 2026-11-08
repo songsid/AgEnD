@@ -138,6 +138,35 @@ describe("#3450 automatic historical Kiro backfill", () => {
     expect((await third.officeLevels(NOW)).k!.workTokens).toBe(2002); await third.stop();
   });
 
+  it("done-marker write failure after the rollup write: retry adds no duplicate rows", async () => {
+    const r = rig(); r.classic("old", [NOW - 50 * DAY, NOW - 50 * DAY + 1000]); r.db.close();
+    const original = history.writeHistoryJob;
+    let failures = 0;
+    const spy = vi.spyOn(history, "writeHistoryJob").mockImplementation(async (path, job) => {
+      if (job.phase === "done" && failures === 0) { failures++; return false; }
+      return original(path, job);
+    });
+    const scan = vi.fn(async (i: KiroHistoryInput) => scanKiroHistory(i));
+    const first = r.service({ kiroHistoryScan: scan });
+    try { await first.pass(); } finally { await first.stop(); spy.mockRestore(); }
+    expect(failures).toBe(1);
+    const journal = join(r.own, "kiro-history-v1.json");
+    expect(JSON.parse(readFileSync(journal, "utf8")).phase).toBe("ready");
+    expect(JSON.parse(readFileSync(join(r.own, "usage-days.json"), "utf8")).rows).toHaveLength(1);
+    const retry = r.service({ kiroHistoryScan: scan });
+    try {
+      await retry.kick();
+      expect(JSON.parse(readFileSync(journal, "utf8")).phase).toBe("done");
+      const data = (await retry.usageData()).instances[0]!;
+      expect(data.days.rows).toHaveLength(1);
+      const report = buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "custom", from: "2026-09-01", to: "2026-09-30" },
+        group: "instance", messages: [], scanning: retry.scanning(), instances: [{ name: "k", backend: "kiro-cli", team: null, status: "ok", ledger: data.ledger, days: data.days }] });
+      expect(report.rows[0]!.requests).toBe(2);
+      expect((await retry.officeLevels(NOW)).k!.workTokens).toBe(4004);
+      expect(scan).toHaveBeenCalledTimes(1);
+    } finally { await retry.stop(); }
+  });
+
   it("a malformed old store stays pending and retries automatically after repair", async () => {
     const r = rig(); r.classic("old", [NOW - 50 * DAY]);
     r.db.prepare("UPDATE conversations_v2 SET value='{' WHERE conversation_id='old'").run();
