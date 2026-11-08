@@ -1,0 +1,16 @@
+{
+  "admin form.hub-step-form > label.field > input": 1,
+  "admin section.card.hub-groups-entry > div.hub-groups-actions > a.btn.btn-primary": 1,
+  "admin-groups div.s-row.hub-row > label.field.hub-group-fleets > input": 1,
+  "admin-groups div.s-row.hub-row > label.hub-group-cap > input": 3,
+  "admin-groups div.s-section-layout > p.note > a": 1,
+  "admin-groups form.hub-step-form > label.field > input": 1,
+  "admin-groups section.card.hub-groups-state > div.hub-groups-actions > button.btn.btn-sm": 1,
+  "chat div.composer > span.composer-field > textarea#msgIn": 1,
+  "chat section.hub-chat-main > header.hub-chat-head > a.icon-btn.hub-back": 1,
+  "chat section.hub-chat-main > header.hub-chat-head > button.icon-btn": 1,
+  "signin section.hub-signin.hub-signin-card > form.hub-signin-form > button.hub-signin-go": 1,
+  "welcome div.hub-home-list > div.hub-nav > button.btn.hub-new": 1,
+  "welcome div.hub-nav > label.hub-search > input": 1,
+  "welcome section.card.hub-welcome-card > div.hub-welcome-actions > button.btn.btn-primary": 1
+}

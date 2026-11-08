@@ -290,8 +290,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const s = signedIn();
         // #3226 B + G: the room comes with its entries, fresh each poll — its view (state, grant's end, what its link
         // negotiated) and its quota projection (G; absent when hidden or not shared).
-        const entries = await guard(() => rooms.read(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
-        const view = await guard(() => rooms.view(ctx, roomId));
+        const { entries, room: view } = await guard(() => rooms.readPage(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
         return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view) } });
       }
       if (method === "POST") {

@@ -95,7 +95,7 @@ try{
  // The asker must have signed in once; grants resolve the directory's current identity.
  const asker=await hubPage(c,'/ui/hub');await signIn(asker.page,'alex');
  await fresh.page.locator('.hub-grant input').fill('alex');await fresh.page.locator('.dlg-actions .btn-primary').click();await fresh.page.locator('.hub-grant').waitFor({state:'detached'});
- await asker.page.reload();await asker.page.locator('.hub-new').first().click();await asker.page.locator('.hub-pick-row button').first().click();
+ await asker.page.reload();await asker.page.locator('.sidebar .side-new:visible, .hub-home .hub-new:visible').first().click();await asker.page.locator('.hub-pick-row button').first().click();
  await asker.page.locator('#msgIn').fill('Fixture question after contextual grant');await asker.page.locator('#sendBtn').click();
  for(let n=0;n<100&&!deliveries.length;n++)await new Promise(r=>setTimeout(r,100));check('question reached real representative admission',deliveries.some(d=>d.ok),deliveries);
  check('workflow CSP',!(await admin.page.evaluate(()=>window.__csp)).length&&!(await fresh.page.evaluate(()=>window.__csp)).length&&!(await fleet.page.evaluate(()=>window.__csp)).length);

@@ -77,7 +77,7 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     const choices = platform === "discord" ? h.respondButtons.mock.calls[0]![1] : h.adapter.notifyAlert.mock.calls[0]![1].choices;
     const menu = language === "en"
       ? "Press a sign-in button to get your private link and code.\nPublic links use Cloudflare TLS; anyone who signs in can manage the fleet. Do not forward."
-      : "按登入按鈕，取得僅傳給你的連結和登入碼。\n公開連結使用 Cloudflare TLS；登入者可管理艦隊，勿轉傳。";
+      : "按登入按鈕，取得僅傳給你的連結和登入碼。\n公開連結使用 Cloudflare TLS；登入者可管理 Fleet，勿轉傳。";
     expect(copy).toBe(platform === "discord" ? `${t("dashboard.deprecated")}\n\n${menu}` : menu);
     expect(choices.map((c: any) => c.label)).toEqual(language === "en"
       ? ["💻 AgEnD computer: get a code", "🌐 Other device (temporary public)"]

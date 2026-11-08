@@ -1,0 +1,97 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > signs in through the directory and sets only the __Host- Hub cookie 87ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > never authenticates by a fleet cookie, a bearer token or another Hub's cookie 26ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > needs the Hub's own origin and the session's CSRF token for every mutation 28ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > checks the directory on every protected request: a disabled person is signed out at once 17ms
+ ✓ tests/hub-s3b-server.test.ts > Hub sessions (S3b) > is off when the server is fenced, and leaves every non-Hub path to its caller 27ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > draws the Hub-only shell from no request data and serves only the Hub's lazy modules 22ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > the Hub workspace's lazy modules import nothing the Hub listener doesn't serve (a fleet module 404s there) 43ms
+ ✓ tests/hub-s3b-server.test.ts > Hub workspace page (S3b) > no Hub server module reaches a fleet session or cookie reader 8ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > never-enabled preserves the ordinary path without a group directory read 162ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > accepts complete, monotonic snapshots: older refused, a changed repeat refused, absence withdraws 80ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > refuses an exposure that names another fleet's id 29ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > shows a person only their own exposures and what is granted to them (no enumeration) 27ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > refuses a fleet/exposure owner mismatch even while groups have never been enabled 112ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > lets only the owner grant, at the revision shown, to one known eligible person 71ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > a grant goes to whoever the directory says holds that login NOW: a rename never redirects it; a shared label is refused (Fable on #3112) 45ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > refuses an inactive fleet under enabled policy despite active group provenance 129ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > denies an existing grant to a group-less asker, while sign-in and narrowing stay available 51ms
+ ✓ tests/hub-s3b-server.test.ts > Hub catalog mirror and grants (S3b) > a new exposure revision leaves the old grant inapplicable; a freeze stops asking 29ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > commits a question before 'queued', dedups by key, and refuses a changed body 43ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > a failed audit append refuses the question (nothing queued) 32ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > a fresh allowance admits one question; a complete removal suspends its canonical asker and blocks later leases and reads 144ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > only the room's asker reads it; reads are paced and re-check the grant 53ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > sends a signed question on a reconciled link and issues exact, short leases 58ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > unknown dispatch holds the queued row unchanged; a later complete read can dispatch it 57ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > accepts an answer only under the release lease issued for exactly it 45ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > a release lease is spent only on the link it was issued on (a replaced link's lease is refused) 32ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > authorization is re-checked at the answer: a grant revoked after the release lease stores nothing 42ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > answer commit rechecks groups after the exact release lease was issued 106ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > an exposure revision cannot inherit a manual allowance from the previous revision 82ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > an expired grant can no longer read its room (nor ask in it) 54ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > member receipts are monotonic, never downgrade evidence, and page through reconcile 34ms
+ ✓ tests/hub-s3b-server.test.ts > Hub rooms, dispatch, leases and answers (S3b) > cancels a queued question whose grant was revoked before it could be sent 70ms
+ ✓ tests/hub-s3b-server.test.ts > Hub administration and pairing (S3b) > only the configured administrator administers; the owner confirms their own pairing 60ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > the synchronous session fence refuses a held group lookup after sign-out 103ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > withholds a permission reentrantly invalidated by the write audit and rolls back the question 83ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > every browser file read and member chunk rechecks the same group permission 140ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > a button cannot enqueue a new question after group removal 109ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > automatic poll results hold on unknown groups, then use a new allowance when retried 108ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > concurrent first actions create one canonical asker record without losing either fresh check 68ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > a first unknown lookup creates no provenance or suspension and a later complete positive recovers 66ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > checks the separate pair_fleet manual-resource denial before using an existing grant 74ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > checks the separate publish_agents manual-resource denial before using an existing grant 85ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > fences a captured permit when the exposure binding changes during a group read 98ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > fences a captured permit when the fleet binding changes during a group read 96ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > fences a captured permit when the provider binding changes during a group read 91ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > an old HTTP generation cannot commit a held action after replacement 95ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > withholds room content when building its projection invalidates the permit 145ms
+ ✓ tests/hub-group-message-boundaries.test.ts > group permits at message effects > a frame assembled after reentrant invalidation is withheld before transport hand-off 65ms
+ ✓ tests/hub-room-reload.test.ts > an immediate same-session reload returns the actual chat instead of429 222ms
+ ✓ tests/hub-room-reload.test.ts > rechecks the grant on an immediate reload, without a cached allow 48ms
+ ✓ tests/hub-room-reload.test.ts > rechecks owner eligibility and the exact session before disclosing a reload 31ms
+ ✓ tests/hub-room-reload.test.ts > reading then sending another question returns the new history, not a stale snapshot 43ms
+ ✓ tests/hub-room-reload.test.ts > a real request burst is bounded before more directory work, with Retry-After 58ms
+ ✓ tests/hub-room-reload.test.ts > different rooms and cursors share the same session work allowance 53ms
+ ✓ tests/hub-room-reload.test.ts > held reads keep both physical slots and a refusal adds no directory work 28ms
+ ✓ tests/hub-room-reload.test.ts > a grant expiring during an awaited owner check cannot disclose history 27ms
+ ✓ tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content 27ms
+ ✓ tests/hub-room-reload.test.ts > holds the reservation through the real HTTP room-view continuation 24ms
+ ✓ tests/hub-room-reload.test.ts > cannot disclose history when a grant expires in the final awaited room view 29ms
+ ✓ tests/hub-room-reload.test.ts > a signout during the final room view cannot release retained history 25ms
+ ✓ tests/hub-room-reload.test.ts > a real grant revocation during the final room view cannot disclose history 24ms
+ ✓ tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 4ms
+ ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 0ms
+ ✓ tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 1ms
+ ✓ tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 0ms
+ ✓ tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 12ms
+ ✓ tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 0ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > a question and its answer: the asker's own (with its stage), then the agent's under the exposure's name 3ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > the stages as delivery marks; a question not answered for good says why in a status line 5ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > the strings stay strings; D/E/F's files, buttons and quote are taken from beside them 2ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > does not attribute automatic poll results to the asker, but retains the agent reply and terminal status 1ms
+ ✓ tests/hub-chat-b.test.ts > hubEntryToMessages > nothing for an entry without a sequence 0ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > one read at once, the next only after POLL_MS; backpressure waits as long as the server says (at least POLL_MS) 5ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a question shows at once (queued); the read that brings its entry replaces it; a room without quota withdraws it, other fields kept 6ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a refreshed result clears an older tab's cached prompt without losing the agent answer 4ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an answer with no room object at all (an older Hub) keeps what is known, quota included 3ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > revoked or not-found closes the room and stops reading; hidden pages do not read 3ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > a full page reads on from its last entry: an old settled-for-good (uncertain) or still-open entry never pins the read (#3246 review) 9ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an open entry older than a page never holds back the tail: the tail page is read each time, the far one every FAR_EVERY-th read 15ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > two old unsettled entries in different pages are each read again in turn (#3261 review) 23ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > one read at a time: a refresh while a read is out starts no second one 2ms
+ ✓ tests/hub-chat-b.test.ts > createHubChatStore > an unknown button set cannot be clicked 0ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > each person lists only their own rooms 8ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > the list: who it answers for, the grant's end, a waiting question, when it last moved 13ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > features: what the room's current fleet link negotiated (none without a current link) 5ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > the messages answer carries the room; its entries say when each was asked; another person's read is not-found 8ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > answered: no longer waiting 8ms
+ ✓ tests/hub-chat-b.test.ts > the Hub's rooms for the chat (the real listener) > a revoked grant closes the room: still listed (as closed, with its name), its history no longer readable 10ms
+
+ Test Files  5 passed (5)
+      Tests  88 passed (88)
+   Start at  15:45:14
+   Duration  6.78s (transform 4.85s, setup 271ms, import 7.68s, tests 4.34s, environment 0ms)
+

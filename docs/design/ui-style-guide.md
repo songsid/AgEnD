@@ -81,9 +81,9 @@ Don't:
 .my-row { border-left: 4px solid var(--ok); }  /* .s-row has border-radius: var(--r-md) */
 ```
 
-Checked by: **CI** — `tests/web-left-bar-2330.test.ts`. The test compares the last compound selector of each rule, so a
-rounded class from another rule on the same element (for example `.s-row` plus a new row class) can slip through. Reviewers
-check that case by eye.
+Checked by: **CI** — `tests/web-left-bar-2330.test.ts` compares the stylesheet rules, and the UI gate's `:left-accent`
+check measures what is drawn in every Settings section, which also catches a rounded class from another rule on the
+same element (for example `.s-row` plus a new row class; #3367, #3408). **Review** for pages outside Settings.
 
 ## 4. Tokens for spacing, type, radius and colour, in light and dark
 
@@ -103,9 +103,11 @@ Do: `color: var(--text-3); padding: var(--s-3) var(--s-4);`
 
 Don't: `color: #888; padding: 13px;`
 
-Checked by: **CI** for the tokens themselves (`tests/web-tokens-1408.test.ts`: light and dark define the same names, text
-meets 4.5:1 and focus/borders 3:1). **Review** for their use: nothing scans the stylesheets for literal colours or pixel
-sizes, and some older rules still have them.
+Checked by: **CI**. `tests/web-tokens-1408.test.ts` checks the tokens themselves (light and dark define the same names,
+text meets 4.5:1 and focus/borders 3:1). `tests/ui-css-literals-ratchet.test.ts` is a ratchet on their use: the literal
+colours (`#hex`, `rgb()`, `rgba()`, `hsl()`) and px font sizes that older rules still have are listed in
+`tests/ui-css-literals-allowlist.json`; a new one fails, including in a nested rule or written in capitals, and the list
+only shrinks: a literal that is gone must come off it, and `UPDATE_CSS_LITERALS=1` lowers it but refuses to raise it. **Review** for literal spacing and radius, which aren't scanned.
 
 ## 5. No inline styles
 
@@ -136,10 +138,20 @@ Checked by: **CI** — `tests/skeleton-loading-3290.test.ts` for the shared stat
 
 Every page works at a 390 px phone and a 1366 px desktop, in between (900–1366 px), and with long values (a long name,
 a long option). Nothing scrolls sideways. The layout switches to phone at 899 px (`max-width: 899px`). On a phone or a
-touch screen, inputs are at least 16px so iOS doesn't zoom, and controls aim for the `--tap` size (44px).
+touch screen, inputs are at least 16px so iOS doesn't zoom, and every interactive control is at least the `--tap` size
+(44px) in both directions; a checkbox or radio counts by its label.
 
-Checked by: **CI** — the UI gate's `:overflow` check (with every disclosure opened and a long option added) on Settings,
-and `tests/web-input-zoom-1611.test.ts`. **Review** for pages outside Settings, using the screenshots.
+A known inconsistency: some Settings rules from #3320 switch at `max-width: 600px` instead of 899 px. Don't copy the
+600 px query into new CSS; unifying the two is a separate change.
+
+Checked by: **CI** — on Settings, the UI gate's `:overflow` check (with every disclosure opened and a long option added),
+and its `:tap` check at phone width, a ratchet: the controls that are smaller today are listed in
+`scripts/manual/smoke/ui-gate-tap-allowlist.json`, and a new one fails, whether it is drawn at once or only shown when a
+disclosure opens. Disabled controls don't count. The list only shrinks: the full gate (`GATE=full`) fails on an
+allowance that no longer matches a small control. `tests/web-input-zoom-1611.test.ts` checks the
+16px inputs. The Hub's own pages (sign-in, the welcome, a chat, the owner's agents, Administration and Group
+permissions) have the same `:overflow` and `:tap` checks in the Hub gate, with their own list,
+`scripts/manual/smoke/ui-gate-hub-tap-allowlist.json`. **Review** for the other pages, using the screenshots.
 
 ## 8. Every string in English and Traditional Chinese
 
@@ -179,6 +191,58 @@ error (#2907, `tests/named-link-test-2906.test.ts`).
 
 Checked by: **CI** for those surfaces; **Review** elsewhere.
 
+## 11. Agent and Fleet stay in English in Chinese text
+
+The Traditional Chinese text keeps the product terms in English: **Agent** and **Fleet**, never 代理 or 艦隊. General
+and Hub stay English too (decision 815bfe4a, the user's choice on 2026-11-08). Leave a space between the English term and
+the Chinese around it, as the existing strings do. 反向代理 (a reverse proxy) is a different thing and stays Chinese.
+
+Do: `"這個 Fleet 已關閉預覽"`, `"指令沒有送到 Agent"`
+
+Don't: `"這個艦隊已關閉預覽"`, `"指令沒有送到代理"`
+
+Checked by: **CI** — `tests/ui-zh-terms-815bfe4a.test.ts` scans every source file under `src/`.
+
+## 12. Icons from the shared set, no emoji icons in Settings
+
+Icons in Settings come from the shared line set: `Icon({ name, size })` in `src/ui/shared/ui-icons.js` (24px grid, 2px
+stroke, `currentColor`). Don't use an emoji as an icon there; the Settings redesign retired them
+(`docs/design/1408-app-shell.md`). An emoji that is the content itself (a person's message, a chosen persona emoji) is
+not an icon.
+
+Do: `` html`<${Icon} name="check" size=${16} />` ``
+
+Don't: `` html`<span class="s-ico">⚙️</span>` ``
+
+Checked by: **Review**.
+
+## 13. The Hub's shell is the dashboard's
+
+The Hub pages use the fleet dashboard's sidebar and page frame, so the two read as one product (cid-hub-shell-parity).
+Build a Hub sidebar part from the dashboard's classes, never a Hub-only look:
+
+| Part | Use |
+|---|---|
+| Brand | `.side-head .brand`: one line, "AgEnD Hub". The Hub's name is its `title` (tooltip), never a second line (#3426) |
+| Places | `.side-nav > a.side-row` with an `Icon` and `span.grow`; the current page is `.active` |
+| Search, New chat | `button.side-row.side-search` (with its `kbd.kbd-hint` shortcut), `button.side-row.side-new`, never a bordered pill |
+| A count | `.nav-count`, only for something the Hub really counts. Notices has none: the Hub keeps no read state |
+| The conversation list | `.view-roster.inst-nav > .side-section`, headed by `.inst-head > h2.side-label`; empty: one `p.side-empty` line |
+| The foot | `.side-foot`: `details.prefs-pop` (Settings: theme and language) and the session row; its menu opens upward |
+| A page | `PanelHeader` with the page's title, then cards in the page's column; the security notices card stands in that column too |
+
+A new Hub place is a row in `HubSide` (`src/ui/panel-hub.js`). Another feature passes its row as
+`{ route, labelKey, icon, visible(session) }` to the sidebar's owner instead of adding markup there.
+
+Don't: `` html`<a class="brand hub-brand">AgEnD Hub<span class="hub-brand-name"> · ${name}</span></a>` `` (two lines
+on a phone), `` html`<button class="btn hub-new">New chat</button>` `` in the sidebar.
+
+Checked by: **CI** — the Hub shell gate (`scripts/manual/smoke/smoke-hub-shell-gate.mts`): the brand is one line,
+every nav row has one height and one icon inset, exactly one row is current, Search and New chat are side-rows, no
+count on Notices, the list's empty state is one line, the foot sits at the bottom, the session menu and Settings open
+on the screen, one card frame per Hub page, the notices card in the page's column, and the page asks the Hub for
+nothing but its own files. `tests/hub-shell-parity.test.ts` checks the same markup in a mini DOM.
+
 ## Evidence in the pull request
 
 A PR that adds or changes UI includes (decision 3536dae9):
@@ -193,17 +257,23 @@ A PR that adds or changes UI includes (decision 3536dae9):
 |---|---|---|
 | 1. Shared components | — | yes |
 | 2. One card frame per Settings section | UI gate `:frame` (within a section) | across sections, other pages |
-| 3. Straight left bar | `web-left-bar-2330` | a rounded class from another rule on the same element |
-| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast) | literal colours and sizes in new CSS |
+| 3. Straight left bar | `web-left-bar-2330`, UI gate `:left-accent` (Settings) | pages outside Settings |
+| 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast), `ui-css-literals-ratchet` (no new literal colour or px font size) | literal spacing and radius |
 | 5. No inline styles | `web-csp-1300` | — |
 | 6. Loading / empty / failed | `skeleton-loading-3290` | new pages |
-| 7. Phone and desktop | UI gate `:overflow` (Settings), `web-input-zoom-1611` | pages outside Settings |
+| 7. Phone and desktop | UI gate `:overflow` and `:tap` (Settings, Hub pages), `web-input-zoom-1611` | other pages |
 | 8. EN and zh-TW | `i18n-ui-literals-2390` | wording |
 | 9. Same surface, minimal clicks | — | yes |
 | 10. Plain-words errors | `delivery-notices-i18n`, `named-link-test-2906` (their surfaces) | elsewhere |
-| Button sizes (Settings) | UI gate `:buttons` (one height per button class combination) | — |
-| No page errors or CSP reports (Settings) | UI gate `:no-errors` | — |
+| 11. Agent / Fleet in zh-TW | `ui-zh-terms-815bfe4a` | — |
+| 12. Shared icons, no emoji icons (Settings) | — | yes |
+| Button sizes (Settings, Hub pages) | UI gate `:buttons` (one height per button class combination) | — |
+| No page errors or CSP reports (Settings, Hub pages) | UI gate `:no-errors` | — |
+| 13. The Hub's shell is the dashboard's | Hub shell gate, `hub-shell-parity` | new Hub places |
 
 The UI gate is `scripts/manual/smoke/smoke-settings-ui-gate.mts`, run by the `ui-gate` job in
 `.github/workflows/ci.yml` on every Settings section at `desk-light-en` and `phone-dark-zh-TW`, plus a 1024 px desktop
-width.
+width. The same job runs the Hub gate, `scripts/manual/smoke/smoke-hub-ui-gate.mts`, on a real Hub web listener (a
+scratch database and directory) at the same cases; it also fails when a page shows a failed read instead of its content.
+Then the Hub shell gate, `scripts/manual/smoke/smoke-hub-shell-gate.mts`, checks rule 13 on the same listener
+(`GATE=full` runs the whole matrix locally).
