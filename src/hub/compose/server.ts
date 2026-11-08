@@ -6,7 +6,6 @@ import { HUB_WEB_INIT_AUDIT_MIGRATION, importHubWebInitAudit } from "../init/web
  * S1's member listener and the Hub web listener. Either the whole service comes back or nothing stays open.
  */
 import { createPrivateKey, randomBytes } from "node:crypto";
-import { closeSync, openSync, writeSync } from "node:fs";
 import { createServer as createHttpsServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type Database from "better-sqlite3";
@@ -21,7 +20,6 @@ import {
   openHubDatabase,
   type HubHoldCode,
   type HubMigration,
-  type HubStateSet,
 } from "../db.js";
 import { resolveDirectoryConfig, type HubDirectory, type HubDirectoryConfig } from "../directory/index.js";
 import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyBinding, type HubGroupPolicyStore } from "../group-policy/store.js";
@@ -51,11 +49,8 @@ import { signCompanyInvitation } from "../join/invitation.js";
 import { signCompanyDescriptor } from "../join/descriptor.js";
 import { HubCompanyJoin } from "../join/service.js";
 
-export const SERVER_SET: HubStateSet = Object.freeze({
-  database: "hub/hub.sqlite",
-  floors: Object.freeze(["hub/floors/transport"]),
-  keys: Object.freeze(["hub/keys/content.key"]),
-});
+import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
+export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
@@ -202,23 +197,6 @@ class Teardown {
       }
     }
   }
-}
-
-/** Create a private file with random bytes, exclusively (never overwrite). */
-function createKeyFile(home: string, rel: string): void {
-  ensurePrivateDirectory(home, rel.slice(0, rel.lastIndexOf("/")));
-  const fd = openSync(`${home}/${rel}`, "wx", 0o600);
-  try {
-    writeSync(fd, randomBytes(32).toString("base64"));
-  } finally {
-    closeSync(fd);
-  }
-}
-
-function readKeyFile(home: string, rel: string): Buffer {
-  const key = Buffer.from(readPrivateFile(home, rel, 256).trim(), "base64");
-  if (key.length !== 32) throw new HubStateError("hub-storage", `${rel} is not a 32-byte key`);
-  return key;
 }
 
 export function createHubServerFactory(options: HubServerFactoryOptions) {

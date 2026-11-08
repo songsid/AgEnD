@@ -1,10 +1,10 @@
 /** Real private SQLite/FULL/WAL, transport floor and audit; staged-file images are inert hashes, not a file-writer test. */
 import { afterEach, describe, expect, it } from "vitest";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyHubMigrations, openHubDatabase } from "../src/hub/db.js";
+import { applyHubMigrations, bindHubInstance, HUB_INSTANCE_MIGRATION, openHubDatabase } from "../src/hub/db.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { groupPolicyMigration } from "../src/hub/group-policy/store.js";
@@ -14,7 +14,11 @@ import { HubFileVersionFloor } from "../src/hub/version-floor.js";
 import { readHubSessionEpoch } from "../src/hub/session-epoch.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION, readHubDirectorySettingsHead,
   type HubDirectoryDecisionRequest } from "../src/hub/settings-directory-decision.js";
-import { createHubSettingsWriter, SETTINGS_JOURNAL, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
+import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
+import type { HubDirectory } from "../src/hub/directory/types.js";
+import { createHubDirectoryMountBarrier } from "../src/hub/settings-directory-mount.js";
+import { withHubDirectoryRecovery } from "../src/hub/settings-directory-recovery.js";
+import { readHubDirectorySettingsImage, createHubSettingsWriter, SETTINGS_JOURNAL, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sealHubInitialization, verifyHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
@@ -54,13 +58,13 @@ function rig(options: { home?: string; hubId?: string } = {}) {
     actor: { kind: "hub-administrator", person: { ...admin }, sessionId: "old-session", requestId: randomUUID() }, at: 1000,
     changes: ["server", "secret"], recipients: [{ kind: "host", sink: "owner-needs-you" }, { kind: "person", person: other }], ...over,
   });
-  const result = { home, get db() { return db; }, get store() { return store; }, get decision() { return decision; }, floor, hubId, migrations, request,
+  const result = { home, contentKey: Buffer.from(key), get db() { return db; }, get store() { return store; }, get decision() { return decision; }, floor, hubId, migrations, request,
     auditOnce: (f: () => unknown) => { auditHook = f; },
     policy: () => parseGroupPolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body)),
     restart: () => { db.close(); db = openHubDatabase(home, "hub/test.sqlite", { create: false }); open(); },
     counts: () => Object.fromEntries(["hub_settings_operations", "hub_settings_security_notices", "hub_audit"].map(table =>
       [table, (db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n])),
-    close: () => { db.close(); rmSync(home, { recursive: true, force: true }); expect(existsSync(home)).toBe(false); },
+    close: () => { if (db.open) db.close(); rmSync(home, { recursive: true, force: true }); expect(existsSync(home)).toBe(false); },
   };
   cleanup.push(result.close); return result;
 }
@@ -454,5 +458,217 @@ describe("directory-v2 uses the SAME sealed settings writer", () => {
     const candidate = r.candidate(); candidate.directory.baseDn = "OU=Next,DC=example,DC=test";
     w.directory!.commit(w.directory!.prepare(candidate, r.actor, () => true).ref, r.actor, () => true);
     expect(r.readHub().name).toBe("Renamed Hub"); expect(r.decision.inspect().directoryEpoch).toBe(2); expect(() => r.verifies()).not.toThrow();
+  });
+});
+
+
+describe("directory decision/material mount barrier (internal, not composed)", () => {
+  const barrier = (r: Awaited<ReturnType<typeof writerRig>>, current = () => true) => createHubDirectoryMountBarrier({
+    home: r.home, hub: r.readHub(), decision: r.decision, current,
+  });
+  it("accepts an intact pre-decision seal and exports only an opaque source stamp", async () => {
+    const r = await writerRig(), b = barrier(r), stamp = b.capture();
+    expect(b.current()).toBe(true); expect(stamp).toEqual({ epoch: 0, image: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(JSON.stringify(stamp)).not.toContain(r.secret());
+    expect(() => b.assertCurrent()).not.toThrow(); b.close(); expect(b.current()).toBe(false); expect(() => b.capture()).toThrow();
+  });
+  it("permanently fences the old mounted generation after a real SQL decision and admits only the installed successor", async () => {
+    const r = await writerRig(), w = r.writer(), old = barrier(r), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true);
+    expect(old.current()).toBe(false); expect(() => old.assertCurrent()).toThrow();
+    const next = barrier(r); expect(next.capture().epoch).toBe(saved.directoryEpoch); expect(next.current()).toBe(true);
+  });
+  it("a decided-but-uninstalled or mixed generation never becomes a valid mount", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true); r.crash("directory-decision");
+    expect(() => w.directory!.commit(p.ref, r.actor, () => true)).toThrow("crash:directory-decision");
+    expect(() => barrier(r)).toThrow();
+    w.recover(); expect(() => barrier(r).assertCurrent()).not.toThrow();
+  });
+  it("a cosmetic rename after a directory decision still mounts under the same directory authority", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    w.directory!.commit(p.ref, r.actor, () => true); const old = barrier(r);
+    const actor = { person: r.actor.person, sessionId: r.actor.sessionId, requestId: randomUUID() };
+    const rename = w.prepare({ kind: "rename", name: "Renamed fictional Hub" }, actor); w.commit(rename.ref, actor, () => true);
+    expect(() => old.assertCurrent()).toThrow(); expect(old.current()).toBe(false);
+    const next = barrier(r); expect(next.capture().epoch).toBe(1); expect(next.current()).toBe(true);
+  });
+  it("a matching material hash is insufficient when the issuer seal is invalid", async () => {
+    const r = await writerRig(), path = join(r.home, "hub/init-manifest.json"), original = r.manifest();
+    const forged = JSON.parse(original); forged.signature = "AAAA"; writeFileSync(path, JSON.stringify(forged), { mode: 0o600 });
+    expect(() => barrier(r)).toThrow(); writeFileSync(path, original, { mode: 0o600 }); expect(() => barrier(r)).not.toThrow();
+  });
+  it("rechecks the owner after material and seal validation before publishing the barrier", async () => {
+    const r = await writerRig(); let calls = 0;
+    expect(() => barrier(r, () => ++calls === 1)).toThrow(); expect(calls).toBe(2);
+    expect(() => barrier(r)).not.toThrow();
+  });
+  it("a material failure stays fenced when the original secret is restored", async () => {
+    const r = await writerRig(), b = barrier(r), original = r.secret(), path = join(r.home, BIND_SECRET_REL);
+    writeFileSync(path, "third secret", { mode: 0o600 }); expect(() => b.capture()).toThrow();
+    writeFileSync(path, original, { mode: 0o600 }); expect(b.current()).toBe(false); expect(() => barrier(r).assertCurrent()).not.toThrow();
+  });
+  it("an owner that disappears never revives this generation", async () => {
+    const r = await writerRig(); let live = true; const b = barrier(r, () => live); live = false;
+    expect(b.current()).toBe(false); live = true; expect(b.current()).toBe(false); expect(() => b.capture()).toThrow();
+  });
+  it.each(["floor", "head"])("a lost %s is refused, never read as a legacy mount", async kind => {
+    const r = await writerRig(), b = barrier(r);
+    if (kind === "floor") r.floor.raise(r.store.read().revision + 1); else r.db.exec("DELETE FROM hub_settings_head");
+    expect(b.current()).toBe(false); expect(() => barrier(r)).toThrow();
+  });
+  it("policy changes invalidate the proof stamp without reviving or remounting the directory", async () => {
+    const r = await writerRig(), b = barrier(r), before = b.capture();
+    const row = r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }, policy = JSON.parse(row.body);
+    policy.revision++; r.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+    expect(b.current()).toBe(true); expect(b.capture().image).not.toBe(before.image); expect(b.capture().epoch).toBe(before.epoch);
+  });
+  it("refuses a valid sealed configuration paired with another Hub's valid decision store", async () => {
+    const a = await writerRig(), b = await writerRig(), beforeA = a.counts(), beforeB = b.counts();
+    expect(() => createHubDirectoryMountBarrier({ home: a.home, hub: a.readHub(), decision: b.decision, current: () => true })).toThrow();
+    expect(a.counts()).toEqual(beforeA); expect(b.counts()).toEqual(beforeB); expect(() => barrier(a)).not.toThrow();
+  });
+  it("captures the configured Hub and owner callback before later input replacement", async () => {
+    const r = await writerRig(), input = { home: r.home, hub: r.readHub(), decision: r.decision, current: () => true };
+    const b = createHubDirectoryMountBarrier(input), captured = b.capture();
+    input.hub.directory.url = "ldaps://foreign.example.test"; input.current = () => false;
+    expect(() => b.capture()).not.toThrow(); expect(b.capture()).toEqual(captured); expect(b.current()).toBe(true);
+  });
+  it.each(["promise", "throw"])("a %s owner is refused without an admission or writer effect", async kind => {
+    const r = await writerRig(), old = r.manifest(), counts = r.counts();
+    const current = () => { if (kind === "throw") throw Error("owner gone"); return Promise.resolve(true) as unknown as boolean; };
+    expect(() => barrier(r, current)).toThrow(); expect(r.manifest()).toBe(old); expect(r.counts()).toEqual(counts);
+  });
+  it("the shared projection preserves BOM/whitespace bytes and refuses foreign secret references", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true);
+    expect(readHubDirectorySettingsImage(r.home, r.readHub())).toEqual(r.decision.operation(saved.receiptId).after);
+    expect(r.decision.operation(saved.receiptId).after.bindSecretSha).toBe(createHash("sha256").update(r.secret()).digest("hex"));
+    const raw = r.readHub(); raw.directory.bindPasswordRef = "foreign-ref";
+    expect(() => readHubDirectorySettingsImage(r.home, raw)).toThrow();
+  });
+});
+
+
+it.each(["own", "before-policy-change", "audit-change"])("a real proof-source image accepts only its own transition (%s)", async mode => {
+  const r = await writerRig(), writer = r.writer(), mounted = createHubDirectoryMountBarrier({ home: r.home, hub: r.readHub(), decision: r.decision, current: () => true });
+  const person = { key: admin, login: "admin", dn: "CN=Admin,DC=example,DC=test", groups: [] };
+  const directory: HubDirectory = { realm: admin.realm, signIn: async () => ({ ok: true, person }),
+    checkEligibility: async () => ({ eligible: true, person }), close: async () => {} };
+  const proof = createHubDirectorySettingsProof({
+    source() {
+      const stamp = mounted.capture(), ownBasis = r.decision.proofBasis();
+      return { directory, config: { ...r.readHub().directory, profile: "ad" as const }, bindPassword: r.secret(), administrator: admin,
+        groups: (ownBasis?.policy ?? r.policy()).groups.map(g => ({ key: g.group, dn: g.dn })), ...stamp, current: mounted.current };
+    },
+    withDirectoryRead: async (_person, work) => work(), createDirectory: () => directory,
+    writer: () => writer.directory!, probeTls: async () => "a".repeat(64), now: () => 1000,
+  });
+  const ctx = { actor: r.actor, current: () => true }, candidate = r.candidate();
+  const prepared = await proof.prepare(candidate, ctx), counts = r.counts(), oldManifest = r.manifest(), oldSecret = r.secret();
+  const changePolicy = () => {
+    const row = r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }, policy = JSON.parse(row.body);
+    policy.revision++; r.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+  };
+  if (mode === "before-policy-change") changePolicy();
+  if (mode === "audit-change") r.auditOnce(changePolicy);
+  const applying = proof.apply(prepared.ref, { confirmation: prepared.trust!.challenge, credentials: { login: "admin", password: "dummy-person-password" } }, ctx);
+  if (mode === "own") {
+    await expect(applying).resolves.toMatchObject({ directoryEpoch: 1 });
+    expect(mounted.current()).toBe(false); expect(r.decision.inspect().directoryEpoch).toBe(1);
+  } else {
+    await expect(applying).rejects.toThrow(); expect(r.counts()).toEqual(counts); expect(readHubSessionEpoch(r.db)).toBe(0);
+    expect(r.manifest()).toBe(oldManifest); expect(r.secret()).toBe(oldSecret);
+    if (mode === "audit-change") expect(() => r.decision.inspect()).toThrow(/uncertain/);
+  }
+  expect(r.decision.proofBasis()).toBeNull(); proof.close();
+});
+
+
+it("the decision's basis is a copied, synchronous proof-only view and always closes", async () => {
+  const r = rig(), input = r.request(); expect(r.decision.proofBasis()).toBeNull(); let calls = 0;
+  r.decision.decide(input, () => {
+    calls++; const view = r.decision.proofBasis()!;
+    expect(view.expected).toEqual(input.expected); expect(view.policy.revision).toBe(1);
+    view.policy.revision = 999; view.expected.directoryEpoch = 999;
+    expect(r.decision.proofBasis()!.expected).toEqual(input.expected); expect(r.decision.proofBasis()!.policy.revision).toBe(1);
+  });
+  expect(calls).toBe(2); expect(r.decision.proofBasis()).toBeNull();
+  const failed = rig(); expect(() => failed.decision.decide(failed.request(), () => { throw Error("lost proof"); })).toThrow();
+  expect(failed.decision.proofBasis()).toBeNull();
+  const asynchronous = rig(); let after: unknown = "not-run";
+  expect(() => asynchronous.decision.decide(asynchronous.request(), (async () => { await Promise.resolve(); after = asynchronous.decision.proofBasis(); }) as any)).toThrow();
+  await Promise.resolve(); expect(after).toBeNull(); expect(asynchronous.decision.proofBasis()).toBeNull();
+});
+
+
+it("a stale decision expectation never opens a proof view or invokes its callback", () => {
+  const r = rig(), request = r.request(); let calls = 0;
+  const row = r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }, policy = JSON.parse(row.body);
+  policy.revision++; r.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+  expect(() => r.decision.decide(request, () => { calls++; })).toThrow(); expect(calls).toBe(0); expect(r.decision.proofBasis()).toBeNull();
+});
+
+async function coldRecoveryRig() {
+  const r = await writerRig(); r.migrations.push(HUB_INSTANCE_MIGRATION);
+  applyHubMigrations(r.db, r.migrations); bindHubInstance(r.db, r.hubId, "new", 1000);
+  const key = "hub/keys/recovery-content.key";
+  writeFileSync(join(r.home, key), r.contentKey.toString("base64"), { mode: 0o600 });
+  const options = { home: r.home, hubId: r.hubId, memberOrigin: r.readHub().memberOrigin, migrations: r.migrations,
+    stateSet: { database: "hub/test.sqlite", floors: ["hub/floors/test"], keys: [key] } };
+  return { r, options };
+}
+
+describe("cold directory recovery (internal, no production caller)", () => {
+  it.each(["staged", "directory-decision", "directory-secret", "manifest", "config"])("recovers %s after the original DB closes, through the same writer", async point => {
+    const { r, options } = await coldRecoveryRig(), w = r.writer(), oldHub = r.readHub();
+    const draft = w.directory!.prepare(r.candidate(), r.actor, () => true); r.crash(point);
+    expect(() => w.directory!.commit(draft.ref, r.actor, () => true)).toThrow();
+    const epoch = r.decision.inspect().directoryEpoch; r.db.close();
+    let escaped: ReturnType<typeof createHubDirectorySettingsDecision> | undefined;
+    withHubDirectoryRecovery(options, decision => {
+      escaped = decision;
+      r.writer({ directoryDecision: () => decision }).recover();
+      expect(decision.inspect().directoryEpoch).toBe(epoch);
+      expect(() => createHubDirectoryMountBarrier({ home: r.home, hub: r.readHub(), decision, current: () => true })).not.toThrow();
+    });
+    expect(() => escaped!.inspect()).toThrow(); expect(r.writer().pending()).toBe(false);
+    if (point === "staged") expect(r.readHub()).toEqual(oldHub);
+    else expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
+    expect(() => r.verifies()).not.toThrow();
+  });
+  it.each(["new-set", "database", "floor", "key", "key-bytes", "identity", "binding", "registry", "unknown-version", "old-version", "new-version", "head", "epoch", "raised-floor", "notices"])("refuses %s before callback and never initializes missing authority", async fault => {
+    const { r, options } = await coldRecoveryRig();
+    if (fault === "identity") {
+      options.hubId = randomUUID();
+      r.db.prepare("UPDATE hub_instance SET hub_id=?").run(options.hubId);
+      r.db.prepare("UPDATE hub_group_policy SET hub_id=?").run(options.hubId);
+    }
+    if (fault === "key-bytes") writeFileSync(join(r.home, options.stateSet.keys[0]!), "short", { mode: 0o600 });
+    if (fault === "binding") r.db.prepare("UPDATE hub_instance SET hub_id=?").run(randomUUID());
+    if (fault === "registry") r.db.exec("DELETE FROM hub_schema WHERE component='s5-directory-settings'");
+    if (fault === "unknown-version") r.db.exec("INSERT INTO hub_schema VALUES('future-component',1)");
+    if (fault === "old-version") r.db.exec("UPDATE hub_schema SET version=0 WHERE component='s5-directory-settings'");
+    if (fault === "new-version") r.db.exec("UPDATE hub_schema SET version=2 WHERE component='s5-directory-settings'");
+    if (fault === "head") r.db.exec("DELETE FROM hub_settings_head");
+    if (fault === "epoch") r.db.exec("DELETE FROM hub_directory_epoch");
+    if (fault === "raised-floor") r.floor.raise(1);
+    if (fault === "notices") r.db.exec("DROP TABLE hub_settings_security_notices");
+    r.db.close();
+    const paths = [options.stateSet.database, ...options.stateSet.floors, ...options.stateSet.keys];
+    const absent = fault === "new-set" ? paths : fault === "database" ? [paths[0]!] : fault === "floor" ? [paths[1]!] : fault === "key" ? [paths[2]!] : [];
+    for (const rel of absent) rmSync(join(r.home, rel));
+    let calls = 0;
+    expect(() => withHubDirectoryRecovery(options, () => { calls++; })).toThrow(); expect(calls).toBe(0);
+    for (const rel of absent) expect(existsSync(join(r.home, rel))).toBe(false);
+  });
+  it("closes the physical DB on callback errors and rejects async escape", async () => {
+    const { r, options } = await coldRecoveryRig(); r.db.close();
+    let escaped: ReturnType<typeof createHubDirectorySettingsDecision> | undefined;
+    expect(() => withHubDirectoryRecovery(options, d => { escaped = d; throw Error("work failed"); })).toThrow("work failed");
+    expect(() => escaped!.inspect()).toThrow();
+    let late: unknown;
+    expect(() => withHubDirectoryRecovery(options, async d => { await Promise.resolve(); try { d.inspect(); } catch (e) { late = e; } })).toThrow(/synchronous/);
+    await Promise.resolve(); expect(late).toBeInstanceOf(Error);
+    expect(withHubDirectoryRecovery(options, d => d.inspect().directoryEpoch)).toBe(0);
   });
 });

@@ -73,6 +73,27 @@ export function inspectStateSet(home: string, set: HubStateSet): HubSetState {
 
 const COMPONENT = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+/** Recovery opens an already migrated database. Missing/unknown versions never trigger creation or migration. */
+export function assertHubMigrationsCurrent(db: Database.Database, migrations: readonly HubMigration[]): void {
+  const known = new Map<string, number>();
+  for (const m of migrations) {
+    if (!COMPONENT.test(m.component) || !Number.isSafeInteger(m.version) || m.version < 1 || known.has(m.component)) {
+      throw new HubStateError("hub-storage", "invalid recovery migration registry");
+    }
+    known.set(m.component, m.version);
+  }
+  let rows: { component: string; version: number }[];
+  try { rows = db.prepare("SELECT component, version FROM hub_schema").all() as typeof rows; }
+  catch { throw new HubStateError("hub-state-mismatch", "the recovery schema registry is missing"); }
+  for (const row of rows) {
+    const expected = known.get(row.component);
+    if (expected === undefined || row.version > expected) throw new HubStateError("hub-state-newer", "the recovery schema is newer than this build");
+    if (row.version !== expected) throw new HubStateError("hub-state-mismatch", "the recovery schema is incomplete");
+    known.delete(row.component);
+  }
+  if (known.size) throw new HubStateError("hub-state-mismatch", "the recovery schema is incomplete");
+}
+
 /**
  * Transaction callbacks are synchronous. A thenable result is refused (inside the transaction, so it rolls back), and
  * its eventual settlement is observed so a late rejection is never an unhandled rejection.

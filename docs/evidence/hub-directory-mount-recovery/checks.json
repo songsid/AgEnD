@@ -1,0 +1,25 @@
+{
+  "scope": "Internal uncomposed mount/cold-recovery foundation; no live operation",
+  "tests": {
+    "files": 8,
+    "passed": 260,
+    "skipped": 0,
+    "command": "vitest run tests/hub-directory-settings-decision.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts tests/hub-directory-settings-proof-wire.test.ts tests/hub-directory-session-epoch.test.ts tests/hub-compose.test.ts tests/hub-db-audit.test.ts --maxWorkers=2"
+  },
+  "types": {
+    "source": "passed",
+    "tests": "passed"
+  },
+  "mutations": {
+    "barrierCarried": 16,
+    "coldRecovery": 9,
+    "allCaught": true,
+    "restored": true
+  },
+  "limitations": [
+    "Injected stops and physical DB reopen, not power loss",
+    "No production recovery participant, directory migration registration or mount publication",
+    "No real HTTPS actor rotation, notice delivery, AD routes or UI",
+    "No real directory/account/native/pilot/live operation"
+  ]
+}
