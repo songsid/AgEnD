@@ -15,6 +15,7 @@ import { toast } from "/assets/ui-toast.js";
 import { mountStructuredSignIns } from "./structured-signin.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
+import { FIRST_RUN_BACKENDS, capsOf } from "./cli-caps.js";
 
 register("signin", {
   en: {
@@ -166,22 +167,21 @@ export function installerSignInBackends(search) {
   const csv = new URLSearchParams(search).get("backend_signins");
   if (!csv || csv.length > 100) return null;
   const ids = csv.split(",");
-  return ids.length <= 4 && ids.every(b => ["kiro-cli", "claude-code", "codex", "antigravity"].includes(b)) ? [...new Set(ids)] : null;
+  return ids.length <= FIRST_RUN_BACKENDS.length && ids.every(b => FIRST_RUN_BACKENDS.includes(b)) ? [...new Set(ids)] : null;
 }
 
 /**
  * #3212: which backends' NAMED accounts the dashboard signs in with the structured controls (Sign in → open the page → paste the code), as the default account is.
- * The server's `STRUCTURED_PROFILE_BACKENDS` (a login screen that was checked under a relocated home, with these controls); another backend's named account keeps the older
+ * The registry's `host.dashboardSignIn.named` (a login screen that was checked under a relocated home, with these controls; cli-caps.js: `structuredNamedSignIn`); another backend's named account keeps the older
  * dialog, which says what to run on the machine (or, where the host signs it in from the dashboard, runs it in the web terminal).
  */
-const STRUCTURED_BACKENDS = ["kiro-cli", "claude-code", "codex"];
-const STRUCTURED_PROFILE_BACKENDS = ["claude-code"];
 /** One named account's sign-in controls on this host (the same endpoint as the default account's, addressed by `?backend=&profile=`). */
 export const profileSignInEndpoint = (backend, profile) => `/ui/browser-backend-signins?backend=${encodeURIComponent(backend)}&profile=${encodeURIComponent(profile)}`;
 
 /** Open the dialog for one login (a backend's default one, or a credential profile): the same dialog for both. */
 export function openSignIn({ backend, profile }) {
-  if (STRUCTURED_BACKENDS.includes(backend) && (!profile || STRUCTURED_PROFILE_BACKENDS.includes(backend))) showDialog(BrowserSignInDialog, { backend, ...(profile ? { profile } : {}) });
+  const caps = capsOf(backend);
+  if (caps?.structuredSignIn && (!profile || caps.structuredNamedSignIn)) showDialog(BrowserSignInDialog, { backend, ...(profile ? { profile } : {}) });
   else showDialog(SignInDialog, { backend, ...(profile ? { profile } : {}) });
 }
 

@@ -27,12 +27,12 @@ function files(directory: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every literal list under `root`, except in the registry's own files. */
+/** Every literal list under `root`, except in the registry's own files and the file generated from it (src/ui/cli-caps.js). */
 export function literalLists(root: string): LiteralList[] {
   const lists: LiteralList[] = [];
   for (const path of files(root).sort()) {
     const file = relative(join(root, ".."), path).replaceAll("\\", "/");
-    if (/^src\/(?:cli-registry(?:-check)?|cli-capability|cli-spec-[a-z-]+)\.ts$/.test(file)) continue;
+    if (/^src\/(?:cli-registry(?:-check)?|cli-capability|cli-caps-module|cli-spec-[a-z-]+)\.ts$/.test(file) || file === "src/ui/cli-caps.js") continue;
     const source = readFileSync(path, "utf8");
     const starts: number[] = [0];
     for (let at = source.indexOf("\n"); at >= 0; at = source.indexOf("\n", at + 1)) starts.push(at + 1);

@@ -10,6 +10,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
+import { CLI_CAPS } from "./cli-caps.js";
 
 register("accountsManage", {
   en: {
@@ -247,8 +248,8 @@ export function SignOutDialog({ cli, row, label, mode = "signout", onClose, onMo
   </${Dialog}>`;
 }
 
-/** The CLIs the dashboard can sign out (their own logout; accounts-signout.ts SIGN_OUT). */
-export const SIGN_OUT_CLIS = new Set(["claude-code", "codex", "kiro-cli"]);
+/** The CLIs the dashboard can sign out (their own logout; accounts-signout.ts SIGN_OUT; cli-caps.js: `signOut`). */
+export const SIGN_OUT_CLIS = new Set(Object.keys(CLI_CAPS).filter((id) => CLI_CAPS[id].signOut));
 
 /** The button labels the view draws (from this module, so an older view never shows them). */
 export const manageWords = { add: () => tm("add"), remove: () => tm("remove"), added: (n) => tm("added", n), addedHost: (n) => tm("addedHostSignIn", n),

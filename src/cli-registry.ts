@@ -21,7 +21,7 @@ import { MUSE_SPEC } from "./cli-spec-muse.js";
 import { OPENCODE_SPEC } from "./cli-spec-opencode.js";
 
 export { CLI_IDS, isYes } from "./cli-capability.js";
-export type { Cap, CliId, CliSpec, HostCapabilities, RuntimeCapabilities, Yes } from "./cli-capability.js";
+export type { Cap, CarryKind, CliId, CliSpec, HostCapabilities, RuntimeCapabilities, Yes } from "./cli-capability.js";
 
 const TABLE = deepFreeze({
   "claude-code": CLAUDE_CODE_SPEC,

@@ -7,6 +7,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { CLI_IDS } from "../src/cli-capability.js";
+import { FIRST_RUN_BACKENDS, capsOf } from "/ui/js/cli-caps.js";
+import { SIGN_OUT_CLIS } from "/ui/js/accounts-manage.js";
+import { installerSignInBackends } from "/ui/js/backend-signin.js";
+import { INSTALL_CLIS } from "/ui/js/runtime-cli-install.js";
 import { hostFacts, hostIds, hostIdsByRank, runtimeFacts, runtimeIds, runtimeProviderIds } from "../src/cli-registry.js";
 import { ACCOUNT_CLIS, MACHINE_ACCOUNT_CLIS, PROFILE_CLIS } from "../src/accounts-view.js";
 import { SIGN_OUT } from "../src/accounts-signout.js";
@@ -159,41 +163,41 @@ describe("the Windows Runtime's lists, as they were", () => {
   });
 });
 
-/** The literal lists the dashboard's own scripts still write out, read from their source: until they ask the server, they must say what the registry says. */
+/** What the dashboard's scripts (src/ui) offered for each CLI before they read src/ui/cli-caps.js: they must offer the same now. */
 describe("the dashboard scripts' lists, as they were", () => {
+  const ids = (pick: (caps: NonNullable<ReturnType<typeof capsOf>>) => unknown): string[] => CLI_IDS.filter(id => pick(capsOf(id)!));
   const source = (file: string) => readFileSync(new URL(`../src/ui/${file}`, import.meta.url), "utf8");
-  const list = (file: string, name: string): string[] => {
-    const found = new RegExp(`${name} = (?:new Set\\()?(\\[[^\\]]*\\])`).exec(source(file));
-    if (!found) throw new Error(`${name} not found in ${file}`);
-    return JSON.parse(found[1]!) as string[];
-  };
 
   it("Sign out is offered for the CLIs that can sign out", () => {
-    expect(list("accounts-manage.js", "SIGN_OUT_CLIS")).toEqual(["claude-code", "codex", "kiro-cli"]);
-    expect(list("accounts-manage.js", "SIGN_OUT_CLIS")).toEqual(hostIds("signOut"));
+    expect([...SIGN_OUT_CLIS].sort()).toEqual(["claude-code", "codex", "kiro-cli"]);
   });
 
   it("the structured sign-in controls are used for these CLIs, and for a named account only for these", () => {
-    expect(list("backend-signin.js", "STRUCTURED_BACKENDS")).toEqual(["kiro-cli", "claude-code", "codex"]);
-    expect(list("backend-signin.js", "STRUCTURED_BACKENDS")).toEqual(hostIdsByRank("structuredSignIn"));
-    expect(list("backend-signin.js", "STRUCTURED_PROFILE_BACKENDS")).toEqual(["claude-code"]);
+    expect(ids(c => c.structuredSignIn).sort()).toEqual(["claude-code", "codex", "kiro-cli"]);
+    expect(ids(c => c.structuredNamedSignIn)).toEqual(["claude-code"]);
   });
 
-  it("the first-run page accepts these ids in its address", () => {
-    const found = /ids\.every\(b => (\[[^\]]*\])\.includes\(b\)\)/.exec(source("backend-signin.js"));
-    expect(JSON.parse(found![1]!)).toEqual(["kiro-cli", "claude-code", "codex", "antigravity"]);
-    expect(JSON.parse(found![1]!)).toEqual(hostIdsByRank("firstRunSignIn"));
+  it("the first-run page accepts these ids in its address, and no others", () => {
+    expect([...FIRST_RUN_BACKENDS]).toEqual(["kiro-cli", "claude-code", "codex", "antigravity"]);
+    expect(installerSignInBackends("?backend_signins=kiro-cli,claude-code,codex,antigravity")).toEqual(["kiro-cli", "claude-code", "codex", "antigravity"]);
+    for (const refused of ["grok", "muse", "opencode", "toString", "kiro-cli,grok", "kiro-cli,claude-code,codex,antigravity,kiro-cli"]) expect(installerSignInBackends(`?backend_signins=${refused}`), refused).toBeNull();
   });
 
   it("what a Move between accounts says about the conversation, per CLI", () => {
-    expect(source("accounts-view.js")).toContain('const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };');
-    expect(Object.fromEntries(hostIds("namedAccounts").map(id => [id, hostFacts(id, "namedAccounts")!.carry]))).toEqual({ "claude-code": "carries", "codex": "keeps", "kiro-cli": "handover" });
+    expect(Object.fromEntries(CLI_IDS.map(id => [id, capsOf(id)!.carry]))).toEqual({ "claude-code": "carries", "codex": "keeps", "kiro-cli": "handover", "antigravity": null, "grok": null, "muse": null, "opencode": null });
+    expect(Object.fromEntries(CLI_IDS.map(id => [id, capsOf(id)!.carry]))).toEqual(Object.fromEntries(CLI_IDS.map(id => [id, hostFacts(id, "namedAccounts")?.carry ?? null])));
   });
 
-  it("the names the sign-in dialog uses, and the account choice in an agent's settings", () => {
+  it("an agent's settings offer an account choice for these CLIs, and the Runtime page lists these CLIs to install", () => {
+    expect(ids(c => c.namedAccounts)).toEqual(["claude-code", "codex", "kiro-cli"]);
+    expect(INSTALL_CLIS).toEqual([{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }]);
+  });
+
+  it("asks about a name that is not a CLI and gets nothing, whatever the name", () => {
+    for (const name of ["nope", "", "constructor", "__proto__", "toString", undefined, null, 7]) expect(capsOf(name as never), String(name)).toBeNull();
+  });
+
+  it("the standalone setup page's script still names the CLIs it labels (it is served alone, so it cannot import the caps)", () => {
     expect(/const NAMES = (\{[^}]*\});/.exec(source("structured-signin.js"))![1]).toBe('{ "kiro-cli": "Kiro", "claude-code": "Claude Code", codex: "Codex", antigravity: "Antigravity" }');
-    expect(/\[("claude-code"[^\]]*)\]\.includes\(acctBackend\)/.exec(source("settings-dialogs.js"))![1]).toBe('"claude-code", "codex", "kiro-cli"');
-    expect(source("runtime-cli-install.js")).toContain('export const INSTALL_CLIS = [{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }];');
-    expect(runtimeIds("install")).toEqual(["claude-code", "codex"]);
   });
 });
