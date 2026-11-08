@@ -216,6 +216,32 @@ describe("a launch reads the instance's teams for its Active Decisions", () => {
       expect(got[0]?.()).toEqual(["core", "other"]);
     } finally { vi.unstubAllEnvs(); }
   });
+
+  it("the lifecycle hands each daemon the fleet's decision snapshot, read at spawn (#3422 review F3)", async () => {
+    const root = scratch(), home = join(root, "agend"), cwd = join(root, "work");
+    mkdirSync(home, { recursive: true }); mkdirSync(cwd, { recursive: true });
+    vi.stubEnv("AGEND_HOME", home); vi.stubEnv("XDG_DATA_HOME", join(root, "xdg"));
+    try {
+      const fm = new FleetManager(home);
+      fm.fleetConfig = { defaults: { backend: "codex" }, instances: { worker: { working_directory: cwd } } } as any;
+      const sources: Array<(() => readonly unknown[]) | undefined> = [];
+      vi.spyOn(Daemon.prototype, "setDecisionSource").mockImplementation((fn) => { sources.push(fn); });
+      vi.spyOn(Daemon.prototype, "start").mockRejectedValue(new Error("fixture stops BEFORE spawning"));
+      await fm.lifecycle.start("worker", fm.fleetConfig!.instances.worker!, false).catch(() => {});
+      expect(sources).toHaveLength(1);
+      expect(typeof sources[0]).toBe("function");                       // never undefined: no source = no decisions at all
+      expect(sources[0]!()).toEqual([]);
+      // A snapshot taken after the daemon was made is the one its next spawn reads.
+      const db = new SchedulerDb(join(scratch(), "scheduler.db"));
+      db.createDecision({ project_root: "", scope: "fleet", title: "LATER-FLEET", content: "f", created_by: "x" });
+      db.createDecision({ project_root: "/x", scope: "team", team: "core", title: "LATER-TEAM", content: "t", created_by: "x" });
+      (fm as any).scheduler = { db };
+      fm.snapshotActiveDecisions();
+      expect(sources[0]!()).toBe(fm.activeDecisions());
+      expect((sources[0]!() as Array<{ title: string; team?: string }>).map(d => [d.title, d.team ?? null])).toEqual([["LATER-FLEET", null], ["LATER-TEAM", "core"]]);
+      (fm as any).scheduler = null;
+    } finally { vi.unstubAllEnvs(); }
+  });
 });
 
 describe("#3421 review 1: update and archive keep a team decision inside its team", () => {
