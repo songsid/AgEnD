@@ -478,10 +478,11 @@ import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome,
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
-import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
 import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
 import { MachineSignIns } from "./machine-signins.js";
+import { ProfileSignIns } from "./profile-signins.js";
 import { runQuiet } from "./quiet-run.js";
 
 const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
@@ -20271,6 +20272,46 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  private profileSignInsInstance: ProfileSignIns | null = null;
+  /**
+   * #3212: a NAMED account's sign-in on this host from Settings → Accounts — #2599's StructuredSignIn (press Sign in, open the page, paste the code), pointed at
+   * that profile's own folder (`CLAUDE_CONFIG_DIR`), under the host's login window like every other credential writer. Not the default account's checklist.
+   */
+  get profileSignIns(): ProfileSignIns {
+    return this.profileSignInsInstance ??= new ProfileSignIns({
+      lock: this.loginWindow,
+      current: owner => this.browserSignInOwnerCurrent(owner),
+      installed: backend => this.isCliInstalledOffLoop(backend),
+      known: (backend, profile) => accountFolderExists(this.dataDir, backend, profile) ? "exists" : this.configuredProfileNames(backend).has(profile) ? "configured" : "unknown",
+      add: (backend, profile) => {
+        const result = addAccountProfile(this.dataDir, backend, profile, this.configuredProfileNames(backend));
+        if (result.ok) this.logger.info({ backend, profile }, "Credential profile added by the first sign-in of an account the configuration names");
+        return result.ok;
+      },
+      checkAuth: (backend, profile) => {
+        const env = credentialProfileEnv(this.dataDir, backend, profile);
+        return env ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, env) : Promise.resolve("unknown" as const);
+      },
+      transport: target => createStructuredSignInTransport({ backend: target.backend, dataDir: this.dataDir }),
+      changed: (event, owner, launched) => {
+        try { this.eventLog?.insert("login", "browser_profile_signin", event); } catch { /* safe metadata only */ }
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, event.profile);
+        }
+        this.needsYou?.poke();
+        if (!this.browserSignInOwnerCurrent(owner)) return;
+        if (event.phase === "starting") {
+          const record = owner as SessionRecord;
+          this.notifyFleetError(t("login.web_dashboard_notice", t("login.profile_label", event.backend, event.profile), record.label, record.handle.slice(0, 8)));
+        }
+        // A live CLI holds the old token in memory: the agents on THIS account (and no other) wake or restart, as after the other sign-in flows.
+        if (event.phase === "done" && launched) void this.recoverBackendInstances(event.backend, undefined, event.profile).catch(() => this.logger.warn({ backend: event.backend, profile: event.profile }, "Post sign-in recovery failed"));
+      },
+    });
+  }
+
   private needsYouBackendSignIns(): import("./needs-you.js").BackendSignInInput[] {
     const pending = readPendingBackendSignIns(this.dataDir).pending;
     for (const backend of this.pendingBackendSince?.keys() ?? []) if (!pending.includes(backend as typeof pending[number])) this.pendingBackendSince.delete(backend);
@@ -20539,7 +20580,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const cli = b.backend ?? defaultBackend;
       if (cli === backend && same(profileName(classicProfile(b.backend_options, defaults?.backend_options, cli)))) return true;
     }
-    return this.loginController?.signingIn(backend, profile) ?? false;
+    return (this.loginController?.signingIn(backend, profile) ?? false) || (profile !== null && (this.profileSignInsInstance?.signingIn(backend, profile) ?? false));   // #3212: the dashboard's structured sign-in of a named account counts too
   }
 
   /**
@@ -20610,13 +20651,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   addAccountProfile(backend: string, name: unknown, by: string, machine?: MachineActor): AddResult | Promise<MachineAccountResult> {
     // #3190 Part 3c: on a paired computer the profile's folder is made by its Runtime when the first sign-in starts; this only checks what can be checked first.
     if (machine) return this.machineAccounts.add(backend, name, machine.id, by);
+    const result = addAccountProfile(this.dataDir, backend, name, this.configuredProfileNames(backend));
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /** The profile names the configuration refers to for this backend — an agent, a ClassicBot room, the fleet default — whether or not their folders exist yet. */
+  private configuredProfileNames(backend: string): Set<string> {
     const { agents, classic, fleetDefaults } = this.accountUses();
     const configured = new Set<string>();
     for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
     const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
-    const result = addAccountProfile(this.dataDir, backend, name, configured);
-    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
-    return result;
+    return configured;
   }
 
   /**
@@ -20630,8 +20676,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
     // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
     // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
-    if (opts?.cancelSignIn && validCredentialProfileName(name) && await this.loginController?.cancelAccount(backend, name).catch(() => false)) {
-      this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
+    if (opts?.cancelSignIn && validCredentialProfileName(name)) {
+      // The account's sign-in is either the dashboard's structured one (ProfileSignIns) or the chat/terminal one (the login controller); at most one runs on the host.
+      const ended = (await this.profileSignInsInstance?.cancelAccount(backend, name).catch(() => false))
+        || (await this.loginController?.cancelAccount(backend, name).catch(() => false));
+      if (ended) this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
     }
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
     // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
@@ -20698,8 +20747,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       fleetDefault: same(fleetDefaults.get(backend)),
     };
     const held = this.loginWindow.current;
-    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
-      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend);
+    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false) || (this.profileSignInsInstance?.signingIn(backend, profile) ?? false)
+      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
     return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
   }
 
@@ -20751,7 +20800,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
     // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
-    const signingIn = this.loginController?.signingIn(backend, named) ?? false;
+    const signingIn = (this.loginController?.signingIn(backend, named) ?? false) || (named !== null && (this.profileSignInsInstance?.signingIn(backend, named) ?? false));
     const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
@@ -21157,6 +21206,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (confirmed) this.machineSignInsInstance = null;
         else this.logger.error("A computer's account sign-in could not be confirmed ended; check that computer's Runtime window.");
       }), "machine-signins"),
+      // #3212: a named account's sign-in on this host is ended too; one that could not be shown gone keeps sign-in admission closed, as the default account's.
+      bounded(this.profileSignInsInstance?.close().then(confirmed => {
+        if (confirmed) this.profileSignInsInstance = null;
+        else { this.structuredLoginCleanupFailed = true; this.logger.error("A named account's structured login cleanup failed; sign-in admission remains closed until the host is restarted."); }
+      }), "profile-signins"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
       // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.
@@ -21181,6 +21235,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (confirmed) this.browserBackendSignInsInstance = null;
       return confirmed ? t("login.cancelled", browserBackend) : t("login.browser_cleanup_failed");
     }
+    // #3212: a named account's sign-in on this host ("Cancel sign-in and remove" and `/login cancel` end it as they end the others).
+    const ended = await this.profileSignInsInstance?.cancelActive();
+    if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
     if (this.loginController?.isActive()) return this.loginController.cancel();
     return t("login.no_session");
   }

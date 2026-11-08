@@ -229,16 +229,18 @@ describe("#2233 where Sign in is offered", () => {
 
 
 describe("#2599 shared browser controls", () => {
-  it("default Kiro/Claude/Codex use browser cards; credential profiles retain their existing dialog", () => {
+  it("default Kiro/Claude/Codex use browser cards; so does a named Claude account (#3212), carrying its name", () => {
     for (const backend of ["kiro-cli", "claude-code", "codex"]) { S.openSignIn({ backend }); expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); }
-    S.openSignIn({ backend: "claude-code", profile: "work" }); expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
+    S.openSignIn({ backend: "claude-code", profile: "work" });
+    expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
   });
   it("the real shared cards use the closed API, with an explicit console fallback", async () => {
     const snapshot = { selected: ["codex"], pending: ["codex"], skipped: [], states: { codex: "invalid" }, login: null, ready: false };
     answer = r => r.url === "/ui/browser-backend-signins" ? snapshot : {};
     await p.mount(h(S.BrowserSignInDialog, { backend: "codex" })); await settle(8);
-    // Ridge #3321 S12: in the dashboard the dialog's title names the CLI; the setup page's heading and lead are not repeated.
-    expect(text()).not.toContain("Sign in your AI backends"); expect(text()).not.toContain("You can sign in later from the dashboard"); expect(text()).toContain("Sign in later"); expect(text()).not.toContain("Open the sign-in terminal");
+    // The account page's dialog (#3212, #3321 S12): the title names the account; the first-install page's heading, lead, "Sign in later" and "Check sign-ins" are not carried over.
+    expect(p.root.querySelector(".dlg-title").textContent).toBe("Sign in to Codex · Default sign-in");
+    for (const gone of ["Sign in your AI backends", "Sign in later", "Check sign-ins", "Open the sign-in terminal"]) expect(text(), gone).not.toContain(gone);
     const start = p.root.querySelectorAll("section button").find((b: any) => b.textContent === "Sign in") as any;
     expect(start).toBeDefined(); await start.onclick(); await settle(4);
     expect(reqs.some(r => r.url === "/ui/browser-backend-signins" && r.body?.operation === "start" && r.body.backend === "codex")).toBe(true);
@@ -283,6 +285,8 @@ describe("#2599 installer dashboard handoff", () => {
     expect(reqs.filter(r => r.body?.operation === "select").map(r => r.body.backends)).toEqual([["kiro-cli", "codex", "antigravity"]]);
     expect(reqs.filter(r => ["start", "input", "cancel"].includes(r.body?.operation))).toEqual([]);
     expect(text()).toContain("Antigravity (console fallback)");
+    // The installer's list (several backends, `backends`) is not the single-account dialog: "Sign in later" and "Check sign-ins" stay, as the checklist needs them.
+    expect(text()).not.toContain("Sign in your AI backends"); expect(btn("Check sign-ins")).toBeDefined(); expect(text()).toContain("Sign in later");
     expect(btn("antigravity · Use console fallback")).toBeUndefined();
     fire(btn("codex · Use console fallback"), "click"); await settle(4);
     expect(reqs.some(r => r.body?.operation === "cancel")).toBe(true);
