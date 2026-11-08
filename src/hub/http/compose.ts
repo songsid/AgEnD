@@ -137,8 +137,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       try { return await work(); } catch (e) { if (e instanceof HubProtocolError && e.code === "revoked" && !sessions.session(ctx.token)) throw new SignedOut(); throw e; }
     };
     const m = (re: RegExp) => re.exec(path);
-    // The session's capability mark: present only when the group routes are composed (presentation only — a mark confers nothing).
-    const features = deps.groupHttp ? { features: [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] } : {};
+    // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
+    const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+      ...(deps.companyJoin ? ["company-join-v1"] : [])];
+    const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
     if (deps.companyJoin && path === "/hub/v1/join/browser") {

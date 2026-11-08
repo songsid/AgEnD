@@ -52,6 +52,7 @@ describe("company-join actual Hub boundary", () => {
     const r = rig = await companyJoinRig(port => { dc.port = port; });
     expect((await r.call(null, "GET", "/hub/v1/join/metadata")).body.features).not.toContain("company-join-v1");
     const carol = await r.signIn("carol"), admin = await r.signIn("alice");
+    expect((await r.call(admin, "GET", "/hub/v1/session")).body.features).toContain("company-join-v1");
     const path = "/hub/v1/admin/company-join", body = { enabled: true, expectedRevision: 1 };
     expect((await r.call(null, "PUT", path, body)).status).toBe(401);
     expect((await r.call(carol, "PUT", path, body)).status).toBe(403);

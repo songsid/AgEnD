@@ -96,9 +96,10 @@ const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConf
 
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
+  const companyPage = tab === "ask" && (companyInfoRequest() || !!joinRequest());
   const s = useSession();
   useEffect(() => { linkHubCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
-  useEffect(() => { setTitle(hw(TITLES[tab])); }, [tab]);
+  useEffect(() => { setTitle(companyPage ? hj("title") : hw(TITLES[tab])); }, [tab, companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
@@ -829,7 +830,7 @@ function HubAdmin({ admin }) {
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
   const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
   return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
-    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} />`;
+    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} />`;
 }
 /** M-2682: Administration → This Hub, its own lazy module (an older server doesn't serve it: then it's left out). */
 function LazyThisHub() {
@@ -843,7 +844,7 @@ function adminView() { try { return new URLSearchParams(location.search).get("vi
 function GroupPermissionsEntry() {
   return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
 }
-function HubAdminPage({ groups = false } = {}) {
+function HubAdminPage({ groups = false, companyJoin = false } = {}) {
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -878,7 +879,7 @@ function HubAdminPage({ groups = false } = {}) {
   return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
     <div class="s-section-layout">
       ${groups ? html`<${GroupPermissionsEntry} />` : null}
-      <${CompanyJoinAdminCard} />
+      ${companyJoin ? html`<${CompanyJoinAdminCard} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><h3>${ho("pairSteps")}</h3>

@@ -16,7 +16,7 @@ export function CompanyJoinInfoPage() {
     if (fragment.length <= 8192 && /^#(?:hub|invite)=[A-Za-z0-9_-]+$/.test(fragment)) link = location.origin + "/join-info" + fragment;
     if (fleet) { const u = new URL(fleet); if (u.origin === fleet && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) target = u.origin + "/settings/hub#join=" + encodeURIComponent(link); }
   } catch { /* Invalid addresses remain an inactive navigation link. */ }
-  return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card"><h3>${hj("companyLink")}</h3>
+  return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join"><h3>${hj("companyLink")}</h3>
     <p class="note">${hj("linkLead")}</p>
     ${link ? html`<label class="field"><span>${hj("companyLink")}</span><textarea rows="4" readonly value=${link} /></label><div class="field-row"><button class="btn btn-sm" type="button" onClick=${async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError(hj("copyFailed")); } }}>${hj(copied ? "copied" : "copy")}</button></div>
       <label class="field"><span>${hj("fleetAddress")}</span><input value=${fleet} type="url" onInput=${e => setFleet(e.target.value.trim())} /></label>
@@ -61,8 +61,7 @@ export function HubCompanyJoinPage({ session }) {
     setBusy(false); if (!r.ok) setError(joinError(r.code)); retry();
   };
   const terminal = view?.ok && !["pending", "identity-approved", "issued"].includes(view.state);
-  return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card">
-    <h3>${hj("title")}</h3>
+  return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join">
     ${view === undefined ? html`<${Skeleton} variant="form" lines=${3} label=${hj("loading")} />` : null}
     ${view?.ok ? html`<${CompanyJoinLead} context=${view} />
       ${view.state === "pending" ? !error ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : null : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
@@ -96,7 +95,7 @@ export function CompanyJoinAdminCard() {
     if (!live.current) return; setBusy(false);
     if (r.ok) setInvitation(r.url); else setError(joinError(r.code === "not-found" ? "denied" : r.code));
   };
-  return html`<section class="card"><h3>${hj("adminTitle")}</h3><p class="note">${hj("adminLead")}</p>
+  return html`<section class="card hub-company-join"><h3>${hj("adminTitle")}</h3><p class="note">${hj("adminLead")}</p>
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${view ? html`<label class="check"><input type="checkbox" role="switch" class="s-ui-toggle" checked=${view.enabled} disabled=${busy} onChange=${e => change(e.target.checked)} /><span>${hj("enabled")}</span></label>

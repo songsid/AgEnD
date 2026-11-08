@@ -12,6 +12,9 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-state { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
 .hub-state h4 { margin: 0; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .hub-origin code { overflow-wrap: anywhere; }
+@media (max-width: 899px) {
+  .p-hub .hub-company-join > .check, .p-hub .hub-company-join > details > summary { min-height: var(--tap); }
+}
 .hub-fp { display: grid; gap: var(--s-1); }
 .hub-fp-label { font-size: var(--fs-sm); color: var(--text-2); }
 .hub-fp-groups { font-family: var(--font-mono); font-size: var(--fs-md); letter-spacing: .04em; word-spacing: .3em; overflow-wrap: anywhere; }

@@ -68,7 +68,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
   const canStart = !waiting && (view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
   // The existing connection card owns ready status, sharing and disconnect. Do not duplicate it after handoff.
   if (!waiting && bound && view === null || view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
-  return html`<section class="card"><h3>${hj("title")}</h3><p class="note">${hj("lead")}</p>
+  return html`<section class="card s-company-join"><h3>${hj("title")}</h3><p class="note">${hj("lead")}</p>
     ${(view === undefined || waiting && view?.handoffId !== waiting) && !error ? html`<${Skeleton} variant="form" lines=${4} label=${hj("loading")} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${pending ? html`<p role="status" class="note">${hj("pending")}</p>` : null}

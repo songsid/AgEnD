@@ -36,6 +36,16 @@ const assetRoot = process.env.SKEW ?? process.env.BEFORE_ASSETS;
 const result: any = { source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(), cases: [], checks: [], errors: [],
   boundaries: "Owned listeners; real cookie/CSRF/Settings replay/Hub/SQLite/TLS/WSS/production AD driver with fake LDAPS wire. Inert Fleet lifecycle; per-client private CA and loopback hostname/DC mapping only." };
 const check = (name: string, ok: unknown, detail?: unknown) => { result.checks.push({ name, ok: !!ok, ...(!ok ? { detail } : {}) }); if (!ok) throw Error(name + (detail ? ": " + JSON.stringify(detail) : "")); };
+const smallJoinTargets = `(() => {
+  const small = [];
+  for (const el of document.querySelectorAll('.hub-company-join :is(button,input,summary), .s-company-join :is(button,input)')) {
+    if (el.disabled || !el.getClientRects().length) continue;
+    let box = el.getBoundingClientRect();
+    if (el.matches('input[type=checkbox]') && el.labels?.length) box = el.labels[0].getBoundingClientRect();
+    if (Math.min(box.width, box.height) < 43.5) small.push({tag:el.tagName,id:el.id,height:box.height,width:box.width});
+  }
+  return small;
+})()`;
 let fx: any = null;
 try {
   const scenarios = process.env.ADMIN_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
@@ -90,6 +100,9 @@ try {
         address = r.webOrigin + "/join-info#hub=" + Buffer.from(JSON.stringify(descriptor)).toString("base64url");
       }
       await page.fill("#hubCompanyAddress", address); await page.fill("#hubCompanyFleetName", "Company Fleet " + index);
+      if (c.device === "phone" && !process.env.SKEW) {
+        const small = await page.evaluate(smallJoinTargets); check(tag + " Fleet company controls are phone tap targets", small.length === 0, small);
+      }
       await page.screenshot({ path: join(out, tag + "-01-fleet-start.png"), fullPage: c.device === "phone" });
       const opened = ctx.waitForEvent("page"); await page.getByRole("button", { name: c.lang === "zh-TW" ? "以公司帳號登入" : "Sign in with company account", exact: true }).click();
       const hub = await opened;
@@ -101,6 +114,7 @@ try {
       }
       hub.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));
       await hub.waitForURL(r.webOrigin + "/ui/hub?join=*"); await hub.locator("#hubLogin").waitFor();
+      check(tag + " join tab title", (await hub.title()).endsWith((c.lang === "zh-TW" ? "連接 Hub" : "Connect to a Hub") + " · AgEnD"));
       check(tag + " no opener", await hub.evaluate("window.opener === null"));
       check(tag + " exact Fleet origin shown", (await hub.locator(".hub-signin").innerText()).includes(fx.base));
       await hub.screenshot({ path: join(out, tag + "-02-hub-signin.png") });
@@ -160,6 +174,11 @@ try {
         const page = await ctx.newPage(); await page.goto(r.webOrigin + "/ui/hub"); await page.locator("#hubLogin").waitFor();
         await page.fill("#hubLogin", "alice"); await page.fill("#hubPassword", "Dummy-alice-only"); await page.getByRole("button", { name: "登入", exact: true }).click();
         await page.locator(".p-hub-signin").waitFor({state:"detached"}); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.getByRole("button", {name:"複製公司連結",exact:true}).waitFor(); await page.getByRole("button", {name:"複製公司連結",exact:true}).scrollIntoViewIfNeeded();
+        if (c.device === "phone") {
+          await page.locator(".hub-company-join details").evaluate((el:any) => { el.open = true; });
+          const small = await page.evaluate(smallJoinTargets); check(caseName(c) + " admin company controls are phone tap targets", small.length === 0, small);
+          await page.locator(".hub-company-join details").evaluate((el:any) => { el.open = false; });
+        }
         await page.screenshot({ path: join(out, caseName(c) + "-09-admin.png"), fullPage: true });
         if (c.device === "desk" && c.theme === "light") {
           await page.goto(companyLink); await page.locator(".p-hub-info textarea").waitFor();

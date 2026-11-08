@@ -2,13 +2,14 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
-let fleet: any, hub: any, words: any;
+let fleet: any, hub: any, words: any, hubPanel: any, client: any;
 const mounted: AppPage[] = [], id = "0f1e2d3c-4b5a-4968-8776-655443322110", calls: Array<{ path: string; init: any }> = [];
 beforeAll(async () => {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: "en" } });
-  fleet = await import("/ui/js/settings-hub-company-join.js"); hub = await import("/ui/js/hub-company-join.js"); words = await import("/ui/js/hub-company-join-strings.js"); p.restore();
+  fleet = await import("/ui/js/settings-hub-company-join.js"); hub = await import("/ui/js/hub-company-join.js"); words = await import("/ui/js/hub-company-join-strings.js");
+  client = await import("/ui/js/hub-client.js"); hubPanel = await import("/ui/js/panel-hub.js"); p.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } vi.restoreAllMocks(); vi.unstubAllGlobals(); calls.length = 0; });
+afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals(); calls.length = 0; });
 const pending = { operationId: id, state: "awaiting-sign-in", issued: false, outcomeKnown: true, hubOrigin: "https://hub.example.test", expiresAt: Date.now() + 600_000 };
 function fetcher(answer: (path: string, init: any) => unknown) {
   vi.stubGlobal("fetch", vi.fn(async (path: string, init: any = {}) => { calls.push({ path, init }); const body: any = await answer(path, init);
@@ -19,6 +20,15 @@ async function mount(component: any, props = {}, url = "http://127.0.0.1:19290/s
 }
 const button = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === text);
 describe("company join UI", () => {
+  it("the join page keeps its own tab title and a single page heading instead of the conversation title", async () => {
+    fetcher(path => path.startsWith("/hub/v1/session") ? { signedIn: true, displayName: "Carol", login: "carol", csrf: "csrf", features: [] }
+      : path.includes("/browser?") ? { ok: true, state: "pending", label: "Fleet A", outerDeadline: Date.now() + 600_000 } : {});
+    client.setHubClient(client.createHubWebClient({ fetchImpl: globalThis.fetch })); hubPanel.resetHubSession();
+    const p = await mount(hubPanel.HubPanel, { route: { tab: "ask" } }, "https://hub.example.test/ui/hub?join=" + id);
+    expect(p.document.title).toBe("Connect to a Hub · AgEnD");
+    expect([...p.root.querySelectorAll("h1, h2, h3")].filter((el: any) => el.textContent === "Connect to a Hub")).toHaveLength(1);
+    expect(p.root.querySelector(".hub-home")).toBeNull();
+  });
   it("keeps the specific changed-pin refusal through the shared Settings confirmation outcome", () => {
     const code = words.joinResponseCode({ body: { error: "Could not apply (apply_rejected: identity-changed)" }, confirmed: { outcome: { detail: "apply_rejected: identity-changed" } } });
     expect(code).toBe("identity-changed"); expect(words.joinError(code)).toContain("identity is different");
