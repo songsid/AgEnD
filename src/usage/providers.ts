@@ -1966,7 +1966,6 @@ function bindingProfile(
   return instance.classicProfile !== undefined ? instance.classicProfile : instanceCredentialProfile(instance, defaults, backendName);
 }
 
-/** The backend a usage row reads its credentials from. */
 /** The backend whose named accounts have a usage row of their own under this provider id (cli-registry.ts: `host.usage.profileRows`); null for any other. */
 function usageBackendForProviderId(id: string): string | null {
   return hostIds("usage").find(cli => { const usage = hostFacts(cli, "usage")!; return usage.providerId === id && usage.profileRows; }) ?? null;

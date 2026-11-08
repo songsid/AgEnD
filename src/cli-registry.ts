@@ -2,7 +2,7 @@
  * AGEND-115: the one place that says what each AI tool (CLI) can do in AgEnD — install, sign in (chat, dashboard, structured, first run), sign out, which
  * account it is, named accounts, keep-alive, usage, and what a paired Windows computer does for it. The lists that used to be written out in each file
  * (the Accounts page's CLIs, the sign-out table, the usage provider ids, the Runtime's installable CLIs, …) are derived from here instead, and
- * tests/cli-registry-completeness.test.ts fails when a CLI leaves a capability unanswered. See cli-capability.ts for the vocabulary and docs/cli-registry.md
+ * tests/cli-registry-completeness.test.ts fails when a CLI leaves a capability unanswered. See cli-capability.ts for the vocabulary and docs/dev/cli-registry.md
  * for how to add a CLI.
  *
  * Plain data, deeply frozen. The server only ever sends a CLI id to a Runtime: a Runtime reads its own copy of this table from its own bundle, so nothing here

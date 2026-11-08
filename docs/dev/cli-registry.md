@@ -45,6 +45,10 @@ A `no` says why: `cli_has_none` (the tool has no such thing), `not_applicable` (
    golden test (`cli-registry-golden.test.ts`) asks you to write the values that decide what AgEnD or a Runtime starts out literally, so they are reviewed twice.
 5. A capability you cannot answer yet is `toVerify(...)` or `notYetBuilt("undecided", ...)`, never left out.
 
+A registry entry that is written wrongly (a usage `providerId` no provider has, a `yes` whose behaviour does not exist, an argv that disagrees with another fact) throws when the
+registry module is imported. The daemon does not start and every test file that imports the registry fails with the same message; that is on purpose, so the mistake shows up the first
+time anything runs and not in front of a user.
+
 ## Rules that keep it safe
 
 - The server sends a Runtime only a CLI id (and a profile name); nothing in the registry is sent anywhere. A Runtime reads its own copy, shipped in its own bundle
