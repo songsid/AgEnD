@@ -117,7 +117,7 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 
 已知的不一致：#3320 的部分設定規則在 `max-width: 600px` 切換，而不是 899 px。新的 CSS 不要沿用 600 px 的寫法；統一兩者是另一項修改。
 
-檢查方式：設定頁由 **CI** 檢查：UI 關卡的 `:overflow`（所有展開區塊都打開、每個選單加上一個很長的選項），以及手機寬度下的 `:tap`。`:tap` 也是只減不增：目前偏小的控制項列在 `scripts/manual/smoke/ui-gate-tap-allowlist.json`，新增一個就會失敗，不論它一開始就畫出來，還是要打開展開區塊才出現。停用的控制項不計。清單只會縮小：完整的關卡（`GATE=full`）遇到已經不再對應偏小控制項的項目，也會失敗。16px 的輸入框由 `tests/web-input-zoom-1611.test.ts` 檢查。設定頁以外的頁面靠**審查**，看截圖確認。
+檢查方式：設定頁由 **CI** 檢查：UI 關卡的 `:overflow`（所有展開區塊都打開、每個選單加上一個很長的選項），以及手機寬度下的 `:tap`。`:tap` 也是只減不增：目前偏小的控制項列在 `scripts/manual/smoke/ui-gate-tap-allowlist.json`，新增一個就會失敗，不論它一開始就畫出來，還是要打開展開區塊才出現。停用的控制項不計。清單只會縮小：完整的關卡（`GATE=full`）遇到已經不再對應偏小控制項的項目，也會失敗。16px 的輸入框由 `tests/web-input-zoom-1611.test.ts` 檢查。Hub 自己的頁面（登入、歡迎頁、對話、擁有者的 Agent、管理和群組權限）在 Hub 關卡裡有一樣的 `:overflow` 和 `:tap` 檢查，清單另外放在 `scripts/manual/smoke/ui-gate-hub-tap-allowlist.json`。其他頁面靠**審查**，看截圖確認。
 
 ## 8. 每段文字都有英文和繁體中文
 
@@ -183,13 +183,13 @@ html`<section class="s-card">…</section>`   // 沒有這個樣式，結果畫�
 | 4. 變數、淺色與深色 | `web-tokens-1408`（變數集合、對比）、`ui-css-literals-ratchet`（不新增寫死的顏色或 px 字級） | 寫死的間距和圓角 |
 | 5. 不用行內樣式 | `web-csp-1300` | — |
 | 6. 載入中／沒有內容／失敗 | `skeleton-loading-3290` | 新頁面 |
-| 7. 手機和桌面 | UI 關卡 `:overflow` 和 `:tap`（設定頁）、`web-input-zoom-1611` | 設定頁以外的頁面 |
+| 7. 手機和桌面 | UI 關卡 `:overflow` 和 `:tap`（設定頁、Hub 頁面）、`web-input-zoom-1611` | 其他頁面 |
 | 8. 英文與繁體中文 | `i18n-ui-literals-2390` | 措辭 |
 | 9. 同一介面完成、點擊最少 | — | 是 |
 | 10. 白話的錯誤訊息 | `delivery-notices-i18n`、`named-link-test-2906`（各自的介面） | 其他地方 |
 | 11. 中文裡的 Agent／Fleet | `ui-zh-terms-815bfe4a` | — |
 | 12. 共用圖示、不用 emoji 圖示（設定頁） | — | 是 |
-| 按鈕尺寸（設定頁） | UI 關卡 `:buttons`（同一組按鈕 class 高度一致） | — |
-| 沒有頁面錯誤或 CSP 回報（設定頁） | UI 關卡 `:no-errors` | — |
+| 按鈕尺寸（設定頁、Hub 頁面） | UI 關卡 `:buttons`（同一組按鈕 class 高度一致） | — |
+| 沒有頁面錯誤或 CSP 回報（設定頁、Hub 頁面） | UI 關卡 `:no-errors` | — |
 
-UI 關卡是 `scripts/manual/smoke/smoke-settings-ui-gate.mts`，由 `.github/workflows/ci.yml` 的 `ui-gate` 工作執行：在 `desk-light-en` 和 `phone-dark-zh-TW` 下逐一檢查每個設定區塊，另外加測 1024 px 的桌面寬度。
+UI 關卡是 `scripts/manual/smoke/smoke-settings-ui-gate.mts`，由 `.github/workflows/ci.yml` 的 `ui-gate` 工作執行：在 `desk-light-en` 和 `phone-dark-zh-TW` 下逐一檢查每個設定區塊，另外加測 1024 px 的桌面寬度。同一個工作也執行 Hub 關卡 `scripts/manual/smoke/smoke-hub-ui-gate.mts`：在真正的 Hub 網頁伺服器（暫用的資料庫和目錄）上跑同樣的情境；頁面顯示讀取失敗而不是內容時也會失敗。

@@ -149,7 +149,9 @@ and its `:tap` check at phone width, a ratchet: the controls that are smaller to
 `scripts/manual/smoke/ui-gate-tap-allowlist.json`, and a new one fails, whether it is drawn at once or only shown when a
 disclosure opens. Disabled controls don't count. The list only shrinks: the full gate (`GATE=full`) fails on an
 allowance that no longer matches a small control. `tests/web-input-zoom-1611.test.ts` checks the
-16px inputs. **Review** for pages outside Settings, using the screenshots.
+16px inputs. The Hub's own pages (sign-in, the welcome, a chat, the owner's agents, Administration and Group
+permissions) have the same `:overflow` and `:tap` checks in the Hub gate, with their own list,
+`scripts/manual/smoke/ui-gate-hub-tap-allowlist.json`. **Review** for the other pages, using the screenshots.
 
 ## 8. Every string in English and Traditional Chinese
 
@@ -232,15 +234,16 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | 4. Tokens, light and dark | `web-tokens-1408` (token set, contrast), `ui-css-literals-ratchet` (no new literal colour or px font size) | literal spacing and radius |
 | 5. No inline styles | `web-csp-1300` | — |
 | 6. Loading / empty / failed | `skeleton-loading-3290` | new pages |
-| 7. Phone and desktop | UI gate `:overflow` and `:tap` (Settings), `web-input-zoom-1611` | pages outside Settings |
+| 7. Phone and desktop | UI gate `:overflow` and `:tap` (Settings, Hub pages), `web-input-zoom-1611` | other pages |
 | 8. EN and zh-TW | `i18n-ui-literals-2390` | wording |
 | 9. Same surface, minimal clicks | — | yes |
 | 10. Plain-words errors | `delivery-notices-i18n`, `named-link-test-2906` (their surfaces) | elsewhere |
 | 11. Agent / Fleet in zh-TW | `ui-zh-terms-815bfe4a` | — |
 | 12. Shared icons, no emoji icons (Settings) | — | yes |
-| Button sizes (Settings) | UI gate `:buttons` (one height per button class combination) | — |
-| No page errors or CSP reports (Settings) | UI gate `:no-errors` | — |
+| Button sizes (Settings, Hub pages) | UI gate `:buttons` (one height per button class combination) | — |
+| No page errors or CSP reports (Settings, Hub pages) | UI gate `:no-errors` | — |
 
 The UI gate is `scripts/manual/smoke/smoke-settings-ui-gate.mts`, run by the `ui-gate` job in
 `.github/workflows/ci.yml` on every Settings section at `desk-light-en` and `phone-dark-zh-TW`, plus a 1024 px desktop
-width.
+width. The same job runs the Hub gate, `scripts/manual/smoke/smoke-hub-ui-gate.mts`, on a real Hub web listener (a
+scratch database and directory) at the same cases; it also fails when a page shows a failed read instead of its content.

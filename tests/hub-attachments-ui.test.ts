@@ -109,7 +109,7 @@ describe("Hub chat attachments (D2)", () => {
     hubApi([]);
     const pg = await openRoom(lang);
     expect(pg.root.querySelector("#attachBtn")).toBeNull();
-    expect(pg.root.querySelector(".hub-files-off")!.textContent).toBe(lang === "en" ? "This agent can't receive files yet." : "這個代理目前還不能接收檔案。");
+    expect(pg.root.querySelector(".hub-files-off")!.textContent).toBe(lang === "en" ? "This agent can't receive files yet." : "這個 Agent 目前還不能接收檔案。");
   });
 
   it("an answer's file shows in the thread from its room URL", async () => {

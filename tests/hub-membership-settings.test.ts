@@ -32,6 +32,6 @@ describe("pure Hub membership Settings policy", () => {
   });
   it("localizes the actual confirmation summary", () => {
     setLocale("zh-TW");
-    expect(effect({}, { enabled: true }).diff!.summary.join(" ")).toContain("配對與分享代理需另外選擇");
+    expect(effect({}, { enabled: true }).diff!.summary.join(" ")).toContain("配對與分享 Agent 需另外選擇");
   });
 });
