@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
 
- ✓ tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 4ms
- ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 1ms
- ✓ tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 1ms
- ✓ tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 1ms
- × tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 21ms
+ ✓ tests/hub-room-read-pacer.test.ts > allows a reload burst then only replenished reads, without extending the clock on refusals 3ms
+ ✓ tests/hub-room-read-pacer.test.ts > two ordinary tabs keep polling and reopening without exhausting the session 0ms
+ ✓ tests/hub-room-read-pacer.test.ts > retains physical slots through a held read even after tokens refill, and releases exactly once 0ms
+ ✓ tests/hub-room-read-pacer.test.ts > session allowances are independent, while a backward clock never grants more tokens 0ms
+ × tests/hub-room-read-pacer.test.ts > bounds retained sessions and never evicts a spent or active allowance 16ms
    → expected [Function] to throw an error
- ✓ tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 1ms
+ ✓ tests/hub-room-read-pacer.test.ts > an old completion cannot release a replacement bucket after server teardown 0ms
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
 
@@ -33,6 +33,6 @@ undefined
 
  Test Files  1 failed (1)
       Tests  1 failed | 5 passed (6)
-   Start at  15:30:33
-   Duration  466ms (transform 116ms, setup 121ms, import 112ms, tests 30ms, environment 0ms)
+   Start at  15:41:24
+   Duration  341ms (transform 73ms, setup 74ms, import 82ms, tests 22ms, environment 0ms)
 

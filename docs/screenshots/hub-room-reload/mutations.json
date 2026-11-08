@@ -32,13 +32,27 @@
     "file": "src/hub/rooms.ts",
     "exit": 1,
     "caught": true,
-    "originalSha256": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28"
+    "originalSha256": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40"
   },
   {
     "name": "disclosure-expiry",
     "file": "src/hub/rooms.ts",
     "exit": 1,
     "caught": true,
-    "originalSha256": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28"
+    "originalSha256": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40"
+  },
+  {
+    "name": "view-disclosure-order",
+    "file": "src/hub/rooms.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40"
+  },
+  {
+    "name": "view-physical-settlement",
+    "file": "src/hub/rooms.ts",
+    "exit": 1,
+    "caught": true,
+    "originalSha256": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40"
   }
 ]

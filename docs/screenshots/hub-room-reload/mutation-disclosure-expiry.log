@@ -9,8 +9,10 @@
  ↓ tests/hub-room-reload.test.ts > different rooms and cursors share the same session work allowance
  ↓ tests/hub-room-reload.test.ts > held reads keep both physical slots and a refusal adds no directory work
  ↓ tests/hub-room-reload.test.ts > a grant expiring during an awaited owner check cannot disclose history
- × tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content 110ms
+ × tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content 112ms
    → expected 200 to be 403 // Object.is equality
+ ↓ tests/hub-room-reload.test.ts > holds the reservation through the real HTTP room-view continuation
+ ↓ tests/hub-room-reload.test.ts > cannot disclose history when a grant expires in the final awaited room view
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
 
@@ -23,19 +25,19 @@ AssertionError: expected 200 to be 403 // Object.is equality
 - 403
 + 200
 
- ❯ tests/hub-room-reload.test.ts:102:68
-    100|   const content=rig!.httpDeps.content,original=content.get.bind(conten…
-    101|   content.get=ref=>{const value=original(ref);now+=101;return value;};
-    102|   const denied=await rig!.call(a,"GET",path);expect(denied.status).toB…
+ ❯ tests/hub-room-reload.test.ts:103:68
+    101|   const content=rig!.httpDeps.content,original=content.get.bind(conten…
+    102|   content.get=ref=>{const value=original(ref);now+=101;return value;};
+    103|   const denied=await rig!.call(a,"GET",path);expect(denied.status).toB…
        |                                                                    ^
-    103| });
-    104|
+    104| });
+    105|
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
 
 
  Test Files  1 failed (1)
-      Tests  1 failed | 8 skipped (9)
-   Start at  15:30:39
-   Duration  3.86s (transform 2.72s, setup 112ms, import 3.44s, tests 112ms, environment 0ms)
+      Tests  1 failed | 10 skipped (11)
+   Start at  15:41:29
+   Duration  4.25s (transform 3.01s, setup 91ms, import 3.79s, tests 114ms, environment 0ms)
 

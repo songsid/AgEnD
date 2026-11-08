@@ -1,7 +1,8 @@
 {
-  "source": "48a305f7621c7b2f1977ee086e8fd03acc2d248d",
+  "source": "6163f24d5ba152fba073964e666da285294db4db",
   "sourceFiles": {
-    "src/hub/rooms.ts": "f2fc1d0a788d89410918a5ae412e721bc8f51f8e11d14386e5e42948d5d28a28",
+    "src/hub/rooms.ts": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40",
+    "src/hub/http/compose.ts": "fcda5839b38a95e38389bc5cd54360a5c52aa1debd2df1f7c749281d52ce0ca7",
     "src/ui/panel-hub.js": "23ae52ea05d05a88690de304d206c9bead450d49b46fcba60dbae6de382c12c4",
     "src/hub/room-read-pacer.ts": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
   },
@@ -132,345 +133,345 @@
   "network": [
     {
       "tag": "desk-light-en",
-      "at": 1794123069547,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123748657,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-en",
-      "at": 1794123069728,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123748771,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "desk-light-en",
-      "at": 1794123070317,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123749445,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-en",
-      "at": 1794123071318,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123750277,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-en",
-      "at": 1794123072115,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123750739,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "desk-light-en",
-      "at": 1794123082140,
-      "path": "/hub/v1/rooms/3941dbfb-3bcd-4746-8083-6452fb3f1463/messages",
+      "at": 1794123760760,
+      "path": "/hub/v1/rooms/44533b97-fa13-4cf2-89c1-399dc02445b0/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123083923,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123762667,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123084061,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123762868,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123084615,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123763261,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123085844,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123763974,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123086631,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123764353,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "desk-light-zh-TW",
-      "at": 1794123096678,
-      "path": "/hub/v1/rooms/91724a67-b900-4c21-a0f1-00104c738377/messages",
+      "at": 1794123774374,
+      "path": "/hub/v1/rooms/8592bdfa-97f7-4b1a-851f-0d0748710032/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123099187,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123775674,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123099594,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123775795,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123100454,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123776084,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123101933,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123776543,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123102903,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123776934,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "desk-dark-en",
-      "at": 1794123112952,
-      "path": "/hub/v1/rooms/c34b0b53-369c-419c-9d41-151e05e0b65f/messages",
+      "at": 1794123786960,
+      "path": "/hub/v1/rooms/049e4c0a-ce48-4aef-943d-d7654af1b4d2/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123115159,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123788773,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123115410,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123788950,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123115985,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123789537,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123117282,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123790550,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123118969,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123791235,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "desk-dark-zh-TW",
-      "at": 1794123129045,
-      "path": "/hub/v1/rooms/9819ea98-5459-4b4f-840b-90d30f4218e0/messages",
+      "at": 1794123801262,
+      "path": "/hub/v1/rooms/f1050e20-6f74-40b0-854f-95546e3fa3a4/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123133310,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123803456,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123133547,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123803713,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123134759,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123804432,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123137361,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123805770,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123138139,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123806862,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "phone-light-en",
-      "at": 1794123148220,
-      "path": "/hub/v1/rooms/6865f3ae-1edf-4acb-abca-c78128b7e3d5/messages",
+      "at": 1794123816935,
+      "path": "/hub/v1/rooms/9b78e3d0-0333-4fae-8ceb-7381acaaedd8/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123150995,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123819908,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123151296,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123820136,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123152285,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123820983,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123153835,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123822601,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123155128,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123824156,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "phone-light-zh-TW",
-      "at": 1794123165196,
-      "path": "/hub/v1/rooms/0c8a5655-652c-4374-8f02-7d4855c6672e/messages",
+      "at": 1794123834230,
+      "path": "/hub/v1/rooms/e90ad905-3e9d-4073-a496-4754f2d3d943/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123168397,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123837260,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123168881,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123837543,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123170806,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123838750,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123172466,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123841274,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123173631,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123842782,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "phone-dark-en",
-      "at": 1794123183678,
-      "path": "/hub/v1/rooms/43f0bd07-1445-4ce1-ba4e-4a2746df4e2f/messages",
+      "at": 1794123852803,
+      "path": "/hub/v1/rooms/ce154460-dc34-47ff-adef-a670b2aa23ec/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123187341,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123854779,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123187696,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123854917,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 200,
       "method": "POST"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123189589,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123855621,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123192241,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123856977,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 200,
       "method": "GET"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123193992,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123857895,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 429,
       "method": "GET",
       "retryAfter": "10"
     },
     {
       "tag": "phone-dark-zh-TW",
-      "at": 1794123204084,
-      "path": "/hub/v1/rooms/269d3b12-bcc6-4bd5-9461-1fdad50e9be7/messages",
+      "at": 1794123867930,
+      "path": "/hub/v1/rooms/95ebd5ad-d0be-4f96-a330-cc2782e5f26d/messages",
       "status": 200,
       "method": "GET"
     }
@@ -484,8 +485,8 @@
     "httpsClosed": true,
     "rigClosed": true,
     "keyRootRemoved": true,
-    "port": 35631,
-    "pid": 898339
+    "port": 34103,
+    "pid": 936433
   },
   "status": "PASS"
 }

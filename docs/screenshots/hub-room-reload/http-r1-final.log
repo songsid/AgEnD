@@ -1,0 +1,22 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ ✓ tests/hub-room-reload.test.ts > an immediate same-session reload returns the actual chat instead of429 190ms
+ ✓ tests/hub-room-reload.test.ts > rechecks the grant on an immediate reload, without a cached allow 119ms
+ ✓ tests/hub-room-reload.test.ts > rechecks owner eligibility and the exact session before disclosing a reload 54ms
+ ✓ tests/hub-room-reload.test.ts > reading then sending another question returns the new history, not a stale snapshot 49ms
+ ✓ tests/hub-room-reload.test.ts > a real request burst is bounded before more directory work, with Retry-After 100ms
+ ✓ tests/hub-room-reload.test.ts > different rooms and cursors share the same session work allowance 156ms
+ ✓ tests/hub-room-reload.test.ts > held reads keep both physical slots and a refusal adds no directory work 109ms
+ ✓ tests/hub-room-reload.test.ts > a grant expiring during an awaited owner check cannot disclose history 53ms
+ ✓ tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content 32ms
+ ✓ tests/hub-room-reload.test.ts > holds the reservation through the real HTTP room-view continuation 59ms
+ ✓ tests/hub-room-reload.test.ts > cannot disclose history when a grant expires in the final awaited room view 28ms
+ ✓ tests/hub-room-reload.test.ts > a signout during the final room view cannot release retained history 44ms
+ ✓ tests/hub-room-reload.test.ts > a real grant revocation during the final room view cannot disclose history 39ms
+
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+   Start at  15:44:40
+   Duration  7.05s (transform 4.45s, setup 73ms, import 5.78s, tests 1.04s, environment 0ms)
+
