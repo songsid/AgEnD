@@ -21,6 +21,8 @@ const LIST = join(import.meta.dirname, "ui-css-literals-allowlist.json");
 // CSS function names and units are case-insensitive (RGB(), 15PX) (Prism #3417 P2).
 const COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i;
 const PX = /\d(?:\.\d+)?px\b/i;
+/** A CSS string with its escapes (`"a\"b"`), the same rule the lexer below uses. */
+const STRING = /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/g;
 
 /**
  * Every declaration of a stylesheet at any depth, comments removed: [property, value]. A rule's own declarations count
@@ -29,8 +31,9 @@ const PX = /\d(?:\.\d+)?px\b/i;
  * declaration.
  */
 export function declarations(css: string): Array<[string, string]> {
+  // One pass (Prism #3417 r2): a comment is only a comment outside a string, and a backslash inside a string escapes the
+  // next character (`"\""`, `'\''`), so neither can hide a later declaration.
   const out: Array<[string, string]> = [];
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
   let depth = 0, buf = "", quote = "";
   const take = () => {
     const decl = buf; buf = "";
@@ -40,8 +43,15 @@ export function declarations(css: string): Array<[string, string]> {
     const prop = decl.slice(0, i).trim().toLowerCase(), value = decl.slice(i + 1).trim().replace(/\s+/g, " ");
     if (prop && value) out.push([prop, value]);
   };
-  for (const ch of text) {
-    if (quote) { buf += ch; if (ch === quote) quote = ""; continue; }
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i]!;
+    if (quote) {
+      buf += ch;
+      if (ch === "\\" && i + 1 < css.length) buf += css[++i];
+      else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === "/" && css[i + 1] === "*") { const close = css.indexOf("*/", i + 2); i = close < 0 ? css.length : close + 1; continue; }
     if (ch === '"' || ch === "'") { quote = ch; buf += ch; continue; }
     if (ch === "{") { buf = ""; depth++; continue; }
     if (ch === "}") { take(); depth = Math.max(0, depth - 1); continue; }
@@ -55,7 +65,7 @@ export function declarations(css: string): Array<[string, string]> {
 export function literals(css: string): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const [prop, value] of declarations(css)) {
-    const keys: string[] = [], bare = value.replace(/"[^"]*"|'[^']*'/g, '""');   // text in a string is not a colour
+    const keys: string[] = [], bare = value.replace(STRING, '""');   // text in a string is not a colour
     if (COLOUR.test(bare)) keys.push(`colour ${prop}: ${value}`);
     if ((prop === "font-size" || prop === "font") && PX.test(bare)) keys.push(`font-px ${prop}: ${value}`);
     for (const k of keys) counts[k] = (counts[k] ?? 0) + 1;
@@ -137,6 +147,12 @@ describe("stylesheet literals ratchet (style guide rule 4)", () => {
       .toEqual({ "colour color: RGB(0 0 0)": 1, "font-px font-size: 15PX": 1, "colour background: HSL(1 2% 3%)": 1 });
     expect(literals(`.a { color: var(--text); &:hover { color: var(--accent); .b { font-size: var(--fs-sm); } } }`)).toEqual({});
     expect(literals(`.a { content: "{ color: #fff; }"; color: var(--text); }`)).toEqual({});
+  });
+  it("strings with escaped quotes or comment markers never hide a later declaration (Prism #3417 r2)", () => {
+    expect(literals(String.raw`.a { content: "\""; color: #123456; }`)).toEqual({ "colour color: #123456": 1 });
+    expect(literals(String.raw`.a { content: '\''; font-size: 15px; }`)).toEqual({ "font-px font-size: 15px": 1 });
+    expect(literals(`.a { content: "/*"; color: #123456; --literal-text: "*/"; }`)).toEqual({ "colour color: #123456": 1 });
+    expect(literals(String.raw`.a { content: "a\" #fff \"b"; color: var(--text); } /* .b { color: #000; } */`)).toEqual({});
   });
   it("the scanner itself: colours in any notation and px font sizes count; tokens, comments and other px don't", () => {
     const css = `/* #fff in a comment */ .a { color: #fff; background: rgba(0, 0, 0, .5); border: 1px solid var(--border); }
