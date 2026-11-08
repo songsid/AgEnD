@@ -1771,7 +1771,7 @@ export class TopicCommands {
     const { spawn } = await import("./child-process.js");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend);
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.binDir);
     if (!launch.ok) {
       this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
