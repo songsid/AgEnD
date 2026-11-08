@@ -95,7 +95,7 @@ const PLAIN = (prefix: string) => ["-c", DELAYED_UPDATE_SCRIPT, "sh", join(prefi
 
 describe("a chat /update runs the installed `agend update`, by absolute path", () => {
   it("the command carries no channel flag", () => {
-    expect(DELAYED_UPDATE_SCRIPT).toBe('sleep 2 && exec "$1" update');
+    expect(DELAYED_UPDATE_SCRIPT).toBe('sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update');
   });
 
   it("Discord slash", async () => {

@@ -5642,7 +5642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend);
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
