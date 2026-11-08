@@ -34,6 +34,8 @@ register("hubPreview", {
 });
 const copy = (key) => t(`hubPreview.${key}`);
 const REFUSALS = new Set(["invalid_port", "port_conflict", "port_in_use", "busy"]);
+// #3451: a confirmed save answers through the pending change; the route's own refusal is its failed outcome's detail.
+const refusalOf = (r) => /^apply_rejected: ([a-z_]+)$/.exec(r.confirmed?.outcome?.detail ?? "")?.[1] ?? r.body?.error;
 const validPort = (v) => /^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535;
 
 export function HubPreviewSettings() {
@@ -56,7 +58,7 @@ export function HubPreviewSettings() {
     try {
       const r = await confirmedWrite("/api/settings/hub/preview", { method: "PUT", label: copy("title"), body: on ? { enabled: true, port: Number(port) } : { enabled: false } });
       if (r.ok && r.body?.ok) { show(r.body); setMessageKey("saved"); }
-      else setMessageKey(REFUSALS.has(r.body?.error) ? r.body.error : "failed");
+      else { const why = refusalOf(r); setMessageKey(REFUSALS.has(why) ? why : "failed"); }
     } catch { setMessageKey("failed"); } finally { setBusy(false); }
   };
   return html`<section class="card hub-preview-settings"><h3>${copy("title")}</h3>
