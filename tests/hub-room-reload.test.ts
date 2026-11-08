@@ -127,3 +127,25 @@ it("cannot disclose history when a grant expires in the final awaited room view"
   try{await started;now+=101;}finally{release();view.mockRestore();}
   const denied=await pending;expect(denied.status).toBe(403);expect(denied.text).not.toContain("History survives");
 });
+it("a signout during the final room view cannot release retained history", async () => {
+  const {a,path}=await chat(),original=HubRoomsService.prototype.view;
+  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+  const view=vi.spyOn(HubRoomsService.prototype,"view").mockImplementation(async function(this:HubRoomsService,ctx,roomId){
+    const value=await original.call(this,ctx,roomId);entered();await gate;return value;
+  });
+  const pending=rig!.call(a,"GET",path);
+  try{await started;expect((await rig!.call(a,"DELETE","/hub/v1/session")).status).toBe(200);}
+  finally{release();view.mockRestore();}
+  const denied=await pending;expect(denied.status).toBe(401);expect(denied.text).not.toContain("History survives");
+});
+it("a real grant revocation during the final room view cannot disclose history", async () => {
+  const {a,o,path,grant}=await chat(),original=HubRoomsService.prototype.view;
+  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+  const view=vi.spyOn(HubRoomsService.prototype,"view").mockImplementation(async function(this:HubRoomsService,ctx,roomId){
+    const value=await original.call(this,ctx,roomId);entered();await gate;return value;
+  });
+  const pending=rig!.call(a,"GET",path);
+  try{await started;expect((await rig!.call(o,"DELETE",`/hub/v1/grants/${grant.id}?revision=1`)).status).toBe(200);}
+  finally{release();view.mockRestore();}
+  const denied=await pending;expect(denied.status).toBe(403);expect(denied.text).not.toContain("History survives");
+});
