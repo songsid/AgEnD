@@ -1,0 +1,124 @@
+{
+  "source": "512696d08080d2db4b4788a4327a41461168ef38",
+  "failFirst": {
+    "selected": 4,
+    "failedAssertions": 4,
+    "deliberatelyUnselected": 35
+  },
+  "focused": {
+    "suites": 9,
+    "passed": 219,
+    "failed": 0,
+    "skipped": 0
+  },
+  "build": "PASS",
+  "testTypes": "PASS",
+  "mutations": [
+    {
+      "name": "duplicate-bootstrap",
+      "failedAssertions": 3,
+      "exit": 1
+    },
+    {
+      "name": "retained-client-overlap",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "no-eventsource-snapshot",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "welcome-busy-wording",
+      "failedAssertions": 6,
+      "exit": 1
+    },
+    {
+      "name": "catalog-refusal-hidden",
+      "failedAssertions": 3,
+      "exit": 1
+    },
+    {
+      "name": "welcome-retry-delay",
+      "failedAssertions": 6,
+      "exit": 1
+    },
+    {
+      "name": "admin-busy-wording",
+      "failedAssertions": 3,
+      "exit": 1
+    },
+    {
+      "name": "admin-retry-delay",
+      "failedAssertions": 3,
+      "exit": 1
+    },
+    {
+      "name": "admin-timer-cleanup",
+      "failedAssertions": 3,
+      "exit": 1
+    },
+    {
+      "name": "closed-stream-unobserved",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "transient-stream-refused",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "notice-get-fallback-removed",
+      "failedAssertions": 2,
+      "exit": 1
+    },
+    {
+      "name": "welcome-fixed-ten-seconds",
+      "failedAssertions": 2,
+      "exit": 1
+    },
+    {
+      "name": "admin-fixed-ten-seconds",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "welcome-queued-generation",
+      "failedAssertions": 6,
+      "exit": 1
+    },
+    {
+      "name": "welcome-unmount-cleanup",
+      "failedAssertions": 1,
+      "exit": 1
+    },
+    {
+      "name": "notice-unmount-cleanup",
+      "failedAssertions": 1,
+      "exit": 1
+    }
+  ],
+  "pngSha256": {
+    "desk-dark-en-1.png": "f16c384fd2636971647c7049a4947d3697008b7bf903db813ba81da114cece62",
+    "desk-dark-zh-TW-1.png": "32e779029667ecad4f65e0f10f18dfecefa41b28f01c91902b1f1bd5d329af57",
+    "desk-light-en-1.png": "cdc2f2b0200d95b7afe73dd2a27edc63e2fe7a98642a00e84d031abd6ee2f092",
+    "desk-light-en-busy-admin-recovered.png": "d3b0b1f7969e22c811ee0e9ce941b283e9decb5d684532f49eabedb685db28b7",
+    "desk-light-en-busy-admin.png": "b121cd6970c820c24eb9bc01ff4289fb3bf3cf2799fb9842aed1a798ae36fa10",
+    "desk-light-en-busy-ungranted.png": "0e3b8b8403ae43086798081af289acb7bc7f1b19664595c98638f45e6081239c",
+    "desk-light-zh-TW-1.png": "d1b23a1f24fbd0e97033c745b038807a20d9d61ad7628bfd62c75e76f91d22b6",
+    "notice-stream-cap-retrying.png": "1257571c63497e54d500944aa02ee4901bf1eee4a3a0df7e7d0554949dad17b1",
+    "phone-dark-en-1.png": "cd80928c03953e4c8412436988ebe888c3abccca6a13c3715cedd5b256a7fbe1",
+    "phone-dark-zh-TW-1.png": "9803b895d7ed6451a85dfcfb87d630542876d5c6c5928aae3ba125c9456153c9",
+    "phone-dark-zh-TW-busy-ungranted.png": "d735fd2a318a59c38911f9802aab387d95421003a651ada7efac358e4eeedcf8",
+    "phone-light-en-1.png": "800f9441161f62ae48c581751cebca4fdafbca339026ff3914c753c50958d9fe",
+    "phone-light-zh-TW-1.png": "e394e27396da0ac04aec5fdc23da25e53364a16052ab64cd6b988c06703e89d0",
+    "skew-hub-client.js.png": "9803b895d7ed6451a85dfcfb87d630542876d5c6c5928aae3ba125c9456153c9",
+    "skew-hub-group-strings.js.png": "9803b895d7ed6451a85dfcfb87d630542876d5c6c5928aae3ba125c9456153c9"
+  },
+  "reviewFailFirst": {
+    "failedAssertions": 1,
+    "passedControls": 52
+  }
+}

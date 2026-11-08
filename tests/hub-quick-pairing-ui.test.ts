@@ -82,6 +82,57 @@ describe("quick-pairing guide preserves each proof and user intent", () => {
 });
 
 describe("security notices and exact owner narrowing", () => {
+  it("uses a snapshot-capable notice stream for bootstrap without a duplicate authenticated GET", async () => {
+    const off = vi.fn(), subscribe = vi.fn((fn: (rows: unknown[]) => void) => { queueMicrotask(() => fn([notice])); return off; });
+    const c = fake({ pairingNoticeSnapshotV1: true, subscribePairingNotices: subscribe });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(subscribe).toHaveBeenCalledOnce(); expect(c.pairingNotices).not.toHaveBeenCalled();
+    expect(txt(p)).toContain("A new fleet was connected");
+    await p.unmount(); mounted.splice(mounted.indexOf(p), 1); p.restore(); expect(off).toHaveBeenCalledOnce();
+  });
+  it("recovers a CLOSED notice stream through the authenticated GET and retries without overlap", async () => {
+    const streams: any[] = [];
+    class Stream {
+      readyState = 0; handlers: Record<string, (e?: any) => void> = {}; close = vi.fn();
+      constructor() { streams.push(this); }
+      addEventListener(name: string, fn: (e: any) => void) { this.handlers[name] = fn; }
+    }
+    vi.stubGlobal("EventSource", Stream);
+    const timers: Array<{ fn: () => void; ms: number }> = [], original = globalThis.setTimeout;
+    const timer = vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
+      if (ms >= 1000) { timers.push({ fn, ms }); return 999 as any; } return original(fn, ms, ...args);
+    });
+    const hub = client.createHubWebClient(); let reads = 0;
+    const c = fake({ pairingNoticeSnapshotV1: true, subscribePairingNotices: hub.subscribePairingNotices,
+      pairingNotices: vi.fn(async () => ++reads === 1 ? { ok: false, code: "backpressure", retryAfter: 3 } : { ok: true, notices: [notice] }) });
+    try {
+      const p = await mount(c, ui.PairingNotices, {});
+      expect(c.pairingNotices).not.toHaveBeenCalled();
+      streams[0].handlers.error?.(); await settle(5); expect(c.pairingNotices).not.toHaveBeenCalled();
+      streams[0].readyState = 2; streams[0].handlers.error?.(); await settle(20);
+      expect(txt(p)).toContain("The Hub is busy"); expect(timers.map(t => t.ms)).toEqual([3000]);
+      timers.shift()!.fn(); await settle(20);
+      expect(txt(p)).toContain("A new fleet was connected"); expect(c.pairingNotices).toHaveBeenCalledTimes(2);
+      expect(streams).toHaveLength(1); expect(timers.map(t => t.ms)).toEqual([10_000]);
+      timers.shift()!.fn(); await settle(10); expect(streams).toHaveLength(2);
+      streams[1].handlers.notices({ data: JSON.stringify({ notices: [notice] }) }); await settle(10);
+      expect(txt(p)).not.toContain("reconnecting"); expect(streams[0].close).toHaveBeenCalled();
+    } finally { timer.mockRestore(); }
+  });
+  it("cancels notice recovery when its component unmounts", async () => {
+    let closed!: () => void, captured!: () => void; const original = globalThis.setTimeout;
+    const timer = vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
+      if (ms >= 1000) { captured = fn; return 999 as any; } return original(fn, ms, ...args);
+    });
+    const cancel = vi.spyOn(globalThis, "clearTimeout"), off = vi.fn();
+    const c = fake({ pairingNoticeSnapshotV1: true, subscribePairingNotices: vi.fn((_fn, fail) => { closed = fail; return off; }) });
+    try {
+      const p = await mount(c, ui.PairingNotices, {}); closed(); await settle(20);
+      expect(captured).toBeTypeOf("function"); await p.unmount(); mounted.splice(mounted.indexOf(p), 1); p.restore();
+      expect(cancel).toHaveBeenCalledWith(999); captured(); closed(); await settle(5);
+      expect(c.subscribePairingNotices).toHaveBeenCalledOnce(); expect(c.pairingNotices).toHaveBeenCalledOnce(); expect(off).toHaveBeenCalled();
+    } finally { timer.mockRestore(); cancel.mockRestore(); }
+  });
   it("keeps the notice EventSource on the separate Hub workspace and uses only the member's existing private poll", async () => {
     const streams:any[]=[];
     class Stream {
@@ -91,7 +142,7 @@ describe("security notices and exact owner narrowing", () => {
     }
     vi.stubGlobal("EventSource",Stream);
     const seen=vi.fn(),hub=client.createHubWebClient(),off=hub.subscribePairingNotices(seen);
-    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]);
+    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]); expect(hub.pairingNoticeSnapshotV1).toBe(true);
     streams[0].handlers.notices({data:JSON.stringify({notices:[notice]})});expect(seen).toHaveBeenCalledWith([notice]);
     off();expect(streams[0].close).toHaveBeenCalledOnce();
     const api=vi.fn(async()=>({ok:true,body:{pairing:{state:"unpaired"},notices:[notice]}}));
@@ -100,6 +151,15 @@ describe("security notices and exact owner narrowing", () => {
     await member.pairing();expect(api).toHaveBeenCalledExactlyOnceWith("/api/hub/member/pairing");
     expect(member.pairingNotices()).toEqual([notice]);const stop=member.subscribe(()=>{});stop();
     expect(streams).toHaveLength(1);expect(timers.clearTimeout).toHaveBeenCalledOnce();
+  });
+  it("falls back to the authenticated notice GET when EventSource is unavailable", async () => {
+    vi.stubGlobal("EventSource", undefined);
+    const hub = client.createHubWebClient();
+    expect(hub.pairingNoticeSnapshotV1).toBe(false);
+    const c = fake({ pairingNoticeSnapshotV1: hub.pairingNoticeSnapshotV1,
+      subscribePairingNotices: hub.subscribePairingNotices });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(c.pairingNotices).toHaveBeenCalledOnce(); expect(txt(p)).toContain("A new fleet was connected");
   });
   it("reveals older history in bounded batches and ACKs it only when shown", async () => {
     const rows=Array.from({length:201},(_,i)=>({...notice,id:`history-${i}`,label:`History ${i}`}));
