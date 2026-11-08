@@ -251,10 +251,9 @@ export class HubRuntime {
   private async refuseSettingsMount(config: HubConfigView, err: unknown): Promise<void> {
     this.view = null;
     this.admitted = effectiveHubView(config);
-    this.mount.fence();
     this.addHold({ side: "server", code: "hub-storage", reason: "settings-recovery", detail: (err as Error).message,
       since: (this.options.now ?? Date.now)() });
-    try { await this.mount.close(); }
+    try { await this.mount.holdServer(config); }
     catch (cleanup) { this.options.log("warn", "Hub settings cleanup remains owned", { err: (cleanup as Error).message }); }
   }
 
@@ -297,7 +296,9 @@ export class HubRuntime {
       if (this.running) {
         // A changed configuration revokes the current generation now, even while a factory or start is still held:
         // S1's fence is synchronous, and a held service must not start for a configuration that is already gone.
-        this.mount.fence();
+        const member = (raw: unknown) => obj(raw)?.enabled === true ? JSON.stringify(raw) : null;
+        if (this.options.settingsWriter?.pending() && member(config.hub_member) === member(this.lastConfig?.hub_member)) this.mount.fenceServer();
+        else this.mount.fence();
         this.view = null; // whatever is applied next is applied for real (A → B → A must not look unchanged)
       }
     }

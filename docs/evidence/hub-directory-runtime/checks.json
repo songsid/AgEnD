@@ -1,16 +1,16 @@
 {
   "scope": "Hub-only runtime participant/recovery/publication; AD routes remain absent",
   "focused": {
-    "files": 6,
-    "passed": 199,
+    "files": 9,
+    "passed": 244,
     "skipped": 0,
-    "command": "vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-settings-api-m2682.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-settings-api-m2682.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts tests/hub-tls-mount.test.ts tests/hub-init-s1-provider.test.ts tests/hub-health.test.ts --maxWorkers=2"
   },
   "types": {
     "source": "passed",
     "tests": "passed"
   },
-  "runtimeCases": 14,
+  "runtimeCases": 22,
   "transport": "Owned production S3 HTTPS handler with ordinary CA verification; directory driver inert",
   "scopeLimits": [
     "No real LDAPS, directory account, vendor, native-manager, pilot or live-fleet operation",
@@ -19,5 +19,15 @@
     "No originating browser-token release or directory notice delivery; no public AD operation",
     "Injected stops/reopen only, not power loss; no full browser/system rig"
   ],
-  "afterMutationChange": "Only explanatory comments in FleetManager and compose/server were clarified or moved after mutation restoration; guard-bearing code is unchanged."
+  "reviewR1": {
+    "baseline": "Three new member-isolation assertions fail on the originally published production source; material/disposer controls already pass.",
+    "startup": "Two real server-listener/material interleavings; fake S3 entry and inert directory.",
+    "member": "Inert owned member lifecycle/current predicates; no remote network or account.",
+    "disposer": "Private publication/disposer callback interleaving, not naturally concurrent live mounts.",
+    "initialMutations": "Original twelve reversals belong to the initially published head; new R1 reversals are separately receipted."
+  },
+  "restoredReviewSelection": {
+    "passed": 8,
+    "intentionallyUnselected": 37
+  }
 }
