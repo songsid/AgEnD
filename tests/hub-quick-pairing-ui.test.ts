@@ -73,6 +73,14 @@ describe("quick-pairing guide preserves each proof and user intent", () => {
 });
 
 describe("security notices and exact owner narrowing", () => {
+  it("uses a snapshot-capable notice stream for bootstrap without a duplicate authenticated GET", async () => {
+    const off = vi.fn(), subscribe = vi.fn((fn: (rows: unknown[]) => void) => { queueMicrotask(() => fn([notice])); return off; });
+    const c = fake({ pairingNoticeSnapshotV1: true, subscribePairingNotices: subscribe });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(subscribe).toHaveBeenCalledOnce(); expect(c.pairingNotices).not.toHaveBeenCalled();
+    expect(txt(p)).toContain("A new fleet was connected");
+    await p.unmount(); mounted.splice(mounted.indexOf(p), 1); p.restore(); expect(off).toHaveBeenCalledOnce();
+  });
   it("keeps the notice EventSource on the separate Hub workspace and uses only the member's existing private poll", async () => {
     const streams:any[]=[];
     class Stream {
@@ -82,7 +90,7 @@ describe("security notices and exact owner narrowing", () => {
     }
     vi.stubGlobal("EventSource",Stream);
     const seen=vi.fn(),hub=client.createHubWebClient(),off=hub.subscribePairingNotices(seen);
-    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]);
+    expect(streams.map(s=>s.path)).toEqual(["/hub/v1/notices/events"]); expect(hub.pairingNoticeSnapshotV1).toBe(true);
     streams[0].handlers.notices({data:JSON.stringify({notices:[notice]})});expect(seen).toHaveBeenCalledWith([notice]);
     off();expect(streams[0].close).toHaveBeenCalledOnce();
     const api=vi.fn(async()=>({ok:true,body:{pairing:{state:"unpaired"},notices:[notice]}}));
@@ -91,6 +99,15 @@ describe("security notices and exact owner narrowing", () => {
     await member.pairing();expect(api).toHaveBeenCalledExactlyOnceWith("/api/hub/member/pairing");
     expect(member.pairingNotices()).toEqual([notice]);const stop=member.subscribe(()=>{});stop();
     expect(streams).toHaveLength(1);expect(timers.clearTimeout).toHaveBeenCalledOnce();
+  });
+  it("falls back to the authenticated notice GET when EventSource is unavailable", async () => {
+    vi.stubGlobal("EventSource", undefined);
+    const hub = client.createHubWebClient();
+    expect(hub.pairingNoticeSnapshotV1).toBe(false);
+    const c = fake({ pairingNoticeSnapshotV1: hub.pairingNoticeSnapshotV1,
+      subscribePairingNotices: hub.subscribePairingNotices });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(c.pairingNotices).toHaveBeenCalledOnce(); expect(txt(p)).toContain("A new fleet was connected");
   });
   it("reveals older history in bounded batches and ACKs it only when shown", async () => {
     const rows=Array.from({length:201},(_,i)=>({...notice,id:`history-${i}`,label:`History ${i}`}));

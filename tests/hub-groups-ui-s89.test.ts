@@ -57,6 +57,27 @@ async function mountWith(c: any, node: any, url = "http://127.0.0.1:19290/ui/hub
 const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 
 describe("the welcome: shaped by what the person may do now", () => {
+  it.each(["welcome", "catalog"])("says busy and retries after the advertised delay when %s is backpressured", async which => {
+    const timers: Array<{ fn: () => void; ms: number }> = [], original = g.setTimeout;
+    const spy = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
+      if (ms >= 1000) { timers.push({ fn, ms }); return 999; } return original(fn, ms, ...args);
+    });
+    let tries = 0;
+    const good = { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "deny" }, connect: { state: "deny", maxFleets: 0, fleets: [] } };
+    const busy = { ok: false, status: 429, code: "backpressure", retryAfter: 10 };
+    const f = fake({ [which]: vi.fn(async () => ++tries === 1 ? busy : which === "welcome" ? good : { ok: true, askable: [] }),
+      ...(which === "catalog" ? { welcome: vi.fn(async () => good) } : {}) });
+    try {
+      const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+      expect(text(pg.root)).toContain("The Hub is busy. Retrying shortly");
+      expect(text(pg.root)).not.toContain("The directory didn't answer");
+      expect(pg.root.querySelector('[data-welcome="nothing-shared"]')).toBe(null);
+      expect(timers.map(t => t.ms)).toEqual([10_000]); expect(tries).toBe(1);
+      timers.shift()!.fn(); await settle(20);
+      expect(tries).toBe(2); expect(text(pg.root)).toContain("No agents have been shared with you yet");
+    } finally { spy.mockRestore(); }
+  });
+
   it("no actions: both entries stay visible but unavailable, with 'Contact your Hub admin'", async () => {
     const f = fake(); const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
     expect(text(pg.root.querySelector('[data-welcome="no-actions"]'))).toBe("Your account can sign in, but no actions are allowed yet. Contact your Hub admin.");
@@ -108,6 +129,23 @@ describe("the welcome: shaped by what the person may do now", () => {
 });
 
 describe("Administration → Group permissions", () => {
+  it("shows busy instead of a save failure and cancels the scheduled retry on unmount", async () => {
+    const timers: Array<{ fn: () => void; ms: number }> = [], original = g.setTimeout;
+    const timer = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
+      if (ms >= 1000) { timers.push({ fn, ms }); return 999; } return original(fn, ms, ...args);
+    });
+    const cancelled = vi.spyOn(g, "clearTimeout");
+    const f = fake({ groupPolicy: vi.fn(async () => ({ ok: false, code: "backpressure", retryAfter: 10 })) });
+    try {
+      const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+      expect(text(pg.root)).toContain("The Hub is busy. Retrying shortly"); expect(text(pg.root)).not.toContain("Couldn't save");
+      expect(timers.map(t => t.ms)).toEqual([10_000]);
+      await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore();
+      expect(cancelled).toHaveBeenCalledWith(999); timers[0]!.fn(); await settle(5);
+      expect(f.c.groupPolicy).toHaveBeenCalledOnce();
+    } finally { timer.mockRestore(); cancelled.mockRestore(); }
+  });
+
   it("add a group: the server resolves it; the server's preview is shown; Save sends that preview's digest, once, with no dialog", async () => {
     const f = fake(); const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
     await until(() => pg.root.querySelector(".hub-step-form input"));
@@ -212,6 +250,23 @@ describe("Administration → Group permissions", () => {
 });
 
 describe("discovery and gating", () => {
+  it.each([true, undefined])("one normal Hub page keeps its own eligibility fan-out within four physical reads (snapshot %s)", async snapshot => {
+    let release!: () => void; const held = new Promise<void>(r => { release = r; }); let active = 0, peak = 0;
+    const read = async (value: any) => { active++; peak = Math.max(peak, active); try { await held; return value; } finally { active--; } };
+    const f = fake({ quickPairingV1: true, pairingNoticeSnapshotV1: snapshot,
+      session: async () => ({ ok: true, signedIn: true, displayName: "Bo", login: "bo", admin: false, csrf: "x", features: ["group-policy-v1", "quick-pairing-v1"] }),
+      rooms: () => read({ ok: true, rooms: [] }), catalog: () => read({ ok: true, askable: [] }),
+      welcome: () => read({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "deny" }, connect: { state: "deny", maxFleets: 0, fleets: [] } }),
+      pairingNotices: () => read({ ok: true, notices: [] }), quickPairing: () => read({ ok: true, attempt: null }),
+      subscribePairingNotices: (fn: (rows: any[]) => void) => { void read([]).then(fn); return () => {}; } });
+    try {
+      const pg = await mountWith(f.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
+      await settle(30); expect(peak).toBeLessThanOrEqual(4);
+      release(); await until(() => pg.root.querySelector('[data-welcome="nothing-shared"]'));
+      expect(text(pg.root)).toContain("No agents have been shared with you yet"); expect(peak).toBeLessThanOrEqual(4);
+    } finally { release(); await settle(10); }
+  });
+
   it("Administration shows the Group permissions entry only with the session's mark and a client that has the calls", async () => {
     for (const [mark, clientHas, shown] of [[true, true, true], [false, true, false], [true, false, false]] as const) {
       const base = fake();

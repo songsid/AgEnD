@@ -10,9 +10,11 @@ import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
 import { hubClient } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
+import { hr } from "./hub-read-strings.js";
 
 export const CAPS = [["ask_agents", "capAsk"], ["publish_agents", "capPublish"], ["pair_fleet", "capPair"]];
 const PREVIEW_DELAY_MS = 400;
+const READ_BUSY = "busy";
 const RESOLVE_REASON = { "not-found": "notFound", "not-security-group": "notSecurity", invalid: "invalidDn", unsupported: "unsupported", unknown: "unknownGroup" };
 
 /** The draft as the server receives it: the saved policy with this page's state and groups, its revision as the compare-and-set. */
@@ -35,12 +37,21 @@ export function HubGroupPolicyPage() {
   const [state, setState] = useState("never-enabled"), [groups, setGroups] = useState([]);
   const [dn, setDn] = useState(""), [adding, setAdding] = useState(false), [addError, setAddError] = useState("");
   const [preview, setPreview] = useState(null), [saving, setSaving] = useState(false), [again, setAgain] = useState(0);
-  const live = useRef(true), seq = useRef(0);
-  useEffect(() => () => { live.current = false; }, []);
+  const live = useRef(true), seq = useRef(0), readSeq = useRef(0), retry = useRef(null);
+  useEffect(() => { live.current = true; return () => { live.current = false; readSeq.current++; clearTimeout(retry.current); }; }, []);
   const load = async () => {
+    if (!live.current) return;
+    clearTimeout(retry.current); retry.current = null;
+    const mine = ++readSeq.current;
     setError("");
     const r = await c.groupPolicy();
-    if (!live.current) return;
+    if (!live.current || mine !== readSeq.current) return;
+    if (!r.ok && r.code === "backpressure") {
+      setError(READ_BUSY); const seconds = Number(r.retryAfter);
+      retry.current = setTimeout(() => { if (live.current && mine === readSeq.current) void load(); },
+        (Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.min(300, seconds)) : 10) * 1000);
+      return;
+    }
     if (!r.ok) { setError(r.code === "denied" ? hg("contactAdmin") : hg("failed")); return; }
     setView(r);
     if (r.policy) { setState(r.policy.state); setGroups(r.policy.groups.map((g) => ({ ...g, allow: [...g.allow] }))); }
@@ -101,7 +112,9 @@ export function HubGroupPolicyPage() {
     await load();
   };
   const head = html`<${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
-  if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><${ErrorState} message=${error} onRetry=${load} /></div></div>`;
+  if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout">${error === READ_BUSY
+    ? html`<p class="note" role="status" data-groups="busy">${hr("busy")}</p>`
+    : html`<${ErrorState} message=${error} onRetry=${load} />`}</div></div>`;
   if (!view) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><section class="card"><${Skeleton} variant="rows" lines=${4} /></section></div></div>`;
   // The card names the SAVED state; a turn on/off not saved yet is shown as pending, never as already on (Cairn #3372).
   const saved = policy ? policy.state : "never-enabled";

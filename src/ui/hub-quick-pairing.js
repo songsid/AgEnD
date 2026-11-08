@@ -125,7 +125,10 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
   useEffect(() => {
     live.current = true;
     if (memberNotices) { setNotices(memberNotices); return; }
-    void load(); const off = c.subscribePairingNotices(rows => { if (live.current) setNotices(rows); });
+    let off = () => {};
+    const subscribe = () => { if (live.current) off = c.subscribePairingNotices(rows => { if (live.current) setNotices(rows); }); };
+    if (c.pairingNoticeSnapshotV1 === true) subscribe();
+    else void load().then(subscribe); // Retained clients: complete their GET before the stream's eligibility read.
     return () => { live.current = false; off(); };
   }, [memberNotices]);
   const requested = new URLSearchParams(location.search).get("securityNotice"), target = notices.find(n => n.id === requested) || notices[0];

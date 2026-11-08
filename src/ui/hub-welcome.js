@@ -10,6 +10,7 @@ import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { navigate } from "/assets/app-nav.js";
 import { hubClient, hubName } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
+import { hr } from "./hub-read-strings.js";
 import { OwnedFleetRevoke, QuickPairingGuide } from "./hub-quick-pairing.js";
 
 const FLEET_STATUS = { active: "fleetActive", suspended: "fleetPaused", revoked: "fleetRevoked", unknown: "fleetUnknown" };
@@ -28,20 +29,39 @@ export function reasonText(entry, fallback) {
  */
 export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/hub?chats=1") }) {
   const c = hubClient();
-  const [w, setW] = useState(null), [askable, setAskable] = useState(null), [error, setError] = useState(false);
-  const live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+  const [w, setW] = useState(null), [askable, setAskable] = useState(null), [error, setError] = useState(null);
+  const live = useRef(true), generation = useRef(0), retry = useRef(null);
   const load = async () => {
-    setError(false); setW(null);
-    const [r, cat] = await Promise.all([c.welcome(), typeof c.catalog === "function" ? c.catalog() : Promise.resolve(null)]);
     if (!live.current) return;
-    if (!r.ok) { setError(true); return; }
-    setW(r); setAskable(cat && cat.ok && Array.isArray(cat.askable) ? cat.askable.length : null);
+    clearTimeout(retry.current); retry.current = null;
+    const mine = ++generation.current;
+    const current = () => live.current && mine === generation.current;
+    const failed = (r, reason = "unknown") => {
+      if (!current()) return;
+      setError(r.code === "backpressure" ? "busy" : reason);
+      if (r.code === "backpressure") {
+        const seconds = Number(r.retryAfter);
+        retry.current = setTimeout(() => { if (current()) void load(); },
+          (Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.min(300, seconds)) : 10) * 1000);
+      }
+    };
+    setError(null); setW(null); setAskable(null);
+    try {
+      const [r, cat] = await Promise.all([c.welcome(), typeof c.catalog === "function" ? c.catalog() : Promise.resolve(null)]);
+      if (!current()) return;
+      if (!r.ok) { failed(r); return; }
+      if (cat && !cat.ok && (r.mode === "legacy" || r.chat?.state === "allow")) { failed(cat, "catalogUnavailable"); return; }
+      setW(r); setAskable(cat && Array.isArray(cat.askable) ? cat.askable.length : null);
+    } catch { failed({ code: "unreachable" }); }
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { live.current = true; void load(); return () => {
+    live.current = false; generation.current++; clearTimeout(retry.current);
+  }; }, []);
   const refresh = async () => { const r = await c.welcome(); if (live.current && r.ok) setW(r); };
   const head = html`<${PageHead} title=${hg("welcomeTitle", name || "")} scope=${hubName() || "Hub"} lead=${hg("welcomeLead")} />`;
-  if (error) return html`<div class="col hub-welcome-page">${head}<${ErrorState} message=${hg("unknown")} onRetry=${load} /></div>`;
+  if (error) return html`<div class="col hub-welcome-page">${head}${error === "busy"
+    ? html`<p class="note" role="status" data-welcome="busy">${hr("busy")}</p>`
+    : html`<${ErrorState} message=${error === "catalogUnavailable" ? hr(error) : hg(error)} onRetry=${load} />`}</div>`;
   if (!w) return html`<div class="col hub-welcome-page">${head}<div class="hub-welcome"><section class="card"><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section></div></div>`;
   const legacy = w.mode === "legacy";
   const chat = w.chat || {}, connect = w.connect || {};

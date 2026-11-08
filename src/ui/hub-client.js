@@ -265,6 +265,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
     revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
     pairingNotices() { return call("GET", "/hub/v1/notices"); },
+    /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
+    pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
     subscribePairingNotices(fn) {
       if (typeof EventSource === "undefined") return () => {};
