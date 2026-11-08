@@ -180,3 +180,9 @@ it("the restart uses the UUID checkpointed after the claim rather than a stale f
   await w.fire(); expect(w.backend.getSessionId).toHaveBeenCalled(); expect(w.pins).toEqual([sid]);
   expect(readFileSync(join(w.root,"session-id"),"utf8")).toBe(sid);
 });
+
+it("model repair keeps the backend's ordinary resume startup budget", async () => {
+  const w = world(); w.d.backend.getStartupBudgetMs = vi.fn(() => 60_000);
+  await w.fire(); expect(w.d.backend.getStartupBudgetMs).toHaveBeenCalledWith({resume:true});
+  expect(w.d.trySpawnInsideGate.mock.calls[0][1]).toBe(60_000); expect(w.pins).toEqual([sid]);
+});

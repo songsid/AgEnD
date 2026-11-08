@@ -12826,7 +12826,7 @@ export class Daemon extends EventEmitter {
         "Claude model-version refusal — attempting one same-session restart");
       backend!.refreshLaunchBinary!(path!);
       this.cliRepairSessionId = session;
-      const ready = await this.trySpawn(true, undefined, next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
+      const ready = await this.trySpawn(true, this.startupBudgetFor(true), next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
       this.cliRepairSessionId = undefined;
       if (!baseCurrent() || this.launchAttempt !== attempt + 1) return;
       if (!ready) throw failed();
