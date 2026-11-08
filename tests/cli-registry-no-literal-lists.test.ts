@@ -30,7 +30,7 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/config-validator.ts": 2, "src/config.ts": 2, "src/outbound-schemas.ts": 1, "src/backend/types.ts": 2, "src/bug-report-cli.ts": 1, "src/setup-wizard.ts": 1, "src/quickstart-api.ts": 1,
     "src/topic-commands.ts": 2, "src/channel/adapters/discord.ts": 2, "src/tips.ts": 3, "src/cli.ts": 3, "src/ui/panel-fleet.js": 3,
   } },
-  { why: "per-backend behaviour switches (steer, effort, MCP mode, the Codex speed field)", files: { "src/steer-capability.ts": 1, "src/backend/launch-effort.ts": 1, "src/ui/settings-model.js": 3, "src/ui/settings-dialogs.js": 1 } },
+  { why: "per-backend behaviour switches (steer, effort, MCP mode, the Codex speed field, the flag that stops a Windows CLI updating itself)", files: { "src/steer-capability.ts": 1, "src/backend/launch-effort.ts": 1, "src/ui/settings-model.js": 3, "src/ui/settings-dialogs.js": 1, "src/windows-cli-providers.ts": 2 } },
   { why: "display names, marks and colours, and the vendor commands the Runtime page shows (the standalone setup script cannot import the registry)", files: {
     "src/ui/panel-chat.js": 1, "src/ui/shared/instance-nav.js": 2, "src/ui/fleet-office-model.js": 1, "src/ui/provider-marks.js": 1, "src/ui/shared/panel-view.js": 1, "src/interaction-observation.ts": 3,
     "src/ui/structured-signin.js": 1, "src/ui/runtime-cli-install.js": 1,
@@ -39,9 +39,8 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   { why: "quota notices (which backends have one)", files: { "src/quota-notice-config.ts": 1, "src/ui/settings-quota-notice.js": 1 } },
   { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },
   { why: "behaviour keyed by CLI id (credential homes, the login hosts a link may point at, usage readers): the keys are checked against the registry by cli-registry-completeness.test.ts", files: {
-    "src/backend/credential-profile.ts": 1, "src/login-url.ts": 1, "src/usage/providers.ts": 2, "src/runtime-cli-install.ts": 1,
+    "src/backend/credential-profile.ts": 1, "src/login-url.ts": 1, "src/usage/providers.ts": 2,
   } },
-  { why: "the Windows Runtime's tables, still to be derived from the registry (AGEND-115 S4)", files: { "src/windows-cli-providers.ts": 4 } },
   { why: "web-api.ts: the backend names in a request schema, and which CLIs have a workspace follow", files: { "src/web-api.ts": 4 } },
 ];
 const ALLOWED: Record<string, number> = Object.assign({}, ...FAMILIES.map(f => f.files));

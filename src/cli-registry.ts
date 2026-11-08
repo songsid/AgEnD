@@ -43,6 +43,13 @@ export type HostCliWith<K extends keyof HostCapabilities> = { [I in CliId]: type
 /** The same for a Runtime capability. */
 export type RuntimeCliWith<K extends keyof RuntimeCapabilities> = { [I in CliId]: typeof CLI_SPECS[I]["runtime"][K] extends { readonly support: "yes" } ? I : never }[CliId];
 
+/**
+ * The compiled files of this registry, as the Runtime bundle lists them (runtime-build-info.ts RUNTIME_BUNDLE_MODULES): a CLI added to `CLI_IDS` brings its spec
+ * file into every Runtime bundle with it, so nobody has to remember to list it. tests/cli-registry-runtime-bundle.test.ts builds a bundle and runs it outside the
+ * dependency tree.
+ */
+export const CLI_REGISTRY_MODULES: readonly string[] = Object.freeze(["cli-capability.js", "cli-registry.js", ...CLI_IDS.map(id => `cli-spec-${id}.js`)]);
+
 export function isCliId(value: unknown): value is CliId {
   return typeof value === "string" && Object.hasOwn(CLI_SPECS, value);
 }

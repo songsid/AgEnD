@@ -11,14 +11,19 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
+import { runtimeFacts, runtimeIds, type RuntimeCliWith } from "./cli-registry.js";
 
 /** Same shape as the Linux/WSL `credential_profile` (src/backend/credential-profile.ts), plus the Windows file-name hazards below. */
 export const CREDENTIAL_PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** Reported in the Runtime's capabilities so an AgEnD never asks an older Runtime for a profile it would ignore. */
 export const RUNTIME_CREDENTIAL_CAPABILITY = "credential-profiles";
-/** Only Claude Code for now (`CLAUDE_CONFIG_DIR`). A new CLI is one more entry; the directory shape stays the same. */
-export const CREDENTIAL_PROFILE_CLIS = Object.freeze({ "claude-code": "CLAUDE_CONFIG_DIR" } as const);
-export type CredentialProfileCli = keyof typeof CREDENTIAL_PROFILE_CLIS;
+/**
+ * The CLIs with named accounts on a computer, and the variable that points each at its profile's folder (cli-registry.ts: `runtime.namedAccounts`; Claude Code only for
+ * now, `CLAUDE_CONFIG_DIR`). A new CLI is one more spec; the directory shape stays the same. Pinned, literally, by tests/cli-registry-golden.test.ts.
+ */
+export type CredentialProfileCli = RuntimeCliWith<"namedAccounts">;
+export const CREDENTIAL_PROFILE_CLIS: Readonly<Record<CredentialProfileCli, string>> = Object.freeze(
+  Object.fromEntries(runtimeIds("namedAccounts").map(id => [id, runtimeFacts(id, "namedAccounts")!.env])) as Record<CredentialProfileCli, string>);
 export const CREDENTIAL_PROFILES_DIRECTORY = "credential-profiles";
 const STATUS_FILE = "status.json";
 /** Windows treats these as devices whatever the extension, and silently drops trailing dots/spaces: both would alias another name. */

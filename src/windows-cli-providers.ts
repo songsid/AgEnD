@@ -8,13 +8,16 @@
  * - Claude flags were checked against the installed native 2.1.299 --help.
  */
 import { parseClaudeAuthStatus } from "./claude-auth-status.js";
-export const NATIVE_PROVIDER_IDS = ["codex", "claude-code", "antigravity", "grok", "kiro-cli", "opencode", "muse"] as const;
-export type NativeProviderId = typeof NATIVE_PROVIDER_IDS[number];
+import { runtimeFacts, runtimeProviderIds, type RuntimeCliWith } from "./cli-registry.js";
+/** The CLIs a Windows Runtime lists and may run, in its inventory's order (cli-registry.ts: `runtime.provider`, by `rank`). */
+export type NativeProviderId = RuntimeCliWith<"provider">;
+export const NATIVE_PROVIDER_IDS: readonly NativeProviderId[] = Object.freeze(runtimeProviderIds() as NativeProviderId[]);
 export type NativeSandbox = "read-only" | "workspace-write";
 /** Internal execution capability. Never accepted as part of a public task input or persisted with a turn. */
 export interface NativeMcpConnection { endpoint: string; token: string; tools: string[] }
 export const NATIVE_MCP_SERVER = "agend_native";
-export function nativeProviderMcpSupported(cli: unknown): boolean { return cli === "codex" || cli === "claude-code"; }
+/** The providers whose descriptor says `supports.mcp` (Codex and Claude Code): the only ones that may be given scoped AgEnD MCP tools. */
+export function nativeProviderMcpSupported(cli: unknown): boolean { return isNativeProviderId(cli) && PROVIDERS[cli].supports.mcp === true; }
 export function validateNativeMcpConnection(value: unknown): NativeMcpConnection {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid native MCP connection");
   const v = value as Record<string,unknown>;
@@ -45,51 +48,21 @@ export interface NativeProviderDescriptor {
   reason?: string;
 }
 
-const PROVIDERS: Record<NativeProviderId, NativeProviderDescriptor> = {
-  codex: {
-    id: "codex", name: "Codex", company: "OpenAI", binaryNames: ["codex.exe"],
-    supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true,
-    permission: "os-sandbox", permissionNote: "Uses Codex's native read-only or workspace-write sandbox. Approval policy is unchanged.",
-    promptTransport: "stdin-text", authProbe: ["login", "status"], modelProbe: null,
-  },
-  "claude-code": {
-    id: "claude-code", name: "Claude Code", company: "Anthropic", binaryNames: ["claude.exe"],
-    supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true,
-    permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Workspace accepts file edits inside the working directory only. Every other permission request (shell, network, other folders) is denied in headless mode unless Claude Code's own settings already allow it.",
-    promptTransport: "stdin-text", authProbe: ["auth", "status"], modelProbe: null,
-  },
-  antigravity: {
-    id: "antigravity", name: "Antigravity", company: "Google", binaryNames: ["agy.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: false,
-    permission: "native-policy", permissionNote: "Uses the native CLI permission policy. Plan mode and terminal sandboxing do not guarantee read-only workspace access.",
-    promptTransport: "stdin-json", authProbe: null, modelProbe: ["models"],
-  },
-  grok: {
-    id: "grok", name: "Grok", company: "xAI", binaryNames: ["grok.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: false,
-    permission: "native-policy", permissionNote: "Uses the native CLI permission policy; no blanket approval or sandbox bypass is added.",
-    promptTransport: "file", authProbe: null, modelProbe: ["models"],
-  },
-  "kiro-cli": {
-    id: "kiro-cli", name: "Kiro", company: "AWS", binaryNames: ["kiro-cli.exe"],
-    supports: { execution: false, resume: false, model: true }, readOnlySupport: false,
-    permission: "native-policy", permissionNote: "Native Windows Kiro CLI is separate from Kiro IDE. Headless authentication requires KIRO_API_KEY.",
-    promptTransport: "stdin-text", authProbe: null, modelProbe: ["chat", "--list-models", "--format", "json"],
-    reason: "Windows headless execution exists, but this adapter has not verified its terminal JSON event schema yet.",
-  },
-  opencode: {
-    id: "opencode", name: "OpenCode", company: "Anomaly", binaryNames: ["opencode.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: false,
-    permission: "native-policy", permissionNote: "Uses the native CLI permission policy; no --auto or permission allow override is added.",
-    promptTransport: "stdin-text", authProbe: null, modelProbe: ["models"],
-  },
-  muse: {
-    id: "muse", name: "Muse", company: "Meta", binaryNames: ["muse.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: false,
-    permission: "native-policy", permissionNote: "Uses the native CLI approval and sandbox policy; no --disable-approval, --yolo or workspace-switch override is added.",
-    promptTransport: "file", authProbe: null, modelProbe: null,
-  },
-};
+/**
+ * What the Runtime knows of each CLI it can run: the registry's `runtime.provider` (names, executable names, execution flags, permission wording, listing command) and
+ * `runtime.authStatus` (the sign-in probe, null when there is none). tests/cli-registry-golden.test.ts pins every value as a literal; they decide which programs a Runtime
+ * looks for and runs.
+ */
+const PROVIDERS = Object.fromEntries(NATIVE_PROVIDER_IDS.map(id => {
+  const provider = runtimeFacts(id, "provider")!, status = runtimeFacts(id, "authStatus");
+  const descriptor: NativeProviderDescriptor = {
+    id, name: provider.name, company: provider.company, binaryNames: provider.binaryNames,
+    supports: provider.supports, readOnlySupport: provider.readOnlySupport, permission: provider.permission, permissionNote: provider.permissionNote,
+    promptTransport: provider.promptTransport, authProbe: status ? status.argv : null, modelProbe: provider.modelProbe,
+    ...(provider.reason ? { reason: provider.reason } : {}),
+  };
+  return [id, descriptor] as const;
+})) as Record<NativeProviderId, NativeProviderDescriptor>;
 
 export function isNativeProviderId(value: unknown): value is NativeProviderId {
   return typeof value === "string" && (NATIVE_PROVIDER_IDS as readonly string[]).includes(value);
