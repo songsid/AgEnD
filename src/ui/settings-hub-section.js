@@ -52,6 +52,8 @@ export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
   const groupsHref = hubHost && hubGroupsMarked() ? hubGroupsHref(hubOrigin) : null;
   if (overPublicLink) return html`<section class="card s-group" id="hub-public-link"><p class="note">${hubSectionText("publicLink")}</p></section>`;
   return html`<div class="s-hub-section">
+    ${!hubHost && typeof document !== "undefined" && document.body?.dataset.hubSetup === "1"
+      ? html`<${Lazy} load=${() => import("./settings-hub-setup.js")} pick=${(m) => m.HubSetupSettings} />` : null}
     <${Lazy} load=${() => import("./settings-hub-membership.js")} pick=${(m) => m.HubMembershipSettings} />
     ${hubHost ? html`<${Lazy} load=${() => import("./settings-hub-run.js")} pick=${(m) => m.HubRunSettings} />
       <${Lazy} load=${() => import("./settings-hub-retention.js")} pick=${(m) => m.HubRetentionSettings} />

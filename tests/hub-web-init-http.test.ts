@@ -78,6 +78,19 @@ function noSetupEffects(r:Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("initial setup from the actual host launch session",()=>{
+  it("marks setup only on the exact local host shell, without constructing the initializer",async()=>{
+    const r=await fixture(),create=vi.spyOn(r.fm,"hubSetup");
+    const shell=(id:string,extra:Record<string,string>={})=>new Promise<string>((resolve,reject)=>{
+      const q=httpRequest({host:"127.0.0.1",port:r.port,path:"/settings/hub",headers:{cookie:`agend_session=${id}`,...extra}},res=>{
+        let text="";res.on("data",c=>text+=c);res.on("end",()=>resolve(text));});q.on("error",reject);q.end();
+    });
+    expect(await shell(r.host.id)).toContain('data-hub-setup="1"');
+    const other=await r.signIn(r.fm.issueDashboardLogin()!.display);
+    expect(await shell(other.id)).not.toContain('data-hub-setup="1"');
+    expect(await shell(r.host.id,{"x-forwarded-for":"198.51.100.1"})).not.toContain('data-hub-setup="1"');
+    expect(create).not.toHaveBeenCalled();expect(r.peer.bindRecords).toHaveLength(0);noSetupEffects(r);
+  },20_000);
+
   it("completes setup through the public route, mounts HTTPS and imports setup audit before accepting browser sign-in",async()=>{
     const r=await fixture();expect((await r.call("")).body).toMatchObject({initialized:false,existingFleet:false});
     const prepared=await r.call("/prepare",r.input);expect(prepared.status).toBe(200);expect(prepared.body.ref).toBeTypeOf("string");
