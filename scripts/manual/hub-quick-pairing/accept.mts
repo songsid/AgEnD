@@ -30,6 +30,7 @@ import { createHubAudit, HUB_AUDIT_MIGRATION } from "../../../src/hub/audit/inde
 
 const repo = process.env.REPO!, out = process.env.OUT!, mode = process.env.MODE ?? "current", skew = process.env.SKEW === "1";
 const progressFix = process.env.PROGRESS_FIX === "1";
+const labelFix = process.env.LABEL_FIX === "1";
 if (!repo || !out) throw Error("REPO and OUT required");
 mkdirSync(out, { recursive: true }); const art = join(repo, ".artifacts/quick-pairing"); mkdirSync(art, { recursive: true });
 const scratch = mkdtempSync(join(art, "browser-")); chmodSync(scratch, 0o700);
@@ -77,6 +78,7 @@ const extraPairings: ReturnType<typeof createHubMemberPairingApi>[] = [];
 const contexts: any[] = [];
 const shot = async (p: any, name: string) => {
   if (progressFix && !/local-step|expired-confirmation|FAIL-/.test(name)) return;
+  if (labelFix && !/-(code|fingerprint|admin-code)$|FAIL-/.test(name)) return;
   await p.evaluate(() => document.fonts.ready); await p.screenshot({ path: join(out, name + ".png"), fullPage: true }); receipt.shots.push(name + ".png");
 };
 async function context(c: any, oldClient = false) {
@@ -88,6 +90,7 @@ async function context(c: any, oldClient = false) {
     let retained: string | null = null;
     if (mode === "before" && ["/ui/js/panel-hub.js", "/ui/js/hub-welcome.js", "/ui/js/hub-client.js"].includes(u.pathname)) retained = u.pathname.slice(7);
     if (mode === "before-progress" && ["/ui/js/settings-hub.js", "/ui/js/hub-client.js", "/ui/js/hub-quick-pairing.js"].includes(u.pathname)) retained = u.pathname.slice(7);
+    if (mode === "before-labels" && ["/ui/js/hub-quick-strings.js", "/ui/js/hub-owner-strings.js"].includes(u.pathname)) retained = u.pathname.slice(7);
     if (oldClient && u.pathname === "/ui/js/hub-client.js") retained = "hub-client.js";
     if (skew && ["/assets/app.css", "/assets/hub.css", "/assets/hub-owner.css", "/assets/hub-groups.css", "/assets/app-shell.js"].includes(u.pathname)) retained = "shared/" + u.pathname.slice(8);
     if (retained) { receipt.skewHits = (receipt.skewHits ?? 0) + 1; return r.fulfill({ contentType: retained.endsWith(".css") ? "text/css" : "text/javascript", body: old(retained) }); }
@@ -138,6 +141,11 @@ try {
       await a.p.fill("#quickFleetLabel", c.lang === "en" ? "My research laptop" : "我的研究筆電"); await a.p.locator("[data-quick-pairing] form button[type=submit]").click();
       await a.p.locator("[data-quick-pairing] .hub-fp-groups").waitFor();
       const code = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").first().innerText()).trim(); check(tag + " one-time code", /^[a-f0-9]{12}$/.test(code));
+      if (labelFix) {
+        const text = await a.p.locator("[data-quick-pairing]").innerText();
+        check(tag + " quick address label", text.includes(mode === "before-labels" ? c.lang === "en" ? "Member address" : "成員位址" : c.lang === "en" ? "Hub address" : "Hub 位址"));
+        await geometry(a.p, tag + " code");
+      }
       await shot(a.p, tag + "-code");
       const other = await context(c); await signIn(other.p, owner.login);
       const mh = await attachMember(i);
@@ -159,6 +167,11 @@ try {
       }
       const shown = (await a.p.locator("[data-quick-pairing] .hub-fp-groups").last().innerText()).replace(/\s/g, ""), localShown = (await local.p.locator(".hub-pending .hub-fp-groups").innerText()).replace(/\s/g, "");
       check(tag + " exact same fingerprint", shown === localShown && shown.length === 32);
+      if (labelFix) {
+        const label = (await local.p.locator(".hub-pending h4").innerText()).trim();
+        check(tag + " compare names real fleet card", (await a.p.locator("[data-quick-pairing]").innerText()).includes(mode === "before-labels" ? c.lang === "en" ? "pending pairing" : "等待配對" : label));
+        await geometry(a.p, tag + " comparison");
+      }
       await a.p.getByRole("button", { name: c.lang === "en" ? "They match" : "指紋相符", exact: true }).scrollIntoViewIfNeeded();
       await local.p.locator(".hub-local-confirm").scrollIntoViewIfNeeded();
       await shot(a.p, tag + "-fingerprint"); await shot(local.p, tag + "-local-confirmation");
@@ -257,9 +270,17 @@ try {
       }
       await other.p.locator("[data-pairing-notice] .btn-danger").first().click(); await other.p.getByText(c.lang === "en" ? "Revoked" : "已撤銷", { exact: true }).first().waitFor();
       check(tag + " one-click revoke no dialog", await other.p.locator("[role=dialog]").count() === 0); await local.ctx.close(); await other.ctx.close();
+      if (labelFix) {
+        const handoff = await context(c); await signIn(handoff.p, "admin", "/ui/hub/admin");
+        await handoff.p.locator(".hub-step-form input").fill(owner.login); await handoff.p.locator(".hub-step-form button").click();
+        await handoff.p.locator(".hub-offer .hub-origin").waitFor(); await handoff.p.locator(".hub-offer").scrollIntoViewIfNeeded();
+        const label = mode === "before-labels" ? c.lang === "en" ? "Member address" : "成員連線位址" : c.lang === "en" ? "Hub address" : "Hub 位址";
+        check(tag + " admin address label", (await handoff.p.locator(".hub-offer").innerText()).includes(label));
+        await geometry(handoff.p, tag + " admin code"); await shot(handoff.p, tag + "-admin-code"); await handoff.ctx.close();
+      }
     } finally { await a.ctx.close(); }
   }
-  if (mode !== "before" && !progressFix) {
+  if (mode !== "before" && !progressFix && !labelFix) {
     const stale = await context(cases[0], true); await signIn(stale.p, users[1].login); await stale.p.locator(".hub-welcome-card").first().waitFor();
     check("old client hides quick actions", await stale.p.locator("[data-quick-pairing]").count() === 0); await shot(stale.p, "skew-old-client-welcome");
   }

@@ -65,18 +65,18 @@ describe("#3370 grant refusal inside the active form", () => {
   });
 });
 describe("#3337 the administrator's code handoff", () => {
-  it.each(["en", "zh-TW"])("labels the member address separately and copies address plus code in %s", async lang => {
+  it.each(["en", "zh-TW"])("uses the fleet address label and copies address plus code in %s", async lang => {
     api(); i18n.setLang(lang, { store: false });
     const pg = await mount("/ui/hub/admin", panel.HubPanel, { route: { tab: "admin" } });
     await until(() => pg.root.querySelector(".hub-step-form"));
     input(pg, ".hub-step-form input", "owner"); await settle(4); fire(pg.root.querySelector(".hub-step-form")!, "submit");
     await until(() => pg.root.querySelector(".hub-offer"));
     expect(pg.root.querySelector(".hub-offer .hub-origin")?.textContent).toContain("https://members.example.test:9443");
-    expect(pg.root.querySelector(".hub-offer")!.textContent).toContain(lang === "en" ? "Member address" : "成員連線位址");
+    expect(pg.root.querySelector(".hub-offer")!.textContent).toContain(i18n.tIn(lang, "hub.address"));
     const copied: string[] = [];
     (globalThis as any).navigator.clipboard = { writeText: async (s: string) => { copied.push(s); } };
     (pg.root.querySelector(".hub-offer button") as any).click(); await settle(5);
-    expect(copied).toHaveLength(1); expect(copied[0]).toContain("https://members.example.test:9443"); expect(copied[0]).toContain("abcd1234abcd");
+    expect(copied).toHaveLength(1); expect(copied[0]).toContain(`${i18n.tIn(lang, "hub.address")}: https://members.example.test:9443`); expect(copied[0]).toContain("abcd1234abcd");
     expect(copied[0]).not.toContain("https://hub.example.test");
   });
   it("an older server with no member address never substitutes the browser origin", async () => {
@@ -84,7 +84,7 @@ describe("#3337 the administrator's code handoff", () => {
     const pg = await mount("/ui/hub/admin", panel.HubPanel, { route: { tab: "admin" } });
     await until(() => pg.root.querySelector(".hub-step-form")); input(pg, ".hub-step-form input", "owner"); await settle(4);
     fire(pg.root.querySelector(".hub-step-form")!, "submit"); await until(() => pg.root.querySelector(".hub-offer"));
-    expect(pg.root.querySelector(".hub-offer")!.textContent).toContain("Ask the administrator for the member address");
+    expect(pg.root.querySelector(".hub-offer")!.textContent).toContain("Ask the administrator for the address to enter in the Hub address field");
     expect(pg.root.querySelector(".hub-offer .hub-origin")).toBeNull();
     expect(pg.root.querySelector(".hub-offer button")).toBeNull();
   });
