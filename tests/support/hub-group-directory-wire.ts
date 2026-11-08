@@ -7,7 +7,7 @@ export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=
 /** Optional recorded users also exercise production browser sign-in/eligibility; dummy passwords only. */
 export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
 export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[]) {
-  const sockets = new Set<TLSSocket>(), binds: string[] = [], searches: any[] = [];
+  const sockets = new Set<TLSSocket>(), binds: string[] = [], bindRecords: Array<{ dn: string; password: string }> = [], searches: any[] = [];
   const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged", memberships: [GROUP_A],
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
@@ -40,6 +40,7 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
         const frameLength = r.offset + r.length, id = r.readInt()!, tag = r.readSequence();
         if (tag === 0x60) {
           r.readInt(); const dn = r.readString()!, password = r.readString(0x80); binds.push(dn);
+          bindRecords.push({ dn, password: password! });
           const user = users?.find(u => u.dn.toLowerCase() === dn.toLowerCase());
           result(id, 0x61, users && !(dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
             && !(user && user.password === password) ? 49 : 0);
@@ -84,6 +85,6 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
     });
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  return { state, searches, binds, port: (server.address() as { port: number }).port,
+  return { state, searches, binds, bindRecords, port: (server.address() as { port: number }).port,
     close: async () => { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); } };
 }
