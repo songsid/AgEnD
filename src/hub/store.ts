@@ -6,7 +6,7 @@ import { epoch, hash, person, uuid, validated, parseStrictJson, HubProtocolError
 import type { HubAuditRecord } from "./types.js";
 const pairing = z.strictObject({ id: uuid, owner: person, codeHash: hash.nullable(), expiresAt: epoch,
   fleetId: uuid.nullable(), claimHash: hash.nullable(), fingerprint: hash.nullable(), ownerConfirmed: z.boolean(), adminApproved: z.boolean(),
-  state: z.enum(["offered", "pending", "claimed", "revoked"]) });
+  approvedBy: person.optional(), state: z.enum(["offered", "pending", "claimed", "revoked"]) });
 const fleet = z.strictObject({ id: uuid, owner: person, credentialHash: hash.nullable(), generation: epoch,
   status: z.enum(["active", "revoked"]) });
 const stateSchema = z.strictObject({ v: z.literal(1), revision: epoch, revocationVersion: epoch, nextLinkEpoch: epoch,
@@ -27,7 +27,8 @@ export interface HubTransportStoreOptions {
 export function migrateHubTransportStore(db: Database.Database): void {
   db.exec("CREATE TABLE IF NOT EXISTS hub_transport_state (singleton INTEGER PRIMARY KEY CHECK(singleton=1), state TEXT NOT NULL)");
 }
-export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport", version: 1, up: migrateHubTransportStore });
+// Version 2 persists the approver identity; older binaries must refuse rather than reinterpret that proof.
+export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport", version: 2, up: migrateHubTransportStore });
 /** No file opening or migration on import/construction; initialization is explicit and belongs to S5. */
 export class HubTransportStore {
   private failed = false;

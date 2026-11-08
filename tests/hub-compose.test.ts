@@ -120,12 +120,11 @@ function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("
 }
 
 describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a really initialized Hub", () => {
-  it("wires exact group enrollment into real pairing and its owning DB before any credential is issued", async () => {
-    const hub = await initializedHub(), http = fakeHttp(), groupId = randomUUID(); let known = false;
+  it("wires explicit manual enrollment into real pairing and its owning DB without a membership allowance", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), groupId = randomUUID();
     (hub.config.hub.directory as Record<string, unknown>).profile = "ad";
     const f = factory(hub.home, http.entry, { createDirectory: () => ({ realm: "corp", groupPolicy: "ad-direct-guid", signIn: vi.fn(), close: async () => {},
-      checkEligibility: async () => ({ eligible: true, person: ADMIN }), readPolicyGroups: async person => known
-        ? { kind: "complete", person, groups: [groupId], observedAt: Date.now() } : { kind: "unknown" } }) });
+      checkEligibility: async () => ({ eligible: true, person: ADMIN }), readPolicyGroups: async () => ({ kind: "unknown" }) }) });
     const service = await f.create(hub.config.hub, () => true);
     const db = new Database(join(hub.home, "hub/hub.sqlite"));
     try {
@@ -140,11 +139,11 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
       const offer = await pairing.create(ctx, ADMIN.key), pending = pairing.pair({ code: offer.code });
       await pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint); await pairing.approve(ctx, pending.pairingId, pending.fingerprint);
       const input = { pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret };
-      await expect(pairing.claim(input)).rejects.toThrow("unavailable"); expect(store.read().fleets).toEqual([]);
-      known = true; const claimed = await pairing.claim(input); expect(claimed.status).toBe("approved");
+      expect(store.read().fleets).toEqual([]);
+      const claimed = await pairing.claim(input); expect(claimed.status).toBe("approved");
       if (claimed.status !== "approved") throw Error("positive claim refused");
       expect(pairing.authenticate(claimed.credential)).toMatchObject({ fleetId: pending.fleetId, owner: ADMIN.key });
-      expect(db.prepare("SELECT source,state FROM hub_group_resources").all()).toEqual([{ source: "group", state: "active" }]);
+      expect(db.prepare("SELECT source,state FROM hub_group_resources").all()).toEqual([{ source: "manual", state: "active" }]);
       expect((await get(hub.webPort, "/hub/v1/ping", hub.caPem)).status).toBe(200);
     } finally { db.close(); await service.close(); }
   });

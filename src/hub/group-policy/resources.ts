@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { HubMigration } from "../db.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { PersonKey } from "../types.js";
+import type { Eligibility, HubDirectory } from "../directory/types.js";
+import { personKeyString } from "../identity.js";
 import { identifier, person, parseStrictJson, validated } from "../validation.js";
 import { HubGroupPolicyError, type GroupCheckContext, type HubGroupPolicyStore } from "./store.js";
 import type { GroupCapability, HubGroupDecision } from "./model.js";
@@ -37,6 +39,7 @@ const snapshotContext = (ctx: GroupCheckContext) => ({ requestId: validated(iden
 export function createHubGroupResources(options: {
   db: Database.Database; policy: HubGroupPolicyStore; audit: Pick<HubAuditStore, "appendInTransaction">;
   current(): boolean; now?: () => number;
+  directory?: Pick<HubDirectory, "checkEligibility">;
   /** Synchronous same-DB authorization-version advance inside the lifecycle transaction, never socket I/O. */
   invalidate?(db: Database.Database, resource: HubGroupResource): void;
 }) {
@@ -89,12 +92,24 @@ export function createHubGroupResources(options: {
     const r = capture(input), ctx = snapshotContext(incoming), actor = resumeActor === undefined ? undefined : validated(person, resumeActor);
     assert(ctx); const p = policy.read(), before = row(r);
     if (!before || r.owner.realm !== p.realm || (actor && actor.realm !== p.realm)) throw new HubGroupPolicyError("invalid");
+    const explicitlyDenied = p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
+    let eligibility: Eligibility | undefined;
+    if (before.source === "manual" && !explicitlyDenied && r.kind === "fleet" && options.directory) {
+      try {
+        eligibility = await policy.withDirectoryRead(r.owner, () => options.directory!.checkEligibility(Object.freeze({ ...r.owner })));
+      } catch { eligibility = { eligible: false, reason: "unavailable" }; }
+    }
     if (before.source === "manual") return db.transaction((): HubGroupResourceDecision => {
       assert(ctx);
-      if (policy.read().revision !== p.revision) throw new HubGroupPolicyError("conflict");
+      if (policy.read().revision !== p.revision || JSON.stringify(row(r)) !== JSON.stringify(before)) throw new HubGroupPolicyError("conflict");
       // Grandfathering exempts membership, never an explicit person deny or ordinary account/resource revocation.
-      if (p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)))) {
-        update(before, "suspended", r.owner, ctx); return { outcome: "deny" };
+      if (explicitlyDenied) { update(before, "suspended", r.owner, ctx); return { outcome: "deny" }; }
+      if (eligibility) {
+        if (!eligibility.eligible) {
+          if (eligibility.reason === "unavailable") return { outcome: "held" };
+          update(before, "suspended", r.owner, ctx); return { outcome: "deny" };
+        }
+        if (personKeyString(eligibility.person.key) !== personKeyString(r.owner)) return { outcome: "held" };
       }
       if (before.state === "suspended") {
         if (!actor) return { outcome: "resume-required" };
@@ -160,6 +175,24 @@ export function createHubGroupResources(options: {
       db.transaction(() => prepared.commit(db)).immediate();
     },
     prepareRegistration,
+    /** A distinct explicit-admin grant, never inferred from group membership or pre-enable inventory. */
+    prepareManualRegistration(input: HubGroupResource, confirmedBy: PersonKey, incoming: GroupCheckContext) {
+      const r = capture(input), actor = validated(person, confirmedBy), ctx = snapshotContext(incoming);
+      assert(ctx); const p = policy.read(), image = JSON.stringify(p);
+      if (r.kind !== "fleet" || r.owner.realm !== p.realm || actor.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+      if (p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes("pair_fleet"))) {
+        throw new HubGroupEnrollmentRefusal("denied");
+      }
+      let used = false;
+      return { commit(database: Database.Database): void {
+        if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
+        used = true; assert(ctx);
+        if (JSON.stringify(policy.read()) !== image || row(r)) throw new HubGroupPolicyError("conflict");
+        record(r, actor, "group-resource.admin-granted", ctx, { source: "manual", approval: "explicit-admin", selfServicePermission: "not-required" });
+        db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'manual','active',1)").run(keyOf(r), JSON.stringify(r));
+        assert(ctx);
+      } };
+    },
     check(input: HubGroupResource, incoming: GroupCheckContext) { return check(input, incoming); },
     /** Caller must freshly authenticate the configured administrator and confirm the exact resource. */
     resume(input: HubGroupResource, actor: PersonKey, incoming: GroupCheckContext) { return check(input, incoming, actor); },
