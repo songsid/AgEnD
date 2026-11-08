@@ -4,8 +4,11 @@
 // with a fixed control and welcome answer, so the pages draw as a Hub with them on.
 //
 // Per page and case:
-//   :overflow   nothing wider than the window (the page doesn't scroll sideways; no element past the right edge unless a
-//               scrolling or clipping box holds it) — style guide rule 7;
+//   :overflow   nothing wider than the window: the page doesn't scroll sideways, and no element reaches past the right
+//               edge unless a scrolling box (overflow auto/scroll) inside the window holds it — a hidden or clipping box
+//               (the app shell is one) doesn't excuse it: that content is cut off. A box that scrolls sideways counts
+//               too (a vertical scroller computes overflow-x: auto as well), unless it is code, pre or a table — style
+//               guide rule 7;
 //   :buttons    one height per button class combination on the page;
 //   :no-errors  no page error, no CSP report;
 //   :tap        at phone width, controls smaller than --tap (44px) — a ratchet: the places listed in
@@ -49,8 +52,15 @@ const MEASURE = `(() => {
     const b = el.getBoundingClientRect();
     if (b.right <= W + 1) continue;
     let held = false;
-    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const s = getComputedStyle(a); if (s.overflowX !== "visible" || s.position === "fixed") { held = a.getBoundingClientRect().right <= W + 1; if (held) break; } }
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if ((o === "auto" || o === "scroll") && a.getBoundingClientRect().right <= W + 1) { held = true; break; } }
     if (!held) over.push(path(el) + " right=" + Math.round(b.right));
+  }
+  // A box that scrolls sideways: its content is wider than the box. Code, pre and tables may scroll on purpose.
+  for (const el of document.body.querySelectorAll("*")) {
+    const o = getComputedStyle(el).overflowX;
+    if ((o !== "auto" && o !== "scroll") || el.scrollWidth <= el.clientWidth + 1 || !vis(el)) continue;
+    if (el.matches("pre, code, table, .codeblock, .table-wrap") || el.closest("pre, .codeblock, .table-wrap")) continue;
+    over.push(path(el) + " scrolls sideways (" + el.scrollWidth + " > " + el.clientWidth + ")");
   }
   const kinds = {};
   for (const el of document.querySelectorAll("button, a.btn")) {
