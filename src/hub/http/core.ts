@@ -11,6 +11,7 @@ import { exposureOf, readExposure } from "../catalog.js";
 import { HubGroupAuthorizationError, type HubGroupPermit } from "../group-policy/authorization.js";
 import { HubGroupPolicyError, type GroupCheckContext } from "../group-policy/store.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
+import { readHubSessionEpoch } from "../session-epoch.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
 
@@ -22,9 +23,13 @@ export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]
 const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", assertCurrent() {} });
 
 export class HubCore {
+  /** Captured at HTTP mount. A held continuation never silently adopts a newer directory epoch. */
+  readonly directoryEpoch: number;
   private readonly inflight = new Map<string, number>();
   private total = 0;
-  constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase, private readonly lifetime: () => boolean = () => true) {}
+  constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase, private readonly lifetime: () => boolean = () => true) {
+    this.directoryEpoch = deps.uow.atomic(tx => readHubSessionEpoch(sql(tx)));
+  }
   now(): number { return this.deps.now?.() ?? Date.now(); }
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
   live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
@@ -34,10 +39,14 @@ export class HubCore {
     this.check();
     return this.deps.uow.atomic((tx) => {
       this.check();
+      const db = this.sql(tx);
+      const assertEpoch = () => { if (readHubSessionEpoch(db) !== this.directoryEpoch) throw new HubProtocolError("unavailable"); };
+      assertEpoch();
       permit?.assertCurrent();
-      const out = work(this.sql(tx), tx);
+      const out = work(db, tx);
       if (out && typeof (out as { then?: unknown }).then === "function") throw new HubProtocolError("invalid");
       permit?.assertCurrent();
+      assertEpoch();
       return out;
     });
   }
