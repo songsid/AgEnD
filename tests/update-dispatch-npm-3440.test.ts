@@ -23,6 +23,7 @@ function deps(npms: Record<string, { root: string; prefix: string } | null>, pac
     asked,
     packageDir,
     execPath: `${NVM_PKG}/node_modules/@songsid/agend-node-linux-x64/bin/node`,   // the bundled Node: no npm beside it
+    pathEnv: "/path-npm/bin",                                                      // where PATH's npm lives
     isExecutable: async path => path !== `${NVM_PKG}/node_modules/@songsid/agend-node-linux-x64/bin/npm`,
     run: async (command, args) => {
       asked.push(`${command} ${args.join(" ")}`);
@@ -69,7 +70,7 @@ describe("#3440 the npm beside the running package", () => {
 describe.skipIf(process.platform === "win32")("#3440 resolveInstalledAgend under nvm with a system npm first on PATH", () => {
   it("finds the nvm install through the npm beside the running package", async () => {
     const d = deps({ npm: SYSTEM, [`${NVM}/bin/npm`]: NVM_NPM }, NVM_PKG);
-    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1" });
+    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1", npmDir: `${NVM}/bin` });
     expect(d.asked.every(a => a.startsWith(`${NVM}/bin/node ${NVM}/bin/npm `))).toBe(true);
   });
 
@@ -81,7 +82,7 @@ describe.skipIf(process.platform === "win32")("#3440 resolveInstalledAgend under
 
   it("falls back to PATH's npm when the npm beside it is missing", async () => {
     const d = deps({ npm: NVM_NPM }, NVM_PKG);
-    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1" });
+    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1", npmDir: "/path-npm/bin" });
     expect(d.asked.some(a => a.startsWith(`${NVM}/bin/node ${NVM}/bin/npm `))).toBe(true);
     expect(d.asked.some(a => a.startsWith("npm "))).toBe(true);
   });
