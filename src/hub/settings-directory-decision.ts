@@ -45,6 +45,8 @@ const noticeSchema = z.strictObject({ v: z.literal(1), id: uuid, operationId: uu
   kind: z.enum(["directory", "directory-compensation"]), phase: z.literal("applying"),
   actor: actorSchema, at: epoch, changes: changesSchema, recipients: recipientsSchema });
 export type HubDirectorySecurityNotice = z.infer<typeof noticeSchema>;
+/** Shared closed parser for the durable outbox and its recipient projections. */
+export function parseHubDirectorySecurityNotice(raw: unknown): HubDirectorySecurityNotice { return validated(noticeSchema, raw); }
 
 export const HUB_DIRECTORY_SETTINGS_MIGRATION: HubMigration = Object.freeze({ component: "s5-directory-settings", version: 1, up(db: Database.Database) {
   const tables = ["hub_settings_head", "hub_settings_operations", "hub_settings_security_notices", "hub_settings_security_targets"];

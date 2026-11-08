@@ -1,0 +1,30 @@
+{
+  "scope": "Private notice library only; inert authority, owned WAL/FULL SQLite and real audit/floor. No HTTP/browser/live operation.",
+  "focused": {
+    "command": "vitest run tests/hub-directory-notices.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-save.test.ts",
+    "passed": 147,
+    "failed": 0,
+    "skipped": 0
+  },
+  "changelog": {
+    "command": "vitest run tests/changelog-fragments.test.ts",
+    "passed": 75,
+    "failed": 0,
+    "skipped": 0
+  },
+  "restored": {
+    "command": "vitest run tests/hub-directory-notices.test.ts",
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": {
+    "source": "tsc --noEmit: exit 0",
+    "tests": "tsc --noEmit -p tsconfig.test.json: exit 0"
+  },
+  "disclosedCorrections": [
+    "First fault-injection attempt violated SQLite foreign keys; corrected the probe to change the JSON operation reference.",
+    "Initial combined run passed all 147 product tests but failed fragment formatting (74/75); added required list markers and reran all 75 fragment checks successfully."
+  ],
+  "cleanup": "Every fixture closed its SQLite database, zeroed its key and removed its owned scratch home."
+}
