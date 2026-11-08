@@ -12833,7 +12833,7 @@ export class Daemon extends EventEmitter {
       this.logger.info("Claude model-version restart completed; session retained");
       this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repaired") });
     } catch (error) {
-      if (!baseCurrent()) return;
+      if (!baseCurrent() || this.launchAttempt > attempt + 1) return;
       this.modelMinimumBlocked = true;
       this.healthCheckPaused = true;
       this.logger.error({ reason: error instanceof Error ? error.message : String(error) }, "Claude model-version repair held; no automatic retry");
