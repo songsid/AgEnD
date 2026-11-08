@@ -163,7 +163,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       }
     } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t("hub.companyJoin.confirm", target)], affectedConnections: [],
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)], affectedConnections: [],
       authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);

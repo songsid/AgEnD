@@ -1,5 +1,5 @@
 /** One private Fleet operation. Original requester + confirmer authority survives Settings completion, never its execution token. */
-import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -28,14 +28,19 @@ interface Options {
   enableMembership(current: () => boolean, accept: () => void): void;
   activate(): void; link(): "online" | "offline";
 }
-interface Operation { record: LocalJoinJournal; authority: JoinLocalAuthority; generation: number; busy?: Promise<void> }
+interface Operation { record: LocalJoinJournal; authority: JoinLocalAuthority; generation: number; busy?: Promise<void>; nextPollAt?: number }
 const sameSnapshot = (a: JoinLocalSnapshot, b: JoinLocalSnapshot) => a.membership === b.membership && a.binding === b.binding;
 export class CompanyJoinController {
   private readonly client: Pick<CompanyJoinClient, "discover" | "command">;
   private active: Operation | null = null; private generation = 0; private closed = false; private timer?: NodeJS.Timeout; private starting = false;
   constructor(private readonly options: Options) {
     this.client = options.client ?? new CompanyJoinClient();
-    if (options.schedule !== false) { this.timer = setInterval(() => { const op = this.active; if (op) void this.advance(op); }, 1500); this.timer.unref(); }
+    if (options.schedule !== false) {
+      const schedule = () => { this.timer = setTimeout(() => {
+        if (this.closed) return; const op = this.active; if (op) void this.advance(op); schedule();
+      }, 1250 + randomInt(501)); this.timer.unref(); };
+      schedule();
+    }
   }
   private now() { return this.options.now?.() ?? Date.now(); }
   private own(r: LocalJoinJournal, session: JoinLocalSession): void {
@@ -213,6 +218,8 @@ export class CompanyJoinController {
   private advance(op: Operation): Promise<void> {
     if (op.busy) return op.busy;
     if (["active", "held", "cancelled", "ended"].includes(op.record.stage)) return Promise.resolve();
+    if (this.now() < (op.nextPollAt ?? 0)) return Promise.resolve();
+    op.nextPollAt = this.now() + 1250 + randomInt(501);
     op.busy = this.step(op).catch(error => this.hold(op, error)).finally(() => { op.busy = undefined; });
     return op.busy;
   }
@@ -296,5 +303,5 @@ export class CompanyJoinController {
     } } catch { /* Unreadable private state already refuses recovery. */ }
     ++this.generation;
   } }
-  close(): void { this.closed = true; ++this.generation; if (this.timer) clearInterval(this.timer); }
+  close(): void { this.closed = true; ++this.generation; if (this.timer) clearTimeout(this.timer); }
 }

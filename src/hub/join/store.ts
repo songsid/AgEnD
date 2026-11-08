@@ -68,7 +68,7 @@ export class CompanyJoinRecords {
       .all(personKeyString(owner), this.now()) as { id: string }[];
     return rows.filter(row => row.id !== except && !this.get(row.id).invitationId).length;
   }
-  /** Retained automatic admissions share S-90's headroom until their original ten-minute deadline. */
+  /** Retained automatic/manual admissions share the global headroom until their original ten-minute deadline. */
   retained(): number {
     const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person IS NOT NULL AND stage IN('identity-approved','issued','acknowledged') AND outer_deadline>?")
       .all(this.now()) as { id: string }[];

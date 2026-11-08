@@ -38,8 +38,8 @@ const result: any = { source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: 
 const check = (name: string, ok: unknown, detail?: unknown) => { result.checks.push({ name, ok: !!ok, ...(!ok ? { detail } : {}) }); if (!ok) throw Error(name + (detail ? ": " + JSON.stringify(detail) : "")); };
 let fx: any = null;
 try {
-  const scenarios = matrix().map(c => ({ c, kind: "happy", login: "" }));
-  if (process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
+  const scenarios = process.env.ADMIN_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
+  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
   for (const [index, scenario] of scenarios.entries()) {
     const { c, kind } = scenario; setLocale(c.lang); const tag = caseName(c) + (kind === "happy" ? "" : "-" + kind), login = scenario.login || "join-person-" + index;
     if (kind === "limit") await r.enable(admin, 1);
@@ -159,7 +159,7 @@ try {
         await ctx.addInitScript(() => localStorage.setItem("agend_lang", "zh-TW"));
         const page = await ctx.newPage(); await page.goto(r.webOrigin + "/ui/hub"); await page.locator("#hubLogin").waitFor();
         await page.fill("#hubLogin", "alice"); await page.fill("#hubPassword", "Dummy-alice-only"); await page.getByRole("button", { name: "登入", exact: true }).click();
-        await page.locator(".p-hub-signin").waitFor({state:"detached"}); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.getByRole("button", {name:"複製公司連結",exact:true}).waitFor();
+        await page.locator(".p-hub-signin").waitFor({state:"detached"}); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.getByRole("button", {name:"複製公司連結",exact:true}).waitFor(); await page.getByRole("button", {name:"複製公司連結",exact:true}).scrollIntoViewIfNeeded();
         await page.screenshot({ path: join(out, caseName(c) + "-09-admin.png"), fullPage: true });
         if (c.device === "desk" && c.theme === "light") {
           await page.goto(companyLink); await page.locator(".p-hub-info textarea").waitFor();

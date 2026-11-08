@@ -75,6 +75,12 @@ describe("Fleet local company join", () => {
     expect(JSON.stringify(view)).not.toMatch(/credential|privateKey|verifier|stateHash|BEGIN PRIVATE/);
     expect(await w.controller.status(pending.operationId, w.session)).toMatchObject({ state: "saved" }); expect(w.activate).toHaveBeenCalledOnce();
   });
+  it("UI status reads share the bounded backend polling window instead of multiplying directory/status work", async () => {
+    const w = await world(), pending = await w.start(); await w.controller.status(pending.operationId, w.session); w.ready();
+    await w.controller.status(pending.operationId, w.session); await w.controller.status(pending.operationId, w.session);
+    expect(w.calls.filter(c => c === "status")).toHaveLength(1); expect(w.calls).not.toContain("redeem");
+    w.advance(1751); expect(await w.controller.status(pending.operationId, w.session)).toMatchObject({ state: "saved" });
+  });
   it.each(["requester", "confirmer", "binding"])("a changed %s fences the original operation before credential persistence", async kind => {
     const w = await world(), pending = await w.start(); w.ready();
     if (kind === "requester") w.lose(); else if (kind === "confirmer") w.deny(); else w.replace();

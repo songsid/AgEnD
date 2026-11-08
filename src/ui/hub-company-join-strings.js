@@ -10,6 +10,7 @@ register("companyJoin", {
     expired: "This connection request expired. If a Fleet was already created, inspect or revoke that exact Fleet on the Hub before starting again.",
     denied: "Your company account does not have permission to connect this Fleet. Ask your Hub administrator.",
     authority: "Local authorization changed. This connection stopped. Inspect its result on the Hub before trying again.",
+    confirmationRequired: "Choose Recover this connection to request fresh local authorization for this same saved operation.",
     limit: "Your Fleet limit is reached. Disconnect an existing Fleet or ask your Hub administrator.",
     busy: "The Hub is busy. Check this same connection again shortly.",
     changed: "The Hub's identity is different. Connection stopped. Ask your Hub administrator for the new company link.",
@@ -38,6 +39,7 @@ register("companyJoin", {
     expired: "這次連接請求已過期。若 Hub 已建立 Fleet，請先到 Hub 檢查或撤銷該 Fleet，再重新連接。",
     denied: "你的公司帳號沒有連接這個 Fleet 的權限，請洽 Hub 管理員。",
     authority: "本機授權已變更，這次連接已停止。請先到 Hub 檢查結果，再重新操作。",
+    confirmationRequired: "請選擇「恢復這次連接」，為同一個已儲存的操作重新取得本機授權。",
     limit: "你的 Fleet 數量已達上限。請先中斷既有 Fleet，或洽 Hub 管理員。",
     busy: "Hub 目前忙碌，請稍後再次檢查這次連接。",
     changed: "Hub 的身分與先前不同，已停止連接。請向 Hub 管理員取得新的公司連結。",
@@ -65,6 +67,6 @@ export function joinResponseCode(result) {
 }
 export function joinError(code) {
   return hj(code === "identity-changed" ? "changed" : code === "denied" ? "denied" : code === "limit-reached" ? "limit"
-    : code === "authority" || code === "revoked" ? "authority" : code === "expired" ? "expired" : code === "incompatible" ? "incompatible"
+    : code === "authority" || code === "revoked" ? "authority" : code === "confirmation-required" ? "confirmationRequired" : code === "expired" ? "expired" : code === "incompatible" ? "incompatible"
     : code === "backpressure" ? "busy" : code === "cancelled" ? "cancelled" : code === "unsaved" ? "unsaved" : "unknown");
 }
