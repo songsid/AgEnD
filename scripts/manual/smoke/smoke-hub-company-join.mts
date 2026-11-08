@@ -114,6 +114,10 @@ try {
         check(tag + " refused before AD", !hub.url().startsWith(r.webOrigin));
         check(tag + " no new Hub request", (r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get() as { n: number }).n === attemptsBefore);
         await page.screenshot({ path: join(out, tag + (kind === "changed" ? "-05-identity-changed.png" : "-08-same-hostname-refused.png")) });
+        if (kind === "samehost") {
+          await page.getByRole("button", { name: "以公司帳號登入", exact: true }).scrollIntoViewIfNeeded();
+          await page.screenshot({ path: join(out, tag + "-09-same-hostname-next-step.png") });
+        }
         result.cases.push({ tag, ok: true }); continue;
       }
       hub.on("pageerror", (error: Error) => result.errors.push({ tag, message: error.message }));

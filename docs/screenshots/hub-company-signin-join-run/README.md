@@ -1,5 +1,7 @@
 # #3423 company-account connection acceptance
 
+**Latest Hub shell views:** [after-shell-3434](after-shell-3434), captured after plain-merging #3434 (`62d4306e9`). Use those for the user presentation; the original captures below remain baseline evidence. [Review controls](review-r1) add the blocked shared-hostname setup, offline dummy-cookie control and post-fix desktop/phone happy paths.
+
 The PNGs come from the real Fleet Settings shell (app sidebar and second Settings menu) and the landed Hub shell, without DOM replacement. Source: `7c10c9d40` on `feat/hub-company-signin-join`, aligned to alpha `10a695e68` (including #3432 and #3430). The later repair-confirmation wording and recovery guidance do not change the normal screens captured here. A bounded, jittered backend poll schedule was added afterward and the two happy paths were rerun on that delta. `SHA256SUMS` identifies every supplied image.
 
 | Run | Result | Scope |
@@ -39,3 +41,23 @@ Current checks verify actual ready member links, no browser-side runtime credent
 - Hub: [sign-in](after-desk-light-zh-TW-02-hub-signin.png), [return](after-desk-light-zh-TW-04-hub-return.png), [administration](after-desk-light-zh-TW-09-admin.png), [public company link](after-desk-light-zh-TW-10-public-link.png).
 - Refusals: [outsider](after-desk-light-zh-TW-outsider-08-refused.png), [limit](after-desk-light-zh-TW-limit-08-refused.png), [changed identity](after-desk-light-zh-TW-changed-05-identity-changed.png), [copied request](after-desk-light-zh-TW-copied-06-copied-refused.png), [cancelled](after-desk-light-zh-TW-cancel-07-cancelled.png).
 - Cache: [desktop](skew-desk-light-en-03-fleet-connected.png), [phone](skew-phone-dark-zh-TW-03-fleet-connected.png).
+
+## #3434 shell alignment and review round 1
+
+The plain merge preserves one page title, notices only on the Notices page and one phone gutter. Join takes precedence over room/notices query views and keeps its own tab title. The Administration card is offered only when the signed-in Hub advertises its composed `company-join-v1` routes; this capability is separate from the off-by-default administrator switch and grants no authority.
+
+The screenshot-only leg uses `MATRIX=full HUB_SHOTS=1`: **10 cases / 63 checks** at `d7708b46a`, including all eight sign-in combinations, a copied request, an outsider refusal, four settled admin captures and the public company link. The copied-request browser's own language was then initialized and retaken at `e5a7245dd` (**1 case / 8 checks**); the original baseline copied-context shot used the browser's default English despite its zh-TW filename.
+
+Latest zh-TW views:
+
+- 02: [desktop sign-in](after-shell-3434/desk-light-zh-TW-02-hub-signin.png), [phone sign-in](after-shell-3434/phone-dark-zh-TW-02-hub-signin.png).
+- 06/08: [copied request](after-shell-3434/desk-light-zh-TW-copied-06-copied-refused.png), [no permission](after-shell-3434/desk-light-zh-TW-outsider-08-refused.png).
+- 09: [desktop Administration](after-shell-3434/desk-light-zh-TW-09-admin.png), [phone Administration](after-shell-3434/phone-dark-zh-TW-09-admin.png).
+
+R1 fixes require different Fleet/Hub browser hostnames before pinning/push, retain issued admission slots through their original ten-minute deadline, and fsync every private ancestor through HOME before accepting trust or a first push. Failed flushes are repeated on existing-file Retry. The new actual-filesystem tests trace real FDs and inject fsync failures; they do not simulate power loss. The ordinary same-hostname Fleet UI refuses with setup guidance before AD or a new Hub request (**1 case / 6 checks**). Its [top](review-r1/desk-light-zh-TW-samehost-08-same-hostname-refused.png) and [scrolled next step](review-r1/desk-light-zh-TW-samehost-09-same-hostname-next-step.png) show the page in two real scroll positions.
+
+The independent offline Chromium cookie control passes **3 checks**: the deliberately disallowed [same-hostname/cross-port control](review-r1/same-hostname-control.png) sends all dummy cookies, while [Fleet](review-r1/different-hostname-fleet.png) and [Hub](review-r1/different-hostname-hub.png) on different hostnames receive only their own cookies. This uses dummy cookies with the actual Secure/HttpOnly/Strict/Path attributes and owned listeners, not live account sessions. Owned certificate acceptance in that offline control is not public-PKI proof.
+
+After R1, desktop EN and phone dark zh-TW happy paths pass again (**2 cases / 25 checks**) at `e5a7245dd`, including phone target measurements and tab titles. The Settings gate was reproduced red on both new fields; scoped token-based phone sizing fixes it without adding allowances. The Hub toggle and invitation disclosure receive the same phone target treatment. The shared shell gate passes **170 checks** after the merge.
+
+Final R1 validation: **497/497 focused tests, zero skips**, including all original CI-failing files; both typechecks pass. **17/17 mutants** are caught at assertions, including shared hostnames, issued retention, ancestor fsync and existing-pin Retry, with source bytes restored. The complete CI-sized Settings gate passes **114 checks**, the Hub UI gate **79**, and the aligned shell gate **170**. `SHA256SUMS` now covers **116 PNGs** including the retained baseline and refreshed/review views.

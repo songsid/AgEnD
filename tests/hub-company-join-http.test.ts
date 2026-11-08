@@ -41,6 +41,13 @@ async function attempt(r: Awaited<ReturnType<typeof companyJoinRig>>) {
 }
 
 describe("company-join actual Hub boundary", () => {
+  it("a genuinely unissued cancellation releases its reservation without creating a Fleet", async () => {
+    const { r } = await world(), a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
+    expect(r.deps.companyJoin!.retained()).toBe(1);
+    expect((await a.command("cancel")).body).toMatchObject({ state: "ended", issued: false });
+    expect(r.deps.companyJoin!.retained()).toBe(0); expect(r.deps.store.read().fleets).toEqual([]);
+    const next = await attempt(r); expect((await next.approve(await next.browser())).status).toBe(200);
+  });
   it("Hub admission independently refuses a key binding that shares the Fleet browser hostname", async () => {
     const { r } = await world(), metadata = (await r.call(null, "GET", "/hub/v1/join/metadata")).body;
     const key = generateKeyPairSync("ed25519"), fleet = new URL(metadata.hub.webOrigin); fleet.port = "7443";

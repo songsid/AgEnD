@@ -15,11 +15,13 @@ An eligible person without group permission can receive a short-lived **Invitati
 ## Trust and authority
 
 - Browser discovery uses normal HTTPS CA validation. Public metadata authenticates the exact Hub ID, web/member origins, issuer key and member SPKI. Machine proofs and credential delivery use only the pinned member TLS listener; browsers cannot turn their cookies into a machine proof.
+- The Fleet and Hub web pages must use different hostnames. Ports do not separate cookies. Start refuses a shared hostname before discovery/pinning/push; Hub admission and restored local journals independently refuse it before any handoff. Use a distinct DNS hostname for the Hub, even when it runs on the same computer.
 - A company link supplies an expected stable identity. A typed address pins first use before AD input, including unsuccessful attempts. An identity change stops before AD. **Replace saved Hub identity** is a separate confirmed local operation requiring a newly trusted descriptor; ordinary Retry cannot replace a pin or an existing binding.
 - The Fleet owns its Ed25519 key, PKCE verifier, operation journal and exact local requester/confirmer capabilities. Only its original current cookie session can bridge, inspect an exact operation, recover or cancel. No-handle discovery returns only that session's operation. Header tokens, forwarded requests and Hub AD identity cannot create host authority.
 - A Fleet-owned, `noopener` tab posts state to the Hub. The dedicated bridge requires one exact non-null browser Origin matching the registered canonical Fleet origin before consuming state, setting a flow cookie or offering AD. Hub sign-in and identity-submit keep their separate Hub Origin/CSRF gates.
 - Automatic enrollment obtains a fresh group permit after the browser wait. Manual invitations obtain a fresh exact administrator proof and owner eligibility. New issuance shares the policy's physical directory-read pool (four/person, 32 total). Earlier sign-in, welcome projections and group unknown/off states are not an automatic allowance.
 - One immediate owning-DB transaction combines consume CAS, retained-manual-plus-automatic quota, credential, provenance, required audit, sealed receipt and durable notices. Final session/directory-epoch, eligibility and permit fences run after audit. No directory await occurs inside that transaction. Manual issuance may exceed the self-service maximum; every retained manual Fleet counts against later automatic issuance.
+- Issued requests keep their global 48/64 retained-claim admission slot through their original ten-minute deadline, including cancelled, expired-delivery and revoked results. Only genuinely unissued cancelled reservations release that admission slot early. This is separate from retained-Fleet ownership quota.
 - Notices remain durable independently of audit. `pairing-notices-v2` carries explicit manual provenance. Old members and cached web clients receive only their understood group notices; manual rows remain queued and a v1-only link cannot ACK them. Exact owner/admin revoke remains unchanged.
 
 ## Delivery and local recovery
@@ -31,12 +33,14 @@ The Hub retains only the runtime credential hash in the Fleet row. Its bounded d
 | Outer operation | Immutable Start + 10 minutes |
 | First redemption | Identity approval + 60 seconds, truncated by outer deadline |
 | Issued delivery | Issuance + 2 minutes, truncated by outer deadline; the old 60-second deadline no longer applies |
-| Local save | Intent/digest journal precedes the binding marker, profile and membership writes; file and parent fsync must succeed before ACK |
+| Local save | Intent/digest journal precedes the binding marker, profile and membership writes; file and every ancestor through private HOME must fsync before trust, first remote push or ACK |
 | Crash between saves | Reconcile only the exact recorded marker digest and intended switch value, then recover the same key/result |
 | ACK | Same key/verifier/operation proof, only after durable profile and journal; success activates the exact journal marker |
 | Nonhost process restart | Require a fresh local confirmation for that same operation; status reads do not permanently revoke it |
 | Cancellation or unknown issuance | Preserve key/journal and inspect the exact tombstone; no automatic fresh Start |
 | Existing binding | Refuse before discovery/reservation; the existing exact Disconnect → Start over retires it before an explicitly requested new join |
+
+A visible file after a failed directory flush is not proof of durability. Re-reading an existing pin, operation journal or current-operation pointer repeats the required ancestor flushes; a continuing failure holds the same operation and cannot become a fresh trust allowance on Retry.
 
 An issued result that expires or loses delivery remains a retained Fleet and consumes quota. It is not shown as no creation. The UI offers inspection/revoke guidance and does not label saved-but-offline as ready.
 
