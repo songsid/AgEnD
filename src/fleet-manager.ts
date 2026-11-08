@@ -14251,16 +14251,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return d.team && instanceTeams(this.fleetConfig?.teams, instance).includes(d.team) ? null : `Decision "${id}" not found`;
   }
 
+  /** A ClassicBot agent's own folder — where startClassicInstance launches it, and its project for decisions (#3454). */
+  classicWorkspaceDir(instanceName: string): string {
+    return join(getAgendHome(), "workspaces", instanceName);
+  }
+
+  /**
+   * #3454: the project root of an agent calling the agent endpoint (CLI mode), as the MCP path has it from the daemon's
+   * own working directory. A fleet instance: its fleet.yaml working_directory, as before. A ClassicBot agent (not in
+   * fleet.yaml): its own workspace — it used to fall back to "", one project shared by every CLI-mode ClassicBot room.
+   * Anything else: null, and the caller refuses rather than guess.
+   */
+  decisionProjectRootFor(instance: string): string | null {
+    const fleet = this.fleetConfig?.instances;
+    if (fleet && Object.hasOwn(fleet, instance)) return fleet[instance]?.working_directory ?? "";
+    if (this.classicChannels?.getAll().some(ch => ch.instanceName === instance)) return this.classicWorkspaceDir(instance);
+    return null;
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
-    const projectRoot = this.fleetConfig?.instances[instance]?.working_directory ?? "";
+    const root = this.decisionProjectRootFor(instance);
+    const unknownRoot = { error: `Decisions are unavailable for "${instance}": it is neither a fleet instance nor a ClassicBot agent, so its working directory is unknown` };
+    const projectRoot = root ?? "";
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asNum = (v: unknown): number | undefined => typeof v === "number" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
       Array.isArray(v) && v.every(x => typeof x === "string") ? v as string[] : undefined;
     switch (op) {
       case "post": {
+        if (root === null) return unknownRoot;
         const title = asStr(args.title);
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
@@ -14288,6 +14309,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
       case "list": case "get": if (op === "get" && !asStr(args.id)?.trim()) return { error: "id is required" };
+        if (root === null) return unknownRoot;
         return decisionListAnswer(db.listDecisions(projectRoot, {
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
@@ -24887,7 +24909,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<void> {
     execution?.assert();
     if (this.daemons.has(instanceName)) return;
-    const workDir = join(getAgendHome(), "workspaces", instanceName);
+    const workDir = this.classicWorkspaceDir(instanceName);
     ensureWorkspaceGit(workDir);
     const classicIdentity = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
     const toolProgress = classicIdentity

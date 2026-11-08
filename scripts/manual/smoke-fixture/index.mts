@@ -46,6 +46,8 @@ export interface FixtureOptions {
   instances?: number;
   /** Write classicBot.yaml rooms (default true). */
   classic?: boolean;
+  /** Sign in as the host's own session (`agend web` on this computer: host, admin, local) instead of a plain admin code. */
+  host?: boolean;
 }
 
 export interface Fixture {
@@ -146,7 +148,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const owns = (srv: any, port: number) => { const a = srv?.listening ? srv.address() : null; return !!a && typeof a === "object" && a.port === port && a.address === "127.0.0.1"; };
   if (!(await until(() => fm.healthServerListening === true && owns(fm.healthServer, o.port), 10000))) throw new Error(`the fixture's health listener did not bind 127.0.0.1:${o.port}`);
   if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${o.port + 1}`);
-  const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
+  const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(o.host ? { host: true } : {}) }).display; };
   // PW_ENGINE=webkit runs the same smoke in WebKit (Safari's engine; its system libraries come with the Playwright
   // image, e.g. mcr.microsoft.com/playwright). Default: CHROME if set, else playwright-core's own Chromium
   // (`npx playwright-core install chromium` in PW_DIR).

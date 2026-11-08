@@ -3,7 +3,8 @@
  *
  * - Work tokens: uncached input + cache writes (5 min, 1 h, and a CLI's own write count) + output, over the instance's
  *   whole recorded life. Cache reads are left out: they are most of nearly every total and would make everyone the same
- *   level. Requests are counted beside them (the card's "today").
+ *   level. Kiro's estimated re-sent context is work, rather than a reported cache hit (#3450). Requests are counted
+ *   beside them (the card's "today"). The usage report's token categories and pricing stay unchanged.
  * - Level = floor(√(work ÷ LEVEL.UNIT)), no cap: fast early, slower later (1M ≈ Lv 3, 260M ≈ Lv 50, 1B = Lv 100).
  * - Where it comes from: the usage store the usage report reads (#2122) — the rollup's days up to its checkpoint, the
  *   ledger's hours after it (each hour counted once), and the lifetime file's total of the days pruned past 400
@@ -24,8 +25,8 @@ export const LEVEL = { UNIT: 100_000 } as const;
 /** How long a worked-out set of levels is reused before the next request works it out again. */
 export const OFFICE_LEVELS_TTL_MS = 60_000;
 
-/** The work in a totals entry ([requests, uncached, read, write5m, write1h, write, output]): everything but reads. */
-export const workOf = (t: HourTotals): number => t[1] + t[3] + t[4] + t[5] + t[6];
+/** Office work only: everything but reads, plus Kiro's estimated re-sent context (not reported cache hits). */
+export const workOf = (t: HourTotals, backend?: string): number => t[1] + t[3] + t[4] + t[5] + t[6] + (backend === "kiro-cli" ? t[2] : 0);
 /** The level `work` tokens reach. */
 export const levelOf = (work: number): number => Math.floor(Math.sqrt(Math.max(0, work) / LEVEL.UNIT));
 
@@ -58,7 +59,7 @@ export function officeLevels(input: OfficeLevelsInput): Record<string, OfficeLev
   for (const { name, ledger, days, life } of input.instances) {
     let work = 0, estimated = false, todayWork = 0, todayRequests = 0, first: string | null = null;
     const count = (backend: string, date: string, t: HourTotals): void => {
-      const w = workOf(t);
+      const w = workOf(t, backend);
       if (w <= 0 && t[0] <= 0) return;
       work += w;
       if (w > 0 && ESTIMATED_BACKENDS.has(backend)) estimated = true;

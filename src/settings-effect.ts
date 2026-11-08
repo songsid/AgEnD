@@ -56,6 +56,7 @@ export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
+  if (method === "PUT" && (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview")) return true;   // #3451 (M-2682)
   if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
@@ -106,6 +107,24 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
       summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
       affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  // #3451 (M-2682): the host owner's Hub switches — "Run this Hub" (hub.enabled) and "HTML previews on this Hub"
+  // (hub.web.preview_port). Their routes save only as a confirmed replay, so like retention they are proposed here first;
+  // the route re-checks everything (initialized, conflicts, a free port, an unfinished sealed commit) at the replay.
+  // Starting the Hub or opening a preview port opens a listener: outward, so never the asker's own "Apply now" (#3352 F1)
+  // — the host's own session here still confirms it at Save (hostLocalConfirm). Stopping and turning previews off widen nothing.
+  if (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview") {
+    if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    const run = path === "/api/settings/hub/run";
+    if (typeof b.enabled !== "boolean") throw new SettingsConfirmationError(400, run ? "invalid" : "invalid_port");
+    const port = b.port;
+    if (!run && b.enabled && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) throw new SettingsConfirmationError(400, "invalid_port");
+    const input = run ? { enabled: b.enabled } : b.enabled ? { enabled: true, port } : { enabled: false };
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      summary: [run ? t(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? t("hub.preview.on", String(port)) : t("hub.preview.off")],
+      affectedConnections: [], authority: HUB_AUTHORITY, ...(b.enabled ? { noSelfConfirm: true as const, hostLocalConfirm: true as const } : {}) } };
   }
   if (path === "/api/settings/hub/membership") {
     if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");

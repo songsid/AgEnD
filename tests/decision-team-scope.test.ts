@@ -39,7 +39,7 @@ function fleet() {
   const sent: any[] = [];
   const fake: any = { scheduler: { db }, fleetConfig: { instances, teams }, logger: { warn() {}, info() {}, debug() {} },
     instanceIpcClients: new Map(Object.keys(instances).map((n) => [n, { send: (m: unknown) => sent.push(m) }])) };
-  for (const m of ["checkToolPermission", "decisionSupersedes", "decisionScopeFor", "decisionHiddenFrom"]) {
+  for (const m of ["checkToolPermission", "decisionSupersedes", "decisionScopeFor", "decisionHiddenFrom", "decisionProjectRootFor"]) {
     const fn = (FleetManager.prototype as any)[m];
     if (fn) fake[m] = fn.bind(fake);
   }

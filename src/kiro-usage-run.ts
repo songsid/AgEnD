@@ -9,10 +9,11 @@ import { Worker } from "node:worker_threads";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
 import type { AntigravityScanInput, AntigravityScanOutput } from "./antigravity-usage-scan.js";
+import type { KiroHistoryInput, KiroHistoryOutput } from "./kiro-history-scan.js";
 
 export const KIRO_SCAN_TIMEOUT_MS = 120_000;
 
-type Entry = "kiro-usage-worker" | "opencode-usage-worker" | "antigravity-usage-worker";
+type Entry = "kiro-usage-worker" | "opencode-usage-worker" | "antigravity-usage-worker" | "kiro-history-worker";
 function worker(entry: Entry, input: object): Worker {
   const limits = { maxOldGenerationSizeMb: 768 };
   return import.meta.url.endsWith(".ts")
@@ -26,7 +27,9 @@ function run<O>(entry: Entry, input: object, timeoutMs: number, what: string): P
     let w: Worker;
     try { w = worker(entry, input); } catch (err) { reject(err); return; }
     let done = false;
-    const finish = (fn: () => void) => { if (done) return; done = true; clearTimeout(timer); void w.terminate().catch(() => {}); fn(); };
+    // A settled logical scan retains its physical slot until termination settles, including a timeout. The next
+    // serialized history/live page must never overlap a worker that is still reading/parsing.
+    const finish = (fn: () => void) => { if (done) return; done = true; clearTimeout(timer); void w.terminate().catch(() => {}).then(fn); };
     const timer = setTimeout(() => finish(() => reject(new Error(`${what} timed out`))), timeoutMs);
     timer.unref?.();
     w.on("message", (m: { ok: boolean; out?: O; error?: string }) => finish(() => (m.ok ? resolve(m.out!) : reject(new Error(m.error ?? `${what} failed`)))));
@@ -37,6 +40,8 @@ function run<O>(entry: Entry, input: object, timeoutMs: number, what: string): P
 
 export const runKiroUsageScan = (input: KiroScanInput, timeoutMs = KIRO_SCAN_TIMEOUT_MS): Promise<KiroScanOutput> =>
   run<KiroScanOutput>("kiro-usage-worker", input, timeoutMs, "kiro usage scan");
+export const runKiroHistoryScan = (input: KiroHistoryInput, timeoutMs = KIRO_SCAN_TIMEOUT_MS): Promise<KiroHistoryOutput> =>
+  run<KiroHistoryOutput>("kiro-history-worker", input, timeoutMs, "kiro history scan");
 export const runOpencodeUsageScan = (input: OpencodeScanInput, timeoutMs = KIRO_SCAN_TIMEOUT_MS): Promise<OpencodeScanOutput> =>
   run<OpencodeScanOutput>("opencode-usage-worker", input, timeoutMs, "opencode usage scan");
 export const runAntigravityUsageScan = (input: AntigravityScanInput, timeoutMs = KIRO_SCAN_TIMEOUT_MS): Promise<AntigravityScanOutput> =>

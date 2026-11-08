@@ -288,11 +288,12 @@ Also on the command line: `agend-agent office packs`, `pack-check <dir>`, `pack-
 
 Each instance has a level, from the work it has done over its whole recorded life (#2661).
 
-- **Work tokens** are uncached input, cache writes and output. Cache reads don't count: they're most of nearly every instance's total, and counting them would put everyone at the same level.
+- **Work tokens** are uncached input, cache writes and output. Cache reads don't count. Kiro is the exception: it reports no cache hits, so its estimated re-sent context counts as input work for the Office level. The usage report's input/cache split and pricing stay the same.
 - **Level** = floor(√(work tokens ÷ 100,000)), with no cap. 1M work tokens is about Lv 3, 260M about Lv 50, and 1B is Lv 100.
-- The numbers come from the usage store the usage report reads ([Fleet → Usage](web-dashboard.md)); nothing new is collected and no transcript is read for it. Kiro's usage is estimated from text size, so a level that includes Kiro work is marked as estimated.
+- The numbers come from the same usage store as [Fleet → Usage](web-dashboard.md); displaying a level never reads a transcript. Kiro's usage is estimated from text size, so a level that includes Kiro work is marked as estimated.
 - **First seen** is the earliest day with recorded work. On a fleet older than its usage collection, that's the day collection began.
 - The usage history keeps 400 days. Days older than that are added to `usage-lifetime.json` before they're pruned, so a level never drops.
+- On the first Kiro scan after this update, AgEnD automatically backfills older classic/TUI history in background batches. It adds only complete days before the earliest recorded day (including carried lifetime history), skips recorded days, and marks the imported usage as estimated. This can move **First seen** earlier. Progress survives restart and a per-instance completion marker prevents another import; no command or confirmation is needed. Two instances sharing a workspace remain unattributed. An unreadable, malformed or oversized source stays pending for a later scan, with a warning in the Log.
 - The fleet works the levels out at most once a minute, however many pages and share links ask.
 
 Who sees what:
