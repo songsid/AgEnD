@@ -140,7 +140,7 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
   it("enforces enabled group permission and the fleet quota through the composed credential-issuance path", async () => {
     const r = await rig(); await r.save(await r.proposal());
     const claim = async (owner: DirectoryPerson["key"]) => {
-      const ctx = { requestId: randomUUID(), requirePerson: async () => owner,
+      const ctx = { requestId: randomUUID(), current: async () => ({ kind: "directory" as const, person: owner, sessionId: "test-owner-authority" }), requirePerson: async () => owner,
         requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }) };
       const offer = await r.deps.pairing.create(ctx, owner), pending = r.deps.pairing.pair({ code: offer.code });
       await r.deps.pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint);
