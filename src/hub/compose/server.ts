@@ -308,6 +308,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         now,
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
+        enrollment: { prepare: (resource, ctx) => groups.prepareEnrollment(resource, ctx),
+          atomic: work => db.transaction(() => work(db)).immediate() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
