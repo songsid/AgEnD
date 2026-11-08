@@ -33,6 +33,8 @@ import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
 import { servePublicAsset } from "../../auth-api.js";
+import { handleCompanyJoin, companyFlowCookie } from "../join/http.js";
+import { CompanyJoinLimit } from "../join/service.js";
 
 export { HUB_HTTP_MIGRATIONS };
 /** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
@@ -137,6 +139,23 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     // The session's capability mark: present only when the group routes are composed (presentation only — a mark confers nothing).
     const features = deps.groupHttp ? { features: [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] } : {};
     let r: RegExpExecArray | null;
+
+    if (deps.companyJoin && path === "/hub/v1/join/browser") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      const requestId = uuid(query.get("request"));
+      return send(res, 200, deps.companyJoin.browserView(companyFlowCookie(req, deps.config.hubId, requestId), requestId));
+    }
+    if (deps.companyJoin && path === "/hub/v1/join/approve") {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body(); if (Object.keys(b).length !== 1) throw new HubProtocolError("invalid");
+      const requestId = uuid(b.requestId);
+      return send(res, 200, await deps.companyJoin.approve(ctx, companyFlowCookie(req, deps.config.hubId, requestId), requestId));
+    }
+    if (deps.companyJoin && path === "/hub/v1/admin/company-join") {
+      if (method === "GET") { signedIn(); await ctx.requireAdmin(); return send(res, 200, deps.companyJoin.control()); }
+      if (method !== "PUT") throw new HttpError(405, "method");
+      csrf(); return send(res, 200, await deps.companyJoin.configure(ctx, await body()));
+    }
 
     if (path === "/hub/v1/session") {
       if (method === "GET") {
@@ -390,6 +409,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
+    if (e instanceof CompanyJoinLimit) return send(res, 429, { code: "limit-reached" });
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });
     if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
@@ -404,6 +424,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     let url: URL;
     try { url = new URL(req.url ?? "/", "http://hub.invalid"); } catch { return false; }
     const path = url.pathname, method = req.method ?? "GET";
+    if (deps.companyJoin && live() && handleCompanyJoin(req, res, deps.companyJoin)) return true;
     if (path.startsWith("/hub/v1/")) {
       void api(req, res, path, url.searchParams).catch((e) => fail(res, e));
       return true;

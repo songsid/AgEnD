@@ -88,7 +88,7 @@ export interface SettingsChangeProposal {
   /** Recheck the original configuration before admitting the effect. */
   unchanged(): Promise<boolean>;
   /** The original handler, guarded at its asynchronous continuation edges. */
-  apply(current: () => boolean, execution: SettingsExecution): Promise<unknown>;
+  apply(current: () => boolean, execution: SettingsExecution, confirmedCurrent?: () => boolean): Promise<unknown>;
   /** Runtime state and persistence revisions, excluding the operation's private state. */
   snapshot?(): unknown;
   discard?(): void;
@@ -281,7 +281,7 @@ export class SettingsConfirmationStore {
         entry.execution = execution;
         try {
           // #2942: the same actor-aware fence the store checks (admin, session, state), not only the execution's snapshot.
-          const result = await proposal.apply(current, execution);
+          const result = await proposal.apply(current, execution, () => !this.closed && actor.current());
           if (!execution.completed) execution.complete();
           this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }

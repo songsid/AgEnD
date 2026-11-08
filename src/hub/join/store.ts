@@ -1,0 +1,78 @@
+/** Versioned company-join records. This is separate from legacy pairing confirmations and their strict schema. */
+import type Database from "better-sqlite3";
+import { z } from "zod";
+import type { HubMigration } from "../db.js";
+import { canonicalArguments, personKeyString, sha256 } from "../identity.js";
+import { epoch, hash, person, plain, uuid, identifier, validated, parseStrictJson, HubProtocolError } from "../validation.js";
+import { joinBindingSchema, validateJoinBinding, type JoinBinding } from "./protocol.js";
+import type { DeliveryBinding, DeliveryReceipt } from "./receipt.js";
+
+export const HUB_COMPANY_JOIN_MIGRATION: HubMigration = Object.freeze({ component: "company-join", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_company_join_control(singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),revision INTEGER NOT NULL);
+    INSERT INTO hub_company_join_control VALUES(1,0,1);
+    CREATE TABLE hub_company_join_requests(id TEXT PRIMARY KEY,person TEXT,stage TEXT NOT NULL,outer_deadline INTEGER NOT NULL,retain_until INTEGER NOT NULL,body TEXT NOT NULL);
+    CREATE INDEX hub_company_join_owner ON hub_company_join_requests(person,stage,outer_deadline);
+    CREATE TABLE hub_company_join_nonces(nonce TEXT PRIMARY KEY,binding TEXT NOT NULL,purpose TEXT NOT NULL,expires_at INTEGER NOT NULL);
+    CREATE TABLE hub_company_join_cipher_nonces(key_id TEXT NOT NULL,nonce TEXT NOT NULL,PRIMARY KEY(key_id,nonce));
+    CREATE TABLE hub_company_join_invites(id TEXT PRIMARY KEY,body TEXT NOT NULL);
+  `);
+} });
+export const requestStage = z.enum(["pending", "identity-approved", "issued", "acknowledged", "ended", "undeliverable", "revoked"]);
+const schema = z.strictObject({ v: z.literal(1), binding: joinBindingSchema, version: epoch, label: plain(120), stateHash: hash,
+  stage: requestStage, createdAt: epoch, outerDeadline: epoch, retainUntil: epoch,
+  browserHash: hash.nullable(), browserOrigin: z.string().nullable(), owner: person.nullable(), sessionId: identifier.nullable(),
+  approvedAt: epoch.nullable(), redeemDeadline: epoch.nullable(), deliveryDeadline: epoch.nullable(),
+  issuedHash: hash.nullable(), reason: z.enum(["cancelled", "expired", "disabled", "authority", "revoked"]).nullable(),
+  delivery: z.unknown().nullable(), receipt: z.unknown().nullable(), invitationId: uuid.nullable(), approvedBy: person.nullable(),
+});
+export type JoinRecord = Omit<z.infer<typeof schema>, "binding" | "delivery" | "receipt"> & {
+  binding: JoinBinding; delivery: DeliveryBinding | null; receipt: DeliveryReceipt | null;
+};
+export class CompanyJoinRecords {
+  constructor(readonly db: Database.Database, private readonly now: () => number) {}
+  get(id: string): JoinRecord {
+    validated(uuid, id);
+    const row = this.db.prepare("SELECT body FROM hub_company_join_requests WHERE id=?").get(id) as { body: string } | undefined;
+    if (!row) throw new HubProtocolError("not-found");
+    const parsed = validated(schema, parseStrictJson(row.body, 16 * 1024));
+    validateJoinBinding(parsed.binding);
+    if (parsed.binding.requestId !== id || parsed.version < 1 || parsed.outerDeadline !== parsed.createdAt + 600_000
+      || parsed.retainUntil < parsed.outerDeadline) throw new HubProtocolError("uncertain");
+    return parsed as JoinRecord;
+  }
+  current(record: JoinRecord): boolean {
+    try { return canonicalArguments(this.get(record.binding.requestId)) === canonicalArguments(record); } catch { return false; }
+  }
+  save(record: JoinRecord, expectedVersion: number): void {
+    if (!this.db.inTransaction || record.version !== expectedVersion + 1) throw new HubProtocolError("uncertain");
+    const previous = this.get(record.binding.requestId);
+    if (previous.version !== expectedVersion) throw new HubProtocolError("conflict");
+    const result = this.db.prepare("UPDATE hub_company_join_requests SET person=?,stage=?,outer_deadline=?,retain_until=?,body=? WHERE id=? AND body=?")
+      .run(record.owner ? personKeyString(record.owner) : null, record.stage, record.outerDeadline, record.retainUntil,
+        canonicalArguments(record), record.binding.requestId, canonicalArguments(previous));
+    if (result.changes !== 1) throw new HubProtocolError("conflict");
+  }
+  insert(record: JoinRecord): void {
+    if (!this.db.inTransaction) throw new HubProtocolError("uncertain");
+    this.db.prepare("DELETE FROM hub_company_join_requests WHERE retain_until<=?").run(this.now());
+    const count = (this.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get() as { n: number }).n;
+    if (count >= 1024) throw new HubProtocolError("backpressure");
+    const pending = (this.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests WHERE stage='pending' AND outer_deadline>?").get(this.now()) as { n: number }).n;
+    if (pending >= 256) throw new HubProtocolError("backpressure");
+    this.db.prepare("INSERT INTO hub_company_join_requests VALUES(?,?,?,?,?,?)").run(record.binding.requestId, null, record.stage,
+      record.outerDeadline, record.retainUntil, canonicalArguments(record));
+  }
+  /** Quota reservations only: consumed/ended/anonymous attempts are not extra per-person slots. */
+  reservations(owner: { realm: string; objectId: string }, except?: string): number {
+    const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person=? AND stage='identity-approved' AND outer_deadline>?")
+      .all(personKeyString(owner), this.now()) as { id: string }[];
+    return rows.filter(row => row.id !== except && !this.get(row.id).invitationId).length;
+  }
+  /** Retained automatic admissions share S-90's headroom until their original ten-minute deadline. */
+  retained(): number {
+    const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person IS NOT NULL AND stage IN('identity-approved','issued','acknowledged') AND outer_deadline>?")
+      .all(this.now()) as { id: string }[];
+    return rows.filter(row => !this.get(row.id).invitationId).length;
+  }
+  bindingDigest(binding: JoinBinding): string { return sha256(canonicalArguments(validateJoinBinding(binding))); }
+}

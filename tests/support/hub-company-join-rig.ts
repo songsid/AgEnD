@@ -86,19 +86,23 @@ export async function companyJoinRig(directoryListening: (port: number) => void)
       components: { http: async () => ({ migrations: httpEntry.migrations, createHubHttp(value) {
         deps = value; return httpEntry.createHubHttp(value, hubTxDatabase);
       } }) },
-      createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets),
-      report: () => {}, log: () => {},
+      createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets, { now: () => Date.now() }),
+      report: () => {}, log: () => {}, now: () => Date.now(),
     });
     const service = await create(config, () => !closed); cleanups.push(() => service.close());
     await service.start();
     const db = new Database(join(home, "hub/hub.sqlite")); cleanups.push(() => { db.close(); });
     const call = (browser: JoinBrowser | null, method: string, path: string, body?: unknown,
-      headers: Record<string, string> = {}): Promise<JoinHttpResult> => new Promise((resolve, reject) => {
-      const bytes = body === undefined ? undefined : JSON.stringify(body);
-      const req = request({ host: "127.0.0.1", port: webPort, path, servername: "hub.example.test", ca: readFileSync(certs.caCert),
-        method, agent: false, headers: { Host: new URL(webOrigin).host, Origin: webOrigin,
-          ...(browser ? { Cookie: browser.cookie, "X-AgEnD-Hub-CSRF": browser.csrf } : {}),
-          ...(bytes === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bytes) }), ...headers } }, res => {
+      headers: Record<string, string | undefined> = {}): Promise<JoinHttpResult> => new Promise((resolve, reject) => {
+      const bytes = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
+      const requestHeaders: Record<string, string | number | undefined> = { Host: new URL(webOrigin).host, Origin: webOrigin,
+        ...(browser ? { Cookie: browser.cookie, "X-AgEnD-Hub-CSRF": browser.csrf } : {}),
+        ...(bytes === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bytes) }), ...headers };
+      for (const key of Object.keys(requestHeaders)) if (requestHeaders[key] === undefined) delete requestHeaders[key];
+      const machine = /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.test(path);
+      const req = request({ host: "127.0.0.1", port: machine ? memberPort : webPort, path, servername: "hub.example.test",
+        ca: machine ? readFileSync(join(home, "hub/keys/tls-cert.pem")) : readFileSync(certs.caCert),
+        method, agent: false, headers: requestHeaders }, res => {
         let text = ""; res.setEncoding("utf8");
         res.on("data", chunk => { text += chunk; }); res.on("error", reject);
         res.on("end", () => {

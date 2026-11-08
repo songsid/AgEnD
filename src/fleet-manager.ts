@@ -411,6 +411,7 @@ import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./we
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
+import { companyJoinSession } from "./hub/join/fleet-authority.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
 import { isCanvasWorkerTool, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
@@ -1636,6 +1637,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubMemberExposures(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null { return this.hubMemberExposureApi; }
   attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
   /** S3c PR B: the member's pairing API, attached by S5's member composition (null: no Hub member here). */
+  private companyJoinController: import("./hub/join/local.js").CompanyJoinController | null = null;
+  private companyJoinInit: Promise<import("./hub/join/local.js").CompanyJoinController> | null = null;
+  private companyMembershipEpoch = 0;
+  private companyObservedMembership: boolean | null = null;
+  private companyMembershipWrite = false;
+  hubCompanySession(req: IncomingMessage): import("./hub/join/local-journal.js").JoinLocalSession | null {
+    const epoch = this.webAuthorityState().epoch, token = this.webToken, sessions = this.webSessions, generation = this.settingsGeneration;
+    return companyJoinSession(req, { token, sessions, config: this.fleetConfig, epoch, current: () => !this.shuttingDown
+      && generation === this.settingsGeneration && token === this.webToken && sessions === this.webSessions && epoch === this.webAuthorityState().epoch });
+  }
+  async hubCompanyJoin(): Promise<import("./hub/join/local.js").CompanyJoinController> {
+    this.companyJoinInit ??= (async () => {
+      const { CompanyJoinController } = await import("./hub/join/local.js");
+      const { currentBinding } = await import("./hub/member/pairing-api.js");
+      this.hubMemberBinding = currentBinding;
+      if (this.shuttingDown) throw Error("Fleet is stopping");
+      const controller = new CompanyJoinController({ home: this.dataDir,
+        snapshot: () => {
+          const state = join(this.dataDir, "hub-member/state.json");
+          return JSON.stringify([this.companyMembershipEpoch, (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+            existsSync(state) ? createHash("sha256").update(readFileSync(state)).digest("hex") : null]);
+        },
+        enableMembership: (current, accept) => {
+          if (!current() || !this.configPath || !this.fleetConfig) throw Error("Join operation changed");
+          this.companyMembershipWrite = true;
+          try {
+            this.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
+            // Strict durability for the joined profile+journal, including this internally enabled switch.
+            const fd = openSync(this.configPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+            try { fsyncSync(fd); } finally { closeSync(fd); }
+            const parent = openSync(dirname(this.configPath), fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+            try { fsyncSync(parent); } finally { closeSync(parent); }
+            accept();
+          } finally { this.companyMembershipWrite = false; }
+        },
+        activate: () => { void this.applyHubSwitches(); void this.hubRuntime?.refresh(); },
+        link: () => this.hubMemberLink === "online" ? "online" : "offline",
+      });
+      this.companyJoinController = controller; return controller;
+    })();
+    return this.companyJoinInit;
+  }
+  invalidateHubCompanyJoin(): void { this.companyMembershipEpoch++; this.companyJoinController?.invalidate(); }
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
@@ -1929,6 +1973,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** S-51: the Hub switches follow the configuration in force (load, save, reload rollback), like the runtime ones. */
   private observeHubSwitches(): void {
+    const enabled = (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true;
+    if (this.companyObservedMembership !== null && enabled !== this.companyObservedMembership) {
+      this.companyMembershipEpoch++;
+      if (!this.companyMembershipWrite) this.companyJoinController?.invalidate();
+    }
+    this.companyObservedMembership = enabled;
     this.observeHubAgentIncarnations();
     if (!this.hubEffectsReady || this.hubEffectsScheduled || this.shuttingDown) return;
     this.hubEffectsScheduled = true;
@@ -3170,7 +3220,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
-        return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+        return { localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
           localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
@@ -3178,6 +3228,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
       totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       directAgentCreation: true,
+      directCompanyJoin: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;
@@ -14823,6 +14874,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
+    if (!this.companyMembershipWrite && explicitPatches.some(p => p.path[0] === "hub_member"
+      && (p.path[1] === "enabled" ? p.value !== true || p.remove : p.path.length === 1))) this.invalidateHubCompanyJoin();
     this.publicWebLink?.refresh();
     this.enforceGuestSwitch();                       // #1920: a Settings save turning guests off ends their sessions
     this.observeWebAuthority();                      // #2453 review: so is a web-authority switch (off is always seen)
@@ -24941,6 +24994,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     }
+    this.companyJoinController?.close();
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
