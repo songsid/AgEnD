@@ -48,7 +48,7 @@ export function HubRunSettings() {
     try {
       const r = await confirmedWrite("/api/settings/hub/run", { method: "PUT", label: copy("title"), body: { enabled: on } });
       if (r.ok && r.body?.ok) { setView(r.body); setMessageKey(r.body.enabled ? "saved_on" : "saved_off"); }
-      else setMessageKey(r.body?.error === "busy" ? "busy" : "failed");
+      else setMessageKey((/^apply_rejected: ([a-z_]+)$/.exec(r.confirmed?.outcome?.detail ?? "")?.[1] ?? r.body?.error) === "busy" ? "busy" : "failed");   // #3451
     } catch { setMessageKey("failed"); } finally { setBusy(false); }
   };
   return html`<section class="card hub-run-settings"><h3>${copy("title")}</h3>
