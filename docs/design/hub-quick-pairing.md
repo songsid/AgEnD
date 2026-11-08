@@ -5,6 +5,12 @@ offer on the Hub welcome page. This skips the administrator's wait only. The exi
 fingerprint, fleet-local Settings confirmation, Hub owner confirmation and persisted Hub key pin remain necessary.
 No agent is published by pairing. The publication workflow and its separate permission still apply.
 
+The Hub marks the fleet-local confirmation complete only after the claim, its first observable proof of that step.
+Code acceptance and the Hub owner's separate confirmation leave it pending. On the fleet, the card observes the exact
+Settings proposal's terminal result as well as the pairing projection: a known failed/expired connect with an empty
+binding offers a new Hub code, while an unreadable result asks for a status check. Operation identity and generation
+are checked before and after the final projection read, so an old decision cannot change a newer or cancelled flow.
+
 The final manual-fallback clarification is recorded on [#3298](https://github.com/songsid/AgEnD/issues/3298#issuecomment-6715088331).
 Explicit administrator approval is a separate manual proof; it can exceed the self-service maximum. Existing retained
 manual fleets nevertheless count against later automatic enrollment. An explicit person deny and authoritative owner

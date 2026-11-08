@@ -44,6 +44,57 @@ async function connect(pg: AppPage) {
 }
 
 describe("#3386 pairing confirmation hints follow the operation shown", () => {
+  it.each(["failed", "expired", "rejected", "stale", "applied"])("#3404: a %s proposal settles the unchanged unpaired card", async state => {
+    let decide!:(value:any)=>void;
+    const settled=new Promise(resolve=>{decide=resolve;});
+    const api=vi.fn(async(path:string)=>path.endsWith("/connect")
+      ?{status:202,ok:false,body:{result:"pending_confirmation",pending_change:{id:"one"}}}
+      :{status:200,ok:true,body:{pairing:unpaired}});
+    const real=client.createMemberClient({confirm:{api,isPendingResponse:(r:any)=>r.status===202,track:()=>settled,newKey:()=>"key"},timers:{setTimeout:()=>1,clearTimeout:()=>{}},doc:{hidden:false}});
+    const {pg}=await fixture(unpaired,real);await connect(pg);expect(notice(pg)).not.toBeNull();
+    decide({state});await settle(20);
+    expect(notice(pg)).toBeNull();
+    const error=pg.root.querySelector(".s-hub-connect > p[role=alert]");
+    if(state==="failed"||state==="expired")expect(error?.textContent).toContain("new code");
+    else if(state!=="applied")expect(error?.textContent).toContain("Check the pairing status");
+    else expect(error).toBeNull();
+  });
+  it("#3404: a late old failure cannot replace a newer pending proposal",async()=>{
+    let first!:(v:any)=>void,second!:(v:any)=>void;
+    const one=new Promise(r=>{first=r;}),two=new Promise(r=>{second=r;});let call=0;
+    const {pg}=await fixture(unpaired,{connect:async()=>({ok:true,pendingConfirmation:true,pairing:unpaired,settled:call++===0?one:two})});
+    await connect(pg);await connect(pg);first({state:"failed"});await settle(20);
+    expect(notice(pg)).not.toBeNull();expect(pg.root.querySelector(".s-hub-connect > p[role=alert]")).toBeNull();
+    second({state:"applied"});await settle(20);expect(notice(pg)).toBeNull();
+  });
+  it("#3404: an unreadable result clears a false waiting claim without asking to retry an unknown outcome",async()=>{
+    let fail!:(e:Error)=>void;const settled=new Promise((_r,reject)=>{fail=reject;});
+    void settled.catch(()=>{});
+    const {pg}=await fixture(unpaired,{connect:async()=>({ok:true,pendingConfirmation:true,pairing:unpaired,settled})});
+    await connect(pg);fail(Error("read unavailable"));await settle(20);
+    expect(notice(pg)).toBeNull();expect(pg.root.querySelector(".s-hub-connect > p[role=alert]")?.textContent).toContain("result cannot be checked");
+  });
+  it("#3404: superseding a proposal while its final projection read is held fences that late result too",async()=>{
+    let first!:(v:any)=>void,second!:(v:any)=>void,release!:(v:any)=>void;
+    const one=new Promise(r=>{first=r;}),two=new Promise(r=>{second=r;}),held=new Promise(r=>{release=r;});
+    let call=0,hold=false,entered=false;
+    const {pg}=await fixture(unpaired,{pairing:()=>{if(hold){entered=true;return held;}return Promise.resolve(unpaired);},connect:async()=>({ok:true,pendingConfirmation:true,pairing:unpaired,settled:call++===0?one:two})});
+    await connect(pg);hold=true;first({state:"failed"});await settle(10);expect(entered).toBe(true);
+    hold=false;await connect(pg);release(unpaired);await settle(20);
+    expect(notice(pg)).not.toBeNull();expect(pg.root.querySelector(".s-hub-connect > p[role=alert]")).toBeNull();
+    second({state:"applied"});await settle(20);expect(notice(pg)).toBeNull();
+  });
+  it("#3404: cancelling an expired local confirmation makes its late result inert",async()=>{
+    let decide!:(v:any)=>void;const settled=new Promise(r=>{decide=r;});
+    const read=vi.fn(async()=>pending),cancel=vi.fn(async()=>unpaired);
+    const {pg,emit}=await fixture(pending,{pairing:read,cancel,confirmFingerprint:async()=>({ok:true,pendingConfirmation:true,pairing:pending,settled})});
+    pg.root.querySelector(".hub-local-confirm").click();await settle(10);
+    await emit({state:"held",hold:"expired"});pg.root.querySelector(".hub-held button").click();await settle(10);
+    const reads=read.mock.calls.length;decide({state:"failed"});await settle(20);
+    expect(read).toHaveBeenCalledTimes(reads);expect(cancel).toHaveBeenCalledOnce();
+    expect(pg.root.querySelector("form.hub-connect")).not.toBeNull();expect(notice(pg)).toBeNull();
+    expect(pg.root.querySelector(".s-hub-connect > p[role=alert]")).toBeNull();
+  });
   it.each(["en", "zh-TW"])("%s: fingerprint confirmation clears on local application and never reappears after Connected", async lang => {
     i18n.setLang(lang, { store: false });
     const { pg, c, emit } = await fixture(pending);

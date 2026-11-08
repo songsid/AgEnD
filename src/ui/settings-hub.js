@@ -14,6 +14,7 @@ import { guidanceFor } from "./hub-provider-guidance.js";
 import { AGENT_CHOICE } from "./hub-agent-copy.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
 import { hq } from "./hub-quick-strings.js";
+import { hp } from "./hub-pairing-progress-strings.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
@@ -51,10 +52,32 @@ export function HubConnectCard() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);
-  const pendingMessage = (action, shown) => setMsg({ error: false, text: hw("waitingConfirm"),
-    pending: { action, fingerprint: shown?.fingerprint?.digest, binding: shown?.binding, hubId: shown?.hub?.hubId } });
+  const generation = useRef(0), activePending = useRef(null);
+  const pendingMessage = (action, shown, result, token) => {
+    const pending = { action, fingerprint: shown?.fingerprint?.digest, binding: shown?.binding, hubId: shown?.hub?.hubId };
+    activePending.current = pending;
+    setMsg({ error: false, text: hw("waitingConfirm"), pending });
+    if (!result.settled?.then) return; // An older client still clears its hint when the projection advances.
+    const current = () => live.current && generation.current === token && activePending.current === pending;
+    const finish = async outcome => {
+      if (!current()) return;
+      let next;
+      try { next = await client.pairing(); } catch { /* unknown result, never a retry/success claim */ }
+      if (!current()) return;
+      if (next) setPairing(next);
+      activePending.current = null;
+      const text = !next || !["applied", "failed", "expired", "rejected", "stale"].includes(outcome?.state) ? hp("unknown")
+        : outcome.state === "applied" || !waitingForPairing({ pending }, next) ? null
+        : action === "connect" && next.state === "unpaired" && ["failed", "expired"].includes(outcome.state) ? hp("connectFailed") : hp("notApplied");
+      setMsg(old => old?.pending === pending ? text ? { error: true, text } : null : old);
+    };
+    void Promise.resolve(result.settled).then(finish, () => finish(null));
+  };
   useEffect(() => {
-    if (msg?.pending && !waitingForPairing(msg, pairing)) setMsg(null);
+    if (msg?.pending && !waitingForPairing(msg, pairing)) {
+      if (activePending.current === msg.pending) activePending.current = null;
+      setMsg(null);
+    }
   }, [msg, pairing]);
   const readPairing = () => {
     setReadError(false);
@@ -65,28 +88,29 @@ export function HubConnectCard() {
     live.current = true;
     readPairing();
     const off = client.subscribe((p) => { if (live.current) setPairing(p); });
-    return () => { live.current = false; off(); };
+    return () => { live.current = false; generation.current++; activePending.current = null; off(); };
   }, []);
   const act = async (fn) => {
     if (busy) return;
+    const token = ++generation.current; activePending.current = null;
     setBusy(true); setMsg(null);
-    try { await fn(); } catch { if (live.current) setMsg({ error: true, text: hw("errFailed") }); }
+    try { await fn(token); } catch { if (live.current && token === generation.current) setMsg({ error: true, text: hw("errFailed") }); }
     finally { if (live.current) setBusy(false); }
   };
-  const connect = () => act(async () => {
+  const connect = () => act(async token => {
     const r = await client.connect({ address: form.address.trim(), code: form.code.trim() });
     if (!live.current) return;
-    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) pendingMessage("connect"); }
+    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) pendingMessage("connect", null, r, token); }
     else setMsg({ error: true, text: hw(CONNECT_ERRORS[r.error] || "errFailed") });
   });
-  const disconnect = (name) => act(async () => {
+  const disconnect = (name) => act(async token => {
     const shown = pairing;                                  // #3115 r2: the pairing on screen now, before the dialog
     if (!(await confirmDialog({ message: hw("disconnectAsk", name), confirmLabel: hw("disconnect"), danger: true }))) return;
     const r = await client.disconnect(shown);
     if (!live.current) return;
     if (!r.ok) { setMsg({ error: true, text: hw("errUnsaved") }); return; }
     setPairing(await client.pairing());
-    if (r.pendingConfirmation) { pendingMessage("disconnect", shown); return; }
+    if (r.pendingConfirmation) { pendingMessage("disconnect", shown, r, token); return; }
     if (r.remote === "pending") setMsg({ error: false, text: hw("disconnectPending") });
   });
   const cancel = () => act(async () => { const p = await client.cancel(); if (live.current) setPairing(p); });
@@ -111,8 +135,8 @@ export function HubConnectCard() {
       <${Fingerprint} label=${hw("pairingFp")} fp=${p.fingerprint} />
       <p class="note">${hw("pendingCompare")}</p>
       ${p.localConfirmed === false && client.confirmFingerprint ? html`<div class="field-row"><button type="button" class="btn btn-primary hub-local-confirm" disabled=${busy}
-          onClick=${() => act(async () => { const r = await client.confirmFingerprint(p.fingerprint.digest); if (!live.current) return;
-            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) pendingMessage("confirm", p); }
+          onClick=${() => act(async token => { const r = await client.confirmFingerprint(p.fingerprint.digest); if (!live.current) return;
+            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) pendingMessage("confirm", p, r, token); }
             else setMsg({ error: true, text: hw(r.error === "expired" ? "hold_expired" : r.error === "conflict" ? "errConflict" : "errUnsaved") }); })}>${hw("localMatch")}</button></div>`
         : p.localConfirmed === true ? html`<p class="note hub-local-confirmed">${hw("localConfirmed")}</p>` : null}
       ${p.ownerConfirmed === null && p.adminApproved === null
