@@ -16,21 +16,25 @@ const NVM = "/home/u/.nvm/versions/node/v22.23.1";
 const NVM_PKG = `${NVM}/lib/node_modules/@songsid/agend`;
 const MANIFEST = JSON.stringify({ name: "@songsid/agend", version: "2.3.5-beta.1", bin: { agend: "dist/cli.js" } });
 
-/** npm binaries → their global root and prefix; anything else on disk is the nvm install. */
+/**
+ * npm binaries (by path; `npm` = PATH's, at /path-npm/bin/npm) → their global root and prefix; anything else on disk is
+ * the nvm install. Bare `npm` resolves through the PATH it is given (as execFile would), else the fleet's.
+ */
+const PATH_NPM = "/path-npm/bin/npm";
 function deps(npms: Record<string, { root: string; prefix: string } | null>, packageDir: string | null): DispatchDeps & { asked: string[] } {
   const asked: string[] = [];
+  const table: Record<string, { root: string; prefix: string } | null> = Object.fromEntries(Object.entries(npms).map(([k, v]) => [k === "npm" ? PATH_NPM : k, v]));
   return {
     asked,
     packageDir,
     execPath: `${NVM_PKG}/node_modules/@songsid/agend-node-linux-x64/bin/node`,   // the bundled Node: no npm beside it
     pathEnv: "/path-npm/bin",                                                      // where PATH's npm lives
-    isExecutable: async path => path !== `${NVM_PKG}/node_modules/@songsid/agend-node-linux-x64/bin/npm`,
-    run: async (command, args) => {
-      asked.push(`${command} ${args.join(" ")}`);
-      // `<bin>/node <bin>/npm root -g` is the npm at `<bin>/npm`; plain `npm root -g` is PATH's.
-      const key = command.endsWith("/node") ? args[0]! : command;
-      if (command.endsWith("/node")) args = args.slice(1);
-      const npm = npms[key];
+    isExecutable: async path => path in table,
+    run: async (command, args, _t, env) => {
+      const path = (env?.PATH ?? "/path-npm/bin").split(":");
+      const resolved = command === "npm" ? path.map(d => `${d}/npm`).find(p => p in table) ?? "npm (none)" : command;
+      asked.push(`${resolved} ${args.join(" ")}`);
+      const npm = table[resolved];
       if (!npm) return { status: null, stdout: "" };
       return { status: 0, stdout: args[0] === "root" ? `${npm.root}\n` : `${npm.prefix}\n` };
     },
@@ -70,27 +74,27 @@ describe("#3440 the npm beside the running package", () => {
 describe.skipIf(process.platform === "win32")("#3440 resolveInstalledAgend under nvm with a system npm first on PATH", () => {
   it("finds the nvm install through the npm beside the running package", async () => {
     const d = deps({ npm: SYSTEM, [`${NVM}/bin/npm`]: NVM_NPM }, NVM_PKG);
-    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1", npmDir: `${NVM}/bin` });
-    expect(d.asked.every(a => a.startsWith(`${NVM}/bin/node ${NVM}/bin/npm `))).toBe(true);
+    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1" });
+    expect(d.asked.every(a => a.startsWith(`${NVM}/bin/npm `))).toBe(true);
   });
 
   it("without a package directory, PATH's npm is all it asks — and its refusal stands (the old behaviour)", async () => {
     const d = deps({ npm: SYSTEM, [`${NVM}/bin/npm`]: NVM_NPM }, null);
     expect(await resolveInstalledAgend(d)).toEqual({ ok: false, reason: "/usr/lib/node_modules/@songsid/agend is not an installed AgEnD package" });
-    expect(d.asked.every(a => a.startsWith("npm "))).toBe(true);
+    expect(d.asked.every(a => a.startsWith(`${PATH_NPM} `))).toBe(true);
   });
 
   it("falls back to PATH's npm when the npm beside it is missing", async () => {
     const d = deps({ npm: NVM_NPM }, NVM_PKG);
-    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1", npmDir: "/path-npm/bin" });
-    expect(d.asked.some(a => a.startsWith(`${NVM}/bin/node ${NVM}/bin/npm `))).toBe(true);
-    expect(d.asked.some(a => a.startsWith("npm "))).toBe(true);
+    // With no npm in the install's bin, PATH's npm is asked in the launch PATH (the install's bin first): no npmDir.
+    expect(await resolveInstalledAgend(d)).toEqual({ ok: true, agend: `${NVM}/bin/agend`, version: "2.3.5-beta.1" });
+    expect(d.asked.every(a => a.startsWith(`${PATH_NPM} `))).toBe(true);
   });
 
   it("an npm whose root is not the running package's is never taken: no npm manages it → a plain refusal", async () => {
     // The npm beside the package points somewhere else (a custom global prefix), and so does PATH's.
     const d = deps({ [`${NVM}/bin/npm`]: SYSTEM, npm: SYSTEM }, NVM_PKG);
-    expect(await resolveInstalledAgend(d)).toEqual({ ok: false, reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${NVM}/lib/node_modules (tried ${NVM}/bin/npm → /usr/lib/node_modules; npm on PATH → /usr/lib/node_modules)` });
+    expect(await resolveInstalledAgend(d)).toEqual({ ok: false, reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${NVM}/lib/node_modules (tried ${NVM}/bin/npm → /usr/lib/node_modules; ${PATH_NPM} (first on PATH, ahead of ${NVM}/bin) → /usr/lib/node_modules)` });
   });
 });
 

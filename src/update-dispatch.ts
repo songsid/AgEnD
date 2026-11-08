@@ -20,7 +20,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 export interface DispatchDeps {
-  run(command: string, args: string[], timeoutMs: number): Promise<{ status: number | null; stdout: string }>;
+  /** `env.PATH` (#3440) replaces PATH for that one program: an npm is asked in the PATH the update will run with. */
+  run(command: string, args: string[], timeoutMs: number, env?: { PATH: string }): Promise<{ status: number | null; stdout: string }>;
   readFile(path: string): Promise<string>;
   realpath(path: string): Promise<string>;
   /** An executable file there (#3440). */
@@ -34,9 +35,9 @@ export interface DispatchDeps {
 }
 
 export const defaultDispatchDeps: DispatchDeps = {
-  run: async (command, args, timeoutMs) => {
+  run: async (command, args, timeoutMs, env) => {
     try {
-      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs });
+      const { stdout } = await promisify(execFile)(command, args, { encoding: "utf8", timeout: timeoutMs, ...(env ? { env: { ...process.env, ...env } } : {}) });
       return { status: 0, stdout: String(stdout) };
     } catch (err) {
       const code = (err as { code?: unknown }).code;
@@ -83,57 +84,57 @@ async function runningInstall(deps: DispatchDeps): Promise<RunningInstall> {
   return basename(real) === "agend" && basename(scope) === "@songsid" && basename(root) === "node_modules" ? { kind: "global", root } : { kind: "checkout" };
 }
 
-type Npm = { command: string; args: string[]; label: string };
-
-/**
- * #3440 (#3443 review): the directory of the npm that proved the install, for the update to run with first on PATH — so
- * the CLI's own npm checks and install, and the Node npm runs on, are the ones just verified, never another npm the
- * service's PATH lists first. A candidate run by an explicit Node: that npm's directory (its Node beside it). PATH's: the
- * first PATH directory holding an executable `npm`.
- */
-async function npmDirOf(npm: Npm, deps: DispatchDeps, executable: (path: string) => Promise<boolean>): Promise<string | undefined> {
-  if (npm.args.length) return dirname(npm.args[0]!);
-  for (const dir of (deps.pathEnv ?? process.env.PATH ?? "").split(delimiter)) {
-    if (dir && isAbsolute(dir) && await executable(join(dir, "npm"))) return dir;
-  }
-  return undefined;
-}
 type NpmAnswer = { root: string; prefix: string } | null;
 
-async function askNpm(npm: Npm, deps: DispatchDeps): Promise<NpmAnswer> {
+/** `npm root -g` / `npm prefix -g`, run as bare `npm` — in `env.PATH` when given, the way the update will run it. */
+async function askNpm(deps: DispatchDeps, env?: { PATH: string }): Promise<NpmAnswer> {
   const last = (text: string) => text.trim().split("\n").pop()?.trim() ?? "";
-  const ask = (what: string) => deps.run(npm.command, [...npm.args, what, "-g"], 15_000);
+  const ask = (what: string) => deps.run("npm", [what, "-g"], 15_000, env);
   const [root, prefix] = await Promise.all([ask("root"), ask("prefix")]);
   return root.status === 0 && prefix.status === 0 && last(root.stdout) && last(prefix.stdout) ? { root: last(root.stdout), prefix: last(prefix.stdout) } : null;
 }
 
 /**
- * #3440: the npm that manages the running install — never merely the first one on the fleet's PATH. Candidates: the npm
- * beside the running package (run by that prefix's Node), the npm beside the Node running AgEnD (run by it), then PATH's.
- * One is accepted only when its global root IS the running package's root, so another install elsewhere (an old AgEnD in
- * a system root) can never be the one updated. A source checkout keeps the old rule: PATH's npm.
+ * #3440: the npm that manages the running install — never merely the first one on the fleet's PATH — PROVED IN THE
+ * ENVIRONMENT THE UPDATE WILL RUN IN (#3442/#3443 review). The updater runs bare `npm` (its checks and install), and npm
+ * runs on the first `node` its PATH finds, from which it takes its global prefix. So each candidate is a launch PATH —
+ * an optional directory first, then the install's own bin (`<prefix>/bin`, as the launch script puts it), then the
+ * fleet's PATH — and `npm root -g` is asked under exactly that PATH. Candidates, in order:
+ *  1. nothing extra: the install's bin first (its own npm and Node — the 雲晴家 operator's colocated npm — or, with no
+ *     npm there, PATH's npm on the Node that order picks);
+ *  2. the directory of the Node running AgEnD, when an npm is beside it (AgEnD on a plain Node);
+ *  3. the first PATH directory holding an npm, ahead of the install's bin.
+ * One is accepted only when its global root IS the running package's root; its directory (2, 3) is then `npmDir`, which
+ * the launch puts first — so what runs is what was proved. None: a refusal naming the root and what each answered.
+ * A source checkout keeps the old rule: PATH's npm as it is.
  */
 async function npmForRunningInstall(deps: DispatchDeps): Promise<{ root: string; prefix: string; npmDir?: string } | { reason: string }> {
   const running = await runningInstall(deps);
-  const onPath: Npm = { command: "npm", args: [], label: "npm on PATH" };
   if (running.kind === "unreadable") return { reason: running.reason };
-  if (running.kind === "checkout") return (await askNpm(onPath, deps)) ?? { reason: "npm could not say where AgEnD is installed" };
+  if (running.kind === "checkout") return (await askNpm(deps)) ?? { reason: "npm could not say where AgEnD is installed" };
   const expected = running.root;
   const executable = deps.isExecutable ?? defaultDispatchDeps.isExecutable!;
-  const candidates: Npm[] = [];
-  const beside = colocatedNpm(join(expected, "@songsid", "agend"));
-  if (beside && await executable(beside.command) && await executable(beside.args[0]!)) candidates.push({ ...beside, label: beside.args[0]! });
-  const execPath = deps.execPath ?? process.execPath;
-  const nextToNode = join(dirname(execPath), "npm");
-  if (!candidates.some(c => c.label === nextToNode) && await executable(nextToNode)) candidates.push({ command: execPath, args: [nextToNode], label: nextToNode });
-  candidates.push(onPath);
+  const pathEnv = deps.pathEnv ?? process.env.PATH ?? "";
+  // <prefix>/lib/node_modules → <prefix>/bin, where the colocated npm and its Node live (the 雲晴家 operator's colocatedNpm).
+  const ownBin = dirname(colocatedNpm(join(expected, "@songsid", "agend"))?.args[0] ?? join(dirname(dirname(expected)), "bin", "npm"));
+  const firstNpmOnPath = async (path: string): Promise<string | null> => {
+    for (const dir of path.split(delimiter)) if (dir && isAbsolute(dir) && await executable(join(dir, "npm"))) return join(dir, "npm");
+    return null;
+  };
+  const candidates: Array<{ npmDir?: string; label: string }> = [];
+  const own = await firstNpmOnPath([ownBin, pathEnv].join(delimiter));
+  candidates.push({ label: own ? (dirname(own) === ownBin ? own : `${own} (PATH's)`) : "npm on PATH" });
+  const nodeDir = dirname(deps.execPath ?? process.execPath);
+  if (nodeDir !== ownBin && await executable(join(nodeDir, "npm"))) candidates.push({ npmDir: nodeDir, label: `${join(nodeDir, "npm")} (beside the Node running AgEnD)` });
+  const onPath = await firstNpmOnPath(pathEnv);
+  if (onPath && dirname(onPath) !== ownBin && dirname(onPath) !== nodeDir) candidates.push({ npmDir: dirname(onPath), label: `${onPath} (first on PATH, ahead of ${ownBin})` });
   const tried: string[] = [];
-  for (const npm of candidates) {
-    const answer = await askNpm(npm, deps);
+  for (const c of candidates) {
+    const answer = await askNpm(deps, { PATH: [c.npmDir, ownBin, pathEnv].filter(Boolean).join(delimiter) });
     let root: string | null = null;
     if (answer) { try { root = await deps.realpath(answer.root); } catch { root = answer.root; } }
-    tried.push(`${npm.label} → ${root ?? "no answer"}`);
-    if (answer && root === expected) return { ...answer, npmDir: await npmDirOf(npm, deps, executable) };
+    tried.push(`${c.label} → ${root ?? "no answer"}`);
+    if (answer && root === expected) return { ...answer, ...(c.npmDir ? { npmDir: c.npmDir } : {}) };
   }
   return { reason: `no npm here manages the running AgEnD: expected the npm whose global root is ${expected} (tried ${tried.join("; ")})` };
 }

@@ -50,24 +50,31 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
   it("a system npm first on PATH (nvm's after it): the nvm prefix's agend, with nvm's bin for the update", async () => {
     const h = host();
     vi.stubEnv("PATH", `${join(h.sys, "bin")}:${join(h.nvm, "bin")}:/usr/bin:/bin`);
-    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1", npmDir: join(h.nvm, "bin") });
+    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1" });
   });
 
   it("a minimal service PATH with no nvm on it at all: still the running install's npm", async () => {
     const h = host();
     vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
-    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1", npmDir: join(h.nvm, "bin") });
+    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1" });
+  });
+
+  it("no npm of its own, but its own Node: PATH's npm on that Node installs into it — accepted, as the update will run it", async () => {
+    const h = host();
+    rmSync(join(h.nvm, "bin", "npm"));
+    vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
+    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1" });
   });
 
   it("no npm here manages the running install: refused in plain words, naming the root it expected", async () => {
     const h = host();
-    rmSync(join(h.nvm, "bin", "npm"));
+    rmSync(join(h.nvm, "bin", "npm")); rmSync(join(h.nvm, "bin", "node"));      // neither npm nor Node of its own
     vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
     const r = await resolveInstalledAgend(h.deps);
     expect(r.ok).toBe(false);
     const reason = (r as { reason: string }).reason;
     expect(reason).toContain(`no npm here manages the running AgEnD: expected the npm whose global root is ${join(h.nvm, "lib", "node_modules")}`);
-    expect(reason).toContain(`npm on PATH → ${join(h.sys, "lib", "node_modules")}`);
+    expect(reason).toContain(`${join(h.sys, "bin", "npm")} (PATH's) → ${join(h.sys, "lib", "node_modules")}`);
   });
 
   it("an npm that answers but manages another root (a custom global prefix) is not taken", async () => {
@@ -99,7 +106,7 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
       writeFileSync(join(h.nvm, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${root}" ;; prefix) echo "${prefix}" ;; esac\n`);
     vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
     npmSays(join(viaLink, "lib", "node_modules"), viaLink);
-    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(viaLink, "bin", "agend"), version: "2.3.5-beta.1", npmDir: join(h.nvm, "bin") });
+    expect(await resolveInstalledAgend(h.deps)).toEqual({ ok: true, agend: join(viaLink, "bin", "agend"), version: "2.3.5-beta.1" });
     const sysLink = join(h.t, "syslink"); symlinkSync(h.sys, sysLink);              // a link to a DIFFERENT real root
     npmSays(join(sysLink, "lib", "node_modules"), sysLink);
     const r = await resolveInstalledAgend(h.deps);
@@ -147,6 +154,21 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     const { command, args } = updateCommand(installed.agend, installed.npmDir);
     execFileSync(command, args.map(a => a === DELAYED_UPDATE_SCRIPT_NPM ? a.replace("sleep 2", "true") : a), { env: { PATH: `${join(h.sys, "bin")}:/usr/bin:/bin` } });
     expect(execFileSync("cat", [out], { encoding: "utf8" }).trim()).toBe(join(good, "npm"));
+  });
+
+  it("#3443 review (PATH interpreter): PATH's npm proves the install on the install's own Node — the launch keeps that pairing", async () => {
+    const h = host();
+    rmSync(join(h.nvm, "bin", "npm"));                                   // A/bin: AgEnD and Node A, no npm
+    const B = prefix(join(h.t, "B"));                                    // B/bin: npm B and Node B
+    const path = `${join(h.nvm, "bin")}:${join(B, "bin")}:/usr/bin:/bin`;
+    vi.stubEnv("PATH", path);
+    const installed = await resolveInstalledAgend(h.deps) as { ok: boolean; agend: string; npmDir?: string };
+    expect(installed).toEqual({ ok: true, agend: join(h.nvm, "bin", "agend"), version: "2.3.5-beta.1" });   // no npmDir: B/bin is NOT put first
+    const out = join(h.t, "seen");
+    writeFileSync(join(h.pkg, "launcher", "agend"), `#!/bin/sh\n{ command -v npm; npm root -g; } > ${out}\n`);
+    const { command, args } = updateCommand(installed.agend, installed.npmDir);
+    execFileSync(command, args.map(a => a.startsWith("sleep 2") ? a.replace("sleep 2", "true") : a), { env: { PATH: path } });
+    expect(execFileSync("cat", [out], { encoding: "utf8" }).trim().split("\n")).toEqual([join(B, "bin", "npm"), join(h.nvm, "lib", "node_modules")]);
   });
 
   it("#3443 review P2-2: the running package's location cannot be read → refused, never another install found through PATH", async () => {
