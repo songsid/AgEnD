@@ -43,6 +43,8 @@ export interface HubHttpDeps {
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   /** S-90: durable credential-transaction outbox, independent of a group's current operational allowance. */
   pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
+  /** Original security-notice recipients; independent of operational group or administrator permissions. */
+  directoryNotices?: Pick<import("../settings-directory-notices.js").HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
   config: HubHttpConfig;
   /** M-2682: Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. Absent: 404. */

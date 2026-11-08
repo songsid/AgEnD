@@ -1,0 +1,4 @@
+e019339f0995c9088365f1615642ada2f72a37e3556df53029fc4a164650f957  src/hub/compose/server.ts
+f1d48298485e672a6914f79f88042a61e92113f8b929ef84c9326f004cc0df23  src/hub/http/compose.ts
+35f676deb9d0ffba564333a6bd564f66ee8dee05b1e1f3b828f3b5033ec3742d  src/hub/http/deps.ts
+f1d0fbe077ff3ae1efd83f5b7c28f1b8f8ea18f8aee781eeae3a8100ca780fef  tests/hub-compose.test.ts
