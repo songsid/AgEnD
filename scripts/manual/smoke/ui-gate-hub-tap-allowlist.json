@@ -1,6 +1,4 @@
 {
-  "admin form.hub-step-form > label.field > input": 1,
-  "admin section.card.hub-groups-entry > div.hub-groups-actions > a.btn.btn-primary": 1,
   "admin-groups div.s-row.hub-row > label.field.hub-group-fleets > input": 1,
   "admin-groups div.s-row.hub-row > label.hub-group-cap > input": 3,
   "admin-groups div.s-section-layout > p.note > a": 1,

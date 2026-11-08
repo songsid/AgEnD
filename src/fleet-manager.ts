@@ -1945,6 +1945,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
       await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
+      // M-2682: an interrupted sealed-settings commit is finished (or rolled back) before the Hub mounts its pair. A refusal
+      // overwrites nothing; the mount then holds on the mismatch, visibly, until the files are put right.
+      if (this.hubSettingsWriter?.pending()) {
+        try { this.hubSettingsWriter.recover(); }
+        catch (err) { this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub settings recovery refused"); }
+      }
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
@@ -1952,12 +1958,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** M-2682: the one writer for sealed Hub settings, created with the Hub runtime. */
+  private hubSettingsWriter: import("./hub/settings-commit.js").HubSettingsWriter | null = null;
+
   /** Single flight: one import, one runtime, assigned once; every caller (and Stop) gets that same runtime. */
   private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
     this.hubRuntimeInit ??= (async () => {
       const { HubRuntime } = await import("./hub/runtime.js");
+      // M-2682: the one writer for sealed Hub settings (a rename from Hub Administration). It saves hub.* through this
+      // fleet's own synchronous writer, so nothing else here runs between its commit point and the new pair in force.
+      const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
+      this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
+        readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
+        saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
+        settingsWriter: this.hubSettingsWriter,
+        version: agendVersion(),
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
         // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
@@ -2234,6 +2251,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
+  hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true; }
   /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
   hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 

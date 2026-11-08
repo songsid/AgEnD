@@ -67,6 +67,10 @@ export interface HubRuntimeOptions {
   memberComponents?: HubMemberComponents;
   createServer?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
   createMember?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
+  /** M-2682: the host's one writer for sealed Hub settings (settings-commit.ts), offered to Hub Administration. */
+  settingsWriter?: import("./settings-commit.js").HubSettingsWriter;
+  /** This AgEnD's version (Hub Administration → This Hub). */
+  version?: string | null;
 }
 
 export type HubServerHealth = "off" | "starting" | "ready" | "unavailable" | "stopped";
@@ -132,6 +136,8 @@ export class HubRuntime {
           home: options.home,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
+          ...(options.settingsWriter ? { settingsWriter: options.settingsWriter } : {}),
+          version: options.version ?? null,
           browserCertificateReady: control => {
             this.browserCertificateControl = control;
             return () => { if (this.browserCertificateControl === control) this.browserCertificateControl = null; };
