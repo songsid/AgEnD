@@ -20,11 +20,11 @@ async function mount(component: any, props = {}, url = "http://127.0.0.1:19290/s
 }
 const button = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === text);
 describe("company join UI", () => {
-  it("the join page keeps its own tab title and a single page heading instead of the conversation title", async () => {
+  it.each(["", "&view=notices", "&room=" + id])("the join page keeps its title and single heading ahead of other query views (%s)", async suffix => {
     fetcher(path => path.startsWith("/hub/v1/session") ? { signedIn: true, displayName: "Carol", login: "carol", csrf: "csrf", features: [] }
       : path.includes("/browser?") ? { ok: true, state: "pending", label: "Fleet A", outerDeadline: Date.now() + 600_000 } : {});
     client.setHubClient(client.createHubWebClient({ fetchImpl: globalThis.fetch })); hubPanel.resetHubSession();
-    const p = await mount(hubPanel.HubPanel, { route: { tab: "ask" } }, "https://hub.example.test/ui/hub?join=" + id);
+    const p = await mount(hubPanel.HubPanel, { route: { tab: "ask" } }, "https://hub.example.test/ui/hub?join=" + id + suffix);
     expect(p.document.title).toBe("Connect to a Hub · AgEnD");
     expect([...p.root.querySelectorAll("h1, h2, h3")].filter((el: any) => el.textContent === "Connect to a Hub")).toHaveLength(1);
     expect(p.root.querySelector(".hub-home")).toBeNull();

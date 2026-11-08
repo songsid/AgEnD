@@ -49,7 +49,7 @@ const smallJoinTargets = `(() => {
 let fx: any = null;
 try {
   const scenarios = process.env.ADMIN_ONLY ? [] : matrix().map(c => ({ c, kind: "happy", login: "" }));
-  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
+  if (!process.env.ADMIN_ONLY && process.env.EXTRAS !== "0" && !process.env.BEFORE_ASSETS) for (const kind of process.env.HUB_SHOTS ? ["outsider", "copied"] : ["outsider", "limit", "changed", "cancel", "copied"]) scenarios.push({ c: { device: "desk", theme: "light", lang: "zh-TW" }, kind, login: kind === "limit" ? "join-person-0" : "" });
   for (const [index, scenario] of scenarios.entries()) {
     const { c, kind } = scenario; setLocale(c.lang); const tag = caseName(c) + (kind === "happy" ? "" : "-" + kind), login = scenario.login || "join-person-" + index;
     if (kind === "limit") await r.enable(admin, 1);
@@ -118,12 +118,14 @@ try {
       check(tag + " no opener", await hub.evaluate("window.opener === null"));
       check(tag + " exact Fleet origin shown", (await hub.locator(".hub-signin").innerText()).includes(fx.base));
       await hub.screenshot({ path: join(out, tag + "-02-hub-signin.png") });
+      if (process.env.HUB_SHOTS && kind === "happy") { result.cases.push({ tag, kind: "signin-shot", ok: true }); continue; }
       if (kind === "copied") {
         const copied = await fx.browser.newContext({ viewport: VIEWPORTS.desk, ignoreHTTPSErrors: true });
         try { const other = await copied.newPage(); await other.goto(hub.url()); await other.locator(".error-state").waitFor();
           check(tag + " copied handle shows no AD fields", await other.locator("#hubLogin").count() === 0);
           await other.screenshot({ path: join(out, tag + "-06-copied-refused.png") });
         } finally { await copied.close(); }
+        if (process.env.HUB_SHOTS) { result.cases.push({ tag, kind: "copied-shot", ok: true }); continue; }
       }
       if (kind === "cancel") {
         await page.getByRole("button", { name: "取消連接", exact: true }).click();
