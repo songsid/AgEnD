@@ -3,6 +3,12 @@ import { randomUUID } from "node:crypto";
 import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 import { cardCode, TaskBoard, type Actor } from "./task-board.js";
 
+/**
+ * The project_root a team decision is stored under (#3421 review): never a working directory — a NUL is in no path —
+ * and not empty, so versions without team scope, which match project_root against their own directory, never show it.
+ */
+export const TEAM_ROW_ROOT = "\u0000team";
+
 export class SchedulerDb {
   private db: Database.Database;
   /** The task board on the `tasks` table: its rules, comments and history (task-board.ts). */
@@ -121,8 +127,11 @@ export class SchedulerDb {
       this.db.exec("ALTER TABLE decisions ADD COLUMN scope TEXT NOT NULL DEFAULT 'project'");
     }
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_decisions_scope ON decisions(scope)");
-    // Migration: team-scoped decisions. Older versions never list scope 'team' rows (they read project = their exact
-    // directory, or fleet), so a rollback hides team decisions rather than showing them to everyone.
+    // Migration: team-scoped decisions. A team row is stored under TEAM_ROW_ROOT, a project_root no working directory
+    // can equal (a NUL is in no path, and it is not empty), so older versions never show it: their list reads project
+    // rows of their exact directory or fleet rows, and their Active Decisions selector takes any scope only for
+    // project_root === its working directory, then only fleet rows — a rollback hides team decisions rather than
+    // handing them to a non-member (#3421 review). Read back, a team row's project_root is "".
     const decisionCols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
     if (decisionCols.length > 0 && !decisionCols.some(c => c.name === "team")) {
       this.db.exec("ALTER TABLE decisions ADD COLUMN team TEXT");
@@ -486,7 +495,7 @@ export class SchedulerDb {
   private rowToDecision(row: Record<string, unknown>): Decision {
     return {
       id: row.id as string,
-      project_root: row.project_root as string,
+      project_root: row.scope === "team" ? "" : row.project_root as string,
       scope: (row.scope as Decision["scope"]) ?? "project",
       team: (row.team as string | null | undefined) ?? null,
       title: row.title as string,
@@ -510,6 +519,8 @@ export class SchedulerDb {
     const scope = params.scope ?? "project";
     const team = scope === "team" ? params.team?.trim() : undefined;
     if (scope === "team" && !team) throw new Error("A team decision needs its team");
+    // A team decision belongs to no directory; TEAM_ROW_ROOT keeps it invisible to versions without team scope.
+    const projectRoot = scope === "team" ? TEAM_ROW_ROOT : params.project_root;
     // One transaction: a predecessor that is not there, not visible to this project, or no longer active — or an update
     // that changes no row — throws, and the new decision is not inserted either (never a new one beside an old one
     // still standing, never an old one marked superseded by nothing).
@@ -524,7 +535,7 @@ export class SchedulerDb {
       this.db.prepare(`
         INSERT INTO decisions (id, project_root, scope, team, title, content, tags, created_by, created_at, expires_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, params.project_root, scope, team ?? null, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
+      `).run(id, projectRoot, scope, team ?? null, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
       if (params.supersedes && this.supersedeDecision(params.supersedes, id) !== 1) {
         throw new Error(`Decision "${params.supersedes}" could not be superseded`);
       }
