@@ -1,5 +1,5 @@
 /**
- * AGEND-115: the run-time half of the registry's completeness check (the other half is the compiler: `CliSpec` requires every capability).
+ * The run-time half of the registry's completeness check (the other half is the compiler: `CliSpec` requires every capability).
  * `checkCliRegistry` reads a table of specs as untrusted data and lists what is wrong with it, one sentence each; an empty list is a complete, consistent
  * registry. tests/cli-registry-completeness.test.ts runs it on the real table (must be empty) and on deliberately broken copies (must not be).
  *
@@ -95,8 +95,8 @@ export function checkCliRegistry(specs: unknown, ids: readonly string[] = CLI_ID
       for (const field of Object.keys(cap)) if (!["support", "why", "note", "tracking"].includes(field)) problems.push(`${where} has an unknown field \`${field}\``);
       if (typeof cap.why !== "string" || !(NO_REASONS as readonly string[]).includes(cap.why)) { problems.push(`${where} is "no" without a reason (${NO_REASONS.join(", ")})`); continue; }
       if (typeof cap.note !== "string" || cap.note.trim().length < 12) problems.push(`${where} is "no" (${cap.why}) without a sentence saying why`);
-      if (cap.why === "not_yet_built" && !(typeof cap.tracking === "string" && TRACKING.test(cap.tracking))) problems.push(`${where} is "not_yet_built" without the issue that tracks it (AGEND-<n>, #<n> or undecided)`);
-      if (cap.tracking !== undefined && !(typeof cap.tracking === "string" && TRACKING.test(cap.tracking))) problems.push(`${where} has a tracking value that is not AGEND-<n>, #<n> or undecided`);
+      if (cap.why === "not_yet_built" && !(typeof cap.tracking === "string" && TRACKING.test(cap.tracking))) problems.push(`${where} is "not_yet_built" without the issue that tracks it (#<n> or undecided)`);
+      if (cap.tracking !== undefined && !(typeof cap.tracking === "string" && TRACKING.test(cap.tracking))) problems.push(`${where} has a tracking value that is not #<n> or undecided`);
     }
   }
   problems.push(...checkUniqueness(specs, ids), ...checkDependencies(specs, ids));

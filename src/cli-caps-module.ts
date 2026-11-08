@@ -1,5 +1,5 @@
 /**
- * AGEND-115 S3: what the dashboard's scripts may ask about a CLI, derived from the registry (cli-registry.ts) and written to `src/ui/cli-caps.js` by
+ * CLI registry, step 3: what the dashboard's scripts may ask about a CLI, derived from the registry (cli-registry.ts) and written to `src/ui/cli-caps.js` by
  * `npx tsx scripts/gen-cli-caps.mts`. The scripts used to write CLI ids out by hand (which CLIs can sign out, which sign in with browser controls, how a Move words the
  * conversation, which a Runtime can install); they import this module instead, so a CLI the registry says can do something is the same CLI the page offers it for.
  *

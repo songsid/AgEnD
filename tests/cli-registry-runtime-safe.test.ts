@@ -1,5 +1,5 @@
 /**
- * AGEND-115: the registry's data files are read by the server AND by a Windows Runtime out of its own bundle, which has no AgEnD server code and no Linux-only
+ * The registry's data files are read by the server AND by a Windows Runtime out of its own bundle, which has no AgEnD server code and no Linux-only
  * packages. So they may import only Node built-ins and each other, and hold no code that does anything but describe.
  */
 import { readFileSync } from "node:fs";

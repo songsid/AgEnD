@@ -1,5 +1,5 @@
 /**
- * AGEND-115 S4: the Windows Runtime reads its CLI tables (providers, named-account variables, sign-in commands, installable CLIs) from the registry, so the registry's files
+ * CLI registry, step 4: the Windows Runtime reads its CLI tables (providers, named-account variables, sign-in commands, installable CLIs) from the registry, so the registry's files
  * ride in the Runtime bundle. These tests build the bundle, run it outside the AgEnD dependency tree, and check that an older Runtime and an older server still work with
  * a bundle that has (or lacks) them: the update check is driven by the archive's own manifest, and the Runtime's protocol and capabilities are what they were.
  */

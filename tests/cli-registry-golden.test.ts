@@ -1,5 +1,5 @@
 /**
- * AGEND-115: the values the registry (src/cli-registry.ts) feeds into the rest of AgEnD, written out LITERALLY. They are what each list was before the lists were
+ * The values the registry (src/cli-registry.ts) feeds into the rest of AgEnD, written out LITERALLY. They are what each list was before the lists were
  * derived from the registry, so these tests are the proof that moving them changed nothing, and they are the second place a reviewer sees when one of them is
  * edited. The ones that decide what a Runtime starts or what the dashboard may run (sign-in commands, environment variable names, probes, binary names, the
  * login flows' safety flags) must stay literal here: if they were derived from the registry too, editing the registry would change them silently.

@@ -1,7 +1,7 @@
 /**
- * AGEND-115: a new hand-written list of CLI ids in `src` fails here. What a CLI can do — sign in, sign out, show an account, show usage, be installed by a
+ * A new hand-written list of CLI ids in `src` fails here. What a CLI can do — sign in, sign out, show an account, show usage, be installed by a
  * Runtime — is answered once, in src/cli-registry.ts, and the lists that used to repeat it are derived from there. A list written out again is how a
- * new CLI came to "sign in, but show no account and no usage" (AGEND-113).
+ * new CLI came to "sign in, but show no account and no usage".
  *
  * `ALLOWED` is every file that still names two or more CLIs by hand, with how many such lists it has, and why they are not the registry's business:
  * they are about something else (which CLIs run a persistent Windows pane, which write which transcript, display names), or they are behaviour keyed by

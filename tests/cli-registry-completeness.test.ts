@@ -1,5 +1,5 @@
 /**
- * AGEND-115: the registry (src/cli-registry.ts) must answer every capability for every CLI, consistently, and every "yes" must be backed by the behaviour it
+ * The registry (src/cli-registry.ts) must answer every capability for every CLI, consistently, and every "yes" must be backed by the behaviour it
  * promises. A CLI added without an answer, a "no" without a reason, or a "yes" with nothing behind it fails here. The broken copies below show that the check
  * does catch each of those; tests/cli-registry-golden.test.ts pins the values themselves.
  */
@@ -77,16 +77,16 @@ kiro-cli runtime.authStatus not_yet_built undecided
 kiro-cli runtime.identity not_applicable
 kiro-cli runtime.usage not_yet_built undecided
 antigravity host.dashboardSignIn by_design
-antigravity host.structuredSignIn not_yet_built AGEND-113
-antigravity host.identity not_yet_built AGEND-113
+antigravity host.structuredSignIn not_yet_built undecided
+antigravity host.identity not_yet_built undecided
 antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
 antigravity runtime.install by_design
-antigravity runtime.signIn not_yet_built AGEND-113
+antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
-antigravity runtime.accountRows not_yet_built AGEND-113
-antigravity runtime.authStatus not_yet_built AGEND-113
+antigravity runtime.accountRows not_yet_built undecided
+antigravity runtime.authStatus not_yet_built undecided
 antigravity runtime.identity not_applicable
 antigravity runtime.usage not_yet_built undecided
 grok host.structuredSignIn not_yet_built undecided

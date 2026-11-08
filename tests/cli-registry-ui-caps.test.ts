@@ -1,5 +1,5 @@
 /**
- * AGEND-115 S3: src/ui/cli-caps.js is generated from the registry (src/cli-caps-module.ts, `npx tsx scripts/gen-cli-caps.mts`). It must be exactly what the registry renders, and the
+ * CLI registry, step 3: src/ui/cli-caps.js is generated from the registry (src/cli-caps-module.ts, `npx tsx scripts/gen-cli-caps.mts`). It must be exactly what the registry renders, and the
  * scripts that read it must not write a list of CLIs out again.
  */
 import { readFileSync } from "node:fs";

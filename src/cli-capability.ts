@@ -1,5 +1,5 @@
 /**
- * AGEND-115: the vocabulary of the CLI capability registry (cli-registry.ts). One `CliSpec` per AI tool, written as plain data: every capability is
+ * The vocabulary of the CLI capability registry (cli-registry.ts). One `CliSpec` per AI tool, written as plain data: every capability is
  * either `yes` (with the few facts the rest of AgEnD needs) or `no` with a reason and a sentence. A capability that is left out does not compile
  * (`CliSpec` requires every field), and a `no` that does not say why does not compile either; cli-registry-check.ts and
  * tests/cli-registry-completeness.test.ts check the same things at run time.
@@ -25,9 +25,9 @@ export type CliId = typeof CLI_IDS[number];
  */
 export const NO_REASONS = Object.freeze(["cli_has_none", "not_applicable", "by_design", "needs_verification", "not_yet_built"] as const);
 export type NoReason = typeof NO_REASONS[number];
-/** `AGEND-115`, `#3212`, or `undecided`. */
-export type Tracking = `AGEND-${number}` | `#${number}` | "undecided";
-export const TRACKING = /^(?:AGEND-\d+|#\d+|undecided)$/;
+/** `#3212` (an upstream issue), or `undecided`. */
+export type Tracking = `#${number}` | "undecided";
+export const TRACKING = /^(?:#\d+|undecided)$/;
 
 export type No =
   | { readonly support: "no"; readonly why: Exclude<NoReason, "not_yet_built">; readonly note: string; readonly tracking?: Tracking }

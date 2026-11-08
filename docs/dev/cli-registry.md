@@ -34,7 +34,7 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | `runtime.identity` / `runtime.usage` | the Runtime reports the account / its usage | — |
 
 A `no` says why: `cli_has_none` (the tool has no such thing), `not_applicable` (it needs a capability this CLI lacks), `by_design` (decided against; the note says where),
-`needs_verification` (nobody has run the tool to find out; the note says what to check), or `not_yet_built` (it can be done; `tracking` is `AGEND-<n>`, `#<n>` or `undecided`).
+`needs_verification` (nobody has run the tool to find out; the note says what to check), or `not_yet_built` (it can be done; `tracking` is `#<n>` or `undecided`).
 
 ## Adding a CLI
 

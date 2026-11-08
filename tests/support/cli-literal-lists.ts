@@ -1,5 +1,5 @@
 /**
- * AGEND-115: finds the places in `src` that write out a list of CLI ids by hand — the thing the CLI registry (src/cli-registry.ts) replaced. A "literal list" is
+ * Finds the places in `src` that write out a list of CLI ids by hand — the thing the CLI registry (src/cli-registry.ts) replaced. A "literal list" is
  * a line, or an array or object literal across lines, that names two or more different CLIs (as quoted strings, or as object keys). It is a heuristic for a
  * review tool, not a parser: it reads text, and it is meant to over-report rather than to miss one.
  */
