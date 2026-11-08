@@ -9,7 +9,7 @@ import type { HubTransportState, HubTransportStore } from "./store.js";
 import type { HubLinkContext } from "./server.js";
 import { personKeyString } from "./identity.js";
 import { HubProtocolError, identifier, uuid, validated, parseStrictJson } from "./validation.js";
-import { pairingNoticeSchema } from "./protocol.js";
+import { pairingNoticeV2Schema } from "./protocol.js";
 
 export const HUB_PAIRING_NOTICES_MIGRATION: HubMigration = Object.freeze({ component: "s90-pairing-notices", version: 1, up(db: Database.Database) {
   db.exec(`CREATE TABLE hub_pairing_notices(id TEXT PRIMARY KEY, fleet_id TEXT NOT NULL, generation INTEGER NOT NULL,
@@ -18,7 +18,7 @@ export const HUB_PAIRING_NOTICES_MIGRATION: HubMigration = Object.freeze({ compo
     kind TEXT NOT NULL CHECK(kind IN ('person','fleet','session')), target TEXT NOT NULL,
     state TEXT NOT NULL CHECK(state IN ('queued','delivered','failed')), PRIMARY KEY(notice_id,kind,target));`);
 } });
-export type PairingNoticeView = import("zod").infer<typeof pairingNoticeSchema>;
+export type PairingNoticeView = import("zod").infer<typeof pairingNoticeV2Schema>;
 interface NoticeRow { id: string; fleet_id: string; generation: number; owner: string; initiating_session: string; body: string }
 export class HubPairingNotices {
   private closed = false;
@@ -47,7 +47,7 @@ export class HubPairingNotices {
     this.check();
   }
   private view(row: NoticeRow): PairingNoticeView {
-    const notice = validated(pairingNoticeSchema, parseStrictJson(row.body));
+    const notice = validated(pairingNoticeV2Schema, parseStrictJson(row.body));
     if (notice.id !== row.id || notice.fleetId !== row.fleet_id || notice.generation !== row.generation) throw new HubProtocolError("uncertain");
     const fleet = this.options.store.read().fleets.find(f => f.id === notice.fleetId);
     return { ...notice, revoked: !fleet || fleet.status !== "active" || fleet.generation !== notice.generation };
@@ -56,8 +56,8 @@ export class HubPairingNotices {
   enqueue = (db: Database.Database, input: HubQuickPairingNotice, state: HubTransportState): void => {
     this.check();
     if (db !== this.options.db || !db.inTransaction) throw new HubProtocolError("unavailable");
-    const notice = validated(pairingNoticeSchema, { id: randomUUID(), fleetId: input.fleetId, generation: input.generation,
-      label: input.label, at: input.at, source: "group", revoked: false });
+    const notice = validated(pairingNoticeV2Schema, { id: randomUUID(), fleetId: input.fleetId, generation: input.generation,
+      label: input.label, at: input.at, source: input.source ?? "group", revoked: false });
     const owner = personKeyString(input.owner);
     const fleet = state.fleets.find(f => f.id === notice.fleetId);
     if (!fleet || fleet.status !== "active" || fleet.generation !== notice.generation || personKeyString(fleet.owner) !== owner) throw new HubProtocolError("unavailable");
@@ -85,7 +85,7 @@ export class HubPairingNotices {
     this.listeners.add(listener); return () => this.listeners.delete(listener);
   }
   /** Read/ack uses current eligible person authority, never pair/publish permission or a URL bearer token. */
-  async forSession(ctx: HubRequestContext): Promise<PairingNoticeView[]> {
+  async forSession(ctx: HubRequestContext, version = 1): Promise<PairingNoticeView[]> {
     const who = await ctx.requirePerson(), actor = await ctx.current(); this.check();
     if (ctx.isCurrent?.() !== true || actor.kind !== "directory" || personKeyString(actor.person) !== personKeyString(who)) throw new HubProtocolError("revoked");
     const person = personKeyString(who);
@@ -93,7 +93,7 @@ export class HubPairingNotices {
       this.check(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
       const rows = this.options.db.prepare(`SELECT n.* FROM hub_pairing_notices n JOIN hub_pairing_notice_targets t ON t.notice_id=n.id
         WHERE t.kind='person' AND t.target=? AND n.initiating_session<>? ORDER BY n.rowid DESC LIMIT 1024`).all(person, actor.sessionId) as NoticeRow[];
-      const notices = rows.map(row => this.view(row));
+      const notices = rows.map(row => this.view(row)).filter(notice => version >= 2 || notice.source === "group");
       for (const notice of notices) this.audit(this.options.db, "pairing.notice-disclosed", notice.fleetId, who, ctx.requestId, "allowed");
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
       return notices;
@@ -130,7 +130,7 @@ export class HubPairingNotices {
     this.sending.add(link.fleetId);
     try {
       const rows = this.options.db.prepare(`SELECT n.* FROM hub_pairing_notices n JOIN hub_pairing_notice_targets t ON t.notice_id=n.id
-        WHERE t.kind='fleet' AND t.target=? AND t.state<>'delivered' ORDER BY n.rowid LIMIT 100`).all(link.fleetId) as NoticeRow[];
+        WHERE t.kind='fleet' AND t.target=? AND t.state<>'delivered' AND (?=1 OR json_extract(n.body,'$.source')='group') ORDER BY n.rowid LIMIT 100`).all(link.fleetId, Number(link.features.has("pairing-notices-v2"))) as NoticeRow[];
       const due = rows.filter(row => { const at = this.sentAt.get(`${link.fleetId}/${row.id}/${link.linkEpoch}`); return at === undefined || this.now() - at >= 5000; });
       if (!due.length) return; // No directory polling for an empty or not-yet-due queue.
       const eligible = await this.options.directory.checkEligibility(link.owner);
@@ -146,7 +146,8 @@ export class HubPairingNotices {
         if (!link.current()) return;
         try {
           const transport = this.options.transport(); if (!transport) throw new HubProtocolError("unavailable");
-          await transport.send(link.fleetId, { v: 1, type: "pairing.notice", requestId: notice.id, linkEpoch: link.linkEpoch, payload: notice });
+          if (notice.source === "manual") await transport.send(link.fleetId, { v: 1, type: "pairing.notice-v2", requestId: notice.id, linkEpoch: link.linkEpoch, payload: notice });
+          else await transport.send(link.fleetId, { v: 1, type: "pairing.notice", requestId: notice.id, linkEpoch: link.linkEpoch, payload: { ...notice, source: "group" } });
           this.sentAt.set(key, this.now()); // Only a retained member ACK means delivered.
         } catch {
           this.sentAt.set(key, this.now());
@@ -165,6 +166,7 @@ export class HubPairingNotices {
       const row = this.options.db.prepare(`SELECT n.* FROM hub_pairing_notices n JOIN hub_pairing_notice_targets t ON t.notice_id=n.id
         WHERE n.id=? AND t.kind='fleet' AND t.target=?`).get(noticeId, link.fleetId) as NoticeRow | undefined;
       if (!row || row.owner !== personKeyString(link.owner) || !link.current()) throw new HubProtocolError("not-found");
+      if (this.view(row).source === "manual" && !link.features.has("pairing-notices-v2")) throw new HubProtocolError("incompatible");
       const target = this.options.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE notice_id=? AND kind='fleet' AND target=?").get(noticeId, link.fleetId) as { state: string };
       if (target.state === "delivered") return;
       this.audit(this.options.db, "pairing.notice-delivered", row.fleet_id, link.owner, noticeId);

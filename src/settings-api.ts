@@ -930,15 +930,16 @@ export function handleSettingsRequest(
   }
 
   // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
-  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge))?$/);
+  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust))?$/);
   if (companyRoute) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
     const step = companyRoute[1], execution = settingsRequestExecution(req);
     const authority = settingsRequestJoinAuthority(req);
-    const session = step === "start" || step === "resume" ? authority?.session : ctx.hubCompanySession(req);
+    const confirmed = step === "start" || step === "resume" || step === "repair-trust";
+    const session = confirmed ? authority?.session : ctx.hubCompanySession(req);
     if (!session?.current()) { json(res, 403, { error: "private_session_required" }); return true; }
-    if ((step === "start" || step === "resume") && (!isSettingsReplay(req) || !execution || !authority?.confirmedCurrent())) {
+    if (confirmed && (!isSettingsReplay(req) || !execution || !authority?.confirmedCurrent())) {
       json(res, 403, { error: "admin_confirmation_required" }); return true;
     }
     if ((!step || step === "bridge") ? method !== "GET" : method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
@@ -961,9 +962,12 @@ export function handleSettingsRequest(
         }
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
-        if (step === "start") {
-          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label"].includes(k))) throw new HubProtocolError("invalid");
-          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin }, authority) });
+        if (step === "repair-trust") {
+          if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
+          await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
+        } else if (step === "start") {
+          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
+          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId }, authority) });
         } else {
           if (!body || Object.keys(body).length !== 1) throw new HubProtocolError("invalid");
           const id = validated(uuid, body.operationId);
@@ -986,7 +990,7 @@ export function handleSettingsRequest(
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
-    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: api.notices?.() ?? [] }); return true; }
+    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: (api.notices?.() ?? []).filter(n => url.searchParams.get("v") === "2" || n.source === "group") }); return true; }
     if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } ctx.invalidateHubCompanyJoin?.(); json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
     if (step && method === "POST") {
       const execution = settingsRequestExecution(req);

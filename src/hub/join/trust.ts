@@ -6,7 +6,7 @@ import { companyIdentityDigest, joinIdentitySchema, type JoinIdentity } from "./
 import { sha256 } from "../identity.js";
 import { hash, validated, parseStrictJson, HubProtocolError } from "../validation.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
-import { createJoinPrivate } from "./private.js";
+import { createJoinPrivate, writeJoinPrivate } from "./private.js";
 import { hubOrigin } from "../tls.js";
 
 export class CompanyIdentityChanged extends HubProtocolError { constructor() { super("denied"); } }
@@ -14,6 +14,15 @@ const trustSchema = z.strictObject({ v: z.literal(1), hub: joinIdentitySchema, f
 export class CompanyTrustStore {
   constructor(private readonly home: string) {}
   path(webOrigin: string): string { return `hub-member/company-trust/${sha256(hubOrigin(webOrigin))}.json`; }
+  /** Only the separate confirmed local repair calls this; ordinary Start/Retry always checkAndPin. */
+  repair(hub: JoinIdentity, expected: string | null, current: () => boolean): void {
+    const fingerprint = companyIdentityDigest(hub), suffix = this.path(hub.webOrigin);
+    if (!current() || expected === null || validated(hash, expected) !== fingerprint) throw new CompanyIdentityChanged();
+    const previous = readPrivateFile(this.home, suffix, 8192), parsed = validated(trustSchema, parseStrictJson(previous));
+    if (parsed.hub.webOrigin !== hub.webOrigin || parsed.fingerprint !== companyIdentityDigest(parsed.hub)) throw new CompanyIdentityChanged();
+    const unchanged = () => current() && readPrivateFile(this.home, suffix, 8192) === previous;
+    writeJoinPrivate(this.home, suffix, JSON.stringify({ v: 1, hub, fingerprint }), unchanged);
+  }
   checkAndPin(hub: JoinIdentity, expected: string | null, existing: JoinIdentity | null, current: () => boolean): "known" | "first-use" | "company-link" {
     if (!current()) throw new HubProtocolError("stale");
     const fingerprint = companyIdentityDigest(hub), suffix = this.path(hub.webOrigin);

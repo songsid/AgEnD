@@ -8,7 +8,10 @@ import { CompanyJoinController } from "../src/hub/join/local.js";
 import { readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
+import { sha256 } from "../src/hub/identity.js";
 import { companyIdentityDigest } from "../src/hub/join/protocol.js";
+import { createJoinPrivate } from "../src/hub/join/private.js";
+import { HubMemberProfileStore } from "../src/hub/profile.js";
 const homes: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const p of homes.splice(0)) rmSync(p, { force: true, recursive: true }); });
 const home = () => { const p = mkdtempSync(join(tmpdir(), "agend-local-join-")); chmodSync(p, 0o700); homes.push(p); return p; };
@@ -32,7 +35,7 @@ async function world() {
     return status;
   }) };
   const activate = vi.fn();
-  const options = { home: directory, client, now: () => now, schedule: false as const, snapshot: () => stamp,
+  const options = { home: directory, client, now: () => now, schedule: false as const, snapshot: () => ({ membership: enabled, binding: stamp === "replacement" ? "e".repeat(64) : (() => { try { return sha256(readFileSync(join(directory, "hub-member/state.json"), "utf8")); } catch { return null; } })() }),
     link: () => "offline" as const, activate,
     enableMembership: (current: () => boolean, accept: () => void) => { if (!current()) throw Error("lost"); if (settleFailure) throw Error("disk"); enabled = true; stamp = "enabled"; accept(); } };
   const controller = new CompanyJoinController(options);
@@ -42,6 +45,12 @@ async function world() {
     diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
 describe("Fleet local company join", () => {
+  it("an existing or unfinished legacy binding refuses before discovery or a new Hub reservation", async () => {
+    const w = await world();
+    createJoinPrivate(w.directory, "hub-member/state.json", JSON.stringify({ hubId: w.metadata.hub.hubId }));
+    await expect(w.start()).rejects.toThrow();
+    expect(w.client.discover).not.toHaveBeenCalled(); expect(w.calls).toEqual([]);
+  });
   it("saves the exact profile and journal before proof ACK, then activates once without exposing any secret", async () => {
     const w = await world(), pending = await w.start(); w.ready();
     const view = await w.controller.status(pending.operationId, w.session);
@@ -87,5 +96,50 @@ describe("Fleet local company join", () => {
     const next = new CompanyJoinController(w.options);
     expect(await next.status(pending.operationId, { ...w.session, ownerKey: {} })).toMatchObject({ state: "saved" });
     expect(w.calls.filter(x => x === "push")).toHaveLength(1);
+  });
+  it.each(["marker", "profile", "membership", "ack"])("recovers the exact owned %s crash window without another enrollment", async phase => {
+    const w = await world(), pending = await w.start(); w.ready();
+    const original = w.client.command.getMockImplementation()!, enable = w.options.enableMembership;
+    if (phase === "marker" || phase === "profile") {
+      const save = HubMemberProfileStore.prototype.saveProfile;
+      vi.spyOn(HubMemberProfileStore.prototype, "saveProfile").mockImplementation(function (this: HubMemberProfileStore, ...args) {
+        if (phase === "profile") save.apply(this, args);
+        w.controller.close(); throw Error("crash after " + phase);
+      });
+    } else if (phase === "membership") {
+      const enable = w.options.enableMembership;
+      w.options.enableMembership = (current, _accept) => enable(current, () => { w.controller.close(); throw Error("crash after membership rename"); });
+    } else w.client.command.mockImplementation(async (...args: any[]) => {
+      const result = await (original as any)(...args); if (args[1] === "ack") { w.controller.close(); throw Error("lost ACK response and restart"); } return result;
+    });
+    await w.controller.status(pending.operationId, w.session);
+    expect(currentBinding(w.directory)).toBeNull(); expect(w.activate).not.toHaveBeenCalled();
+    vi.restoreAllMocks(); w.client.command.mockImplementation(original);
+    const next = new CompanyJoinController({ ...w.options, enableMembership: enable });
+    expect(await next.status(pending.operationId, { ...w.session, ownerKey: {} })).toMatchObject({ state: "saved" });
+    expect(w.calls.filter(x => x === "push")).toHaveLength(1); expect(w.activate).toHaveBeenCalledOnce();
+    expect(currentBinding(w.directory)).toEqual({ hubId: w.metadata.hub.hubId }); expect(w.enabled()).toBe(true);
+  });
+  it("a nonhost restart read asks for fresh local confirmation without permanently revoking the same operation", async () => {
+    const w = await world(); w.session.hostHere = false; const pending = await w.start(); w.ready(); w.controller.close();
+    const next = new CompanyJoinController(w.options);
+    expect(await next.status(pending.operationId, w.session)).toMatchObject({ state: "held", reason: "confirmation-required" });
+    expect(w.calls).not.toContain("redeem");
+    expect(await next.resume(pending.operationId, w.authority)).toMatchObject({ state: "saved" });
+    expect(w.calls.filter(x => x === "push")).toHaveLength(1);
+  });
+  it("a lost issuance reply and lost cancellation retain an unknown outcome until the exact tombstone is read", async () => {
+    const w = await world(), pending = await w.start(); w.ready();
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => {
+      if (args[1] === "cancel") throw Error("offline");
+      const result = await (original as any)(...args); if (args[1] === "redeem") throw Error("response dropped after commit"); return result;
+    });
+    expect(await w.controller.status(pending.operationId, w.session)).toMatchObject({ state: "held", issued: false, outcomeKnown: false });
+    expect(await w.controller.cancel(pending.operationId, w.session)).toMatchObject({ state: "cancelled", outcomeKnown: false });
+    await expect(w.start()).rejects.toThrow();
+    expect(await w.controller.status(pending.operationId, w.session)).toMatchObject({ state: "cancelled", issued: true, outcomeKnown: true });
+    await expect(w.start()).rejects.toThrow(); expect(w.calls.filter(x => x === "push")).toHaveLength(1);
+    expect(w.calls).not.toContain("ack"); expect(currentBinding(w.directory)).toBeNull();
   });
 });

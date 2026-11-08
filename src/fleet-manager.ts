@@ -1656,8 +1656,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const controller = new CompanyJoinController({ home: this.dataDir,
         snapshot: () => {
           const state = join(this.dataDir, "hub-member/state.json");
-          return JSON.stringify([this.companyMembershipEpoch, (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
-            existsSync(state) ? createHash("sha256").update(readFileSync(state)).digest("hex") : null]);
+          return { membership: (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+            binding: existsSync(state) ? createHash("sha256").update(readFileSync(state)).digest("hex") : null };
         },
         enableMembership: (current, accept) => {
           if (!current() || !this.configPath || !this.fleetConfig) throw Error("Join operation changed");
@@ -1672,7 +1672,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             accept();
           } finally { this.companyMembershipWrite = false; }
         },
-        activate: () => { void this.applyHubSwitches(); void this.hubRuntime?.refresh(); },
+        activate: () => { void this.applyHubSwitches().then(() => this.hubRuntime?.refresh()).catch(() => { /* Saved binding remains offline until a later refresh. */ }); },
         link: () => this.hubMemberLink === "online" ? "online" : "offline",
       });
       this.companyJoinController = controller; return controller;
@@ -24994,7 +24994,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     }
-    this.companyJoinController?.close();
+    this.companyJoinController?.close(); this.companyJoinController = null; this.companyJoinInit = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();

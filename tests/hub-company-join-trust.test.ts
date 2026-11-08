@@ -55,4 +55,15 @@ describe("company descriptor and persistent trust", () => {
     rmSync(join(home, path)); symlinkSync("/nonexistent/company-trust", join(home, path));
     expect(() => store.checkAndPin(hub, null, null, () => true)).toThrow();
   });
+  it("only a separately authorized exact trusted descriptor can repair a saved identity; Retry cannot", () => {
+    const { store, hub } = world(), next = { ...hub, spkiSha256: "b".repeat(64) };
+    store.checkAndPin(hub, null, null, () => true);
+    expect(() => store.repair(next, null, () => true)).toThrow();
+    expect(() => store.repair(next, companyIdentityDigest(hub), () => true)).toThrow();
+    expect(() => store.repair(next, companyIdentityDigest(next), () => false)).toThrow();
+    expect(store.checkAndPin(hub, null, null, () => true)).toBe("known");
+    store.repair(next, companyIdentityDigest(next), () => true);
+    expect(store.checkAndPin(next, null, null, () => true)).toBe("known");
+    expect(() => store.checkAndPin(hub, null, null, () => true)).toThrow();
+  });
 });

@@ -53,7 +53,7 @@ export function handleCompanyJoin(req: IncomingMessage, res: ServerResponse, ser
       const requestId = validated(uuid, form.get("requestId"));
       const cookie = service.browserOpen(requestId, validated(hash, form.get("state")), req.headers.origin);
       const id = service.metadata().hub.hubId;
-      res.writeHead(303, { ...headers, Location: `/ui/hub/join?request=${requestId}`, "Set-Cookie": `${companyFlowCookieName(id, requestId)}=${cookie}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600` });
+      res.writeHead(303, { ...headers, Location: `/ui/hub?join=${requestId}`, "Set-Cookie": `${companyFlowCookieName(id, requestId)}=${cookie}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600` });
       res.end(); return;
     }
     // Do not turn a cookie-bearing browser request into a backchannel key holder.

@@ -45,6 +45,8 @@ import { createHubRetentionControl, retentionMigration, type HubRetentionControl
 import { createHubPreviewHandler, hubPreviewSettings, hubPreviewView, type HubPreviewSettings, type HubPreviewView } from "../preview.js";
 import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../attachments/store.js";
 import { HUB_COMPANY_JOIN_MIGRATION } from "../join/store.js";
+import { signCompanyInvitation } from "../join/invitation.js";
+import { signCompanyDescriptor } from "../join/descriptor.js";
 import { HubCompanyJoin } from "../join/service.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
@@ -309,9 +311,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live, now, transport: () => memberServer });
       pairingNotices.start();
       teardown.add("pairing security notices", () => pairingNotices.close());
+      const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
+        webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
       const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices,
-        identity: { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
-          webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin },
+        identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
         certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
@@ -326,7 +329,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           prepareManual: (resource, approvedBy, ctx) => groups.prepareManualEnrollment(resource, approvedBy, ctx),
           atomic: work => db.transaction(() => work(db)).immediate() },
         quick: { enqueue: pairingNotices.enqueue, committed: pairingNotices.committed },
-        automaticReservations: { count: owner => companyJoin.records.reservations(owner), retained: () => companyJoin.records.retained() },
+        automaticReservations: { count: owner => companyJoin.records.reservations(owner), retained: () => companyJoin.retained() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),

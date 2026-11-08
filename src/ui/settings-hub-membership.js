@@ -1,3 +1,4 @@
+import { CompanyJoinSettings } from "./settings-hub-company-join.js";
 // Pure lazy owner Settings while off. Hub clients/pairing UI load only after a saved on state and a member page mark.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
@@ -88,5 +89,5 @@ export function HubMembershipSettings() {
     <p class="note">${copy("off")}</p>
     ${messageKey && messageKey !== "loading" ? html`<p role="status">${copy(messageKey)}</p>` : null}
     ${!view && !busy && messageKey !== "loading" ? html`<button class="btn btn-sm" type="button" onClick=${read}>${copy("retry")}</button>` : null}
-  </section>${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
+  </section><${CompanyJoinSettings} onSaved=${read} />${view?.enabled && markedMember() ? Connect ? html`<${Connect} />` : connectError ? html`<${ErrorState} message=${copy("unavailable")} onRetry=${() => setAttempt(n => n + 1)} />` : html`<${Skeleton} variant="form" lines=${4} />` : null}</div>`;
 }

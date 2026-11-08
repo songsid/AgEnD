@@ -19,6 +19,9 @@ import { browserOriginProof, companyIdentityDigest, joinKeyThumbprint, joinPurpo
   verifierSchema, verifyJoinProof, type JoinBinding, type JoinIdentity, type JoinPurpose, type JoinProof } from "./protocol.js";
 import { createJoinSealer, type DeliveryBinding } from "./receipt.js";
 
+import { companyInvitationClaims, verifyCompanyInvitation, type CompanyInvitationClaims } from "./invitation.js";
+const invitationRecord = z.strictObject({ claims: companyInvitationClaims, digest: hash, requestId: uuid.nullable(), consumed: z.boolean() });
+
 export class CompanyJoinLimit extends HubProtocolError { constructor() { super("backpressure"); } }
 const pushPayload = z.strictObject({ label: plain(120).refine(s => s.trim().length > 0), stateHash: hash,
   invitation: z.string().max(8192).nullable() });
@@ -28,6 +31,9 @@ export interface CompanyJoinOptions {
   home: string; db: Database.Database; store: HubTransportStore; audit: Pick<HubAuditStore, "appendInTransaction">;
   identity: JoinIdentity; certificatePem: string; groups: HubGroupAuthorization; notices: HubPairingNotices;
   administrator: PersonKey; eventDays: number; current(): boolean; now?(): number;
+  signInvitation(claims: CompanyInvitationClaims): string;
+  connected?(fleetId: string): boolean;
+  descriptor: ReturnType<typeof import("./descriptor.js").signCompanyDescriptor>;
 }
 export class HubCompanyJoin {
   readonly records: CompanyJoinRecords;
@@ -54,6 +60,9 @@ export class HubCompanyJoin {
     if (!row || ![0, 1].includes(row.enabled) || !Number.isSafeInteger(row.revision) || row.revision < 1) throw new HubProtocolError("uncertain");
     return { enabled: row.enabled === 1, revision: row.revision };
   }
+  adminView() {
+    return { ...this.control(), companyLink: this.options.identity.webOrigin + "/join-info#hub=" + Buffer.from(JSON.stringify(this.options.descriptor)).toString("base64url") };
+  }
   metadata() {
     const control = this.control();
     return { v: 1 as const, hub: this.options.identity, identityDigest: companyIdentityDigest(this.options.identity),
@@ -76,7 +85,49 @@ export class HubCompanyJoin {
       this.audit("company-join.configured", ctx.requestId, this.options.administrator);
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
     });
-    return this.control();
+    return this.adminView();
+  }
+  retained(): number {
+    const rows = this.options.db.prepare("SELECT body FROM hub_company_join_invites").all() as { body: string }[];
+    const offers = rows.map(row => validated(invitationRecord, parseStrictJson(row.body))).filter(r => !r.consumed && r.claims.expiresAt > this.now()
+      && (r.requestId === null || this.records.get(r.requestId).owner === null)).length;
+    return this.records.retained() + offers;
+  }
+  private readInvitation(id: string) {
+    const row = this.options.db.prepare("SELECT body FROM hub_company_join_invites WHERE id=?").get(validated(uuid, id)) as { body: string } | undefined;
+    if (!row) throw new HubProtocolError("denied");
+    return validated(invitationRecord, parseStrictJson(row.body));
+  }
+  private invitation(r: JoinRecord) {
+    if (!r.invitationId) return null;
+    const row = this.readInvitation(r.invitationId);
+    if (row.requestId !== r.binding.requestId || row.consumed !== (r.issuedHash !== null)
+      || !r.approvedBy || personKeyString(row.claims.approvedBy) !== personKeyString(r.approvedBy)
+      || personKeyString(row.claims.approvedBy) !== personKeyString(this.options.administrator)
+      || r.owner && personKeyString(row.claims.owner) !== personKeyString(r.owner)
+      || companyIdentityDigest(row.claims.hub) !== companyIdentityDigest(r.binding.hub)) throw new HubProtocolError("denied");
+    return row;
+  }
+  async createInvitation(ctx: HubRequestContext, input: PersonKey) {
+    this.enabled(); const admin = await ctx.requireAdmin(), owner = validated(person, input);
+    if (admin.kind !== "directory" || personKeyString(admin.person) !== personKeyString(this.options.administrator) || ctx.isCurrent?.() !== true)
+      throw new HubProtocolError("denied");
+    const now = this.now(), claims: CompanyInvitationClaims = { v: 2, id: randomUUID(), hub: this.options.identity, owner,
+      approvedBy: admin.person, nonce: randomBytes(32).toString("hex"), createdAt: now, expiresAt: now + 600_000 };
+    const invitation = this.options.signInvitation(claims);
+    if (canonicalArguments(verifyCompanyInvitation(invitation, now)) !== canonicalArguments(claims)) throw new HubProtocolError("uncertain");
+    this.atomic(() => {
+      if (ctx.isCurrent?.() !== true || !this.control().enabled) throw new HubProtocolError("revoked");
+      const pending = this.options.store.read().pairings.filter(p => p.expiresAt > this.now()).length;
+      if (pending + this.retained() >= 64) throw new HubProtocolError("backpressure");
+      this.options.db.prepare("DELETE FROM hub_company_join_invites WHERE json_extract(body,'$.claims.expiresAt')<=?").run(this.now());
+      const count = (this.options.db.prepare("SELECT COUNT(*) n FROM hub_company_join_invites").get() as { n: number }).n;
+      if (count >= 1024) throw new HubProtocolError("backpressure");
+      this.options.db.prepare("INSERT INTO hub_company_join_invites VALUES(?,?)").run(claims.id, canonicalArguments({ claims, digest: sha256(invitation), requestId: null, consumed: false }));
+      this.audit("company-join.invitation-issued", ctx.requestId, admin.person);
+      if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+    });
+    return { invitation, url: this.options.identity.webOrigin + "/join-info#invite=" + invitation, expiresAt: claims.expiresAt };
   }
   private enabled(): void { if (!this.control().enabled) throw new HubProtocolError("denied"); }
   /** Called only inside the group-policy update's owning transaction; never reads the directory. */
@@ -120,13 +171,23 @@ export class HubCompanyJoin {
   push(binding: unknown, input: unknown, proof: unknown) {
     this.enabled(); const b = this.bound(binding), p = validated(pushPayload, input);
     this.consume(b, "push", proof, p);
-    if (p.invitation !== null) throw new HubProtocolError("incompatible"); // invite-v2 is admitted only by its own verified issuer path
-    const now = this.now(), outerDeadline = now + 600_000;
+    const invite = p.invitation ? verifyCompanyInvitation(p.invitation, this.now()) : null;
+    if (invite && (companyIdentityDigest(invite.hub) !== companyIdentityDigest(b.hub)
+      || personKeyString(invite.approvedBy) !== personKeyString(this.options.administrator))) throw new HubProtocolError("denied");
+    const now = invite?.createdAt ?? this.now(), outerDeadline = now + 600_000;
     const record: JoinRecord = { v: 1, binding: b, version: 1, label: p.label, stateHash: p.stateHash, stage: "pending", createdAt: now,
       outerDeadline, retainUntil: Math.max(outerDeadline, now + this.options.eventDays * 86_400_000), browserHash: null, browserOrigin: null,
       owner: null, sessionId: null, approvedAt: null, redeemDeadline: null, deliveryDeadline: null, issuedHash: null,
-      reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null };
-    this.atomic(() => { this.records.insert(record); this.audit("company-join.requested", b.requestId); });
+      reason: null, delivery: null, receipt: null, invitationId: invite?.id ?? null, approvedBy: invite?.approvedBy ?? null };
+    this.atomic(() => {
+      if (invite) {
+        const before = this.readInvitation(invite.id);
+        if (before.digest !== sha256(p.invitation!) || before.requestId !== null || before.consumed || before.claims.expiresAt <= this.now()) throw new HubProtocolError("conflict");
+        const updated = this.options.db.prepare("UPDATE hub_company_join_invites SET body=? WHERE id=? AND body=?").run(canonicalArguments({ ...before, requestId: b.requestId }), invite.id, canonicalArguments(before));
+        if (updated.changes !== 1) throw new HubProtocolError("conflict");
+      }
+      this.records.insert(record); this.audit("company-join.requested", b.requestId);
+    });
     return { requestId: b.requestId, expiresAt: outerDeadline, browserAction: this.options.identity.webOrigin + "/hub/join/open" };
   }
   private exact(binding: JoinBinding): JoinRecord {
@@ -155,7 +216,7 @@ export class HubCompanyJoin {
   }
   browserView(cookie: string, requestId: string) {
     const r = this.browser(cookie, requestId);
-    return { requestId: r.binding.requestId, label: r.label, fleetOrigin: r.binding.fleetOrigin, returnPath: r.binding.fleetOrigin + "/settings/hub", ...this.view(r) };
+    return { requestId: r.binding.requestId, label: r.label, fleetOrigin: r.binding.fleetOrigin, returnPath: r.binding.fleetOrigin + "/settings/hub", connected: !!r.issuedHash && this.options.connected?.(r.binding.fleetId) === true, ...this.view(r) };
   }
   private session(r: JoinRecord): boolean {
     if (!r.owner || !r.sessionId) return false;
@@ -176,7 +237,8 @@ export class HubCompanyJoin {
   async approve(ctx: HubRequestContext, cookie: string, requestId: string) {
     this.enabled(); const r = this.browser(cookie, requestId), actor = await ctx.current();
     if (actor.kind !== "directory" || ctx.isCurrent?.() !== true || !this.records.current(r) || r.stage !== "pending") throw new HubProtocolError("conflict");
-    const owner = validated(person, actor.person), key = personKeyString(owner), now = this.now();
+    const owner = validated(person, actor.person), key = personKeyString(owner), now = this.now(), invitation = this.invitation(r);
+    if (invitation && personKeyString(invitation.claims.owner) !== key) throw new HubProtocolError("denied");
     let expected = r;
     const live = () => ctx.isCurrent?.() === true && this.options.current() && this.control().enabled && this.records.current(expected) && this.now() < r.outerDeadline;
     const initial = this.options.store.read();
@@ -186,16 +248,19 @@ export class HubCompanyJoin {
       if (!spendEnrollmentBudget(state, `quick:${key}`, 5, now) || !spendEnrollmentBudget(state, "quick:all", 48, now)) throw new HubProtocolError("backpressure");
     }));
     let permit;
-    try { permit = await this.options.groups.prepareEnrollment({ kind: "fleet", id: r.binding.fleetId, revision: 1, owner }, { requestId: ctx.requestId, current: live }); }
+    try {
+      const resource = { kind: "fleet" as const, id: r.binding.fleetId, revision: 1, owner }, context = { requestId: ctx.requestId, current: live };
+      permit = invitation ? await this.options.groups.prepareManualEnrollment(resource, invitation.claims.approvedBy, context) : await this.options.groups.prepareEnrollment(resource, context);
+    }
     catch (error) { if (!live()) throw new HubProtocolError("revoked"); return this.groupError(error); }
-    if (permit.source !== "group" || permit.maxFleets < 1) throw new HubProtocolError("denied");
+    if (permit.source !== (r.invitationId ? "manual" : "group") || !r.invitationId && permit.maxFleets < 1) throw new HubProtocolError("denied");
     this.atomic(() => {
       permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
       const transport = this.options.store.read();
-      if (transport.pairings.some(p => p.expiresAt > this.now() && personKeyString(p.owner) === key && ["offered", "pending"].includes(p.state))
-        || this.records.reservations(owner) > 0) throw new HubProtocolError("conflict");
-      if (transport.pairings.filter(p => p.expiresAt > this.now()).length + this.records.retained() >= 48) throw new HubProtocolError("backpressure");
-      if (automaticFleetSlots(transport, owner, this.now(), this.records.reservations(owner)) >= permit.maxFleets) throw new CompanyJoinLimit();
+      if (!invitation && (transport.pairings.some(p => p.expiresAt > this.now() && personKeyString(p.owner) === key && ["offered", "pending"].includes(p.state))
+        || this.records.reservations(owner) > 0)) throw new HubProtocolError("conflict");
+      if (!invitation && transport.pairings.filter(p => p.expiresAt > this.now()).length + this.retained() >= 48) throw new HubProtocolError("backpressure");
+      if (!invitation && automaticFleetSlots(transport, owner, this.now(), this.records.reservations(owner)) >= permit.maxFleets) throw new CompanyJoinLimit();
       const at = this.now();
       expected = { ...r, owner, sessionId: actor.sessionId, approvedAt: at, redeemDeadline: Math.min(at + 60_000, r.outerDeadline),
         stage: "identity-approved", version: r.version + 1 };
@@ -314,17 +379,22 @@ export class HubCompanyJoin {
     const live = () => this.live(expected) && expected.redeemDeadline !== null && this.now() < expected.redeemDeadline;
     if (!live()) throw new HubProtocolError("revoked");
     const sealer = this.seal();
-    let permit;
-    try { permit = await this.options.groups.prepareEnrollment(this.resource(expected), { requestId: b.requestId, current: live }); }
+    let permit, eligibility;
+    try {
+      const invitation = this.invitation(expected), context = { requestId: b.requestId, current: live };
+      eligibility = await this.options.groups.prepareOwnerEligibility(owner, context);
+      permit = invitation ? await this.options.groups.prepareManualEnrollment(this.resource(expected), invitation.claims.approvedBy, context)
+        : await this.options.groups.prepareEnrollment(this.resource(expected), context);
+    }
     catch (error) { if (!live()) throw new HubProtocolError("revoked"); return this.groupError(error); }
-    if (permit.source !== "group" || permit.maxFleets < 1) throw new HubProtocolError("denied");
+    if (permit.source !== (expected.invitationId ? "manual" : "group") || !expected.invitationId && permit.maxFleets < 1) throw new HubProtocolError("denied");
     const credential = randomBytes(32).toString("hex"), issuedHash = sha256(credential);
     this.atomic(() => {
-      permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
+      eligibility.assertCurrent(); permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
       this.options.store.mutate({ at: this.now(), requestId: b.requestId, actor: { kind: "person", person: owner },
-        fleetId: b.fleetId, action: "company-join.group-approved", result: "allowed" }, state => {
+        fleetId: b.fleetId, action: expected.invitationId ? "company-join.admin-approved" : "company-join.group-approved", result: "allowed" }, state => {
         if (!live()) throw new HubProtocolError("revoked");
-        if (automaticFleetSlots(state, owner, this.now(), this.records.reservations(owner, b.requestId)) >= permit.maxFleets) throw new CompanyJoinLimit();
+        if (!expected.invitationId && automaticFleetSlots(state, owner, this.now(), this.records.reservations(owner, b.requestId)) >= permit.maxFleets) throw new CompanyJoinLimit();
         if (state.fleets.length >= 256 || state.fleets.some(f => f.id === b.fleetId)) throw new HubProtocolError("backpressure");
         state.fleets.push({ id: b.fleetId, owner, credentialHash: issuedHash, generation: 1, status: "active", label: expected.label });
       });
@@ -338,10 +408,16 @@ export class HubCompanyJoin {
       const receipt = sealer.seal(delivery, credential);
       this.options.db.prepare("INSERT INTO hub_company_join_cipher_nonces VALUES(?,?)").run(receipt.keyId, receipt.nonce);
       this.options.notices.enqueue(this.options.db, { fleetId: b.fleetId, generation: 1, owner, label: expected.label,
-        at: issuedAt, initiatingSessionId: expected.sessionId! }, this.options.store.read());
+        at: issuedAt, initiatingSessionId: expected.sessionId!, source: source.source }, this.options.store.read());
       const next: JoinRecord = { ...expected, stage: "issued", delivery, receipt, issuedHash, deliveryDeadline, version: expected.version + 1 };
+      if (expected.invitationId) {
+        const invitation = this.invitation(expected)!;
+        const changed = this.options.db.prepare("UPDATE hub_company_join_invites SET body=? WHERE id=? AND body=?")
+          .run(canonicalArguments({ ...invitation, consumed: true }), expected.invitationId, canonicalArguments(invitation));
+        if (changed.changes !== 1) throw new HubProtocolError("conflict");
+      }
       this.records.save(next, expected.version); expected = next;
-      permit.assertCurrent(); this.assertIssued(expected);
+      eligibility.assertCurrent(); permit.assertCurrent(); this.assertIssued(expected);
     });
     try { this.options.notices.committed(); } catch { /* required outbox is already durable; transport retries */ }
     return this.reveal(expected);

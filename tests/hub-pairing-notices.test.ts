@@ -126,6 +126,19 @@ describe("durable quick-pairing security notice outbox",()=>{
   const w=fixture();w.enable();await quick(w);let live=true;const held=gate<PersonKey>(),ctx={...session(w,w.owner,"held"),isCurrent:()=>live,requirePerson:()=>held.promise};
   const work=w.notices.forSession(ctx),failed=expect(work).rejects.toThrow();live=false;held.resolve(w.owner);await failed;
  });
+ it("a manual v2 notice stays queued through a v1-only link and cannot be ACKed until a v2 reconnect",async()=>{
+  const w=fixture();w.enable(2);const old=await w.approved();await w.service.claim(old.input);await quick(w);
+  const row=w.db.prepare("SELECT id,body FROM hub_pairing_notices").get() as {id:string;body:string};
+  w.db.prepare("UPDATE hub_pairing_notices SET body=? WHERE id=?").run(JSON.stringify({...JSON.parse(row.body),source:"manual"}),row.id);
+  const link:HubLinkContext={fleetId:old.fleetId,owner:w.owner,linkEpoch:1,features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:()=>true};
+  await w.notices.flushFleet(link);expect(w.send).not.toHaveBeenCalled();
+  expect(()=>w.notices.acknowledgeFleet(link,row.id)).toThrow();
+  expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet'").get()).toEqual({state:"queued"});
+  const upgraded={...link,linkEpoch:2,features:new Set([...link.features,"pairing-notices-v2"])};
+  await w.notices.flushFleet(upgraded);expect(w.send).toHaveBeenCalledWith(old.fleetId,expect.objectContaining({type:"pairing.notice-v2",payload:expect.objectContaining({source:"manual"})}));
+  w.notices.acknowledgeFleet(upgraded,row.id);
+  expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet'").get()).toEqual({state:"delivered"});
+ });
  it("refuses credentials and provenance if the durable notice table cannot accept the queue",async()=>{
   const w=fixture();w.enable();w.db.exec("CREATE TRIGGER notice_full BEFORE INSERT ON hub_pairing_notices BEGIN SELECT RAISE(ABORT,'notice full'); END");
   await expect(quick(w)).rejects.toThrow("notice full");expect(w.raw().fleets).toEqual([]);expect(w.db.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);

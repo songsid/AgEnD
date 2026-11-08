@@ -58,7 +58,7 @@ describe("company-join actual Hub boundary", () => {
       const refused = await a.open(origin); expect(refused.status).toBe(403); expect(refused.cookie).toBe("");
     }
     expect(r.wire.searches).toHaveLength(before);
-    const opened = await a.open(); expect(opened.status).toBe(303); expect(opened.headers.location).toBe(`/ui/hub/join?request=${a.binding.requestId}`);
+    const opened = await a.open(); expect(opened.status).toBe(303); expect(opened.headers.location).toBe(`/ui/hub?join=${a.binding.requestId}`);
     expect((await a.open()).status).toBe(409);
     expect((await r.call(null, "POST", "/hub/v1/session", { login: "carol", password: "Dummy-carol-only" }, { Origin: a.binding.fleetOrigin })).status).toBe(403);
     expect(r.deps.store.read().fleets).toEqual([]);

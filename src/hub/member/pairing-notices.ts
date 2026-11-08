@@ -4,7 +4,7 @@ import type { HubMigration } from "../db.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubPairingNotice } from "../types.js";
 import type { HubMemberLink } from "../client.js";
-import { pairingNoticeSchema } from "../protocol.js";
+import { pairingNoticeV2Schema } from "../protocol.js";
 import { HubProtocolError, parseStrictJson, validated } from "../validation.js";
 import { randomUUID } from "node:crypto";
 
@@ -21,16 +21,16 @@ export function createHubPairingNoticeInbox(options: {
     list(): HubPairingNotice[] {
       // Matches the retention cap: an acknowledged retained notice must remain reachable in Settings history.
       check(); return (options.db.prepare("SELECT body FROM hub_pairing_notice_inbox ORDER BY rowid DESC LIMIT 1024").all() as { body: string }[])
-        .map(row => validated(pairingNoticeSchema, parseStrictJson(row.body)));
+        .map(row => validated(pairingNoticeV2Schema, parseStrictJson(row.body)));
     },
     async receive(input: HubPairingNotice, link: HubMemberLink): Promise<void> {
-      const notice = validated(pairingNoticeSchema, input); check();
+      const notice = validated(pairingNoticeV2Schema, input); check();
       if (!link.current() || !link.features.has("welcome-caps-v1") || !link.features.has("pairing-notices-v1")) throw new HubProtocolError("incompatible");
       options.db.transaction(() => {
         check(); if (!link.current()) throw new HubProtocolError("stale");
         const prior = options.db.prepare("SELECT body FROM hub_pairing_notice_inbox WHERE id=?").get(notice.id) as { body: string } | undefined;
         if (prior) {
-          const retained = validated(pairingNoticeSchema, parseStrictJson(prior.body));
+          const retained = validated(pairingNoticeV2Schema, parseStrictJson(prior.body));
           // A lost ACK can be replayed after the named fleet was revoked. Only that monotonic projection may change.
           if (JSON.stringify({ ...retained, revoked: notice.revoked }) !== JSON.stringify(notice)
             || (retained.revoked && !notice.revoked)) throw new HubProtocolError("conflict");

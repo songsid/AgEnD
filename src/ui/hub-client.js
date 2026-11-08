@@ -264,13 +264,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     quickPairing(pairingId) { return call("GET", `/hub/v1/quick-pairing${pairingId ? `?id=${id(pairingId)}` : ""}`); },
     stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
     revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
-    pairingNotices() { return call("GET", "/hub/v1/notices"); },
+    pairingNotices() { return call("GET", "/hub/v1/notices?v=2"); },
     /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
     subscribePairingNotices(fn, onClosed = () => {}) {
       if (typeof EventSource === "undefined") return () => {};
-      const events = new EventSource("/hub/v1/notices/events"); let live = true;
+      const events = new EventSource("/hub/v1/notices/events?v=2"); let live = true;
       events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
       events.addEventListener("error", () => {
         // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
@@ -317,7 +317,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
-    const r = await confirm.api("/api/hub/member/pairing");
+    const r = await confirm.api("/api/hub/member/pairing?v=2");
     if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
     pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };

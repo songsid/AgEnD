@@ -32,7 +32,7 @@ export interface JoinHttpResult {
 }
 
 /** Only dummy passwords. Mutable entries let tests change eligibility/membership across a held browser operation. */
-export async function companyJoinRig(directoryListening: (port: number) => void) {
+export async function companyJoinRig(directoryListening: (port: number) => void, options: { host?: string } = {}) {
   const home = mkdtempSync(join(tmpdir(), "agend-company-join-"));
   chmodSync(home, 0o700);
   const cleanups: Array<() => void | Promise<void>> = [() => rmSync(home, { recursive: true, force: true })];
@@ -47,7 +47,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void)
     if (failures.length) throw new AggregateError(failures, "Company-join fixture cleanup failed");
   };
   try {
-    const certs = makeTestCerts(); cleanups.push(() => rmSync(certs.dir, { recursive: true, force: true }));
+    const host = options.host ?? "hub.example.test", certs = makeTestCerts(host); cleanups.push(() => rmSync(certs.dir, { recursive: true, force: true }));
     const dcCerts = directoryCertificates(); cleanups.push(dcCerts.cleanup);
     const people: GroupWireUser[] = [
       { id: ADMIN.key.objectId, login: "alice", dn: "CN=Alice,DC=example,DC=test", password: "Dummy-alice-only", groups: [GROUP_A] },
@@ -68,7 +68,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void)
     }
     const [memberPort, webPort] = reservations.map(server => (server.address() as { port: number }).port) as [number, number];
     await Promise.all(reservations.map(server => new Promise<void>((done, reject) => server.close(e => e ? reject(e) : done()))));
-    const webOrigin = `https://hub.example.test:${webPort}`, memberOrigin = `https://hub.example.test:${memberPort}`;
+    const webOrigin = `https://${host}:${webPort}`, memberOrigin = `https://${host}:${memberPort}`;
     const plan = {
       name: "Company-join test Hub", webOrigin, memberOrigin,
       webListen: { host: "127.0.0.1", port: webPort }, memberListen: { host: "127.0.0.1", port: memberPort },
@@ -100,7 +100,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void)
         ...(bytes === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bytes) }), ...headers };
       for (const key of Object.keys(requestHeaders)) if (requestHeaders[key] === undefined) delete requestHeaders[key];
       const machine = /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.test(path);
-      const req = request({ host: "127.0.0.1", port: machine ? memberPort : webPort, path, servername: "hub.example.test",
+      const req = request({ host: "127.0.0.1", port: machine ? memberPort : webPort, path, servername: host,
         ca: machine ? readFileSync(join(home, "hub/keys/tls-cert.pem")) : readFileSync(certs.caCert),
         method, agent: false, headers: requestHeaders }, res => {
         let text = ""; res.setEncoding("utf8");

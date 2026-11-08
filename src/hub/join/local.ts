@@ -13,7 +13,7 @@ import { HubMemberProfileStore, profileSchema, validateHubBinding, type HubMembe
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { syncJoinPrivate, writeJoinPrivate, createJoinPrivate } from "./private.js";
 import { createLocalJoin, currentLocalJoinId, readLocalJoin, saveLocalJoin, selectLocalJoin,
-  type LocalJoinJournal, type JoinLocalAuthority, type JoinLocalSession } from "./local-journal.js";
+  type LocalJoinJournal, type JoinLocalSnapshot, type JoinLocalAuthority, type JoinLocalSession } from "./local-journal.js";
 export type { JoinLocalAuthority, JoinLocalSession } from "./local-journal.js";
 const remoteSchema = z.strictObject({ state: z.enum(["pending", "identity-approved", "issued", "acknowledged", "undeliverable", "ended", "revoked"]),
   reason: z.string().max(64).nullable(), issued: z.boolean(), fleetId: uuid.nullable(), generation: epoch.nullable(),
@@ -23,12 +23,13 @@ const pushedSchema = z.strictObject({ requestId: uuid, expiresAt: epoch, browser
 interface Options {
   home: string; client?: Pick<CompanyJoinClient, "discover" | "command">; now?(): number; schedule?: false;
   /** Relevant membership/binding incarnation only; unrelated Settings edits do not revoke consent. */
-  snapshot(): string;
+  snapshot(): JoinLocalSnapshot;
   /** Synchronous, already-confirmed internal patch. accept() captures ONLY that owned write, before yielding. */
   enableMembership(current: () => boolean, accept: () => void): void;
   activate(): void; link(): "online" | "offline";
 }
 interface Operation { record: LocalJoinJournal; authority: JoinLocalAuthority; generation: number; busy?: Promise<void> }
+const sameSnapshot = (a: JoinLocalSnapshot, b: JoinLocalSnapshot) => a.membership === b.membership && a.binding === b.binding;
 export class CompanyJoinController {
   private readonly client: Pick<CompanyJoinClient, "discover" | "command">;
   private active: Operation | null = null; private generation = 0; private closed = false; private timer?: NodeJS.Timeout; private starting = false;
@@ -43,32 +44,54 @@ export class CompanyJoinController {
   }
   private live(op: Operation): boolean {
     return !this.closed && this.active === op && op.generation === this.generation && op.authority.session.current()
-      && op.authority.confirmedCurrent() && op.record.snapshot === this.options.snapshot() && this.now() < op.record.deadline
+      && op.authority.confirmedCurrent() && sameSnapshot(op.record.snapshot, this.options.snapshot()) && this.now() < op.record.deadline
       && !["cancelled", "ended"].includes(op.record.stage);
   }
   private persist(op: Operation, patch: Partial<LocalJoinJournal>, current: () => boolean = () => this.live(op)): void {
     const next = { ...op.record, ...patch }; saveLocalJoin(this.options.home, next, current); op.record = next;
   }
   private view(r: LocalJoinJournal) {
-    return { operationId: r.operationId, state: r.stage === "active" ? "saved" : r.stage === "pending" ? "awaiting-sign-in" : r.stage === "preparing" ? "joining" : r.stage,
+    return { operationId: r.operationId, handoffId: r.handoffId, state: r.stage === "active" ? "saved" : r.stage === "pending" ? "awaiting-sign-in" : r.stage === "preparing" ? "joining" : r.stage,
       reason: r.reason, hubOrigin: r.binding.hub.webOrigin, expiresAt: r.deadline, issued: r.issued, outcomeKnown: r.outcomeKnown,
       fleetId: r.issued ? r.binding.fleetId : null, ...(r.stage === "active" ? { link: this.options.link() } : {}) };
+  }
+  private assertUnbound(): void {
+    const path = "hub-member/state.json";
+    if (!existsSync(join(this.options.home, path))) return;
+    const state = parseStrictJson(readPrivateFile(this.options.home, path)) as { hubId?: unknown };
+    // Even an incomplete/disconnected binding must be explicitly retired through its existing local flow first.
+    if (!state || typeof state !== "object" || state.hubId) throw new HubProtocolError("conflict");
   }
   current(session: JoinLocalSession) {
     const id = currentLocalJoinId(this.options.home); if (!id) return null;
     const r = readLocalJoin(this.options.home, id); this.own(r, session); return this.view(r);
   }
-  async start(input: { address: string; label: string; fleetOrigin: string }, authority: JoinLocalAuthority) {
-    const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048) }), input);
+  async repairTrust(addressInput: string, authority: JoinLocalAuthority): Promise<void> {
+    this.assertUnbound();
+    const address = parseCompanyAddress(addressInput);
+    if (address.expected === null || address.invitation) throw new HubProtocolError("invalid");
+    const id = currentLocalJoinId(this.options.home), prior = id ? readLocalJoin(this.options.home, id) : null;
+    if (prior && (prior.issued || !prior.outcomeKnown || !["cancelled", "ended"].includes(prior.stage))) throw new HubProtocolError("conflict");
+    const snapshot = this.options.snapshot(), generation = this.generation;
+    const current = () => !this.closed && !this.starting && generation === this.generation && sameSnapshot(snapshot, this.options.snapshot())
+      && authority.session.current() && authority.confirmedCurrent();
+    if (!current()) throw new HubProtocolError("denied");
+    const metadata = await this.client.discover(address.webOrigin, current);
+    if (!current()) throw new HubProtocolError("stale");
+    new CompanyTrustStore(this.options.home).repair(metadata.hub, address.expected, current);
+  }
+  async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string }, authority: JoinLocalAuthority) {
+    const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional() }), input);
     canonicalFleetOrigin(body.fleetOrigin);
     if (this.closed || this.starting || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
+    this.assertUnbound();
     const priorId = currentLocalJoinId(this.options.home);
     if (priorId) {
       const prior = readLocalJoin(this.options.home, priorId);
       if (prior.issued || !prior.outcomeKnown || !["cancelled", "ended"].includes(prior.stage)) throw new HubProtocolError("conflict");
     }
     this.starting = true; const gen = ++this.generation, snapshot = this.options.snapshot(), started = this.now();
-    const current = () => !this.closed && gen === this.generation && snapshot === this.options.snapshot()
+    const current = () => !this.closed && gen === this.generation && sameSnapshot(snapshot, this.options.snapshot())
       && authority.session.current() && authority.confirmedCurrent() && this.now() < started + 600_000;
     try {
       const address = parseCompanyAddress(body.address), metadata = await this.client.discover(address.webOrigin, current);
@@ -85,16 +108,16 @@ export class CompanyJoinController {
       const folder = ensurePrivateDirectory(this.options.home, "hub-member/company-joins");
       if (readdirSync(folder).length >= 1024) throw new HubProtocolError("backpressure");
       const key = generateKeyPairSync("ed25519"), verifier = randomBytes(32).toString("base64url"), operationId = randomUUID(), browserState = randomBytes(32).toString("hex");
-      const record: LocalJoinJournal = { v: 1, operationId, binding: { hub: metadata.hub, requestId: randomUUID(), operationId, fleetId: randomUUID(),
+      const record: LocalJoinJournal = { v: 1, operationId, handoffId: body.handoffId ?? randomUUID(), binding: { hub: metadata.hub, requestId: randomUUID(), operationId, fleetId: randomUUID(),
         publicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString(), fleetOrigin: body.fleetOrigin, verifierS256: pkceChallenge(verifier) },
         privateKey: key.privateKey.export({ type: "pkcs8", format: "pem" }).toString(), verifier, browserState, certificatePem: metadata.certificatePem,
         sessionId: authority.session.sessionId, authorityEpoch: authority.session.authorityEpoch, hostConfirmed: authority.session.hostHere,
         snapshot, createdAt: started, deadline: started + 600_000, stage: "preparing", reason: null, issued: false, outcomeKnown: true, issuedHash: null,
-        profileDigest: null, journalCommitId: randomUUID(), remoteState: null };
+        profileDigest: null, intendedBinding: null, enableIntent: false, journalCommitId: randomUUID(), remoteState: null };
       createLocalJoin(this.options.home, record, current); selectLocalJoin(this.options.home, operationId, current);
       const op: Operation = { record, authority, generation: gen }; this.active = op;
       try {
-        const pushed = validated(pushedSchema, await this.client.command(record.binding, "push", { label: body.label, stateHash: sha256(browserState), invitation: null }, key.privateKey, () => this.live(op)));
+        const pushed = validated(pushedSchema, await this.client.command(record.binding, "push", { label: body.label, stateHash: sha256(browserState), invitation: address.invitation ?? null }, key.privateKey, () => this.live(op)));
         if (pushed.requestId !== record.binding.requestId || pushed.browserAction !== metadata.hub.webOrigin + "/hub/join/open" || pushed.expiresAt <= this.now()) throw new HubProtocolError("denied");
         this.persist(op, { stage: "pending", deadline: Math.min(record.deadline, pushed.expiresAt) });
       } catch (error) { this.hold(op, error); }
@@ -109,8 +132,9 @@ export class CompanyJoinController {
   }
   private hold(op: Operation, error: unknown): void {
     if (this.closed || this.active !== op || op.generation !== this.generation || ["cancelled", "ended", "active"].includes(op.record.stage)) return;
+    try { this.reconcileSettlement(op); } catch { /* Preserve the intent for a later exact recovery. */ }
     // Persist the fence even after authority loss. This only withdraws the existing operation; it never adds authority.
-    const reason = !op.authority.session.current() || !op.authority.confirmedCurrent() || op.record.snapshot !== this.options.snapshot() ? "authority"
+    const reason = !op.authority.session.current() || !op.authority.confirmedCurrent() || !sameSnapshot(op.record.snapshot, this.options.snapshot()) ? "authority"
       : this.now() >= op.record.deadline ? "expired" : this.reason(error);
     try { this.persist(op, { stage: "held", reason }, () => !this.closed && this.active === op && op.generation === this.generation); }
     catch { op.record = { ...op.record, stage: "held", reason: "unsaved" }; }
@@ -121,8 +145,19 @@ export class CompanyJoinController {
     if (currentLocalJoinId(this.options.home) !== id) throw new HubProtocolError("conflict");
     const op: Operation = { record: r, authority: { session, confirmedCurrent: () => r.hostConfirmed && session.hostHere && session.current() }, generation: ++this.generation };
     this.active = op;
-    if (r.stage !== "active" && (!r.hostConfirmed || !session.hostHere)) this.hold(op, new HubProtocolError("denied"));
+    if (r.stage !== "active" && (!r.hostConfirmed || !session.hostHere)) {
+      if (!["cancelled", "ended"].includes(r.stage) && r.reason !== "authority") this.persist(op, { stage: "held", reason: "confirmation-required" }, () => !this.closed && session.current());
+    } else this.reconcileSettlement(op);
     return op;
+  }
+  /** Intent precedes every owned marker/config write. Recovery adopts only its exact digest and switch value. */
+  private reconcileSettlement(op: Operation): void {
+    const r = op.record, actual = this.options.snapshot();
+    if (sameSnapshot(r.snapshot, actual) || !r.intendedBinding || r.reason === "authority" || ["cancelled", "ended", "active"].includes(r.stage)) return;
+    if (!op.authority.session.current() || !op.authority.confirmedCurrent() || this.now() >= r.deadline
+      || actual.binding !== r.intendedBinding || actual.membership !== r.snapshot.membership && !(r.enableIntent && actual.membership)) return;
+    this.persist(op, { snapshot: actual }, () => !this.closed && this.active === op && op.generation === this.generation
+      && op.authority.session.current() && op.authority.confirmedCurrent() && sameSnapshot(actual, this.options.snapshot()));
   }
   async status(id: string, session: JoinLocalSession) {
     const op = this.restore(id, session);
@@ -141,9 +176,11 @@ export class CompanyJoinController {
   }
   async resume(id: string, authority: JoinLocalAuthority) {
     const r = readLocalJoin(this.options.home, id); this.own(r, authority.session);
-    if (!authority.confirmedCurrent() || r.snapshot !== this.options.snapshot() || r.reason === "authority"
+    if (!authority.confirmedCurrent() || r.reason === "authority"
       || ["cancelled", "ended"].includes(r.stage) || this.now() >= r.deadline) throw new HubProtocolError("denied");
     const op: Operation = { record: r, authority, generation: ++this.generation }; this.active = op;
+    this.reconcileSettlement(op);
+    if (!sameSnapshot(op.record.snapshot, this.options.snapshot())) throw new HubProtocolError("denied");
     this.persist(op, { stage: r.profileDigest ? "durable" : "pending", reason: null });
     await this.advance(op); return this.view(op.record);
   }
@@ -185,6 +222,7 @@ export class CompanyJoinController {
     const expectedDigest = sha256(JSON.stringify(profile));
     const marker = { operationId: r.operationId, profileDigest: expectedDigest, journalCommitId: r.journalCommitId };
     const stateValue = JSON.stringify({ ...state, hubId: profile.hub.hubId, companyJoin: marker });
+    this.persist(op, { profileDigest: expectedDigest, intendedBinding: sha256(stateValue) });
     if (!current()) throw new HubProtocolError("stale");
     if (existsSync(join(this.options.home, statePath))) writeJoinPrivate(this.options.home, statePath, stateValue, current);
     else createJoinPrivate(this.options.home, statePath, stateValue);
@@ -193,6 +231,7 @@ export class CompanyJoinController {
     syncJoinPrivate(this.options.home, `hub-member/${profile.hub.hubId}/pairing.json`);
     if (store.profileDigest() !== expectedDigest || !current()) throw new HubProtocolError("stale");
     this.persist(op, { stage: "durable", issued: true, issuedHash: sha256(profile.credential), profileDigest: expectedDigest });
+    this.persist(op, { enableIntent: true });
     this.options.enableMembership(current, () => { if (!op.authority.session.current() || !op.authority.confirmedCurrent()) throw new HubProtocolError("stale"); op.record = { ...op.record, snapshot: this.options.snapshot() }; });
     this.persist(op, {});
     const ack = validated(remoteSchema, await this.client.command(r.binding, "ack", { verifier: r.verifier, credentialHash: sha256(profile.credential),
@@ -223,6 +262,12 @@ export class CompanyJoinController {
   }
   invalidate(): void { const op = this.active; if (op && op.record.stage !== "active") {
     try { this.persist(op, { stage: "held", reason: "authority" }, () => !this.closed); } catch { op.record = { ...op.record, stage: "held", reason: "authority" }; }
+    ++this.generation;
+  } else if (!op && !this.closed) {
+    // A config change can precede the first status read after restart. Withdraw the durable pending consent too.
+    try { const id = currentLocalJoinId(this.options.home); if (id) { const r = readLocalJoin(this.options.home, id);
+      if (!["active", "cancelled", "ended"].includes(r.stage)) saveLocalJoin(this.options.home, { ...r, stage: "held", reason: "authority" }, () => !this.closed);
+    } } catch { /* Unreadable private state already refuses recovery. */ }
     ++this.generation;
   } }
   close(): void { this.closed = true; ++this.generation; if (this.timer) clearInterval(this.timer); }

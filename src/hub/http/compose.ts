@@ -44,7 +44,7 @@ export type { HubHttpDeps, HubTxDatabase };
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
 export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
-  "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js"]);
+  "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -151,8 +151,15 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const requestId = uuid(b.requestId);
       return send(res, 200, await deps.companyJoin.approve(ctx, companyFlowCookie(req, deps.config.hubId, requestId), requestId));
     }
+    if (deps.companyJoin && path === "/hub/v1/admin/company-join/invitations") {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body(); if (Object.keys(b).length !== 1) throw new HubProtocolError("invalid");
+      const owner = await guard(() => pairingOwnerByLogin(core, ctx, str(b.login).trim()));
+      if (!owner) throw new HubProtocolError("not-found");
+      return send(res, 200, await deps.companyJoin.createInvitation(ctx, owner));
+    }
     if (deps.companyJoin && path === "/hub/v1/admin/company-join") {
-      if (method === "GET") { signedIn(); await ctx.requireAdmin(); return send(res, 200, deps.companyJoin.control()); }
+      if (method === "GET") { signedIn(); await ctx.requireAdmin(); return send(res, 200, deps.companyJoin.adminView()); }
       if (method !== "PUT") throw new HttpError(405, "method");
       csrf(); return send(res, 200, await deps.companyJoin.configure(ctx, await body()));
     }
@@ -204,7 +211,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (path === "/hub/v1/notices") {
         if (method !== "GET") throw new HttpError(405, "method");
-        signedIn(); return send(res, 200, { notices: await guard(() => notices.forSession(ctx)) });
+        signedIn(); return send(res, 200, { notices: await guard(() => notices.forSession(ctx, query.get("v") === "2" ? 2 : 1)) });
       }
       if ((r = m(/^\/hub\/v1\/notices\/([^/]+)\/ack$/))) {
         if (method !== "POST") throw new HttpError(405, "method");
@@ -213,7 +220,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (path === "/hub/v1/notices/events") {
         if (method !== "GET") throw new HttpError(405, "method");
         signedIn(); if (streams.size >= 64) throw new HubProtocolError("backpressure");
-        const initial = await guard(() => notices.forSession(ctx));
+        const initial = await guard(() => notices.forSession(ctx, query.get("v") === "2" ? 2 : 1));
         if (streams.size >= 64 || !live() || ctx.isCurrent?.() !== true) throw new HubProtocolError("backpressure");
         res.writeHead(200, { ...API_HEADERS, "Content-Type": "text/event-stream; charset=utf-8", Connection: "keep-alive", "X-Accel-Buffering": "no" });
         let ended = false, running = false, dirty = false;
@@ -224,7 +231,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           running = true;
           try {
             do {
-              dirty = false; const rows = await notices.forSession(ctx);
+              dirty = false; const rows = await notices.forSession(ctx, query.get("v") === "2" ? 2 : 1);
               if (ended || !ctx.isCurrent?.()) return close();
               res.write(`event: notices\ndata: ${JSON.stringify({ notices: rows })}\n\n`);
             } while (dirty);

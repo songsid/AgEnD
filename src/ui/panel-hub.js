@@ -1,3 +1,5 @@
+import { hj, joinError } from "./hub-company-join-strings.js";
+import { joinRequest, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
 // exposures and Administration (/ui/hub/exposures, /ui/hub/admin; reached from the session row's menu) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
 // API (hub-client.js createHubWebClient); nothing here reads or reaches a fleet. A lazy module: it imports only names
@@ -107,6 +109,8 @@ export function HubPanel({ route }) {
   // On a page the notices stand in the page's own column (the cards' width and gutter at every breakpoint; an empty column
   // is not drawn — hub.css).
   const column = (inner) => html`<div class="col hub-owner hub-notices-col">${inner}</div>`;
+  if (s && tab === "ask" && joinRequest()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-join">
+    <${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${HubCompanyJoinPage} session=${s} /></div></div>`;
   // The sidebar's Notices row: the security notices as a page of their own (the same card, the panel's PageHead).
   if (s && tab === "ask" && viewParam() === "notices" && notices) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
@@ -155,6 +159,7 @@ function linkHubSigninCss(doc = typeof document !== "undefined" ? document : nul
   } catch { /* the page still works without it */ }
 }
 function HubSignIn() {
+  const company = useCompanyJoinContext();
   useEffect(() => {
     linkHubSigninCss();
     // #3318 review F1: signed out from the phone drawer's session menu (or a session that ended while it was open), the
@@ -180,25 +185,34 @@ function HubSignIn() {
     }
     setBusy(true); setMsg(null);
     const r = await hubClient().signIn(form.login.trim(), form.password);
+    if (r.ok) {
+      setForm({ login: "", password: "" });
+      if (company.requestId) {
+        const joined = await approveCompanyJoin(company.requestId, r.csrf);
+        if (!joined.ok) { setBusy(false); setSession({ ...r, companyJoinFailure: { requestId: company.requestId, code: joined.code } }); return; }
+      }
+      setBusy(false); setSession(r); return;
+    }
     setBusy(false);
-    if (r.ok) { setForm({ login: "", password: "" }); setSession(r); return; }
     setForm((f) => ({ ...f, password: "" }));
     setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw("errSignIn"));
   };
   return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
     <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
     <h1 id="hubSignInTitle">${hw("signInTitle")}</h1>
-    <p class="hub-signin-lead">${hw("signInLead")}</p>
-    <form class="hub-signin-form" onSubmit=${submit}>
+    ${company.requestId ? html`<${CompanyJoinLead} context=${company.view?.ok ? company.view : null} />` : html`<p class="hub-signin-lead">${hw("signInLead")}</p>`}
+    ${company.requestId && company.view === undefined ? html`<${Skeleton} variant="form" lines=${2} label=${hj("loading")} />` : company.requestId && company.view && !company.view.ok ? html`<${ErrorState} message=${joinError(company.view.code)} onRetry=${company.retry} />` : null}
+    ${!company.requestId || company.view?.ok && company.view.state === "pending" ? html`<form class="hub-signin-form" onSubmit=${submit}>
       <label for="hubLogin">${hw("login")}</label>
       <input id="hubLogin" autocomplete="username" spellcheck=${false} autocapitalize="none"
         value=${form.login} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} />
       <label for="hubPassword">${hw("password")}</label>
       <input id="hubPassword" type="password" autocomplete="current-password"
         value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
-      <button type="submit" class="hub-signin-go" disabled=${busy}>${hw("signIn")}</button>
-    </form>
+      <button type="submit" class="hub-signin-go" disabled=${busy || company.requestId && !company.view?.ok}>${company.requestId ? hj("signInConnect") : hw("signIn")}</button>
+    </form>` : company.view?.ok ? html`<p role="status">${joinError(company.view.reason || company.view.state)}</p>` : null}
     <p class="hub-signin-msg" role=${msg ? "alert" : undefined}>${msg || ""}</p>
+    ${company.requestId && (msg || company.view?.state !== "pending") && company.view?.returnPath ? html`<a class="btn btn-sm" href=${company.view.returnPath} rel="noreferrer">${hj("return")}</a>` : null}
   </section></main>`;
 }
 
@@ -857,6 +871,7 @@ function HubAdminPage({ groups = false } = {}) {
   return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
     <div class="s-section-layout">
       ${groups ? html`<${GroupPermissionsEntry} />` : null}
+      <${CompanyJoinAdminCard} />
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><h3>${ho("pairSteps")}</h3>

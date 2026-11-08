@@ -8,7 +8,7 @@ import type { HubPairingNotice } from "../src/hub/types.js";
 
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const r of rigs.splice(0)) await r.close(); });
-const notice = (): HubPairingNotice => ({ id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "My laptop", at: Date.now(), source: "group", revoked: false });
+const notice = (): HubPairingNotice & { source: "group" } => ({ id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "My laptop", at: Date.now(), source: "group", revoked: false });
 describe("pairing notices negotiate before any new wire frame", () => {
   it("new/new retains a real delivered notice before the matching ACK travels back", async () => {
     const r = await hubRig(); rigs.push(r); const profile = await r.pair(); HUB_PAIRING_INBOX_MIGRATION.up(r.db);
@@ -19,6 +19,18 @@ describe("pairing notices negotiate before any new wire frame", () => {
     await r.server.send(profile.fleetId, { v: 1, type: "pairing.notice", requestId: n.id, linkEpoch: c.state.link!.linkEpoch, payload: n });
     await vi.waitFor(() => expect(r.received.some(f => f.type === "pairing.notice-ack" && f.payload.id === n.id)).toBe(true));
     expect(inbox.list()).toEqual([n]); expect(c.state.link!.features.has("pairing-notices-v1")).toBe(true);
+  });
+  it("manual notices use v2 and stay off a v1-only member's strict wire", async () => {
+    const r = await hubRig(); rigs.push(r); const profile = await r.pair(); HUB_PAIRING_INBOX_MIGRATION.up(r.db);
+    const inbox = createHubPairingNoticeInbox({ db: r.db, current: () => true, now: Date.now, audit: { appendInTransaction: () => {} } });
+    const older = r.client(undefined, undefined, ["welcome-caps-v1", "pairing-notices-v1"]); await older.value.start();
+    const n: HubPairingNotice = { ...notice(), source: "manual" };
+    await expect(r.server.send(profile.fleetId, { v: 1, type: "pairing.notice-v2", requestId: n.id, linkEpoch: older.state.link!.linkEpoch, payload: n })).rejects.toThrow("incompatible");
+    await older.value.close();
+    const fresh = r.client(async (frame, link) => { if (frame.type === "pairing.notice-v2") await inbox.receive(frame.payload, link); }); await fresh.value.start();
+    await r.server.send(profile.fleetId, { v: 1, type: "pairing.notice-v2", requestId: n.id, linkEpoch: fresh.state.link!.linkEpoch, payload: n });
+    await vi.waitFor(() => expect(inbox.list()).toEqual([n]));
+    expect(fresh.state.link!.features.has("pairing-notices-v2")).toBe(true);
   });
   it.each(["old-member", "old-hub"] as const)("%s stays usable, with no notice or ACK on the wire", async version => {
     const sent: unknown[] = [], original = HubSocket.prototype.send;

@@ -25,7 +25,7 @@ export function displayHubFingerprint(fingerprint: string): string {
 const pairBody = z.strictObject({ code: z.string().regex(/^[a-f0-9]{12}$/) });
 const claimBody = z.strictObject({ pairingId: uuid, fleetId: uuid, claimSecret: token });
 export interface HubQuickPairingNotice {
-  fleetId: string; generation: number; owner: PersonKey; label: string; at: number; initiatingSessionId: string;
+  fleetId: string; generation: number; owner: PersonKey; label: string; at: number; initiatingSessionId: string; source?: "group" | "manual";
 }
 const quickBody = z.strictObject({ label: plain(120).refine(s => s.trim().length > 0) });
 export class HubPairingService {

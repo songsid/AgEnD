@@ -72,7 +72,7 @@ export class CompanyJoinRecords {
   retained(): number {
     const rows = this.db.prepare("SELECT id FROM hub_company_join_requests WHERE person IS NOT NULL AND stage IN('identity-approved','issued','acknowledged') AND outer_deadline>?")
       .all(this.now()) as { id: string }[];
-    return rows.filter(row => !this.get(row.id).invitationId).length;
+    return rows.length;
   }
   bindingDigest(binding: JoinBinding): string { return sha256(canonicalArguments(validateJoinBinding(binding))); }
 }
