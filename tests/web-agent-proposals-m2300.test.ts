@@ -407,7 +407,7 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
   });
   it("its words in zh-TW", () => {
     I.setLang("zh-TW", { store: false });
-    try { expect(["proposals", "approve", "reject", "proposalHint"].map(k => I.t(`needs.${k}`))).toEqual(["代理人的請求", "核准", "拒絕", expect.stringContaining("核准之前")]); }
+    try { expect(["proposals", "approve", "reject", "proposalHint"].map(k => I.t(`needs.${k}`))).toEqual(["Agent 的請求", "核准", "拒絕", expect.stringContaining("核准之前")]); }
     finally { I.setLang("en", { store: false }); }
   });
 });
