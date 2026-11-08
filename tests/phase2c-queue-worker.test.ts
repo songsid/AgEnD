@@ -24,6 +24,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
     setDeliveryOutboxPort() {}
     setPeerWorkingDirectories() {}
     setDecisionTeams() {}
+    setDecisionSource() {}
     setStatusEmojiAvoidList() {}
     setWorkLeaseCheck() {}
     seedActivityNow() {}

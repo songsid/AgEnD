@@ -244,6 +244,21 @@ export function sameProjectFamily(a: string, b: string): boolean {
  * `scope: "team"` reaches exactly the members of that team (`teams`, this instance's), wherever they work — a
  * general included only when it is a member: a team's conventions are not routing rules.
  */
+/** One active decision as the fleet hands it to a daemon (text already cut to 200 characters). */
+export interface ActiveDecisionRow { title: string; content: string; scope?: string; project_root?: string; team?: string | null }
+
+/** At most this many fleet decisions, and this many team + directory ones, in one instance's Active Decisions. */
+export const ACTIVE_DECISION_CAPS = { fleet: 20, scoped: 20 } as const;
+
+/**
+ * Bound an instance's already-selected decisions (newest first, as the store orders them): fleet ones and its own team
+ * and directory ones are capped apart, AFTER selection, so nobody else's rows take an instance's places.
+ */
+export function capActiveDecisions<T extends { scope?: string }>(selected: readonly T[]): T[] {
+  let fleet = 0, scoped = 0;
+  return selected.filter(d => d.scope === "fleet" ? fleet++ < ACTIVE_DECISION_CAPS.fleet : scoped++ < ACTIVE_DECISION_CAPS.scoped);
+}
+
 export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; team?: string | null; title: string }>(
   all: T[],
   workDir: string,
@@ -2399,6 +2414,9 @@ export class Daemon extends EventEmitter {
   /** This instance's teams (fleet.yaml), read at each spawn: their team decisions join its Active Decisions. */
   private decisionTeams: (() => string[]) | undefined;
   setDecisionTeams(teams: (() => string[]) | undefined): void { this.decisionTeams = teams; }
+  /** The fleet's active decisions (startup snapshot), read at each spawn; absent: the AGEND_DECISIONS env (tests). */
+  private decisionSource: (() => readonly ActiveDecisionRow[]) | undefined;
+  setDecisionSource(source: (() => readonly ActiveDecisionRow[]) | undefined): void { this.decisionSource = source; }
 
   setPeerWorkingDirectories(peers: (() => string[]) | undefined): void {
     this.peerWorkingDirectories = peers;
@@ -11755,9 +11773,10 @@ export class Daemon extends EventEmitter {
     const resolvedCustomPrompt = this.config.systemPrompt ? assembleSystemPrompt(this.config.systemPrompt, promptFiles) : undefined;
 
     let decisions: { title: string; content: string }[] | undefined;
-    if (process.env.AGEND_DECISIONS) {
+    const source = this.decisionSource;
+    if (source || process.env.AGEND_DECISIONS) {
       try {
-        const all: { title: string; content: string; scope?: string; project_root?: string; team?: string | null }[] = JSON.parse(process.env.AGEND_DECISIONS);
+        const all: readonly ActiveDecisionRow[] = source ? source() : JSON.parse(process.env.AGEND_DECISIONS!);
         const workDir = this.config.working_directory;
         // `scope: "fleet"` used to bypass the project check entirely, so a
         // single-project worker inherited every other project's playbook (8 of
@@ -11768,7 +11787,7 @@ export class Daemon extends EventEmitter {
         // cross-project routing rules are exactly what it needs.
         let teams: string[] = [];
         try { teams = this.decisionTeams?.() ?? []; } catch { /* no team list: fleet and project decisions only */ }
-        decisions = selectRelevantDecisions(all, workDir, this.config.general_topic === true, teams);
+        decisions = capActiveDecisions(selectRelevantDecisions([...all], workDir, this.config.general_topic === true, teams));
         // Stable ordering so identical decision sets always build byte-identical
         // instructions — otherwise source ordering jitter flips the warmup hash.
         decisions.sort((a, b) => a.title.localeCompare(b.title));

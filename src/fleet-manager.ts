@@ -262,6 +262,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
@@ -1121,6 +1122,7 @@ export class RestartSupersededError extends Error {
 }
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
+  private decisionSnapshot: readonly ActiveDecisionRow[] = [];
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
 
@@ -6352,6 +6354,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Stopped/paused ClassicBot entries count too; their workspace is exactly
    * the one startClassicInstance builds, not this FleetManager's dataDir.
    */
+  /** Take the startup snapshot of every active decision (text cut to 200 characters); see activeDecisions. */
+  snapshotActiveDecisions(): void {
+    try {
+      const decisions = this.scheduler?.db.listAllActiveDecisions() ?? [];
+      this.decisionSnapshot = decisions.map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
+      if (decisions.length > 0) this.logger.info({ count: decisions.length }, "Active decisions snapshotted for instance instructions");
+    } catch (err) {
+      this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
+    }
+  }
+
+  /** The startup snapshot of active decisions, for a daemon's Active Decisions (it selects and caps its own). */
+  activeDecisions(): readonly ActiveDecisionRow[] {
+    return this.decisionSnapshot;
+  }
+
   kiroPeerWorkingDirectories(name: string): string[] {
     if (!this.fleetConfig || !this.classicChannels) throw new Error("Kiro peer configuration is not loaded");
     const peers: string[] = [];
@@ -8591,23 +8609,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
       this.dailyTipScheduler.start();
 
-      // Inject active decisions as env var for MCP instructions.
-      // Snapshotted at startup — new decisions via post_decision are available
-      // through list_decisions tool but not auto-injected until restart.
-      try {
-        const decisions = this.scheduler.db.listAllActiveDecisions();
-        if (decisions.length > 0) {
-          // Each instance keeps only its own (selectRelevantDecisions). Fleet ones are capped apart, so a long fleet list
-          // cannot crowd team and project decisions out of the snapshot.
-          const fleetWide = decisions.filter(d => d.scope === "fleet").slice(0, 20);
-          const scoped = decisions.filter(d => d.scope !== "fleet").slice(0, 60);
-          const capped = [...fleetWide, ...scoped].map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
-          process.env.AGEND_DECISIONS = JSON.stringify(capped);
-          this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
-        }
-      } catch (err) {
-        this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
-      }
+      // Active decisions for each instance's instructions, snapshotted at startup — new decisions via post_decision are
+      // available through list_decisions but not auto-injected until restart. The whole active set is kept here (each
+      // entry's text cut to 200 characters) and handed to each daemon at spawn (activeDecisions): the daemon selects
+      // its own — fleet, its teams, its directory — and only then applies its caps, so other teams' or directories'
+      // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
+      this.snapshotActiveDecisions();
     }
 
     // Phase 1: Start general instances first and wait for them
@@ -12063,6 +12070,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
+          const hidden = this.decisionHiddenFrom(instanceName, id);
+          if (hidden) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: hidden }); return; }
           if (payload.archive) {
             db.archiveDecision(id);
             result = { archived: true, id };
@@ -12281,6 +12290,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { scope: "project", teams };
   }
 
+  /**
+   * #3421 review: a team decision is only for its team's current members — reading it back through an update (even an
+   * empty one) or archiving it is refused to anyone else, exactly as list/get and supersede are. The refusal names it
+   * "not found", as for an id that does not exist, and changes nothing. Project and fleet decisions: as before.
+   */
+  decisionHiddenFrom(instance: string, id: unknown): string | null {
+    if (typeof id !== "string" || !this.scheduler) return null;
+    const d = this.scheduler.db.getDecision(id);
+    if (!d || d.scope !== "team") return null;
+    return d.team && instanceTeams(this.fleetConfig?.teams, instance).includes(d.team) ? null : `Decision "${id}" not found`;
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -12326,6 +12347,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
+        const hidden = this.decisionHiddenFrom(instance, id);
+        if (hidden) return { error: hidden };
         return db.updateDecision(id, {
           content: asStr(args.content),
           tags: asStrArr(args.tags),

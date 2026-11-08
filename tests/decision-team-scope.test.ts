@@ -39,7 +39,7 @@ function fleet() {
   const sent: any[] = [];
   const fake: any = { scheduler: { db }, fleetConfig: { instances, teams }, logger: { warn() {}, info() {}, debug() {} },
     instanceIpcClients: new Map(Object.keys(instances).map((n) => [n, { send: (m: unknown) => sent.push(m) }])) };
-  for (const m of ["checkToolPermission", "decisionSupersedes", "decisionScopeFor"]) {
+  for (const m of ["checkToolPermission", "decisionSupersedes", "decisionScopeFor", "decisionHiddenFrom"]) {
     const fn = (FleetManager.prototype as any)[m];
     if (fn) fake[m] = fn.bind(fake);
   }
@@ -48,8 +48,12 @@ function fleet() {
     const r = sent.at(-1); return r.error ? { error: r.error } : r.result;
   };
   const http = (who: string, op: string, args: Record<string, unknown>) => (FleetManager.prototype as any).handleDecisionCrudHttp.call(fake, who, op, args);
+  const ipcRaw = async (who: string, type: string, payload: Record<string, unknown>) => {
+    await (FleetManager.prototype as any).handleDecisionCrud.call(fake, who, { type, fleetRequestId: "r", payload, meta: { working_directory: instances[who]!.working_directory } });
+    const r = sent.at(-1); return r.error ? { error: r.error } : r.result ?? {};
+  };
   return {
-    db, teams,
+    db, teams, ipcRaw, httpRaw: http,
     post: (path: "ipc" | "http", who: string, args: Record<string, unknown>) => path === "ipc" ? ipc(who, "fleet_decision_create", args) : http(who, "post", args),
     titles: async (path: "ipc" | "http", who: string): Promise<string[]> => {
       const r = path === "ipc" ? await ipc(who, "fleet_decision_list", {}) : await http(who, "list", {});
@@ -211,5 +215,103 @@ describe("a launch reads the instance's teams for its Active Decisions", () => {
       (fm.fleetConfig as any).teams.other.members.push("worker");          // joined later: the next spawn reads it
       expect(got[0]?.()).toEqual(["core", "other"]);
     } finally { vi.unstubAllEnvs(); }
+  });
+});
+
+describe("#3421 review 1: update and archive keep a team decision inside its team", () => {
+  for (const path of ["ipc", "http"] as const) {
+    it(`${path}: an outsider's empty update or archive is refused as not found and changes nothing; a member's works`, async () => {
+      const f = fleet();
+      const rule = await f.post(path, "lead", { title: "Dev rule", content: "secret team text" });
+      const before = f.db.getDecision(rule.id);
+      const update = (who: string, args: Record<string, unknown>) => path === "ipc" ? f.ipcRaw(who, "fleet_decision_update", args) : f.httpRaw(who, "update", args);
+      for (const args of [{ id: rule.id }, { id: rule.id, content: "changed" }, ...(path === "ipc" ? [{ id: rule.id, archive: true }] : [])]) {
+        const r = await update("ops", args);                         // a coordinator in another team
+        expect(r.error).toBe(`Decision "${rule.id}" not found`);
+        expect(JSON.stringify(r)).not.toContain("secret team text");
+        expect(f.db.getDecision(rule.id)).toEqual(before);
+      }
+      const ok = await update("lead", { id: rule.id, content: "v2" });  // a member (coordinator)
+      expect(ok.error).toBeUndefined();
+      expect(f.db.getDecision(rule.id)?.content).toBe("v2");
+      f.teams.dev!.members = f.teams.dev!.members.filter(m => m !== "lead");   // left the team: refused from now on
+      expect((await update("lead", { id: rule.id, content: "v3" })).error).toBe(`Decision "${rule.id}" not found`);
+      expect(f.db.getDecision(rule.id)?.content).toBe("v2");
+    });
+  }
+});
+
+describe("#3421 review 2: other teams' and directories' rows never crowd an instance's own Active Decisions out", () => {
+  afterEach(() => { vi.restoreAllMocks(); delete process.env.AGEND_DECISIONS; });
+  async function spawnSees(db: SchedulerDb, workDir: string, teams: string[]): Promise<string> {
+    const fake: any = { scheduler: { db }, logger: { info() {}, debug() {}, warn() {} } };
+    (FleetManager.prototype as any).snapshotActiveDecisions.call(fake);   // the manager's real snapshot
+    const dir = scratch();
+    const daemon = new Daemon("worker", {
+      working_directory: workDir, backend: "codex", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, join(dir, "instance"), false, undefined, undefined, pino({ level: "silent" }) as any) as any;
+    mkdirSync(join(dir, "instance"), { recursive: true });
+    const seen: CliBackendConfig[] = [];
+    daemon.backend = { binaryName: "codex", writeConfig: vi.fn((c: CliBackendConfig) => { seen.push(c); }),
+      buildCommand: vi.fn((c: CliBackendConfig) => { seen.push(c); return "codex"; }) } as unknown as CliBackend;
+    daemon.setDecisionTeams(() => teams);
+    daemon.setDecisionSource(() => (FleetManager.prototype as any).activeDecisions.call(fake));
+    vi.spyOn(TmuxManager, "ensureSession").mockRejectedValue(new Error("stop after the command is built"));
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    return JSON.stringify(seen);
+  }
+  it("70 newer rows of another team and other directories, then one own-team and one own-directory rule: both are injected", async () => {
+    const db = new SchedulerDb(join(scratch(), "scheduler.db"));
+    const workDir = scratch();
+    db.createDecision({ project_root: "/x", scope: "team", team: "core", title: "CORE-RULE", content: "c", created_by: "x" });
+    db.createDecision({ project_root: workDir, scope: "project", title: "OWN-DIR-RULE", content: "p", created_by: "x" });
+    await new Promise(r => setTimeout(r, 5));                         // the unrelated rows are newer (listed first)
+    for (let i = 0; i < 40; i++) db.createDecision({ project_root: "/y", scope: "team", team: "other", title: `OTHER-${i}`, content: "o", created_by: "x" });
+    for (let i = 0; i < 30; i++) db.createDecision({ project_root: `/dir${i}`, scope: "project", title: `ELSEWHERE-${i}`, content: "o", created_by: "x" });
+    const text = await spawnSees(db, workDir, ["core"]);
+    expect(text).toContain("CORE-RULE");
+    expect(text).toContain("OWN-DIR-RULE");
+    expect(text).not.toMatch(/OTHER-\d|ELSEWHERE-\d/);
+    expect(process.env.AGEND_DECISIONS).toBeUndefined();               // nothing unbounded goes into the environment
+  });
+  it("an instance's own rows are still bounded: at most 20 fleet and 20 team + directory ones", async () => {
+    const db = new SchedulerDb(join(scratch(), "scheduler.db"));
+    for (let i = 0; i < 25; i++) db.createDecision({ project_root: "", scope: "fleet", title: `FLEET-${String(i).padStart(2, "0")}`, content: "f", created_by: "x" });
+    for (let i = 0; i < 25; i++) db.createDecision({ project_root: "/x", scope: "team", team: "core", title: `CORE-${String(i).padStart(2, "0")}`, content: "c", created_by: "x" });
+    const text = await spawnSees(db, scratch(), ["core"]);
+    expect(new Set(text.match(/FLEET-\d\d/g)).size).toBe(20);
+    expect(new Set(text.match(/CORE-\d\d/g)).size).toBe(20);
+  });
+});
+
+describe("#3421 review 3: a version without team scope never shows a team decision (rollback)", () => {
+  // The exact base's code (origin/main 1f046420): its list query, its unrestricted startup snapshot (first 20 active,
+  // fleet first) and its Active Decisions selector, over a row this version stores.
+  const legacyList = (db: SchedulerDb, root: string) => (db as any).db.prepare(
+    "SELECT * FROM decisions WHERE ((project_root = ? AND scope = 'project') OR scope = 'fleet') AND status = 'active'").all(root).map((r: any) => r.title);
+  const legacySnapshot = (db: SchedulerDb) => ((db as any).db.prepare(
+    "SELECT * FROM decisions WHERE status = 'active' ORDER BY CASE scope WHEN 'fleet' THEN 0 ELSE 1 END, created_at DESC").all() as any[])
+    .slice(0, 20).map(d => ({ title: d.title, content: d.content, scope: d.scope, project_root: d.project_root }));
+  const legacySelect = (all: Array<{ scope?: string; project_root?: string; title: string }>, workDir: string, isDispatcher = false) => all.filter(d => {
+    if (d.project_root === workDir) return true;
+    if (d.scope !== "fleet") return false;
+    if (!d.project_root) return true;
+    return isDispatcher;
+  }).map(d => d.title);
+  it("a team decision posted from /shared reaches no one through the old list or the old Active Decisions", async () => {
+    const f = fleet();
+    const shared = "/home/u/Projects/Shared";                           // `both`'s directory: also a non-member's, after rollback
+    const r = await f.post("http", "both", { title: "TEAM-ONLY", content: "x", team: "dev" });
+    expect(r.project_root).toBe("");                                    // read back with no directory...
+    expect((f.db as any).db.prepare("SELECT project_root FROM decisions WHERE id = ?").get(r.id).project_root).toBe("\u0000team");  // ...stored under a root no path equals
+    for (const dir of [shared, "/home/u/Projects/App", ""]) {
+      expect(legacyList(f.db, dir)).not.toContain("TEAM-ONLY");
+      expect(legacySelect(legacySnapshot(f.db), dir)).not.toContain("TEAM-ONLY");
+      expect(legacySelect(legacySnapshot(f.db), dir, true)).not.toContain("TEAM-ONLY");
+    }
+    // ...while this version still lists it to the team, from any directory.
+    expect(await f.titles("http", "reviewer")).toEqual(["TEAM-ONLY"]);
   });
 });
