@@ -8,7 +8,11 @@ hint and show a generic failure on an otherwise ordinary page.
 The notice stream already starts with the full snapshot. A new client mark
 `pairingNoticeSnapshotV1` lets the notice component use that snapshot directly.
 With a retained older client, the component completes the notices GET before
-starting its stream. Without EventSource it keeps the GET. Welcome and catalog
+starting its stream. Without EventSource it keeps the GET. A terminal CLOSED stream falls back to an
+authenticated GET, with visible busy/unavailable status and Retry-After recovery.
+After a successful fallback it waits 10 seconds before re-subscribing, avoiding
+a GET/stream rejection loop at the 64-stream cap. Transient CONNECTING errors
+keep EventSource's native reconnect behavior. Welcome and catalog
 remain parallel. Directory admission limits, current eligibility checks, and
 all mutation/confirmation boundaries are unchanged.
 
@@ -29,7 +33,7 @@ OUT="$PWD/.artifacts/3402/browser-final/png" \
 PW_DIR=/absolute/path/to/playwright-install \
 CHROME=/absolute/path/to/chromium \
 FONTCONFIG_FILE=/etc/fonts/fonts.conf TMPDIR=/short/owned/private/directory \
-MATRIX=full REPEATS=3 REQUIRE_NO_429=1 BUSY_CONTROL=1 SKEW_CASES=1 \
+MATRIX=full REPEATS=3 REQUIRE_NO_429=1 BUSY_CONTROL=1 SKEW_CASES=1 NOTICE_CONTROL=1 \
 node --import tsx scripts/manual/hub-quick-pairing/startup-3402.mts
 ```
 
@@ -104,6 +108,7 @@ stays at four admitted reads. Ordinary attempted concurrency, absence of 429,
 and the visible empty-agent hint are checked together.
 
 Risk: on a retained client, notices wait for the bootstrap GET before subscribing.
-If a stream cannot connect, EventSource keeps its existing reconnect behavior.
+A refused stream uses the bounded GET/re-subscribe recovery above; transient
+stream disconnects keep their existing reconnect behavior.
 Rollback: revert this PR; the original five-read startup race returns. No state or
 schema migration is involved.

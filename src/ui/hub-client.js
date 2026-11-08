@@ -268,11 +268,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
-    subscribePairingNotices(fn) {
+    subscribePairingNotices(fn, onClosed = () => {}) {
       if (typeof EventSource === "undefined") return () => {};
-      const events = new EventSource("/hub/v1/notices/events");
-      events.addEventListener("notices", (event) => { try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
-      return () => events.close();
+      const events = new EventSource("/hub/v1/notices/events"); let live = true;
+      events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
+      events.addEventListener("error", () => {
+        // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
+        if (live && events.readyState === 2) { live = false; events.close(); onClosed(); }
+      });
+      return () => { live = false; events.close(); };
     },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },

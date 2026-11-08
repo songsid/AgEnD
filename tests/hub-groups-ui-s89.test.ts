@@ -57,14 +57,14 @@ async function mountWith(c: any, node: any, url = "http://127.0.0.1:19290/ui/hub
 const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 
 describe("the welcome: shaped by what the person may do now", () => {
-  it.each(["welcome", "catalog"])("says busy and retries after the advertised delay when %s is backpressured", async which => {
+  it.each(["welcome", "catalog"].flatMap(which => [3, 0, undefined].map(retryAfter => ({ which, retryAfter }))))("says busy and retries after the advertised delay: $which / $retryAfter", async ({ which, retryAfter }) => {
     const timers: Array<{ fn: () => void; ms: number }> = [], original = g.setTimeout;
     const spy = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
       if (ms >= 1000) { timers.push({ fn, ms }); return 999; } return original(fn, ms, ...args);
     });
     let tries = 0;
     const good = { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "deny" }, connect: { state: "deny", maxFleets: 0, fleets: [] } };
-    const busy = { ok: false, status: 429, code: "backpressure", retryAfter: 10 };
+    const busy = { ok: false, status: 429, code: "backpressure", retryAfter };
     const f = fake({ [which]: vi.fn(async () => ++tries === 1 ? busy : which === "welcome" ? good : { ok: true, askable: [] }),
       ...(which === "catalog" ? { welcome: vi.fn(async () => good) } : {}) });
     try {
@@ -72,10 +72,25 @@ describe("the welcome: shaped by what the person may do now", () => {
       expect(text(pg.root)).toContain("The Hub is busy. Retrying shortly");
       expect(text(pg.root)).not.toContain("The directory didn't answer");
       expect(pg.root.querySelector('[data-welcome="nothing-shared"]')).toBe(null);
-      expect(timers.map(t => t.ms)).toEqual([10_000]); expect(tries).toBe(1);
-      timers.shift()!.fn(); await settle(20);
+      expect(timers.map(t => t.ms)).toEqual([retryAfter ? retryAfter * 1000 : 10_000]); expect(tries).toBe(1);
+      const stale = timers.shift()!.fn; stale(); await settle(20);
       expect(tries).toBe(2); expect(text(pg.root)).toContain("No agents have been shared with you yet");
+      stale(); await settle(5); expect(tries).toBe(2);
     } finally { spy.mockRestore(); }
+  });
+
+  it("cancels a busy welcome retry on unmount and ignores its queued callback", async () => {
+    let captured!: () => void; const original = g.setTimeout;
+    const timer = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
+      if (ms >= 1000) { captured = fn; return 999; } return original(fn, ms, ...args);
+    });
+    const cancelled = vi.spyOn(g, "clearTimeout"), f = fake({ welcome: vi.fn(async () => ({ ok: false, code: "backpressure", retryAfter: 3 })) });
+    try {
+      const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+      expect(captured).toBeTypeOf("function");
+      await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore();
+      expect(cancelled).toHaveBeenCalledWith(999); captured(); await settle(5); expect(f.c.welcome).toHaveBeenCalledOnce();
+    } finally { timer.mockRestore(); cancelled.mockRestore(); }
   });
 
   it("no actions: both entries stay visible but unavailable, with 'Contact your Hub admin'", async () => {
@@ -129,17 +144,17 @@ describe("the welcome: shaped by what the person may do now", () => {
 });
 
 describe("Administration → Group permissions", () => {
-  it("shows busy instead of a save failure and cancels the scheduled retry on unmount", async () => {
+  it.each([3, 0, undefined])("shows busy and cancels its advertised retry on unmount (%s)", async retryAfter => {
     const timers: Array<{ fn: () => void; ms: number }> = [], original = g.setTimeout;
     const timer = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
       if (ms >= 1000) { timers.push({ fn, ms }); return 999; } return original(fn, ms, ...args);
     });
     const cancelled = vi.spyOn(g, "clearTimeout");
-    const f = fake({ groupPolicy: vi.fn(async () => ({ ok: false, code: "backpressure", retryAfter: 10 })) });
+    const f = fake({ groupPolicy: vi.fn(async () => ({ ok: false, code: "backpressure", retryAfter })) });
     try {
       const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
       expect(text(pg.root)).toContain("The Hub is busy. Retrying shortly"); expect(text(pg.root)).not.toContain("Couldn't save");
-      expect(timers.map(t => t.ms)).toEqual([10_000]);
+      expect(timers.map(t => t.ms)).toEqual([retryAfter ? retryAfter * 1000 : 10_000]);
       await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore();
       expect(cancelled).toHaveBeenCalledWith(999); timers[0]!.fn(); await settle(5);
       expect(f.c.groupPolicy).toHaveBeenCalledOnce();

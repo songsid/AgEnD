@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import tls from "node:tls";
+import https from "node:https";
 import { syncBuiltinESMExports } from "node:module";
 import yaml from "js-yaml";
 import { directoryCertificates } from "../../../tests/support/hub-directory-ca-fixture.js";
@@ -175,6 +176,34 @@ try {
      } finally { blocked=null;release();await Promise.allSettled(occupied);u.groups=previous;await o.ctx.close();
        await waitFor(()=>driverActive===0&&[...logical.values()].every(n=>n===0),"busy reads physically settled",5000); }
    }
+ }
+ if (process.env.NOTICE_CONTROL === "1" && mode !== "before") {
+   probe = "notice-stream-cap"; const o = await context(cases[0]), held: any[] = [];
+   const responses: any[] = [];
+   try {
+     await signIn(o.p,"ungranted");await o.p.locator('[data-welcome="nothing-shared"]').waitFor();
+     const cookie=(await o.ctx.cookies()).map((c:any)=>`${c.name}=${c.value}`).join("; ");
+     await o.p.close();await waitFor(()=>driverActive===0&&[...logical.values()].every(n=>n===0),"notice setup settled");
+     const ca=readFileSync(material.certFile);
+     for(let i=0;i<64;i++) await new Promise<void>((resolve,reject)=>{
+       const req=https.get(origin+"/hub/v1/notices/events",{ca,headers:{cookie},agent:false},res=>{
+         if(res.statusCode!==200){res.resume();reject(Error("owned stream cap setup status "+res.statusCode));return;}
+         res.on("data",()=>{});held.push({req,res});resolve();
+       });req.on("error",reject);req.setTimeout(25000,()=>req.destroy(Error("owned stream timed out")));
+     });
+     o.p=await o.ctx.newPage();o.p.on("response",(r:any)=>{const path=new URL(r.url()).pathname;
+       if(path==="/hub/v1/notices"||path==="/hub/v1/notices/events")responses.push({path,status:r.status(),at:Date.now(),retryAfter:r.headers()["retry-after"]});});
+     await o.p.goto(origin+"/ui/hub");await o.p.locator('[data-notices="retrying"]').waitFor();
+     await waitFor(()=>responses.some(r=>r.path==="/hub/v1/notices"&&r.status===200),"notice authenticated fallback GET");
+     check("notice cap: refused stream recovers snapshot through GET",responses.some(r=>r.path.endsWith("/events")&&r.status===429));
+     await shot(o.p,"notice-stream-cap-retrying");await geometry(o.p,"notice-stream-cap-retrying");
+     for(const h of held){h.req.destroy();h.res.destroy();}
+     await o.p.locator('[data-notices="retrying"]').waitFor({state:"detached",timeout:15000});
+     check("notice cap: stream reopens after capacity released",responses.some(r=>r.path.endsWith("/events")&&r.status===200));
+     await o.p.locator('[data-welcome="nothing-shared"]').waitFor();
+     receipt.noticeControl={heldStreams:64,responses,status:"PASS"};
+   } finally {for(const h of held){h.req.destroy();h.res.destroy();}await o.ctx.close();
+     await waitFor(()=>driverActive===0&&[...logical.values()].every(n=>n===0),"notice reads settled",5000);}
  }
  if (process.env.SKEW_CASES === "1" && mode !== "before") {
    receipt.skewControls=[];

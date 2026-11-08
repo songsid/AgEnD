@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { compareGroups, hubClient, safeWebOrigin } from "./hub-client.js";
 import { hq } from "./hub-quick-strings.js";
+import { hr } from "./hub-read-strings.js";
 import { linkHubOwnerCss } from "./hub-owner-strings.js";
 
 const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict" ? "conflict" : r.code === "backpressure" ? "limit"
@@ -120,18 +121,45 @@ export function OwnedFleetRevoke({ fleet, onRevoked }) {
     ${error ? html`<small class="err" role="alert">${hq("revokeFailed")}</small>` : null}`;
 }
 export function PairingNotices({ admin = false, memberNotices = null, memberOrigin = null }) {
-  const c = hubClient(), live = useRef(true), acked = useRef(new Set());
+  const c = hubClient(), live = useRef(true), epoch = useRef(0), acked = useRef(new Set());
+  const [noticeError, setNoticeError] = useState(null);
   const [notices, setNotices] = useState(memberNotices || []);
   const [historyOpen, setHistoryOpen] = useState(false), [historyCount, setHistoryCount] = useState(99);
-  const load = async () => { const r = await c.pairingNotices(); if (live.current && r.ok) setNotices(r.notices || []); };
+  const load = async () => {
+    const mine = epoch.current;
+    let r; try { r = await c.pairingNotices(); } catch { r = { ok: false, code: "unreachable" }; }
+    if (live.current && mine === epoch.current) {
+      if (r.ok) { setNotices(r.notices || []); setNoticeError(null); }
+      else { setNotices([]); setNoticeError(r.code === "backpressure" ? "busy" : "noticesUnavailable"); }
+    }
+    return r;
+  };
   useEffect(() => {
-    live.current = true;
-    if (memberNotices) { setNotices(memberNotices); return; }
-    let off = () => {};
-    const subscribe = () => { if (live.current) off = c.subscribePairingNotices(rows => { if (live.current) setNotices(rows); }); };
+    live.current = true; const mine = ++epoch.current;
+    const current = () => live.current && mine === epoch.current;
+    if (memberNotices) { setNotices(memberNotices); setNoticeError(null); return () => { live.current = false; epoch.current++; }; }
+    let off = () => {}, timer = null, reading = false;
+    const later = (fn, r = {}) => {
+      const seconds = Number(r.retryAfter); clearTimeout(timer);
+      timer = setTimeout(() => { if (current()) void fn(); },
+        (Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.min(300, seconds)) : 10) * 1000);
+    };
+    const recover = async () => {
+      if (!current() || reading) return;
+      off(); reading = true;
+      const r = await load(); reading = false;
+      if (!current()) return;
+      if (r.ok) { setNoticeError("noticesRetry"); later(subscribe); }
+      else later(recover, r);
+    };
+    const subscribe = () => {
+      if (!current()) return;
+      off(); off = c.subscribePairingNotices(rows => { if (current()) { setNotices(rows); setNoticeError(null); } },
+        () => { if (current()) { setNoticeError("noticesRetry"); void recover(); } });
+    };
     if (c.pairingNoticeSnapshotV1 === true) subscribe();
-    else void load().then(subscribe); // Retained clients: complete their GET before the stream's eligibility read.
-    return () => { live.current = false; off(); };
+    else void load().then(r => { if (current()) { if (r.ok) subscribe(); else later(recover, r); } });
+    return () => { live.current = false; epoch.current++; clearTimeout(timer); off(); };
   }, [memberNotices]);
   const requested = new URLSearchParams(location.search).get("securityNotice"), target = notices.find(n => n.id === requested) || notices[0];
   const older = notices.filter(n => n !== target);
@@ -148,8 +176,10 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
     } })();
     return () => { cancelled = true; };
   }, [notices, memberNotices, historyOpen, historyCount]);
-  if (!target) return null;
-  return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>
+  if (!target && !noticeError) return null;
+  const status = noticeError ? html`<p class="note" role="status" data-notices="retrying">${hr(noticeError)}</p>` : null;
+  if (!target) return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>${status}</aside>`;
+  return html`<aside class="card hub-security-notices" aria-label=${hq("notices")}><h3>${hq("notices")}</h3>${status}
     <${Notice} key=${target.id} notice=${target} admin=${admin} memberOrigin=${memberOrigin} after=${load} />
     ${older.length ? html`<details onToggle=${e => setHistoryOpen(e.currentTarget.open)}><summary>${hq("previous")} (${older.length})</summary>
       ${older.slice(0, historyCount).map(n => html`<${Notice} key=${n.id} notice=${n} admin=${admin} memberOrigin=${memberOrigin} after=${load} />`)}
