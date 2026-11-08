@@ -12,7 +12,10 @@ import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "
 import { hubPlanDigest } from "./init/plan-digest.js";
 import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
-import { createHubServerFactory, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
+import { createHubServerFactory, hubServerDatabasePlan, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
+import { withHubDirectoryRecovery } from "./settings-directory-recovery.js";
+import type { HubDirectorySettingsDecision } from "./settings-directory-decision.js";
+import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import { createHubMemberFactory, type HubMemberComponents, type HubMemberFactoryOptions } from "./compose/member.js";
 import type { HubViewSource } from "./compose/views.js";
 
@@ -102,6 +105,14 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
 };
 
 export class HubRuntime {
+  private mountedDirectory: HubMountedDirectory | null = null;
+  private recoveryDirectory: HubDirectorySettingsDecision | null = null;
+  private settingsRecoveryGeneration = 0;
+  directorySettings(): HubMountedDirectory | null {
+    return !this.stopped && this.mountedDirectory?.current() ? this.mountedDirectory : null;
+  }
+  /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
+  directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.mountedDirectory?.decision ?? null; }
   private browserCertificateControl: import("./browser-certificate.js").HubBrowserCertificateControl | null = null;
   browserCertificateSettings(): import("./browser-certificate.js").HubBrowserCertificateControl | null { return this.browserCertificateControl; }
   private retentionControl: import("./retention.js").HubRetentionControl | null = null;
@@ -137,6 +148,10 @@ export class HubRuntime {
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
           ...(options.settingsWriter ? { settingsWriter: options.settingsWriter } : {}),
+          directoryReady: directory => {
+            this.mountedDirectory = directory;
+            return () => { if (this.mountedDirectory === directory) this.mountedDirectory = null; };
+          },
           version: options.version ?? null,
           browserCertificateReady: control => {
             this.browserCertificateControl = control;
@@ -206,6 +221,43 @@ export class HubRuntime {
     return this.holds;
   }
 
+  /** Called before apply: a recovery refusal must never fall through into normal creation/migration. */
+  async recoverSettings(config: HubConfigView): Promise<boolean> {
+    if (this.stopped) return false;
+    const writer = this.options.settingsWriter;
+    if (!writer?.pending()) return true;
+    const ticket = ++this.settingsRecoveryGeneration, snapshot = structuredClone(config);
+    const current = () => !this.stopped && ticket === this.settingsRecoveryGeneration;
+    try {
+      if (writer.pendingDirectory()) {
+        const entry = await (this.options.components ?? { http: S3B_HTTP_ENTRY }).http?.();
+        if (!current()) return false;
+        const hub = obj(snapshot.hub);
+        if (!entry || !hub) throw Error("The directory recovery registry is unavailable");
+        const { settings, migrations } = hubServerDatabasePlan(hub, entry.migrations);
+        withHubDirectoryRecovery({ home: this.options.home, hubId: settings.hubId, memberOrigin: settings.memberOrigin, migrations }, decision => {
+          this.recoveryDirectory = decision;
+          try { writer.recover(); } finally { this.recoveryDirectory = null; }
+        });
+      } else { writer.recover(); }
+      return current();
+    } catch (err) {
+      if (!current()) return false;
+      await this.refuseSettingsMount(snapshot, err);
+      throw err;
+    }
+  }
+
+  private async refuseSettingsMount(config: HubConfigView, err: unknown): Promise<void> {
+    this.view = null;
+    this.admitted = effectiveHubView(config);
+    this.mount.fence();
+    this.addHold({ side: "server", code: "hub-storage", reason: "settings-recovery", detail: (err as Error).message,
+      since: (this.options.now ?? Date.now)() });
+    try { await this.mount.close(); }
+    catch (cleanup) { this.options.log("warn", "Hub settings cleanup remains owned", { err: (cleanup as Error).message }); }
+  }
+
   /** Availability of the configured local server mount, not a directory/link/model or remote-reachability probe. */
   serverHealth(expected: unknown): HubServerHealth {
     const server = obj(expected);
@@ -219,6 +271,7 @@ export class HubRuntime {
       const view = JSON.parse(this.view);
       if (hubPlanDigest(server) !== view.server || hubPreviewReloadKey(server.web) !== view.preview) return "starting";
     } catch { return "unavailable"; }
+    if (this.mountedDirectory && !this.mountedDirectory.current()) return "unavailable";
     return this.mount.serverEnabled() ? "ready" : "unavailable";
   }
 
@@ -237,6 +290,7 @@ export class HubRuntime {
   /** Serialized: one apply at a time; calls made meanwhile coalesce to the newest configuration. */
   apply(config: HubConfigView): Promise<void> {
     if (this.stopped) return Promise.resolve();
+    this.settingsRecoveryGeneration++;
     const view = effectiveHubView(config);
     if (view !== this.admitted) {
       this.admitted = view;
@@ -266,6 +320,10 @@ export class HubRuntime {
   }
 
   private async applyOnce(config: HubConfigView): Promise<void> {
+    if (this.options.settingsWriter?.pending()) {
+      await this.refuseSettingsMount(config, Error("Hub settings recovery must finish before mounting"));
+      return;
+    }
     const view = effectiveHubView(config);
     if (view === this.view) {
       if (this.leftover) await this.drainLeftovers({ server: obj(config.hub)?.enabled !== true, member: obj(config.hub_member)?.enabled !== true });
@@ -300,6 +358,7 @@ export class HubRuntime {
 
   /** Synchronous: no new admission, dispatch or listener work from here on. */
   fence(): void {
+    this.settingsRecoveryGeneration++;
     this.stopped = true;
     this.pending = null;
     this.mount.fence();

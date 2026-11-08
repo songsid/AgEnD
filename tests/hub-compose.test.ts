@@ -22,6 +22,12 @@ import { freeHubPort } from "./helpers/hub-rig.js";
 import { readHubSecretFile } from "../src/hub/init/secret-file.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../src/hub/session-epoch.js";
+import { sealHubInitialization } from "../src/hub/initialization.js";
+import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
+import { createHubSettingsWriter, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
+import { atomicWriteFileSync } from "../src/atomic-write.js";
+import { SERVER_SET } from "../src/hub/compose/storage.js";
+import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 
 const roots: string[] = [];
 beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
@@ -59,6 +65,16 @@ async function initializedHub(bindPassword = BIND) {
   await init.commit(plan, c.reference);
   const config = yaml.load(readFileSync(join(home, "fleet.yaml"), "utf8")) as { hub: Record<string, unknown> };
   return { home, config, plan, webPort, memberPort, caPem: readFileSync(certs.caCert, "utf8") };
+}
+
+/** Owned fixture images only: these older factory tests intentionally bypass HubMount and need a valid full seal now. */
+function sealFixtureHub(hub: Awaited<ReturnType<typeof initializedHub>>, cfg = hub.config.hub) {
+  const path = join(hub.home, "hub/init-manifest.json"), manifest = JSON.parse(readFileSync(path, "utf8"));
+  const planDigest = hubPlanDigest(cfg);
+  writeFileSync(path, JSON.stringify({ ...manifest, planDigest, signature: sealHubInitialization({ home: hub.home,
+    planDigest, confirmationId: manifest.confirmationId, committedAt: manifest.committedAt }) }), { mode: 0o600 });
+  hub.config.hub = cfg;
+  writeFileSync(join(hub.home, "fleet.yaml"), yaml.dump(hub.config), { mode: 0o600 });
 }
 
 function fakeHttp() {
@@ -124,6 +140,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
   it("wires explicit manual enrollment into real pairing and its owning DB without a membership allowance", async () => {
     const hub = await initializedHub(), http = fakeHttp(), groupId = randomUUID();
     (hub.config.hub.directory as Record<string, unknown>).profile = "ad";
+    sealFixtureHub(hub);
     const f = factory(hub.home, http.entry, { createDirectory: () => ({ realm: "corp", groupPolicy: "ad-direct-guid", signIn: vi.fn(), close: async () => {},
       checkEligibility: async () => ({ eligible: true, person: ADMIN }), readPolicyGroups: async () => ({ kind: "unknown" }) }) });
     const service = await f.create(hub.config.hub, () => true);
@@ -170,6 +187,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // A valid public CA bundle may exceed canonicalArguments' request-body bound.
     // Hash trust material before including it in the small authority-generation record.
     (hub.config.hub.directory as Record<string, unknown>).caPem = hub.caPem.repeat(200);
+    sealFixtureHub(hub);
     expect(hub.caPem.repeat(200).length).toBeGreaterThan(64 * 1024);
     const created = f.create(hub.config.hub, () => true);
     await expect(created).resolves.toBeDefined();
@@ -180,6 +198,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     expect(permit.source).toBe("legacy"); permit.assertCurrent();
     await service.close(); expect(() => permit.assertCurrent()).toThrow();
     const changed = { ...hub.config.hub, directory: { ...(hub.config.hub.directory as object), baseDn: "ou=staff,dc=example,dc=test" } };
+    sealFixtureHub(hub, changed);
     const next = await f.create(changed, () => true);
     try { expect((await http.state.deps!.groups!.asker(ADMIN.key, context)).source).toBe("legacy"); }
     finally { await next.close(); }
@@ -230,7 +249,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -630,5 +649,189 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
       await second.start(); expect(control!.read()).toMatchObject({ activeFingerprint256: fingerprint, restartRequired: false });
       expect((await get(hub.webPort, "/hub/v1/ping", selectedPem)).status).toBe(200);
     } finally { await second.close(); }
+  });
+});
+
+/** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
+async function directoryRuntimeRig() {
+  const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
+  let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined;
+  let creates = 0, eligibility = 0;
+  const entry: HubHttpEntry = { ...real, createHubHttp(deps) { lastDeps = deps; return real.createHubHttp(deps); } };
+  const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
+    hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
+    writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
+      directoryDecision: () => runtime?.directoryDecision() ?? null,
+      saveHub(patches) {
+        const next = structuredClone(hub.config.hub);
+        for (const patch of patches) { if (patch.remove) delete next[patch.path[1]!]; else next[patch.path[1]!] = patch.value; }
+        hub.config.hub = next;
+        atomicWriteFileSync(join(hub.home, "fleet.yaml"), yaml.dump(hub.config), { mode: 0o600 });
+      },
+      step(point) { if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
+    });
+    runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer,
+      createDirectory: () => { creates++; return { realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
+        checkEligibility: async () => { eligibility++; return { eligible: true, person: ADMIN }; }, close: async () => {} }; } });
+    return runtime;
+  };
+  build();
+  try { await runtime!.apply(hub.config); expect(runtime!.serverHealth(hub.config.hub)).toBe("ready"); }
+  catch (err) { await runtime!.close(); throw err; }
+  const candidate = () => ({ directory: { ...(hub.config.hub.directory as import("../src/hub/directory/config.js").HubDirectoryConfig), url: "ldaps://next.example.test" },
+    bindPassword: "Dummy-next-bind-only", changes: ["server", "secret"] as const,
+    recipients: [{ kind: "host" as const, sink: "owner-needs-you" }, { kind: "person" as const, person: ADMIN.key }] });
+  const actor = { kind: "host-owner" as const, sessionId: "owned-host-session", requestId: randomUUID() };
+  const commit = (point?: string) => {
+    const mounted = runtime!.directorySettings()!, draft = writer!.directory!.prepare({ ...candidate(), changes: [...candidate().changes] }, actor, mounted.current);
+    crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current);
+  };
+  return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; },
+    get creates() { return creates; }, get eligibility() { return eligibility; }, entry, build, commit, candidate, actor };
+}
+
+describe.skipIf(process.platform === "win32")("directory decision joins the mounted runtime", () => {
+  it("revokes old HTTPS effects immediately but retains the same SQL participant through physical installation", async () => {
+    const r = await directoryRuntimeRig(), oldConfig = structuredClone(r.hub.config.hub), old = r.runtime.directorySettings()!, source = old.source();
+    try {
+      const participant = r.runtime.directoryDecision();
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+      const proof = createHubDirectorySettingsProof({ source: () => r.runtime.directorySettings()!.source(),
+        withDirectoryRead: (person, work) => old.withDirectoryRead(person, work), writer: () => r.writer.directory!,
+        createDirectory: () => ({ realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
+          checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }),
+        probeTls: async () => "a".repeat(64) });
+      const candidate = r.candidate(), ctx = { actor: r.actor, current: () => true };
+      let saved: { directoryEpoch: number };
+      try {
+        const draft = await proof.prepare({ ...candidate, changes: [...candidate.changes] }, ctx);
+        const applying = proof.apply(draft.ref, { confirmation: draft.trust!.challenge }, ctx);
+        await expect(applying).resolves.toMatchObject({ directoryEpoch: 1 });
+        saved = await applying;
+      } finally { proof.close(); }
+      expect(saved.directoryEpoch).toBe(1); expect(r.writer.pending()).toBe(false);
+      expect(source.current()).toBe(false); expect(r.runtime.directorySettings()).toBeNull();
+      expect(r.runtime.directoryDecision()).toBe(participant); // Still owns the physical DB, despite logical revocation.
+      expect(r.runtime.serverHealth(oldConfig)).toBe("unavailable");
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(503);
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      expect(r.runtime.directorySettings()!.source()).toMatchObject({ epoch: 1, bindPassword: "Dummy-next-bind-only", config: { url: "ldaps://next.example.test" } });
+      expect(r.runtime.directoryDecision()).not.toBe(participant);
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+    } finally { await r.runtime.close(); }
+    expect(r.runtime.directoryDecision()).toBeNull();
+  });
+  it.each(["staged", "directory-decision", "directory-secret", "manifest", "config"])("cold-recovers %s before any new listener or directory client", async point => {
+    const r = await directoryRuntimeRig();
+    try {
+      expect(() => r.commit(point)).toThrow(`stop:${point}`); await r.runtime.close();
+      const creates = r.creates; r.build();
+      expect(r.writer.pendingDirectory()).toBe(true); expect(r.runtime.directoryDecision()).toBeNull();
+      await r.runtime.apply(r.hub.config);
+      expect(r.creates).toBe(creates); expect(await refused(r.hub.webPort)).toBe(true);
+      expect(await r.runtime.recoverSettings(r.hub.config)).toBe(true);
+      expect(r.creates).toBe(creates); expect(r.runtime.directoryDecision()).toBeNull();
+      expect(r.writer.pending()).toBe(false);
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      expect(r.runtime.directorySettings()!.source().epoch).toBe(point === "staged" ? 0 : 1);
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+    } finally { await r.runtime.close(); }
+  });
+  it("a lost authority row holds before creation, and direct apply cannot bypass recovery or recreate it", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      expect(() => r.commit("directory-decision")).toThrow(); await r.runtime.close();
+      const db = new Database(join(r.hub.home, SERVER_SET.database)); db.exec("DELETE FROM hub_settings_head"); db.close();
+      const creates = r.creates; r.build();
+      await expect(r.runtime.recoverSettings(r.hub.config)).rejects.toThrow();
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.currentHolds()).toMatchObject([{ code: "hub-storage", reason: "settings-recovery" }]);
+      expect(r.creates).toBe(creates); expect(await refused(r.hub.webPort)).toBe(true); expect(r.writer.pending()).toBe(true);
+      const inspect = new Database(join(r.hub.home, SERVER_SET.database));
+      try { expect(inspect.prepare("SELECT count(*) n FROM hub_settings_head").get()).toEqual({ n: 0 }); }
+      finally { inspect.close(); }
+    } finally { await r.runtime.close(); }
+  });
+  it.each(["stop", "replacement", "apply"])("held cold import honors %s before any writer effect", async mode => {
+    const r = await directoryRuntimeRig();
+    try {
+      expect(() => r.commit("directory-decision")).toThrow(); await r.runtime.close();
+      let release!: () => void, entered!: () => void, calls = 0;
+      const held = new Promise<void>(r => { release = r; }), ready = new Promise<void>(r => { entered = r; });
+      r.build(async () => { if (++calls === 1) { entered(); await held; } return r.entry; });
+      const first = r.runtime.recoverSettings(r.hub.config); await ready;
+      if (mode === "stop") r.runtime.fence();
+      else if (mode === "apply") await r.runtime.apply(r.hub.config);
+      else expect(await r.runtime.recoverSettings(r.hub.config)).toBe(true);
+      const manifest = readFileSync(join(r.hub.home, "hub/init-manifest.json"), "utf8");
+      release(); expect(await first).toBe(false);
+      expect(readFileSync(join(r.hub.home, "hub/init-manifest.json"), "utf8")).toBe(manifest);
+      expect(r.writer.pending()).toBe(mode !== "replacement");
+    } finally { await r.runtime.close(); }
+  });
+  it("mounted proof-source reads share the existing physical eligibility pool", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const mounted = r.runtime.directorySettings()!, requests = Array.from({ length: 4 }, () => mounted.withDirectoryRead(ADMIN.key, () => held));
+      await expect(r.deps.groups!.prepareOwnerEligibility(ADMIN.key, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
+      expect(r.eligibility).toBe(0); release(); await Promise.all(requests);
+      await expect(r.deps.groups!.prepareOwnerEligibility(ADMIN.key, { requestId: randomUUID(), current: () => true })).resolves.toBeDefined();
+      expect(r.eligibility).toBe(1);
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("rechecks material after a held HTTP import before constructing a directory client", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      await r.runtime.close(); let release!: () => void, entered!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { entered = resolve; });
+      const creates = r.creates;
+      r.build(async () => { entered(); await held; return r.entry; });
+      const mounting = r.runtime.apply(r.hub.config); await ready;
+      writeFileSync(join(r.hub.home, "hub/init-manifest.json"), "{}", { mode: 0o600 });
+      release(); await mounting;
+      expect(r.creates).toBe(creates); expect(r.runtime.directorySettings()).toBeNull();
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable"); expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+  it("binds the driver's secret bytes to the exact captured material before construction", async () => {
+    const r = await directoryRuntimeRig();
+    const files = await import("../src/hub/private-files.js"), actual = files.readPrivateFile;
+    let changed = false;
+    try {
+      await r.runtime.close(); const creates = r.creates; r.build();
+      const reading = vi.spyOn(files, "readPrivateFile").mockImplementation((...args) => {
+        const result = actual(...args);
+        if (!changed && args[0] === r.hub.home && args[1] === "hub/secrets/directory-bind") {
+          changed = true; writeFileSync(join(r.hub.home, args[1]), "Dummy-secret-raced", { mode: 0o600 });
+        }
+        return result;
+      });
+      try { await r.runtime.apply(r.hub.config); } finally { reading.mockRestore(); }
+      expect(changed).toBe(true); expect(r.creates).toBe(creates);
+      expect(r.runtime.currentHolds()).toMatchObject([{ code: "hub-directory-secret" }]);
+      expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+  it("a rename journal recovers without importing the HTTP registry or requiring a directory DB", async () => {
+    const hub = await initializedHub(); let runtime: HubRuntime, stop = true, imports = 0;
+    const writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
+      directoryDecision: () => runtime?.directoryDecision() ?? null,
+      saveHub(patches) { for (const patch of patches) hub.config.hub[patch.path[1]!] = patch.value;
+        atomicWriteFileSync(join(hub.home, "fleet.yaml"), yaml.dump(hub.config), { mode: 0o600 }); },
+      step(point) { if (point === "committed" && stop) { stop = false; throw Error("stop rename"); } } });
+    runtime = new HubRuntime({ home: hub.home, settingsWriter: writer, log: () => {},
+      components: { http: async () => { imports++; throw Error("must not import"); } } });
+    const actor = { person: ADMIN.key, sessionId: "own-admin", requestId: randomUUID() }, draft = writer.prepare({ kind: "rename", name: "Renamed" }, actor);
+    try {
+      expect(() => writer.commit(draft.ref, actor, () => true)).toThrow("stop rename");
+      expect(writer.pendingDirectory()).toBe(false);
+      expect(await runtime.recoverSettings(hub.config)).toBe(true);
+      expect(hub.config.hub.name).toBe("Renamed"); expect(imports).toBe(0);
+      expect(existsSync(join(hub.home, SERVER_SET.database))).toBe(false); expect(writer.pending()).toBe(false);
+    } finally { await runtime.close(); }
   });
 });

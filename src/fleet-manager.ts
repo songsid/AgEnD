@@ -2016,11 +2016,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
       await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
-      // M-2682: an interrupted sealed-settings commit is finished (or rolled back) before the Hub mounts its pair. A refusal
-      // overwrites nothing; the mount then holds on the mismatch, visibly, until the files are put right.
+      // Finish an interrupted sealed-settings operation before mounting. Refusal overwrites nothing, fences the runtime,
+      // and never falls through to normal state creation/migration.
       if (this.hubSettingsWriter?.pending()) {
-        try { this.hubSettingsWriter.recover(); }
-        catch (err) { this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub settings recovery refused"); }
+        try { if (!await runtime.recoverSettings(raw)) return; }
+        catch (err) { this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub settings recovery refused"); return; }
       }
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
@@ -2041,6 +2041,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
       this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
+        directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,

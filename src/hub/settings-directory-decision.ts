@@ -2,7 +2,7 @@
  * #3425 directory-v2 SQL decision for settings-commit.ts, not another file writer or an HTTP authority.
  * The shared writer stages/fsyncs the exact images first. One root IMMEDIATE transaction then authorizes
  * those images together with binding, floor/version, browser epoch, audit and FULL old-recipient notices.
- * File journals/signatures cannot substitute for this row. No production caller is composed yet.
+ * File journals/signatures cannot substitute for this row. The runtime owns the participant; AD authority routes remain uncomposed.
  */
 import { takeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type Database from "better-sqlite3";

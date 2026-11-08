@@ -1,4 +1,4 @@
-/** Directory decision/material barrier. Internal until the recovery/runtime coordinator is composed; no route or writer. */
+/** Mounted directory decision/material barrier. No route or separate writer. */
 import { canonicalArguments, sha256 } from "./identity.js";
 import { verifyHubInitialization } from "./initialization.js";
 import { HubSettingsError, readHubDirectorySettingsImage } from "./settings-commit.js";
@@ -48,7 +48,7 @@ export function createHubDirectoryMountBarrier(options: {
   assertCurrent();
   return Object.freeze({
     /** Admission/recovery must call this after asynchronous startup and immediately before exposing a new service. */
-    assertCurrent() { assertCurrent(); },
+    assertCurrent() { return assertCurrent(); },
     /** Permanent lifetime fence; a failed generation never reopens when its old files or owner return. */
     current,
     close() { closed = true; },

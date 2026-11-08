@@ -1,6 +1,6 @@
 # Directory material barrier and cold recovery
 
-Internal M-2687 / [#3425](https://github.com/songsid/AgEnD/issues/3425) composition foundation. These helpers have **no production caller, HTTP route, feature mark or new migration**. The actual runtime publication, browser-token handoff, notice delivery and AD editor remain separate work. The shared `settings-commit.ts` writer remains the only writer of configuration, manifests and the bind secret.
+Internal M-2687 / [#3425](https://github.com/songsid/AgEnD/issues/3425) composition foundation. The original #3463 helpers had no production caller. They are now wired by [runtime publication](hub-directory-runtime-publication.md), which registers the required directory schema. Browser-token handoff, notice delivery and AD editing remain separate work. The shared `settings-commit.ts` writer remains the only writer of configuration, manifests and the bind secret.
 
 ## Mounted material
 

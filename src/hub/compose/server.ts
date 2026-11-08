@@ -48,6 +48,10 @@ import { HUB_COMPANY_JOIN_MIGRATION } from "../join/store.js";
 import { signCompanyInvitation } from "../join/invitation.js";
 import { signCompanyDescriptor } from "../join/descriptor.js";
 import { HubCompanyJoin } from "../join/service.js";
+import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } from "../settings-directory-decision.js";
+import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
+import type { HubMountedDirectory } from "../settings-directory-runtime.js";
+import { parseGroupPolicy } from "../group-policy/model.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
 export { SERVER_SET } from "./storage.js";
@@ -113,6 +117,8 @@ export interface HubServerFactoryOptions {
   browserCertificateReady?(control: HubBrowserCertificateControl): () => void;
   /** M-2682: the host's one writer for sealed settings (settings-commit.ts); absent: Hub Administration can't rename. */
   settingsWriter?: HubSettingsWriter;
+  /** Private owning-generation publication; its disposer withdraws this exact instance. */
+  directoryReady?(directory: HubMountedDirectory): () => void;
   /** This AgEnD's version, shown on Hub Administration → This Hub. */
   version?: string | null;
 }
@@ -170,6 +176,20 @@ export function settingsOf(cfg: Record<string, unknown>): ServerSettings {
     administrator: { realm: admin.realm, objectId: admin.objectId },
     retention: { contentDays: retention.contentDays as number, eventDays: retention.eventDays as number },
   };
+}
+
+/** One registry for normal mount and cold recovery; recovery only validates these versions and never runs them. */
+export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigrations: readonly HubMigration[]) {
+  const settings = settingsOf(cfg), resolvedDirectory = resolveDirectoryConfig(settings.directory);
+  const groupGeneration = sha256(canonicalArguments({ v: 1, realm: resolvedDirectory.realm, url: resolvedDirectory.url,
+    profile: resolvedDirectory.profile, baseDn: resolvedDirectory.baseDn, bindDn: resolvedDirectory.bindDn,
+    loginAttribute: resolvedDirectory.loginAttribute, userFilter: resolvedDirectory.userFilter,
+    caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
+  const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
+    retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
+    groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
+    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION];
+  return { settings, resolvedDirectory, groupGeneration, migrations };
 }
 
 /**
@@ -230,13 +250,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 0. Every slice present, before any I/O: no partial server.
       if (!options.components.http) throw new HubStateError("hub-incomplete", "the Hub web service (S3) is not in this build");
       const httpEntry = await options.components.http();
-      const settings = settingsOf(cfg);
-      const resolvedDirectory = resolveDirectoryConfig(settings.directory);
-      // Stable, non-secret authority generation. Timeouts and bind-password rotation do not
-      // retarget people/groups; changes to directory identity/search/trust do.
-      const groupGeneration = sha256(canonicalArguments({ v: 1, realm: resolvedDirectory.realm, url: resolvedDirectory.url,
-        profile: resolvedDirectory.profile, baseDn: resolvedDirectory.baseDn, bindDn: resolvedDirectory.bindDn,
-        loginAttribute: resolvedDirectory.loginAttribute, userFilter: resolvedDirectory.userFilter, caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
+      const { settings, resolvedDirectory, groupGeneration, migrations } = hubServerDatabasePlan(cfg, httpEntry.migrations);
       const previewBoot = randomBytes(16).toString("hex");
 
       // 1. The private state set: new (create all), complete (open), anything else refused.
@@ -248,9 +262,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         floor.initialize();
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
-      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
-        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
-        groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION, HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION]);
+      applyHubMigrations(db, migrations);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -264,14 +276,22 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // Required bootstrap evidence is durable in the Hub chain before either listener opens.
       importHubWebInitAudit({ home: options.home, db, audit, hubId: settings.hubId, version: store.read().revocationVersion });
 
-      // 3. S2 directory with the service password from the one accepted private file.
+      // Retain the existing actionable secret error before the full material barrier judges the pair.
       if (!bindSecretPath(options.home, settings.directory.bindPasswordRef)) throw new HubStateError("hub-directory-secret", "hub.directory.bindPasswordRef is not the private bind file");
       let bindPassword: string;
-      try {
-        bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096, { preserveBom: true });
-      } catch (err) {
-        throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`);
-      }
+      try { bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096, { preserveBom: true }); }
+      catch (err) { throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`); }
+
+      let memberServer: HubServer | null = null;
+      let fenced = false;
+      const owned = () => !fenced && current();
+      const directoryDecision = createHubDirectorySettingsDecision({ db, transport: store, hubId: settings.hubId });
+      const directoryBarrier = createHubDirectoryMountBarrier({ home: options.home, hub: cfg, decision: directoryDecision, current: owned });
+      teardown.add("directory material barrier", () => directoryBarrier.close());
+      const live = () => owned() && directoryBarrier.current();
+      if (sha256(bindPassword) !== directoryBarrier.assertCurrent().bindSecretSha) throw new HubStateError("hub-directory-secret", "the directory bind secret changed while mounting");
+
+      // 3. S2 directory with the service password from the one accepted private file.
       const { bindPasswordRef: _ref, ...directoryConfig } = settings.directory;
       const directory = options.createDirectory(directoryConfig as HubDirectoryConfig, { bindPassword });
       teardown.add("the directory client", () => (directory as { close?: () => Promise<void> }).close?.());
@@ -280,12 +300,21 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
       if (identity.hubId !== settings.hubId) throw new HubStateError("hub-state-mismatch", "the Hub keys belong to another Hub");
       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
-      let memberServer: HubServer | null = null;
-      let fenced = false;
-      const live = () => !fenced && current();
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
         generation: groupGeneration, directory, audit, current: live, now });
+      const mountedDirectory: HubMountedDirectory = Object.freeze({
+        decision: directoryDecision,
+        current: live,
+        source: () => db.transaction(() => {
+          const stamp = directoryBarrier.capture();
+          const previous = directoryDecision.proofBasis()?.policy ?? parseGroupPolicy(JSON.parse(
+            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body));
+          return { directory, config: structuredClone(directoryConfig), bindPassword, administrator: { ...settings.administrator },
+            groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: live };
+        })(),
+        withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => policy().withDirectoryRead(person, work),
+      });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
         policy, binding,
@@ -406,7 +435,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub was switched off while starting");
           try {
+            directoryBarrier.assertCurrent();
             await memberServer!.start();
+            directoryBarrier.assertCurrent();
             if (settings.preview) {
               const server = createHttpsServer({ ...browserCertificate.material(), minVersion: "TLSv1.2" },
                 createHubPreviewHandler(settings.preview, settings.webOrigin, previewBoot, live));
@@ -460,6 +491,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               const withdraw = options.groupPermissionsReady?.();
               if (withdraw) teardown.add("the host's group permissions mark", withdraw);
             }
+            directoryBarrier.assertCurrent();
+            const withdrawDirectory = options.directoryReady?.(mountedDirectory);
+            if (withdrawDirectory) teardown.add("the mounted directory control", withdrawDirectory);
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;

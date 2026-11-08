@@ -1,4 +1,4 @@
-/** Cold directory recovery participant. The shared settings writer still owns every file write. Not composed yet. */
+/** Cold directory recovery participant, called by the runtime before mounting. The shared writer owns every file write. */
 import { createHubAudit } from "./audit/index.js";
 import { assertHubMigrationsCurrent, bindHubInstance, HubStateError, inspectStateSet, openHubDatabase,
   type HubMigration, type HubStateSet } from "./db.js";

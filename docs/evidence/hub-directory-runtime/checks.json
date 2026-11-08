@@ -1,0 +1,23 @@
+{
+  "scope": "Hub-only runtime participant/recovery/publication; AD routes remain absent",
+  "focused": {
+    "files": 6,
+    "passed": 199,
+    "skipped": 0,
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-settings-api-m2682.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-session-transition.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
+  },
+  "types": {
+    "source": "passed",
+    "tests": "passed"
+  },
+  "runtimeCases": 14,
+  "transport": "Owned production S3 HTTPS handler with ordinary CA verification; directory driver inert",
+  "scopeLimits": [
+    "No real LDAPS, directory account, vendor, native-manager, pilot or live-fleet operation",
+    "TLS probe in proof composition control is inert; HTTPS listener verification is real",
+    "Host-owner context is constructed inside the private test harness, not a public D3 route acceptance",
+    "No originating browser-token release or directory notice delivery; no public AD operation",
+    "Injected stops/reopen only, not power loss; no full browser/system rig"
+  ],
+  "afterMutationChange": "Only explanatory comments in FleetManager and compose/server were clarified or moved after mutation restoration; guard-bearing code is unchanged."
+}
