@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "files": {
+    "11eabc010952adc4dd3ecb5d4195f38349e7c9a9bde267600feb2d4e7d863897": "src/hub/settings-directory-host-http.ts",
+    "7a986351bf068cfe5d746aff54f5a8390abf984e08981610a13b3f70c486549a": "src/settings-api.ts",
+    "3c898c78180031dddad1263c91941425e7e29a3a23c2000aa3c49b286003f170": "tests/hub-web-init-http.test.ts",
+    "b2a847009d5376ebea8bfe5ee5ba91e33baec7e87e81b85a2c6ca144affe7143": "docs/design/hub-directory-settings-http.md",
+    "7ce7a1e0a080da163e1722d6ac63fc36323f17835ec5fea9c48ed1e4b5e8592f": "scripts/manual/hub-directory-host-api/verify.py",
+    "aad7193d45e2f371727009fc22295e95d3620f50549760d88aeed68ce4ea6987": "scripts/manual/hub-directory-host-api/README.md",
+    "f40d4401a28183f6e20a8cac678ca652ef1f4a9427a85f67c734d25b575c4de2": "changes/3425-hub-directory-host-api.md",
+    "98ec404f42a5d7f6dfdc0219b5b14d264170ac0d1aefd38a112e1de200f9b74c": "changes/3425-hub-directory-host-api.zh-TW.md",
+    "288ab9df37504e852fd21c2be7c131456ce915948ea0ed802a6fdcdd787f6661": "docs/screenshots/hub-directory-host-api/checks.json",
+    "0c536e5825d48ce774e90aa0ebce70cf9747ca238f5c471023d497c3b99c7081": "docs/screenshots/hub-directory-host-api/mutations.json"
+  }
+}

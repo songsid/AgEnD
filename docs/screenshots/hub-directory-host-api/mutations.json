@@ -1,0 +1,87 @@
+{
+  "v": 1,
+  "baseline": {
+    "11eabc010952adc4dd3ecb5d4195f38349e7c9a9bde267600feb2d4e7d863897": "src/hub/settings-directory-host-http.ts"
+  },
+  "rows": [
+    {
+      "name": "host-proof",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "query-method",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "media-type",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "disconnect",
+      "exit": 1,
+      "passed": 2,
+      "failed": 1,
+      "deselected": 21
+    },
+    {
+      "name": "session-epoch",
+      "exit": 1,
+      "passed": 1,
+      "failed": 2,
+      "deselected": 21
+    },
+    {
+      "name": "post-factory",
+      "exit": 1,
+      "passed": 0,
+      "failed": 3,
+      "deselected": 21
+    },
+    {
+      "name": "host-actor",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "restored-status",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "retry-after",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 22
+    },
+    {
+      "name": "post-body",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 23
+    },
+    {
+      "name": "post-result",
+      "exit": 1,
+      "passed": 1,
+      "failed": 1,
+      "deselected": 24
+    }
+  ],
+  "restored": true,
+  "method": "Each single-site reversal is required to produce an assertion failure, never a collection/build failure or timeout."
+}
