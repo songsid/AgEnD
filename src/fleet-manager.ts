@@ -20446,7 +20446,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.probeChangedCliEnvs(null);
   }
 
-  /** Only committed creation/backend/account changes trigger discovery, never a model-field read. */
+  /** Maintain discovery after committed config changes; a model-field read remains passive. */
   private probeChangedCliEnvs(previous: FleetConfig | null): void {
     const signature = (fleet: FleetConfig | null, name: string) => {
       const inst = fleet?.instances[name];
@@ -20455,12 +20455,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return JSON.stringify({ backend, options: { ...fleet?.defaults?.backend_options?.[backend], ...inst.backend_options?.[backend] } });
     };
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
-      if (previous && signature(previous, name) === signature(this.fleetConfig, name)) continue;
       const backend = this.backendNameForInstance(name);
       const binding = this.webModelBinding(backend, name);
       // A named agy account has no verified relocation/discovery contract. In particular,
       // never publish the ambient account's models under that profile (#3526 / D7).
       if (!binding || (binding.profile && !credentialHomeSpec(backend))) continue;
+      // A description/defaults save can retire a scoped answer's full binding even
+      // though its account signature is unchanged. Keep the conservative fence and
+      // re-arm the current binding, unless its answer or flight is already present.
+      if (previous && signature(previous, name) === signature(this.fleetConfig, name)
+          && (!binding.scoped || this.webModelEnv(backend, name) || this.webModelRefreshes.has(binding.key))) continue;
       const work = binding.scoped
         ? this.refreshModelCatalogFor(backend, name)
         : this.probeBackendBounded(backend, { profile: binding.profile });

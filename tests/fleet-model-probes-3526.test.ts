@@ -147,6 +147,25 @@ describe("#3526 background model discovery", () => {
     expect(ids("codex", null)).toEqual([]);
   });
 
+  it.each(["description", "defaults"])("re-arms a held scoped discovery after an unrelated %s save", async field => {
+    fm.loadConfig(config()); FakeProbeWorker.answer = undefined;
+    fm.fleetConfig.instances.w.backend_options = { codex: { provider: "one" } };
+    fm.saveFleetConfig();
+    expect(FakeProbeWorker.workers).toHaveLength(1);
+    if (field === "description") fm.fleetConfig.instances.w.description = "new description";
+    else fm.fleetConfig.defaults.locale = "zh-TW";
+    fm.saveFleetConfig();
+    FakeProbeWorker.answer = () => ({ models: [{ id: "current-binding", label: "Current" }] });
+    FakeProbeWorker.workers[0].reply({ models: [{ id: "retired-binding", label: "Retired" }] });
+    await settled();
+    expect(ids()).toEqual(["current-binding"]);
+    expect(FakeProbeWorker.workers).toHaveLength(2);
+    expect(ids("codex", null)).toEqual([]);
+    // A repeated identical save reuses the completed current-binding answer.
+    fm.saveFleetConfig(); await settled();
+    expect(FakeProbeWorker.workers).toHaveLength(2);
+  });
+
   it("inherited backend changes probe, but a failed save starts no discovery", async () => {
     fm.loadConfig(config());
     fm.fleetConfig.defaults.backend = "antigravity";
