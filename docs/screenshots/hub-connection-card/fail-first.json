@@ -1,0 +1,12 @@
+{
+  "case": "Real Fleet getter returns copies: unchanged projection refused before fix",
+  "failed": 1,
+  "assertions": [
+    {
+      "title": "connection card's passive Settings projection offers v1 only for the explicit new read; the legacy boolean read stays lazy",
+      "failure": [
+        "AssertionError: expected { status: 409, \u2026(1) } to deeply equal { status: 200, \u2026(1) }\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connection-card-s119/tests/hub-connection-card-api.test.ts:30:31\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+      ]
+    }
+  ]
+}

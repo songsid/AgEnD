@@ -1,0 +1,587 @@
+{
+  "before": false,
+  "skew": "",
+  "base": "a32b177df",
+  "checks": [
+    {
+      "name": "desk-light-en single frame",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no startup effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en actual ready link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en retained summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en single frame",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no startup effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en actual ready link",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en retained summary",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en single frame",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no startup effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en actual ready link",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en retained summary",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en single frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no startup effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en actual ready link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en retained summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "nonempty selection",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "desk-dark-en",
+      "ok": true
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "phone-light-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-unconnected.png",
+    "desk-light-en-connected.png",
+    "desk-light-en-agents-chosen.png",
+    "desk-light-en-paused-reloaded.png",
+    "desk-light-en-resumed.png",
+    "desk-light-zh-TW-unconnected.png",
+    "desk-light-zh-TW-connected.png",
+    "desk-light-zh-TW-agents-chosen.png",
+    "desk-light-zh-TW-paused-reloaded.png",
+    "desk-light-zh-TW-resumed.png",
+    "desk-dark-en-unconnected.png",
+    "desk-dark-en-connected.png",
+    "desk-dark-en-agents-chosen.png",
+    "desk-dark-en-paused-reloaded.png",
+    "desk-dark-en-resumed.png",
+    "desk-dark-zh-TW-unconnected.png",
+    "desk-dark-zh-TW-connected.png",
+    "desk-dark-zh-TW-agents-chosen.png",
+    "desk-dark-zh-TW-paused-reloaded.png",
+    "desk-dark-zh-TW-resumed.png",
+    "phone-light-en-unconnected.png",
+    "phone-light-en-connected.png",
+    "phone-light-en-agents-chosen.png",
+    "phone-light-en-paused-reloaded.png",
+    "phone-light-en-resumed.png",
+    "phone-light-zh-TW-unconnected.png",
+    "phone-light-zh-TW-connected.png",
+    "phone-light-zh-TW-agents-chosen.png",
+    "phone-light-zh-TW-paused-reloaded.png",
+    "phone-light-zh-TW-resumed.png",
+    "phone-dark-en-unconnected.png",
+    "phone-dark-en-connected.png",
+    "phone-dark-en-agents-chosen.png",
+    "phone-dark-en-paused-reloaded.png",
+    "phone-dark-en-resumed.png",
+    "phone-dark-zh-TW-unconnected.png",
+    "phone-dark-zh-TW-connected.png",
+    "phone-dark-zh-TW-agents-chosen.png",
+    "phone-dark-zh-TW-paused-reloaded.png",
+    "phone-dark-zh-TW-resumed.png"
+  ],
+  "errors": [],
+  "cleaned": true,
+  "limits": "Owned fake LDAPS and sealed Hub; real cookie/CSRF/Settings/transport/publish paths. No API reply substitution. Lifecycle/model/CLI blocked; no question sent to an agent.",
+  "initialReads": [
+    {
+      "tag": "desk-light-en",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "desk-dark-en",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "phone-light-en",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "phone-dark-en",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+    }
+  ],
+  "starts": [
+    {
+      "tag": "desk-light-en",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "desk-dark-en",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "phone-light-en",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "phone-dark-en",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": 202,
+      "result": "pending_confirmation",
+      "pending": "applying"
+    }
+  ],
+  "status": "PASS"
+}

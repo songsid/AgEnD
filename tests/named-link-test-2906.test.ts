@@ -351,16 +351,59 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
       out.push(text.replace(/<[^>]*>/g, tag => [...tag.matchAll(/\s(?:placeholder|title|aria-label|aria-description|alt)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)]
         .map(match => match[1] ?? match[2]).join(" ")));
     };
+    const atClassAttribute = (prefix: string) => {
+      // Track HTML context across every interpolation, including dynamic tag names.
+      // A class= suffix in body text or inside a quoted title/ARIA value is visible copy.
+      let inTag = false, quote = "";
+      for (let i = 0; i < prefix.length; i++) {
+        const ch = prefix[i]!;
+        if (quote) { if (ch === quote) quote = ""; continue; }
+        if (inTag) {
+          if (ch === '"' || ch === "'") quote = ch;
+          else if (ch === ">") inTag = false;
+        } else if (prefix.startsWith("<!--", i)) {
+          const end = prefix.indexOf("-->", i + 4);
+          if (end < 0) return false;
+          i = end + 2;
+        } else if (ch === "<" && /[a-z\uFFFC]/i.test(prefix[i + 1] ?? "")) inTag = true;
+      }
+      return inTag && !quote && /\sclass(?:Name)?\s*=\s*$/.test(prefix);
+    };
     const visit = (node: ts.Node) => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
       if (ts.isStringLiteralLike(node)) { add(node.text); return; }
-      if (ts.isTemplateExpression(node)) { add(node.head.text); for (const part of node.templateSpans) { add(part.literal.text); visit(part.expression); } return; }
+      if (ts.isTemplateExpression(node)) {
+        add(node.head.text); let preceding = node.head.text;
+        for (const part of node.templateSpans) {
+          // An interpolated CSS class is a technical attribute too; visible title/ARIA expressions remain inspected.
+          const classAttribute = ts.isTaggedTemplateExpression(node.parent) && ts.isIdentifier(node.parent.tag) && node.parent.tag.text === "html" && atClassAttribute(preceding);
+          if (!classAttribute) visit(part.expression);
+          add(part.literal.text); preceding += "\uFFFC" + part.literal.text;
+        }
+        return;
+      }
       ts.forEachChild(node, visit);
     };
     visit(ast); return out;
   };
   it("checks visible copy rather than imports or interpolation variables, and still catches network marketing copy", () => {
     const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<p>${company.message}</p>`; const b = "Company network";');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it("ignores conditional CSS class strings while retaining interpolated visible attributes", () => {
+    const copy = literalCopy('const a = html`<${Frame} class=${embedded ? "form s-company-join" : "card s-company-join"} title=${"Company network"} />`;');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it.each([
+    'html`<p>class=${"Company network"}</p>`',
+    'html`<button title="Network class=${"Company network"}">OK</button>`',
+    'html`<button aria-label="Network class=${"Company network"}">OK</button>`',
+  ])("keeps visible text that ends in class=: %s", template => {
+    const copy = literalCopy("const a = " + template + ";");
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it("still inspects a non-HTML template with text that resembles a class attribute", () => {
+    const copy = literalCopy('const message = `class=${"Company network"}`;');
     expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
   });
   it.each(["placeholder", "title", "aria-label"])("keeps visible %s copy while ignoring technical HTML attributes", attribute => {

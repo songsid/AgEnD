@@ -1,8 +1,5 @@
-// alpha.6 feedback (#2): Settings → Hub. Everything about this fleet and a Hub in one section, found by search: the
-// membership switch, then (once it is on and the page is marked a member) Connect to a Hub — address and pairing code,
-// the fingerprint to compare, the approval steps, then paired (open, disconnect) — with the agents shared there; and on
-// a fleet that runs a Hub itself, its retention and browser-certificate cards. Each card stays its own lazy module, as
-// it was under Access & security. Never over the public link: the member handlers are this computer's owner's only.
+// Fleet Settings → Hub: one connection card reuses the company handoff, manual pairing and Agent-sharing controls.
+// Host setup and host-only settings keep their existing lazy modules and authority gates.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 
@@ -54,7 +51,7 @@ export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
   return html`<div class="s-hub-section">
     ${!hubHost && typeof document !== "undefined" && document.body?.dataset.hubSetup === "1"
       ? html`<${Lazy} load=${() => import("./settings-hub-setup.js")} pick=${(m) => m.HubSetupSettings} />` : null}
-    <${Lazy} load=${() => import("./settings-hub-membership.js")} pick=${(m) => m.HubMembershipSettings} />
+    <${Lazy} load=${() => import("./settings-hub-connection.js").catch(() => import("./settings-hub-membership.js"))} pick=${m => m.HubConnectionSettings || m.HubMembershipSettings} />
     ${hubHost && typeof document !== "undefined" && document.body?.dataset.hubDirectorySettings === "1"
       ? html`<${Lazy} load=${() => import("./settings-hub-directory.js")} pick=${m => m.HubDirectorySettings} />` : null}
     ${hubHost ? html`<${Lazy} load=${() => import("./settings-hub-run.js")} pick=${(m) => m.HubRunSettings} />

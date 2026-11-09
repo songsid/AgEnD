@@ -17,7 +17,7 @@ afterEach(async () => { for (const pg of mounted.splice(0)) { await pg.unmount()
 async function section(props: { hubHost: boolean; overPublicLink: boolean }) {
   const pg = page({ url: "http://127.0.0.1:19280/settings/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
   if (props.overPublicLink) pg.document.body.dataset.publicLink = "1";
-  (globalThis as any).fetch = async (path: string) => response(path === "/api/settings/hub/membership" ? { ok: true, enabled: false } : { ok: true });
+  (globalThis as any).fetch = async (path: string) => response(path.split("?")[0] === "/api/settings/hub/membership" ? { ok: true, enabled: false } : { ok: true });
   (await import("/assets/app-i18n.js")).setLang("en", { store: false });
   const { HubSection } = await import("/ui/js/settings-hub-section.js");
   await pg.mount(h(HubSection, props));

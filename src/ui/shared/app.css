@@ -4193,3 +4193,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .s-hub-section .hub-retention input { min-width: 0; max-width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
   .s-hub-section .hub-retention button { align-self: flex-start; max-width: 100%; min-height: var(--tap); white-space: normal; }
 }
+
+/* S-119: the existing company, manual and sharing controls share one Settings card. */
+.s-hub-connection { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.s-hub-connection > .s-group-head { padding: 0; flex-wrap: wrap; cursor: default; text-transform: none; letter-spacing: normal; }
+.s-hub-connection > .s-group-head h3 { margin: 0; font-size: var(--fs-lg); }
+.s-hub-connection .hub-connection-summary .field { min-width: 0; overflow-wrap: anywhere; }
+.s-hub-connection .s-ui-disclosure > summary { cursor: pointer; }
+@media (max-width: 899px), (pointer: coarse) {
+  .s-hub-connection :is(.btn, input:not([type="checkbox"]), .check, .hub-exposure-main, summary) { min-height: var(--tap); }
+  .s-hub-connection .btn { min-width: var(--tap); }
+  .s-hub-connection .field-row { flex-wrap: wrap; }
+  .s-hub-connection .field-row > .btn-primary { width: 100%; }
+  .s-hub-connection .hub-fp .btn { white-space: normal; }
+}
