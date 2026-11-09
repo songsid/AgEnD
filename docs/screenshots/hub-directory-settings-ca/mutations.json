@@ -1,0 +1,213 @@
+{
+  "v": 1,
+  "baseline": {
+    "6391ee14300df8e5531284a5c1dc52b74cdf42c20b7456db71b2b21398ee4c3a": "src/hub/settings-directory-control.ts",
+    "3890de0b95cc11a179195e498db05e99d43723856e996303bcf423b7918c75f9": "src/hub/init/directory-certificate.ts",
+    "cb1b5a49f736340bd81a37d24b35f4d89616fef58efa382cc6113547a39f3540": "src/hub/settings-directory-ca.ts",
+    "dbac0093d307fa69cb3d739998397d54290ab9f3d22ed64c1e8f04089c48f8a6": "src/hub/http/compose.ts"
+  },
+  "rows": [
+    {
+      "name": "actor-binding",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 3,
+      "deselected": 32
+    },
+    {
+      "name": "source-image",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "source-epoch",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "source-directory",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "source-snapshot",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 34
+    },
+    {
+      "name": "actor-snapshot",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "initial-time",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 34
+    },
+    {
+      "name": "final-time",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "pin-before-pool",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "consume-once",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "retained-cap",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "stale-probe-prune",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "inflight-reservation",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "shared-pool",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 4,
+      "deselected": 31
+    },
+    {
+      "name": "credential-pair",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "anonymous-refusal",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "strict-inspect",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "strict-fetch",
+      "file": "src/hub/settings-directory-ca.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 35
+    },
+    {
+      "name": "inspect-physical",
+      "file": "src/hub/init/directory-certificate.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 13
+    },
+    {
+      "name": "verified-physical",
+      "file": "src/hub/init/directory-certificate.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 13
+    },
+    {
+      "name": "pinned-physical",
+      "file": "src/hub/init/directory-certificate.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 13
+    },
+    {
+      "name": "inspect-stop",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 13
+    },
+    {
+      "name": "fetch-stop",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 13
+    },
+    {
+      "name": "session-mark",
+      "file": "src/hub/http/compose.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 94
+    },
+    {
+      "name": "entry-mark",
+      "file": "src/hub/http/compose.ts",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 94
+    }
+  ],
+  "restored": true,
+  "method": "Each single-site reversal is assertion-caught, not a build/collection failure or timeout. The actor and anonymous-refusal tests use explicit outcome assertions."
+}

@@ -1587,6 +1587,23 @@ describe.skipIf(process.platform === "win32")("durable directory startup reconci
 
 const DIRECTORY_SETTINGS_PATH = "/hub/v1/admin/hub/directory";
 describe.skipIf(process.platform === "win32")("configured administrator AD settings HTTP", () => {
+  it.each(["inspect","fetch"] as const)("authorizes CA %s and advertises its distinct capability",async action=>{
+    const operation=vi.fn(async(_input:unknown,_context:unknown)=>({ref:"fixture",certificates:[]}));
+    const create=vi.fn(async()=>({[action==="inspect"?"inspectCa":"fetchCa"]:operation}) as unknown as HubDirectorySettingsControl);
+    const r=await directoryRuntimeRig(undefined,{people:[NOTICE_READER],directorySettings:create});
+    try{
+      const path=DIRECTORY_SETTINGS_PATH+"/ca/"+action;
+      expect((await directoryBrowser(r.hub,undefined,{url:"ldaps://next.example.test"},path)).status).toBe(401);
+      const other=await noticeSignInForDirectory(r,NOTICE_READER);
+      expect((await directoryBrowser(r.hub,other.cookie,{url:"ldaps://next.example.test"},path,{headers:{"X-AgEnD-Hub-CSRF":other.json.csrf}})).status).toBe(403);
+      expect(create).not.toHaveBeenCalled();const signed=await noticeSignInForDirectory(r,ADMIN);
+      expect(signed.json.features).toContain("directory-ca-v1");expect(r.http.features).toContain("directory-ca-v1");
+      const body={url:"ldaps://next.example.test"};
+      const result=await directoryBrowser(r.hub,signed.cookie,body,path,{headers:{"X-AgEnD-Hub-CSRF":signed.json.csrf}});
+      expect(result.status).toBe(200);expect(operation).toHaveBeenCalledExactlyOnceWith(body,expect.objectContaining({actor:expect.objectContaining({kind:"hub-administrator",person:ADMIN.key})}));
+    }finally{await r.runtime.close();}
+  });
+
   it("authorizes the configured administrator before lazily acquiring the AD control", async () => {
     const read = vi.fn((_ctx: HubDirectoryProofContext) => ({ directory: { realm: "corp", profile: "openldap" }, bindPasswordSet: true }));
     const create = vi.fn(async () => ({ read }) as unknown as HubDirectorySettingsControl);
@@ -1648,6 +1665,7 @@ describe.skipIf(process.platform === "win32")("configured administrator AD setti
     try {
       const signed = await noticeSignInForDirectory(r, ADMIN);
       expect(signed.json.features).not.toContain("directory-settings-v1");
+      expect(signed.json.features).not.toContain("directory-ca-v1");
       expect((await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH)).status).toBe(404);
     } finally { await r.runtime.close(); }
   });

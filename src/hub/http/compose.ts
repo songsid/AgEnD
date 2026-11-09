@@ -14,7 +14,7 @@
  * - `close()` forgets the links. S5 closes the DB.
  */
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
-import { handleHubDirectorySettingsHttp, HUB_DIRECTORY_SETTINGS_FEATURE } from "../settings-directory-http.js";
+import { handleHubDirectorySettingsHttp, HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE } from "../settings-directory-http.js";
 import { handleHubSettingsHttp } from "../settings-api.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -143,7 +143,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
     const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
       ...(deps.companyJoin ? ["company-join-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
-      ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE] : [])];
+      ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
@@ -538,7 +538,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
-      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE] : [])]),
+      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE] : [])]),
     async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

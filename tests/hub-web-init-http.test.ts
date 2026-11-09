@@ -218,6 +218,14 @@ describe("AD settings from the local host session", () => {
 
 
 describe("host AD HTTP boundaries", () => {
+  it.each(["inspect","fetch"] as const)("routes CA %s through the same D3 actor before any credential-bearing action",async action=>{
+    const r=await fixture(),inspectCa=vi.fn(async(_input:unknown,_context:unknown)=>({ref:"fixture",certificate:{fingerprint256:"AA"}}));
+    vi.spyOn(r.fm,"hubDirectorySettings").mockResolvedValue({[action==="inspect"?"inspectCa":"fetchCa"]:inspectCa} as any);
+    const response=await request(r.port,"POST",directoryPrefix+"/ca/"+action,r.headers(),JSON.stringify({url:"ldaps://directory.example.test"}));
+    expect(response.status).toBe(200);expect(inspectCa).toHaveBeenCalledExactlyOnceWith({url:"ldaps://directory.example.test"},expect.objectContaining({actor:expect.objectContaining({kind:"host-owner"})}));
+    expect(r.peer.bindRecords).toHaveLength(0);
+  },20_000);
+
   it("refuses other admin, guest, header, cross-site, CSRF, forwarded and public requests before acquiring the controller", async () => {
     const r = await fixture(), create = vi.spyOn(r.fm, "hubDirectorySettings");
     const other = await r.signIn(r.fm.issueDashboardLogin()!.display);
