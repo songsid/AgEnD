@@ -11,9 +11,20 @@
  *   target is WEB_UPDATE_TARGET (no chat message: the chat progress monitor and the new fleet's completion leave it alone).
  * - Failure: the page says a user-level cause; the updater's own words (which may name host paths) only in the log view.
  */
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { installedChannel, updateNoticeKey, type UpdateChannel } from "./update-check.js";
 import type { UpdateMarker, UpdateProgressStage, UpdateProgressState, UpdateProgressTarget } from "./update-marker.js";
+
+/**
+ * The version this process runs, read once as it loads (at fleet start): never the package.json on disk later, which an
+ * update replaces under the running fleet (missing for a moment, then the new version before the restart). Null: unknown.
+ */
+export const RUNNING_AGEND_VERSION: string | null = (() => {
+  try {
+    const v = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: unknown }).version;
+    return typeof v === "string" && v ? v : null;
+  } catch { return null; }
+})();
 
 /** The adapter id of a web-started update's progress target: no channel adapter has it, so no chat message is edited. */
 export const WEB_UPDATE_ADAPTER = "web-update";
@@ -101,7 +112,7 @@ export function readLogTail(path: string, max = 32 * 1024): string | null {
 /** What the fleet gives the web routes. */
 export interface WebUpdateHost {
   /** The running version, the last check's offer, and when it was checked (null: not yet). */
-  updateState(): { current: string; offer: UpdateOffer | null; checkedAt: number | null; checkFailed: boolean };
+  updateState(): { current: string | null; offer: UpdateOffer | null; checkedAt: number | null; checkFailed: boolean };
   /** Look now (no chat notice); rate-limited by the caller's host. */
   checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateProgress(): WebUpdateProgress | null;

@@ -203,6 +203,16 @@ describe("M-2738: /ui/update on the dashboard", () => {
   });
 });
 
+describe("M-2738: the version the page compares is the running one", () => {
+  it("read once as the fleet loads (rig: the file on disk was missing, then the new version, while the old fleet still ran)", async () => {
+    const { RUNNING_AGEND_VERSION } = await import("../src/web-update.js");
+    expect(RUNNING_AGEND_VERSION).toBe(JSON.parse(readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8")).version);
+    const dir = mkdtempSync(join(tmpdir(), "agend-web-update-v-")); dirs.push(dir);
+    const fm = new FleetManager(dir) as any;
+    try { expect(fm.webUpdate.updateState().current).toBe(RUNNING_AGEND_VERSION); } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
+  });
+});
+
 describe("M-2738: the new fleet and a web-started update", () => {
   it("no retire-warning watch on a web target, and the boot clears its marker even with a cleanup owed", async () => {
     const f = await fleet();
