@@ -14,6 +14,7 @@
  * - `close()` forgets the links. S5 closes the DB.
  */
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
+import { handleHubDirectorySettingsHttp, HUB_DIRECTORY_SETTINGS_FEATURE } from "../settings-directory-http.js";
 import { handleHubSettingsHttp } from "../settings-api.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -141,7 +142,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
     const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
-      ...(deps.companyJoin ? ["company-join-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : [])];
+      ...(deps.companyJoin ? ["company-join-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
+      ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
@@ -394,6 +396,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
     // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).
+    if (await handleHubDirectorySettingsHttp(deps.directorySettings, { req, res, path, method, query, signedIn, csrf, body,
+      send: (status, value) => send(res, status, value), sessions,
+      ...(deps.directoryResponse ? { capture: (proof: () => boolean) => deps.directoryResponse!.capture(req, res, proof) } : {}),
+      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() } })) return;
     if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
       send: (status, value) => send(res, status, value),
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
@@ -532,7 +538,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
-      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : [])]),
+      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE] : [])]),
     async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

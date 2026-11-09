@@ -1,0 +1,214 @@
+{
+  "baseline": {
+    "264dce3bd405a559000da5a46e5cf8d6851e583e2abe6320e6d23cbb149cd474": "src/fleet-manager.ts",
+    "06c8a9a08ee476f4d1f2eaf4a05407353ebcb40eb8eff75a938a7d6821d850e2": "src/hub/http/compose.ts",
+    "f1a97c6b380dd731886f5597e620c2426bde43a4c2ecf5e286123ea3c51bbe3b": "src/hub/settings-directory-control.ts",
+    "07355f052c62526b7120798228c7e9e6de28af7f9a52f2d8ce7e0606e74a889b": "src/hub/settings-directory-http.ts",
+    "e0971e37d59ba523cd4fce2eba795ee7617ccfda7f16edbaafb288ffadf247d6": "src/hub/runtime.ts",
+    "f25978cdf3e574542812d8002078e89e48033d32f0b273ee09c975783942e9fa": "src/hub/compose/server.ts"
+  },
+  "rows": [
+    {
+      "name": "read-admin",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "mounted-hub",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "write-only-reference",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "strict-request",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 9,
+      "failed": 3,
+      "deselected": 0
+    },
+    {
+      "name": "strict-directory",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 10,
+      "failed": 2,
+      "deselected": 0
+    },
+    {
+      "name": "actor-snapshot",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "physical-drain",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "permanent-fence",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "notice-recipient",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "secret-change-notice",
+      "file": "src/hub/settings-directory-control.ts",
+      "exit": 1,
+      "passed": 11,
+      "failed": 1,
+      "deselected": 0
+    },
+    {
+      "name": "disconnect",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "post-factory",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "factory-refusal",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "session-mark",
+      "file": "src/hub/http/compose.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "entry-mark",
+      "file": "src/hub/http/compose.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "runtime-forward",
+      "file": "src/hub/runtime.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 5,
+      "deselected": 88
+    },
+    {
+      "name": "factory-forward",
+      "file": "src/hub/compose/server.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 5,
+      "deselected": 88
+    },
+    {
+      "name": "fleet-forward",
+      "file": "src/fleet-manager.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 1,
+      "deselected": 5
+    },
+    {
+      "name": "fleet-import-fence",
+      "file": "src/fleet-manager.ts",
+      "exit": 1,
+      "passed": 1,
+      "failed": 1,
+      "deselected": 5
+    },
+    {
+      "name": "loan-ticket",
+      "file": "src/hub/runtime.ts",
+      "exit": 1,
+      "passed": 2,
+      "failed": 1,
+      "deselected": 91
+    },
+    {
+      "name": "loan-scope",
+      "file": "src/hub/runtime.ts",
+      "exit": 1,
+      "passed": 2,
+      "failed": 1,
+      "deselected": 91
+    },
+    {
+      "name": "loan-sync",
+      "file": "src/hub/runtime.ts",
+      "exit": 1,
+      "passed": 2,
+      "failed": 1,
+      "deselected": 91
+    },
+    {
+      "name": "admin-acquisition",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 4,
+      "failed": 2,
+      "deselected": 88
+    },
+    {
+      "name": "csrf",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    },
+    {
+      "name": "query",
+      "file": "src/hub/settings-directory-http.ts",
+      "exit": 1,
+      "passed": 5,
+      "failed": 1,
+      "deselected": 88
+    }
+  ],
+  "restored": true,
+  "note": "23 initial reversals caught. Two cancellation reversals exposed a test that awaited client abort but not server continuation; the test now waits for handler cleanup and both are assertion-caught. Four Runtime reversals were repeated after the diagnostics alpha merge; all other production blobs stayed identical. The final UI-only sync changes no owned source/test blob."
+}
