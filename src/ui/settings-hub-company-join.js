@@ -8,9 +8,9 @@ import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 register("companyJoinWait", {
   "en": {
     checking: "Checking this connection’s status. Review any local confirmation before continuing.",
-    pending: "Local confirmation is required. Company sign-in has not started.",
+    pending: "Local confirmation is required. Hub sign-in has not started.",
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
-    localWithdrawn: "Local confirmation was withdrawn. Company sign-in did not start.",
+    localWithdrawn: "Local confirmation was withdrawn. Hub sign-in did not start.",
     reviewConfirmation: "Review local confirmation",
     withdraw: "Withdraw connection request",
     localExpired: "The local confirmation wait has ended without a verified connection result. Check this request before starting another connection.",
@@ -18,9 +18,9 @@ register("companyJoinWait", {
   },
   "zh-TW": {
     checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
-    pending: "需要先完成本機確認，公司帳號登入尚未開始。",
+    pending: "需要先完成本機確認，Hub 登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
-    localWithdrawn: "已撤回本機確認，尚未開始公司帳號登入。",
+    localWithdrawn: "已撤回本機確認，尚未開始 Hub 登入。",
     reviewConfirmation: "開啟本機確認",
     withdraw: "撤回連接請求",
     localExpired: "等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",

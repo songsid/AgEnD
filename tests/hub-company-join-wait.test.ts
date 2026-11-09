@@ -46,7 +46,7 @@ describe("company join local wait",()=>{
  it("a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",async()=>{
   fetcher(()=>response({ok:true,operation:null}));const p=await mount();
   expect(p.root.querySelector(".skeleton")).toBeNull();
-  expect(p.root.textContent).toContain("Company sign-in has not started");
+  expect(p.root.textContent).toContain("Hub sign-in has not started");
   expect(btn(p,"Review local confirmation")).toBeTruthy();
   expect(p.root.querySelector('a[href="/settings/hub"]')).toBeTruthy();
   expect(p.root.textContent).toContain("does not withdraw");

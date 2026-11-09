@@ -33,7 +33,7 @@ try{
    const response=p.waitForResponse((q:any)=>new URL(q.url()).pathname.endsWith("/company-join/start")&&q.request().method()==="POST"),popup=ctx.waitForEvent("page");
    await p.locator(".s-company-join button[type=submit]").click();const first=await response,body=await first.json(),wait=await popup;wait.setDefaultTimeout(15000);
    const id=body.pending_change?.id;check(tag+" actual non-host Start is held",first.status()===202&&typeof id==="string");
-   await wait.waitForLoadState("domcontentloaded");await wait.getByText(zh?"需要先完成本機確認，公司帳號登入尚未開始。":"Local confirmation is required. Company sign-in has not started.",{exact:true}).waitFor();
+   await wait.waitForLoadState("domcontentloaded");await wait.getByText(zh?"需要先完成本機確認，Hub 登入尚未開始。":"Local confirmation is required. Hub sign-in has not started.",{exact:true}).waitFor();
    check(tag+" loaded wait has no skeleton",await wait.locator(".s-company-join .skeleton").count()===0);
    await shot(wait,tag+"-waiting");
    await wait.locator(".s-company-join").getByRole("button",{name:zh?"開啟本機確認":"Review local confirmation",exact:true}).click();
@@ -44,14 +44,14 @@ try{
     check(tag+" new phone controls meet tap size",tap.length>=2&&tap.every((b:any)=>b.w>=43.5&&b.h>=43.5),tap);
    }
    if(zh){
-    await wait.clock.install();await wait.reload();await wait.getByText("需要先完成本機確認，公司帳號登入尚未開始。",{exact:true}).waitFor();
+    await wait.clock.install();await wait.reload();await wait.getByText("需要先完成本機確認，Hub 登入尚未開始。",{exact:true}).waitFor();
     await wait.clock.fastForward(300001);await wait.getByText("等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",{exact:true}).waitFor();
     check(tag+" timeout retains inspect and exit",await wait.locator('.s-company-join a[href="/settings/hub"]').count()===1&&await wait.locator('.s-company-join').getByRole('button',{name:'再次檢查',exact:true}).count()===1);
     const current=await(await ctx.request.get(fx.base+"/api/settings/pending/"+id)).json();check(tag+" local timeout does not decide server authorization",current.state==="pending");
     await shot(wait,tag+"-timeout");
    }
    await p.locator(".s-company-join").getByRole("button",{name:zh?"撤回連接請求":"Withdraw connection request",exact:true}).click();
-   await p.getByText(zh?"已撤回本機確認，尚未開始公司帳號登入。":"Local confirmation was withdrawn. Company sign-in did not start.",{exact:true}).waitFor();
+   await p.getByText(zh?"已撤回本機確認，尚未開始 Hub 登入。":"Local confirmation was withdrawn. Hub sign-in did not start.",{exact:true}).waitFor();
    const final=await(await ctx.request.get(fx.base+"/api/settings/pending/"+id)).json();
    check(tag+" exact withdrawal known",final.state==="rejected"&&final.outcome?.reason_code==="withdrawn");
    const operation=await(await ctx.request.get(fx.base+"/api/hub/member/company-join")).json();check(tag+" no enrollment created",operation.operation===null);
