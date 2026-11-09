@@ -46,7 +46,7 @@ export async function handleGroupHttp(deps: GroupHttpDeps | undefined, q: GroupH
   if (path === "/hub/v1/admin/group-policy/resolve") {
     const input = parsed(resolveRequest, raw); if (!input) return bad(), true;
     // A refusal is input feedback (200 with its reason), never authority.
-    const r = await deps.control.resolve(input, adminCtx); q.send(200, r.ok ? r : { reason: r.reason }); return true;
+    const r = await deps.control.resolve(input, adminCtx); q.send(200, r.ok ? r : { reason: r.reason, ...(r.reason === "unknown" && r.failure ? { failure: r.failure } : {}) }); return true;
   }
   if (path === "/hub/v1/admin/group-policy/preview") { const input = parsed(previewRequest, raw); if (!input) return bad(), true; answer(await deps.control.preview(input, adminCtx)); return true; }
   if (path === "/hub/v1/admin/group-policy/resources/resume") { const input = parsed(resumeRequest, raw); if (!input) return bad(), true; answer(await deps.control.resume(input, adminCtx)); return true; }

@@ -8,6 +8,7 @@ import type { HubGroupAuthorization } from "./authorization.js";
 import { HubGroupAuthorizationError } from "./authorization.js";
 import type { HubGroupPolicyBinding, HubGroupPolicyStore } from "./store.js";
 import { HubGroupPolicyError } from "./store.js";
+import { DIRECTORY_FAILURES } from "../directory/groups.js";
 import { resolveRequest, resumeRequest, type GroupPolicyReadResponse, type GroupResolveResponse,
   type GroupResumeResponse, type HubGroupAdminControl } from "./admin-dto.js";
 import type { PersonKey } from "../types.js";
@@ -40,7 +41,10 @@ export function createHubGroupAdminReads(options: {
       if (found.ok) {
         const key = validated(person, found.group.key), canonical = validated(resolveRequest, { dn: found.group.dn }).dn;
         if (key.realm === administrator.realm) result = { ok: true, realm: key.realm, objectId: key.objectId, dn: canonical };
-      } else if (["unsupported", "invalid", "not-found", "not-security-group", "unknown"].includes(found.reason)) result = { ok: false, reason: found.reason };
+      } else if (found.reason === "unknown") {
+        // M-2724: only the closed step name, never server text.
+        result = { ok: false, reason: "unknown", ...(found.failure && DIRECTORY_FAILURES.includes(found.failure) ? { failure: found.failure } : {}) };
+      } else if (["unsupported", "invalid", "not-found", "not-security-group"].includes(found.reason)) result = { ok: false, reason: found.reason };
     } catch { /* A failed or malformed driver result is bounded unknown, never a diagnostic string. */ }
     // Authentication/eligibility are rechecked after directory I/O, never inferred from the typed DN.
     await boundary.authenticate(ctx); boundary.assertCurrent(ctx);

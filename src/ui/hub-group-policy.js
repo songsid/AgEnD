@@ -7,6 +7,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { PageHead } from "/assets/page-head.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { navigate } from "/assets/app-nav.js";
 import { Icon } from "/assets/ui-icons.js";
 import { setTitle } from "/assets/app-shell.js";
@@ -17,6 +18,8 @@ import { hr } from "./hub-read-strings.js";
 export const CAPS = [["ask_agents", "capAsk"], ["publish_agents", "capPublish"], ["pair_fleet", "capPair"]];
 const PREVIEW_DELAY_MS = 400;
 const READ_BUSY = "busy";
+// M-2724: the step that failed, when the Hub says which (an older Hub doesn't: the plain "didn't answer").
+const FAILURE = { unreachable: "failUnreachable", certificate: "failCertificate", "service-sign-in": "failServiceSignIn", lookup: "failLookup" };
 const RESOLVE_REASON = { "not-found": "notFound", "not-security-group": "notSecurity", invalid: "invalidDn", unsupported: "unsupported", unknown: "unknownGroup" };
 
 /** The draft as the server receives it: the saved policy with this page's state and groups, its revision as the compare-and-set. */
@@ -86,7 +89,7 @@ export function HubGroupPolicyPage() {
     if (!live.current) return;
     setAdding(false);
     if (!r.ok) { setAddError(hg(r.code === "unsupported" ? "unsupported" : "unknownGroup")); return; }
-    if (r.ok && r.reason) { setAddError(hg(RESOLVE_REASON[r.reason] || "unknownGroup")); return; }
+    if (r.ok && r.reason) { setAddError(hg((r.reason === "unknown" && Object.hasOwn(FAILURE, r.failure ?? "") && FAILURE[r.failure]) || RESOLVE_REASON[r.reason] || "unknownGroup")); return; }
     const key = { realm: r.realm, objectId: r.objectId };
     if (groups.some((g) => g.group.objectId === key.objectId)) { setAddError(hg("duplicate")); return; }
     // A newly allowed group starts with chat only and one fleet (#3298 decision 2); more is the admin's explicit choice.
@@ -96,8 +99,13 @@ export function HubGroupPolicyPage() {
     // Connecting a fleet needs at least one slot.
     maxFleets: on && cap === "pair_fleet" && g.maxFleets === 0 ? 1 : g.maxFleets }));
   const setFleets = (i, n) => setGroups(groups.map((g, j) => j !== i ? g : { ...g, maxFleets: Math.max(0, Math.min(8, Number(n) || 0)) }));
+  // M-2724: on, with no group, gates every person (a failed group add left exactly that saved on a pilot Hub). Allowed, as
+  // removing the last group is, but said plainly in the preview and asked once at Save.
+  const gatesEveryone = state === "enabled" && groups.length === 0;
   const save = async () => {
     if (!preview || !preview.ok || saving) return;
+    if (gatesEveryone && !(await confirmDialog({ title: hg("noGroupsAsk"), message: hg("noGroupsOn"), confirmLabel: hg("noGroupsGo"), danger: true }))) return;
+    if (!live.current) return;
     setSaving(true); setMsg(null);
     const r = await c.saveGroupPolicy(draft, preview.previewDigest);
     if (!live.current) return;
@@ -160,7 +168,7 @@ export function HubGroupPolicyPage() {
       ${changed ? html`<section class="card hub-groups-preview" aria-live="polite"><h3>${hg("previewTitle")}</h3>
         ${!preview || preview.loading ? html`<p class="note" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${hg("previewing")}</p>`
           : !preview.ok ? html`<p class="note" role="status">${preview.code === "unavailable" || preview.code === "not-found" ? hg("enableLater") : preview.code === "conflict" ? hg("conflict") : hg("failed")}</p>`
-          : html`${pv.adminLosesChat ? html`<p class="err" role="alert">${hg("adminLosesChat")}</p>` : null}
+          : html`${gatesEveryone ? html`<p class="err" role="alert" data-reason="no-groups">${hg("noGroupsOn")}</p>` : null}${pv.adminLosesChat ? html`<p class="err" role="alert">${hg("adminLosesChat")}</p>` : null}
             ${list(pv.losingActions, hg("losingActions"))}${pv.held && pv.held.length ? html`<div class="hub-groups-impact hub-groups-held" data-held=${pv.held.length}><b>${hg("held", pv.held.length)}</b><p class="note">${hg("heldHint")}</p>
               <ul>${pv.held.map((r, i) => html`<li key=${i}>${r.name || r.personId}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null}${list(pv.losingPublication, hg("losingPublication"))}${list(pv.grandfathered, hg("grandfathered"))}${list(pv.suspendedOnSave || pv.suspended, hg("suspended"))}
             ${!(pv.losingActions || []).length && !(pv.losingPublication || []).length && !(pv.suspendedOnSave || pv.suspended || []).length && !pv.adminLosesChat ? html`<p class="note">${hg("noImpact")}</p>` : null}
