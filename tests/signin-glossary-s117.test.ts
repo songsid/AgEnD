@@ -89,6 +89,8 @@ describe("S-117 story 7: an AI account is connected, on the provider's official 
       .toEqual(["🔑 連接 Claude Code 帳號", "授權碼：X1", "開始連接", "要連接哪個 AI 帳號？"]);
     expect(hostT("login.auth_hint", "Codex")).toContain("前往官方網站完成授權");
     expect(hostT("login.completed", "Codex")).toContain("Codex 帳號已連接");
+    // Needs you: a CLI waiting at its own login screen is an AI account to connect too (Prism's P3 on #3515).
+    expect([hostT("needs.reason.login"), hostT("needs.reason.backend_signin"), hostT("needs.reason.auth_paused")]).toEqual(["等待連接 AI 帳號", "需要連接 AI 帳號", "已暫停：AI 帳號未連接"]);
     setLocale("en");
     expect([hostT("login.offer_action", "Claude Code"), hostT("login.auth_code", "X1"), hostT("login.device_confirm_go"), hostT("login.choose_backend")])
       .toEqual(["🔑 Connect your Claude Code account", "Authorization code: X1", "Start connecting", "Which AI account should be connected?"]);
