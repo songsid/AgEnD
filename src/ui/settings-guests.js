@@ -300,5 +300,5 @@ export const GUESTS_SETTINGS = [
   { id: "guests.grants", section: "access", card: "guests", key: "web.guests.grants",
     label: { en: "People with access", "zh-TW": "有存取權的人" }, words: { en: ["guest", "grant", "access", "person", "user", "agents", "who can see"], "zh-TW": ["訪客", "授權", "存取", "使用者", "誰可以看"] } },
   { id: "guests.send-code", section: "access", card: "guests",
-    label: { en: "Send sign-in code", "zh-TW": "傳送登入碼" }, words: { en: ["code", "sign-in code", "invite", "token", "DM"], "zh-TW": ["登入碼", "邀請", "私訊"] } },
+    label: { en: "Send sign-in code", "zh-TW": "傳送裝置登入碼" }, words: { en: ["code", "sign-in code", "invite", "token", "DM"], "zh-TW": ["裝置登入碼", "登入碼", "邀請", "私訊"] } },
 ];

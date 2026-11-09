@@ -493,9 +493,9 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
       // capability, not this fleet's chat availability.
       if (scope.profile && scope.hasChat && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
-        return { status: "ok", hint: `Not logged in — sign in from Settings → Agents → Sign-ins, or with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
+        return { status: "ok", hint: `Not connected — connect it in Settings → Agents → AI accounts, or with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
-      return { status: "ok", hint: "Not logged in — sign in from Settings → Agents → Sign-ins.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
+      return { status: "ok", hint: "Not connected — connect it in Settings → Agents → AI accounts.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."

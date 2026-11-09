@@ -54,9 +54,9 @@ describe("#2233 the Sign in dialog", () => {
     expect(reqs[0]).toEqual({ method: "POST", url: "/ui/backend-login/check", body: { backend: "claude-code" } });
     expect(text()).toContain("opens it as a terminal in your browser");
     expect(btn("Use a temporary public link"), "not offered: no button").toBeUndefined();
-    fire(btn("Sign in"), "click"); await settle(6);
+    fire(btn("Connect"), "click"); await settle(6);
     expect(reqs.find(r => r.url === "/ui/backend-login/start")!.body).toEqual({ confirm: CONFIRM.id });
-    const open = p.root.querySelectorAll("a").find((a: any) => a.textContent.includes("Open the sign-in terminal"));
+    const open = p.root.querySelectorAll("a").find((a: any) => a.textContent.includes("Open the authorization terminal"));
     expect([open.getAttribute("href"), open.getAttribute("target"), open.getAttribute("rel")]).toEqual([TERMINAL.terminal.url, "_blank", "noopener noreferrer"]);
     expect(text()).toContain(CODE);
     expect(text()).toContain("It works once, for 10 minutes");
@@ -75,11 +75,11 @@ describe("#2233 the Sign in dialog", () => {
     answer = r => r.url === "/ui/backend-login/check" ? { confirm: { ...CONFIRM, backend: "kiro-cli", tokenPresent: true, logoutFirst: "kiro-cli logout", publicLink: true } }
       : r.url === "/ui/backend-login/start" ? { login: { ...TERMINAL, backend: "kiro-cli", terminal: { ...TERMINAL.terminal, public: true } } } : {};
     await dialog({ backend: "kiro-cli" });
-    expect(text()).toContain("signing in again replaces that login");
-    expect(text()).toContain("It signs out first (kiro-cli logout)");
+    expect(text()).toContain("connecting again replaces that connection");
+    expect(text()).toContain("It disconnects first (kiro-cli logout)");
     fire(btn("Use a temporary public link"), "click"); await settle(6);
     expect(reqs.find(r => r.url === "/ui/backend-login/start")!.body).toEqual({ confirm: CONFIRM.id, tunnel: true });
-    expect(text()).toContain("anyone with the link and the code could use it");
+    expect(text()).toContain("anyone with the link and the access code could use it");
   });
 
   it("device flow: the provider's link only on its own host; any other URL is text with Copy, never a link", async () => {
@@ -103,7 +103,7 @@ describe("#2233 the Sign in dialog", () => {
     await p.unmount();
     answer = r => r.url === "/ui/backend-login/check" ? { confirm: CONFIRM } : r.url === "/ui/backend-login/start" ? { __status: 409, error: "confirm_expired" } : {};
     await dialog({ backend: "claude-code" });
-    fire(btn("Sign in"), "click"); await settle(6);
+    fire(btn("Connect"), "click"); await settle(6);
     expect(text()).toContain("That took too long");
   });
 
@@ -111,18 +111,18 @@ describe("#2233 the Sign in dialog", () => {
     S.signInStore.set({ login: { id: "r1", backend: "claude-code", phase: "running", ok: null, startedOn: "Safari on iPhone", startedAt: 1, endedAt: null, mine: false } });
     answer = () => ({ message: "🛑 Login session for claude-code cancelled." });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("Signing in to claude-code (started on Safari on iPhone)");
+    expect(text()).toContain("Connecting your claude-code account (started on Safari on iPhone)");
     expect(text()).not.toContain(CODE);
-    fire(btn("Cancel sign-in"), "click"); await settle(6);
+    fire(btn("Cancel connecting"), "click"); await settle(6);
     expect(reqs.find(r => r.url === "/ui/backend-login/cancel")).toEqual({ method: "POST", url: "/ui/backend-login/cancel", body: {} });
   });
 
   it("the end: signed in, with the recovery lines", async () => {
     S.signInStore.set({ login: { ...TERMINAL, phase: "ended", ok: true, terminal: null, accessCode: null, lines: ["✅ claude-code login completed.", "Restarted: agent-a"] } });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("claude-code is signed in.");
+    expect(text()).toContain("Your claude-code account is connected.");
     expect(text()).toContain("Restarted: agent-a");
-    expect(btn("Cancel sign-in")).toBeUndefined();
+    expect(btn("Cancel connecting")).toBeUndefined();
   });
 });
 
@@ -130,7 +130,7 @@ describe("#2262 review", () => {
   it("over the public link: a refusal is said plainly (where to sign in instead), and Needs you offers no Sign in", async () => {
     answer = r => r.url === "/ui/backend-login/check" ? { __status: 403, error: "sign_in_not_over_public_link" } : {};
     await dialog({ backend: "codex" });
-    expect(text()).toContain("Signing in is not available over the public link");
+    expect(text()).toContain("Connecting an AI account is not available over the public link");
     await p.unmount();
     p.document.body.setAttribute("data-public-link", "1");
     try {
@@ -173,7 +173,7 @@ describe("#2233 where Sign in is offered", () => {
     await p.mount(h(S.SignInLine, {})); await settle(4);
     expect(text()).toBe("");
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
-    expect(text()).toContain("Signing in to claude-code (started on Firefox on Linux)");
+    expect(text()).toContain("Connecting your claude-code account (started on Firefox on Linux)");
     fire(btn("Open"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", resume: true });
   });
@@ -190,9 +190,9 @@ describe("#2233 where Sign in is offered", () => {
     await p.mount(h(S.SignInList, {})); await settle(6);
     const rows = p.root.querySelectorAll(".s-row").map((r: any) => r.querySelectorAll("span").map((s: any) => s.textContent.trim()).filter(Boolean).join(" "));
     expect(rows).toEqual([
-      "claude-code signed in Sign in again", "codex not signed in Sign in", "antigravity not signed in Sign in on the machine: agy",
+      "claude-code connected Reconnect", "codex not connected Connect account", "antigravity not connected Connect on the machine: agy",
       "grok not installed Install on the machine: curl -fsSL https://x.ai/cli/install.sh | bash",
-      "kiro-cli too old Update on the machine: curl -fsSL https://cli.kiro.dev/install | bash", "claude-code · profile work not signed in Sign in"]);
+      "kiro-cli too old Update on the machine: curl -fsSL https://cli.kiro.dev/install | bash", "claude-code · profile work not connected Connect account"]);
     fire(p.root.querySelectorAll(".s-row")[5].querySelector("button"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
@@ -206,7 +206,7 @@ describe("#2233 where Sign in is offered", () => {
     ] });
     await p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" })); await settle(6);
     const items = p.root.querySelectorAll(".n-item");
-    expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Sign in"], []]);
+    expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Connect account"], []]);
     fire(items[0].querySelector("button"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
   });
@@ -222,8 +222,8 @@ describe("#2599 shared browser controls", () => {
     const snapshot = { selected: ["codex"], pending: ["codex"], skipped: [], states: { codex: "invalid" }, login: null, ready: false };
     answer = r => r.url === "/ui/browser-backend-signins" ? snapshot : {};
     await p.mount(h(S.BrowserSignInDialog, { backend: "codex" })); await settle(8);
-    expect(text()).toContain("Sign in your AI backends"); expect(text()).toContain("Sign in later"); expect(text()).not.toContain("Open the sign-in terminal");
-    const start = p.root.querySelectorAll("section button").find((b: any) => b.textContent === "Sign in") as any;
+    expect(text()).toContain("Connect your AI accounts"); expect(text()).toContain("Connect later"); expect(text()).not.toContain("Open the authorization terminal");
+    const start = p.root.querySelectorAll("section button").find((b: any) => b.textContent === "Connect account") as any;
     expect(start).toBeDefined(); await start.onclick(); await settle(4);
     expect(reqs.some(r => r.url === "/ui/browser-backend-signins" && r.body?.operation === "start" && r.body.backend === "codex")).toBe(true);
     fire(btn("Use console fallback"), "click"); await settle(4);
@@ -233,8 +233,8 @@ describe("#2599 shared browser controls", () => {
   it("a backend-only Needs you item opens sign-in without inventing an agent/chat link", async () => {
     app.appStore.set({ instances: [], needs: [{ id: "backend:codex", type: "backend", instance: "", reason: "backend_signin", detail: "codex", since: Date.now(), signIn: { backend: "codex" } }] });
     await p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" })); await settle(6);
-    expect(text()).toContain("Fleet sign-ins"); expect(text()).toContain("Backend sign-in needed");
-    expect(p.root.querySelectorAll(".n-item a")).toEqual([]); fire(btn("Sign in"), "click");
+    expect(text()).toContain("AI accounts"); expect(text()).toContain("AI account needs connecting");
+    expect(p.root.querySelectorAll(".n-item a")).toEqual([]); fire(btn("Connect account"), "click");
     expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
   });
 });

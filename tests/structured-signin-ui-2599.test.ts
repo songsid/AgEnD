@@ -27,27 +27,27 @@ function browser() {
 }
 it("method controls submit once, show the waiting latch, and never expose an agy launch", async () => {
   const h = browser(); await h.flush();
-  await h.click("Sign in"); await h.click("GitHub");
+  await h.click("Connect account"); await h.click("GitHub");
   expect(h.fetcher.mock.calls.filter(([, o]) => o.body && JSON.parse(o.body).operation === "input")).toHaveLength(1);
   expect(h.nodes().some(n => n.textContent.includes("Answer sent."))).toBe(true);
   expect(h.nodes().some(n => n.textContent === "GitHub")).toBe(false);
-  expect(h.nodes().filter(n => n.textContent === "Sign in")).toHaveLength(0);
+  expect(h.nodes().filter(n => n.textContent === "Connect account")).toHaveLength(0);
   expect(h.nodes().some(n => n.textContent.includes("explicit console fallback"))).toBe(true);
   h.cards.dispose();
 });
 it("a failed POST releases controls, uses a safe error, and allows deliberate retry", async () => {
   const h = browser(); await h.flush(); h.fetcher.mockRejectedValueOnce(new Error("secret-like vendor text"));
-  await h.click("Sign in");
-  expect(h.nodes().some(n => n.role === "alert" && n.textContent.includes("Could not complete"))).toBe(true);
+  await h.click("Connect account");
+  expect(h.nodes().some(n => n.role === "alert" && n.textContent.includes("Could not connect the account"))).toBe(true);
   expect(JSON.stringify(h.nodes().map(n => n.textContent))).not.toContain("secret-like");
-  expect(h.nodes().find(n => n.textContent === "Sign in").disabled).toBe(false);
-  await h.click("Sign in"); expect(h.nodes().some(n => n.textContent === "GitHub")).toBe(true); h.cards.dispose();
+  expect(h.nodes().find(n => n.textContent === "Connect account").disabled).toBe(false);
+  await h.click("Connect account"); expect(h.nodes().some(n => n.textContent === "GitHub")).toBe(true); h.cards.dispose();
 });
 it("returned code is submitted literally to the closed API and cleared from the input", async () => {
   const h = browser(); await h.flush();
   h.state.login = { backend: "kiro-cli", id: "b".repeat(32), revision: 8, phase: "code", canAct: true };
   await h.poll(); const field = h.nodes().find(n => n.tag === "input"); field.value = "synthetic#code";
-  await h.click("Submit code"); expect(field.value).toBe("");
+  await h.click("Submit authorization code"); expect(field.value).toBe("");
   const input = h.fetcher.mock.calls.filter(([, o]) => o.body && JSON.parse(o.body).operation === "input")[0];
   expect(JSON.parse(input![1].body)).toMatchObject({ operation: "input", revision: 8, action: { kind: "code", value: "synthetic#code" } }); h.cards.dispose();
 });

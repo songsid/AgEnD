@@ -30,11 +30,11 @@
     gateToken: ["", "請貼上你拿到的<strong>存取權杖</strong>：私訊給你的，或在儀表板的登入對話框中。它和這個連結是分開的；只有連結沒有任何權限。"],
     tokenPlaceholder: ["access token", "存取權杖"],
     open: ["Open", "開啟"],
-    codeLabel: ["Sign-in code", "登入代碼"],
-    codePlaceholder: ["paste the code here", "在這裡貼上代碼"],
+    codeLabel: ["Authorization code", "授權碼"],
+    codePlaceholder: ["paste the authorization code here", "在這裡貼上授權碼"],
     send: ["Send", "送出"],
-    codeHint: ["The terminal does not show what you paste. Paste the code once, then press Enter or Send. Ctrl+C is off on this page — use Stop to cancel.",
-      "終端機不會顯示你貼上的內容。貼上代碼一次，再按 Enter 或「送出」。這個頁面停用了 Ctrl+C，要取消請按「停止」。"],
+    codeHint: ["The terminal does not show what you paste. Paste the authorization code once, then press Enter or Send. Ctrl+C is off on this page — use Stop to cancel.",
+      "終端機不會顯示你貼上的內容。貼上授權碼一次，再按 Enter 或「送出」。這個頁面停用了 Ctrl+C，要取消請按「停止」。"],
     invalid: ["Invalid token. {0} attempt(s) left before this session is destroyed.", "權杖不正確。再錯 {0} 次這個工作階段就會被銷毀。"],
     used: ["This token was already used. If that was not you, tell the fleet admin: the link may have leaked.", "這個權杖已經用過了。如果不是你，請告訴 fleet 管理員：連結可能已外流。"],
     ended: ["This session has ended.", "這個工作階段已結束。"],
@@ -43,15 +43,15 @@
     truncated: ["[earlier output truncated]", "[較早的輸出已截斷]"],
     finished: ["Finished: {0}", "已完成：{0}"],
     endedWith: ["Ended: {0}", "已結束：{0}"],
-    exitCode: [" (exit {0})", "（結束代碼 {0}）"],
+    exitCode: [" (exit {0})", "（結束碼 {0}）"],
     replaced: ["Replaced by a newer connection.", "已被較新的連線取代。"],
     closed: ["Connection closed ({0}).", "連線已關閉（{0}）。"],
     lost: ["Connection lost.", "連線中斷。"],
     closesIn: ["closes in {0}", "{0} 後關閉"],
-    "notice.empty": ["", "請先從瀏覽器貼上代碼。"],
-    "notice.too-long": ["", "這比登入代碼長太多了，請只複製代碼。"],
-    "notice.not-sent": ["", "沒有送出：連線中斷了。代碼還在框裡，等重新連上後再按一次「送出」。"],
-    "notice.sent": ["", "已送出。終端機不會顯示代碼，請在上方等待結果。"]
+    "notice.empty": ["", "請先從瀏覽器貼上授權碼。"],
+    "notice.too-long": ["", "這比授權碼長太多了，請只複製授權碼。"],
+    "notice.not-sent": ["", "沒有送出：連線中斷了。授權碼還在框裡，等重新連上後再按一次「送出」。"],
+    "notice.sent": ["", "已送出。終端機不會顯示授權碼，請在上方等待結果。"]
   };
   function T(key) {
     var pair = WORDS[key], s = pair ? (ZH && pair[1] ? pair[1] : pair[0]) : key;

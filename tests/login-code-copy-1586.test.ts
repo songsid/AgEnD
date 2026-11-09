@@ -109,7 +109,7 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     const url = action === "public" ? "https://sample.trycloudflare.com/signin" : "http://localhost:19280/signin";
     const lines = language === "en"
       ? [url, `Code: ${code} (single use; valid for 5 minutes)`, "Do not forward; /web revoke signs out all browsers and closes the public link."]
-      : [url, `登入碼：${code}（單次使用，5 分鐘有效）`, "勿轉傳；/web revoke 可登出所有瀏覽器並關閉公開連結。"];
+      : [url, `裝置登入碼：${code}（單次使用，5 分鐘有效）`, "勿轉傳；/web revoke 可登出所有瀏覽器並關閉公開連結。"];
     if (action === "public") {
       const expiry = formatFleetTime(h.s.publicWebLink.status().expiresAt, "Asia/Taipei");
       lines.splice(2, 0, language === "en" ? `Public link expires: ${expiry}` : `公開連結到期：${expiry}`);

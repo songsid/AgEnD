@@ -123,7 +123,7 @@ describe("a profile with no login", () => {
     const row = rowOf(providersForConfig({ channels: [{}], defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await row.fetch();
     expect([row.id, bearers, u.status, u.metrics, u.hint, u.hintI18n]).toEqual([
-      "claude:work", [], "ok", [], "Not logged in — sign in from Settings → Agents → Sign-ins, or with `/login claude-code work`.",
+      "claude:work", [], "ok", [], "Not connected — connect it in Settings → Agents → AI accounts, or with `/login claude-code work`.",
       { key: "usage.hint.claude_profile_signed_out_chat", args: ["/login claude-code work"] },
     ]);
   });
@@ -131,13 +131,13 @@ describe("a profile with no login", () => {
   it("a web-only fleet (channels: []) names Settings, not /login", async () => {
     const row = rowOf(providersForConfig({ channels: [], defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await row.fetch();
-    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not logged in — sign in from Settings → Agents → Sign-ins.", { key: "usage.hint.claude_profile_signed_out" }]);
+    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not connected — connect it in Settings → Agents → AI accounts.", { key: "usage.hint.claude_profile_signed_out" }]);
     expect(u.hint).not.toMatch(/\/login/);
   });
 
   it("asked for a config dir alone (no profile name to log in from chat): Settings → Agents → Sign-ins", async () => {
     const u = await fetchClaudeUsage(profileHome("work"));
-    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not logged in — sign in from Settings → Agents → Sign-ins.", { key: "usage.hint.claude_profile_signed_out" }]);
+    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", "Not connected — connect it in Settings → Agents → AI accounts.", { key: "usage.hint.claude_profile_signed_out" }]);
   });
 
   it("its token reader gives nothing either (no shared or env fallback)", async () => {
@@ -161,7 +161,7 @@ describe("what /usage and get_usage carry", () => {
     expect(text).toMatch(/· Claude \(default\) \(Team Standard \(1\.25x\)\): [^\n]*11%/);
     expect(text).toMatch(/· Claude \(work\) \(Team Standard \(1\.25x\)\): [^\n]*22%/);
     expect(text).toContain(`· Claude (team): `);
-    expect(text).toContain("Not logged in — sign in from Settings → Agents → Sign-ins.");
+    expect(text).toContain("Not connected — connect it in Settings → Agents → AI accounts.");
     expect(text).not.toMatch(/\/login/);
   });
 });
