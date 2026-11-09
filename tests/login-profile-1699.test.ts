@@ -118,13 +118,16 @@ describe("#1699 part 2: the controller signs a profile in", () => {
     expect(existsSync(join(agendHome, "credential-profiles"))).toBe(false);
   });
 
-  it("kiro-cli and codex profiles: the exact host command, nothing started from chat", async () => {
+  it("#3212 PR 4: kiro-cli and codex profiles sign in from chat too — pre-check and command with the profile's variable", async () => {
     const r = make();
-    const kiro = await r.controller.start("kiro-cli", chat(), { profile: "work" });
-    expect(kiro).toContain(`XDG_DATA_HOME=${JSON.stringify(credentialProfileHome(agendHome, "kiro-cli", "work"))} kiro-cli login`);
-    const codex = await r.controller.start("codex", chat(), { profile: "work" });
-    expect(codex).toContain(`CODEX_HOME=${JSON.stringify(credentialProfileHome(agendHome, "codex", "work"))} codex login`);
-    expect(r.sessions).toEqual([]); expect(r.buttons).toEqual([]); expect(r.checks).toEqual([]);
+    const kiroHome = credentialProfileHome(agendHome, "kiro-cli", "work"), codexHome = credentialProfileHome(agendHome, "codex", "work");
+    expect(await r.controller.start("kiro-cli", chat(), { profile: "work" })).toBeNull();
+    expect(await r.controller.start("codex", chat(), { profile: "work" })).toBeNull();
+    expect(r.checks).toEqual([{ XDG_DATA_HOME: kiroHome }, { CODEX_HOME: codexHome }]);
+    expect(r.buttons.map(b => b.profile)).toEqual(["work", "work"]);
+    expect(lstatSync(codexHome).isDirectory() && !lstatSync(codexHome).isSymbolicLink(), "codex: its own private folder").toBe(true);
+    await r.controller.start("codex", chat(), { skipAuthCheck: true, profile: "work" });
+    expect(r.sessions[0]!.spec.command).toBe(`CODEX_HOME='${codexHome}' codex login --device-auth`);
   });
 });
 
@@ -185,7 +188,7 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
     expect(f.startLoginSession.mock.calls[1].slice(2)).toEqual([{ profile: "work" }]);
   });
 
-  it("the auth alert's button: posted with the profile for claude-code, not at all for a kiro profile", async () => {
+  it("the auth alert's button: posted with the profile for claude-code and (#3212 PR 4) a kiro profile", async () => {
     const f = fm();
     f.getInstanceAdapterId = () => "telegram"; f.getAdapterForInstance = () => adapter(); f.getGroupIdForInstance = () => "g";
     f.fleetConfig = { instances: { w: { topic_id: 7 } } };
@@ -193,9 +196,9 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
     await f.offerBackendLogin("w", "claude-code", "work");
     expect(f.postNonceButtonPrompt.mock.calls[0][0]).toMatchObject({ extra: { loginProfile: "work" }, message: expect.stringContaining("claude-code profile `work`") });
     await f.offerBackendLogin("w", "kiro-cli", "work");
-    expect(f.postNonceButtonPrompt).toHaveBeenCalledTimes(1);
+    expect(f.postNonceButtonPrompt.mock.calls[1][0]).toMatchObject({ extra: { loginProfile: "work" }, message: expect.stringContaining("kiro-cli profile `work`") });
     await f.offerBackendLogin("w", "claude-code");
-    expect(f.postNonceButtonPrompt.mock.calls[1][0].extra).toBeUndefined();
+    expect(f.postNonceButtonPrompt.mock.calls[2][0].extra).toBeUndefined();
   });
 
   /** The real startLoginSession with the installer and the sign-in as seams (#1711 r1). */
@@ -212,8 +215,8 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
   it("#1711 P2-1: a profile is admitted BEFORE the install-first routing: nothing is installed for a refused one", async () => {
     for (const [backend, profile, says] of [
       ["claude-code", "../escape", "is not a credential profile name"],
-      ["kiro-cli", "work", "kiro-cli login"],
-      ["codex", "work", "codex login"],
+      ["kiro-cli", "a b", "is not a credential profile name"],
+      ["codex", "-x", "is not a credential profile name"],
     ] as const) {
       const f = routed(false);
       const text = await f.startLoginSession(backend, chat(), { profile });
@@ -224,6 +227,11 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
     const ok = routed(false);
     await ok.startLoginSession("claude", chat(), { profile: "work" });
     expect(ok.startInstallSession, "control: a valid claude profile still installs first").toHaveBeenCalledWith("claude-code", expect.anything(), { profile: "work" });
+    for (const backend of ["kiro-cli", "codex"]) {        // #3212 PR 4: their valid profiles route the same way now
+      const f = routed(false);
+      await f.startLoginSession(backend, chat(), { profile: "work" });
+      expect(f.startInstallSession, backend).toHaveBeenCalledWith(backend, expect.anything(), { profile: "work" });
+    }
   });
 
   it("#1711 P2-2: a supplied Discord profile is never dropped — without a backend, or blank", async () => {

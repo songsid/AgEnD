@@ -146,7 +146,7 @@ describe("a profile switch is refused before it can strand the agent", () => {
 
     expect(error).toContain("has no kiro-cli login yet");
     expect(error).toContain("XDG_DATA_HOME=");
-    expect(error, "#1699 part 2: kiro profiles sign in on the host only").not.toContain("/login");
+    expect(error, "#3212 PR 4: a kiro profile can be signed in from chat too").toContain("/login kiro-cli personal");
     // Rolled back, never written, never restarted: the whole point is that the
     // agent keeps running on the subscription it is logged into.
     expect(h.instance.backend_options).toBeUndefined();

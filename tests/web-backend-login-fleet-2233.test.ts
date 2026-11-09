@@ -94,7 +94,7 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
     ]);
   });
 
-  it("a paused-for-sign-in agent's item names its login when the dashboard can sign it in (a claude profile included), else nothing", () => {
+  it("a paused-for-sign-in agent's item names its login when the dashboard can sign it in (claude and, #3212 PR 4, kiro profiles included), else nothing", () => {
     const { fm } = makeFleet([]);
     fm.fleetConfig = { defaults: {}, instances: {
       a: { working_directory: "/w", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } },
@@ -103,6 +103,6 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
       x: { working_directory: "/w", backend: "codex" },
     } };
     expect(["a", "k", "g", "x"].map(n => fm.signInFor(n))).toEqual([
-      { backend: "claude-code", profile: "work" }, null, null, { backend: "codex" }]);
+      { backend: "claude-code", profile: "work" }, { backend: "kiro-cli", profile: "team" }, null, { backend: "codex" }]);
   });
 });

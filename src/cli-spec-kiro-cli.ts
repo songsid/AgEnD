@@ -6,8 +6,8 @@ export const KIRO_CLI_SPEC = {
   host: {
     install: yes({ binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash" }),
     chatLogin: yes({ aliases: ["kiro"], mode: "menu" }),
-    dashboardSignIn: yes({ named: false }),
-    structuredSignIn: yes({ argv: ["kiro-cli", "login"], rank: 0 }),
+    dashboardSignIn: yes({ named: true }),
+    structuredSignIn: yes({ argv: ["kiro-cli", "login"], rank: 0, named: false }),
     firstRunSignIn: yes({ mode: "browser", rank: 0 }),
     authCheck: yes({ argv: ["kiro-cli", "whoami", "--format", "json"] }),
     identity: toVerify("`kiro-cli whoami --format json` is already run as the sign-in probe; whether its JSON names the account in a form that can be masked has not been checked."),

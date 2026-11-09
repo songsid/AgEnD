@@ -24,7 +24,7 @@ const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> =
   "host.install": { binary: text, command: text, "unattended?": text },
   "host.chatLogin": { aliases: words(0), mode: oneOf("device-code", "paste-code", "menu", "declined", "install-only") },
   "host.dashboardSignIn": { named: bool },
-  "host.structuredSignIn": { argv: words(1), rank: int },
+  "host.structuredSignIn": { argv: words(1), rank: int, named: bool },
   "host.firstRunSignIn": { mode: oneOf("browser", "console"), rank: int },
   "host.authCheck": { argv: words(1) },
   "host.identity": { source: oneOf("status-command") },

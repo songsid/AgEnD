@@ -172,7 +172,7 @@ export function installerSignInBackends(search) {
 
 /**
  * #3212: which backends' NAMED accounts the dashboard signs in with the structured controls (Sign in → open the page → paste the code), as the default account is.
- * The registry's `host.dashboardSignIn.named` (a login screen that was checked under a relocated home, with these controls; cli-caps.js: `structuredNamedSignIn`); another backend's named account keeps the older
+ * The registry's `host.structuredSignIn.named` (a login screen checked under a relocated home with these controls; cli-caps.js: `structuredNamedSignIn`); another backend's named account keeps the older
  * dialog, which says what to run on the machine (or, where the host signs it in from the dashboard, runs it in the web terminal).
  */
 /** One named account's sign-in controls on this host (the same endpoint as the default account's, addressed by `?backend=&profile=`). */

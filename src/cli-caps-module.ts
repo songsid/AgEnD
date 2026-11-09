@@ -16,7 +16,7 @@ export interface UiCliCaps {
   /** The CLI can have named accounts (`host.namedAccounts`), and how a Move between two of them words the conversation; null when it has none. */
   namedAccounts: boolean;
   carry: CarryKind | null;
-  /** The default account is signed in with browser controls (`host.structuredSignIn`); a named one too (`host.dashboardSignIn.named`, with the structured sign-in). */
+  /** Browser controls for default accounts (`host.structuredSignIn`), and separately named accounts (`host.structuredSignIn.named`). */
   structuredSignIn: boolean;
   structuredNamedSignIn: boolean;
   /** The first-run page offers this CLI: as browser controls, or only as the console command; null when it does not (`host.firstRunSignIn`). */
@@ -28,13 +28,13 @@ export interface UiCliCaps {
 
 export function uiCliCaps(): Record<CliId, UiCliCaps> {
   return Object.fromEntries(CLI_IDS.map(id => {
-    const named = hostFacts(id, "namedAccounts"), structured = hostFacts(id, "structuredSignIn"), dashboard = hostFacts(id, "dashboardSignIn");
+    const named = hostFacts(id, "namedAccounts"), structured = hostFacts(id, "structuredSignIn");
     const caps: UiCliCaps = {
       signOut: hostFacts(id, "signOut") !== null,
       namedAccounts: named !== null,
       carry: named?.carry ?? null,
       structuredSignIn: structured !== null,
-      structuredNamedSignIn: structured !== null && dashboard?.named === true,
+      structuredNamedSignIn: structured?.named === true,
       firstRunSignIn: hostFacts(id, "firstRunSignIn")?.mode ?? null,
       runtimeInstall: runtimeFacts(id, "install") !== null,
       runtimeName: runtimeFacts(id, "install") ? runtimeFacts(id, "provider")?.name ?? null : null,
