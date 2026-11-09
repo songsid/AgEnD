@@ -72,7 +72,6 @@ register("needs", {
     notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
-<<<<<<< HEAD
     typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Agent", typeDelivery: "傳送", typeMissed: "離線時錯過",
     proposals: "Agent 的請求", proposalFrom: "{0} 的請求", proposalHint: "在你核准之前，不會建立或修改任何東西。核准時，AgEnD 會再次檢查這個請求、目標電腦和你的登入，然後只執行一次。",
     approve: "核准", reject: "拒絕", deciding: "處理中…", expiresIn: "{0} 分鐘後過期", expiresSoon: "不到一分鐘後過期",
@@ -86,9 +85,6 @@ register("needs", {
     r_settings_changed: "提出請求後設定已變更：沒有任何變更。", r_apply_failed: "無法套用。",
     e_owner_required: "只有在 AgEnD 這台電腦上登入的 fleet 擁有者，才能決定 agent 的請求。",
     e_confirmation_not_pending: "這個請求已經被決定或已過期。", e_not_found: "這個請求已不在這裡。",
-=======
-    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Agent", typeDelivery: "傳送", typeMissed: "離線時錯過",
->>>>>>> fdb37e5c1 (fix(ui): zh-TW says Agent, not instance / Instances / 實例 (#3478))
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
