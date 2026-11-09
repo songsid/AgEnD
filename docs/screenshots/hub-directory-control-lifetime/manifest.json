@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "files": {
+    "c1e41f5345fa502727dc370a574b82e7ee2513efd60b05a0599a2f713fb5e4cb": "src/fleet-manager.ts",
+    "1a5fe7be0c8c8008d33b7f743d2d6ecc2e20b2cf9ed924f8f90ff9542d1d0b1e": "tests/hub-settings-fleet-m2682.test.ts",
+    "55ab9ca5bc634a010e03890e27166fe6d3f00a86515ef4edd42dee527b008c18": "scripts/manual/hub-directory-control-lifetime/README.md",
+    "1528c601f43e0b8141a4ba3a6d30027d984042bec651941aea2b410fcceb8624": "scripts/manual/hub-directory-control-lifetime/verify.py",
+    "e5ca8f53e43c4f27387f023991d2b740e9273cfe3fed21f83337e4df3389c73e": "changes/3425-hub-directory-controller-lifetime.md",
+    "a51ee7132101eec82be05c6f27b2c8760adf0edaf2b20a9e7dccc75239ef048b": "changes/3425-hub-directory-controller-lifetime.zh-TW.md",
+    "c749a78edd4475e7c32d023b5e4bcdf8099874354fd94361d94740f0fc400026": "docs/screenshots/hub-directory-control-lifetime/checks.json",
+    "a83d9307f0552b43ed76b7b0e54f7cbcb0589dfc4601746a7ca02759088182e0": "docs/screenshots/hub-directory-control-lifetime/mutations.json"
+  }
+}
