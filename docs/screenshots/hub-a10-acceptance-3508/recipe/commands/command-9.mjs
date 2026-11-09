@@ -1,0 +1,1 @@
+const a=globalThis.a10,f=await a.fleetPage(a.ordinaryAccess.m.fm,a.ordinaryAccess.m.base);a.authHost=f;await f.page.goto(a.ordinaryAccess.m.base+'/settings/access');await f.page.getByText('擁有者驗證',{exact:true}).waitFor();return {text:(await f.page.locator('main').last().innerText()).slice(0,3200),buttons:await f.page.locator('main button').allTextContents()};

@@ -1,0 +1,1 @@
+const a=globalThis.a10,p=a.hostFleet.page;return {text:(await p.locator('main').last().innerText()).slice(-4700),health:a.r.runtime.serverHealth(a.r.fm.getRawFleetConfig().hub),editor:await p.locator('#hub-directory-editor').count(),buttons:await p.locator('main button').allTextContents()};

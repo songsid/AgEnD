@@ -1,0 +1,1103 @@
+{
+  "candidate": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "pngCount": 193,
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "a8495fcb68bbf601dfa07643f0f85846d26701021055ef7bcf269060189d92a9"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-actions.png",
+      "sha256": "6a3848a8e27e19060e0ad7b0f6f5957b692ca9b8a9fbf377b8db2c4e7518510b"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-company.png",
+      "sha256": "284835850f7cea1edd618defe132ec2aec5550c38cbf9fff875714af0360b68e"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-form.png",
+      "sha256": "084b00917b7089bfbf999512a8d117c50524554a900b81dacbfd3bb1add3c0c8"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-notice.png",
+      "sha256": "a84d6df2c7d32d379fcf77861dddba99833f72502b6b0001db7229d87a235d5d"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-retention.png",
+      "sha256": "4b8f61b1c7b3901478c0d5c38f3ab31c207b61a0235d5e00340a5331931f2acf"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-run.png",
+      "sha256": "f1285705e45425b4ba9adb8c8916a5243b3997e77545a4bf90782d5353039697"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-trust-source.png",
+      "sha256": "9bf0f554946a1ddd3afa2e6dedb2228e87166128edf14811dece205e9a2f20a5"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-host-trust.png",
+      "sha256": "4a00d956ce05a26677e85003a80c2fb117817ccdb5452ded136a7108ca39bd87"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-hub-actions.png",
+      "sha256": "31c7f3e9a65d5cdfcbbb5d7f8264e23c0c91a5d8794dd542add6452b2d47c5fc"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-hub-form.png",
+      "sha256": "775e6780f020f6b4b32a226139e4bd0b4617389edc248eadd2e39aed7a36f7d9"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-hub-notice.png",
+      "sha256": "816871e71fa8f9660aa5fab5d973efd954f406903704385de18b39e83a090fb2"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-hub-trust-source.png",
+      "sha256": "a698831e51f865c48466cd283d682b52151ebfe37f16dc0530882230e15e0d6e"
+    },
+    {
+      "path": "editor-notices/desk-light-zh-TW-hub-trust.png",
+      "sha256": "fd8fe62c472ae3e567ed257a9630daaf42ac826845b58760b0ba9349096abd18"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-actions.png",
+      "sha256": "36bfd5aff69e7bea5fa46764a3a99781de6e5b123ec8760b6dc532ffae6182a7"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-company.png",
+      "sha256": "8ac5938cf6c02e811e5f385762f52428949b94126b7de6e03f76e1ec4fd154c6"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-form.png",
+      "sha256": "bedc9ece588c52613e5eeedbf562a042fbc1273d5bb0c0ff1ff2c3ae52c5f676"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-notice.png",
+      "sha256": "b006afcaa9788829523a6622a3f620906d1c0e2cd7963fc3d50157664688e8ce"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-retention.png",
+      "sha256": "088044b664a628cdbd11dd169b92b8ef1fe760a7d40313e86d8595fd37dccbf5"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-run.png",
+      "sha256": "43d09acb6444e4a602e2fef3f32f5902b7de49781dd4caf6190f234932578f81"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-trust-source.png",
+      "sha256": "b3e38db70445be7d6b96f93bcaa6a5b418807c015dad4b661fa7568c4cf08145"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-host-trust.png",
+      "sha256": "bacb0d56ae69ed88463675c2d7175706a8a4cbe2787446bcf803ec76e37ee11d"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-hub-actions.png",
+      "sha256": "f6baae18db2b1ac6ed1aba44e55407b6f7c7a94203fc2db0e2816b5dec0ae551"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-hub-form.png",
+      "sha256": "6b86afa8f3bc4ba3cb4b9aa066dd90c0335ca967c2faf837491ec1c700d2727c"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-hub-notice.png",
+      "sha256": "3316d34ba5466ebe1aaa513b4bdd77ff5408499e735fe805eec9ed685d8cbee9"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-hub-trust-source.png",
+      "sha256": "71f5d52b88785d5da0620cb571b92c11d873a0c7daf0b7da4ed957325153872b"
+    },
+    {
+      "path": "editor-notices/phone-dark-zh-TW-hub-trust.png",
+      "sha256": "10d03c05889f5a7b53e2266286ea4d3a7d2d8774c0c338ce8faaf7057ee40926"
+    },
+    {
+      "path": "editor-notices/receipt.json",
+      "sha256": "32856fca7b9f14f807f411daad68c71bb2ef9eccbc55a9d07e54e31c36be3b80"
+    },
+    {
+      "path": "join-wait/desk-light-zh-TW-review.png",
+      "sha256": "84ec3f3b3012d9bdd7f708ab239ae42706ced953cefefbf265dd20bf2b17bc0c"
+    },
+    {
+      "path": "join-wait/desk-light-zh-TW-timeout.png",
+      "sha256": "6194142326850faac24bb6a495845beeaf00e5c5fd85319d8527b26e11519f3f"
+    },
+    {
+      "path": "join-wait/desk-light-zh-TW-waiting.png",
+      "sha256": "8f96ae0a3117c5b04f85f5d0c5650457bc831982559d8b68992438a7cc8f5230"
+    },
+    {
+      "path": "join-wait/desk-light-zh-TW-withdrawn.png",
+      "sha256": "13de2ba73c4dff59f18b6e804789b28a06c456c99cb59a9813c2ccbd52f7cf43"
+    },
+    {
+      "path": "join-wait/phone-dark-zh-TW-review.png",
+      "sha256": "a805de147060841bbe56cf7d6259ac95baef9f8bfa3d609627cce80d05bfd85e"
+    },
+    {
+      "path": "join-wait/phone-dark-zh-TW-timeout.png",
+      "sha256": "d7fe3a149a2f50b8b853711c82118892c8b4a57dac739b434686e7fecf2505d5"
+    },
+    {
+      "path": "join-wait/phone-dark-zh-TW-waiting.png",
+      "sha256": "a805de147060841bbe56cf7d6259ac95baef9f8bfa3d609627cce80d05bfd85e"
+    },
+    {
+      "path": "join-wait/phone-dark-zh-TW-withdrawn.png",
+      "sha256": "f86d5e547b0b59b20c3e28309662d6d05e61cbee4a419786105c6ded3353837f"
+    },
+    {
+      "path": "join-wait/receipt.json",
+      "sha256": "a422754865656c654cc2147dac025c4107030442831802cc6159a93603bfc80d"
+    },
+    {
+      "path": "main/A10-01-desk-after-local-approval.png",
+      "sha256": "d3bb013d75d46795e47bc9476306d623c135bd4212b61cb09f8c7eaae2796d0e"
+    },
+    {
+      "path": "main/A10-01-desk-exact-review.png",
+      "sha256": "4fe6532deeb4a557ff6b2b9e0e4f2c22617179200d1b778dbfce55067f4a4763"
+    },
+    {
+      "path": "main/A10-01-desk-host-card.png",
+      "sha256": "2e85141bd742bf378da3a0042ca0bf6db6c6f254099ee61bc872f748e0d960de"
+    },
+    {
+      "path": "main/A10-01-desk-ordinary-connected.png",
+      "sha256": "d8c5858b9fa5adbba85b468fa0ec0abfd195174d4656d9913d39d9b6b638bc4a"
+    },
+    {
+      "path": "main/A10-01-desk-ordinary-wait.png",
+      "sha256": "c7128c21e7e37113dab7af6ab2b5dde2a48222cf24651f715be4dec94d9400bc"
+    },
+    {
+      "path": "main/A10-01-desk-owned-confirm-code.png",
+      "sha256": "2661896912802facfb98110e18fef6d96b40dee0a60c8b9b804137854c3d1335"
+    },
+    {
+      "path": "main/A10-01-desk-signed-out.png",
+      "sha256": "6d6d9f30e3cfbff027d72210245221d4de9bb7c9fc1b9b18bbc4fa0cb4a495b3"
+    },
+    {
+      "path": "main/A10-01-phone-ordinary-connected.png",
+      "sha256": "66d9353109e6e27717117d201b5b4d82041d3fa087646b43053f33d1e32c9722"
+    },
+    {
+      "path": "main/A10-01-phone-signed-out.png",
+      "sha256": "42457ef8725c3b2eca4b42a6694c282220ca08bbee39646b3891ee7180c555a0"
+    },
+    {
+      "path": "main/A10-04-desk-absent-root-referral.png",
+      "sha256": "2262559ad3606b1264d0a8efb869f5c684da31a11aa72b630247058ec9073cda"
+    },
+    {
+      "path": "main/A10-04-desk-absent-with-references.png",
+      "sha256": "a28a825573388faf0ec540d0d2cae6dbf5f33efe6e8943ef35756c72dafda3a4"
+    },
+    {
+      "path": "main/A10-05-desk-clean-provenance.png",
+      "sha256": "effb7b7ebadd9e4ac55e5451d3802205f403abf8fa5a15c08a73847fdf80a630"
+    },
+    {
+      "path": "main/A10-05-phone-clean-provenance.png",
+      "sha256": "29312ab08c2d5df67fd905acad5a9ceb2f37d4e29aef191c202af2d4098864b3"
+    },
+    {
+      "path": "main/A10-17-desk-admin.png",
+      "sha256": "a576b23e08593a54bad32f817073cf7c22403f35f78596c56685749d2b6bb6a1"
+    },
+    {
+      "path": "main/A10-17-desk-chats.png",
+      "sha256": "3f4cf29a28b423dd31d0cf92f8597ecff1a063bec5afa903768ac40cfd28e965"
+    },
+    {
+      "path": "main/A10-17-desk-explicit-signout.png",
+      "sha256": "58c3a76eed2eb9fff8d986d1bd381385ecf672fa1f16d277eb8dbf06b717a98b"
+    },
+    {
+      "path": "main/A10-17-desk-notices.png",
+      "sha256": "79c5219b8e1afe3d3c85e334b6cafdd9d0973ec76d35e7648af2f2c196f25adf"
+    },
+    {
+      "path": "main/A10-17-desk-shared.png",
+      "sha256": "da08e1ce4be9ac51c60bd086671c55a97cf53fc46ab1b965018cec798c05d235"
+    },
+    {
+      "path": "main/A10-17-phone-admin.png",
+      "sha256": "bda2247cfcf0da100c82c09fe3f1b37109b15daf6a24ba224ef682e87fd596f5"
+    },
+    {
+      "path": "main/A10-17-phone-chats.png",
+      "sha256": "e080a093c0701bc3fc4459087b791185dbffc307981a91ce733bf7353292315c"
+    },
+    {
+      "path": "main/A10-17-phone-drawer.png",
+      "sha256": "166e8951b2fd05c5960783e95662ab281dadfa492f16dff6776544221a8ce7c0"
+    },
+    {
+      "path": "main/A10-17-phone-explicit-signout.png",
+      "sha256": "f9ffdfe98f19cb11fc560fa9c9f0e83b61bec31c15d2f9e7612eff4fbfb48deb"
+    },
+    {
+      "path": "main/A10-17-phone-notices.png",
+      "sha256": "87004430b33b4d9de7847c0acd9e7ac95888ea4396a4ac236a32fdf3df290f1c"
+    },
+    {
+      "path": "main/A10-17-phone-session-menu.png",
+      "sha256": "6e320533ffcba75a861d377054438809d1f57ca2b9587504762d64ddd6fce29b"
+    },
+    {
+      "path": "main/A10-17-phone-shared.png",
+      "sha256": "95bc2d328011ce25ba0adfe9cbc4d07fe9c50351ca5b1869ca7dfe7b2554cf0d"
+    },
+    {
+      "path": "main/A10-18-desk-connected.png",
+      "sha256": "33e871e1c4644795b075b68ff58ce7511cf1d782b397a07626d805aed8adc27d"
+    },
+    {
+      "path": "main/A10-18-desk-first-use.png",
+      "sha256": "49aa44fe95ab95b308c6c967df1c00b93b9d353d9f2161d80bc4661594b7e7b8"
+    },
+    {
+      "path": "main/A10-18-desk-fleet-start.png",
+      "sha256": "26db75035e72addb09d2375b61dc1105004211193b0fe7b72ce67acc77792dea"
+    },
+    {
+      "path": "main/A10-18-desk-hub-signin.png",
+      "sha256": "990218ee1db52766e3dfea3a96d43ef858c391de7d243df522580ccf6d7a4871"
+    },
+    {
+      "path": "main/A10-18-desk-identity-stopped.png",
+      "sha256": "ffad0185d5baf3150f4699643d1c63d7e866803ca379f363fde97456c0826754"
+    },
+    {
+      "path": "main/A10-18-desk-joined.png",
+      "sha256": "f0921a6320e28918b0268c53329774af997d1a47655027df376ae8a0082c9145"
+    },
+    {
+      "path": "main/A10-18-desk-revoke-confirm.png",
+      "sha256": "5f9fd5282605f6aef9eb471580300d16aa8e8e77c5d67a4f1d869c3b3e5437d0"
+    },
+    {
+      "path": "main/A10-18-desk-revoked.png",
+      "sha256": "bbb54a3b9e6e242a3e49958b9b81bec659584a82cb4f9a5b5caf6a290cdca8da"
+    },
+    {
+      "path": "main/A10-18-phone-connected.png",
+      "sha256": "4b0d2fb62313989e987ffd8f3d08257000c83afc71a89f55777430eaf43c075b"
+    },
+    {
+      "path": "main/A10-18-phone-fleet-start.png",
+      "sha256": "9b43361d82870133afb9b7684be59e53bb5ed8316b3b3cbd67717a829a3eff10"
+    },
+    {
+      "path": "main/A10-18-phone-hub-signin.png",
+      "sha256": "dbed7624e792c53834eb6bffe87cd9ba28aa7ef2ce1ac0e2ce88b4d35e5516a6"
+    },
+    {
+      "path": "main/A10-18-phone-identity-stopped.png",
+      "sha256": "c713686cf37e24d3fe52475bace9913155d13a35aec4309a6a66bd2d44388521"
+    },
+    {
+      "path": "main/A10-18-phone-joined.png",
+      "sha256": "4d8378dee735c9c263b5f624b1777b42416256eb733afb9f81b509f60da2be5e"
+    },
+    {
+      "path": "main/A10-18-phone-revoke-confirm.png",
+      "sha256": "d3c99c1e040a4cde494a05a235c0fe2da8537f89e5cc16e1f36c6ff618c5f0b1"
+    },
+    {
+      "path": "main/A10-18-phone-revoked.png",
+      "sha256": "16921550d107e691b7007e50add1c2a98c965f87416f3cbac3b69ece3a1bb0f8"
+    },
+    {
+      "path": "main/A10-19-desk-cleared-info.png",
+      "sha256": "a107870b8db25d27fef6965b88b9d6df71373c46f174b7197ff3a1645b5cc94d"
+    },
+    {
+      "path": "main/A10-19-desk-old-session-after-run.png",
+      "sha256": "82ec62426ea88e6698b515c0062c371eeaa21e666f424cb3509de3a74117288b"
+    },
+    {
+      "path": "main/A10-19-desk-preview-off.png",
+      "sha256": "946c409282f4b0600b6444b1f2238ebbeda00b916378c24d669f46f212ab15b4"
+    },
+    {
+      "path": "main/A10-19-desk-preview-saved.png",
+      "sha256": "8e11863aa92856d5e80d51f0af4a8e0dc248bdfa75d9b039c7786ef886d5bd25"
+    },
+    {
+      "path": "main/A10-19-desk-run.png",
+      "sha256": "3e8c542dfe41dec5889f2afb1aaf30e4b25274726ddc4ac1a401f4cbc167aeed"
+    },
+    {
+      "path": "main/A10-19-desk-stop-confirm.png",
+      "sha256": "fa8fdec72c0aae34b3e10be2a7a0c6f07949ded6d9f21d556b8252da2069b3df"
+    },
+    {
+      "path": "main/A10-19-desk-stopped.png",
+      "sha256": "376b80af4dc2dfa8adb912a9a6c28ba686a3d1f9faa84eed7565cf5dd69930dd"
+    },
+    {
+      "path": "main/A10-19-phone-cleared-info.png",
+      "sha256": "0f87c94617709bc974182de0f80d0ea258149cfbf335e0e5693ab723d127036d"
+    },
+    {
+      "path": "main/A10-19-phone-old-session-after-run.png",
+      "sha256": "0f6c543cf23ce5ed2dd1a5f176a1cde46885c411d28fa10d65daf6bbb8a8b112"
+    },
+    {
+      "path": "main/A10-19-phone-preview-saved.png",
+      "sha256": "cf462af6dfb9b93ecdc0a9d142d49579ccd55b89e68905bfdb4c39d79c102e71"
+    },
+    {
+      "path": "main/A10-19-phone-run.png",
+      "sha256": "8acff851da6218e75d83e80b6a260908f4ced6aecc7452a2309841130dfa685b"
+    },
+    {
+      "path": "main/A10-19-phone-stop-confirm.png",
+      "sha256": "00532f24276d9bc1de72d2f172b976ad8a1f1821ee7ad24f917e0e40750c7a1f"
+    },
+    {
+      "path": "main/A10-19-phone-stopped.png",
+      "sha256": "a14b5a6bec22f06a4bf67a9a5ba6b79bc2593c8bc20d921b2eb9b52f2cad0899"
+    },
+    {
+      "path": "main/A10-20-desk-actual-chat.png",
+      "sha256": "a31e979968c5486f73972eabb108f1ac32a9b700bc3be2c76dae54e492288cf1"
+    },
+    {
+      "path": "main/A10-20-phone-actual-chat.png",
+      "sha256": "22abad2efabad7b3ff682e97531b76f608d3e4849cf98f5b3e5ae744ab50eb2c"
+    },
+    {
+      "path": "main/A10-20-phone-reload.png",
+      "sha256": "9746924d6411c99ef6c836c944831264cc154427ec28b2de7069f2d00a8e32c3"
+    },
+    {
+      "path": "main/A10-21-desk-ask-only-policy.png",
+      "sha256": "0f059494f419511fb92a1014f57dec027ff9c5e87d7bf002dcbf47b462039ea7"
+    },
+    {
+      "path": "main/A10-21-desk-ask-only.png",
+      "sha256": "bf58c7d0bffae814bf085876ac51981d4e536a2e09931eb7d9e24337656c28a6"
+    },
+    {
+      "path": "main/A10-21-desk-explicitly-paused.png",
+      "sha256": "d002b7b8408e223c2f4cadf49462eb558f66058efdd61dd311a676956c0b683a"
+    },
+    {
+      "path": "main/A10-21-desk-full.png",
+      "sha256": "cbd0a70890ceb1831910d97c090bd8da727e0c6255fae98b5f725e97ec8c6481"
+    },
+    {
+      "path": "main/A10-21-desk-held.png",
+      "sha256": "d727371ab48ad1ac4401e6a1271fbe5e560978f68b4dbadda56d7ebb4f3ace80"
+    },
+    {
+      "path": "main/A10-21-desk-none.png",
+      "sha256": "bd8c3c3a242b2c7087702bf8027b6128c746081a7e8726f799ed3d308180fbbe"
+    },
+    {
+      "path": "main/A10-21-desk-owner-grant.png",
+      "sha256": "88baf2fa5387de64a6e349842ec3f3c1a3efec70eb7f54d1492b60a945b50381"
+    },
+    {
+      "path": "main/A10-21-desk-recovered.png",
+      "sha256": "25a2c7654b6b630da59e1db31b5a7e8159c4fa9d923e92b82eab7a8b7c22f4b7"
+    },
+    {
+      "path": "main/A10-21-desk-resumed.png",
+      "sha256": "018aaf13cc23cfa75f0db0ddc4829b33f0f79b93f8263b2e4d89ec3c3d6acf23"
+    },
+    {
+      "path": "main/A10-21-phone-ask-only.png",
+      "sha256": "0eb8ef6715a4633bad40de25b9dfc18aec39a551d0b33759ce30f46f32eea33a"
+    },
+    {
+      "path": "main/A10-21-phone-full.png",
+      "sha256": "da25088c2f95845da8827704452fe33d5f6da0a07434ca3c70fee7f75cb8995f"
+    },
+    {
+      "path": "main/A10-21-phone-group-refused.png",
+      "sha256": "5085baeb642ef16e516223580f3f168b3301d79c33b805e5456eb75587c90661"
+    },
+    {
+      "path": "main/A10-21-phone-none.png",
+      "sha256": "46ea5425ebea36767104edc21cfeb7ed53a6d4a4e2bd4754dfda7dca7b8d98d8"
+    },
+    {
+      "path": "main/A10-21-phone-resumed.png",
+      "sha256": "16715dc44478415029f332c86011e71d758d99f9dc60972b90e240497783768a"
+    },
+    {
+      "path": "main/A10-23-desk-real-published.png",
+      "sha256": "748a2fbb80b05e00eaf0aae65604000ab52cc8cd318aef3ef465a51a9f9f845e"
+    },
+    {
+      "path": "main/receipt.sanitized.json",
+      "sha256": "b3af8fc6bbc90660b02204c14d684bbb12286d45d817532131c631defc241590"
+    },
+    {
+      "path": "p3-state/checks.json",
+      "sha256": "1835b9bed5db66ae288fb00b680b99d0827c745b529419413e71dbb902bbb25f"
+    },
+    {
+      "path": "p3-state/desk-light-zh-TW-access.png",
+      "sha256": "ba682a0f92aaacd4ca17811e65dbc8305924b06b650d4a239678a41038887375"
+    },
+    {
+      "path": "p3-state/desk-light-zh-TW-confirmation.png",
+      "sha256": "1449b24918c0d2aa0230d3f87406be0a41037cde86639b717c6999d85046414f"
+    },
+    {
+      "path": "p3-state/desk-light-zh-TW-published.png",
+      "sha256": "874c13ca9976809d59f71b8a5e88db0452be66c99809dc058381423b8d86354c"
+    },
+    {
+      "path": "p3-state/desk-light-zh-TW-refused.png",
+      "sha256": "ba682a0f92aaacd4ca17811e65dbc8305924b06b650d4a239678a41038887375"
+    },
+    {
+      "path": "p3-state/desk-light-zh-TW-stopped.png",
+      "sha256": "b92203e93ff73d5f23fef1aa9a25f68d9f135c2e82126db31bd3516e981710a0"
+    },
+    {
+      "path": "p3-state/phone-dark-zh-TW-access.png",
+      "sha256": "01c30699113a059257117d0020babd5af3a12c70f57ae1edbd2a7ab1bf7e39af"
+    },
+    {
+      "path": "p3-state/phone-dark-zh-TW-confirmation.png",
+      "sha256": "92e1ea4317c648008af6f0b569474e54d7bdc2ce978f20ff27f8462609005ff1"
+    },
+    {
+      "path": "p3-state/phone-dark-zh-TW-published.png",
+      "sha256": "109f3a3808735e048103f2397e7e0ec739fefb1916d23f96affe65ef35c4d05f"
+    },
+    {
+      "path": "p3-state/phone-dark-zh-TW-refused.png",
+      "sha256": "99864fe8cd1978abbbfa92646202c7c2d9e07cd8b769e21daa212dbe26a8db68"
+    },
+    {
+      "path": "p3-state/phone-dark-zh-TW-stopped.png",
+      "sha256": "6de096f0e5f2c49e6d14c083029530b3ce9cbb2d3505e90c15e1700d5027f5c0"
+    },
+    {
+      "path": "receipts/build-provenance.json",
+      "sha256": "bada68d849efd74a9d78ae8952cac240a5c9dd1fd34d7d31a89e70a2b4b30158"
+    },
+    {
+      "path": "receipts/editor-cleanup.json",
+      "sha256": "339fb4db1b906fa9d2b2f34f73dcf39ab1b0e454166d5e34777fd3553f487d00"
+    },
+    {
+      "path": "receipts/editor-main-cleanup.json",
+      "sha256": "b2143405e2c69ca77b6250fbf4604b3dcb0ab08c8d3e6705bd659fa572eff5f6"
+    },
+    {
+      "path": "receipts/editor-notices-cleanup.json",
+      "sha256": "a00110fc5b3da7468010dd74aa98f968eb429f4205f0c40065139dfe3f22f47a"
+    },
+    {
+      "path": "receipts/first-setup-cleanup.json",
+      "sha256": "bf19d44b05c2076e8ed52ea7561520a8ca52a28fc831a43212771f044b40dc9b"
+    },
+    {
+      "path": "receipts/join-wait-cleanup.json",
+      "sha256": "5a3c7d51dc8d76ba76c3cc97cada9e77e0d43198be00a795efaec4124975c228"
+    },
+    {
+      "path": "receipts/main-cleanup.json",
+      "sha256": "b93d339fb3af7916b3dae7c0ba993ba4ae9363e3ead940c9652dece25aa152c4"
+    },
+    {
+      "path": "receipts/main-post-exit-inventory.json",
+      "sha256": "bf29665eae55d52047b029bca2964da241ca03b3232475a05326b8e3264653aa"
+    },
+    {
+      "path": "receipts/p3-state-cleanup.json",
+      "sha256": "cc690330f75e401d78163acda051f88f9f31cafd6dee52313be294cceff87b71"
+    },
+    {
+      "path": "receipts/recovery-desk-cleanup.json",
+      "sha256": "d2cf9087e6a9d885690cf5d2cfaa34bc7a85f6cd608a42372f147e04d644ffc6"
+    },
+    {
+      "path": "receipts/recovery-desk-final-cleanup.json",
+      "sha256": "dffed65138c241c2a195f3e1d02a1fd953de99ca091a9ab3b056176da317e23d"
+    },
+    {
+      "path": "receipts/recovery-framed-desk-cleanup.json",
+      "sha256": "eeb2d942748b4a398438d0e6a629ed7ae4e95ce358a6c2e9da642690d844121a"
+    },
+    {
+      "path": "receipts/recovery-framed-phone-cleanup.json",
+      "sha256": "db01ba435f3f78e2477645055f1cfe7f1de84c4065c7012324019566cffdc7ff"
+    },
+    {
+      "path": "receipts/recovery-phone-cleanup.json",
+      "sha256": "a8a283513992d3491fd965fd764fe194eef9d37b77445db9e1beced9f64f2bf0"
+    },
+    {
+      "path": "receipts/room-reload-cleanup.json",
+      "sha256": "92568386ac56473427929d9497ab6208052dbdf125fbc78d08f9f214b06db17e"
+    },
+    {
+      "path": "receipts/room-reload-full-cleanup.json",
+      "sha256": "a3cb0f2a24ca5ae5eba7d982a15efae0adb928a0214922f7eb7cfc2e9e0479c1"
+    },
+    {
+      "path": "receipts/setup-ca-visual-cleanup.json",
+      "sha256": "30f6c18472fd70ce99455704722aae53c52e29295439709faea1a348f3f2ecca"
+    },
+    {
+      "path": "receipts/stop-session-control-cleanup.json",
+      "sha256": "95514aee7263a45b682c5d906f57a01fa3d51602c714b93476fcd118ca811f4a"
+    },
+    {
+      "path": "receipts/web-update-cleanup.json",
+      "sha256": "fd9a50f464c8bc67847230dd9036726fc0cd512a69aae3a037684d2f02b58a3b"
+    },
+    {
+      "path": "recipe/accept-a10-ca-visual.mts",
+      "sha256": "33a39924b190c0dfeecdc221db9d683cce10230998c60df1c0cc8beae2d6bda0"
+    },
+    {
+      "path": "recipe/accept-a10-notices.mts",
+      "sha256": "f26c7d7cbaac5fae809756b104a04b19954f78689ef768c628337909fc4382e7"
+    },
+    {
+      "path": "recipe/accept-a10-recovery-framed.mts",
+      "sha256": "868396c739b5e64b9bb7ae3060e69188ed17d85838616c77e4131252f3307903"
+    },
+    {
+      "path": "recipe/accept-a10-stop-session.mts",
+      "sha256": "894e9a7600881f48b647c2acd4781fc11ddc56adb3ce30a5d71a00cc1fae57ef"
+    },
+    {
+      "path": "recipe/commands/command-1.mjs",
+      "sha256": "ccff28ff7f58db5dda622d38433d7bae4276b5f6ba86b2a6802624913c1748ef"
+    },
+    {
+      "path": "recipe/commands/command-10.mjs",
+      "sha256": "1ce6209b9876a8acedd1bd64f57faf372cc4fb89771cdab96603a7fed04146b2"
+    },
+    {
+      "path": "recipe/commands/command-11.mjs",
+      "sha256": "037734bc0246147dc63eab9cd55856e2b57203f22dae653126b205cf83a5f5f4"
+    },
+    {
+      "path": "recipe/commands/command-12.mjs",
+      "sha256": "5a1e6cb5e90aab803d9653e6cae2587ca9a68e7647b210189a6c593ab995d743"
+    },
+    {
+      "path": "recipe/commands/command-13.mjs",
+      "sha256": "13c9f49ae4aece20b56146ceb548a1898ae46ba4f4aac55b153cd178226123cb"
+    },
+    {
+      "path": "recipe/commands/command-14.mjs",
+      "sha256": "6d80dd4dcb5b4e38aca6cda9461947cf75e3d77ceaf91e5e17694a475194dc18"
+    },
+    {
+      "path": "recipe/commands/command-15.mjs",
+      "sha256": "a11f1de0151d99eea9a70ff4651b5f6b5982ec9b70c31946b83a14eca4ee69b6"
+    },
+    {
+      "path": "recipe/commands/command-16.mjs",
+      "sha256": "acd1a4cb19f3aa30273e571aae5bf8fc4b2479783d97146b4a963244423e2ee8"
+    },
+    {
+      "path": "recipe/commands/command-17.mjs",
+      "sha256": "16358403aca88df88a072c2d28ebc0afbdac2d3e04608b37a846e6c5e020bc39"
+    },
+    {
+      "path": "recipe/commands/command-18.mjs",
+      "sha256": "9888a14dc8f4a98415c21d08fafb8587f44107c2fea5bd78721ca70e458584f6"
+    },
+    {
+      "path": "recipe/commands/command-19.mjs",
+      "sha256": "7a8a0f5627b9c676780210191143be705935a3011b3f67ce863bccb1c3d84179"
+    },
+    {
+      "path": "recipe/commands/command-2.mjs",
+      "sha256": "858a52f0d5fdad365d59e2b144c5c7254c09024d750785dcb433c7ae512efd81"
+    },
+    {
+      "path": "recipe/commands/command-20.mjs",
+      "sha256": "890952d94979e409b50744a439f7717604e0f2179abc5ff07d7fe0072f9c9f67"
+    },
+    {
+      "path": "recipe/commands/command-21.mjs",
+      "sha256": "90fa76669a06cc7a44c050fb676afa26f2369501177a29873829dc2f1b64db6b"
+    },
+    {
+      "path": "recipe/commands/command-22.mjs",
+      "sha256": "6993f61caaad8ddffe21e2013563038b9da2788a01e6a1a6fdc7e27358db4999"
+    },
+    {
+      "path": "recipe/commands/command-23.mjs",
+      "sha256": "72c4cb0ce0c563545c6f39b8e9560b686b37b04a1efa128d460e9f2f316f0bbb"
+    },
+    {
+      "path": "recipe/commands/command-24.mjs",
+      "sha256": "439cb3d76b380c388660cc297e9f7a8c1c88ab2fe62a385d9ea34bd36ff98aa9"
+    },
+    {
+      "path": "recipe/commands/command-25.mjs",
+      "sha256": "a2f2752e44bf50b57ca8e3b9aceb671e13b8faa3188bc4622eb6b51994438db5"
+    },
+    {
+      "path": "recipe/commands/command-26.mjs",
+      "sha256": "b772da8e5c831bdcff5650f5d1ed78d73c7cb3aa588d4be4c3c23257f024da27"
+    },
+    {
+      "path": "recipe/commands/command-27.mjs",
+      "sha256": "266c659f75f0f800831793505f02f344d1f12d7920f65b17561acb7c3020a546"
+    },
+    {
+      "path": "recipe/commands/command-28.mjs",
+      "sha256": "30c3babd37d963b21d1fa5efda38147f96c68b0cb13b3768969e42ae280c8875"
+    },
+    {
+      "path": "recipe/commands/command-29.mjs",
+      "sha256": "813c093a5ad16b43b4236f673fb9d949c27e661700aee422b0e4b30c699eaab8"
+    },
+    {
+      "path": "recipe/commands/command-3.mjs",
+      "sha256": "b23141becdb336a873174816decf2faa6eef19284643268c9ce7cdd8c12b7458"
+    },
+    {
+      "path": "recipe/commands/command-30.mjs",
+      "sha256": "29c26a5ea30467b8502b96d0ddae6575f878443f012fbd69dfdcdbb54250941b"
+    },
+    {
+      "path": "recipe/commands/command-31.mjs",
+      "sha256": "ceb9237819228dd05de2f2398f927c21a9981efc7dc734f4bf5f5581de1d5d58"
+    },
+    {
+      "path": "recipe/commands/command-32.mjs",
+      "sha256": "2d8b067a122efeebd0ce1a22b088e1e167be61cf6aa220bd0f603fe1e496f71a"
+    },
+    {
+      "path": "recipe/commands/command-33.mjs",
+      "sha256": "6f4650da5e152a76cbd25d4b1690006cdec356012c9989d7161b8f2f3b92c977"
+    },
+    {
+      "path": "recipe/commands/command-34.mjs",
+      "sha256": "de44d1bb9c43aa9325e72efd909654866347d5778387341da2c56b4db088af9c"
+    },
+    {
+      "path": "recipe/commands/command-35.mjs",
+      "sha256": "790be3e5a4c99a3226bb5694854ae79f15b2f8ba99ebe467f3febdf0ab4ba76a"
+    },
+    {
+      "path": "recipe/commands/command-36.mjs",
+      "sha256": "6bb32e63212858497d09d51935d302a6e4bf9dd8b60140c78c453d3efd4895ce"
+    },
+    {
+      "path": "recipe/commands/command-37.mjs",
+      "sha256": "7cf318e57eefb1f8d39aecb3e72ef9232b47a5a30ae63e62eba402ead08153a5"
+    },
+    {
+      "path": "recipe/commands/command-38.mjs",
+      "sha256": "d3c261e0dcfab6977e40871b8ad1feb3d045bbfce8f8343c5853b08851f0b34b"
+    },
+    {
+      "path": "recipe/commands/command-39.mjs",
+      "sha256": "9133c5aa4ba767257c957fdfc0f3c4dacb9c5170a1265e7b37cfa3014ecc1470"
+    },
+    {
+      "path": "recipe/commands/command-4.mjs",
+      "sha256": "af41b840d8afa28e46f8af07760117509de6c0ce4e734e786401b4120284d881"
+    },
+    {
+      "path": "recipe/commands/command-40.mjs",
+      "sha256": "911e0249cc2c2ba61a28bbe8d58954e0789f30c28f990938e1ca3c8ba3a9c5d9"
+    },
+    {
+      "path": "recipe/commands/command-41.mjs",
+      "sha256": "4dc93bfe3e9b58dab09d4af60470055baf53cc582ef459c433e4618b2b2bf39a"
+    },
+    {
+      "path": "recipe/commands/command-42.mjs",
+      "sha256": "9bca403ad19a5d9785f735a7ac2806c1eb4875f43c97ac615f009735596bfb5c"
+    },
+    {
+      "path": "recipe/commands/command-43.mjs",
+      "sha256": "0a990e92715b6fdc2df7d083946cf96ab281df013ddd8950c6ab1de02bffc896"
+    },
+    {
+      "path": "recipe/commands/command-5.mjs",
+      "sha256": "7f4d6e58dbe817d168ac3596439b71982a20d428a311c697ce34dcaaa323a544"
+    },
+    {
+      "path": "recipe/commands/command-6.mjs",
+      "sha256": "6d3e2db960ca659bc32e2f17743a854c714bae63d000f77fce184e33bfff0e1a"
+    },
+    {
+      "path": "recipe/commands/command-7.mjs",
+      "sha256": "54f270b1324ebca2eb7a712db40e8d318fc4b64e3c3758f276285dec135cb64a"
+    },
+    {
+      "path": "recipe/commands/command-8.mjs",
+      "sha256": "ef497b3cbca63d6133a657ec831b4e0ce406d469b273299bb31957fa1024e6d8"
+    },
+    {
+      "path": "recipe/commands/command-9.mjs",
+      "sha256": "217de0a7328bf465d2fe2b1cc79d6512c1cb38fdc948275336508a4c132b5dde"
+    },
+    {
+      "path": "recipe/control.py",
+      "sha256": "12b4e7f46bf437b0c46265930c5f651bf0dc683b977052467c2e8f9b5b6a3f05"
+    },
+    {
+      "path": "recipe/driver.mts",
+      "sha256": "53e08576bcd70219039eebfb2bf95ae4ffbae0e897c1912cc99ce4158b5e23ef"
+    },
+    {
+      "path": "recipe/rig.ts",
+      "sha256": "f20832d009826cd907127fc7993606a00b4f9af85a034add7178eac8a6277201"
+    },
+    {
+      "path": "recipe/run-rig.py",
+      "sha256": "0cebda9a18f67e980eb3a9816f1af7938cee741d17ef5917bbe253fa0bc247c6"
+    },
+    {
+      "path": "recovery-framed-desk/AD-down-form-framed.png",
+      "sha256": "c7f8a6af61b8c8b6b19402ed4a5ed42e90b32443ecaa757ddfd71876db967fbe"
+    },
+    {
+      "path": "recovery-framed-desk/AD-down-started.png",
+      "sha256": "2c3120c4033dd0ea06299e9c9d8a077a30b510656d519dcd7387a1a12640edf7"
+    },
+    {
+      "path": "recovery-framed-desk/AD-down-test-refused.png",
+      "sha256": "47de05432798fd81c5bb966d7b42bf151c9155e0607afdbab19a5878ab069397"
+    },
+    {
+      "path": "recovery-framed-desk/receipt.json",
+      "sha256": "b128c97ee3d97aecd6b90d72b073cdd5e096823af26813b12d7687051fc486d1"
+    },
+    {
+      "path": "recovery-framed-desk/recovery-zh-host-CA-final.png",
+      "sha256": "7ae4b1ed5bac216b40082a9d864e114d0471baabbb9442861ee6b3dc43e66166"
+    },
+    {
+      "path": "recovery-framed-desk/recovery-zh-host-CA-service.png",
+      "sha256": "c16b0d9abc150597ddbcf7e2867e1bc96e888accf65d69b4f92dcd0b3eee389a"
+    },
+    {
+      "path": "recovery-framed-desk/recovery-zh-host-offline-saved.png",
+      "sha256": "477da4ba2cca618d9368c8bb58154b680eb55c0d041353f4e69606d046f44c1b"
+    },
+    {
+      "path": "recovery-framed-desk/trust-cancelled.png",
+      "sha256": "9155ef3d53c1eec9f7bccef859c7a17c82e1af261e9c9bc05907e4a6a37c389a"
+    },
+    {
+      "path": "recovery-framed-phone/AD-down-form-framed.png",
+      "sha256": "83a6b861b530732f724cad3922ce353416fed8d051c54191492792323501420e"
+    },
+    {
+      "path": "recovery-framed-phone/AD-down-started.png",
+      "sha256": "25f060734f70e3bd060c480b8d95b0c999d80ce87e5196e3e1fc98dbabd3b771"
+    },
+    {
+      "path": "recovery-framed-phone/AD-down-test-refused.png",
+      "sha256": "ad71962bd87777ba48853e739ef24389c593343ec7d841479048699908d5de5f"
+    },
+    {
+      "path": "recovery-framed-phone/receipt.json",
+      "sha256": "3edacf9a37a786698cc2b96e68706ffc27c2625fb8064840e55bfd56f63a5756"
+    },
+    {
+      "path": "recovery-framed-phone/recovery-zh-host-CA-final.png",
+      "sha256": "5ad8124f1a3d17d47f61ee4ebf704dfb9f246e2bd3487542483b9f70378c1658"
+    },
+    {
+      "path": "recovery-framed-phone/recovery-zh-host-CA-service.png",
+      "sha256": "549a176c97dab70f07420e7d1d5383ba0b9e57892c29c17907ba08cff9d8431d"
+    },
+    {
+      "path": "recovery-framed-phone/recovery-zh-host-offline-saved.png",
+      "sha256": "c35b6d21dc1dc1b967f45a59280bad016281dcd426550147c4c7f4a13486bc5b"
+    },
+    {
+      "path": "recovery-framed-phone/trust-cancelled.png",
+      "sha256": "53da553168b21057ef7c9dedc33d0753ae7836b368a45d79e2176a394f04c9e6"
+    },
+    {
+      "path": "room-reload-full/desk-dark-zh-TW-busy-retrying.png",
+      "sha256": "8fd357554e981819753220400f8615634d763ac49f4035d9fa2eeebf5a9a8fd6"
+    },
+    {
+      "path": "room-reload-full/desk-dark-zh-TW-reload-visible.png",
+      "sha256": "2ef20b55242c51217eb1198b538f3f6ef1398cf6bea8246ca9081931eeb9a704"
+    },
+    {
+      "path": "room-reload-full/desk-dark-zh-TW-retry-recovered.png",
+      "sha256": "2ef20b55242c51217eb1198b538f3f6ef1398cf6bea8246ca9081931eeb9a704"
+    },
+    {
+      "path": "room-reload-full/desk-light-zh-TW-busy-retrying.png",
+      "sha256": "faf4c2da5e709a8cca1bc5fe097d6583cb6fd69362f497fab8b097a44688b0b6"
+    },
+    {
+      "path": "room-reload-full/desk-light-zh-TW-reload-visible.png",
+      "sha256": "d9d767a07fe07eaa2d2dad7ed06734726b9fe770e0f622adfffd45f098ec8926"
+    },
+    {
+      "path": "room-reload-full/desk-light-zh-TW-retry-recovered.png",
+      "sha256": "d9d767a07fe07eaa2d2dad7ed06734726b9fe770e0f622adfffd45f098ec8926"
+    },
+    {
+      "path": "room-reload-full/phone-dark-zh-TW-busy-retrying.png",
+      "sha256": "362a61ac5528a6af1c88e76c7e120a4e718d7105e984e683b4124ecc6b94cb55"
+    },
+    {
+      "path": "room-reload-full/phone-dark-zh-TW-reload-visible.png",
+      "sha256": "4683dd5f1e5a6adf6212d9066dd8a6bb4b886831418ed2af74c6c5f2fe45ad7c"
+    },
+    {
+      "path": "room-reload-full/phone-dark-zh-TW-retry-recovered.png",
+      "sha256": "4683dd5f1e5a6adf6212d9066dd8a6bb4b886831418ed2af74c6c5f2fe45ad7c"
+    },
+    {
+      "path": "room-reload-full/phone-light-zh-TW-busy-retrying.png",
+      "sha256": "db2821294fe8d472b619b183cbc73ee1cdc21087a4b8ff36b58b53bce0d29778"
+    },
+    {
+      "path": "room-reload-full/phone-light-zh-TW-reload-visible.png",
+      "sha256": "42970ce2f2e2eee23294bf7761746ccc7299c4b2557d1b1135366e43cf0ffe67"
+    },
+    {
+      "path": "room-reload-full/phone-light-zh-TW-retry-recovered.png",
+      "sha256": "42970ce2f2e2eee23294bf7761746ccc7299c4b2557d1b1135366e43cf0ffe67"
+    },
+    {
+      "path": "room-reload-full/receipt.json",
+      "sha256": "5384be92554144447b3e23f2c740b0ea68506e394809e1e7b0f51fe5bd6a35a1"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-CA-framed.png",
+      "sha256": "cecf55b751d7a729371612d06fd034e3dcbb859b4fef8a02c0ffe86f69b3bf2a"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-addresses-actions.png",
+      "sha256": "4aae0b61fe6570df93c13545ef41f2b95069c5bf5fd0e45e233eb796721089b7"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-addresses.png",
+      "sha256": "59a0091040ba8f181e749cbc0b1e596764c4a22dc75a9d8c4e0d57efe20f4290"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-administrator.png",
+      "sha256": "700b458ca3ced7c8c94ee2fc03c0d759dcf7dbd9afb6e3969ff506c62fffd5dc"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-before.png",
+      "sha256": "cdbc6e4af138b4e4d016d08634d11ea95d51d46b27bbcf934f623248f374ff1d"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-created.png",
+      "sha256": "d0eb27bda35d384f8f5e1985770274659f8d205ce97b8015efc2b81b77d64018"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-directory-actions.png",
+      "sha256": "cafe6d1facf170dd47a2a36b6ceb43a3e45b08cbf87cf5fde9ce8f1911e4eb18"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-directory.png",
+      "sha256": "236f22f5386d66a356e0f0d49888778c8a5847e16ac7c766b9bbd146968c0f41"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-review-actions.png",
+      "sha256": "02611f18eea78ada83af3715af231f99dd5326e031806f4d545d54919e2867e4"
+    },
+    {
+      "path": "setup-ca-visual/desk-light-zh-TW-review.png",
+      "sha256": "90da2789ad5b3ee6276e3d84035f971b816257b2b100f68fbb8e6b3eea09f909"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-CA-framed.png",
+      "sha256": "682be9a835232f72dd96cf8b5c839afd68e2b899aa2d420c6cce14281e20d1af"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-addresses-actions.png",
+      "sha256": "5edfa51d7db9fe1bc71f53b3ff9240a6a62833ce099e467e2bd24cf8e13c7071"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-addresses.png",
+      "sha256": "e249e9686ff15bc23ec01327466e1a9718f72725b42814b677bb9604f70de9c2"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-administrator.png",
+      "sha256": "43c7837657dbe2e8e341be99c53c15be7ab50bb87ef0d736e0aa6cbbf90ad215"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-before.png",
+      "sha256": "9e89b0b36d0eea7a7151f950920675f9e40361d8bddeac7d9bff11a020e57449"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-created.png",
+      "sha256": "4497bcd14f203a62cedd54c9ea717d6dfc176498e5f5b83cc5d1b702e66187c6"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-directory-actions.png",
+      "sha256": "ca408fe6848ca2a594452082b911dd1eb9ff999133b08e99aea5e8ae306a5972"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-directory.png",
+      "sha256": "fc743234a328eefc9a01e94388d9cc1621a0e44428da7578966e415d2576fc85"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-review-actions.png",
+      "sha256": "789ea514ef6cff84d617b00615745e8d50cc4fc0d6c25f117532bab87575ea1a"
+    },
+    {
+      "path": "setup-ca-visual/phone-dark-zh-TW-review.png",
+      "sha256": "dd462b72618d6746769422acb082a1e3a234f86f0c351c0cae8e29bda425a2ba"
+    },
+    {
+      "path": "setup-ca-visual/receipt.json",
+      "sha256": "2224d34e80f98cdec8a9b2ab336ec53d843650b95c6d1a72ba470ab00b8cb7c4"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-actions.png",
+      "sha256": "a690be975c0e6b5921afb880d3423e610b387c488f1758a3d1e117143e69b7ed"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-company.png",
+      "sha256": "9e06234ad76d1b225e37badffdd71239842284ae9ee4081d05101d7128da59cc"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-form.png",
+      "sha256": "f691fc860a0f474bb62d4a36c21e00e71d344b85ce9d52c5a14a22d4033fc6e2"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-retention.png",
+      "sha256": "4d45e01caa5bb9bcc397fbc346e767d905292b426e772ce1200d55b47cff1e83"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-run.png",
+      "sha256": "076efacf660afd302082876ac3848b5f1f7c2db076e99f534c0ec5c0ab184a4c"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-trust-source.png",
+      "sha256": "5adba2e41732066df2816310c081507f61fbf46c9ba22f9fba0ca54e8a3178d9"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-host-trust.png",
+      "sha256": "84636993052d2e97d5e8e3a048f3268d74c4657c28ad6d9f957739fec03563db"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-hub-actions.png",
+      "sha256": "25127cd4a80fc22bc5d333f0cb99eb2469d520dc78ed9def553a1bd6b90d9324"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-hub-form.png",
+      "sha256": "fdd61077d2c95f24a1a978e7515819cbdf85f21dc8f1ee80ae4d797d9e244218"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-hub-trust-source.png",
+      "sha256": "acfc6715a4855326ab0b4c822200efd72a732e28af6ac9a63472e56c452f0def"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-hub-trust.png",
+      "sha256": "79705301d2dc5cabcf652075cd6fe34f8cf72923ac0e2d4de0f13158a89403f8"
+    },
+    {
+      "path": "stop-session-control/desk-light-zh-TW-old-session-after-run.png",
+      "sha256": "ba8af4778b3b9a2919a6d89b6b867a8106838a1c7ed8d8e0fba3bb87b0a5a575"
+    },
+    {
+      "path": "stop-session-control/receipt.json",
+      "sha256": "22cac201f5baa0e870546260659d15ed29ab566c527ffe6724435074864be186"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-1-banner.png",
+      "sha256": "6ee55eea50855c97c7a366ae9aa52658f4abc104ae2d0ab8cad80faafe324a5c"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-2-confirm.png",
+      "sha256": "25209fdb618c70546bcf20338747ebb59e78d326374f4f95e7a5cb968282a26a"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-3-progress.png",
+      "sha256": "28aea88e49ecd8ffc1986255d32f016f41f195e8c6bba75c3a180a983fb6b6ba"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-4-failed.png",
+      "sha256": "a45b083fc24817012d944a0135fead72c2c2cde98559b1a0b95c3ebc6aeb81bc"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-4b-log.png",
+      "sha256": "8ebf2237d9a0638869bfcba8aa466dae1fee4025f6dd0e195d24bf10ccff4839"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-5-reload.png",
+      "sha256": "162c2c9b27ed79cbc0dd13774b782469801c2309e36ee3ce70e123007d7754f2"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-6-settings-available.png",
+      "sha256": "9d6b426104d8c687b0ce167113ec6822d2ed3dd2807ce37bbc0f617051810c8f"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-7-settings-current.png",
+      "sha256": "d8c1005da7098328b9f4038c06d80c9b562564c75f3d0d5c35f97e85c64902e8"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-8-settings-alpha-stable.png",
+      "sha256": "c0c7bb24ea4cb9e6f3f1e5c844186728ab95d8f4df557fe662eab72cadb4caab"
+    },
+    {
+      "path": "web-update-web-update-2738/desk-light-zh-TW-9-chat-update.png",
+      "sha256": "b595b3c058d9e90435d0863ef341b7dcced341370e8c25f12e5820492fc68556"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-1-banner.png",
+      "sha256": "f7accdaa0e71e93782d8e741c1af48006d48bbc2520b461107d75052251ff14d"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-2-confirm.png",
+      "sha256": "10f6a9917e7c5f31766e837c3b012060029693e7e5139f9b3826e6b6211639e2"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-3-progress.png",
+      "sha256": "837f41109d6b8983a1a9daf0c8c69fbc74deb42d9b41b73cef8ce6654d298321"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-4-failed.png",
+      "sha256": "ca0ed0d9ec2c59ba14c10721ff7173b92ba05dc0a80907059659f391fe256436"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-4b-log.png",
+      "sha256": "3c54f00f1ad1ee39a70f0e23a416889b51081be1141fbed1cf2715887459f3e8"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-5-reload.png",
+      "sha256": "e29707ac259e8f4cdce03e8fd8b72be7902b14513cf45a614976e7294fe617b5"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-6-settings-available.png",
+      "sha256": "3f6190c7344aca8a1c1b1016f46818caa76fa8e6cb906ad73c2964192a88c226"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-7-settings-current.png",
+      "sha256": "51a7d3a964dd2dfdaa22233718a582cf2ee8c08e237f508aff1e164acfd2f9b8"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-8-settings-alpha-stable.png",
+      "sha256": "6eeaad19d81512793a475d1492485470d3f82cff530ed757dcf4455540dba9f1"
+    },
+    {
+      "path": "web-update-web-update-2738/phone-dark-zh-TW-9-chat-update.png",
+      "sha256": "c0f1e374dba8532f40c55a0735c5229da59fb7b502136aeff9014f62083992e0"
+    },
+    {
+      "path": "web-update-web-update-2738/result.json",
+      "sha256": "61ddd87052dd610644b3c50807a07aca0d738d728a437810ca25803c9f2dbdf8"
+    }
+  ],
+  "privacyCheck": "No private-key/token prefixes or private generated authenticator in public text; synthetic screenshots inspected separately; main command10 withheld."
+}

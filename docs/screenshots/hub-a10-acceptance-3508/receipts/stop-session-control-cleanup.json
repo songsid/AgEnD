@@ -1,0 +1,15 @@
+{
+  "case": "stop-session-control",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/hub-directory-editor/accept-a10-stop-session.mts",
+  "extras": {
+    "MATRIX": "desk-light-zh-TW"
+  },
+  "exitCode": 0,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-gufz6x04",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794218200.6912544,
+  "ownedTempRemoved": true
+}

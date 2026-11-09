@@ -1,0 +1,1 @@
+const a=globalThis.a10,m=a.first;await a.shot(m.page,'A10-18-desk-first-use');const text=await m.page.locator('main').last().innerText();return {text:text.slice(-1700),popup:m.popup?new URL(m.popup.url()).pathname:null,buttons:await m.page.locator('main button').allTextContents(),binding:!!a.currentBinding(m.fx.fm.dataDir)};

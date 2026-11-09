@@ -1,0 +1,492 @@
+{
+  "source": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "sourceFiles": {
+    "src/hub/rooms.ts": "554ed32b1180f508820063672e2f3db43213f12f9bbfb69341501f33132e2e40",
+    "src/hub/http/compose.ts": "1a3845406d13943cbc18d88e7cca9ce0df1e8875b91d8a1ca677a7d77a6d22ce",
+    "src/ui/panel-hub.js": "388c4db4c5c5d5b832d2506c86ae15c4aa63f75c2e1c1a2d8158f9c3f9fe7fa4",
+    "src/hub/room-read-pacer.ts": "3a51777c4c9456ded1f58010340f5c71c20477b0c8470decd4bfcc5a34d9008d"
+  },
+  "mode": "candidate",
+  "browser": "156.0.8078.4",
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "desk-dark-en",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "phone-light-en",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "phone-dark-en",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "checks": [
+        "reload returns current question and answer",
+        "reopen within10s shows chat",
+        "actual held-capacity429 has plain localized busy/retrying",
+        "automatic Retry-After recovery returns chat"
+      ],
+      "reloadStatus": 200,
+      "busy": {
+        "status": 429,
+        "retryAfter": "10"
+      },
+      "status": "PASS"
+    }
+  ],
+  "network": [
+    {
+      "tag": "desk-light-en",
+      "at": 1794217889124,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794217889302,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794217889686,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794217890614,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794217891315,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "desk-light-en",
+      "at": 1794217901334,
+      "path": "/hub/v1/rooms/6a6d1006-5193-4245-8ebc-a95baea19728/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217902493,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217902616,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217903075,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217903667,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217904107,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "at": 1794217914117,
+      "path": "/hub/v1/rooms/ea414bae-2985-4e5b-9d6d-ce64cfccbaa2/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217915308,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217915426,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217915730,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217916203,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217916586,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "desk-dark-en",
+      "at": 1794217926599,
+      "path": "/hub/v1/rooms/ee4fe894-5609-4426-8d04-1cb6fd791b43/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217928259,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217928372,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217928921,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217929811,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217930346,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "at": 1794217940361,
+      "path": "/hub/v1/rooms/6f4f61ac-4b8a-4e2d-9d36-426a9f8b756a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217941746,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217941860,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217942187,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217942700,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217943051,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "phone-light-en",
+      "at": 1794217953064,
+      "path": "/hub/v1/rooms/83149bd0-b888-4cbe-a38f-c1ab386de94a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217954375,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217954527,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217954977,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217955492,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217955831,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "at": 1794217965848,
+      "path": "/hub/v1/rooms/e386ed24-3f03-455c-89c7-f5b59c25aa8a/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217966984,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217967092,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217967354,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217967772,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217968085,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "phone-dark-en",
+      "at": 1794217978098,
+      "path": "/hub/v1/rooms/93914ff8-62e2-4a7d-84ec-6347444d447b/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217979367,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217979488,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217979793,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217980363,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217980700,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 429,
+      "method": "GET",
+      "retryAfter": "10"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "at": 1794217990716,
+      "path": "/hub/v1/rooms/b836a7bd-ac34-4fda-b0d3-309e91741d98/messages",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "csp": [],
+  "scope": "Real HTTP/SQLite/auth/grants/history/lease release with synthetic directory and protocol-member replies; no API response replacement, real account/model/native/fleet.",
+  "cleaned": {
+    "browserClosed": true,
+    "httpsClosed": true,
+    "rigClosed": true,
+    "keyRootRemoved": true,
+    "port": 36297,
+    "pid": 3540870
+  },
+  "status": "PASS"
+}

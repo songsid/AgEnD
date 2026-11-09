@@ -1,0 +1,16 @@
+{
+  "case": "recovery-framed-desk",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/hub-directory-editor/accept-a10-recovery-framed.mts",
+  "extras": {
+    "RECOVERY": "1",
+    "RECOVERY_DEVICE": "desk"
+  },
+  "exitCode": 0,
+  "trackedPids": 11,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-uoai2ooj",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217433.1069763,
+  "ownedTempRemoved": true
+}

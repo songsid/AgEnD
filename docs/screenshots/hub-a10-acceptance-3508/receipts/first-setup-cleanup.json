@@ -1,0 +1,13 @@
+{
+  "case": "first-setup",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/hub-web-setup/accept.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 14,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-m1p0nigs",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794216615.617103,
+  "ownedTempRemoved": true
+}

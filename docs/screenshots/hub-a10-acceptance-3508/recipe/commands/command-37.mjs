@@ -1,0 +1,3 @@
+const a=globalThis.a10,p=a.welcome.find(x=>x.kind==='full'&&x.device==='desk').page;await p.reload();await p.getByText('驗收 Fleet phone',{exact:true}).waitFor();
+const row=p.getByText('驗收 Fleet phone',{exact:true}).locator('xpath=ancestor::*[self::div or self::li][.//button][1]');await row.getByRole('button',{name:'撤銷此 Fleet',exact:true}).click();await p.locator('dialog[open]').waitFor();await a.shot(p,'A10-18-desk-revoke-confirm');a.revokePage=p;a.revokeRow=row;
+return{dialog:await p.locator('dialog[open]').innerText(),buttons:await p.locator('dialog[open] button').evaluateAll(es=>es.map(e=>({text:e.textContent,attr:e.getAttribute('data-confirm')})))};

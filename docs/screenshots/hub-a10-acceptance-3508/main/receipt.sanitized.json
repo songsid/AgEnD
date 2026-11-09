@@ -1,0 +1,939 @@
+{
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "browser": "156.0.8078.4",
+  "started": "2026-11-09T09:30:57.164Z",
+  "stories": [],
+  "screenshots": [
+    "A10-01-desk-signed-out",
+    "A10-02-desk-home-settled",
+    "A10-06-desk-default-off",
+    "A10-01-phone-signed-out",
+    "A10-02-phone-home-settled",
+    "A10-06-phone-default-off",
+    "A10-07-desk-policy-preview",
+    "A10-07-desk-policy-saved",
+    "A10-06-desk-enabled",
+    "A10-06-phone-enabled",
+    "A10-01-desk-ordinary-wait",
+    "A10-01-desk-exact-review",
+    "A10-01-desk-exact-review",
+    "A10-01-desk-host-card",
+    "A10-18-desk-fleet-start",
+    "A10-18-desk-hub-signin",
+    "A10-18-desk-connected",
+    "A10-18-desk-joined",
+    "A10-18-phone-fleet-start",
+    "A10-18-phone-hub-signin",
+    "A10-18-phone-connected",
+    "A10-18-phone-joined",
+    "A10-reg-09-desk-outsider-refused",
+    "A10-reg-09-phone-outsider-refused",
+    "A10-01-desk-owned-confirm-code",
+    "A10-01-desk-after-local-approval",
+    "A10-01-desk-ordinary-connected",
+    "A10-01-phone-ordinary-connected",
+    "A10-reg-12-desk-renamed",
+    "A10-reg-12-phone-info",
+    "A10-19-desk-cleared-info",
+    "A10-17-desk-shared",
+    "A10-17-desk-notices",
+    "A10-17-desk-admin",
+    "A10-17-desk-chats",
+    "A10-05-desk-clean-provenance",
+    "A10-19-phone-cleared-info",
+    "A10-17-phone-shared",
+    "A10-17-phone-notices",
+    "A10-17-phone-admin",
+    "A10-17-phone-chats",
+    "A10-17-phone-drawer",
+    "A10-17-phone-session-menu",
+    "A10-05-phone-clean-provenance",
+    "A10-19-desk-preview-off",
+    "A10-19-desk-preview-saved",
+    "A10-19-phone-preview-saved",
+    "A10-21-desk-none",
+    "A10-21-phone-none",
+    "A10-21-desk-full",
+    "A10-21-phone-full",
+    "A10-21-desk-held",
+    "A10-21-desk-recovered",
+    "A10-21-desk-ask-only-policy",
+    "A10-21-desk-ask-only",
+    "A10-21-phone-ask-only",
+    "A10-23-desk-real-published",
+    "A10-04-desk-absent-with-references",
+    "A10-18-desk-first-use",
+    "A10-18-desk-identity-stopped",
+    "A10-18-phone-identity-stopped",
+    "A10-21-desk-owner-grant",
+    "A10-20-desk-actual-chat",
+    "A10-20-phone-actual-chat",
+    "A10-20-phone-reload",
+    "A10-21-phone-group-refused",
+    "A10-21-desk-explicitly-paused",
+    "A10-21-phone-resumed",
+    "A10-21-desk-resumed",
+    "A10-18-desk-revoke-confirm",
+    "A10-18-phone-revoke-confirm",
+    "A10-18-phone-revoked",
+    "A10-18-desk-revoked",
+    "A10-04-desk-absent-root-referral",
+    "A10-19-desk-stop-confirm",
+    "A10-19-desk-stopped",
+    "A10-19-desk-run",
+    "A10-19-phone-stop-confirm",
+    "A10-19-phone-stopped",
+    "A10-19-phone-run",
+    "A10-19-desk-old-session-after-run",
+    "A10-19-phone-old-session-after-run",
+    "A10-17-desk-explicit-signout",
+    "A10-17-phone-explicit-signout"
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "commands": [
+    {
+      "n": 1,
+      "status": "PASS",
+      "value": {
+        "pages": [
+          {
+            "device": "desk",
+            "rootReferences": "continuation",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          },
+          {
+            "device": "phone",
+            "rootReferences": "continuation",
+            "titles": [
+              "管理"
+            ],
+            "overflow": false
+          }
+        ],
+        "policyUI": "saved",
+        "companyEnabledUI": true
+      }
+    },
+    {
+      "n": 2,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('.pending-card[data-pending=\"0beed7347f2bd7151b98634b3796ce29\"]') to be visible\n\n    at eval (<anonymous>:11:113)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 3,
+      "status": "PASS",
+      "value": {
+        "members": 1,
+        "ordinary": {
+          "url": "/settings/hub",
+          "text": "跳到對話\nAgEnD\nFleet 概覽\n等你處理\n通知\n搜尋\nCtrl K\n新增 Agent\nAgent\n自訂\n編輯\nGENERAL\nG\nC\nGeneral 總管\ngeneral\n後端：Claude Code\n篩選：名稱、模型、後端\n狀態\n\n1 / 1\n\n設定\n登入狀態\n設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n等待確認\n剩 2:20\n連接 Hub\nConnect this Fleet to Hub https://dashboard.lan.example:39643 using your company account. Agent sharing stays separate.\n\n你目前在這台裝置還無法直接確認這項變更。\n\n請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。若倒數結束前還沒完成，請重新送出這項變更。\n綁定驗證器\n其他確認方式\n進階：在主機上確認\n撤回\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n需要先完成本機確認，Hub 登入尚未開始。\n\n請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。\n\n開啟本機確認\nHub 位址或公司連結\n貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。\nFleet 名稱\n\n首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。\n\n以公司帳號登入\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。"
+        },
+        "popup": {
+          "url": "/settings/hub",
+          "text": "跳到對話\nAgEnD\nFleet 概覽\n等你處理\n通知\n搜尋\nCtrl K\n新增 Agent\nAgent\n自訂\n編輯\nGENERAL\nG\nC\nGeneral 總管\ngeneral\n後端：Claude Code\n篩選：名稱、模型、後端\n狀態\n\n1 / 1\n\n設定\n登入狀態\n設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n等待確認\n剩 2:21\nConnect this Fleet to Hub https://dashboard.lan.example:39643 using your company account. Agent sharing stays separate.\n\n你目前在這台裝置還無法直接確認這項變更。\n\n請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。若倒數結束前還沒完成，請重新送出這項變更。\n綁定驗證器\n其他確認方式\n進階：在主機上確認\n撤回\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n需要先完成本機確認，Hub 登入尚未開始。\n\n請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。\n\n開啟本機確認\n返回 Fleet 設定\n\n返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。\n\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。"
+        },
+        "host": {
+          "url": "/ui/needs",
+          "text": "跳到對話\nAgEnD\nFleet 概覽\n等你處理\n通知\n搜尋\nCtrl K\n新增 Agent\nAgent\n自訂\n編輯\nGENERAL\nG\nC\nGeneral 總管\ngeneral\n後端：Claude Code\n篩選：名稱、模型、後端\n狀態\n\n1 / 1\n\n設定\n登入狀態\n等你處理\n\n目前沒有需要你處理的事\n\nagent 在等你時，會出現在這裡。\n\n在這台裝置通知我\n\n分頁在背景時，有新的事等你處理就跳出桌面通知。\n\n開啟"
+        }
+      }
+    },
+    {
+      "n": 4,
+      "status": "PASS",
+      "value": {
+        "cards": [],
+        "buttons": [
+          "",
+          "搜尋Ctrl K",
+          "新增 Agent",
+          "自訂",
+          "編輯",
+          "狀態",
+          "登入狀態Chrome on Linux",
+          "設定精靈",
+          "",
+          "在這台電腦設定",
+          "以公司帳號登入"
+        ]
+      }
+    },
+    {
+      "n": 5,
+      "status": "ERROR",
+      "error": "locator.click: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: '綁定驗證器', exact: true })\n\n    at eval (<anonymous>:3:115)\n    at eval (<anonymous>:5:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 6,
+      "status": "PASS",
+      "value": [
+        {
+          "device": "desk",
+          "submissions": 2,
+          "online": "online",
+          "hubText": "連接 Hub\n\n連接 驗收 Fleet desk\n\nFleet 位址: http://127.0.0.1:55190\n\nFleet 已連接。返回 Fleet 設定後，可自行選擇要分享的 Agent。\n\n返回 Fleet 設定",
+          "binding": true
+        },
+        {
+          "device": "phone",
+          "submissions": 2,
+          "online": "online",
+          "hubText": "連接 Hub\n\n連接 驗收 Fleet phone\n\nFleet 位址: http://127.0.0.1:55200\n\nFleet 已連接。返回 Fleet 設定後，可自行選擇要分享的 Agent。\n\n返回 Fleet 設定",
+          "binding": true
+        }
+      ]
+    },
+    {
+      "n": 7,
+      "status": "PASS",
+      "value": {
+        "outsiders": [
+          {
+            "device": "desk",
+            "refused": true,
+            "binding": false,
+            "text": "連接 Hub\n\n連接 外部部門 Fleet desk\n\nFleet 位址: http://127.0.0.1:55210\n\n返回 Fleet 設定\n\n你的公司帳號沒有連接這個 Fleet 的權限，請洽 Hub 管理員。\n\n再試一次"
+          },
+          {
+            "device": "phone",
+            "refused": true,
+            "binding": false,
+            "text": "連接 Hub\n\n連接 外部部門 Fleet phone\n\nFleet 位址: http://127.0.0.1:55220\n\n返回 Fleet 設定\n\n你的公司帳號沒有連接這個 Fleet 的權限，請洽 Hub 管理員。\n\n再試一次"
+          }
+        ],
+        "firstTrustText": "設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n已確認——套用中…\n連接 Hub\nConnect this Fleet to Hub https://dashboard.lan.example:39643 using your company account. Agent sharing stays separate.\n\n由你的帳號確認（這個瀏覽器已通過網頁驗證），也會通知 General。\n\n設定 Hub\n\n在這台電腦執行團隊 Hub。目錄會驗證登入；你指定的管理員第一次登入時，才會取得管理權限。\n\n在這台電腦設定\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n需要先完成本機確認，Hub 登入尚未開始。\n\n請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。\n\n開啟本機確認\nHub 位址或公司連結\n貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。\nFleet 名稱\n\n首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。\n\n以公司帳號登入\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
+        "dialogs": []
+      }
+    },
+    {
+      "n": 8,
+      "status": "PASS",
+      "value": {
+        "text": "設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\n存取與安全\n整個 Fleet\n\n管理登入、網頁授權、訪客與對外分享。\n\n登入與授權\n訪客\n公開與分享\n\n放寬存取需要 Fleet 管理員確認；收緊的變更立即生效。\n\n詳細說明\n擁有者驗證\n\n使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。\n\n尚未設定\nGoogle Authenticator\nMicrosoft Authenticator\n其他 TOTP 驗證器\n\n只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。\n\n允許從外面連線\n\n請先設定驗證器 App。從外面登入時會要求輸入它的代碼。\n\n遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。\n\n裝置與登入\n\n用 8 碼代碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。\n\n核准不會複製這台裝置的登入狀態，新裝置會取得自己的工作階段。\n\n已登入的裝置\n重新整理\nChrome on Linux 這台裝置\n核准方式：登入碼 · 已登入，尚未驗證擁有者 · 剛剛活動\nChrome on Linux\n核准方式：登入碼 · 已登入，尚未驗證擁有者 · 剛剛活動\n登出\nChrome on Linux\n核准方式：主機 · 已驗證擁有者 · 2 分鐘前活動\n登出\n\n只有已驗證擁有者的裝置才能登出其他裝置。\n\n只有已驗證擁有者的裝置才能新增裝置。請使用 AgEnD 電腦，或用驗證器 App 登入。\n\n新增裝置\n登入工作階段\n網頁登入通知立即生效\n頻道\n關閉\n\n目前生效：頻道 預設\n\nSession 時長，小時（1–720）\n\n目前生效：48 小時 預設\n\n閒置多久後登出，小時（1–720）\n\n目前生效：48 小時 預設\n\n公開連結的工作階段最長 8 小時、閒置 30 分鐘登出，也不會超過連結期限。\n\n新裝置用其他裝置登入時顯示 QR Code\n立即生效\n\n顯示在新裝置登入頁、8 碼代碼旁邊。裡面只有該頁面的網址和代碼，沒有任何憑證；核准仍需要已登入並驗證擁有者的裝置。預設關閉；有連接聊天平台的 fleet 不受影響。\n\n工作階段與通知規則\n網頁授權\n\n這個 fleet 未連接聊天平台。主機 owner 可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。\n\n裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。\n\n允許已驗證擁有者的網頁授權\n\n關閉會立即使現有授權失效；重新開啟不會恢復。\n\n僅限本機\n\n只接受本機瀏覽器；區域網路與 tailnet 上已給出的授權會失效，關掉此限制也不會恢復。\n\n一次授權的有效期（小時，1–48）\n\n目前生效：48 小時 預設\n\n公開連結可從網際網路存取，Cloudflare 看得到流量。開啟其授權須經確認；重新開啟臨時連結授權會結束之前給出的全部授權。\n\n公開連結的授權範圍\n已授權的 session\nChrome on Linux This computer's admin\n2026/11/9 下午5:32:55 授權 · 到 2026/11/11 下午5:32:55\n撤銷網頁授權\n授權規則說明\n瀏覽器終端機\n其他存取設定\n訪客\n管理可登入的訪客與可見 Agent。\n公開與分享\n管理公開入口與唯讀分享連結。\nHub\n將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
+        "links": [
+          "v2.3.5-alpha.10-a10.acceptance.0",
+          "偏好",
+          "外觀",
+          "Agent",
+          "Runtime",
+          "Agent 共用設定",
+          "通知",
+          "聊天與連線",
+          "網頁儀表板",
+          "存取與安全",
+          "Hub",
+          "進階",
+          "設定存取與安全",
+          "設定教學"
+        ],
+        "buttons": [
+          "",
+          "",
+          "設定精靈",
+          "",
+          "登入與授權",
+          "訪客",
+          "公開與分享",
+          "重新整理",
+          "登出",
+          "登出",
+          "新增裝置",
+          "撤銷網頁授權",
+          "訪客管理可登入的訪客與可見 Agent。",
+          "公開與分享管理公開入口與唯讀分享連結。",
+          "Hub將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
+          "以目前的訪客為起點",
+          "設定 token",
+          "清除 token"
+        ]
+      }
+    },
+    {
+      "n": 9,
+      "status": "PASS",
+      "value": {
+        "text": "設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\n存取與安全\n整個 Fleet\n\n管理登入、網頁授權、訪客與對外分享。\n\n登入與授權\n訪客\n公開與分享\n\n放寬存取需要 Fleet 管理員確認；收緊的變更立即生效。\n\n詳細說明\n擁有者驗證\n\n使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。\n\n尚未設定\nGoogle Authenticator\nMicrosoft Authenticator\n其他 TOTP 驗證器\n允許從外面連線\n\n請先設定驗證器 App。從外面登入時會要求輸入它的代碼。\n\n遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。\n\n設定驗證器\n裝置與登入\n\n用 8 碼代碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。\n\n核准不會複製這台裝置的登入狀態，新裝置會取得自己的工作階段。\n\n已登入的裝置\n重新整理\nChrome on Linux 這台裝置\n核准方式：主機 · 已驗證擁有者 · 剛剛活動\nChrome on Linux\n核准方式：登入碼 · 已登入，尚未驗證擁有者 · 剛剛活動\n登出\nChrome on Linux\n核准方式：登入碼 · 已登入，尚未驗證擁有者 · 剛剛活動\n登出\nChrome on Linux\n核准方式：主機 · 已驗證擁有者 · 2 分鐘前活動\n登出\n新增裝置\n登入工作階段\n網頁登入通知立即生效\n頻道\n關閉\n\n目前生效：頻道 預設\n\nSession 時長，小時（1–720）\n\n目前生效：48 小時 預設\n\n閒置多久後登出，小時（1–720）\n\n目前生效：48 小時 預設\n\n公開連結的工作階段最長 8 小時、閒置 30 分鐘登出，也不會超過連結期限。\n\n新裝置用其他裝置登入時顯示 QR Code\n立即生效\n\n顯示在新裝置登入頁、8 碼代碼旁邊。裡面只有該頁面的網址和代碼，沒有任何憑證；核准仍需要已登入並驗證擁有者的裝置。預設關閉；有連接聊天平台的 fleet 不受影響。\n\n工作階段與通知規則\n網頁授權\n\n這個 fleet 未連接聊天平台。主機 owner 可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。\n\n裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。\n\n允許已驗證擁有者的網頁授權\n\n關閉會立即使現有授權失效；重新開啟不會恢復。\n\n僅限本機\n\n只接受本機瀏覽器；區域網路與 tailnet 上已給出的授權會失效，關掉此限制也不會恢復。\n\n一次授權的有效期（小時，1–48）\n\n目前生效：48 小時 預設\n\n公開連結可從網際網路存取，Cloudflare 看得到流量。開啟其授權須經確認；重新開啟臨時連結授權會結束之前給出的全部授權。\n\n公開連結的授權範圍\n已授權的 session\nChrome on Linux This computer's admin\n2026/11/9 下午5:32:55 授權 · 到 2026/11/11 下午5:32:55\nChrome on Linux This computer's admin\n2026/11/9 下午5:37:45 授權 · 到 2026/11/11 下午5:37:45\n撤銷網頁授權\n授權規則說明\n瀏覽器終端機\n其他存取設定\n訪客\n管理可登入的訪客與可見 Agent。\n公開與分享\n管理公開入口與唯讀分享連結。\nHub\n將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
+        "buttons": [
+          "",
+          "",
+          "設定精靈",
+          "",
+          "登入與授權",
+          "訪客",
+          "公開與分享",
+          "設定驗證器",
+          "重新整理",
+          "登出",
+          "登出",
+          "登出",
+          "新增裝置",
+          "撤銷網頁授權",
+          "訪客管理可登入的訪客與可見 Agent。",
+          "公開與分享管理公開入口與唯讀分享連結。",
+          "Hub將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
+          "以目前的訪客為起點",
+          "設定 token",
+          "清除 token"
+        ]
+      }
+    },
+    {
+      "n": 10,
+      "status": "PASS",
+      "value": "WITHHELD: private scratch authenticator setup"
+    },
+    {
+      "n": 11,
+      "status": "PASS",
+      "value": {
+        "enabledViaUI": true
+      }
+    },
+    {
+      "n": 12,
+      "status": "PASS",
+      "value": {
+        "card": "等待確認\n剩 5:00\nConnect this Fleet to Hub https://dashboard.lan.example:39643 using your company account. Agent sharing stays separate.\n輸入驗證器 App 的 6 位數代碼，就能確認這項變更。\n驗證器代碼\n確認\n進階：在主機上確認\n撤回",
+        "inputs": [
+          {
+            "id": "",
+            "placeholder": "000000"
+          }
+        ],
+        "buttons": [
+          "確認",
+          "撤回"
+        ]
+      }
+    },
+    {
+      "n": 13,
+      "status": "PASS",
+      "value": {
+        "ordinarySameSessionApproval": true,
+        "authenticatorUISetup": true,
+        "saved": true,
+        "online": "online"
+      }
+    },
+    {
+      "n": 14,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('h1') to be visible\n\n    at eval (<anonymous>:8:58)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 15,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByText('已儲存').first() to be visible\n\n    at eval (<anonymous>:7:109)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 16,
+      "status": "PASS",
+      "value": {
+        "admins": [
+          {
+            "device": "desk",
+            "path": "/ui/hub/admin",
+            "text": "跳到對話\nAgEnD Hub\n對話\n我分享的 Agent\n管理\n通知\n搜尋\nCtrl K\n新對話\n對話\n\n還沒有對話\n\n設定\n已登入\n管理\n這個 Hub\n\n把 Fleet 配對到這個 Hub，並查看已配對的 Fleet。這裡看不到任何人的對話。\n\n群組權限 實驗性\n\n讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet，不必逐一核准每個人。\n\n開啟群組權限\n公司帳號連接\n\n群組權限允許的人員可連接自己的 Fleet，不需逐一核准。\n\n允許以公司帳號連接 Fleet\n公司連結\n複製公司連結\n例外邀請\n配對一個 Fleet\n產生配對碼\n給 Fleet 的擁有者：10 分鐘內在他的 Fleet 輸入，只能用一次。\n擁有者的登入名稱\n產生配對碼\n擁有者核對指紋\n在他的 Fleet 上，然後在這個 Hub 的「我分享的 Agent」確認。\n你核准\n核對同一個指紋後核准。\n已配對的 Fleet · 3\nC\ncarol 的 Fleet\ncarol\n使用中\nC\ncarol 的 Fleet\ncarol\n使用中\nC\ncarol 的 Fleet\ncarol\n使用中\n這個 Hub\n沒有名稱\n\n名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。\n\nHub 名稱\n最多 64 個字元。\n儲存名稱\nHub ID\nc678edf6-07b9-48a6-82f9-adcd5c3dd3c0\n成員金鑰指紋\n66da d5da 463b b73f 3b98 934f b9a7 2e05\n有人把 Fleet 配對到這個 Hub 時，會比對這組指紋。\n簽發金鑰\nf8800fc66311a09744bbba611a9aba976af6b0652b4a07f59d0421d2971efae8\nAgEnD 版本\n2.3.5-alpha.10-a10.acceptance.0\n安裝方式\n專用：這台電腦只執行 Hub\n在設定 Hub 時選定。",
+            "nav": [
+              {
+                "text": "AgEnD Hub",
+                "href": "/ui/hub"
+              },
+              {
+                "text": "對話",
+                "href": "/ui/hub"
+              },
+              {
+                "text": "我分享的 Agent",
+                "href": "/ui/hub/exposures"
+              },
+              {
+                "text": "管理",
+                "href": "/ui/hub/admin"
+              },
+              {
+                "text": "通知",
+                "href": "/ui/hub?view=notices"
+              }
+            ]
+          },
+          {
+            "device": "phone",
+            "path": "/ui/hub/admin",
+            "text": "跳到對話\n管理\n這個 Hub\n\n把 Fleet 配對到這個 Hub，並查看已配對的 Fleet。這裡看不到任何人的對話。\n\n群組權限 實驗性\n\n讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet，不必逐一核准每個人。\n\n開啟群組權限\n公司帳號連接\n\n群組權限允許的人員可連接自己的 Fleet，不需逐一核准。\n\n允許以公司帳號連接 Fleet\n公司連結\n複製公司連結\n例外邀請\n配對一個 Fleet\n產生配對碼\n給 Fleet 的擁有者：10 分鐘內在他的 Fleet 輸入，只能用一次。\n擁有者的登入名稱\n產生配對碼\n擁有者核對指紋\n在他的 Fleet 上，然後在這個 Hub 的「我分享的 Agent」確認。\n你核准\n核對同一個指紋後核准。\n已配對的 Fleet · 3\nC\ncarol 的 Fleet\ncarol\n使用中\nC\ncarol 的 Fleet\ncarol\n使用中\nC\ncarol 的 Fleet\ncarol\n使用中\n這個 Hub\n驗收團隊 Hub\n\n名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。\n\nHub 名稱\n最多 64 個字元。\n儲存名稱\n移除名稱\nHub ID\nc678edf6-07b9-48a6-82f9-adcd5c3dd3c0\n成員金鑰指紋\n66da d5da 463b b73f 3b98 934f b9a7 2e05\n有人把 Fleet 配對到這個 Hub 時，會比對這組指紋。\n簽發金鑰\nf8800fc66311a09744bbba611a9aba976af6b0652b4a07f59d0421d2971efae8\nAgEnD 版本\n2.3.5-alpha.10-a10.acceptance.0\n安裝方式\n專用：這台電腦只執行 Hub\n在設定 Hub 時選定。",
+            "nav": [
+              {
+                "text": "AgEnD Hub",
+                "href": "/ui/hub"
+              },
+              {
+                "text": "對話",
+                "href": "/ui/hub"
+              },
+              {
+                "text": "我分享的 Agent",
+                "href": "/ui/hub/exposures"
+              },
+              {
+                "text": "管理",
+                "href": "/ui/hub/admin"
+              },
+              {
+                "text": "通知",
+                "href": "/ui/hub?view=notices"
+              }
+            ]
+          }
+        ],
+        "hosts": false
+      }
+    },
+    {
+      "n": 17,
+      "status": "PASS",
+      "value": [
+        {
+          "device": "desk",
+          "name": "shared",
+          "titles": [
+            "我分享的 Agent"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "desk",
+          "name": "notices",
+          "titles": [
+            "通知"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "desk",
+          "name": "admin",
+          "titles": [
+            "管理"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "desk",
+          "name": "chats",
+          "titles": [
+            "對話"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "desk",
+          "provenance": "2.3.5-alpha · da70c790f774; 套件 2.3.5-alpha.10-a10.acceptance.0；原始碼 da70c790f774b1f6b0d32559aa70065f7e8485d3",
+          "source": "readInstalledBuild(actual candidate dist), fixture installed-path boundary"
+        },
+        {
+          "device": "phone",
+          "name": "shared",
+          "titles": [
+            "我分享的 Agent"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "phone",
+          "name": "notices",
+          "titles": [
+            "通知"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "phone",
+          "name": "admin",
+          "titles": [
+            "管理"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "phone",
+          "name": "chats",
+          "titles": [
+            "對話"
+          ],
+          "overflow": false
+        },
+        {
+          "device": "phone",
+          "provenance": "2.3.5-alpha · da70c790f774; 套件 2.3.5-alpha.10-a10.acceptance.0；原始碼 da70c790f774b1f6b0d32559aa70065f7e8485d3",
+          "source": "readInstalledBuild(actual candidate dist), fixture installed-path boundary"
+        }
+      ]
+    },
+    {
+      "n": 18,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('#hubDirectory-url') to be visible\n\n    at eval (<anonymous>:3:98)\n    at eval (<anonymous>:5:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 19,
+      "status": "PASS",
+      "value": {
+        "text": "設定\n2.3.5-alpha · da70c790f774\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\nHub 位址或公司連結\n貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。\nFleet 名稱\n\n首次連接時，這個 Fleet 會記住 Hub 的身分。請使用管理員提供的公司連結。\n\n請先填入 Hub 位址與 Fleet 名稱以繼續。\n\n以公司帳號登入\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。\n\nAD 連線\n\n即使 Hub 或 AD 離線，也能在此編輯目錄連線。儲存後，原本停止的 Hub 仍保持停止。\n\n無法檢查目錄連線。若尚未送出儲存，目前設定不會變更。\n\n重新讀取目前設定\n執行這個 Hub\n\n關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。\n\n執行這個 Hub\nHub 紀錄保留期間\n\n請選擇 1 到 3650 天。縮短天數後，下次每日清理可能永久刪除較早的紀錄；延長天數無法還原已刪除的紀錄。\n\n提問與回答內容（天）\n事件紀錄（天）\n儲存保留期間\nHub 瀏覽器憑證\n\n這只會變更瀏覽器 HTTPS；成員配對及其傳輸憑證保持不變。\n\nSHA-256 指紋\n7E:D6:E7:63:34:1F:1C:C0:98:D8:CB:2B:26:8F:61:DF:0B:DA:62:FB:29:E5:96:30:11:8E:C8:E3:22:26:48:DA\n到期時間\nNov 11 09:30:57 2026 GMT\n產生新的自簽憑證\n匯入憑證與私鑰\n準備替換憑證\n這個 Hub 的 HTML 預覽\n\n開啟後，Agent 在 Hub 對話中傳送的 HTML 頁面可以開成預覽。Hub 用另一個連接埠提供預覽，使用者的瀏覽器必須連得到這個連接埠。\n\n允許 HTML 預覽\n儲存預覽設定\n群組權限 實驗性\n\n讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet。在 Hub 上以管理員身分登入後設定。\n\n在 Hub 上開啟",
+        "health": "ready",
+        "editor": 1,
+        "buttons": [
+          "",
+          "",
+          "設定精靈",
+          "",
+          "以公司帳號登入",
+          "重新讀取目前設定",
+          "儲存保留期間",
+          "準備替換憑證",
+          "儲存預覽設定"
+        ]
+      }
+    },
+    {
+      "n": 20,
+      "status": "PASS",
+      "value": {
+        "previewEnabled": true,
+        "portPersisted": true,
+        "actualOwnedPortAcceptsTCP": true,
+        "hubReady": "ready"
+      }
+    },
+    {
+      "n": 21,
+      "status": "PASS",
+      "value": {
+        "welcome": [
+          {
+            "kind": "none",
+            "device": "desk",
+            "text": "歡迎，dan\n你想做什麼？\n\n你的帳號可以登入，但還沒有允許任何動作。 請聯絡你的 Hub 管理員。\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n請聯絡你的 Hub 管理員。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n請聯絡你的 Hub 管理員。"
+          },
+          {
+            "kind": "none",
+            "device": "phone",
+            "text": "新對話\n對話\n\n歡迎，dan\n你想做什麼？\n\n你的帳號可以登入，但還沒有允許任何動作。 請聯絡你的 Hub 管理員。\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n請聯絡你的 Hub 管理員。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n請聯絡你的 Hub 管理員。"
+          },
+          {
+            "kind": "full",
+            "device": "desk",
+            "text": "歡迎，carol\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：3 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 使用中撤銷此 Fleet\n普通工作階段驗收 使用中撤銷此 Fleet\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+          },
+          {
+            "kind": "full",
+            "device": "phone",
+            "text": "新對話\n對話\n\n還沒有對話\n\n歡迎，carol\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：3 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 使用中撤銷此 Fleet\n普通工作階段驗收 使用中撤銷此 Fleet\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+          }
+        ],
+        "heldThenRetry": true
+      }
+    },
+    {
+      "n": 22,
+      "status": "ERROR",
+      "error": "TypeError: Cannot read properties of undefined (reading 'value')\n    at eval (eval at <anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:3:5950), <anonymous>:3:393)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 23,
+      "status": "PASS",
+      "value": {
+        "cookies": [
+          {
+            "name": "agend_session_96ec35ad0ad3b526",
+            "path": "/"
+          }
+        ],
+        "direct": {
+          "status": 503,
+          "body": {
+            "ok": false,
+            "code": "unavailable"
+          }
+        }
+      }
+    },
+    {
+      "n": 24,
+      "status": "PASS",
+      "value": {
+        "refused": [
+          {
+            "name": "nonhost",
+            "action": "prepare",
+            "status": 403
+          },
+          {
+            "name": "nonhost",
+            "action": "test",
+            "status": 403
+          },
+          {
+            "name": "nonhost",
+            "action": "save",
+            "status": 403
+          },
+          {
+            "name": "guest",
+            "action": "prepare",
+            "status": 401
+          },
+          {
+            "name": "guest",
+            "action": "test",
+            "status": 401
+          },
+          {
+            "name": "guest",
+            "action": "save",
+            "status": 401
+          },
+          {
+            "name": "forwarded",
+            "action": "prepare",
+            "status": 403
+          },
+          {
+            "name": "forwarded",
+            "action": "test",
+            "status": 403
+          },
+          {
+            "name": "forwarded",
+            "action": "save",
+            "status": 403
+          },
+          {
+            "name": "tunnel",
+            "action": "prepare",
+            "status": 403
+          },
+          {
+            "name": "tunnel",
+            "action": "test",
+            "status": 403
+          },
+          {
+            "name": "tunnel",
+            "action": "save",
+            "status": 403
+          },
+          {
+            "name": "publicHost",
+            "action": "prepare",
+            "status": 403
+          },
+          {
+            "name": "publicHost",
+            "action": "test",
+            "status": 403
+          },
+          {
+            "name": "publicHost",
+            "action": "save",
+            "status": 403
+          }
+        ],
+        "configUnchanged": true,
+        "scope": "owned namespace, exact public HTTP auth fences; no non-loopback TCP source assigned"
+      }
+    },
+    {
+      "n": 25,
+      "status": "PASS",
+      "value": {
+        "askOnly": [
+          {
+            "device": "desk",
+            "text": "歡迎，dan\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的存取權不包含連接 Fleet。"
+          },
+          {
+            "device": "phone",
+            "text": "新對話\n對話\n\n還沒有對話\n\n歡迎，dan\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的存取權不包含連接 Fleet。"
+          }
+        ]
+      }
+    },
+    {
+      "n": 26,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByText('查詢').first() to be visible\n\n    at eval (<anonymous>:3:542)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 27,
+      "status": "ERROR",
+      "error": "locator.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('dialog[open] input[type=text]')\n\n    at eval (<anonymous>:5:520)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 28,
+      "status": "ERROR",
+      "error": "locator.click: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('.hub-pick-row button').first()\n\n    at eval (<anonymous>:4:143)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 29,
+      "status": "PASS",
+      "value": {
+        "owner": {
+          "path": "/ui/hub/exposures",
+          "text": "跳到對話\nAgEnD Hub\n對話\n我分享的 Agent\n通知\n搜尋\nCtrl K\n新對話\n對話\n\n還沒有對話\n\n設定\n已登入\n我分享的 Agent\n我分享的 Agent\nGeneral 總管\n分享中\n\n還沒有人可以提問\n\n可以提問的人\n允許提問…\n\n目前沒有人可以提問。\n\n訂閱額度\n向提問者顯示額度\n分享這個 Agent 的可用狀態。確切用量留在你的 Fleet。\n最近的提問\n\n誰問的、什麼時候，有沒有回答。問了什麼留在你 Fleet 的聊天裡。\n\n還沒有人問過。\n\n重新整理\n暫停提問\n\n重新分享之前，沒有人能再提問。已經問過的內容仍然看得到。\n\n暫停…\n允許提問 General 總管\n對方的登入名稱\n對方登入這個 Hub 用的帳號。\n期限\n1 天\n7 天\n30 天\n90 天\n取消\n允許",
+          "inputs": [
+            {
+              "id": "",
+              "type": "checkbox",
+              "ph": ""
+            },
+            {
+              "id": "",
+              "type": "text",
+              "ph": ""
+            }
+          ],
+          "buttons": [
+            "",
+            "允許提問…",
+            "重新整理",
+            "暫停…",
+            "",
+            "取消",
+            "允許"
+          ]
+        },
+        "asker": {
+          "path": "/ui/hub",
+          "text": "跳到對話\nAgEnD Hub\n對話\n我分享的 Agent\n通知\n搜尋\nCtrl K\n新對話\n對話\n新對話\n搜尋 Agent 或擁有者\n\n還沒有可以提問的 Agent\n\n有人把 Agent 開放給你之後，它會出現在這裡，並註明是誰授權的。\n\n只列出有人允許你提問的 Agent。\n\n設定\n已登入\n對話\n\n歡迎，dan\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的存取權不包含連接 Fleet。"
+        }
+      }
+    },
+    {
+      "n": 30,
+      "status": "ERROR",
+      "error": "locator.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByRole('dialog').locator('input[type=text]')\n\n    at eval (<anonymous>:3:113)\n    at eval (<anonymous>:5:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 31,
+      "status": "PASS",
+      "value": {
+        "text": "設定\nv2.3.5-alpha.10-a10.acceptance.0\n設定精靈\n搜尋設定：語言、金鑰…\n你自己\n偏好\n外觀\n整個 Fleet\nAgent\nRuntime\nAgent 共用設定\n通知\n聊天與連線\n網頁儀表板\n存取與安全\nHub\n進階\nHub\n整個 Fleet\n\n將這個 Fleet 連線至團隊 Hub、比對指紋，並選擇要在那裡分享的 Agent。\n\n設定 Hub\n\n在這台電腦執行團隊 Hub。目錄會驗證登入；你指定的管理員第一次登入時，才會取得管理權限。\n\n在這台電腦設定\n連接 Hub\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\n請在 Hub 頁面完成公司帳號登入。\n以公司帳號登入\n取消連接\n開啟 Hub\nHub 成員功能\n\n預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。\n\n允許這個 Fleet 連線至 Hub\n\n關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
+        "popup": "/ui/hub",
+        "buttons": [
+          "",
+          "",
+          "設定精靈",
+          "",
+          "在這台電腦設定",
+          "取消連接"
+        ],
+        "binding": false
+      }
+    },
+    {
+      "n": 32,
+      "status": "ERROR",
+      "error": "locator.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('input[type=text]')\n\n    at eval (<anonymous>:3:93)\n    at eval (<anonymous>:5:3)\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:73)"
+    },
+    {
+      "n": 33,
+      "status": "PASS",
+      "value": {
+        "changedIdentityRefused": true,
+        "requestCountUnchanged": true,
+        "binding": false,
+        "popup": "/settings/hub"
+      }
+    },
+    {
+      "n": 34,
+      "status": "PASS",
+      "value": {
+        "grantByUI": true,
+        "inputs": 1,
+        "report": {
+          "ok": true,
+          "message": "Delivered to the Hub asker."
+        },
+        "reloadMs": 4526
+      }
+    },
+    {
+      "n": 35,
+      "status": "PASS",
+      "value": {
+        "status": 403,
+        "inputsUnchanged": true,
+        "paused": "已暫停\n\n先前由群組允許、目前暫停。確認仍然需要後再逐一恢復。\n\nFleet\n9ea8aba0-f133-4063-b2ab-8bfe8e94e482\ncarol\n恢復",
+        "chat": "G\nGeneral 總管\n代表 carol 回答\n需要確認權限\ndan\n下午05:47\n✓✓\n\n驗收部門權限與回答\n\nGeneral 總管\n下午05:47\n\n這是隔離模型的測試回答。\n\n提問遭到拒絕。請先重新檢查權限，再試一次。\n重新檢查權限\n\n你沒有權限（或權限已被撤回）。",
+        "buttons": [
+          "",
+          "",
+          "重新檢查權限",
+          "停止",
+          "送出"
+        ]
+      }
+    },
+    {
+      "n": 36,
+      "status": "PASS",
+      "value": {
+        "rejoinAloneKeptHeld": true,
+        "explicitResumeUI": true,
+        "inputs": 2,
+        "reports": [
+          {
+            "ok": true,
+            "message": "Delivered to the Hub asker."
+          },
+          {
+            "ok": true,
+            "message": "Delivered to the Hub asker."
+          }
+        ]
+      }
+    },
+    {
+      "n": 37,
+      "status": "PASS",
+      "value": {
+        "dialog": "請確認\n\n要撤銷「驗收 Fleet phone」嗎？它會立即失去 Hub 存取。你的其他 Fleet 和本機 Agent 工作不受影響。\n\n取消\n撤銷此 Fleet",
+        "buttons": [
+          {
+            "text": "",
+            "attr": null
+          },
+          {
+            "text": "取消",
+            "attr": null
+          },
+          {
+            "text": "撤銷此 Fleet",
+            "attr": "yes"
+          }
+        ]
+      }
+    },
+    {
+      "n": 38,
+      "status": "PASS",
+      "value": {
+        "cancelKeptOnline": true,
+        "targetState": "revoked",
+        "otherState": "online",
+        "text": "歡迎，carol\n你想做什麼？\n\n與 Agent 對話\n\n詢問擁有者分享給你的 Agent。\n\n還沒有人分享 Agent 給你。需要 Agent 的擁有者給你存取權。\n\n連接你的 Fleet\n\n將你自己的 AgEnD 與這個 Hub 配對，再選擇要分享的 Agent。\n\n你的 Fleet：2 / 8\n\n驗收 Fleet desk 使用中撤銷此 Fleet\n驗收 Fleet phone 已撤銷\n普通工作階段驗收 使用中撤銷此 Fleet\nFleet 名稱\n取一個你和 Hub 管理員都認得的名字。 只連接你能控制的 Fleet。你的其他 Hub 登入工作階段、已連接的 Fleet 和 Hub 管理員都會收到通知。\n連接我的 Fleet"
+      }
+    },
+    {
+      "n": 39,
+      "status": "PASS",
+      "value": {
+        "status": 200,
+        "body": {
+          "reason": "not-found"
+        },
+        "rowsUnchanged": true,
+        "rootReferences": "continuation",
+        "copy": "管理\n管理\n群組權限\n實驗性\n\n這些目錄群組的成員可以做下列動作。目錄中的每個人仍然都能登入；與 Agent 對話仍需要 Agent 擁有者的授權。\n\n開啟\n\n只允許下列動作。\n\n關閉\n群組\nCN=Owners,DC=example,DC=test\n與 Agent 對話\n分享 Agent\n連接 Fleet\nFleet 數\n移除\nCN=Other,DC=example,DC=test\n與 Agent 對話\n分享 Agent\n連接 Fleet\nFleet 數\n移除\n群組（辨別名稱）\n新增群組\n\n目錄中沒有這個群組。"
+      }
+    },
+    {
+      "n": 40,
+      "status": "ERROR",
+      "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('#hubLogin') to be visible\n\n    at eval (<anonymous>:4:141)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 41,
+      "status": "PASS",
+      "value": {
+        "oldSessionsAfterStopAndRun": [
+          {
+            "device": "desk",
+            "loginPrompt": 0,
+            "adminVisible": 1,
+            "welcomeStatus": 404,
+            "runEnabled": true,
+            "health": "ready"
+          },
+          {
+            "device": "phone",
+            "loginPrompt": 0,
+            "adminVisible": 1,
+            "welcomeStatus": 404,
+            "runEnabled": true,
+            "health": "ready"
+          }
+        ]
+      }
+    },
+    {
+      "n": 42,
+      "status": "ERROR",
+      "error": "locator.waitFor: Error: strict mode violation: locator('.hub-company-join input') resolved to 2 elements:\n    1) <input role=\"switch\" type=\"checkbox\" class=\"s-ui-toggle\"/> aka getByRole('switch', { name: '允許以公司帳號連接 Fleet' })\n    2) <input autocomplete=\"off\"/> aka getByLabel('公司登入名稱')\n\nCall log:\n  - waiting for locator('.hub-company-join input') to be visible\n\n    at eval (<anonymous>:3:168)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/a10-acceptance/scripts/manual/a10-acceptance/driver.mts:62:20)"
+    },
+    {
+      "n": 43,
+      "status": "PASS",
+      "value": {
+        "logout": [
+          {
+            "device": "desk",
+            "authenticatedAfterRun": {
+              "signedIn": true,
+              "companyEnabled": true,
+              "loginPrompt": 0
+            },
+            "explicitLogoutRemovedPrivatePage": true
+          },
+          {
+            "device": "phone",
+            "authenticatedAfterRun": {
+              "signedIn": true,
+              "companyEnabled": true,
+              "loginPrompt": 0
+            },
+            "explicitLogoutRemovedPrivatePage": true
+          }
+        ],
+        "resources": {
+          "nodePid": 3513203,
+          "origins": [
+            "https://dashboard.lan.example:39643",
+            "https://dashboard.lan.example:44643",
+            "http://127.0.0.1:42263",
+            "http://127.0.0.1:55180",
+            "http://127.0.0.1:55190",
+            "http://127.0.0.1:55200",
+            "http://127.0.0.1:55210",
+            "http://127.0.0.1:55220",
+            "http://127.0.0.1:55230"
+          ],
+          "fleetCount": 6
+        },
+        "pageErrors": [],
+        "foreign": []
+      }
+    }
+  ],
+  "scope": "Actual sealed Hub/FleetManager/HubRuntime/settings writer/production LDAP over dummy TLS-BER peer. Real Chrome public web paths. No response stubs, live accounts/fleet/pilot/native/model requests.",
+  "ownedResources": {
+    "nodePid": 3513203,
+    "origins": [
+      "https://dashboard.lan.example:39643",
+      "https://dashboard.lan.example:44643",
+      "http://127.0.0.1:42263",
+      "http://127.0.0.1:55180",
+      "http://127.0.0.1:55190",
+      "http://127.0.0.1:55200",
+      "http://127.0.0.1:55210",
+      "http://127.0.0.1:55220",
+      "http://127.0.0.1:55230"
+    ],
+    "fleetCount": 6
+  }
+}

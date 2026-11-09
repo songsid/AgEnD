@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "case": "host-offline-and-CA-bootstrap",
+      "old-AD-down-read": "PASS",
+      "failed-test-no-effect": "PASS",
+      "inspect-no-bind": "PASS",
+      "trust-cancel-no-effect": "PASS",
+      "anonymous-first": "PASS",
+      "CA-service-text-fits": "PASS",
+      "same-trust-dialog": "PASS",
+      "new-CA-shown": "PASS",
+      "no-save-before-confirm": "PASS",
+      "CA-confirm-text-fits": "PASS",
+      "CA-save-ready": "PASS",
+      "service-only-bootstrap": "PASS",
+      "cancel-stop-keeps-running": "PASS",
+      "host-Run-off-with-AD-down": "PASS",
+      "stopped-offline-editor": "PASS",
+      "stopped-save-stays-off": "PASS",
+      "test-has-no-effect": "PASS",
+      "same-host-test-no-dialog": "PASS",
+      "same-host-one-save": "PASS",
+      "plain-save-stays-off": "PASS",
+      "host-Run-on-ready-with-AD-down": "PASS",
+      "no-page-errors": "PASS",
+      "only-expected-CA-refusal": "PASS"
+    }
+  ],
+  "skew": "",
+  "before": false,
+  "limits": "scratch only; fake people/LDAPS; initializer public D3 API is fixture preparation; no API reply stubs; no real AD/account/pilot/CLI/native service",
+  "cleaned": true,
+  "gallery": {
+    "server": "ldaps://127.0.0.1:41745",
+    "sequence": "supported D3 reset to A before each journey; candidate form → trust → saved B on both surfaces"
+  },
+  "cases-exercised": "PASS",
+  "identity-kept": "PASS",
+  "certificate-kept": "PASS",
+  "groups-off": "PASS",
+  "known-fixture-credentials-only": "PASS"
+}

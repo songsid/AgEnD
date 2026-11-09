@@ -1,0 +1,13 @@
+{
+  "case": "join-wait",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/smoke/smoke-hub-company-wait-3488.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 19,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-x7mointa",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217138.1269763,
+  "ownedTempRemoved": true
+}

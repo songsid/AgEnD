@@ -1,0 +1,1 @@
+const a=globalThis.a10,m=a.members[0];await m.hub.getByRole('button',{name:'綁定驗證器',exact:true}).click();return {path:new URL(m.hub.url()).pathname,text:(await m.hub.locator('body').innerText()).slice(-6000),inputs:await m.hub.locator('input').evaluateAll(es=>es.map(e=>({id:e.id,type:e.type,placeholder:e.placeholder})))};

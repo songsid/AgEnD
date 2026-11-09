@@ -1,0 +1,1 @@
+const a=globalThis.a10;return{cookies:(await a.hostFleet.ctx.cookies(a.r.fleetOrigin)).map(x=>({name:x.name,path:x.path})),direct:await a.hostFleet.ctx.request.get(a.r.fleetOrigin+'/api/settings/hub/directory').then(async r=>({status:r.status(),body:await r.json()})),fmCookie:a.r.fm.webSessionCookieName};

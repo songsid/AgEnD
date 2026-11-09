@@ -1,0 +1,13 @@
+{
+  "case": "web-update",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/smoke/smoke-web-update-2738.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-q7k8ev6k",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217050.235646,
+  "ownedTempRemoved": true
+}

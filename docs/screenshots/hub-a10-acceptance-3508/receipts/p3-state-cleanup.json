@@ -1,0 +1,13 @@
+{
+  "case": "p3-state",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/smoke/smoke-hub-state-m2746.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 23,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-eno7b7xw",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217097.0683463,
+  "ownedTempRemoved": true
+}

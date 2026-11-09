@@ -1,0 +1,11 @@
+{
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "mainProcess": 3513203,
+  "mainPidAbsent": true,
+  "closure": "long-running exec ended143 before driver finally receipt; independent exact ART + owned TMPDIR argv inventory confirms zero owned processes; removed owned scratch roots after that verification",
+  "liveOwnedPids": [],
+  "ownedRootsRemoved": true,
+  "ownedRootCount": 3,
+  "network": "only-loopback private unshare user/network namespace; all namespace owner processes gone; no host listener/network changes",
+  "at": 1794218077.78216
+}

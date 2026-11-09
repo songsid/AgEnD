@@ -1,0 +1,15 @@
+{
+  "case": "room-reload",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/smoke/smoke-hub-room-reload.mts",
+  "extras": {
+    "MATRIX": "quick"
+  },
+  "exitCode": 0,
+  "trackedPids": 14,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-0nfya8wy",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217215.687954,
+  "ownedTempRemoved": true
+}

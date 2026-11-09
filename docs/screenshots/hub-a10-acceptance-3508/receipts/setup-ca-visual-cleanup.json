@@ -1,0 +1,13 @@
+{
+  "case": "setup-ca-visual",
+  "head": "da70c790f774b1f6b0d32559aa70065f7e8485d3",
+  "commandScript": "scripts/manual/hub-web-setup/accept-a10-ca-visual.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 14,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a10qa-xq9jjpew",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794217369.5192754,
+  "ownedTempRemoved": true
+}

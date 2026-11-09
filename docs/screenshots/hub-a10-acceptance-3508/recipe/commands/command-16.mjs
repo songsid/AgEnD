@@ -1,0 +1,1 @@
+const a=globalThis.a10;return {admins:await Promise.all(a.admins.map(async x=>({device:x.device,path:new URL(x.p.url()).pathname,text:(await x.p.locator('body').innerText()).slice(-2200),nav:await x.p.locator('.sidebar a').evaluateAll(es=>es.map(e=>({text:e.textContent,href:e.getAttribute('href')})))}))),hosts:!!a.hostFleet};
