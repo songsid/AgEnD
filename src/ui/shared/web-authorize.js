@@ -44,6 +44,7 @@ register("webauth", {
     rebind: "Re-bind",
     rebindHow: "On this computer, run agend web --code and enter the code it prints.",
     rebindCode: "Code from agend web --code",
+    rebindPlaceholder: "XXXX-XXXX",
     rebindGo: "Bind",
     rebindWorking: "Binding…",
     rebindRefused: "That code didn't work. Run agend web --code again for a new one.",
@@ -87,6 +88,7 @@ register("webauth", {
     rebind: "重新綁定",
     rebindHow: "在這台電腦執行 agend web --code，輸入它顯示的代碼。",
     rebindCode: "agend web --code 取得的代碼",
+    rebindPlaceholder: "XXXX-XXXX",
     rebindGo: "綁定",
     rebindWorking: "綁定中…",
     rebindRefused: "這組代碼不能用。請重新執行 agend web --code 取得新的代碼。",
@@ -276,7 +278,7 @@ export function Rebind() {
   return html`<form class="webauth-rebind-form" onSubmit=${submit}>
     <p class="note">${tn("rebindHow")}</p>
     <div class="row"><input type="text" class="webauth-rebind-code" value=${code} onInput=${(e) => setCode(e.target.value)} autocomplete="off" autocapitalize="characters" spellcheck=${false}
-      aria-label=${tn("rebindCode")} placeholder="XXXX-XXXX" disabled=${busy} />
+      aria-label=${tn("rebindCode")} placeholder=${tn("rebindPlaceholder")} disabled=${busy} />
       <button type="submit" class="btn btn-sm" disabled=${busy || !code.trim()}>${busy ? tn("rebindWorking") : tn("rebindGo")}</button></div>
     ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
   </form>`;
