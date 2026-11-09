@@ -13,3 +13,11 @@ The small addendum targets `cold settings source|local directory settings while 
 `python3 scripts/manual/hub-directory-cold-settings/verify.py` reverses one named guard at a time, requires assertion failures and restores every source byte. Optional arguments select names. Do not run it beside tests, typechecks or source edits. Reports stay under `.artifacts/hub-directory-cold-settings/`; committed evidence is digest-first.
 
 No form/PNG/browser SKEW, real directory/account, native/pilot/live operation or full Stop/reinitialization claim beyond the specified runtime controls. See `docs/design/hub-directory-cold-settings.md`.
+
+R1 regressions cover cached D3 Read → Refresh → Read, refusal of the old draft, late Stop/runtime replacement during reacquisition, synchronous callback reentry into close, and failed constructor cleanup through replacement/Run/Stop. The current production driver close resolves; the rejection tests inject a driver failure.
+
+```sh
+python3 scripts/manual/hub-directory-cold-settings/verify.py cached-reacquisition cached-stop cached-runtime reentrant-read constructor-retention constructor-adoption constructor-drain constructor-run
+```
+
+`mutations.json` retains the original 19-guard receipt at head e0b246606. `mutations-r1.json` records the eight scoped R1 reversals against its own source images; it does not claim a repeated full R0 mutation run.

@@ -1898,6 +1898,36 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
       expect((await runtime.acquireDirectorySettings()).current()).toBe(true); expect(createDirectory).toHaveBeenCalledTimes(2);
     } finally { release(); await pending; await refreshed; await runtime.close(); }
   });
+  it.each(["replacement", "Run", "Stop"])("retains a failed constructor cleanup until its driver acknowledges %s", async mode => {
+    const r = await directoryRuntimeRig(); await r.runtime.close();
+    const config = { ...r.hub.config, hub: { ...r.hub.config.hub, enabled: false } };
+    const secretPath = join(r.hub.home, "hub/secrets/directory-bind"), secret = readFileSync(secretPath);
+    let release!: () => void, enter!: () => void, attempts = 0;
+    const held = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    const close = vi.fn(async () => { if (++attempts === 1) throw Error("injected cleanup failure"); enter(); await held; });
+    const createDirectory = vi.fn(() => {
+      if (createDirectory.mock.calls.length === 1) { writeFileSync(secretPath, "changed during construction"); return { realm: ADMIN.key.realm, close } as any; }
+      return { realm: ADMIN.key.realm, close: async () => {} } as any;
+    });
+    const runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => config, createDirectory, components: { http: async () => r.entry } });
+    await runtime.apply(config);
+    // Observe only the cold connection, after the original live generation has physically closed.
+    const probe = new Database(":memory:"), closeDb = vi.spyOn(Object.getPrototypeOf(probe), "close");
+    let continuation: Promise<unknown> | undefined;
+    try {
+      await expect(runtime.acquireDirectorySettings()).rejects.toThrow();
+      expect(createDirectory).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce();
+      expect(closeDb).not.toHaveBeenCalled(); expect(runtime.directorySettings()).toBeNull();
+      writeFileSync(secretPath, secret);
+      if (mode === "Run") config.hub.enabled = true;
+      continuation = mode === "Stop" ? runtime.close() : mode === "Run" ? runtime.apply(config) : runtime.acquireDirectorySettings();
+      let completed = false; const result = continuation.then(value => { completed = true; return value; });
+      await Promise.race([entered, result.then(() => undefined)]); await new Promise<void>(resolve => setImmediate(resolve));
+      expect(completed).toBe(false); expect(createDirectory).toHaveBeenCalledOnce(); expect(closeDb).not.toHaveBeenCalled();
+      release(); await result;
+      expect(closeDb).toHaveBeenCalledOnce(); expect(createDirectory).toHaveBeenCalledTimes(mode === "Stop" ? 1 : 2);
+    } finally { release(); writeFileSync(secretPath, secret); await continuation?.catch(() => {}); await runtime.close(); closeDb.mockRestore(); probe.close(); }
+  });
   it.each(["unchanged", "ABA", "Refresh", "Stop"])("a held cold selection has the expected lifetime after %s", async mode => {
     const r = await directoryRuntimeRig(); await r.runtime.close();
     r.hub.config.hub.enabled = false;

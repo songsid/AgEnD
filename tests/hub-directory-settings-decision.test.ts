@@ -682,6 +682,23 @@ describe("cold settings source without a directory sign-in", () => {
       release(); await Promise.all(reads); await closing; expect(stopped).toBe(true);
     } finally { release(); await lease.close(); }
   });
+  it("registers physical ownership before a read callback synchronously closes its source", async () => {
+    const driverClose = vi.fn(async () => {});
+    const { r, lease } = await cold(() => true, () => ({ realm: admin.realm, close: driverClose }) as unknown as HubDirectory);
+    const closeDb = vi.spyOn(Object.getPrototypeOf(r.db), "close");
+    let release!: () => void, enter!: () => void, closing: Promise<void> | undefined, stopped = false;
+    const held = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    const read = lease.withDirectoryRead(admin, async () => {
+      closing = lease.close().then(() => { stopped = true; }); enter(); await held;
+    });
+    try {
+      await entered; await new Promise<void>(resolve => setImmediate(resolve));
+      expect(stopped).toBe(false); expect(lease.current()).toBe(false);
+      expect(driverClose).not.toHaveBeenCalled(); expect(closeDb).not.toHaveBeenCalled();
+      release(); await read; await closing;
+      expect(stopped).toBe(true); expect(driverClose).toHaveBeenCalledOnce(); expect(closeDb).toHaveBeenCalledOnce();
+    } finally { release(); await read; await closing; await lease.close(); closeDb.mockRestore(); }
+  });
   it("awaits the old driver close acknowledgment before releasing its database", async () => {
     let release!: () => void, entered!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; }), reached = new Promise<void>(resolve => { entered = resolve; });

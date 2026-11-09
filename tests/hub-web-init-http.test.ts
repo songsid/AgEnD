@@ -328,7 +328,21 @@ describe("host AD HTTP boundaries", () => {
       const identity=readFileSync(join(r.home,"hub/keys/identity.json")),certificate=readFileSync(join(r.home,"hub/web-tls/cert.pem"));
       await r.peer.close(); // Actual owned old LDAPS listener is unreachable throughout read/prepare/test/Save.
       const call=(action:string,value?:unknown)=>request(r.port,action?"POST":"GET",directoryPrefix+action,r.headers(),value===undefined?undefined:JSON.stringify(value));
-      const view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
+      let view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
+      if(mode==="off") {
+        const control=await r.fm.hubDirectorySettings(), oldSource=runtime.directorySettings()!;
+        const {realm:_realm,profile:_profile,...directory}=view.body.directory;
+        const stale=await call("/prepare",{directory:{...directory,url:`ldaps://127.0.0.1:${replacement.port}`},bindPassword:"Dummy-service-only"});
+        expect(stale.status).toBe(200);
+        await runtime.refresh(); expect(oldSource.current()).toBe(false);
+        view=await call(""); expect(view.status).toBe(200);
+        expect(await r.fm.hubDirectorySettings()).toBe(control);
+        expect(runtime.directorySettings()!.source().epoch).toBe(0);
+        expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("off");
+        const refused=await call("/save",{ref:stale.body.ref,confirmation:stale.body.trust.challenge});
+        expect(refused.status).toBe(403); expect(refused.body.code).toBe("denied");
+        expect(runtime.directorySettings()!.source().epoch).toBe(0); expect(replacement.bindRecords).toHaveLength(0);
+      }
       const source=runtime.directorySettings()!.source(),signin=vi.spyOn(source.directory,"signIn"),eligibility=vi.spyOn(source.directory,"checkEligibility");
       const inspected=await call("/ca/inspect",{url:`ldaps://127.0.0.1:${replacement.port}`});
       expect(inspected.status).toBe(200);expect(inspected.body.certificate.fingerprint256.replace(/:/g,"")).toBe(new X509Certificate(certs.leaf.cert).fingerprint256.replace(/:/g,""));

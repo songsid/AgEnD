@@ -1656,10 +1656,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
       }
     }
+    if (this.shuttingDown) throw Error("The Hub directory is unavailable");
+    const runtime = this.hubRuntime ?? await this.hubRuntimeCreated();
+    // The controller outlives individual mounted sources. Refresh can retire its source without changing its owner.
+    await runtime.acquireDirectorySettings();
+    if (this.shuttingDown || runtime !== this.hubRuntime) throw Error("The Hub directory changed");
     const pending = this.hubDirectoryInit ??= (async () => {
-      if (this.shuttingDown) throw Error("The Hub directory is unavailable");
-      const runtime = this.hubRuntime ?? await this.hubRuntimeCreated();
-      await runtime.acquireDirectorySettings();
       if (!this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
       const { createHubDirectorySettingsControl } = await import("./hub/settings-directory-control.js");
       const { createHubDirectory } = await import("./hub/directory/index.js");
