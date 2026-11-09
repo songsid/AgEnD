@@ -1,0 +1,80 @@
+{
+  "baseline": "95fbbd1adf98ae861972136ae6efc2162aa7ff61",
+  "sourceCommit": "1903cfe5c366c4247eb9a91baf968db3675fc576",
+  "cleanAlphaSync": "138c8e5524e702f2de2c0fda34f80a612dc9b71f",
+  "ownProductionBlobs": "Unchanged by clean alpha sync",
+  "focused": {
+    "numTotalTests": 213,
+    "numPassedTests": 213,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "changelog-fragments.test.ts",
+    "hub-company-join-ui.test.ts",
+    "hub-company-join-wait.test.ts",
+    "hub-run-settings-m2682.test.ts",
+    "hub-settings-fleet-m2682.test.ts",
+    "hub-stop-copy-3512.test.ts",
+    "hub-stop-sessions-3512.test.ts",
+    "i18n-ui-literals-2390.test.ts",
+    "named-link-test-2906.test.ts",
+    "settings-control-ui-1423.test.ts",
+    "ui-css-literals-ratchet.test.ts",
+    "web-confirm-1408.test.ts",
+    "web-pending-hub-summary-3511.test.ts"
+  ],
+  "types": {
+    "source": "PASS",
+    "tests": "PASS"
+  },
+  "failFirst": {
+    "3511": {
+      "failed": 2,
+      "total": 5
+    },
+    "3512": {
+      "failed": 2,
+      "total": 2
+    }
+  },
+  "realStopRun": {
+    "passed": 1,
+    "listener": "ECONNREFUSED while stopped",
+    "afterRun": {
+      "validSession": true,
+      "signedOutSession": false,
+      "expiredSession": false
+    },
+    "scope": "Real sealed HubRuntime/HTTPS/production AD with owned LDAPS; no lifecycle behavior changed"
+  },
+  "browser": {
+    "before": {
+      "cases": 4,
+      "checks": 31,
+      "png": 12
+    },
+    "after": {
+      "cases": 4,
+      "checks": 31,
+      "png": 12
+    },
+    "skew": {
+      "cases": 8,
+      "checks": 64,
+      "png": 24
+    },
+    "apiRepliesStubbed": false
+  },
+  "style": {
+    "hubSettingsChecks": 62,
+    "dialogActions": "44px Cancel/Stop",
+    "scope": "Stock gate does not create a pending connection or initialized Hub. Actual copy/overflow/action-tap checks are in the separate browser matrix. Pre-existing Close X remains36px."
+  },
+  "reversals": {
+    "assertionCaught": 7,
+    "restored": true
+  },
+  "visualScope": "Image-only review all12 final after plus before: no new defects. Phone zh waiting-page lower Review button meets bottom nav; confirmation card intact (pre-existing framing).",
+  "cleanup": "All final browser receipts cleaned; fixture logs contain no cleanup error."
+}

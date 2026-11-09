@@ -1,0 +1,105 @@
+{
+  "head": "95fbbd1adf98ae861972136ae6efc2162aa7ff61",
+  "checks": [
+    {
+      "name": "desk-light-en actual pending gate",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en settings exact summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en wait exact summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en exact withdrawal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en Stop promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en cancel keeps Run",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual pending gate",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW settings exact summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW wait exact summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW exact withdrawal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW Stop promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW dialog action taps",
+      "ok": true,
+      "detail": [
+        {
+          "label": "取消",
+          "cls": "btn",
+          "w": 171,
+          "h": 44
+        },
+        {
+          "label": "停止 Hub",
+          "cls": "btn btn-danger",
+          "w": 171,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW cancel keeps Run",
+      "ok": true
+    },
+    {
+      "name": "no foreign requests or script errors",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-settings-summary.png",
+    "desk-light-en-wait-summary.png",
+    "desk-light-en-stop-dialog.png",
+    "phone-dark-zh-TW-settings-summary.png",
+    "phone-dark-zh-TW-wait-summary.png",
+    "phone-dark-zh-TW-stop-dialog.png"
+  ],
+  "errors": [],
+  "foreign": [],
+  "cases": [
+    "desk-light-en",
+    "phone-dark-zh-TW"
+  ],
+  "assetSkew": false,
+  "scope": "Real Fleet HTTP/browser/pending Settings gate; no response stubs. Stop dialog uses an initialized config projection without starting that Hub; actual Stop/Run session lifecycle is a separate owned HTTPS/LDAPS test. No real account/directory/native/model/pilot. Dummy Hub is never contacted.",
+  "browser": "156.0.8078.4",
+  "serverLocale": "en",
+  "before": false,
+  "skew": "old-i18n",
+  "status": "PASS",
+  "cleaned": true
+}

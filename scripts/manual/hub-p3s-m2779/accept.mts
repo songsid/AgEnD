@@ -1,6 +1,6 @@
-/** M-2779: localized immutable summary and truthful service-pause wording. Actual Fleet Settings and its Settings confirmation gate, no Hub request until local approval.
- * REPO=$PWD OUT=<owned-output> PW_DIR=<private-playwright> CHROME=<binary> node --import tsx <this-file>
- * MATRIX=full default. The timeout leg advances only the browser clock, never the server authorization deadline.
+/** M-2779: actual pending Settings requests, page-local summaries and truthful Stop copy.
+ * Owned Fleet HTTP/browser only; dummy Hub is never contacted. No confirmation is approved.
+ * Set REPO, OUT, PW_DIR, CHROME, FONTCONFIG_FILE; choose MATRIX and optional BEFORE/SKEW.
  */
 import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,chmodSync,rmSync,existsSync} from "node:fs";
 import {resolve,join,dirname} from "node:path";
