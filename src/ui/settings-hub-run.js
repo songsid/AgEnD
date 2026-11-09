@@ -1,6 +1,5 @@
 // M-2682 (leader, cid-hubname-ui): fleet Settings → Hub → "Run this Hub" (host owner, on a fleet with an initialized Hub).
-// The switch behind hub.enabled, saved and confirmed like the retention card. Stopping the Hub signs everyone out of it and
-// stops every shared agent's chats there, so turning it off asks once first (the shared confirmation, as for a restart);
+// The switch behind hub.enabled, saved and confirmed like the retention card. Stopping the Hub pauses its listeners and shared Agent chats; valid sign-ins are retained, so turning it off asks once first (the shared confirmation, as for a restart);
 // turning it on doesn't. Own lazy module with its own words, so an older tab's strings still work.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { Skeleton } from "/assets/ui-states.js";
@@ -11,8 +10,8 @@ register("hubRun", {
   en: {
     title: "Run this Hub", on: "Run this Hub",
     hint: "When this is off, the Hub stops: nobody can sign in to it, and chats with shared agents wait until it runs again. Its settings, people and records are kept.",
-    stopTitle: "Stop this Hub?", stopAsk: "Everyone signed in to the Hub is signed out, and chats with shared agents stop until you turn it on again. Nothing is deleted.",
-    summary_on: "Start this Hub. People can sign in again and shared Agent chats resume.", summary_off: "Stop this Hub. Everyone is signed out and shared Agent chats pause. Nothing is deleted.",
+    stopTitle: "Stop this Hub?", stopAsk: "The Hub becomes unavailable and shared Agent chats pause. Valid sign-ins can resume when you turn it on again. Nothing is deleted.",
+    summary_on: "Start this Hub. People can sign in again and shared Agent chats resume.", summary_off: "Stop this Hub and pause shared Agent chats. Valid sign-ins can resume after Run. Nothing is deleted.",
     stopGo: "Stop the Hub", saved_on: "The Hub is starting.", saved_off: "The Hub is stopped.",
     busy: "Another change to the Hub's settings is still finishing. Try again in a moment.",
     failed: "The change could not be saved. Reload and try again.",
@@ -21,8 +20,8 @@ register("hubRun", {
   "zh-TW": {
     title: "執行這個 Hub", on: "執行這個 Hub",
     hint: "關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。",
-    stopTitle: "要停止這個 Hub 嗎？", stopAsk: "所有登入 Hub 的人都會被登出，與分享的 Agent 的對話會暫停，直到你再次開啟。不會刪除任何資料。",
-    summary_on: "啟動這個 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。", summary_off: "停止這個 Hub。所有登入的人都會被登出，與分享的 Agent 的對話會暫停。不會刪除任何資料。",
+    stopTitle: "要停止這個 Hub 嗎？", stopAsk: "Hub 暫時無法使用，與分享的 Agent 的對話會暫停。再次開啟後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
+    summary_on: "啟動這個 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。", summary_off: "停止這個 Hub，暫停與分享的 Agent 的對話。再次開啟後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
     stopGo: "停止 Hub", saved_on: "Hub 正在啟動。", saved_off: "Hub 已停止。",
     busy: "Hub 設定的另一項變更還在完成中，請稍後再試。",
     failed: "無法儲存這項變更。請重新整理後再試。",

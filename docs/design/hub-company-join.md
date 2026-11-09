@@ -4,7 +4,7 @@ Implementation of [#3423](https://github.com/songsid/AgEnD/issues/3423), includi
 
 ## Use
 
-A configured Hub administrator starts at **Administration → Allowed groups and people**, opens the existing group-permission editor, and enables company-account Fleet connections there. **Copy colleague connection link** copies the exact server-supplied address and identity descriptor; copying creates no invitation, pairing offer or grant. Group permissions must grant `pair_fleet` for automatic connections. The public link explains how to open the person's own Fleet Settings; it neither signs in nor enrolls anything.
+A configured Hub administrator starts at **Administration → Allowed groups and people**. The leading card contains the company-account Fleet connection switch; **Manage group permissions** opens the separate group editor. **Copy colleague connection link** copies the exact server-supplied address and identity descriptor; copying creates no invitation, pairing offer or grant. Group permissions must grant `pair_fleet` for automatic connections. The public link explains how to open the person's own Fleet Settings; it neither signs in nor enrolls anything.
 
 In the Fleet's real **Settings → Hub**, enter the company link or the Hub's HTTPS web address, name the Fleet, and choose **Sign in with company account**. The initiating host operator's own current loopback session folds local consent into Start, including on a chat Fleet. Other local admin sessions use the existing General/authenticator confirmation; company sign-in never supplies that local authority.
 
