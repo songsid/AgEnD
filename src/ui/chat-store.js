@@ -523,21 +523,26 @@ export function createChatStore(deps) {
   async function runCommand(target, command, args, opts = {}) {
     if (!target || !commandFree(target)) return;
     const alive = opts.alive || (() => true);
-    s.commands[target] = { command, busy: true };
+    if (!alive()) return;
+    const previous = s.commands[target];
+    const pending = { command, busy: true, ...(opts.action && previous?.command === command ? { choices: previous.choices } : {}) };
+    s.commands[target] = pending;
     changed(target);
     const post = async (extra) => {
-      try { return await api("POST", "/ui/command", { instance: target, command, ...(args ? { args } : {}), ...extra }); }
+      try { return await api("POST", "/ui/command", { instance: target, command, ...(args ? { args } : {}), ...(opts.action ? { action: opts.action } : {}), ...extra }); }
       catch (err) { return { error: err && err.message ? err.message : t("chat.disconnected") }; }
     };
     let r = await post({});
+    if (!alive() || s.commands[target] !== pending) return;
     if (r && r.confirm) {
       const yes = deps.confirm ? await deps.confirm({ title: `/${command}`, message: r.confirm.message, confirmLabel: t(command === "backend" ? "chat.cmdConfirmBackend" : "chat.cmdConfirm"), danger: true }) : false;
-      if (!yes || !alive()) { delete s.commands[target]; changed(target); return; }
+      if (!yes || !alive() || s.commands[target] !== pending) { if (s.commands[target] === pending) { delete s.commands[target]; changed(target); } return; }
       r = await post({ confirm: r.confirm.token });
+      if (!alive() || s.commands[target] !== pending) return;
     }
     const follow = r && r.follow && r.follow.kind === "compact" ? r.follow : null;
     showCommand(target, r && r.choices ? { command, busy: false, choices: r.choices }
-      : r && r.error ? { command, busy: false, error: r.error }
+      : r && r.error ? { command, busy: false, error: r.error, ...(opts.action ? { choices: pending.choices } : {}) }
       : { command, busy: false, text: (r && r.text) || "", ...(r && r.sent === true ? { sent: true } : {}), ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
     changed(target);
   }

@@ -492,6 +492,21 @@ describe("the MCP tool is unchanged", () => {
 
 // ── #1807 review (Prism r1) ──────────────────────────────────────────────────
 
+describe("M-2731 refreshed backend flow", () => {
+  it("uses the refreshed chosen backend through model→effort→final confirm and one write", async () => {
+    const f = fleet(); f.any.runBackendProbeWorker = vi.fn(async () => ({ models: [{ id: "new-model", label: "New model" }] }));
+    f.any.backendEffortLevels = vi.fn(() => ["low", "high"]);
+    const command = (args: string, extra = {}) => f.fm.webCommand({ instance: "worker", command: "backend", args, ...extra }, { publicLink: false });
+    const refreshed = await command("codex", { action: "refresh" });
+    expect(refreshed.body.choices!.options.some(o => o.id === "codex new-model")).toBe(true); expect(f.saves).toEqual([]);
+    const effort = await command("codex new-model"); expect(effort.body.choices!.step).toBe("effort");
+    expect(effort.body.choices!.options.map(o => o.id)).toContain("codex new-model high"); expect(f.saves).toEqual([]);
+    const ask = await command("codex new-model high"); expect(ask.body.confirm!.message).toContain(t("backend.confirm_fresh", "codex")); expect(f.saves).toEqual([]);
+    await command("codex new-model high", { confirm: ask.body.confirm!.token });
+    expect(f.saves).toHaveLength(1); expect(f.worker()).toMatchObject({ backend: "codex", model: "new-model", effort: "high" });
+  });
+});
+
 describe("review r1: effort levels are the model's that will run (codex's differ per model)", () => {
   function codexHome(configured: string) {
     const home = mkdtempSync(join(dataDir, "codex-home-"));

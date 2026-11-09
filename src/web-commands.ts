@@ -23,7 +23,11 @@ export type WebCommand = typeof WEB_COMMANDS[number];
 export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(["save"]);
 export const MAX_COMMAND_ARGS = 4000;
 
+export type WebModelAction = "refresh" | "more" | "refreshAll";
 export interface WebChoices {
+  actions?: WebModelAction[];
+  args?: string;
+  step?: "backend" | "model" | "effort";
   current: string | null; options: Array<{ id: string; label: string; disabled?: string; signIn?: string }>;
   /** What the choice is for, when the command asks more than one thing (/backend: backend, then model, then effort). */
   prompt?: string;
@@ -44,6 +48,7 @@ export interface WebCommandDeps {
   applyModel(instance: string, name: string): Promise<string>;
   /** The model menu from the cached catalog only (never a live probe on this path); null: no list to offer. */
   modelChoices(instance: string): WebChoices | null;
+  modelAction?(instance: string, command: "model" | "backend", args: string, action: WebModelAction, opts: { publicLink: boolean }): Promise<WebBackendAnswer>;
   applyEffort(instance: string, level: string): Promise<string>;
   effortChoices(instance: string): WebChoices | null;
   /** #1806: the next `/backend` step for these arguments (each choice's id is the arguments with it added). */
@@ -62,7 +67,7 @@ export interface WebCommandDeps {
   t(key: string, ...args: string[]): string;
 }
 
-export interface WebCommandInput { instance: string; command: string; args?: string; confirm?: string }
+export interface WebCommandInput { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }
 export interface WebCommandResult {
   status: number;
   body: {
@@ -105,6 +110,11 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
   const originalArgs = input.args ?? "";
   const args = originalArgs.trim();
   const ok = (text: string) => ({ status: 200, body: { text } });
+  if (input.action !== undefined) {
+    if (opts.guest || !["refresh", "more", "refreshAll"].includes(input.action) || (command !== "model" && command !== "backend") || !deps.modelAction) return { status: 400, body: { error: deps.t("web.command_no_choices", `/${command}`) } };
+    const result = await deps.modelAction(instance, command, args, input.action, { publicLink: opts.publicLink });
+    return { status: "error" in result ? 400 : 200, body: result };
+  }
   switch (command) {
     case "ctx": return ok(await deps.ctx(instance));
     case "compact": {

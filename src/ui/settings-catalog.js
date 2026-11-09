@@ -53,6 +53,15 @@ export function useModelCatalog(backend, instance) {
   return answer && Array.isArray(answer.models) ? answer.models : [];
 }
 
+/** Shared snapshot cache for upgraded fields; accessed through a namespace so old held modules still load. */
+export function readModelCatalog(target) {
+  const url = `/ui/models?${new URLSearchParams(target)}`;
+  return cached(url).then(answer => { if (!answer || !Array.isArray(answer.models)) throw Error("Model catalog unavailable"); return answer.models; });
+}
+export function rememberModelCatalog(target, answer) {
+  cache.set(`/ui/models?${new URLSearchParams(target)}`, { at: performance.now(), value: answer, pending: null });
+}
+
 /** A state that keeps a backend from being chosen (shown, disabled, with why); "unknown" never does. */
 export const BLOCKING_STATES = ["not_installed", "not_signed_in", "too_old"];
 
