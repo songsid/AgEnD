@@ -1,5 +1,6 @@
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { handleHubDirectoryHostNoticeHttp } from "./hub/settings-directory-host-notice-http.js";
+import { handleHubDirectoryHostSettingsHttp } from "./hub/settings-directory-host-http.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
 import { hubPreviewPatch, hubPreviewSettingsView, hubRunPatch, hubRunView } from "./hub-host-settings.js";
 import { setNoticeMode } from "./notice-delivery.js";
@@ -102,6 +103,7 @@ export interface SettingsApiContext extends AppShellContext {
   hubSetupSession?(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null;
   hubSetup?():Promise<import("./hub/init/web.js").HubWebInitializer>;
   hubDirectoryNotices?(): Promise<import("./hub/settings-directory-host-notices.js").HubDirectoryHostNotices>;
+  hubDirectorySettings?(): Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl>;
   hubCompanySession?(req: IncomingMessage): import("./hub/join/local-journal.js").JoinLocalSession | null;
   hubCompanyJoin?(): Promise<import("./hub/join/local.js").CompanyJoinController>;
   invalidateHubCompanyJoin?(): void;
@@ -1082,6 +1084,7 @@ export function handleSettingsRequest(
 
   if(handleHubWebInitHttp(req,res,url,ctx))return true;
   if (handleHubDirectoryHostNoticeHttp(req, res, url, ctx)) return true;
+  if (handleHubDirectoryHostSettingsHttp(req, res, url, ctx)) return true;
 
   // M-2682 (leader, cid-hubname-ui): "Run this Hub" — hub.enabled, not sealed: the ordinary save; the runtime mounts or stops the
   // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); never over the public link.

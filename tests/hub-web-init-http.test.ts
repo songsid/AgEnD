@@ -55,7 +55,7 @@ async function fixture(){
   let runtime:HubRuntime|undefined;
   const r={home,fm,internal,peer,users,port,origin,token,host,headers,call,input,signIn,
     async mount(){runtime=new HubRuntime({home,log:sink});await runtime.apply({hub:fm.getRawFleetConfig().hub});return runtime;},
-    async close(){await (await internal.hubSetupInit)?.close();await runtime?.close();const s=internal.healthServer as Server;internal.healthServer=null;
+    async close(){await (await internal.hubSetupInit)?.close();await (await internal.hubDirectoryInit)?.close();await internal.hubRuntime?.close();await runtime?.close();const s=internal.healthServer as Server;internal.healthServer=null;
       s.closeAllConnections();await new Promise<void>(resolve=>s.close(()=>resolve()));internal.webSessions?.flush?.();await peer.close();rmSync(home,{recursive:true,force:true});}};
   cleanups.push(r.close);return r;
 }
@@ -200,4 +200,135 @@ describe("initial setup from the actual host launch session",()=>{
     r.internal.webSessions.revokeById(r.host.id);
     expect([401,403]).toContain((await r.call("/commit",{ref:again.body.ref})).status);expect(r.fm.getRawFleetConfig().hub).toBeUndefined();
   },20_000);
+});
+
+
+const directoryPrefix = "/api/settings/hub/directory";
+describe("AD settings from the local host session", () => {
+  it("acquires D3 authority before the shared control, with no directory sign-in", async () => {
+    const r = await fixture(), read = vi.fn((_context: unknown) => ({ directory: { realm: "fictional" }, bindPasswordSet: true, reauthentication: "host" }));
+    const create = vi.spyOn(r.fm, "hubDirectorySettings").mockResolvedValue({ read } as any);
+    const response = await request(r.port, "GET", directoryPrefix, r.headers());
+    expect(response.status).toBe(200); expect(response.body.reauthentication).toBe("host");
+    expect(create).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
+    expect(read.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: "host-owner", sessionId: expect.any(String), requestId: expect.any(String) } });
+    expect(r.peer.bindRecords).toHaveLength(0);
+  }, 20_000);
+});
+
+
+describe("host AD HTTP boundaries", () => {
+  it("refuses other admin, guest, header, cross-site, CSRF, forwarded and public requests before acquiring the controller", async () => {
+    const r = await fixture(), create = vi.spyOn(r.fm, "hubDirectorySettings");
+    const other = await r.signIn(r.fm.issueDashboardLogin()!.display);
+    const guest = r.internal.webSessions.create({tier:"guest", surface:"local", label:"guest", owner:{adapterId:"test",userId:"guest"}, tokenEpoch:tokenEpoch(r.token)});
+    const call = (extra:Record<string,string> = {}, id=r.host.id, path=directoryPrefix+"/prepare", method="POST", body="{}") => request(r.port, method, path, {...r.headers(id), ...extra}, body);
+    const responses = [await call({},other.id), await call({},guest.sessionId), await call({"x-agend-token":r.token}),
+      await call({authorization:"Bearer "+r.token}), await call({origin:"https://outside.example.test"}), await call({[WEB_CSRF_HEADER]:"wrong"}),
+      await call({"x-forwarded-for":"198.51.100.1"}), await call({host:"public.example.test"})];
+    expect(responses).toHaveLength(8); expect(responses.every(x=>[401,403].includes(x.status))).toBe(true);
+    expect((await call({},r.host.id,directoryPrefix+"/prepare?override=host")).status).toBe(400);
+    expect((await call({},r.host.id,directoryPrefix+"/save","GET","")).status).toBe(405);
+    expect((await call({"content-type":"text/plain"})).status).toBe(400);
+    expect((await call({},r.host.id,directoryPrefix+"/prepare","POST",'{"ref":1,"ref":2}')).status).toBe(400);
+    expect(create).not.toHaveBeenCalled(); expect(r.peer.bindRecords).toHaveLength(0);
+  },20_000);
+
+  it.each(["prepare","test","cancel","save"] as const)("routes %s through the same host actor without browser rotation",async action=>{
+    const r=await fixture(),result=action==="save"?{state:"restored",receiptId:"fixture",directoryEpoch:2}:{ok:true};
+    const effect=vi.fn((_input:unknown,_context:unknown)=>result);
+    vi.spyOn(r.fm,"hubDirectorySettings").mockResolvedValue({[action==="save"?"apply":action]:effect} as any);
+    const response=await request(r.port,"POST",directoryPrefix+"/"+action,r.headers(),JSON.stringify({ref:"fixture"}));
+    expect(response.status).toBe(action==="save"?503:200);expect(response.body).toEqual(result);
+    expect(effect).toHaveBeenCalledExactlyOnceWith({ref:"fixture"},expect.objectContaining({actor:expect.objectContaining({kind:"host-owner"}),current:expect.any(Function),signal:expect.any(AbortSignal)}));
+    expect(r.peer.bindRecords).toHaveLength(0);
+  },20_000);
+
+  it("a revoked authority during a held body cannot acquire the control",async()=>{
+    const r=await fixture(),create=vi.spyOn(r.fm,"hubDirectorySettings"),source=vi.spyOn(r.fm,"hubSetupSession");
+    let client!:ReturnType<typeof httpRequest>;
+    const response=new Promise<Reply>((resolve,reject)=>{
+      client=httpRequest({host:"127.0.0.1",port:r.port,method:"POST",path:directoryPrefix+"/prepare",headers:r.headers()},res=>{let text="";res.on("data",c=>text+=c);res.on("end",()=>resolve({status:res.statusCode!,headers:res.headers,body:JSON.parse(text)}));});client.on("error",reject);
+    });
+    client.write("{");await vi.waitFor(()=>expect(source).toHaveBeenCalledOnce());
+    const state=r.fm.webAuthorityState();vi.spyOn(r.fm,"webAuthorityState").mockReturnValue({...state,epoch:state.epoch+1});
+    client.end('"ref":"dummy"}');expect((await response).status).toBe(403);
+    expect(create).not.toHaveBeenCalled();expect(r.peer.bindRecords).toHaveLength(0);
+  },20_000);
+
+  it.each(["epoch","session","disconnect"])("a held factory cannot continue after %s invalidation", async mode => {
+    const r=await fixture(), entered=held(), resume=held(), closed=held(), settled=held(); let released=false;
+    const read=vi.fn(),create=vi.spyOn(r.fm,"hubDirectorySettings").mockImplementation(async()=>{entered.release();await resume.promise;return {read} as any;});
+    const server=r.internal.healthServer as Server;
+    const observe=(req:import("node:http").IncomingMessage,res:import("node:http").ServerResponse)=>{
+      if(req.url!==directoryPrefix)return;
+      res.once("close",closed.release);
+      const remove=res.removeListener.bind(res);
+      vi.spyOn(res,"removeListener").mockImplementation((event,listener)=>{const out=remove(event,listener);if(event==="close"&&released)settled.release();return out;});
+    };
+    server.prependListener("request",observe);
+    let client:ReturnType<typeof httpRequest>;
+    const response=new Promise<Reply|null>((resolve,reject)=>{
+      client=httpRequest({host:"127.0.0.1",port:r.port,path:directoryPrefix,headers:r.headers()},res=>{let text="";res.on("data",c=>text+=c);res.on("aborted",()=>resolve(null));res.on("end",()=>resolve({status:res.statusCode!,headers:res.headers,body:JSON.parse(text)}));});
+      client.on("error",()=>resolve(null));client.end();
+    });
+    try{
+      await entered.promise; expect(create).toHaveBeenCalledOnce();
+      if(mode==="disconnect"){client!.destroy();await closed.promise;}
+      else if(mode==="session")r.internal.webSessions.revokeById(r.host.id);
+      else {const original=r.fm.webAuthorityState.bind(r.fm),state=original();vi.spyOn(r.fm,"webAuthorityState").mockReturnValue({...state,epoch:state.epoch+1});}
+      released=true;resume.release();await settled.promise;
+      expect(read).not.toHaveBeenCalled();const result=await response;expect(result?.status??null).toBe(mode==="disconnect"?null:403);
+    }finally{resume.release();server.removeListener("request",observe);client!.destroy();await response;}
+  },20_000);
+
+  it("reports only a bounded error and preserves busy Retry-After",async()=>{
+    const r=await fixture(),create=vi.spyOn(r.fm,"hubDirectorySettings").mockRejectedValue(Error("Dummy-private-directory-detail"));
+    const unavailable=await request(r.port,"GET",directoryPrefix,r.headers());
+    expect(unavailable.status).toBe(503);expect(unavailable.body).toEqual({ok:false,code:"unavailable"});
+    const {HubProtocolError}=await import("../src/hub/validation.js");create.mockRejectedValue(new HubProtocolError("backpressure"));
+    const busy=await request(r.port,"GET",directoryPrefix,r.headers());expect(busy.status).toBe(429);expect(busy.headers["retry-after"]).toBe("10");
+    expect(JSON.stringify([unavailable,busy])).not.toContain("Dummy-private-directory-detail");
+  },20_000);
+
+  it("replaces an unreachable AD through D3 and the real shared writer, without AD sign-in",async()=>{
+    const r=await fixture(),replacement=await groupWirePeer(certs.leaf,r.users);
+    try{
+      const draft=await r.call("/prepare",r.input);expect(draft.status).toBe(200);
+      expect((await r.call("/commit",{ref:draft.body.ref})).status).toBe(200);
+      r.internal.hubEffectsReady=true;await r.internal.applyHubSwitches();
+      const runtime=r.internal.hubRuntime as HubRuntime;expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
+      const source=runtime.directorySettings()!.source(),signin=vi.spyOn(source.directory,"signIn"),eligibility=vi.spyOn(source.directory,"checkEligibility");
+      const identity=readFileSync(join(r.home,"hub/keys/identity.json")),certificate=readFileSync(join(r.home,"hub/web-tls/cert.pem"));
+      await r.peer.close(); // Actual owned old LDAPS listener is unreachable throughout read/prepare/test/Save.
+      const call=(action:string,value?:unknown)=>request(r.port,action?"POST":"GET",directoryPrefix+action,r.headers(),value===undefined?undefined:JSON.stringify(value));
+      const view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
+      expect(view.body.directory.bindPasswordRef).toBeUndefined();expect(JSON.stringify(view.body)).not.toContain(r.input.bindPassword);
+      const {realm:_realm,profile:_profile,...editable}=view.body.directory;
+      const prepared=await call("/prepare",{directory:{...editable,url:`ldaps://127.0.0.1:${replacement.port}`},bindPassword:"Dummy-service-only"});
+      expect(prepared.status).toBe(200);expect(prepared.body.trust).toMatchObject({leafFingerprint:new X509Certificate(certs.leaf.cert).fingerprint256.replace(/:/g,"")});
+      expect((await call("/test",{ref:prepared.body.ref})).body.code).toBe("trust");
+      const confirmed={ref:prepared.body.ref,confirmation:prepared.body.trust.challenge};
+      r.users[0]!.eligible=false;
+      expect((await call("/test",confirmed)).status).toBe(403);
+      expect((r.fm.getRawFleetConfig().hub as {directory:{url:string}}).directory.url).toBe(r.input.directory.url);
+      expect(runtime.directoryDecision()!.inspect().directoryEpoch).toBe(0);
+      r.users[0]!.eligible=true;
+      expect((await call("/test",confirmed)).status).toBe(200);
+      const saved=await call("/save",confirmed);expect(saved.status).toBe(200);expect(saved.body.state).toBe("ready");
+      expect((saved.headers["set-cookie"]??[]).some(c=>c.startsWith("agend_hub_"))).toBe(false);expect(signin).not.toHaveBeenCalled();expect(eligibility).not.toHaveBeenCalled();
+      expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
+      expect((r.fm.getRawFleetConfig().hub as {directory:{url:string}}).directory.url).toBe(`ldaps://127.0.0.1:${replacement.port}`);
+      expect(readFileSync(join(r.home,"hub/keys/identity.json"))).toEqual(identity);expect(readFileSync(join(r.home,"hub/web-tls/cert.pem"))).toEqual(certificate);
+      const db=new Database(join(r.home,"hub/hub.sqlite"),{readonly:true});try{
+        expect(db.prepare("SELECT * FROM hub_sessions").all()).toHaveLength(0);
+        const operation=JSON.parse((db.prepare("SELECT body FROM hub_settings_operations WHERE id=?").get(saved.body.receiptId) as {body:string}).body);
+        expect(operation.actor.kind).toBe("host-owner");expect(operation.changes).toEqual(["server","secret"]);
+        expect(db.prepare("SELECT * FROM hub_settings_security_targets").all()).toHaveLength(2);
+        expect(JSON.parse((db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as {body:string}).body).state).toBe("never-enabled");
+      }finally{db.close();}
+      expect(replacement.bindRecords.length).toBeGreaterThan(0);
+      expect(replacement.bindRecords.every(b=>b.dn===r.input.directory.bindDn&&b.password==="Dummy-service-only")).toBe(true);
+    }finally{await replacement.close();}
+  },30_000);
 });
