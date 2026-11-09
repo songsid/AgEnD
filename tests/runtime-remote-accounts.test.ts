@@ -201,9 +201,9 @@ describe("add account and sign in (Runtime side of RuntimeSignInTransport)", () 
     const f = fixture({ find: async () => null }); f.on();
     await expect(ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor })).rejects.toThrow(/Claude Code is not installed/);
   });
-  it("a protocol error from an unmasked identity names the field only: the CLI-side read is checked again before anything is stored or sent", async () => {
+  it("a protocol error from an address that does not fit names the field only: the CLI-side read is checked again before anything is stored or sent", async () => {
     const f = fixture(); f.on(); owned(f);
-    f.setAnswer({ loggedIn: true, identity: { maskedEmail: "alice@example.com", plan: "team" } });
+    f.setAnswer({ loggedIn: true, identity: { maskedEmail: `alice${"a".repeat(255)}@example.com`, plan: "team" } });
     const error = await ask(f, "accounts.check", { cli: "claude-code", profile: "work" }).catch((e: Error) => e);
     expect(error).toBeInstanceOf(Error); expect(String((error as Error).message)).not.toContain("alice");
     expect(cachedCredentialStatus(f.root, "claude-code", "work")?.identity).toBeUndefined();

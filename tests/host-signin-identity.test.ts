@@ -1,6 +1,6 @@
 /**
- * Settings → Agents → CLI sign-ins shows which account each Claude Code sign-in is: a masked e-mail and a plan, read on the AgEnD host from the
- * same `claude auth status` answer authCheck uses. Fixtures only (example.com); the full address must appear nowhere AgEnD answers, logs or keeps.
+ * Settings → Agents → CLI sign-ins shows which account each Claude Code sign-in is: an e-mail (the whole address) and a plan, read on the AgEnD host from the
+ * same `claude auth status` answer authCheck uses. Fixtures only (example.com); the address is in the answer to a local administrator on the Accounts page, and nowhere AgEnD logs or keeps.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
@@ -52,23 +52,36 @@ const reads = async (fm: any): Promise<void> => { await vi.waitFor(() => expect(
 const read = async (fm: any): Promise<void> => { fm.refreshSignInIdentities(); await reads(fm); };
 
 describe("the host's own sign-in list: which account is each Claude Code sign-in", () => {
-  it("shows the masked e-mail and plan of the default sign-in and of every profile an agent uses, from one `auth status` each", async () => {
+  it("shows the whole e-mail and plan of the default sign-in and of every profile an agent uses, from one `auth status` each", async () => {
     const f = makeFleet(); f.answers.set("work", status({ email: "bob.fixture@example.org", subscriptionType: "max" })); f.answers.set("constructor", status({ subscriptionType: "something-new" }));
     expect(f.fm.backendSignInTargets().some((target: any) => target.identity)).toBe(false);       // nothing read yet: nothing shown
     await read(f.fm);
     const targets = f.fm.backendSignInTargets();
     const byName = (profile?: string) => targets.find((target: any) => target.backend === "claude-code" && target.profile === profile);
-    expect(byName(undefined).identity).toEqual({ maskedEmail: "al***@example.com", plan: "team" });
-    expect(byName("work").identity).toEqual({ maskedEmail: "bo***@example.org", plan: "max" });
-    expect(byName("constructor").identity).toEqual({ maskedEmail: "al***@example.com", plan: "unknown" });
+    expect(byName(undefined).identity).toEqual({ maskedEmail: RAW, plan: "team" });
+    expect(byName("work").identity).toEqual({ maskedEmail: "bob.fixture@example.org", plan: "max" });
+    expect(byName("constructor").identity).toEqual({ maskedEmail: RAW, plan: "unknown" });
     expect(targets.find((target: any) => target.backend === "codex").identity).toBeUndefined();
     // A profile is read with its own folder; the default with the host's environment. Codex and a signed-out profile are not asked.
     expect(f.calls.map(call => call.env?.CLAUDE_CONFIG_DIR?.split("/").pop() ?? "default").sort()).toEqual(["constructor", "default", "work"]);
     for (const call of f.calls) expect(call.argv).toEqual(["claude", "auth", "status"]);
   });
-  it("is the masked form only: the full address is in no answer, no kept state and no log", async () => {
+  it("keeps two accounts of one administrator with the same prefix apart", async () => {
+    const f = makeFleet(); f.answers.set("work", status({ email: "junsionloh@gmail.com" })); f.answers.set("constructor", status({ email: "junsion.main@gmail.com" })); await read(f.fm);
+    const targets = f.fm.backendSignInTargets(), emails = ["work", "constructor"].map(name => targets.find((target: any) => target.backend === "claude-code" && target.profile === name).identity.maskedEmail);
+    expect(emails).toEqual(["junsionloh@gmail.com", "junsion.main@gmail.com"]);
+  });
+  it("shows no address that does not fit (over 254 characters, non-ASCII, a space, two @): none is shown, and none is cut down to one that fits", async () => {
+    for (const email of [`${"a".repeat(250)}@example.com`, "alice.fixture@exämple.com", "名前@example.com", "alice fixture@example.com", "alice@fixture@example.com"]) {
+      const f = makeFleet(); f.answers.set("work", status({ email })); await read(f.fm);
+      const work = f.fm.backendSignInTargets().find((target: any) => target.backend === "claude-code" && target.profile === "work");
+      expect(work.identity, email.slice(0, 24)).toEqual({ plan: "team" });
+      expect(text(f.fm.backendSignInTargets())).not.toContain(email); expect(text(f.logs)).not.toContain(email.slice(0, 12));
+    }
+  });
+  it("the whole address is in no log and no kept state on disk (the answer to an administrator carries it; nothing else does)", async () => {
     const f = makeFleet(); await read(f.fm);
-    expect(text(f.fm.backendSignInTargets())).not.toContain("alice.fixture"); expect(text(f.logs)).not.toContain("alice.fixture");
+    expect(text(f.logs)).not.toContain("alice.fixture");
     const files = (dir: string): string => readdirSync(dir, { withFileTypes: true }).map(entry => entry.isDirectory() ? files(join(dir, entry.name)) : statSync(join(dir, entry.name)).size < 1e6 ? readFileSync(join(dir, entry.name), "utf8") : "").join("");
     expect(files(f.dir)).not.toContain("alice.fixture");
   });
@@ -124,7 +137,7 @@ describe("the host's own sign-in list: which account is each Claude Code sign-in
     expect(f.fm.backendSignInTargets().some((target: any) => target.identity)).toBe(false);          // the old answers were dropped, not kept for five minutes
     f.fm.refreshSignInIdentities(); await vi.waitFor(() => expect(gates.length).toBeGreaterThan(0));
     while (f.fm.signInIdentityReads.size) { gates.splice(0).forEach(open => open()); await new Promise(r => setTimeout(r, 5)); }
-    expect(f.fm.backendSignInTargets().find((target: any) => target.backend === "claude-code" && !target.profile).identity).toEqual({ maskedEmail: "bo***@example.org", plan: "team" });
+    expect(f.fm.backendSignInTargets().find((target: any) => target.backend === "claude-code" && !target.profile).identity).toEqual({ maskedEmail: "bob.fixture@example.org", plan: "team" });
   });
   it("the accounts are forgotten when a sign-in ENDS (any one), not at every step of one that is running", async () => {
     const f = makeFleet(); await read(f.fm); const first = f.calls.length;
@@ -156,7 +169,7 @@ describe("the host's own sign-in list: which account is each Claude Code sign-in
 describe("who is served the list with the accounts in it: a local administrator session only", () => {
   async function fixture() {
     const token = "host-identity-scratch-token", sessions = new WebSessionStore({});
-    const identity = { maskedEmail: "al***@example.com", plan: "team" };
+    const identity = { maskedEmail: RAW, plan: "team" };
     const refresh = vi.fn(() => {});
     const logins = new WebBackendLogins({ isLocalAdmin: handle => { const r = sessions.findByHandle(handle); return !!r && r.tier === "admin" && r.surface === "local"; },
       start: async () => null, accessToken: () => null, isActiveFor: () => false, cancelFor: async () => false, cancel: async () => "", notice() {}, changed() {} });
@@ -176,13 +189,13 @@ describe("who is served the list with the accounts in it: a local administrator 
   it("a local admin gets the accounts that are known", async () => {
     const f = await fixture(), admin = f.session("admin"), answer = await f.get(admin.headers);
     expect(answer.status).toBe(200); expect(f.refresh).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(answer.raw).targets.map((target: any) => target.identity)).toEqual([{ maskedEmail: "al***@example.com", plan: "team" }, { maskedEmail: "al***@example.com", plan: "team" }]);
+    expect(JSON.parse(answer.raw).targets.map((target: any) => target.identity)).toEqual([{ maskedEmail: RAW, plan: "team" }, { maskedEmail: RAW, plan: "team" }]);
   });
   it("no credential, an agent's header token, a read session and a guest get nothing of it, and nothing is read on their behalf", async () => {
     const f = await fixture();
     const answers = [await f.get({ origin: f.origin }), await f.get({ "x-agend-token": f.token, origin: f.origin }), await f.get(f.session("read").headers), await f.get(f.session("guest").headers)];
     expect(answers.map(answer => answer.status)).toEqual([401, 403, 403, 403]);
-    for (const answer of answers) expect(answer.raw).not.toMatch(/al\*\*\*@|maskedEmail|identity/);
+    for (const answer of answers) expect(answer.raw).not.toMatch(/alice\.fixture|maskedEmail|identity/);
     expect(f.refresh).not.toHaveBeenCalled();
   });
   it("the public link and the gateway: the route is in neither manifest, and a bound gateway request is refused even as an admin, reading nothing", async () => {
@@ -195,14 +208,14 @@ describe("who is served the list with the accounts in it: a local administrator 
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/backend-login", headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}` }, socket: {} });
     bindGatewayRequest(req as never, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
     expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/backend-login"), f.ctx)).toBe(true);
-    expect(status).toBe(404); expect(body).not.toMatch(/al\*\*\*@|maskedEmail/); expect(f.refresh).not.toHaveBeenCalled();
+    expect(status).toBe(404); expect(body).not.toMatch(/alice\.fixture|maskedEmail/); expect(f.refresh).not.toHaveBeenCalled();
   });
   it("the answer never waits for a read: a read that never finishes, or one that throws, changes nothing about it (and the sign-in view is still in it)", async () => {
     const f = await fixture(), admin = f.session("admin");
     (f.refresh as any).mockImplementation(() => new Promise(() => {}));            // a hung read: the route must not even look at it
     const first = await f.get(admin.headers); expect(first.status).toBe(200); expect(JSON.parse(first.raw)).toHaveProperty("login");
     (f.refresh as any).mockImplementation(() => { throw new Error(`boom ${RAW}`); });
-    const second = await f.get(admin.headers); expect(second.status).toBe(200); expect(second.raw).not.toContain("alice.fixture");
+    const second = await f.get(admin.headers); expect(second.status).toBe(200); expect(second.raw).not.toContain("boom");
     (f.ctx as any).backendSignInTargets = () => { throw new Error("targets failed"); };
     expect((await f.get(admin.headers)).status).toBe(503);                            // an error is an answer, not an unhandled rejection
   });

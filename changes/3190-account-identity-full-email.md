@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **Settings → Accounts (and the Runtime page and the Claude account choice) now show an account's whole e-mail address instead of `ab***@example.com`.** One person's accounts usually share a prefix (`junsionloh@gmail.com` and `junsion.main@gmail.com` both became `ju***@gmail.com`), so the shortened form could not tell them apart. The address still goes only to a fleet admin on the dashboard reached directly (every other caller, including the public link, a gateway, guest and read-only sessions, an agent's header token and the Hub, gets no account at all), it is never written to a log, an error message, an audit line, a notice or a chat reply, and `agend-runtime` still prints the redacted form in the terminal. An address that is over 254 characters, not ASCII, has a space or a second `@` is dropped, never shortened; an older Runtime's cached `ab***@example.com` still works.

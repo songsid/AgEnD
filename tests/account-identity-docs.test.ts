@@ -34,7 +34,7 @@ describe("the account-identity audience in the docs", () => {
     expect(read("docs/web-dashboard.zh-TW.md")).toMatch(/^## 三種連線方式比較$/m);
   });
   it("keeps the wrong wording out of the changelog fragments and the code the audience is decided in", () => {
-    for (const file of ["changes/3190-account-identity-followups.md", "changes/3190-account-identity-followups.zh-TW.md"]) for (const wrong of WRONG) expect(read(file), `${file} ${wrong}`).not.toMatch(wrong);
+    for (const file of ["changes/3190-account-identity-followups.md", "changes/3190-account-identity-followups.zh-TW.md", "changes/3190-account-identity-full-email.md", "changes/3190-account-identity-full-email.zh-TW.md"]) for (const wrong of WRONG) expect(read(file), `${file} ${wrong}`).not.toMatch(wrong);
     const gate = paragraph(read("src/windows-cli-api.ts"), " * Who may be shown WHICH account");
     expect(gate).not.toMatch(/local administrator/i);
   });

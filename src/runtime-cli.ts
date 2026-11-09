@@ -12,7 +12,7 @@ import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, r
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, listCredentialProfileNames,
   rememberCredentialStatus, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
-import type { AccountIdentity } from "./claude-auth-status.js";
+import { redactedEmail, type AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
 import { createRuntimeProfile, isCreatedProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
@@ -73,8 +73,8 @@ function interactiveLogin(executable: NativeCliExecutable, args: string[], env: 
   });
 }
 function signInLabel(loggedIn: boolean | null): string { return loggedIn === true ? "signed in" : loggedIn === false ? "not signed in" : "not checked"; }
-/** `ab***@example.com · team`, or `API key`: the same masked identity AgEnD shows; never the full address. */
-function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [identity.maskedEmail, identity.plan].filter(Boolean).join(" · "); }
+/** `ab***@example.com · team`, or `API key`: a terminal line is not the Accounts page, so the address is redacted here; never the full address. */
+function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [redactedEmail(identity.maskedEmail), identity.plan].filter(Boolean).join(" · "); }
 export async function runtimeMain(argv = process.argv.slice(2), options: RuntimeMainOptions = {}): Promise<void> {
   if (argv.length === 1 && argv[0] === "--internal-update") { await runtimeUpdateInternalMain(); return; }
   const env = options.env ?? process.env, home = options.home ?? homedir();

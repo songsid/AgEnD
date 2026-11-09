@@ -120,6 +120,12 @@ describe("the account behind a profile, in agend-runtime's own output (masked, a
     expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" } });
     expect(f.text()).not.toMatch(/alice|fixture/);
   });
+  it("login prints the account REDACTED even though the Runtime holds and reports the whole address: a terminal line is not the Accounts page", async () => {
+    const f = setup(); f.probeStatus.mockResolvedValue({ loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com", plan: "team" } });
+    await f.runWithStatus(["login", "claude-code", "work"]);
+    expect(f.text()).toContain('Credential profile "work" is signed in (al***@example.com · team).'); expect(f.text()).not.toMatch(/alice\.fixture/);
+    expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com", plan: "team" } });   // the cache the reports are made from
+  });
   it("profile list adds the masked account, or API key, as a third column", async () => {
     const f = setup(); for (const name of ["work", "key", "plain"]) ensureCredentialProfile(f.root, "claude-code", name);
     f.probeStatus.mockImplementation(async (_cli, directory) => directory.endsWith("work") ? { loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "max" } } : directory.endsWith("key") ? { loggedIn: true, identity: { apiKey: true } } : { loggedIn: true });
