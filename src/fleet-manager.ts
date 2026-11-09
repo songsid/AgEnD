@@ -293,7 +293,7 @@ import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { isWebUpdateTarget, readLogTail, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
+import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -24188,8 +24188,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** The running package's version (package.json next to this code). */
   private runningAgendVersion(): string {
-    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-    return JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
+    // M-2738 (rig): the version THIS process runs, read when it loaded. The file on disk is the installed one: during an
+    // update it is briefly missing, then the new version while the old fleet still runs (a tab would be told to reload early).
+    if (!RUNNING_AGEND_VERSION) throw new Error("the running AgEnD version is unknown");
+    return RUNNING_AGEND_VERSION;
   }
 
   /**
@@ -24276,8 +24278,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   get webUpdate(): WebUpdateHost {
     return {
       updateState: () => {
-        let current = "0.0.0";
-        try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+        let current: string | null = null;
+        try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
         return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
       },
