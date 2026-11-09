@@ -40,7 +40,7 @@ import { formatWebChannelEcho } from "./web-channel-echo.js";
 import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
 import { isSafeInstanceName } from "./web-shell-routes.js";
-import { MAX_COMMAND_ARGS } from "./web-commands.js";
+import { MAX_COMMAND_ARGS, type WebModelAction } from "./web-commands.js";
 import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-guard.js";
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
@@ -84,7 +84,7 @@ import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-a
 import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
 import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
-import { handleNativeModelCatalog } from "./native-model-catalog.js";
+import { handleNativeModelCatalog, refreshNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
@@ -381,9 +381,10 @@ export interface WebApiContext {
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
-  modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  modelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Array<{ id: string; label: string; description?: string }>;
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
+  refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
@@ -404,7 +405,7 @@ export interface WebApiContext {
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
-    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
+    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; model?:string; backend_options?:Record<string,Record<string,unknown>>; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
@@ -546,7 +547,7 @@ export interface WebApiContext {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -2011,6 +2012,38 @@ export function handleWebRequest(
   // ── Backend detection ─────────────────────────────────
 
   // #2072: the model a Settings field offers — the cached catalog of that backend (that instance's account's). Read only.
+  if (method === "POST" && path === "/ui/models/refresh") {
+    const admission = adminAdmissionOf(req, url, ctx);
+    if (!admission) { json(res, 403, { error: "admin_required" }); return true; }
+    void (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(k => !["backend","instance","runtime","machineId","profile"].includes(k))) { json(res, 400, { error: "invalid model target" }); return; }
+      const backend = body.backend, instance = body.instance ?? null;
+      if (typeof backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (typeof instance !== "string" || !isSafeInstanceName(instance)))) { json(res, 400, { error: "invalid model target" }); return; }
+      const runtime=body.runtime, machineId=body.machineId, profile=body.profile;
+      if(runtime!==undefined && runtime!=="windows" && runtime!=="wsl" || machineId!==undefined && (typeof machineId!=="string" || !/^[a-f0-9-]{36}$/i.test(machineId)) || profile!==undefined && (typeof profile!=="string" || profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))) {json(res,400,{error:"invalid model target"});return;}
+      const target={backend,instance,...(runtime?{runtime:runtime as "windows"|"wsl"}:{}),...(machineId?{machineId:machineId as string}:{}),...(profile!==undefined?{profile:profile as string}:{})};
+      let result;
+      try {
+        result=await refreshNativeModelCatalog(req,url,ctx,target);
+        // Recheck after runtime selection, before any portable probe is admitted.
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+        if(!result){
+          if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
+          result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));
+        }
+      } catch {if(!permitWebContinuation(req,res,ctx))return;json(res,503,{error:"model_refresh_unavailable"});return;}
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      json(res, 200, { backend, ...result });
+    })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/models") {
     const backend = url.searchParams.get("backend") ?? "";
     const instance = url.searchParams.get("instance");
@@ -2019,16 +2052,18 @@ export function handleWebRequest(
     const machineId = url.searchParams.get("machineId");
     if (machineId !== null && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(machineId) || runtime === "wsl")) { json(res,400,{error:"Invalid model runtime machine"});return true; }
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
+    const profile=url.searchParams.get("profile");
+    if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
+    const models = (profile!==null ? ctx.modelCatalogFor?.(backend,instance,{profile}) : ctx.modelCatalogFor?.(backend,instance)) ?? [];
     const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length) {
+      if (backend === "claude-code" && !models.length && !profile) {
         const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
         json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
       } else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
-    if (models.length || !ctx.cliModelCatalogFor) { answerCatalog(); return true; }
+    if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
     const canAnswer = (): boolean => !res.headersSent && !res.destroyed && !res.writableEnded && stillAuthorized(req, res, url, ctx);
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
@@ -3060,6 +3095,7 @@ export function handleWebRequest(
         if(command!=="model"){json(res,400,{error:"This persistent Windows runtime supports the model command; use its shared controls for other actions"});return;}
       }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
+      if (body.action !== undefined && !["refresh", "more", "refreshAll"].includes(body.action as string)) { json(res, 400, { error: "invalid model action" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
@@ -3074,10 +3110,21 @@ export function handleWebRequest(
         guestCommandsRunning.add(account);
         ctx.guestCommandRuns?.record(account);
       }
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[instance]) && body.action){
+        if(command!=="model" || body.action!=="refresh" || body.args){json(res,400,{error:"invalid model action"});return;}
+        const target=ctx.fleetConfig!.instances[instance];
+        try {
+          const refreshed=await refreshNativeModelCatalog(req,url,ctx,{backend:target.backend!,instance});
+          if(!stillAuthorized(req,res,url,ctx))return;
+          if(!refreshed || ctx.fleetConfig?.instances[instance]!==target || !nativeCliAuthorization(req,url,ctx)){json(res,409,{error:"model target changed"});return;}
+          json(res,200,{choices:{current:target.model??null,options:refreshed.models.map(m=>({id:m.id,label:m.label})),actions:["refresh"]}});
+        }catch{if(stillAuthorized(req,res,url,ctx))json(res,503,{error:t("model.refresh_failed")});}return;
+      }
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+        if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
     })().catch(err => {
