@@ -29,6 +29,7 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;
   directory: HubDirectory;

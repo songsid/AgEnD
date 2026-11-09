@@ -33,6 +33,8 @@ import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-p
 import { createHubDirectorySaveCoordinator } from "../src/hub/settings-directory-save.js";
 import { withHubDirectoryRecovery } from "../src/hub/settings-directory-recovery.js";
 import type { HubDirectorySettingsDecision } from "../src/hub/settings-directory-decision.js";
+import { createHubDirectorySettingsControl, type HubDirectorySettingsControl } from "../src/hub/settings-directory-control.js";
+import type { HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
 
 const roots: string[] = [];
 beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
@@ -659,7 +661,8 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
-  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number } = {}) {
+  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number;
+    directorySettings?: () => Promise<HubDirectorySettingsControl> } = {}) {
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined, lastHttp: HubHttp;
   let atStage: (() => void) | undefined;
@@ -683,6 +686,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
       step(point) { if (point === "staged") { const action = atStage; atStage = undefined; action?.(); } if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
     });
     runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer, now: options.now, readConfig,
+      ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),
       createDirectory: config => { creates++; if (refuseAllDirectories || refuseNextDirectory && config.url === "ldaps://next.example.test") throw Error("owned replacement mount refusal");
         return { realm: "corp", signIn: async (login, password) => {
           await signInGate?.();
@@ -878,10 +882,10 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
 
 /** Ordinary verified HTTPS only; no intercepted API responses or personal credentials. */
 function directoryBrowser(hub: Awaited<ReturnType<typeof initializedHub>>, cookie?: string, body?: unknown, path = "/hub/v1/session",
-  options: { method?: string; headers?: Record<string, string> } = {}) {
+  options: { method?: string; headers?: Record<string, string>; signal?: AbortSignal } = {}) {
   return new Promise<{ status: number; json: any; cookie: string; cache: string }>((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port: hub.webPort, path, servername: "hub.example.test", ca: hub.caPem,
-      agent: false, method: options.method ?? (body === undefined ? "GET" : "POST"), headers: { Origin: String(hub.config.hub.webOrigin),
+      agent: false, signal: options.signal, method: options.method ?? (body === undefined ? "GET" : "POST"), headers: { Origin: String(hub.config.hub.webOrigin),
         ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...options.headers } }, res => {
       let text = ""; res.setEncoding("utf8"); res.on("data", data => { text += data; });
       res.on("end", () => { try { resolve({ status: res.statusCode!, json: text ? JSON.parse(text) : null,
@@ -1579,4 +1583,203 @@ describe.skipIf(process.platform === "win32")("durable directory startup reconci
     } finally { await r.runtime.close(); }
   });
 
+});
+
+const DIRECTORY_SETTINGS_PATH = "/hub/v1/admin/hub/directory";
+describe.skipIf(process.platform === "win32")("configured administrator AD settings HTTP", () => {
+  it("authorizes the configured administrator before lazily acquiring the AD control", async () => {
+    const read = vi.fn((_ctx: HubDirectoryProofContext) => ({ directory: { realm: "corp", profile: "openldap" }, bindPasswordSet: true }));
+    const create = vi.fn(async () => ({ read }) as unknown as HubDirectorySettingsControl);
+    const r = await directoryRuntimeRig(undefined, { directorySettings: create });
+    try {
+      const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      const result = await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH);
+      expect(result.status).toBe(200); expect(result.json.bindPasswordSet).toBe(true);
+      expect(signed.json.features).toContain("directory-settings-v1");
+      expect(r.http.features).toContain("directory-settings-v1");
+      expect(create).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
+      expect(read.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: "hub-administrator", person: ADMIN.key } });
+    } finally { await r.runtime.close(); }
+  });
+  it("refuses unsigned, other-person, cross-site, CSRF, query and method requests before acquiring the control", async () => {
+    const create = vi.fn(async () => ({ read: vi.fn() }) as unknown as HubDirectorySettingsControl);
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], directorySettings: create });
+    try {
+      expect((await directoryBrowser(r.hub, undefined, undefined, DIRECTORY_SETTINGS_PATH)).status).toBe(401);
+      const other = await noticeSignInForDirectory(r, NOTICE_READER), signed = await noticeSignInForDirectory(r, ADMIN);
+      expect((await directoryBrowser(r.hub, other.cookie, undefined, DIRECTORY_SETTINGS_PATH)).status).toBe(403);
+      expect((await directoryBrowser(r.hub, signed.cookie, {}, DIRECTORY_SETTINGS_PATH + "/prepare")).status).toBe(403);
+      expect((await directoryBrowser(r.hub, signed.cookie, {}, DIRECTORY_SETTINGS_PATH + "/prepare", { headers: {
+        Origin: "https://foreign.example.test", "X-AgEnD-Hub-CSRF": signed.json.csrf } })).status).toBe(403);
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH + "?authority=host")).status).toBe(400);
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH + "/save")).status).toBe(405);
+      expect(create).not.toHaveBeenCalled();
+    } finally { await r.runtime.close(); }
+  });
+  it.each(["sign-out", "disconnect"])("%s during lazy acquisition never reaches the control", async mode => {
+    let release!: () => void, enter!: () => void, close!: () => void, settle!: () => void, released = false;
+    const wait = new Promise<void>(r => { release = r; }), entered = new Promise<void>(r => { enter = r; }), closed = new Promise<void>(r => { close = r; });
+    const settled = new Promise<void>(resolve => { settle = resolve; });
+    const read = vi.fn(), create = vi.fn(async () => { enter(); await wait; return { read } as unknown as HubDirectorySettingsControl; });
+    const r = await directoryRuntimeRig((http) => ({ ...http, handle(req, res) {
+      if (req.url === DIRECTORY_SETTINGS_PATH) {
+        res.once("close", close);
+        const remove = res.removeListener.bind(res);
+        vi.spyOn(res, "removeListener").mockImplementation((event, listener) => {
+          const result = remove(event, listener); if (event === "close" && released) settle(); return result;
+        });
+      }
+      return http.handle(req, res);
+    } }), { directorySettings: create });
+    const abort = new AbortController(); let pending: Promise<Awaited<ReturnType<typeof directoryBrowser>> | null> | undefined;
+    try {
+      const signed = await noticeSignInForDirectory(r, ADMIN);
+      pending = directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH, { signal: abort.signal }).catch(() => null);
+      await entered;
+      if (mode === "sign-out") expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/session", { method: "DELETE",
+        headers: { "X-AgEnD-Hub-CSRF": signed.json.csrf } })).status).toBe(200);
+      else { abort.abort(); await closed; }
+      released = true; release(); const result = await pending; pending = undefined; await settled;
+      expect(result?.status ?? null).toBe(mode === "sign-out" ? 401 : null); expect(read).not.toHaveBeenCalled();
+    } finally { release(); await pending?.catch(() => {}); await r.runtime.close(); }
+  });
+  it("omits the mark and keeps routes unavailable without a controller", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const signed = await noticeSignInForDirectory(r, ADMIN);
+      expect(signed.json.features).not.toContain("directory-settings-v1");
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH)).status).toBe(404);
+    } finally { await r.runtime.close(); }
+  });
+  it("returns a bounded unavailable response when the private factory refuses", async () => {
+    const create = vi.fn(async (): Promise<HubDirectorySettingsControl> => { throw Error("Dummy-private-bind-material"); });
+    const r = await directoryRuntimeRig(undefined, { directorySettings: create });
+    try {
+      const signed = await noticeSignInForDirectory(r, ADMIN), result = await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH);
+      expect(result.status).toBe(503); expect(result.json).toEqual({ ok: false, code: "unavailable" });
+      expect(JSON.stringify(result)).not.toContain("Dummy-private-bind-material");
+    } finally { await r.runtime.close(); }
+  });
+});
+
+const noticeSignInForDirectory = (r: Awaited<ReturnType<typeof directoryRuntimeRig>>, who: typeof ADMIN) =>
+  directoryBrowser(r.hub, undefined, { login: who.login, password: "Dummy-browser-only" });
+
+describe.skipIf(process.platform === "win32")("AD settings public HTTP with the real shared controller", () => {
+  it.each(["ready", "restored", "unknown", "stale"] as const)("runs prepare/test/Save as %s through sealed SQL, sessions and original HTTPS", async outcome => {
+    let control: HubDirectorySettingsControl | undefined, r!: Awaited<ReturnType<typeof directoryRuntimeRig>>;
+    let commit: ReturnType<typeof vi.spyOn> | undefined;
+    const personal = vi.fn(async () => { throw Error("personal credentials reached candidate"); });
+    const candidate = vi.fn(() => ({ realm: "corp", signIn: personal,
+      checkEligibility: async () => outcome === "unknown" ? { eligible: false as const, reason: "unavailable" as const }
+        : { eligible: true as const, person: ADMIN }, close: async () => {} }));
+    const create = async () => control ??= createHubDirectorySettingsControl({ hubId: String(r.hub.config.hub.hubId),
+      mounted: () => r.runtime.directorySettings(), writer: () => r.writer.directory!, createDirectory: candidate, probeTls: async () => "a".repeat(64),
+      withDecision: work => r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), work, () => true),
+      remount: () => r.runtime.apply(r.hub.config), current: () => true });
+    r = await directoryRuntimeRig(undefined, { directorySettings: create });
+    const beforeDirectory = structuredClone(r.hub.config.hub.directory);
+    try {
+      const signed = await noticeSignInForDirectory(r, ADMIN), headers = { "X-AgEnD-Hub-CSRF": signed.json.csrf };
+      const readsBefore = r.eligibility, view = await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH);
+      expect(r.eligibility - readsBefore).toBe(1);
+      expect(view.status).toBe(200); expect(view.json.reauthentication).toBe("recent"); expect(view.json.bindPasswordSet).toBe(true);
+      expect(view.json.directory.bindPasswordRef).toBeUndefined(); expect(JSON.stringify(view.json)).not.toContain(BIND);
+      const { realm: _realm, profile: _profile, ...directory } = view.json.directory;
+      const prepared = await directoryBrowser(r.hub, signed.cookie, { directory: { ...directory, url: "ldaps://next.example.test" },
+        bindPassword: "Dummy-next-bind-only" }, DIRECTORY_SETTINGS_PATH + "/prepare", { headers });
+      expect(prepared.status).toBe(200); expect(prepared.json.trust).toMatchObject({ server: "ldaps://next.example.test:636", leafFingerprint: "A".repeat(64) });
+      const ref = prepared.json.ref, confirmation = prepared.json.trust.challenge;
+      expect((await directoryBrowser(r.hub, signed.cookie, { ref }, DIRECTORY_SETTINGS_PATH + "/test", { headers })).status).toBe(409);
+      const tested = await directoryBrowser(r.hub, signed.cookie, { ref, confirmation }, DIRECTORY_SETTINGS_PATH + "/test", { headers });
+      expect(tested.status).toBe(outcome === "unknown" ? 503 : 200);
+      if (outcome === "restored") r.refuseNextDirectory();
+      if (outcome === "stale") commit = vi.spyOn(r.writer.directory!, "commit").mockImplementation(() => { throw new HubSettingsError("stale"); });
+      const saved = await directoryBrowser(r.hub, signed.cookie, { ref, confirmation }, DIRECTORY_SETTINGS_PATH + "/save", { headers });
+      expect(saved.status).toBe(outcome === "ready" ? 200 : outcome === "stale" ? 409 : 503); expect(personal).not.toHaveBeenCalled();
+      expect(candidate).toHaveBeenCalledWith(expect.anything(), { bindPassword: "Dummy-next-bind-only" }, { expectedServerFingerprint: "A".repeat(64) });
+      if (outcome === "unknown" || outcome === "stale") {
+        expect(r.runtime.directoryDecision()!.inspect().directoryEpoch).toBe(0); expect(saved.cookie).toBe("");
+        expect((await directoryBrowser(r.hub, signed.cookie)).json.signedIn).toBe(true);
+        if (outcome === "stale") expect(saved.json).toEqual({ ok: false, code: "stale", committed: false });
+      } else {
+        expect(saved.json.state).toBe(outcome);
+        expect((await directoryBrowser(r.hub, signed.cookie)).json.signedIn).toBe(false);
+        const operation = r.withDecision(d => d.operation(saved.json.receiptId));
+        expect(operation.recipients).toEqual([{ kind: "host", sink: "owner-needs-you" }, { kind: "person", person: ADMIN.key }]);
+        expect(operation.changes).toEqual(["server", "secret"]);
+        expect(operation.actor).toMatchObject({ kind: "hub-administrator", person: ADMIN.key });
+        if (outcome === "ready") {
+          expect((await directoryBrowser(r.hub, saved.cookie)).json.admin).toBe(true);
+          const after = await directoryBrowser(r.hub, saved.cookie, undefined, DIRECTORY_SETTINGS_PATH);
+          expect(after.json.reauthentication).toBe("required"); // Successor never inherits the old authentication proof.
+        } else expect(saved.cookie).toBe("");
+      }
+      if (outcome !== "ready") expect(r.hub.config.hub.directory).toEqual(beforeDirectory);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+    } finally { commit?.mockRestore(); await control?.close(); await r.runtime.close(); }
+  });
+  it("requires renewed OLD-directory authentication after five minutes and no trust click for a same-host search change", async () => {
+    let now = 1000, control: HubDirectorySettingsControl | undefined, r!: Awaited<ReturnType<typeof directoryRuntimeRig>>;
+    const personal = vi.fn(async () => { throw Error("personal credentials reached candidate"); });
+    const create = async () => control ??= createHubDirectorySettingsControl({ hubId: String(r.hub.config.hub.hubId),
+      mounted: () => r.runtime.directorySettings(), writer: () => r.writer.directory!, current: () => true, now: () => now,
+      createDirectory: () => ({ realm: "corp", signIn: personal, checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }),
+      probeTls: async () => "A".repeat(64), withDecision: work => r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), work, () => true),
+      remount: () => r.runtime.apply(r.hub.config) });
+    r = await directoryRuntimeRig(undefined, { now: () => now, directorySettings: create });
+    try {
+      const signed = await noticeSignInForDirectory(r, ADMIN), headers = { "X-AgEnD-Hub-CSRF": signed.json.csrf };
+      const old = r.runtime.directorySettings()!.source().directory, reauth = vi.spyOn(old, "signIn");
+      now += 300_000;
+      const view = await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH);
+      expect(view.json.reauthentication).toBe("required");
+      const { realm: _realm, profile: _profile, ...directory } = view.json.directory;
+      const prepare = () => directoryBrowser(r.hub, signed.cookie, { directory: { ...directory, baseDn: "ou=people,dc=example,dc=test" } }, DIRECTORY_SETTINGS_PATH + "/prepare", { headers });
+      const first = await prepare(); expect(first.json.trust).toBeNull();
+      expect((await directoryBrowser(r.hub, signed.cookie, { ref: first.json.ref }, DIRECTORY_SETTINGS_PATH + "/save", { headers })).json.code).toBe("reauthentication");
+      expect(r.runtime.directoryDecision()!.inspect().directoryEpoch).toBe(0);
+      const second = await prepare();
+      const saved = await directoryBrowser(r.hub, signed.cookie, { ref: second.json.ref, credentials: { login: ADMIN.login, password: "Dummy-browser-only" } }, DIRECTORY_SETTINGS_PATH + "/save", { headers });
+      expect(saved.status).toBe(200); expect(saved.json.state).toBe("ready");
+      expect(reauth).toHaveBeenCalledExactlyOnceWith(ADMIN.login, "Dummy-browser-only"); expect(personal).not.toHaveBeenCalled();
+      expect(r.withDecision(d => d.operation(saved.json.receiptId).changes)).toEqual(["search"]);
+    } finally { await control?.close(); await r.runtime.close(); }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("directory Save decision borrowing", () => {
+  it.each(["unchanged", "ABA"])("%s cold import retains its original admission ticket", async mode => {
+    const r = await directoryRuntimeRig(); await r.runtime.close();
+    let release!: () => void, enter!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    const service = { start: async () => {}, fence: () => {}, close: async () => {} };
+    const runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => r.hub.config,
+      components: { http: async () => { enter(); await wait; return r.entry; } }, createServer: async () => service });
+    const work = vi.fn((d: HubDirectorySettingsDecision) => d.inspect().directoryEpoch);
+    const borrowing = runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), work, () => true).catch(error => error);
+    try {
+      await entered;
+      if (mode === "ABA") {
+        await runtime.apply(r.hub.config);
+        await runtime.apply({ ...r.hub.config, hub: { ...r.hub.config.hub, enabled: false } });
+        await runtime.apply(r.hub.config);
+      }
+      release(); const result = await borrowing;
+      if (mode === "ABA") { expect(result).toBeInstanceOf(Error); expect(work).not.toHaveBeenCalled(); }
+      else { expect(result).toBe(0); expect(work).toHaveBeenCalledOnce(); }
+    } finally { release(); await borrowing; await runtime.close(); }
+  });
+  it("refuses another Hub and asynchronous callback escape on the mounted participant", async () => {
+    const r = await directoryRuntimeRig(), work = vi.fn(() => 0);
+    try {
+      await expect(r.runtime.withDirectoryDecision(randomUUID(), work, () => true)).rejects.toThrow("owner changed");
+      expect(work).not.toHaveBeenCalled();
+      await expect(r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), async d => d.inspect(), () => true)).rejects.toThrow("synchronous");
+      expect(await r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), d => d.inspect().directoryEpoch, () => true)).toBe(0);
+      let retained: HubDirectorySettingsDecision | undefined;
+      await r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), d => { retained = d; return 0; }, () => true);
+      expect(() => retained!.inspect()).toThrow("owner changed");
+    } finally { await r.runtime.close(); }
+  });
 });

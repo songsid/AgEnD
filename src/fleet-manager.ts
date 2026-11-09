@@ -1642,6 +1642,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-2687: local host-session setup; controller creation stays lazy while the Hub is off. */
   private hubSetupController: import("./hub/init/web.js").HubWebInitializer | null = null;
   private hubSetupInit: Promise<import("./hub/init/web.js").HubWebInitializer> | null = null;
+  private hubDirectoryControl: import("./hub/settings-directory-control.js").HubDirectorySettingsControl | null = null;
+  private hubDirectoryInit: Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> | null = null;
+  /** Both private listeners share this controller and the already-created sealed writer; callers prove authority first. */
+  async hubDirectorySettings(): Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> {
+    const pending = this.hubDirectoryInit ??= (async () => {
+      const runtime = this.hubRuntime;
+      if (this.shuttingDown || !runtime?.directorySettings() || !this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
+      const { createHubDirectorySettingsControl } = await import("./hub/settings-directory-control.js");
+      const { createHubDirectory } = await import("./hub/directory/index.js");
+      const mounted = runtime.directorySettings();
+      if (!mounted || this.shuttingDown || runtime !== this.hubRuntime) throw Error("The Hub directory changed");
+      const hubId = mounted.decision.hubId;
+      const current = () => !this.shuttingDown && runtime === this.hubRuntime
+        && (this.rawFleetConfig as { hub?: { hubId?: unknown } })?.hub?.hubId === hubId;
+      const control = createHubDirectorySettingsControl({ hubId, mounted: () => runtime.directorySettings(),
+        writer: () => this.hubSettingsWriter!.directory!, createDirectory: createHubDirectory, current,
+        withDecision: work => runtime.withDirectoryDecision(hubId, work, current), remount: () => this.applyHubSwitches() });
+      if (!current()) { await control.close(); throw Error("The Hub directory changed"); }
+      this.hubDirectoryControl = control; return control;
+    })();
+    try { return await pending; }
+    catch (error) { if (this.hubDirectoryInit === pending) this.hubDirectoryInit = null; throw error; }
+  }
   hubSetupSession(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null {
     const token=this.webToken,sessions=this.webSessions,epoch=this.webAuthorityState().epoch;
     return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
@@ -2053,6 +2076,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = new HubRuntime({
         home: this.dataDir,
         settingsWriter: this.hubSettingsWriter,
+        directorySettings: () => this.hubDirectorySettings(),
         readConfig: () => this.rawFleetConfig as { hub?: unknown; hub_member?: unknown },
         version: agendVersion(),
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
@@ -25131,6 +25155,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn("Hub setup scratch cleanup is unconfirmed; setup remains fenced");
     });
     this.hubSetupController=null; this.hubSetupInit=null;
+    const directoryNow = this.hubDirectoryControl, directoryInit = this.hubDirectoryInit;
+    this.hubDirectoryControl = null; this.hubDirectoryInit = null;
+    const directoryClosed = (directoryNow ? directoryNow.close() : directoryInit?.then(control => control.close()))?.catch(() => {
+      this.logger.warn("Hub directory settings cleanup is unconfirmed; settings remain fenced");
+    });
     this.companyJoinController?.close(); this.companyJoinController = null; this.companyJoinInit = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
@@ -25187,6 +25216,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
     await inboundStopped;
     await setupClosed;
+    await directoryClosed;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;

@@ -74,6 +74,7 @@ export interface HubRuntimeOptions {
   createMember?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
   /** M-2682: the host's one writer for sealed Hub settings (settings-commit.ts), offered to Hub Administration. */
   settingsWriter?: import("./settings-commit.js").HubSettingsWriter;
+  directorySettings?: () => Promise<import("./settings-directory-control.js").HubDirectorySettingsControl>;
   /** Read the newest accepted config after the one writer publishes a startup compensation. */
   readConfig?(): { hub?: unknown; hub_member?: unknown };
   /** This AgEnD's version (Hub Administration → This Hub). */
@@ -119,6 +120,42 @@ export class HubRuntime {
   }
   /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
   directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.mountedDirectory?.decision ?? null; }
+  /** Physical Save completion may borrow the exact existing state after its old listener has closed. Never migrate/create here. */
+  async withDirectoryDecision<T>(hubId: string, work: (decision: HubDirectorySettingsDecision) => T, current: () => boolean): Promise<T> {
+    const ticket = this.admissionTicket, read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
+    const snapshot = structuredClone(read()), view = effectiveHubView(snapshot);
+    const owned = () => !this.stopped && ticket === this.admissionTicket && current() === true;
+    const run = (decision: HubDirectorySettingsDecision): T => {
+      if (!owned() || decision.hubId !== hubId) throw Error("Directory decision owner changed");
+      let open = true;
+      const borrowed = Object.freeze(Object.fromEntries(Object.entries(decision).map(([key, value]) => [key, typeof value !== "function" ? value : (...args: unknown[]) => {
+        if (!open || !owned()) throw Error("Directory decision owner changed");
+        return Reflect.apply(value, decision, args);
+      }]))) as HubDirectorySettingsDecision;
+      try {
+        const result = work(borrowed);
+        if (result && (typeof result === "object" || typeof result === "function") && typeof (result as { then?: unknown }).then === "function") {
+          open = false;
+          try { (result as unknown as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
+          throw Error("Directory decision callbacks must be synchronous");
+        }
+        if (!owned()) throw Error("Directory decision owner changed");
+        return result;
+      } finally { open = false; }
+    };
+    if (!owned() || obj(snapshot.hub)?.hubId !== hubId) throw Error("Directory decision owner changed");
+    const mounted = this.directoryDecision();
+    if (mounted) return run(mounted);
+    const entry = await (this.options.components ?? { http: S3B_HTTP_ENTRY }).http?.();
+    if (!owned() || effectiveHubView(read()) !== view) throw Error("Directory decision owner changed");
+    const hub = obj(snapshot.hub);
+    if (!hub || !entry) throw Error("The directory recovery registry is unavailable");
+    const { settings, migrations } = hubServerDatabasePlan(hub, entry.migrations);
+    return withHubDirectoryRecovery({ home: this.options.home, hubId: settings.hubId, memberOrigin: settings.memberOrigin, migrations }, decision => {
+      this.recoveryDirectory = decision;
+      try { return run(decision); } finally { this.recoveryDirectory = null; }
+    });
+  }
   private browserCertificateControl: import("./browser-certificate.js").HubBrowserCertificateControl | null = null;
   browserCertificateSettings(): import("./browser-certificate.js").HubBrowserCertificateControl | null { return this.browserCertificateControl; }
   private retentionControl: import("./retention.js").HubRetentionControl | null = null;
@@ -162,6 +199,7 @@ export class HubRuntime {
           createDirectory: options.createDirectory ?? createHubDirectory,
           directoryResponses: this.directoryResponses,
           ...(options.settingsWriter ? { settingsWriter: options.settingsWriter } : {}),
+          ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),
           directoryReady: directory => {
             this.mountedDirectory = directory;
             return () => { if (this.mountedDirectory === directory) this.mountedDirectory = null; };

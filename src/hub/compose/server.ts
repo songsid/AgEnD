@@ -61,6 +61,8 @@ export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
+  /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
+  directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditStore;
   content: HubContentStore;
@@ -109,6 +111,7 @@ export interface HubServerComponents {
 }
 
 export interface HubServerFactoryOptions {
+  directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   home: string;
   components: HubServerComponents;
   createDirectory: (config: HubDirectoryConfig, secrets: { bindPassword: string }) => HubDirectory;
@@ -404,6 +407,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         groupHttp: { control: groupControl, welcome: groupWelcome },
         pairingNotices,
         directoryNotices,
+        ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),
         store,
         current: () => mode,
         now,

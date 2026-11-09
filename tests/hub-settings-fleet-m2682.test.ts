@@ -16,12 +16,20 @@ import { sealHubInitialization, verifyHubInitialization } from "../src/hub/initi
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
 
-const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any, recovery: "normal" }));
+const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any, recovery: "normal", directory: null as any,
+  controlDeps: null as any, controls: 0, controller: { close: async () => {} } }));
+vi.mock("../src/hub/settings-directory-control.js", () => ({ createHubDirectorySettingsControl(deps: unknown) {
+  hub.controlDeps = deps; hub.controls++; return hub.controller;
+} }));
 vi.mock("../src/hub/runtime.js", () => ({
   HubRuntime: class {
     constructor(options: unknown) { hub.options = options; }
     refresh() { return Promise.resolve(); }
     directoryDecision() { return null; }
+    directorySettings() { return hub.directory; }
+    withDirectoryDecision(id: string, work: (decision: unknown) => unknown, current: () => boolean) {
+      if (!current() || id !== hub.directory.decision.hubId) throw Error("revoked"); return Promise.resolve(work(hub.directory.decision));
+    }
     recoverSettings() {
       if (hub.recovery === "throw") return Promise.reject(Error("recovery refused"));
       if (hub.recovery === "cancelled") return Promise.resolve(false);
@@ -38,7 +46,8 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const MEMBER = "https://hub.example.test:8443", ADMIN = { realm: "corp", objectId: "0f1e2d3c-4b5a-4968-8776-655443322110" };
 const actor = { person: ADMIN, sessionId: "s1", requestId: "r1" };
 const roots: string[] = [];
-afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; hub.recovery = "normal"; });
+afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; hub.recovery = "normal";
+  hub.directory = null; hub.controlDeps = null; hub.controls = 0; });
 const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 async function harness() {
@@ -63,6 +72,22 @@ async function harness() {
 }
 
 describe("FleetManager's sealed-settings writer (M-2682)", () => {
+  it("offers one lazy directory controller with the existing writer and exact runtime participant", async () => {
+    const { fm } = await harness();
+    hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    expect(hub.options.directorySettings).toEqual(expect.any(Function));
+    const [first, second] = await Promise.all([fm.hubDirectorySettings(), hub.options.directorySettings()]);
+    expect(first).toBe(second); expect(first).toBe(hub.controller); expect(hub.controls).toBe(1);
+    expect(hub.controlDeps.writer()).toBe(hub.options.settingsWriter.directory);
+    expect(hub.controlDeps.mounted()).toBe(hub.directory);
+    expect(await hub.controlDeps.withDecision((d: unknown) => d)).toBe(hub.directory.decision);
+    expect(hub.controlDeps.current()).toBe(true); fm.shuttingDown = true; expect(hub.controlDeps.current()).toBe(false);
+  });
+  it("Stop during the lazy import refuses before constructing a directory control", async () => {
+    const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    const pending = fm.hubDirectorySettings(); fm.shuttingDown = true;
+    await expect(pending).rejects.toThrow("changed"); expect(hub.controls).toBe(0); expect(fm.hubDirectoryInit).toBeNull();
+  });
   it("the runtime is handed the writer; a rename saves hub.name losslessly, the pair verifies, and the Hub is applied with it", async () => {
     const { path, fm, verifies } = await harness();
     const writer = hub.options.settingsWriter;
