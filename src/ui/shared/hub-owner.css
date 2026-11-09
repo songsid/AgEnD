@@ -49,3 +49,9 @@
 .hub-page-lead { margin: 0; }
 /* A phone's page-level controls are tap targets (--tap): the chats home's New chat row and a sub-page's crumb. */
 @media (max-width: 600px) { .hub-home-list .side-new, .hub-crumb { min-height: var(--tap); } .hub-crumb { min-width: var(--tap); } }
+
+/* S-119: the existing group/invitation authority is discoverable before the manual pairing flow. */
+.hub-admin-access { display: flex; flex-direction: column; gap: var(--s-3); }
+.hub-admin-access .field-row { flex-wrap: wrap; }
+.hub-admin-access h4 { margin: 0; }
+.hub-admin-manual > .card { border: 0; }
