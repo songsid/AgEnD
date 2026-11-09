@@ -8442,6 +8442,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ch.adapterId) this.instanceWorldBinding.set(ch.instanceName, ch.adapterId);
     }
 
+    // #3526: catalogs belong to the fleet, including a fleet with no chat adapter.
+    this.probeCliEnvs();
+
     // #1565: the web chat as it was before this process — the configured instances' only (fleet.yaml and ClassicBot
     // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
     this.restoreWebChat(fleet);
@@ -9600,10 +9603,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // This adapter's own Telegram menus — each Telegram adapter registers its own when it starts (#1191).
     this.registerTelegramCommandsFor(channelConfig);
-
-    // Background-probe each backend's CLI env (version/models) → cli-env cache.
-    // Non-blocking: /model & status views read the cache; never delays startup.
-    this.probeCliEnvs();
 
     adapter.on("started", safeHandler((username: string, userId?: string) => {
       if (!isCurrentAdapter()) return;
@@ -13191,7 +13190,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const key of Object.keys(current)) if (!Object.hasOwn(resolved, key)) delete (current as unknown as Record<string, unknown>)[key];
       Object.assign(current, resolved);
     }
+    const previousCatalogConfig = this.savedFleetConfigSnapshot;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.probeChangedCliEnvs(previousCatalogConfig);
     this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
@@ -20442,15 +20443,29 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #724: use the bounded variant so background startup probes cannot hang
     // indefinitely — each is wrapped by CLI_ENV_PROBE_DEADLINE_MS.
     for (const b of backends) void this.probeBackendBounded(b);
-    // #2072: each Claude credential profile in use has its own account catalog. Only fleet.yaml's agents are walked
-    // here; a ClassicBot room on a profile is probed on its first /model (catalogProfile knows rooms too).
-    const profiles = new Set<string>();
+    this.probeChangedCliEnvs(null);
+  }
+
+  /** Only committed creation/backend/account changes trigger discovery, never a model-field read. */
+  private probeChangedCliEnvs(previous: FleetConfig | null): void {
+    const signature = (fleet: FleetConfig | null, name: string) => {
+      const inst = fleet?.instances[name];
+      if (!inst) return null;
+      const backend = inst.backend ?? fleet?.defaults?.backend ?? "claude-code";
+      return JSON.stringify({ backend, options: { ...fleet?.defaults?.backend_options?.[backend], ...inst.backend_options?.[backend] } });
+    };
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
-      if (this.backendNameForInstance(name) !== "claude-code") continue;
-      const profile = this.catalogProfile("claude-code", name);
-      if (profile) profiles.add(profile);
+      if (previous && signature(previous, name) === signature(this.fleetConfig, name)) continue;
+      const backend = this.backendNameForInstance(name);
+      const binding = this.webModelBinding(backend, name);
+      // A named agy account has no verified relocation/discovery contract. In particular,
+      // never publish the ambient account's models under that profile (#3526 / D7).
+      if (!binding || (binding.profile && !credentialHomeSpec(backend))) continue;
+      const work = binding.scoped
+        ? this.refreshModelCatalogFor(backend, name)
+        : this.probeBackendBounded(backend, { profile: binding.profile });
+      void work.catch(err => this.logger.debug({ backend, name, err }, "Background model discovery failed"));
     }
-    for (const profile of profiles) void this.probeBackendBounded("claude-code", { profile });
   }
 
   /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
@@ -22658,6 +22673,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
+    this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
 
