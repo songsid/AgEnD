@@ -14,7 +14,7 @@
  */
 import { isIP } from "node:net";
 import { X509Certificate } from "node:crypto";
-import { AD_EXTENDED_DN, extendedGroupIds, type PolicyGroupLookup, type PolicyGroupFacts } from "./groups.js";
+import { AD_EXTENDED_DN, extendedGroupIds, type DirectoryFailure, type PolicyGroupLookup, type PolicyGroupFacts } from "./groups.js";
 import * as net from "node:net";
 import * as tls from "node:tls";
 import type { Client as LdapClient, Control, Entry, Filter } from "ldapts";
@@ -32,6 +32,8 @@ export interface HubDirectoryDiagnostic {
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
+  /** M-2724: for a group call, which step failed. */
+  readonly failure?: DirectoryFailure;
 }
 
 export interface HubDirectoryOptions {
@@ -167,7 +169,10 @@ class Session {
       sizeLimit: 2,
       derefAliases: "never",
     }, controls);
-    if (complete && searchReferences?.length) throw new Error("incomplete group result");
+    // M-2724: AD answers every subtree search at a domain root with continuation references (its DNS-zone and Configuration
+    // partitions). An entry found by objectGUID — unique in the forest — is the whole answer whatever else is referenced; only a
+    // conclusion of absence (nothing found) needs a result with no part elsewhere.
+    if (complete && searchReferences?.length && searchEntries.length === 0) throw new IncompleteDirectoryResult();
     return searchEntries;
   }
 
@@ -178,6 +183,32 @@ class Session {
       /* already closed */
     }
   }
+}
+
+/** M-2724: nothing found, but part of the subtree lives elsewhere: absence is not proven. */
+class IncompleteDirectoryResult extends Error { constructor() { super("incomplete group result"); this.name = "IncompleteDirectoryResult"; } }
+/** M-2724: the service account's own sign-in (bind) was refused, as opposed to the connection or the lookup. */
+class ServiceBindError extends Error {
+  constructor(readonly cause: unknown) {
+    // The cause's own words stay in the message (the technical log, and sign-in's certificate wording read it).
+    super(`service account bind failed: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}`); this.name = "ServiceBindError";
+  }
+}
+const UNREACHABLE_CODES = new Set(["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "ECONNRESET", "EPIPE"]);
+const failureOfOne = (err: unknown): DirectoryFailure | undefined => {
+  if (!err || typeof err !== "object") return undefined;
+  const e = err as { code?: unknown; name?: unknown; message?: unknown };
+  const code = typeof e.code === "string" ? e.code : "", name = typeof e.name === "string" ? e.name : "", message = typeof e.message === "string" ? e.message : "";
+  if (/CERT|SELF_SIGNED|ALTNAME|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/.test(code) || /certificate|self.signed/i.test(message)) return "certificate";
+  if (UNREACHABLE_CODES.has(code) || /timeout|timed out|connection (?:closed|lost|reset)|socket hang up/i.test(`${name} ${message}`)) return "unreachable";
+  return undefined;
+};
+/** Which step failed (M-2724): a transport or certificate problem wins over the step it happened in. */
+export function directoryFailure(err: unknown): DirectoryFailure {
+  const inner = err instanceof ServiceBindError ? err.cause : err;
+  const transport = failureOfOne(inner) ?? failureOfOne((inner as { cause?: unknown } | null)?.cause);
+  if (transport) return transport;
+  return err instanceof ServiceBindError ? "service-sign-in" : "lookup";
 }
 
 export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets, options: HubDirectoryOptions = {}): HubDirectory {
@@ -191,11 +222,11 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
   const shape = PROFILES[cfg.profile];
   const now = options.now ?? Date.now;
   const attributes = [shape.idAttribute, cfg.loginAttribute, "displayName", "cn", "mail", shape.departmentAttribute, "memberOf", ...shape.statusAttributes];
-  const report = (op: HubDirectoryDiagnostic["op"], outcome: string, error?: unknown) => {
+  const report = (op: HubDirectoryDiagnostic["op"], outcome: string, error?: unknown, failure?: DirectoryFailure) => {
     if (!options.onDiagnostic) return;
     const message = error instanceof Error ? `${error.name}: ${error.message}` : error === undefined ? undefined : String(error);
     try {
-      options.onDiagnostic({ op, outcome, ...(message !== undefined ? { error: message } : {}) });
+      options.onDiagnostic({ op, outcome, ...(message !== undefined ? { error: message } : {}), ...(failure ? { failure } : {}) });
     } catch {
       /* a diagnostic sink never changes the answer */
     }
@@ -223,7 +254,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       return session;
     } catch (err) {
       await session.close();
-      throw err;
+      throw new ServiceBindError(err);
     }
   };
 
@@ -313,7 +344,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         const again = await service.search(filter, attrs, ["objectGUID"], "sub", cfg.baseDn, undefined, true);
         if (closed || again.length !== 1 || !groupEntry(again[0]!, id) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
         return { ok: true, group: Object.freeze({ key: Object.freeze({ realm: cfg.realm, objectId: id }), dn: again[0]!.dn }) };
-      } catch { report("group-lookup", "unknown"); return { ok: false, reason: "unknown" }; }
+      } catch (err) { const failure = directoryFailure(err); report("group-lookup", "unknown", undefined, failure); return { ok: false, reason: "unknown", failure }; }
       finally { await service?.close(); }
     },
 
@@ -335,7 +366,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         const again = await service.search(filter, attrs, ["objectGUID"], "base", entry.dn, undefined, true);
         if (closed || again.length !== 1 || !groupEntry(again[0]!, who.objectId) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
         return { ok: true, group: Object.freeze({ key: who, dn: again[0]!.dn }) };
-      } catch { report("group-lookup", "unknown"); return { ok: false, reason: "unknown" }; }
+      } catch (err) { const failure = directoryFailure(err); report("group-lookup", "unknown", undefined, failure); return { ok: false, reason: "unknown", failure }; }
       finally { await service?.close(); }
     },
 
@@ -364,7 +395,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         const groups = extendedGroupIds(entry);
         if (!groups) return { kind: "unknown" };
         return Object.freeze({ kind: "complete", person: who, groups, observedAt });
-      } catch { report("group-membership", "unknown"); return { kind: "unknown" }; }
+      } catch (err) { const failure = directoryFailure(err); report("group-membership", "unknown", undefined, failure); return { kind: "unknown", failure }; }
       finally { await service?.close(); }
     },
 

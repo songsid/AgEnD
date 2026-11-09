@@ -5,12 +5,20 @@ import type { PersonKey } from "./types.js";
 export const AD_EXTENDED_DN = "1.2.840.113556.1.4.529";
 export const MAX_POLICY_MEMBERSHIPS = 256;
 export interface DirectoryPolicyGroup { readonly key: PersonKey; readonly dn: string }
+/**
+ * M-2724: which step of a directory call failed, so the page can say what to try: the server could not be reached (or timed
+ * out), its certificate was not trusted, the Hub's service account could not sign in, or the lookup itself failed. Never a
+ * DN, host or server text.
+ */
+export type DirectoryFailure = "unreachable" | "certificate" | "service-sign-in" | "lookup";
+export const DIRECTORY_FAILURES: readonly DirectoryFailure[] = ["unreachable", "certificate", "service-sign-in", "lookup"];
 export type PolicyGroupLookup = { readonly ok: true; readonly group: DirectoryPolicyGroup }
-  | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" | "unknown" };
+  | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" }
+  | { readonly ok: false; readonly reason: "unknown"; readonly failure?: DirectoryFailure };
 export type PolicyGroupFacts =
   | { readonly kind: "complete"; readonly person: PersonKey; readonly groups: readonly string[]; readonly observedAt: number }
   | { readonly kind: "ineligible"; readonly person: PersonKey; readonly reason: "gone" | "disabled"; readonly observedAt: number }
-  | { readonly kind: "unknown" };
+  | { readonly kind: "unknown"; readonly failure?: DirectoryFailure };
 
 /** Flags=1 requests dashed GUIDs. Plain DNs, hex-only GUIDs and partial/ranged attributes never authorize. */
 export function extendedGroupIds(entry: Record<string, unknown>): readonly string[] | null {

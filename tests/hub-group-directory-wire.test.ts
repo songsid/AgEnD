@@ -56,9 +56,39 @@ describe("group-policy real LDAPS listener smoke", () => {
     expect(f.requestedPorts.every(p => p === 636)).toBe(true);
     expect(peer.binds.every(dn => dn === "CN=Reader,DC=example,DC=test")).toBe(true);
   });
-  it.each(["unsupported", "referral", "plain", "missing", "ranged"] as const)("refuses %s wire results as unknown", async mode => {
+  it.each(["plain", "missing", "ranged"] as const)("refuses %s wire results as unknown", async mode => {
     await start(); peer.state.mode = mode; expect(await directory().readPolicyGroups!(who)).toEqual({ kind: "unknown" });
     expect(peer.searches).toHaveLength(1);
+  });
+  it("a server refusing the extended-DN control is a lookup failure (unknown, failure lookup)", async () => {
+    await start(); peer.state.mode = "unsupported"; expect(await directory().readPolicyGroups!(who)).toEqual({ kind: "unknown", failure: "lookup" });
+  });
+  // M-2724 (the pilot Hub on alpha.9): AD answers a subtree search at the domain root with continuation references to its
+  // DNS-zone and Configuration partitions. Refusing any result with a reference made every group call fail: the group add said
+  // "the directory didn't answer", and once the policy was on, every person's check was held. An entry found by its
+  // forest-unique objectGUID is the whole answer; only "nothing found" with a part elsewhere stays unknown.
+  it("AD continuation references beside the found entry: group add, recheck and membership all complete", async () => {
+    await start(); peer.state.mode = "continuation"; const d = directory();
+    expect(await d.resolvePolicyGroup!(GROUP_DN)).toEqual({ ok: true, group: { key: { realm: "example", objectId: GROUP_A }, dn: GROUP_DN } });
+    expect(await d.checkPolicyGroup!({ realm: "example", objectId: GROUP_A })).toMatchObject({ ok: true, group: { key: { objectId: GROUP_A } } });
+    expect(await d.readPolicyGroups!(who)).toMatchObject({ kind: "complete", groups: [GROUP_A] });
+    peer.state.mode = "referral"; expect(await d.readPolicyGroups!(who)).toMatchObject({ kind: "complete", groups: [GROUP_A] });
+  });
+  it("references with nothing found never prove absence: unknown (failure lookup), not not-found", async () => {
+    await start(); peer.state.mode = "continuation"; peer.state.labels.delete(GROUP_A);
+    expect(await directory().checkPolicyGroup!({ realm: "example", objectId: GROUP_A })).toEqual({ ok: false, reason: "unknown", failure: "lookup" });
+    peer.state.mode = "ok"; expect(await directory().checkPolicyGroup!({ realm: "example", objectId: GROUP_A })).toEqual({ ok: false, reason: "not-found" });
+  });
+  it("names the step that failed: certificate, the service account's sign-in, an unreachable server", async () => {
+    await start();
+    expect(await directory(certs!.unrelated.cert).resolvePolicyGroup!(GROUP_DN)).toEqual({ ok: false, reason: "unknown", failure: "certificate" });
+    await peer.close(); peer = await groupWirePeer(certs!.leaf, []); f.port = peer.port;   // a peer that checks the service password
+    const wrong = createHubDirectory({ realm: "example", profile: "ad", url: "ldaps://127.0.0.1:636", caPem: certs!.ca, baseDn: "DC=example,DC=test", bindDn: "CN=Reader,DC=example,DC=test", timeoutMs: 500 }, { bindPassword: "Dummy-wrong-password" }); dirs.push(wrong);
+    expect(await wrong.resolvePolicyGroup!(GROUP_DN)).toEqual({ ok: false, reason: "unknown", failure: "service-sign-in" });
+    expect(await directory().resolvePolicyGroup!(GROUP_DN)).toMatchObject({ ok: true });
+    await peer.close();                                                                       // nothing listens on the port now
+    expect(await directory().resolvePolicyGroup!(GROUP_DN)).toEqual({ ok: false, reason: "unknown", failure: "unreachable" });
+    expect(await directory().readPolicyGroups!(who)).toEqual({ kind: "unknown", failure: "unreachable" });
   });
   it("last-group omission stays held without suspension; a complete other-group result suspends until explicit resume", async () => {
     await start(); const d = directory(), db = new Database(":memory:"); db.pragma("foreign_keys=ON");
@@ -91,7 +121,7 @@ describe("group-policy real LDAPS listener smoke", () => {
     } finally { db.close(); }
   });
   it("rejects an unrelated CA before any service bind", async () => {
-    await start(); expect(await directory(certs!.unrelated.cert).readPolicyGroups!(who)).toEqual({ kind: "unknown" }); expect(peer.binds).toEqual([]);
+    await start(); expect(await directory(certs!.unrelated.cert).readPolicyGroups!(who)).toEqual({ kind: "unknown", failure: "certificate" }); expect(peer.binds).toEqual([]);
   });
   it("outage recovers without resume and commits the resulting decisions to real SQLite/hash-chain audit", async () => {
     await start(); const d = directory(), db = new Database(":memory:"); db.pragma("foreign_keys=ON");

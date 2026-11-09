@@ -9,6 +9,7 @@
  * manifest). Failures never throw into the fleet: they become one visible hold with a reason code.
  */
 import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "./directory/index.js";
+import type { HubDirectoryDiagnostic } from "./directory/directory.js";
 import { hubPlanDigest } from "./init/plan-digest.js";
 import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
@@ -109,6 +110,15 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
   "service-unavailable": "service-unavailable",
 };
 
+/**
+ * M-2724: the running Hub's directory diagnostics, to the host log: which call failed (op), its outcome and, for a group call,
+ * the step (failure). Never the server's text, which can repeat a DN or a login. Ordinary answers (a wrong password, a disabled
+ * person) are not failures of the directory and are not logged.
+ */
+export function hubDirectoryDiagnostics(log: HubRuntimeOptions["log"]): (d: HubDirectoryDiagnostic) => void {
+  return d => { if (d.outcome === "unavailable" || d.outcome === "unknown") log("warn", "Hub directory call failed", { op: d.op, outcome: d.outcome, ...(d.failure ? { failure: d.failure } : {}) }); };
+}
+
 export class HubRuntime {
   private readonly directoryResponses: HubDirectoryResponseOwner;
   private mountedDirectory: HubMountedDirectory | null = null;
@@ -196,7 +206,9 @@ export class HubRuntime {
       : createHubServerFactory({
           home: options.home,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
-          createDirectory: options.createDirectory ?? createHubDirectory,
+          // M-2724: the running Hub's directory says in the host log which call failed and at which step (op, outcome and,
+          // for a group call, the failure kind) — never the server's text, which can repeat a DN or a login.
+          createDirectory: options.createDirectory ?? ((config, secrets) => createHubDirectory(config, secrets, { onDiagnostic: hubDirectoryDiagnostics(options.log) })),
           directoryResponses: this.directoryResponses,
           ...(options.settingsWriter ? { settingsWriter: options.settingsWriter } : {}),
           ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),

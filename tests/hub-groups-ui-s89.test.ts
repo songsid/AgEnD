@@ -351,3 +351,56 @@ describe("discovery and gating", () => {
     expect(member.root.querySelector("#hub-group-permissions")).toBe(null);
   });
 });
+
+// M-2724 (the pilot Hub on alpha.9): a failed group add said only "the directory didn't answer", and the editor then saved the
+// policy on with no group, which held every person's check. The add now says which step failed and what to try (never a host
+// command), and saving on-with-no-group says so in the preview and asks once (No saves nothing, Yes saves once).
+describe("M-2724: the group add says what failed; on with no group asks first", () => {
+  const addWith = async (answer: unknown) => {
+    const f = fake({ resolveGroup: async () => answer });
+    const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+    await until(() => pg.root.querySelector(".hub-step-form input"));
+    const input = pg.root.querySelector(".hub-step-form input"); input.value = DN2; fire(input, "input"); await settle(4);
+    fire(pg.root.querySelector(".hub-step-form"), "submit"); await settle(20);
+    return { text: text(pg.root.querySelector(".hub-groups-list [role=alert]")), rows: pg.root.querySelectorAll(".hub-group-row").length };
+  };
+  it.each([
+    ["unreachable", "The Hub couldn't reach the directory server"], ["certificate", "didn't trust the directory server's certificate"],
+    ["service-sign-in", "The directory refused the Hub's service account"], ["lookup", "The directory answered, but the group lookup didn't finish"],
+  ])("failure %s: its own sentence, nothing added", async (failure, words) => {
+    const r = await addWith({ ok: true, reason: "unknown", failure });
+    expect(r.text).toContain(words); expect(r.text).not.toMatch(/agend |\$ |sudo|terminal/i); expect(r.rows).toBe(1);
+  });
+  it("an older Hub (no failure) or an unknown failure name: the plain sentence", async () => {
+    for (const answer of [{ ok: true, reason: "unknown" }, { ok: true, reason: "unknown", failure: "__proto__" }, { ok: true, reason: "unknown", failure: "toString" }]) {
+      expect((await addWith(answer)).text).toBe("The directory didn't answer. Try again.");
+      for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
+    }
+  });
+  it("removing the last group of an on policy: the preview warns, Save asks once — No saves nothing, Yes saves once", async () => {
+    const f = fake(); const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+    await until(() => pg.root.querySelector(`[data-group="${ID1}"] .btn-ghost`));
+    fire(pg.root.querySelector(`[data-group="${ID1}"] .btn-ghost`), "click");
+    await until(() => pg.root.querySelector(".hub-groups-preview .btn-primary"), 400);
+    expect(text(pg.root.querySelector('.hub-groups-preview [data-reason="no-groups"]'))).toContain("nobody gets access through a group");
+    const asked: string[] = []; let yes = false;
+    vi.stubGlobal("confirm", (m: string) => { asked.push(m); return yes; });
+    try {
+      fire(pg.root.querySelector(".hub-groups-preview .btn-primary"), "click"); await settle(20);
+      expect([asked.length, f.calls.filter(c => c[0] === "saveGroupPolicy").length]).toEqual([1, 0]);
+      yes = true;
+      fire(pg.root.querySelector(".hub-groups-preview .btn-primary"), "click"); await settle(20);
+      expect([asked.length, f.calls.filter(c => c[0] === "saveGroupPolicy").length]).toEqual([2, 1]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("with a group, Save still asks nothing", async () => {
+    const f = fake(); const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+    await until(() => pg.root.querySelector(`[data-group="${ID1}"] input[type=checkbox]`));
+    const box = pg.root.querySelectorAll(`[data-group="${ID1}"] input[type=checkbox]`)[1]; box.checked = true; fire(box, "change");
+    await until(() => pg.root.querySelector(".hub-groups-preview .btn-primary"), 400);
+    expect(pg.root.querySelector('[data-reason="no-groups"]')).toBe(null);
+    const asked = vi.fn(() => true); vi.stubGlobal("confirm", asked);
+    try { fire(pg.root.querySelector(".hub-groups-preview .btn-primary"), "click"); await settle(20); } finally { vi.unstubAllGlobals(); }
+    expect([asked.mock.calls.length, f.calls.filter(c => c[0] === "saveGroupPolicy").length]).toEqual([0, 1]);
+  });
+});

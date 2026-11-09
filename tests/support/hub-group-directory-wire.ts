@@ -8,7 +8,9 @@ export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=
 export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
 export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[]) {
   const sockets = new Set<TLSSocket>(), binds: string[] = [], bindRecords: Array<{ dn: string; password: string }> = [], searches: any[] = [];
-  const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged", memberships: [GROUP_A],
+  // "continuation" (M-2724): as AD does for every subtree search at a domain root, each one also returns continuation
+  // references to the DNS-zone and Configuration partitions, whether or not it found the entry.
+  const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged" | "continuation", memberships: [GROUP_A],
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
     sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0);
@@ -55,6 +57,7 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
             while (r.offset < controlsEnd) { r.readSequence(); const controlEnd = r.offset + r.length, oid = r.readString(), critical = r.readBoolean(), value = r.readString(0x04, true); controls.push({ oid, critical, hex: value?.toString("hex") }); if (r.offset !== controlEnd) throw Error("Invalid control boundary"); }
           }
           searches.push({ base, scope, deref, sizeLimit, attributes, controls, filter: parsed });
+          const continuation = () => { if (state.mode === "continuation" && scope === 2) for (const part of ["DC=DomainDnsZones", "DC=ForestDnsZones", "CN=Configuration"]) reply(id, 0x73, w => w.writeString(`ldaps://example.test/${part},DC=example,DC=test`)); };
           const personGuid = equality(parsed, "objectGUID"), login = equality(parsed, "sAMAccountName")?.toString();
           const user = users?.find(u => personGuid ? personGuid.equals(guidStringToBytes(u.id)!) : u.login.toLowerCase() === login?.toLowerCase());
           const personAttributes = (selected?: GroupWireUser): Record<string, Array<string | Buffer>> => ({
@@ -70,14 +73,14 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
               if (state.mode !== "missing") attrs[state.mode === "ranged" ? "memberOf;range=0-1499" : "memberOf"] = (user?.groups ?? state.memberships).map(g => state.mode === "plain" ? state.labels.get(g)! : `<GUID=${g}>;${state.labels.get(g)}`);
               if (!users || user) entry(id, user?.dn ?? "CN=Person,DC=example,DC=test", attrs);
               if (state.mode === "referral") reply(id, 0x73, w => w.writeString("ldaps://other.invalid"));
-              result(id, 0x65);
+              continuation(); result(id, 0x65);
             }
           } else {
             const raw = equality(parsed, "objectGUID");
             const selected = [...state.labels].find(([guid, dn]) => scope === 0 ? dn.toLowerCase() === base?.toLowerCase() : raw?.equals(guidStringToBytes(guid)!));
             if (selected) entry(id, selected[1], { objectGUID: [guidStringToBytes(selected[0])!], groupType: ["-2147483646"] });
             else if (user) entry(id, user.dn, personAttributes(user));
-            result(id, 0x65);
+            continuation(); result(id, 0x65);
           }
         } else throw Error(`Unexpected inert-LDAP operation ${tag}`);
         buffer = buffer.subarray(frameLength);
