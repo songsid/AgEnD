@@ -6,7 +6,10 @@
   "historyAlphaExit": 0,
   "sameSyntheticDigestAtDifferentLocationExit": 2,
   "sameSyntheticDigestAtDifferentLocationFindings": 1,
-  "ignoreFileSha256": "82d553183570c78f28c16903e65e51785879eba3649d3210a1e62ec0db518a3b",
+  "ignoreFileSha256": "e925b72e15a8d7ea3c022e724168ea0219882ca5331da640655f093ae058c404",
   "historyExceptions": 4,
-  "scope": "exact historical commit/path/rule/line; current log row keys masked; default scanner rules unchanged"
+  "scope": "exact historical commit/path/rule/line; current log row keys masked; default scanner rules unchanged",
+  "baselineFingerprintsPreserved": 6,
+  "newHistoryExceptions": 4,
+  "totalFingerprints": 10
 }
