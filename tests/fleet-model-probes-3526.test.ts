@@ -16,6 +16,12 @@ vi.mock("node:child_process", async original => {
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 vi.mock("../src/tmux-exec-helper.js", () => ({ tmuxExecHelper: { reopen() {}, start() {}, maintain() {}, async stop() {} } }));
 vi.mock("../src/stall-reporter.js", () => ({ startStallReporter: () => null }));
+// Alpha owns a separate tmux server; this catalog fixture never resolves or contacts it.
+vi.mock("../src/tmux-binary.js", async original => ({ ...await original<typeof import("../src/tmux-binary.js")>(),
+  resolveTmux: () => ({ binary: "/synthetic/tmux", source: "override", terminfo: null, version: null }) }));
+vi.mock("../src/tmux-server.js", async original => ({ ...await original<typeof import("../src/tmux-server.js")>(),
+  reconcileServer: async () => null, readServerRecord: () => null, sha256File: () => "0".repeat(64),
+  recordServer: async () => ({ socket: "agend-test", binary: "", version: "", sha256: "0".repeat(64), serverPid: 1, serverStart: 1 }) }));
 vi.mock("../src/binary-probe.js", async original => {
   const real = await original<typeof import("../src/binary-probe.js")>();
   const inert = { answer: Promise.resolve<string | null>(null), kill() {}, exited: Promise.resolve() };
@@ -130,6 +136,20 @@ describe("#3526 background model discovery", () => {
     fm.saveFleetConfig(); await settled();
     expect(ids("antigravity")).toEqual([]);
     expect(FakeProbeWorker.workers).toHaveLength(0);
+  });
+
+  it("keeps native Windows agents outside host background discovery", async () => {
+    fm.loadConfig(config());
+    fm.fleetConfig.instances.native = { runtime: "windows", machine_id: "00000000-0000-4000-8000-000000000001",
+      working_directory: "C:\\work", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } };
+    fm.probeCliEnvs(); await settled();
+    expect(FakeProbeWorker.workers.map(w => w.input.backend)).toEqual(["codex"]);
+    expect(ids("codex", "w")).toEqual(["codex-found"]);
+    expect(ids("claude-code", "native")).toEqual([]);
+    const previous = structuredClone(fm.fleetConfig);
+    fm.fleetConfig.instances.native.backend_options["claude-code"].credential_profile = "other";
+    fm.probeChangedCliEnvs(previous); await settled();
+    expect(FakeProbeWorker.workers).toHaveLength(1);
   });
 
   it("a provider-bound change publishes only for the still-current target", async () => {
