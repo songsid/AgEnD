@@ -116,6 +116,7 @@ export interface SettingsApiContext extends AppShellContext {
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberPairing?(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null;
+  hubMemberPairingView?(): Promise<import("./hub-pairing-summary.js").HubPairingView>;
   generalLocations?(): unknown;
   switchGeneralLocation?(input: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }>;
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
@@ -776,6 +777,21 @@ export function handleSettingsRequest(
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      // v2 is an explicit local-owner read. Older clients keep the pure boolean response and lazy-off behavior.
+      if (url.searchParams.has("v")) {
+        if (url.searchParams.get("v") !== "2" || [...url.searchParams.keys()].length !== 1) { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return true; }
+        const owner = ctx.hubCompanySession?.(req), read = ctx.hubMemberPairingView?.bind(ctx), raw = ctx.getRawFleetConfig(), configPath = ctx.configPath;
+        if (!owner?.current()) { json(res, 403, { ok: false, error: "admin_required" }); return true; }
+        if (!read) { json(res, 404, { ok: false, error: "unavailable" }); return true; }
+        void (async () => {
+          const pairing = await read();
+          if (!owner.current() || gatewayRequestContext(req) || !guestSettingsCaller(req, url, ctx) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath || hubMembershipSettings(ctx.getRawFleetConfig()).enabled !== hubMembershipSettings(raw).enabled) {
+            json(res, 409, { ok: false, error: "unavailable" }); return;
+          }
+          json(res, 200, { ok: true, connectionCardV1: true, ...hubMembershipSettings(raw), pairing });
+        })().catch(() => json(res, 503, { ok: false, error: "unavailable" }));
+        return true;
+      }
       try { json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) }); }
       catch { json(res, 409, { ok: false, error: "invalid_hub_membership" }); }
       return true;

@@ -35,7 +35,7 @@ const markedMember = () => String(globalThis.document?.body?.dataset?.hub || "")
  * with its address and code fields, and no reload is asked for. Nothing has loaded the Hub client before (no Hub module loads
  * on an unmarked page), so it starts as the member client. Presentation only: a mark confers no authority.
  */
-const markMember = on => {
+export const markMember = on => {
   const body = globalThis.document?.body;
   if (!body || markedMember() === on) return;
   const tokens = String(body.dataset.hub || "").split(/\s+/).filter(t => t && t !== "member");

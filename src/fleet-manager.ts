@@ -1754,6 +1754,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
+  /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
+  async hubMemberPairingView(): Promise<import("./hub-pairing-summary.js").HubPairingView> {
+    const raw = this.rawFleetConfig;
+    if (this.shuttingDown) throw Error("Fleet is stopping");
+    if (hubMembershipSettings(raw).enabled && this.hubMemberPairingApi) return this.hubMemberPairingApi.view();
+    const { createHubMemberPairingApi } = await import("./hub/member/pairing-api.js");
+    if (this.shuttingDown || this.rawFleetConfig !== raw) throw Error("Hub membership changed");
+    // This factory schedules nothing; only its private-file projection is called. No write method escapes.
+    return createHubMemberPairingApi({ home: this.dataDir, enabled: () => false }).view();
+  }
   attachHubMemberPairing(api: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null): void { this.hubMemberPairingApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
   private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
