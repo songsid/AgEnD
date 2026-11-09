@@ -538,6 +538,7 @@ export interface WebApiContext {
   /** #1918: in-flight and recently finished cross-instance traffic, bounded (fleet-traffic.ts). */
   trafficSnapshot?(): { now: string; items: unknown[]; delegations?: unknown[] };
   /** #1218: an instance's Log steps, read on demand (null: no such instance; `{ enabled: false }`: the Log is off). */
+  subagentRuns?(name: string): Promise<import("./subagent-service.js").SubagentAnswer>;
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
@@ -2365,6 +2366,22 @@ export function handleWebRequest(
   // ── #1218: the Log tab ─────────────────────────────────
   // An instance's steps, read on demand from its own transcript (log-service.ts). Read-only, and offered on the public
   // link on purpose (the user's decision): the same masking applies to every viewer. Passive (web-auth.ts).
+
+
+  // Deliberately absent from public gateway, guest, View and Hub projections.
+  if (method === "GET" && path === "/ui/subagents") {
+    const admission = adminAdmissionOf(req, url, ctx), name = url.searchParams.get("instance") ?? "";
+    if (!admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    if (!name || name.length > 128 || !safeInstanceSegment(name)) { json(res, 400, { error: "invalid instance" }); return true; }
+    if (!ctx.subagentRuns) { json(res, 404, { error: "not available" }); return true; }
+    void ctx.subagentRuns(name).then(answer => {
+      if (res.destroyed) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
+      if (answer.status === "busy") { res.setHeader("Retry-After", "2"); json(res, 429, { error: "busy" }); return; }
+      json(res, 200, answer);
+    }).catch(() => { if (!res.destroyed) json(res, 503, { error: "unavailable" }); });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/steps") {
     const p = url.searchParams;
@@ -4524,7 +4541,11 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
+    && (admission.via !== "session" || admission.session.tier === "admin");
+
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`

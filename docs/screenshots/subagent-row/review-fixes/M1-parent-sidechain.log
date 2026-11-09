@@ -1,0 +1,55 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-records.test.ts (37 tests | 1 failed) 50ms
+     × refuses a Claude launch with wrong sidechain-parent evidence 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > refuses a Claude launch with wrong sidechain-parent evidence
+AssertionError: expected [ { …(9) }, { …(9) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "key": "<opaque-run-key>",
++     "name": "核對第一份範例資料",
++     "parentStartedAt": 1794208348273,
++     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
++     "parentTurn": "521090a0-03e6-4799-a31b-e2cd143cc7fa",
++     "startedAt": 1794208348429,
++     "state": "unknown",
++     "task": "CHILD_ONE：只讀取指定的範例檔案，再回報內容是否符合預期。",
++     "type": "reader",
++   },
++   {
++     "key": "<opaque-run-key>",
++     "name": "核對第二份範例資料",
++     "parentStartedAt": 1794208348273,
++     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
++     "parentTurn": "521090a0-03e6-4799-a31b-e2cd143cc7fa",
++     "startedAt": 1794208348458,
++     "state": "unknown",
++     "task": "CHILD_TWO：只讀取指定的範例檔案，再回報內容是否符合預期。",
++     "type": "checker",
++   },
++ ]
+
+ ❯ tests/subagent-records.test.ts:38:33
+     36|       else if (r.toolUseResult?.status === "async_launched") r.sourceT…
+     37|     }
+     38|     expect(projectSubagents(f)).toEqual([]);
+       |                                 ^
+     39|   });
+     40|   it.each(["sessionId", "cwd", "agentId", "isSidechain", "toolUseId", …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 passed (37)
+   Start at  18:57:12
+   Duration  340ms (transform 97ms, setup 69ms, import 71ms, tests 50ms, environment 0ms)

@@ -1,0 +1,150 @@
+[
+  {
+    "name": "positive-real-records",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "c3955ae740d50cce7ed7f8f244a1ebf8268b006942b33c90f3e9d48093cb912f",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "claude-child-session",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "6c0a22ef6256114f6d58dcc6ff0f4b0ee885c3be8a010d4f3c59657ae02e84ab",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "claude-sidecar-call",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "9582aff0d22836eadca135f1dec6f224ee86373f8115c9be8aaf05d87ba94f7b",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "codex-parent-binding",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "cf048ac8b672f74a836b2cce7e302813f8c3bd7e2ef3f870df34c6ed3e584575",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "codex-turn-binding",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "e6f291a33fecb54ce105dfda8fc3dd6b60e278fa0c66d526ca3ca406b2b775e7",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "fresh-open-state",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "04d97c0aaed3a9dad849ff744687086672093accd41d79d0dabaae9dc11e7c43",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "metadata-not-completion",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": false,
+    "logSha256": "74cd74016d4404e96f4331d94ac3ec89e66804d83f23cc9f2d467e5b13c48555",
+    "disposition": "not counted: invalid mutant throws before intended assertion"
+  },
+  {
+    "name": "disconnected-unknown",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "fce5085b3a94df35294f7a164cc1a18778480069022589d16ab680fc380f6cad",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "owner-retirement",
+    "file": "src/subagent-service.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "42a7f37fc8a902477b75dcd7acbb8598312f9f0308c5a0a39de85a5bfcf86f69",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "physical-shared-cap",
+    "file": "src/subagent-service.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "b4dabb3cb8f34338a40f4fe294b029a62088177926f54149c432a417387f9624",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "filesystem-canonical-paths",
+    "file": "src/subagent-service.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "73490c699c773d18441d5a8b1004d678cee97ce1be94875d46dfa3a318d8b638",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "endpoint-admin",
+    "file": "src/web-api.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "b7368ac04440bb4c7baf497e0c8652244e43ceabc58dac4be99e20b54a07921c",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "endpoint-continuation",
+    "file": "src/web-api.ts",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "043d385e49748c468dfc9de1b768d3edfbca10e49df1b99abd6f4c666df8d3f2",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "ui-late-unmount",
+    "file": "src/ui/subagent-row.js",
+    "exitCode": 0,
+    "assertionFailure": false,
+    "logSha256": "ef7d2b4629dbd8673fecd4bfe00dc99f11c26c63167d988c518f596e00bcf59e",
+    "disposition": "not counted: equivalent partial UI guard"
+  },
+  {
+    "name": "ui-single-flight",
+    "file": "src/ui/subagent-row.js",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "964176ca60b6c100988b3e7d3dd5b503226920d33363985cbcdce1c0f5d79ed5",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "notification-origin",
+    "exitCode": 1,
+    "assertionFailure": false,
+    "logSha256": "959497a62309307c308ee72755d27f4305a3c2ae2b974030b6424f7ef91fee4e",
+    "disposition": "not counted: invalid mutant throws before intended assertion"
+  },
+  {
+    "name": "ui-retired-continuation-pair",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "46b617ad98f45db9aff60d1692021fe379a82b13578d9eb8071667f4a784c689",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "notification-human-origin",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "4ac4ba025a5a19d8937c9da3e7a5829625d6aa289565951623c57b17adb35c92",
+    "disposition": "assertion reversal caught"
+  },
+  {
+    "name": "physical-file-close",
+    "exitCode": 1,
+    "assertionFailure": true,
+    "logSha256": "ff46d790183fa326df41347f16bba180b19979b1b50d3de9474a4d7405cacee7",
+    "disposition": "assertion reversal caught"
+  }
+]

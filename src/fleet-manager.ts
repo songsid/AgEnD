@@ -6,6 +6,7 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { SubagentService } from "./subagent-service.js";
 import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
 import { quotaNoticeRule } from "./quota-notice-config.js";
 import { onUsageSnapshot } from "./usage/usage-api.js";
@@ -6246,6 +6247,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
   logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
+  private subagentReader = new SubagentService(name => this.lifecycle.daemons.get(name)?.subagentSource() ?? null);
+  subagentRuns(name: string) { return this.subagentReader.read(name); }
+
 
   /**
    * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
