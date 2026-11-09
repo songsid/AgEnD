@@ -1,3 +1,5 @@
+> **Current scoped R1 receipt:** [b8e003e29 — mismatched-operation discovery](r1/README.md). The material below remains the historical962d4f6c4 acceptance.
+
 # #3488 / M-2722 — a company join waiting on local confirmation
 
 **摘要：** 新分頁等待的是 Fleet 本機的設定確認，當時 Hub 登入尚未開始。修正顯示下一步、帶到既有確認卡，並讓相同的空白狀態仍持續讀取；等候到期可再次檢查或返回。撤回完全使用 #3487 的共用確認卡。本次沒有實作三張卡合一的設計提案。

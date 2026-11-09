@@ -1,0 +1,29 @@
+{
+  "reviewHead": "b8e003e2970523be08c68abd039c01a0583e1de2",
+  "previousReviewHead": "962d4f6c4d7684526a605176d7e6a75d676fd1a3",
+  "renderBytesIdentical": true,
+  "sharedBytesIdentical": {
+    "src/ui/settings-confirm.js": true,
+    "src/ui/shared/app-shell.js": true,
+    "src/ui/shared/app-i18n.js": true,
+    "src/ui/shared/app.css": true,
+    "scripts/manual/smoke/smoke-hub-company-wait-3488.mts": true
+  },
+  "sourceSha256": {
+    "src/ui/settings-hub-company-join.js": "6a3f4837921f0cd6f00f2e5967d939bb9a4a71861436cd5a83077f63258abab8",
+    "tests/hub-company-join-wait.test.ts": "618dd6193b29c187e6fad6915cccbaba9c84b8c31402ff668733a64b7c6379af",
+    "src/ui/settings-confirm.js": "38f0ecab2e44db973b6889b564599f76a4023b2e7b2662f8d12f377f9094a1fc",
+    "src/ui/shared/app-shell.js": "603943d2db99f36ac3c96f3386721b881d9596055b8e7c81213539c2b97ab7c2",
+    "src/ui/shared/app-i18n.js": "4dc9e672b87a463989a909ac285ecdfbd869c74c083520fcd5331af4e5c7a38e",
+    "src/ui/shared/app.css": "ea3b4bccdde7da6b65be5f746f80cbf1a849291d6e950821519a750ffff0fd68",
+    "scripts/manual/smoke/smoke-hub-company-wait-3488.mts": "2fe3d1abac96f5fe67ac3f1624c198fc9c9f6164ccfa96494b648d909a5cb085"
+  },
+  "pngSha256": {
+    "R1-desk-approval-continued-to-hub.png": "d80d8a7e51694ed3c4b91730321192c71ced9624169f060ed8b76c1280d203cf",
+    "R1-desk-old-A-held-for-B.png": "2ff042818a6ab9ecf460ec562c7abfba336e334d702724cf3519bee537a62104",
+    "R1-desk-online.png": "933b0e4229dd35aea45205ca487de448cd133d61e3496ea399bfaa7029f0f8e5",
+    "R1-phone-approval-continued-to-hub.png": "bb8c4529ba9ba3a186f97b63c5131a88b365b8d98181287a6a44a42018f8da56",
+    "R1-phone-old-A-held-for-B.png": "a41540ee8c02a403e667fdea494adf117a5c5073976f6203ce425c573ee043df",
+    "R1-phone-online.png": "bd49b53b81ec27b16fd5dd3b127c6a6600650fa0dc793cd12024a9476b716ec6"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "head": "b8e003e2970523be08c68abd039c01a0583e1de2",
+  "browser": "156.0.8078.4",
+  "scope": "Actual sealed Hub/FleetManager/HubRuntime/settings writer/production LDAP over dummy TLS-BER peer. Real Chrome public web paths. No response stubs, live accounts/fleet/pilot/native/model requests.",
+  "r1QueuedCompletion": {
+    "preconditions": "Synthetic Hub group policy/company joining via ordinary admin HTTP; dummy TOTP pre-enrolled only in scratch fixture, actual browser code submission. No API replacement.",
+    "results": [
+      {
+        "device": "desk",
+        "localStart": 202,
+        "oldCancelledAObservedTwice": true,
+        "unmatchedReadsStayUnpinned": true,
+        "noEnrollmentBeforeApproval": true,
+        "existingTOTPConfirmed": true,
+        "actualHubSignIn": true,
+        "sameOperationSavedOnline": true
+      },
+      {
+        "device": "phone",
+        "localStart": 202,
+        "oldCancelledAObservedTwice": true,
+        "unmatchedReadsStayUnpinned": true,
+        "noEnrollmentBeforeApproval": true,
+        "existingTOTPConfirmed": true,
+        "actualHubSignIn": true,
+        "sameOperationSavedOnline": true
+      }
+    ],
+    "sameRequestingSessionForAAndB": true,
+    "steps": "Ordinary dashboard session: real TOTP confirmation starts A, UI cancels A, B starts held, two real unpinned current reads observe cancelled A, next real TOTP time step confirms B, actual synthetic directory sign-in completes B saved/online. No cookie/session replacement between A and B."
+  },
+  "cleanup": {
+    "at": "2026-11-09T04:08:24.707Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 2583006
+  },
+  "cleanupChecks": {
+    "r1-e2e": {
+      "recordedPids": 21,
+      "livePids": [],
+      "remainingRoots": [],
+      "listeningPorts": [],
+      "driver": {
+        "at": "2026-11-09T04:01:19.581Z",
+        "browserClosed": true,
+        "rigClosed": true,
+        "ownedHomesRemoved": true,
+        "pid": 2577231
+      }
+    },
+    "r1-e2e-final": {
+      "recordedPids": 32,
+      "livePids": [],
+      "remainingRoots": [],
+      "listeningPorts": [],
+      "driver": {
+        "at": "2026-11-09T04:05:10.980Z",
+        "browserClosed": true,
+        "rigClosed": true,
+        "ownedHomesRemoved": true,
+        "pid": 2580293
+      }
+    },
+    "r1-e2e-same-session": {
+      "recordedPids": 44,
+      "livePids": [],
+      "remainingRoots": [],
+      "listeningPorts": [],
+      "driver": {
+        "at": "2026-11-09T04:08:24.707Z",
+        "browserClosed": true,
+        "rigClosed": true,
+        "ownedHomesRemoved": true,
+        "pid": 2583006
+      }
+    }
+  },
+  "visualReview": "Six exact-head screenshots inspected read-only: no new raw keys/overlap/overflow; existing English summary and phone lower-controls viewport limits disclosed."
+}
