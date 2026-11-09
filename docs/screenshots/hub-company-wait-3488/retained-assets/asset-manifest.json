@@ -1,0 +1,9 @@
+{
+  "source": "923ccf98bb70be7ebbb6c8ae639a0a1b15e07dd8",
+  "files": {
+    "app-i18n.js": "6433ad346676d76f7aada2b115899c1d4ab0240b0c85352d38586fcf22e54a24",
+    "app-shell.js": "405322a6e0ef62891ffd2669f2f4cbe4911d6ec0559298f7e5a98e99ad14512e",
+    "hub-company-join-strings.js": "3bfd6cd4d38832e6075c974bc6a4c7ff98853282be1fdb0259647ef227ad52ea",
+    "settings-confirm.js": "a011ef14a575fccc7d4563333c2a6bd26e7ab0f94cca75554425f065ae77075d"
+  }
+}

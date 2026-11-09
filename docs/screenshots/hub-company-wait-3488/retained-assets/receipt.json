@@ -1,0 +1,181 @@
+{
+  "head": "cef3a7468d10a567d966167635823597a40d9910",
+  "checks": [
+    {
+      "name": "desk-light-en actual non-host Start is held",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en loaded wait has no skeleton",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en shared gate frame/overflow/accent",
+      "ok": true,
+      "detail": {
+        "over": [],
+        "overCount": 0,
+        "cards": [
+          {
+            "el": "div.s-hub-section > div.form.hub-membership-settings > section.card.s-company-join",
+            "frame": "24px 24px 24px 24px 1px solid 12px"
+          },
+          {
+            "el": "div.s-hub-section > div.form.hub-membership-settings > section#hub-membership.card",
+            "frame": "24px 24px 24px 24px 1px solid 12px"
+          }
+        ],
+        "kinds": {
+          "btn.btn-primary.btn-sm": {
+            "30": "Review local confirmatio"
+          },
+          "btn.btn-sm": {
+            "30": "Return to Fleet Settings"
+          }
+        },
+        "accents": [],
+        "accentCount": 0,
+        "small": {
+          "section.pending-card.pending > p.note.pending-why > a.btn.btn-sm": 1,
+          "section.pending-card.pending > p.note.pending-code-setup > a.btn.btn-sm": 1,
+          "section.pending-card.pending > details.pending-host > summary": 1,
+          "section.pending-card.pending > div.pending-actions > button.btn.btn-sm": 1,
+          "div.company-local-wait > div.field-row > button.btn.btn-sm": 1,
+          "div.company-local-wait > div.field-row > a.btn.btn-sm": 1,
+          "section#hub-membership.card > label.check > input#hubMemberEnabled.s-ui-toggle": 1
+        },
+        "tap": 44,
+        "pageX": 0
+      }
+    },
+    {
+      "name": "desk-light-en exact withdrawal known",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no enrollment created",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual non-host Start is held",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW loaded wait has no skeleton",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW shared gate frame/overflow/accent",
+      "ok": true,
+      "detail": {
+        "over": [],
+        "overCount": 0,
+        "cards": [
+          {
+            "el": "div.s-hub-section > div.form.hub-membership-settings > section.card.s-company-join",
+            "frame": "16px 16px 16px 16px 1px solid 12px"
+          },
+          {
+            "el": "div.s-hub-section > div.form.hub-membership-settings > section#hub-membership.card",
+            "frame": "16px 16px 16px 16px 1px solid 12px"
+          }
+        ],
+        "kinds": {
+          "btn.btn-primary.btn-sm": {
+            "44": "開啟本機確認"
+          },
+          "btn.btn-sm": {
+            "44": "返回 Fleet 設定"
+          }
+        },
+        "accents": [],
+        "accentCount": 0,
+        "small": {
+          "section.pending-card.pending > p.note.pending-why > a.btn.btn-sm": 1,
+          "section.pending-card.pending > p.note.pending-code-setup > a.btn.btn-sm": 1,
+          "section.pending-card.pending > details.pending-host > summary": 1,
+          "section.pending-card.pending > div.pending-actions > button.btn.btn-sm": 1,
+          "section#hub-membership.card > label.check > input#hubMemberEnabled.s-ui-toggle": 1
+        },
+        "tap": 44,
+        "pageX": 0
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW new phone controls meet tap size",
+      "ok": true,
+      "detail": [
+        {
+          "label": "開啟本機確認",
+          "w": 98,
+          "h": 44
+        },
+        {
+          "label": "返回 Fleet 設定",
+          "w": 108.671875,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW timeout retains inspect and exit",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW local timeout does not decide server authorization",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW exact withdrawal known",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no enrollment created",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "nonempty matrix",
+      "ok": true
+    },
+    {
+      "name": "no page errors/foreign requests",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-waiting",
+    "desk-light-en-review",
+    "desk-light-en-withdrawn",
+    "phone-dark-zh-TW-waiting",
+    "phone-dark-zh-TW-review",
+    "phone-dark-zh-TW-timeout",
+    "phone-dark-zh-TW-withdrawn"
+  ],
+  "errors": [],
+  "foreign": [],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true,
+      "pendingId": "d11ec5a20c603d83dec60ebac806f3fc"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true,
+      "pendingId": "6926ab7d7b9f350bf29a4a06883778a8"
+    }
+  ],
+  "assetSkew": true,
+  "scope": "Real Fleet HTTP/browser/Settings gate; dummy Hub address is never contacted. No native/model/account/live fleet. Browser-only clock for timeout.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

@@ -1,0 +1,48 @@
+{
+  "head": "cef3a7468d10a567d966167635823597a40d9910",
+  "browser": "156.0.8078.4",
+  "scope": "Actual sealed Hub/FleetManager/HubRuntime/settings writer/production LDAP over dummy TLS-BER peer. Real Chrome public web paths. No response stubs, live accounts/fleet/pilot/native/model requests.",
+  "queuedCompletion": {
+    "preconditions": "Synthetic Hub group policy/company joining via ordinary admin HTTP; dummy TOTP pre-enrolled only in scratch fixture, actual browser code submission. No API replacement.",
+    "results": [
+      {
+        "device": "desk",
+        "localStart": 202,
+        "repeatedNullBeforeConfirmation": true,
+        "noEnrollmentBeforeApproval": true,
+        "existingTOTPConfirmed": true,
+        "actualHubSignIn": true,
+        "sameOperationSavedOnline": true
+      },
+      {
+        "device": "phone",
+        "localStart": 202,
+        "repeatedNullBeforeConfirmation": true,
+        "noEnrollmentBeforeApproval": true,
+        "existingTOTPConfirmed": true,
+        "actualHubSignIn": true,
+        "sameOperationSavedOnline": true
+      }
+    ]
+  },
+  "cleanup": {
+    "at": "2026-11-09T03:43:02.699Z",
+    "browserClosed": true,
+    "rigClosed": true,
+    "ownedHomesRemoved": true,
+    "pid": 2558360
+  },
+  "independentCleanup": {
+    "driver": {
+      "at": "2026-11-09T03:43:02.699Z",
+      "browserClosed": true,
+      "rigClosed": true,
+      "ownedHomesRemoved": true,
+      "pid": 2558360
+    },
+    "recordedPids": 33,
+    "livePids": [],
+    "remainingRoots": [],
+    "listeningPorts": []
+  }
+}

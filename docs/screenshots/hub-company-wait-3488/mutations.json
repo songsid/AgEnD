@@ -1,0 +1,50 @@
+[
+  {
+    "name": "loaded-skeleton",
+    "caught": true,
+    "failed": 2,
+    "exit": 1
+  },
+  {
+    "name": "null-read-rearm",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  },
+  {
+    "name": "timeout-signal",
+    "caught": true,
+    "failed": 3,
+    "exit": 1
+  },
+  {
+    "name": "stop-at-timeout",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  },
+  {
+    "name": "exact-card",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  },
+  {
+    "name": "single-flight",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  },
+  {
+    "name": "known-withdraw",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  },
+  {
+    "name": "exact-handoff",
+    "caught": true,
+    "failed": 1,
+    "exit": 1
+  }
+]
