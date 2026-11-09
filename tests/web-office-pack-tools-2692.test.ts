@@ -168,7 +168,7 @@ describe("the `office_packs` feature: off unless set true", () => {
     expect(gate("/api/settings/fleet/instances/dev", "PATCH", { office_pack_access: false })).toBe("direct");
     const src = readFileSync(join(process.cwd(), "src/ui/settings-strings.js"), "utf8");
     expect(src).toContain('dashboard_office_packs: "Office skin packs: check, upload, replace and restore them (everyone sees them)"');
-    expect(src).toContain('dashboard_office_packs: "辦公室外觀包：檢查、上傳、取代與還原（全 fleet 都看得到）"');
+    expect(src).toContain('dashboard_office_packs: "辦公室外觀包：檢查、上傳、取代與還原（整個 Fleet 都看得到）"');   // M-2733 wording
   });
 });
 

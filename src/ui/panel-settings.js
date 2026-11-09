@@ -56,6 +56,15 @@ import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
+/**
+ * M-2733: the config words of tool_progress / cross_instance_visibility, in the page's language (the value saved is the
+ * word). Local, not imported: an open tab may keep an older settings-dialogs.js, and a new named import would fail this
+ * lazily loaded panel. A word with no translation shows as itself.
+ */
+const choiceOptions = (field, values) => values.map((v) => {
+  const key = `settings.choice_${field}_${v}`, said = t(key);
+  return { value: v, label: said === key ? v : said };
+});
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
@@ -1082,7 +1091,7 @@ function General({ ctx, part = "all" }) {
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
   const dm = (k) => (unset[k] && sameValue(f[k], base[k]) ? html`<${DefaultMark} />` : null);
-  const fromDefaults = (k, value, target) => ({ text: valueText(value), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
+  const fromDefaults = (k, value, target) => ({ text: valueText(value, k), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
   const L = (text, field, id, k) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} mark=${k ? dm(k) : null} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
@@ -1097,8 +1106,8 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model", "model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
           backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
         <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
-        <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
-        <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
+        <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></div>
+        <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${choiceOptions("cross_instance_visibility", VISIBILITY_MODES)} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
         <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
         <div class=${fc("field", "replyTriggers")}><label class="check"><input id="g-reply-triggers" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}<${Impact} schema=${schema} field="defaults.reply_triggers" /></label><p class="note">${tn("replyTriggersHint")}</p></div>
@@ -1117,7 +1126,7 @@ function General({ ctx, part = "all" }) {
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
           <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
-            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
+            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
         <div class=${fc("field", "classicReplyTriggers", "classicReplyTriggersInherit")}>${L(tn("replyTriggers"), "classic_defaults.reply_triggers")}
           <${Override} inherit=${f.classicReplyTriggersInherit} onInherit=${set("classicReplyTriggersInherit")} inherited=${fromDefaults("reply_triggers", Boolean(d.reply_triggers ?? schema.reply_triggers_default), "#g-reply-triggers")}>
             <label class="check"><input id="g-creply-triggers" type="checkbox" disabled=${f.classicReplyTriggersInherit} checked=${f.classicReplyTriggersInherit ? Boolean(d.reply_triggers ?? schema.reply_triggers_default) : f.classicReplyTriggers} onChange=${(e) => set("classicReplyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>

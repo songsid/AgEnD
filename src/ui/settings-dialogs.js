@@ -41,6 +41,19 @@ export const ask = (message, opts = {}) => confirmDialog({ message, ...opts });
 
 // ── Form pieces ──
 
+/**
+ * M-2733: a select whose values are config words (tool_progress off/standard/verbose, cross_instance_visibility
+ * full/summary/hidden) shows them in the page's language; the value saved is the config word. A value with no words
+ * (a newer host's, or a stale settings-strings.js) shows as itself. Local, not in settings-model.js: a stale tab may
+ * keep an older one, and a new named import would fail this module's load.
+ */
+export const CHOICE_FIELDS = ["tool_progress", "cross_instance_visibility"];
+export function choiceLabel(field, value) {
+  const key = `settings.choice_${field}_${value}`, said = t(key);
+  return said === key ? String(value) : said;
+}
+export const choiceOptions = (field, values) => values.map((v) => ({ value: v, label: choiceLabel(field, v) }));
+
 export function Select({ value, options, onChange, disabled, id, label }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   return html`<select id=${id} value=${value} disabled=${disabled} aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
@@ -55,7 +68,7 @@ export function BackendSelect({ value, onChange, disabled, id }) {
   const known = backendOptions(value).filter((o) => !o.unavailable).map((o) => o.value);
   const opts = backendChoices(known, rows || [], value, {
     notInstalled: tn("backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
-    unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v),
+    unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v), name: backendLabel,
   });
   return html`<select id=${id} value=${value} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
     ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
@@ -101,6 +114,7 @@ export function Inherited({ text, builtin, from }) {
 /** A value as the inherited line says it: on/off, minutes (0 = off), a backend's name; anything else as it is. */
 export function valueText(v, kind) {
   if (typeof v === "boolean") return tn(v ? "valueOn" : "valueOff");
+  if (CHOICE_FIELDS.includes(kind)) return choiceLabel(kind, v);
   if (kind === "minutes") return Number(v) === 0 ? tn("valueOff") : tn("minutesValue", v);
   if (kind === "backend") return backendLabel(v);
   return String(v);
@@ -330,9 +344,9 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
           ["log_level", "logLevel", LOG_LEVELS, defaults.log_level || "info", "#g-ll"]].map(([k, label, opts, dflt, target]) => html`<div key=${k} class="field">
           ${L(tn(label), `instance.${k}`, `ag-${k}`)}
           <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}
-            inherited=${inh(k, dflt, target, "", k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
+            inherited=${inh(k, dflt, target, CHOICE_FIELDS.includes(k) ? k : "", k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
             <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
-              options=${opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}>
+              options=${((list) => (CHOICE_FIELDS.includes(k) ? choiceOptions(k, list) : list))(opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts])} /></${Override}>
           ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
         <fieldset class="field dash-perms"><legend>${L(tn("dashboardAccess"), "instance.dashboard")}</legend>
           <p class="note">${tn("dashboardAccessHint")}</p>
@@ -714,8 +728,8 @@ export function ClassicDialog({ room, ctx, onClose }) {
             value=${f.inherit.auto_pause_after ? String(inherited.auto_pause_after) : f.auto_pause_after} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.auto} /></div>
       <div class="field">${L(tn("toolProgress"), "classic.tool_progress", "cl-tp")}
-        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "", "#g-ctp", "#g-tp")}>
-          <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></${Override}></div>
+        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "tool_progress", "#g-ctp", "#g-tp")}>
+          <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
       <div class="field">${L(tn("replyCompletionGuard"), "classic.reply_completion_guard")}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${roomInh("reply_completion_guard", "", "#g-creply", "#g-reply")}>
           <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
