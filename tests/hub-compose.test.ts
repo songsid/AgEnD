@@ -1218,6 +1218,11 @@ describe.skipIf(process.platform === "win32")("private Save orchestration with r
         expect(after.prepare("SELECT directory_epoch FROM hub_settings_head").get()).toEqual({ directory_epoch: epoch });
         expect(after.prepare("SELECT count(*) n FROM hub_settings_operations").get()).toEqual({ n: epoch });
         expect(after.prepare("SELECT count(*) n FROM hub_settings_security_notices").get()).toEqual({ n: epoch });
+        const intent = after.prepare("SELECT expires_at,state,completed_at FROM hub_settings_mount_recovery").get() as { expires_at: number; state: string; completed_at: number };
+        expect(intent).toMatchObject({ state: outcome === "ready" ? "ready" : "compensated", completed_at: expect.any(Number) });
+        const original = JSON.parse((after.prepare("SELECT body FROM hub_settings_operations ORDER BY rowid LIMIT 1").get() as { body: string }).body);
+        expect(original.recovery).toEqual({ v: 1, expiresAt: intent.expires_at });
+        expect(intent.expires_at - original.at).toBeGreaterThan(0); expect(intent.expires_at - original.at).toBeLessThanOrEqual(300_000);
         expect(after.prepare("SELECT count(*) n FROM hub_sessions WHERE state='active'").get()).toEqual({ n: outcome === "ready" ? 1 : 0 });
       } finally { after.close(); }
       if (outcome === "ready") {

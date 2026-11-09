@@ -5,6 +5,7 @@
  * File journals/signatures cannot substitute for this row. The runtime owns the participant; AD authority routes remain uncomposed.
  */
 import { takeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
+import { readHubDirectoryRecoveryIntent, assertHubDirectoryRecoveryClock } from "./settings-directory-recovery-intent.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -33,12 +34,14 @@ const expectationSchema = z.strictObject({ operationId: uuid.nullable(), directo
   transportRevision: epoch, authorizationVersion: epoch, policySha: hash });
 const requestSchema = z.strictObject({ id: uuid, expected: expectationSchema, before: imageSchema, after: imageSchema,
   generation: identifier, receiptSha: hash, actor: actorSchema, at: epoch,
-  changes: changesSchema, recipients: recipientsSchema });
+  changes: changesSchema, recipients: recipientsSchema,
+  recovery: z.strictObject({ v: z.literal(1), expiresAt: epoch }).optional() }).refine(r => !r.recovery
+    || r.recovery.expiresAt > r.at && r.recovery.expiresAt - r.at <= 300_000);
 export type HubDirectoryDecisionRequest = z.infer<typeof requestSchema>;
 export function parseHubDirectoryDecisionMetadata(raw: unknown) {
   return validated(z.strictObject({ actor: actorSchema, changes: changesSchema, recipients: recipientsSchema }), raw);
 }
-const operationSchema = requestSchema.extend({ kind: z.enum(["directory", "directory-compensation"]),
+const operationSchema = requestSchema.safeExtend({ kind: z.enum(["directory", "directory-compensation"]),
   compensates: uuid.nullable(), browserSession: z.strictObject({v:z.literal(1),previousSessionId:identifier,sessionId:identifier}).optional(), previousGeneration: identifier, directoryEpoch: epoch, authorizationVersion: epoch });
 export type HubDirectorySettingsOperation = z.infer<typeof operationSchema>;
 const noticeSchema = z.strictObject({ v: z.literal(1), id: uuid, operationId: uuid,
@@ -129,13 +132,16 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
   function decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, compensation?: HubDirectorySettingsOperation, rotation?: HubDirectorySessionRotation): HubDirectorySettingsOperation {
     // Parse clones nested inputs before invoking any caller/audit callback. No mutable request may be published later.
     const input = validated(requestSchema, raw);
+    if (compensation && input.recovery) throw new HubProtocolError("invalid"); // No recursively authorized restoration.
     if (db.inTransaction) throw new HubProtocolError("invalid"); // this must be the durable root decision, never a savepoint
     const transition = rotation ? takeHubDirectorySessionRotation(rotation, db, hubId, input.actor, input.expected.directoryEpoch) : undefined;
     if (compensation && transition) throw new HubProtocolError("invalid");
     const result = db.transaction(() => {
       assertExpected(input.expected);
       const basisPolicy = policyRow(db).policy;
-      synchronous(prove(input.expected, basisPolicy, assertProof)); assertExpected(input.expected);
+      const initialProof = prove(input.expected, basisPolicy, assertProof); synchronous(initialProof); assertExpected(input.expected);
+      if (input.recovery) assertHubDirectoryRecoveryClock(input, initialProof);
+      if (compensation?.recovery) assertHubDirectoryRecoveryClock(compensation, initialProof);
       transition?.validate(transition.clock());
       const previous = policyRow(db), policy = previous.policy;
       if (previous.hub_id !== hubId || (input.actor.kind === "hub-administrator" && input.actor.person.realm !== policy.realm)) throw new HubProtocolError("denied");
@@ -148,6 +154,10 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         || !same(content(input.after), content(compensation.before)) || input.generation !== compensation.previousGeneration
         || !same(input.recipients, compensation.recipients) || !same(input.actor, compensation.actor)
         || !same(input.changes, compensation.changes))) throw new HubProtocolError("conflict");
+      if (compensation?.recovery) {
+        if (readHubDirectoryRecoveryIntent(db, compensation)?.state !== "pending") throw new HubProtocolError("conflict");
+        assertHubDirectoryRecoveryClock(compensation, input.at);
+      }
       const nextPolicy: HubGroupPolicy = { ...policy, generation: input.generation, revision: policy.revision + 1 };
       const nextEpoch = input.expected.directoryEpoch + 1, nextVersion = input.expected.authorizationVersion + 1;
       if (!Number.isSafeInteger(nextEpoch) || !Number.isSafeInteger(nextVersion)) throw new HubProtocolError("unavailable");
@@ -168,12 +178,22 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         db.prepare("UPDATE hub_group_policy SET body=? WHERE singleton=1 AND hub_id=? AND body=?")
           .run(JSON.stringify(parseGroupPolicy(nextPolicy)), hubId, previous.body);
         db.prepare("INSERT INTO hub_settings_operations VALUES(?,?)").run(input.id, JSON.stringify(saved));
+        if (input.recovery) db.prepare("INSERT INTO hub_settings_mount_recovery VALUES(?,?,'pending',NULL)").run(input.id, input.recovery.expiresAt);
         db.prepare("INSERT INTO hub_settings_security_notices VALUES(?,?,?)").run(notice.id, input.id, JSON.stringify(notice));
         for (const target of targetRows(notice.recipients)) db.prepare("INSERT INTO hub_settings_security_targets VALUES(?,?,?,'queued')").run(notice.id, target.kind, target.target);
       }); // existing floor-before-audit and same-DB write; any later rollback leaves a raised floor uncertain
       const finalProof = prove(input.expected, policy, assertProof); synchronous(finalProof);
       // The shared writer returns its last clock sample, avoiding another callback after its final material/time check.
       const transitionTime = typeof finalProof === "number" ? finalProof : transition?.clock();
+      if (saved.recovery) {
+        assertHubDirectoryRecoveryClock(saved, finalProof);
+        if (readHubDirectoryRecoveryIntent(db, saved)?.state !== "pending") throw new HubProtocolError("conflict");
+      }
+      if (compensation?.recovery) {
+        assertHubDirectoryRecoveryClock(compensation, finalProof);
+        const intent = readHubDirectoryRecoveryIntent(db, compensation);
+        if (intent?.state !== "pending") throw new HubProtocolError("conflict");
+      }
       // Audit/proof callbacks may reenter. Recheck every authority image before the final callback-free transition.
       const state = transport.read(), latestPolicy = policyRow(db);
       const storedNotice = db.prepare("SELECT body FROM hub_settings_security_notices WHERE id=? AND operation_id=?")
@@ -186,6 +206,8 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         || !same((db.prepare("SELECT kind,target,state FROM hub_settings_security_targets WHERE notice_id=?").all(notice.id) as { kind: string; target: string; state: string }[])
           .sort((a, b) => canonicalArguments(a).localeCompare(canonicalArguments(b))), targetRows(notice.recipients))) throw new HubProtocolError("conflict");
       const successor = transition?.validate(transitionTime!);
+      if (compensation?.recovery && db.prepare("UPDATE hub_settings_mount_recovery SET state='compensated',completed_at=? WHERE operation_id=? AND state='pending' AND expires_at=?")
+        .run(input.at, compensation.id, compensation.recovery.expiresAt).changes !== 1) throw new HubProtocolError("conflict");
       if (advanceHubSessionEpoch(db, input.expected.directoryEpoch) !== nextEpoch) throw new HubProtocolError("uncertain");
       if (successor) db.prepare("INSERT INTO hub_sessions(token_hash,id,person,created_at,seen_at,expires_at,state,directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
         .run(successor.tokenHash, successor.id, successor.person, successor.at, successor.at, successor.expiresAt, nextEpoch);
@@ -200,11 +222,39 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
   return {
     hubId,
     inspect,
+    /** Current head only. A retained older pending row never authorizes restoration over a later decision. */
+    mountRecovery() {
+      const head = inspect();
+      return head.operationId === null ? null : readHubDirectoryRecoveryIntent(db, operation(db, head.operationId));
+    },
+    /** Called only after the exact committed generation has mounted. Root audit/state commit; no security epoch change. */
+    completeMount(id: string, at: number, current: () => boolean) {
+      validated(uuid, id);
+      if (db.inTransaction || !Number.isSafeInteger(at)) throw new HubProtocolError("invalid");
+      return db.transaction(() => {
+        const expected = inspect(), saved = operation(db, id), intent = readHubDirectoryRecoveryIntent(db, saved);
+        const proof = () => { const value = current(); synchronous(value); if (value !== true) throw new HubProtocolError("revoked"); };
+        if (expected.operationId !== id || !intent || at < saved.at || intent.state === "compensated") throw new HubProtocolError("conflict");
+        proof(); assertExpected(expected);
+        if (intent.state === "ready") return; // Idempotent only under the exact still-current mounted proof.
+        transport.mutate({ at, requestId: saved.actor.requestId,
+          actor: saved.actor.kind === "host-owner" ? { kind: "local-host" } : { kind: "person", person: saved.actor.person },
+          action: "settings.directory-mount-ready", result: "completed", reasonCode: id }, (_state, owning) => {
+          if (owning !== db) throw new HubProtocolError("invalid");
+          if (db.prepare("UPDATE hub_settings_mount_recovery SET state='ready',completed_at=? WHERE operation_id=? AND state='pending' AND expires_at=?")
+            .run(at, id, intent.expiresAt).changes !== 1) throw new HubProtocolError("conflict");
+        });
+        proof();
+        const after = inspect(), row = readHubDirectoryRecoveryIntent(db, operation(db, id));
+        if (!same(after, { ...expected, transportRevision: expected.transportRevision + 1 })
+          || !same(operation(db, id), saved) || row?.state !== "ready" || row.completedAt !== at) throw new HubProtocolError("conflict");
+      }).immediate();
+    },
     /** Internal source projection for the exact synchronous proof; absent outside that callback (including after an await). */
     proofBasis() { return proofBasis ? structuredClone(proofBasis) : null; },
     decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, rotation?: HubDirectorySessionRotation) { return decide(raw, assertProof, undefined, rotation); },
     /** A new operation restoring ONLY original content; current policy/denies/revokes/provenance are never rewound. */
-    compensate(originalId: string, raw: HubDirectoryDecisionRequest, assertPreauthorizedIntent: () => void) {
+    compensate(originalId: string, raw: HubDirectoryDecisionRequest, assertPreauthorizedIntent: () => void | number) {
       const original = operation(db, validated(uuid, originalId));
       return decide(raw, assertPreauthorizedIntent, original);
     },

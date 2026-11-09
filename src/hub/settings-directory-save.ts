@@ -66,6 +66,7 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
         at = now(); if (!Number.isSafeInteger(at) || at < 0 || !Number.isSafeInteger(at + 300_000)) fail("invalid");
         if (capture) { response = capture(); if (!response.current()) fail("revoked"); }
         if (!current()) fail("revoked");
+        return at + 300_000;
       });
       postDecision();
       // From the SQL decision onward, a disconnect cannot cancel physical completion or its fixed recovery intent.
@@ -76,7 +77,8 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
         const operation = decision.operation(saved.receiptId);
         if (!expected || !same(operation.expected, expected) || operation.kind !== "directory" || operation.compensates !== null
           || !same(operation.actor, context.actor) || operation.directoryEpoch !== saved.directoryEpoch
-          || saved.directoryEpoch !== expected.directoryEpoch + 1) fail("conflict");
+          || saved.directoryEpoch !== expected.directoryEpoch + 1 || !operation.recovery
+          || operation.recovery.expiresAt <= at! || operation.recovery.expiresAt > at! + 300_000) fail("conflict");
         return structuredClone(operation);
       });
       postDecision();
@@ -94,6 +96,15 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
         postDecision();
         if (!ready(compensated)) fail("unavailable");
         result = { receiptId: compensated.receiptId, directoryEpoch: compensated.directoryEpoch, state: "restored" };
+      }
+      // Durable successful outcome closes the old-content restoration allowance before any success/cookie is released.
+      const settled = ready({ receiptId: result.receiptId, directoryEpoch: result.directoryEpoch });
+      if (!settled) fail("unavailable");
+      if (result.state === "ready") {
+        const intent = settled.decision.mountRecovery();
+        if (!intent || !same(intent.operation, original) || intent.state === "compensated") fail("conflict");
+        if (intent.state === "pending") settled.decision.completeMount(result.receiptId, now(), () => { postDecision(); return settled.current(); });
+        if (settled.decision.mountRecovery()?.state !== "ready") fail("unavailable");
       }
       if (response?.current()) {
         const exact = { receiptId: result.receiptId, directoryEpoch: result.directoryEpoch };

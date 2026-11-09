@@ -1,0 +1,41 @@
+{
+  "scope": "M-2687 / S-112 / #3425 internal durable mount intent; startup and public AD editor remain uncomposed",
+  "base": "dcebb09c67dae7631f0ec36e2b914dad2a39ce00",
+  "focused": {
+    "command": "npx vitest run tests/hub-directory-settings-decision.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-save.test.ts",
+    "passed": 198,
+    "failed": 0,
+    "skipped": 0
+  },
+  "https": {
+    "command": "npx vitest run tests/hub-compose.test.ts -t 'private Save orchestration with real SQL and HTTPS'",
+    "passed": 2,
+    "failed": 0,
+    "deselected": 59,
+    "scope": "owned CA-verified HTTPS and SQLite; no real directory"
+  },
+  "types": [
+    "npx tsc --noEmit: passed",
+    "npx tsc -p tsconfig.test.json --noEmit: passed"
+  ],
+  "mutations": {
+    "command": "python3 scripts/manual/hub-directory-recovery-intent/mutations.py",
+    "caught": 14,
+    "total": 14,
+    "independent": true,
+    "restored": true,
+    "note": "Final mutant was rerun alone after the harness learned the Vitest rejected .resolves matcher wording. No collection errors counted. Recursive-intent fixture corrected to use matching actor before its isolated rerun."
+  },
+  "rollback": "New s5-directory-mount-intent registry component: older binaries refuse migrated state. Use a matching build or authorized stopped pre-upgrade backup; do not delete migration rows or rewind security state.",
+  "limitations": [
+    "No startup auto-reconciliation caller yet",
+    "No public AD settings route/form yet",
+    "No real directory/account/native/pilot/live fleet operations",
+    "Overlapping suite totals are not summed"
+  ],
+  "changelog": {
+    "numPassedTests": 75,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  }
+}

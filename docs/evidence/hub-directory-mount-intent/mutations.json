@@ -1,0 +1,72 @@
+[
+  {
+    "name": "initial-clock",
+    "caughtByAssertion": true,
+    "failures": 2
+  },
+  {
+    "name": "final-clock",
+    "caughtByAssertion": true,
+    "failures": 2
+  },
+  {
+    "name": "late-mounted-proof",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "exact-head",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "root-completion",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "row-deadline",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "receipt-metadata",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "receipt-hash",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "writer-deadline-cap",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "cold-intent-table",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "no-recursive-intent",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "server-deadline",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "deadline-forwarding",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
+    "name": "durable-before-cookie",
+    "caughtByAssertion": true,
+    "failures": 1
+  }
+]
