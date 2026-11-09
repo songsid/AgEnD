@@ -1,5 +1,5 @@
 /**
- * Who is shown the account (masked e-mail and plan) on the routes that also serve the CLI's header token: /ui/runtimes* and /ui/windows-cli/probe.
+ * Who is shown the account (e-mail and plan) on the routes that also serve the CLI's header token: /ui/runtimes* and /ui/windows-cli/probe.
  * An admin SESSION on the directly reached dashboard sees it; every other caller gets the same answer without it (names and signed-in state stay).
  */
 import { IncomingMessage, ServerResponse, createServer, type Server } from "node:http";
@@ -19,7 +19,7 @@ import { WEB_SESSION_COOKIE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 
 const token = "t".repeat(48), homes: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [], sockets: WebSocket[] = [];
-const identity = { maskedEmail: "al***@example.com", plan: "team" as const }, profileIdentity = { maskedEmail: "bo***@example.org", plan: "max" as const };
+const identity = { maskedEmail: "alice.fixture@example.com", plan: "team" as const }, profileIdentity = { maskedEmail: "bob.fixture@example.org", plan: "max" as const };
 const probe = (): WindowsCliProbe => ({ home: "C:\\U", probedAt: 1, clis: [{ id: "claude-code", path: "C:\\claude.exe", version: "2.1.316", authenticated: true, runnable: true, readOnlySupport: true, permissionNote: "", models: [], supports: { execution: true, resume: true, model: true, mcp: true }, identity }] as never,
   credentialProfiles: { default: "work", profiles: [{ name: "work", loggedIn: true, identity: profileIdentity }, { name: "out", loggedIn: false }] } });
 class Response extends ServerResponse {
@@ -69,13 +69,13 @@ afterEach(async () => {
   for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
   for (const path of homes.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe test cleanup"); rmSync(path, { recursive: true, force: true }); }
 });
-const SHOWS = /maskedEmail|"identity"|\*\*\*@/;
+const SHOWS = /maskedEmail|"identity"|\*\*\*@|alice\.fixture|bob\.fixture/;
 
 describe("/ui/runtimes shows the account to a local administrator session only", () => {
   const routes = (id: string) => ["/ui/runtimes", `/ui/runtimes/machines/${id}`, `/ui/runtimes/machines/${id}/inventory`];
   it("a local administrator session gets it, on the list, the machine and its inventory", async () => {
     const f = await fixture();
-    for (const path of routes(f.machineId)) { const answer = await f.call("admin", path); expect(answer.status, path).toBe(200); expect(answer.body, path).toMatch(/al\*\*\*@example\.com/); expect(answer.body, path).toMatch(/bo\*\*\*@example\.org/); }
+    for (const path of routes(f.machineId)) { const answer = await f.call("admin", path); expect(answer.status, path).toBe(200); expect(answer.body, path).toMatch(/alice\.fixture@example\.com/); expect(answer.body, path).toMatch(/bob\.fixture@example\.org/); }
   });
   it("the agent's header token still gets the routes, with names and signed-in state and without the account", async () => {
     const f = await fixture();
@@ -97,15 +97,15 @@ describe("/ui/runtimes shows the account to a local administrator session only",
   it("the mutations' answers carry it the same way: rename and refresh for the administrator, none of it for the header token", async () => {
     const f = await fixture();
     f.hub.call = vi.fn(async () => probe()) as never;
-    const adminRename = await f.call("admin", `/ui/runtimes/machines/${f.machineId}/rename`, "POST", { name: "Desk 2" }); expect(adminRename.status).toBe(200); expect(adminRename.body).toMatch(/al\*\*\*@example\.com/);
+    const adminRename = await f.call("admin", `/ui/runtimes/machines/${f.machineId}/rename`, "POST", { name: "Desk 2" }); expect(adminRename.status).toBe(200); expect(adminRename.body).toMatch(/alice\.fixture@example\.com/);
     const tokenRename = await f.call("header-token", `/ui/runtimes/machines/${f.machineId}/rename`, "POST", { name: "Desk 3" }); expect(tokenRename.status).toBe(200); expect(tokenRename.body).not.toMatch(SHOWS);
-    const adminRefresh = await f.call("admin", `/ui/runtimes/machines/${f.machineId}/refresh`, "POST"); expect(adminRefresh.status).toBe(200); expect(adminRefresh.body).toMatch(/al\*\*\*@example\.com/);
+    const adminRefresh = await f.call("admin", `/ui/runtimes/machines/${f.machineId}/refresh`, "POST"); expect(adminRefresh.status).toBe(200); expect(adminRefresh.body).toMatch(/alice\.fixture@example\.com/);
     const tokenRefresh = await f.call("header-token", `/ui/runtimes/machines/${f.machineId}/refresh`, "POST"); expect(tokenRefresh.status).toBe(200); expect(tokenRefresh.body).not.toMatch(SHOWS);
     expect(JSON.parse(tokenRefresh.body).inventory.clis[0].authenticated).toBe(true);
   });
   it("what AgEnD stores is untouched by a redacted answer: the administrator still sees it afterwards", async () => {
     const f = await fixture(); await f.call("header-token", "/ui/runtimes");
-    expect((await f.call("admin", "/ui/runtimes")).body).toMatch(/al\*\*\*@example\.com/);
+    expect((await f.call("admin", "/ui/runtimes")).body).toMatch(/alice\.fixture@example\.com/);
   });
 });
 
@@ -113,7 +113,7 @@ describe("/ui/windows-cli/probe (this PC's own Windows CLIs)", () => {
   const bridge = () => ({ probe: vi.fn(async () => probe()) }) as unknown as WindowsCliBridge;
   it("shows the account to a local administrator session, and to no one else", async () => {
     const f = await fixture();
-    expect((await f.cli("admin", bridge())).body).toMatch(/al\*\*\*@example\.com/);
+    expect((await f.cli("admin", bridge())).body).toMatch(/alice\.fixture@example\.com/);
     const token = await f.cli("header-token", bridge()); expect(token.status).toBe(200); expect(token.body).not.toMatch(SHOWS); expect(JSON.parse(token.body).clis[0].id).toBe("claude-code");
     for (const who of ["read", "guest", "gateway"] as const) { const answer = await f.cli(who, bridge()); expect(answer.status, who).toBe(403); expect(answer.body, who).not.toMatch(SHOWS); }
   });

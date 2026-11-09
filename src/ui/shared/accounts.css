@@ -38,7 +38,8 @@
 
 /* Layer 2: the meta bar — who it is, who uses it (`.tag` pills). */
 .s-account-meta-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; margin-top: var(--s-3); }
-.s-account-identity { font-family: var(--font-mono); color: var(--text); overflow-wrap: anywhere; }
+/* The shared `.tag` is nowrap; a whole address can be long, so the identity pill wraps inside the row (`.tag.` keeps it above `.tag` whichever sheet loads last). */
+.tag.s-account-identity { font-family: var(--font-mono); color: var(--text); white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
 .s-account-used { color: var(--text-3); }
 /* Used by N agents: the `Menu`'s button, drawn as the pill beside it. Its list is `.menu-list` (app.css), opened from the pill's own edge. */
 button.s-account-used { display: inline-flex; align-items: center; gap: var(--s-1); border: 0; cursor: pointer; }
