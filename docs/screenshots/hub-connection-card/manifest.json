@@ -1,0 +1,369 @@
+{
+  "ba5c6af4f1b0554fa6cd36339d62a2325aaa1765c42e5b2927d5b96657d16e46": [
+    "changes/2753-hub-connection-card.md"
+  ],
+  "fc1dfd7856337763addf176c1422b89229639c167874ba2da15c127390140a82": [
+    "changes/2753-hub-connection-card.zh-TW.md"
+  ],
+  "4636d87ff8d29f09540d29699c1f8c0384ddf4c4662945041583cc8efdcc6857": [
+    "docs/design/hub-membership-settings.md"
+  ],
+  "4a15f16f99efb08473df502b3342d0e6e920b5d933c818244a046178552caaf4": [
+    "docs/screenshots/hub-connection-card/README.md"
+  ],
+  "ff3a3899b149a73ebf8303188e87cbe438d6c1000b9b7e56b774199a91ed22ab": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-en-agents-chosen.png"
+  ],
+  "d7b19ce8eae5bd5679d4ebf749db219ca9c1d0590df4c0bf6059e4dc550c84af": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-en-connected.png"
+  ],
+  "20c70979be23cedd2d28611dae51b8a5b16789c2d2a6bc230e5339cd5fd6f709": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-en-paused-reloaded.png"
+  ],
+  "c1fc6785967e01c72318e8a455bb68c9924cf3a91a97954f7b8dd444757de0b4": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-en-resumed.png"
+  ],
+  "d0a7aa3cfca6ad8fcf5f9729f6399a536e08f022c921e356c91799f6e1f68af8": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-en-unconnected.png"
+  ],
+  "eccd2e668a4a135e569ae723f5dd8c5151ea0e527e83c83da5b94406af78b408": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-zh-TW-agents-chosen.png"
+  ],
+  "0df90cfccbcd24c535c6ed060ac45f3456ba8398d3605b5f9e2fb1748f74f4e6": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-zh-TW-connected.png"
+  ],
+  "635a9dbaaebdbeb1812d144f445a0380a760f7e896ea438d1baddb415f7c6679": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-zh-TW-paused-reloaded.png"
+  ],
+  "1fc42b8f734405de0ca4ca736883d66cfd31f687b4949c91e04c71d200dd7892": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-zh-TW-resumed.png"
+  ],
+  "e5d7c1691caa1127b266db9945aa0bab0263e3c7dc2dc051bb815b851faccc2f": [
+    "docs/screenshots/hub-connection-card/after/desk-dark-zh-TW-unconnected.png"
+  ],
+  "6a96a509b6a4e55e1ab82a10de0c91ae26c2804e5a27494fbae9b96035636b92": [
+    "docs/screenshots/hub-connection-card/after/desk-light-en-agents-chosen.png"
+  ],
+  "c07b995066013fccefe6130db9d4bf1d48e2a5d289efeccbb4958885dd301d15": [
+    "docs/screenshots/hub-connection-card/after/desk-light-en-connected.png"
+  ],
+  "f925ee892281aca0c7c69068642e1f8d0b853df9301d8a8a4d6280d26aed7c14": [
+    "docs/screenshots/hub-connection-card/after/desk-light-en-paused-reloaded.png"
+  ],
+  "cd593119d6c81bfa123c5d24c92134688703a206e31de8ccc176433e2cb14209": [
+    "docs/screenshots/hub-connection-card/after/desk-light-en-resumed.png"
+  ],
+  "a0962783c2e5a1f9a9178fb8e85acb89555ebf2eec77a9d3b75d926ffed1b34e": [
+    "docs/screenshots/hub-connection-card/after/desk-light-en-unconnected.png"
+  ],
+  "3e00fc7e7323d61f7c8273b6dc0d0b5838fdb8d400e8da9896cdb13a33919a50": [
+    "docs/screenshots/hub-connection-card/after/desk-light-zh-TW-agents-chosen.png"
+  ],
+  "0e7e3a1be2cbe559b36175e5174f9004c6c13a2f4163e1590de5d94fb117e94e": [
+    "docs/screenshots/hub-connection-card/after/desk-light-zh-TW-connected.png"
+  ],
+  "9f206676d75678130ca6a9b86851f5e2c09331fe0ef69ca8f2e4b4c4e616d7f2": [
+    "docs/screenshots/hub-connection-card/after/desk-light-zh-TW-paused-reloaded.png"
+  ],
+  "a4482b60a26eb12d9bdd43613254f4c4262a2ae48bdb4d1038e1120d7ffddeee": [
+    "docs/screenshots/hub-connection-card/after/desk-light-zh-TW-resumed.png"
+  ],
+  "ab50d7c50dd34d4f7eee144bcb979e5b13e4b068e973ee731b72048b249eef5f": [
+    "docs/screenshots/hub-connection-card/after/desk-light-zh-TW-unconnected.png"
+  ],
+  "d8e4adc35cbd782571c1cc7b9ae5c52013968852e196012cd1db76ec09fc9e61": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-en-agents-chosen.png",
+    "docs/screenshots/hub-connection-card/after/phone-dark-en-resumed.png"
+  ],
+  "283a2a85d6a02f75e91d0e67cb649c9a409b8fee1564f5fcfe71ccb4892c4a8d": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-en-connected.png"
+  ],
+  "8004eff7ef47b67558d652a06ab37c6e42d77b56bb75f14f147a8a5ca14600aa": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-en-paused-reloaded.png"
+  ],
+  "36172471a5c9e984b2688cd4c9aa6960312146a62b4d12974022808a3add00f3": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-en-unconnected.png"
+  ],
+  "f31d4d64a4ba831aeffdcce6525e141b4baa87892af640a919faf577fa409955": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-agents-chosen.png"
+  ],
+  "013ae0f28f19c712bcfc60aba7a1c55448f13cc1956b83df8d7d5bb9d0d48fb5": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-connected.png"
+  ],
+  "38502b30098c7b49255105bcc45e13247dfde5de12a36b42b63af2befd494ed5": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-paused-reloaded.png"
+  ],
+  "0ac820f3f67dfc0c1d46d29fde9e3eddfb277ec9fb64daf77ceb3ad65637fa1a": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-resumed.png"
+  ],
+  "f161936494284a0716a68dd9a213a7f29f71c6a37f753e6ba117ce52c8abcaf6": [
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-unconnected.png"
+  ],
+  "240126fee2f02a84247da531cf4d838a8e109471f16be14c484ab16dcaf4a874": [
+    "docs/screenshots/hub-connection-card/after/phone-light-en-agents-chosen.png",
+    "docs/screenshots/hub-connection-card/after/phone-light-en-resumed.png"
+  ],
+  "164a97ad69e93205cd058118245c2b58be9ddd085ece472285ea92f6524ec26d": [
+    "docs/screenshots/hub-connection-card/after/phone-light-en-connected.png"
+  ],
+  "dfeb276017695cbb177529a75fa09bb9f1ae36255726f253e6303d7a699dc44e": [
+    "docs/screenshots/hub-connection-card/after/phone-light-en-paused-reloaded.png"
+  ],
+  "2001652fcea09096158303aebe0e1ef3eab8238797e907ca6891200da8dc4449": [
+    "docs/screenshots/hub-connection-card/after/phone-light-en-unconnected.png"
+  ],
+  "3371728f531a0f6bc8a0d4b7c4674fe71e10110394acb3990a19b2210e721f3c": [
+    "docs/screenshots/hub-connection-card/after/phone-light-zh-TW-agents-chosen.png"
+  ],
+  "65e30e4588e94967afd8be5936e51bd325f2bf1b2446a1b79b2c676bce68b689": [
+    "docs/screenshots/hub-connection-card/after/phone-light-zh-TW-connected.png"
+  ],
+  "efbf09272079f07a5b78ec2c7f01e468124f2fc0be8f960fe7f4ff457a2b7d3a": [
+    "docs/screenshots/hub-connection-card/after/phone-light-zh-TW-paused-reloaded.png"
+  ],
+  "714c565cf90bb0c0b1ad8d8db5735e59a35f95b582b8e0f41795206dcc50350c": [
+    "docs/screenshots/hub-connection-card/after/phone-light-zh-TW-resumed.png"
+  ],
+  "d057943f77698c73bfdfd262138feea4df3f1803852ffdecab1e126d366472f5": [
+    "docs/screenshots/hub-connection-card/after/phone-light-zh-TW-unconnected.png"
+  ],
+  "3d46fc9864d349a5da1ef41fa40bd8e5614452db19ed4ece12fba92eed292531": [
+    "docs/screenshots/hub-connection-card/after/receipt.json"
+  ],
+  "60d1edad43dbb9693b939e31beb189f2b44d4d759d15269ec4d5a6f2c5a2dab4": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-en-agents-chosen.png"
+  ],
+  "4a5d0c319257a49d151c1618971a8d3e4e2ab45c049e337c176a1db8f3d26eb1": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-en-connected.png"
+  ],
+  "d54691685fee0e4e33da899a43434b175a5e7ccd726b3beabca9851c6abdbd24": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-en-paused-reloaded.png"
+  ],
+  "67d0915cf33065b0c9516837d3f299a8f884d38923fb3070aa4e11fa5f4e80ae": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-en-unconnected.png"
+  ],
+  "e6aaf0fd958c608b527060927815cebdd53cc0599a42a6406dd306bb5fbc86b1": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-zh-TW-agents-chosen.png"
+  ],
+  "e3f95e22902acb55b0583bf1a710c4710cdde37d9bd4b9f85431d4d7f49c69c3": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-zh-TW-connected.png"
+  ],
+  "acfca26e24cc425ca0da652b7ab610b57987b97b8622aa1e36cbfe2711f9b709": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-zh-TW-paused-reloaded.png"
+  ],
+  "a6f3b217ef2f0e46914958e6eee462ba14bcc7dbd73cb4ffcb680d78b5ddc478": [
+    "docs/screenshots/hub-connection-card/before/desk-dark-zh-TW-unconnected.png"
+  ],
+  "66025215b4d550a48b8b6c4be57531b02294695199125cfbc7a5b4f83f628d56": [
+    "docs/screenshots/hub-connection-card/before/desk-light-en-agents-chosen.png"
+  ],
+  "f449cac1ac1f1aa902b8398580b8ab8718d01ef405a93c376fce555da6ac9910": [
+    "docs/screenshots/hub-connection-card/before/desk-light-en-connected.png"
+  ],
+  "2a2d88735b530b3c1505724296ab948a99637aba7157b4bbb4406679e20f49ab": [
+    "docs/screenshots/hub-connection-card/before/desk-light-en-paused-reloaded.png"
+  ],
+  "69b889561eefc754abe04f49ebf488266483d02083ca376df8948250b5bd8218": [
+    "docs/screenshots/hub-connection-card/before/desk-light-en-unconnected.png"
+  ],
+  "e4725ac7fdabf9a18ff74a3b862d3dd94fda06538f51865aba9a2bf41682adb9": [
+    "docs/screenshots/hub-connection-card/before/desk-light-zh-TW-agents-chosen.png"
+  ],
+  "6c2851f3ec4bf2ce630bee2112c0bb027a270a7a6aab215e6c04dc021b492f96": [
+    "docs/screenshots/hub-connection-card/before/desk-light-zh-TW-connected.png"
+  ],
+  "776becd3503f0a3e2d83e78b27875241f3608e36a7ff35d77f6ea060ed2bfb9c": [
+    "docs/screenshots/hub-connection-card/before/desk-light-zh-TW-paused-reloaded.png"
+  ],
+  "7f9fbe7a5f01874de0d28def83c5929037f2ec8a8127e2eb1131de36ec739a2a": [
+    "docs/screenshots/hub-connection-card/before/desk-light-zh-TW-unconnected.png"
+  ],
+  "98a07fbd85cce850774ae199acdae8219b9eb16171229f10ecd9f222375b4095": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-en-agents-chosen.png"
+  ],
+  "b8be4d26c319da5c69f27f4767ae905678e171f606dd0d457e8fcdc5e6a64d60": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-en-connected.png"
+  ],
+  "21080c3dc7d23f56b34023ef79d2d72d533bb8150f67dc29f64b29b394751e55": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-en-paused-reloaded.png"
+  ],
+  "5856d82b1f487b86a8484b666b010533d1b8fa79d8732e4d3e49ac687e2ab76b": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-en-unconnected.png"
+  ],
+  "6984d113b7b270319cac3be1296e34486d60949f1cf7172bfaa44de324fd8a60": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-zh-TW-agents-chosen.png"
+  ],
+  "f58ef381501ab69b06fda289bd60fa16c6b586cce8f65a590a1768e04d23d7bb": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-zh-TW-connected.png"
+  ],
+  "96f4d3c5babcc42b8409e45d8bc93949ee491698292070191746b7ac4e61ac9a": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-zh-TW-paused-reloaded.png"
+  ],
+  "46e54998ba623595b028f35a316789069479235ec24b8b8f7dfca24e5e9f841e": [
+    "docs/screenshots/hub-connection-card/before/phone-dark-zh-TW-unconnected.png",
+    "docs/screenshots/hub-connection-card/skew/old-membership/phone-dark-zh-TW-skew-old-membership.png"
+  ],
+  "f62c35203ca73981760c8d6647e0d6e1ceda1b7a9c676b6cd3a7542269849170": [
+    "docs/screenshots/hub-connection-card/before/phone-light-en-agents-chosen.png"
+  ],
+  "d0aba00667adee2d783e349ad862f4d141bf6436002f5ff9340f426ce0653f8e": [
+    "docs/screenshots/hub-connection-card/before/phone-light-en-connected.png"
+  ],
+  "9e6618fe4c26f92f98ad41732c9ea3df3e6f743c21154e4e2ae67ac31dab377c": [
+    "docs/screenshots/hub-connection-card/before/phone-light-en-paused-reloaded.png"
+  ],
+  "1e74c8ec65ff7d40ca26cf6a07392f83cddcb26aaa40d41139915db3515ecb3d": [
+    "docs/screenshots/hub-connection-card/before/phone-light-en-unconnected.png"
+  ],
+  "1c0df1fd80b4e5df31488ac9dd598bc3916c4553c87f401fae48ce280779a2d0": [
+    "docs/screenshots/hub-connection-card/before/phone-light-zh-TW-agents-chosen.png"
+  ],
+  "bf9ae7e10aaa9f9770741a6079a978603f783b6b282e19d6079f25b4d504bfa3": [
+    "docs/screenshots/hub-connection-card/before/phone-light-zh-TW-connected.png"
+  ],
+  "41a9b2197c73001089093adba1cb9f9e5b58892e1f99ef8b22bfdb1acbd6a32b": [
+    "docs/screenshots/hub-connection-card/before/phone-light-zh-TW-paused-reloaded.png"
+  ],
+  "58a888be3ae22e1c9a466159ed8dbad3954cb0006961ae1f308aef805649e3b9": [
+    "docs/screenshots/hub-connection-card/before/phone-light-zh-TW-unconnected.png"
+  ],
+  "6e8cca196f371eda67e5ae7b614a3caaf10ef483ba3ec87b17a776441e12af7d": [
+    "docs/screenshots/hub-connection-card/before/receipt.json"
+  ],
+  "86fd0a015f701c52f245fc2377c6ff99e83d683d1c4092b4866abcc762fd4caf": [
+    "docs/screenshots/hub-connection-card/checks.json"
+  ],
+  "29518247b00a03477a6da231bedfad43886b45091ad46c1888ca7f01181414a1": [
+    "docs/screenshots/hub-connection-card/fail-first.json"
+  ],
+  "225dbe71ee647fd90e0deb635987d07643a082d000cea7bf5f3c10a8d8d358af": [
+    "docs/screenshots/hub-connection-card/mutations.json"
+  ],
+  "24a41dc1d5fb871036efecfe7e09ef6bd613f528eaf165d631b2773584d6fd84": [
+    "docs/screenshots/hub-connection-card/pending/desk-light-en-review.png"
+  ],
+  "1679b0a5f135186ee32ad2f3fa94662ab6ec6cb0c15f17ab980ed99c48f6d05c": [
+    "docs/screenshots/hub-connection-card/pending/desk-light-en-waiting.png"
+  ],
+  "1deb65acd023a4f76865c0daa5c7075e917466b4ea3dc37e0f4766352f1f6e5f": [
+    "docs/screenshots/hub-connection-card/pending/desk-light-en-withdrawn.png"
+  ],
+  "e2f5b528ffe5b44d3fd10798274fdf57e280845bcb6636b3c0ab6b1eeda986a0": [
+    "docs/screenshots/hub-connection-card/pending/phone-dark-zh-TW-review.png",
+    "docs/screenshots/hub-connection-card/pending/phone-dark-zh-TW-waiting.png"
+  ],
+  "e8c62673d1eb91e12674b0e74d270cf649358d897633448e5afd0358b54942be": [
+    "docs/screenshots/hub-connection-card/pending/phone-dark-zh-TW-timeout.png"
+  ],
+  "774d83314127ccfdf62f26c9745ce4d4c11b1bf0b0316894afe89f8fef295830": [
+    "docs/screenshots/hub-connection-card/pending/phone-dark-zh-TW-withdrawn.png"
+  ],
+  "ce0e9c3ab377a991bdabb6637b7c494042deecd9ec2dd9184a6308046b05622c": [
+    "docs/screenshots/hub-connection-card/pending/receipt.json"
+  ],
+  "0b1c172dca99578fbeb85de165465ca537bea49f8c08c791b2b2e5bbb2db74c3": [
+    "docs/screenshots/hub-connection-card/skew/old-company/desk-light-en-skew-old-company.png"
+  ],
+  "3402700f88078acbf34b9783a71ed8f842c79ffe86462e52e317a14f90de7dde": [
+    "docs/screenshots/hub-connection-card/skew/old-company/phone-dark-zh-TW-skew-old-company.png",
+    "docs/screenshots/hub-connection-card/skew/old-manual/phone-dark-zh-TW-skew-old-manual.png",
+    "docs/screenshots/hub-connection-card/skew/old-server/phone-dark-zh-TW-skew-old-server.png"
+  ],
+  "c8302cf7428cc5d3daf1d97726eca7b7f716621b16098bfb2456eec2db61dbfb": [
+    "docs/screenshots/hub-connection-card/skew/old-company/receipt.json"
+  ],
+  "a11e3bfbff1cbc009dbb8da0e8bac10d939ec4ae7024e9940bacbad6212b1e02": [
+    "docs/screenshots/hub-connection-card/skew/old-manual/desk-light-en-skew-old-manual.png"
+  ],
+  "ed968ce532f96db7568bfc6cec87a1ad06b236b1628aefa9f6d9d022b296024d": [
+    "docs/screenshots/hub-connection-card/skew/old-manual/receipt.json"
+  ],
+  "02722c5e4e00ceda0dc77389f240563a6faadc6c1bdda0fa4a1baf3de8123c86": [
+    "docs/screenshots/hub-connection-card/skew/old-membership/desk-light-en-skew-old-membership.png",
+    "docs/screenshots/hub-connection-card/skew/old-server/desk-light-en-skew-old-server.png"
+  ],
+  "d005231eb2b107fa7e425daf3ef3695681f14cd396ce3352de69f02e4589ec23": [
+    "docs/screenshots/hub-connection-card/skew/old-membership/receipt.json"
+  ],
+  "c668b3e83dd4c1409963a2bdeb883802da2878937342e8635badd78b262595ac": [
+    "docs/screenshots/hub-connection-card/skew/old-section/desk-light-en-skew-old-section.png"
+  ],
+  "e67174a02fd8885a33b098ddafadea46fc10839674d4971b76520130c4afd177": [
+    "docs/screenshots/hub-connection-card/skew/old-section/phone-dark-zh-TW-skew-old-section.png"
+  ],
+  "bccfd5a0a39265f39692e85b754777fb3aa1de8fdd32e81f055114093a898df5": [
+    "docs/screenshots/hub-connection-card/skew/old-section/receipt.json"
+  ],
+  "aafad125a85ef8a98c2a85cbf5dc5c54ef171cf0cc1d7fe9c7484cc840303d21": [
+    "docs/screenshots/hub-connection-card/skew/old-server/receipt.json"
+  ],
+  "ebf36b6d5d68e17413f2963ab732b6f73a2645c0784beacc4307ad2f76fd5059": [
+    "docs/screenshots/hub-connection-card/style/desk-dark-en-hub.png"
+  ],
+  "8a11f948e68fd26246668e80a8d02de192b82e1ec3a86749b39e3a67708b904e": [
+    "docs/screenshots/hub-connection-card/style/desk-dark-zh-TW-hub.png"
+  ],
+  "2fdfaf03089758b1219335a3107c66d270e9dd8a0a9b630211c9b3754d28dc66": [
+    "docs/screenshots/hub-connection-card/style/desk-light-en-hub.png"
+  ],
+  "f1be10aeea772c60abce32182f62dd2624db89c772b503bc934b7c3b5894c43d": [
+    "docs/screenshots/hub-connection-card/style/desk-light-zh-TW-hub.png"
+  ],
+  "d26d95513893b549a7fd56a19073b8473b759757c07c59be6ef91a6cbfba02dc": [
+    "docs/screenshots/hub-connection-card/style/phone-dark-en-hub.png"
+  ],
+  "11e40f93f7cc6bb30455d582d7c2ba8d06bf93a823862014d87dad8ad95f2ee5": [
+    "docs/screenshots/hub-connection-card/style/phone-dark-zh-TW-hub.png"
+  ],
+  "b4704a08d8e381c1482729ef2b369eea48f96f458b387642968a844eb7ed1b05": [
+    "docs/screenshots/hub-connection-card/style/phone-light-en-hub.png"
+  ],
+  "10a24af83576409e37249c5fe1bf8454f9daf548c7d6e722ef7cf11bba5144e0": [
+    "docs/screenshots/hub-connection-card/style/phone-light-zh-TW-hub.png"
+  ],
+  "a1fff2cc17cfcebb35a9f8423693bf01912ed238cdc72c1cc061e7953efe5932": [
+    "docs/screenshots/hub-connection-card/style/result.json"
+  ],
+  "996c2e6ef3a1b1b1adb61b7ee2a1365a22298c79e203d0e7e2a5583e3bddb773": [
+    "scripts/manual/hub-connection-card/accept.mts"
+  ],
+  "665a6c2542dfe99ec944116e39f404c31334b6abbfe9ad5acef0e83eceb8a4dc": [
+    "scripts/manual/hub-connection-card/pending.mts"
+  ],
+  "954f60f9c60704da67942fa43c3fc8585c08c226f3e956d330d94d5a236709e0": [
+    "scripts/manual/hub-connection-card/verify.mjs"
+  ],
+  "ac7f1264dfb2bc400e0020d7caa8dc0bc162288392ca253e43a5ac362a9860a5": [
+    "src/fleet-manager.ts"
+  ],
+  "a7b40fe7c03dada1ca86a8704e3df91c17941f4d43794bfe8f6847beaed0730d": [
+    "src/settings-api.ts"
+  ],
+  "3a55ff8cf0ae958c442da7704bc309e12b38df54427b0c94f7a61a36ee1cccb9": [
+    "src/ui/settings-hub-company-join.js"
+  ],
+  "25cae5b4fd88217f4ee432c7cf4099f5804005a29daac4ab5871aa8835c366d9": [
+    "src/ui/settings-hub-connection.js"
+  ],
+  "9f1cee540f4b0295c08223fa66bf73e706552388b04c33e71b181592cfcd7569": [
+    "src/ui/settings-hub-membership.js"
+  ],
+  "ae35b9de1c93479e5b7cedf247db3cf5c19c9023140477985347e1082864744f": [
+    "src/ui/settings-hub-section.js"
+  ],
+  "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c": [
+    "src/ui/settings-hub.js"
+  ],
+  "58e85cbeff8f36a359bcc0e100d113147c7a7f15c99a000e1e99acc4806972d5": [
+    "src/ui/shared/app.css"
+  ],
+  "926d2e07eafab22e89df5699ddfce097f80e5776ed6a5c330888b0cb3549c45a": [
+    "tests/hub-connection-card-api.test.ts"
+  ],
+  "8157e95c9fb4279fb893e9063e47d0a1310324970e4f3369d98c683ee43a720c": [
+    "tests/hub-connection-card-ui.test.ts"
+  ],
+  "c17f7e3a0bdfdc8af334dcc11e3a8c26da12d9b796464cc3f57a0318e888e06c": [
+    "tests/settings-hub-section-a7b.test.ts"
+  ]
+}
