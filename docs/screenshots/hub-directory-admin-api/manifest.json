@@ -9,9 +9,9 @@
   "b69c692c1fe71b19c8cbd791ff3369d9d647e41caafb8e6123678f410c29740a": "tests/hub-compose.test.ts",
   "6978b4a4e9481c3b5ad7808b9b0b56e245986118e5784af2286eb0137e3461a2": "tests/hub-directory-settings-control.test.ts",
   "2773d9164176f297071e2ebae520f7f1ac13a964614628b849e9600177807a48": "tests/hub-settings-fleet-m2682.test.ts",
-  "313e601495424b8832760387a0591d7b62fbf957723b55954ba89c954cb3de5a": "docs/design/hub-directory-settings-http.md",
-  "28272760c63c9b3a617dcafd0e2eba3e539d7291b2cf590cb0ec0a61344260c6": "scripts/manual/hub-directory-admin-api/README.md",
+  "cfb0dca0a0df5be042948ae3a7387216b405865a9d1e2a5c00e733c3cc5d2e9e": "docs/design/hub-directory-settings-http.md",
+  "ba6c0a6ce19f76fd868a1ce687600c2c612f5856cd039be50d90adaffa4e3d0e": "scripts/manual/hub-directory-admin-api/README.md",
   "5d8dc1c420eaa36c89904d844ee06773def821e8a7ce857fb1e6649d673936a4": "scripts/manual/hub-directory-admin-api/verify.py",
-  "51130c956fc041136ce56fd52e0f6b44bc29cab7549a5a2e91c14412aa42e808": "docs/screenshots/hub-directory-admin-api/checks.json",
+  "69b6ddd8d00c09c1e5ec02252db3e687f39df685db6b6480b941086be85570d7": "docs/screenshots/hub-directory-admin-api/checks.json",
   "a1c51ca1f997d4e9716c9a7383176d89a5130885635ca1dba331ac2cbae08849": "docs/screenshots/hub-directory-admin-api/mutations.json"
 }

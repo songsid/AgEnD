@@ -31,7 +31,8 @@
     "AD editor form",
     "CA bootstrap/fetch presentation",
     "fleet/D3 edit route",
-    "final UI PNG and retained-module SKEW acceptance"
+    "final UI PNG and retained-module SKEW acceptance",
+    "Required alpha.10: local-host AD-down settings access/edit without AD sign-in, plus host start/stop"
   ],
   "types": [
     {

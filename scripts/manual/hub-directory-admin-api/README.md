@@ -16,4 +16,4 @@ The real HTTP rig initializes a private scratch Hub with owned CA-verified loopb
 
 Gate-only HTTP authority/cancellation cases use a contract stub controller. Wiring checks use the FleetManager recorder. Cold borrowing uses an already initialized private DB with a held module import plus an inert mount recorder for the A→Off→A control. That facade expires after the callback; tests never borrow production state.
 
-The form, CA-fetch presentation, fleet/D3 edit route, desktop/phone PNGs and retained-UI SKEW remain future acceptance. There is no UI delta in this backend slice. It adds no migration and never permits rewinding a DB, floor or epoch.
+Required next acceptance: the local D3 AD page loads/edits while AD is down without AD sign-in, and keeps the host start/stop controls reachable. The form, CA-fetch presentation, fleet/D3 edit route, desktop/phone PNGs and retained-UI SKEW remain future acceptance. There is no UI delta in this backend slice. It adds no migration and never permits rewinding a DB, floor or epoch.
