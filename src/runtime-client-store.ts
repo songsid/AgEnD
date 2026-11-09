@@ -19,6 +19,15 @@ const BYTE_HEADROOM = 512 * 1024;
 const MAX_STORE_BYTES = 12 * 1024 * 1024;
 const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+/** The profile lock is held by a Runtime that is really running. `pid` is its process; a caller that wants "already running" (exit 0) catches this and nothing else. */
+export class RuntimeProfileInUseError extends Error {
+  constructor(readonly pid: number, readonly directory: string, denied: boolean, lockPath: string) {
+    super(`Another runtime already uses this profile (process ${pid}${denied ? ", which this Windows user is not allowed to inspect" : ""}). `
+      + `If it runs in the background, stop it with agend-runtime stop; if it runs in a window, close that window. If neither applies, end that process in Task Manager (a node.exe running runtime-cli.js), then try again. `
+      + `Only if you have confirmed no AgEnD Runtime is running (the number may have been reused after a restart), delete ${lockPath} and try again.`);
+    this.name = "RuntimeProfileInUseError";
+  }
+}
 export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string; pendingCredential?: string }
 export interface RuntimeStoredJob { digest: string; seq: number; task: WindowsCliTask; uncertain: boolean }
 interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number>; /** Machine these jobs were run for; a job of another pairing is unknown to this server and would be rejected. */ machineId?: string }
@@ -236,9 +245,14 @@ export class RuntimeClientStore {
     this.setCredentialDefault(undefined);
   }
   /** PID recorded in the profile lock, if any; the lock is neither created nor removed. */
-  lockHolder(): number | undefined {
-    try { const lock = readPrivate(join(this.directory, "runtime.lock")); return object(lock) && Number.isSafeInteger(lock.pid) && (lock.pid as number) > 0 ? lock.pid as number : undefined; }
-    catch { return undefined; }
+  lockHolder(): number | undefined { return this.lockInfo()?.pid; }
+  /** What the profile lock records (the process and the Windows boot it belongs to), if it can be read; the lock is neither created nor removed. */
+  lockInfo(): { pid: number; systemBootId?: string } | undefined {
+    try {
+      const lock = readPrivate(join(this.directory, "runtime.lock"));
+      if (!object(lock) || !Number.isSafeInteger(lock.pid) || (lock.pid as number) <= 0) return undefined;
+      return { pid: lock.pid as number, ...(typeof lock.systemBootId === "string" && /^[a-f0-9]{64}$/.test(lock.systemBootId) ? { systemBootId: lock.systemBootId } : {}) };
+    } catch { return undefined; }
   }
   /**
    * `notRuntimePid` is a PID the caller has positively verified is not an AgEnD Runtime process (its PID was reused by another program).
@@ -253,9 +267,7 @@ export class RuntimeClientStore {
       if (old.systemBootId !== undefined && (typeof old.systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(old.systemBootId))) throw Error("Invalid runtime boot proof");
       let alive = !(systemBootId && old.systemBootId && systemBootId !== old.systemBootId) && old.pid !== notRuntimePid, denied = false;
       try { if (alive) process.kill(old.pid as number, 0); } catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code === "ESRCH") alive = false; else denied = code === "EPERM"; }
-      if (alive) throw new Error(`Another runtime already uses this profile (process ${old.pid}${denied ? ", which this Windows user is not allowed to inspect" : ""}). `
-        + `Close its window, or end that process in Task Manager if it is a node.exe running runtime-cli.js, then try again. `
-        + `Only if you have confirmed no AgEnD Runtime is running (the number may have been reused after a restart), delete ${path} and try again.`);
+      if (alive) throw new RuntimeProfileInUseError(old.pid as number, this.directory, denied, path);
       unlinkSync(path);
     }
     writeFileSync(path, JSON.stringify({ pid: process.pid, bootId, ...(systemBootId ? {systemBootId} : {}) }), { flag: "wx", mode: 0o600 });

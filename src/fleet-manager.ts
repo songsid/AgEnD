@@ -6,6 +6,7 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { SubagentService } from "./subagent-service.js";
 import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
 import { quotaNoticeRule } from "./quota-notice-config.js";
 import { onUsageSnapshot } from "./usage/usage-api.js";
@@ -276,6 +277,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
+import { cachedNativeModelCatalog } from "./native-model-catalog.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
@@ -334,6 +336,7 @@ import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
+import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -403,6 +406,7 @@ import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninP
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
@@ -1303,6 +1307,85 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
+  /**
+   * A message the owner must get (a computer joined with an install-command token, so nobody approved it). It is written to `pending-owner-notices.json` FIRST and removed only
+   * when a delivery is acknowledged: the platform took the message (the send's promise resolved) or the dashboard's Notices recorded it. So none of these loses it: no place to
+   * send it yet (a chat-connected fleet with no General and no primary notice target, adapters not up), a send the platform refuses after it was dispatched, a retry that is
+   * refused again, a restart. Each kept notice is tried again every minute until it is acknowledged. The file is private. Capacity is explicit, never silent: past
+   * OWNER_NOTICE_CAP undelivered notices the oldest are folded into ONE notice that says how many computers joined without a delivered notice and tells the owner to review
+   * Settings → Runtime, so the fact is never dropped. Delivery is at least once: a crash between the send and its acknowledgement can send a notice twice.
+   */
+  private ownerNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One physical send per kept notice at a time: the claim is held until THAT attempt settles (never aged out) and each attempt's callbacks only act on its own claim. */
+  private readonly ownerNoticeLive = new Set<string>();
+  private readonly ownerNoticeInFlight = new Map<string, symbol>();
+  private pendingOwnerNoticesFile(): string | null { return this.dataDir ? join(this.dataDir, "pending-owner-notices.json") : null; }
+  private readPendingOwnerNotices(): Array<{ id: string; text: string; folded?: number }> {
+    const file = this.pendingOwnerNoticesFile();
+    try {
+      const value: unknown = file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+      if (!Array.isArray(value)) return [];
+      const rows: Array<{ id: string; text: string; folded?: number }> = [];
+      for (const row of value) {
+        if (typeof row === "string" && row.length > 0 && row.length <= 4000) rows.push({ id: `legacy-${createHash("sha256").update(row).digest("hex").slice(0, 16)}`, text: row });
+        else if (row && typeof row === "object" && typeof (row as { id?: unknown }).id === "string" && typeof (row as { text?: unknown }).text === "string" && (row as { text: string }).text.length > 0 && (row as { text: string }).text.length <= 4000) {
+          const folded = (row as { folded?: unknown }).folded;
+          rows.push({ id: (row as { id: string }).id, text: (row as { text: string }).text, ...(Number.isSafeInteger(folded) && (folded as number) > 0 ? { folded: folded as number } : {}) });
+        }
+      }
+      return rows;
+    } catch { return []; }
+  }
+  private writePendingOwnerNotices(rows: Array<{ id: string; text: string; folded?: number }>): void {
+    const file = this.pendingOwnerNoticesFile(); if (!file) return;
+    try { if (rows.length) atomicWriteFileSync(file, JSON.stringify(rows), { mode: 0o600 }); else rmSync(file, { force: true }); }
+    catch (error) { this.logger.warn({ err: error }, "Could not keep a pending owner notice"); }
+  }
+  static readonly OWNER_NOTICE_CAP = 100;
+  /** Past the cap, the oldest are folded into one notice (a count, and where to look); it never silently disappears. */
+  private foldOwnerNotices(rows: Array<{ id: string; text: string; folded?: number }>): Array<{ id: string; text: string; folded?: number }> {
+    const cap = FleetManager.OWNER_NOTICE_CAP;
+    if (rows.length <= cap) return rows;
+    const old = rows.slice(0, rows.length - (cap - 1)), keep = rows.slice(rows.length - (cap - 1));
+    const folded = old.reduce((sum, row) => sum + (row.folded ?? 1), 0);
+    this.logger.warn({ folded }, "Too many undelivered owner notices: the oldest were folded into one summary notice");
+    for (const row of old) this.ownerNoticeInFlight.delete(row.id);
+    return [{ id: randomUUID(), text: t("runtime.enroll_folded", String(folded)), folded }, ...keep];
+  }
+  /** Keeps the notice, then tries to deliver it; it stays on disk until a delivery is acknowledged. */
+  deliverOwnerNotice(text: string): void {
+    const entry = { id: randomUUID(), text };
+    this.writePendingOwnerNotices(this.foldOwnerNotices([...this.readPendingOwnerNotices(), entry]));
+    this.attemptOwnerNotice(entry.id, text);
+    this.scheduleOwnerNoticeFlush();
+  }
+  private attemptOwnerNotice(id: string, text: string): void {
+    if (this.ownerNoticeInFlight.has(id)) return;                                               // a send is still waiting for its answer: it keeps the claim until it settles
+    const claim = Symbol(id); this.ownerNoticeInFlight.set(id, claim);
+    let settled = false;
+    const finish = (delivered: boolean): void => {
+      if (settled) return; settled = true;
+      if (this.ownerNoticeInFlight.get(id) === claim) this.ownerNoticeInFlight.delete(id);      // only its own claim: a late answer never retires a successor
+      if (delivered) this.writePendingOwnerNotices(this.readPendingOwnerNotices().filter(row => row.id !== id));
+    };
+    let dispatched = false;
+    try { dispatched = this.notifyFleetError(text, { throttle: false, ack: finish }); } catch { dispatched = false; }
+    if (!dispatched) finish(false);
+  }
+  /** Tries every kept notice that has no attempt in flight (oldest first); returns how many are kept. */
+  flushOwnerNotices(): number {
+    for (const row of this.readPendingOwnerNotices()) this.attemptOwnerNotice(row.id, row.text);
+    return this.readPendingOwnerNotices().length;
+  }
+  private scheduleOwnerNoticeFlush(delayMs = 60_000): void {
+    if (this.ownerNoticeTimer || !this.pendingOwnerNoticesFile()) return;
+    this.ownerNoticeTimer = setTimeout(() => {
+      this.ownerNoticeTimer = null;
+      let left = 0; try { left = this.flushOwnerNotices(); } catch (error) { this.logger.warn({ err: error }, "Could not deliver a pending owner notice"); left = 1; }
+      if (left > 0) this.scheduleOwnerNoticeFlush();
+    }, delayMs);
+    this.ownerNoticeTimer.unref?.();
+  }
   private runtimeInstall: RuntimeInstallService | undefined;
   /** One service for the public installer routes and the administrator API: the hash the dashboard shows is the hash of what is sent. */
   runtimeInstaller(): RuntimeInstallService { return this.runtimeInstall ??= new RuntimeInstallService(); }
@@ -1312,10 +1395,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
   runtimeCoordinator(): RuntimeCoordinator {
     if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
+    if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
+      // Issue, use, revocation (and a refused use) of an install-command token: ids and an opaque actor handle only, never the token.
+      audit:entry=>{
+        this.logger[entry.event==="rejected" || entry.event==="throttled" ? "warn" : "info"]({runtimeEnrollment:entry},`Runtime install-command token ${entry.event}`);
+        // A computer that joined with a token was approved by the token alone: tell the owner out of band (never lets a failure here change the join).
+        if(entry.event==="used")try{
+          const text=enrolledRuntimeNotice(entry,entry.machineId ? this.runtimeHub?.machine(entry.machineId) ?? null : null);
+          // Kept first, removed only when a delivery is acknowledged (see deliverOwnerNotice): no destination yet, a refused send and a restart do not lose it.
+          if(text)this.deliverOwnerNotice(text);
+        }catch(error){this.logger.warn({err:error},"Could not announce a computer that joined with an install-command token");}
+      },
       changed:event=>{
         if (event?.type === "machine") this.needsYou?.poke();
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
@@ -1754,6 +1848,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
+  /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
+  async hubMemberPairingView(): Promise<import("./hub-pairing-summary.js").HubPairingView> {
+    const raw = this.rawFleetConfig;
+    if (this.shuttingDown) throw Error("Fleet is stopping");
+    if (hubMembershipSettings(raw).enabled && this.hubMemberPairingApi) return this.hubMemberPairingApi.view();
+    const { createHubMemberPairingApi } = await import("./hub/member/pairing-api.js");
+    if (this.shuttingDown || this.rawFleetConfig !== raw) throw Error("Hub membership changed");
+    // This factory schedules nothing; only its private-file projection is called. No write method escapes.
+    return createHubMemberPairingApi({ home: this.dataDir, enabled: () => false }).view();
+  }
   attachHubMemberPairing(api: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null): void { this.hubMemberPairingApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
   private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
@@ -2744,6 +2848,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  /** M-2738: the last update check's answer, for the web (null until the first check settles). */
+  private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
+  /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
+  private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
+  private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
+  /**
+   * M-2738 (Prism #3505 P2-2): this fleet's own claim on a web-started update, from admission until its updater exits
+   * (or was never launched). The progress marker expires after 15 minutes so a crashed update cannot silence incident
+   * reports; that expiry never proves the update ended, so it never admits a second one while this is held.
+   */
+  private webUpdateOwned: { startedAt: number } | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
@@ -5403,7 +5519,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = updateMarkerIdentity(this.dataDir);
     if (current && !sameUpdateMarker(current, bootUpdateMarker)) return;
     const leftover = readUpdateProgress(this.dataDir)?.progress;
-    if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
+    if (leftover?.cleanup === "pending" && !isWebUpdateTarget(leftover.target) && leftover.stage !== "failed" && leftover.stage !== "complete") return;
     clearUpdateMarker(this.dataDir);
   }
 
@@ -5772,25 +5888,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
-    const { spawn } = await import("./child-process.js");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
+    await this.launchInstalledUpdate(`slash /update by ${adapterId}:${data.userId}`,
+      () => this.fleetAdminGate(data.userId, adapterId) === "ok" && !this.shuttingDown);
+  }
+
+  /**
+   * The update itself, for slash `/update` and the web's Update (M-2738): the installed `agend`, verified, launched
+   * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
+   * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
+   */
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<import("node:child_process").ChildProcess | null> {
+    const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
-      return;
+      return null;
     }
-    const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
-      return;
+      return null;
     }
-    if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {
+    if (!stillAllowed()) {
       this.failUpdateProgress(t("not_authorized"));
-      return;
+      return null;
     }
     const logPath = updateLogPath(this.dataDir);
     const ts = new Date().toISOString();
@@ -5801,6 +5926,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (logFd) closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
     watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset, installed.agend);
     child.unref();
+    return child;
   }
 
   private async handleProfileSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
@@ -6312,6 +6438,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
   logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
+  private subagentReader = new SubagentService(name => this.lifecycle.daemons.get(name)?.subagentSource() ?? null);
+  subagentRuns(name: string) { return this.subagentReader.read(name); }
+
 
   /**
    * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
@@ -10099,6 +10228,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     operation: UpdateProgressOperation | null,
   ): { render: { warning: string; cleanupCommand?: string } } | { watch: UpdateReceipt } | null {
     if (!pending || operation !== "update") return null;
+    // M-2738: no chat message to append a retire warning to; the updater's log keeps it.
+    if (isWebUpdateTarget(pending.progress.target)) return null;
     const receipt = updateReceiptOf(pending);
     if (!receipt) return null;
     const current = readUpdateProgress(this.dataDir);
@@ -10464,6 +10595,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ch.adapterId) this.instanceWorldBinding.set(ch.instanceName, ch.adapterId);
     }
 
+    // #3526: catalogs belong to the fleet, including a fleet with no chat adapter.
+    this.probeCliEnvs();
+
     // #1565: the web chat as it was before this process — the configured instances' only (fleet.yaml and ClassicBot
     // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
     this.restoreWebChat(fleet);
@@ -10736,6 +10870,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
+        // M-2738: a web-started update's target is a web surface too (src/web-update.ts): no chat message to adopt.
         if (pendingUpdateProgress && pendingUpdateProgress.progress.target.surface !== "web") {
           const saved = pendingUpdateProgress.progress.target;
           const target: RestartProgressTarget = {
@@ -11648,10 +11783,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // This adapter's own Telegram menus — each Telegram adapter registers its own when it starts (#1191).
     this.registerTelegramCommandsFor(channelConfig);
-
-    // Background-probe each backend's CLI env (version/models) → cli-env cache.
-    // Non-blocking: /model & status views read the cache; never delays startup.
-    this.probeCliEnvs();
 
     adapter.on("started", safeHandler((username: string, userId?: string) => {
       if (!isCurrentAdapter()) return;
@@ -13580,6 +13711,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return isWebOnlyFleetConfig(this.fleetConfig);
   }
 
+  /**
+   * S-117 story 1: the sign-in page's "no chat" words (no /web to send) — a web-only fleet, or one whose chat is not
+   * connected yet (a fresh install whose bot is still being set up, or is down): /web cannot answer there.
+   */
+  signinWithoutChat(): boolean {
+    return this.isWebOnlyFleet() || ![...this.adapterState.values()].some(state => state.status === "connected");
+  }
+
   /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
   private webOnlyPromptPlace(): { adapter: ChannelAdapter; adapterId: string; chatId: string } | null {
     return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
@@ -15259,8 +15398,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const key of Object.keys(current)) if (!Object.hasOwn(resolved, key)) delete (current as unknown as Record<string, unknown>)[key];
       Object.assign(current, resolved);
     }
+    const previousCatalogConfig = this.savedFleetConfigSnapshot;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.nativeMcpStore?.observePolicies();
+    this.probeChangedCliEnvs(previousCatalogConfig);
     this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
@@ -16955,7 +17096,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the shared 10-minute text throttle would otherwise swallow the next
    * streak's notice, and it is neither consulted nor recorded.
    */
-  notifyFleetError(text: string, opts: { throttle?: boolean } = {}): boolean {
+  notifyFleetError(text: string, opts: { throttle?: boolean; ack?: (delivered: boolean) => void } = {}): boolean {
     const throttled = opts.throttle !== false;
     const now = Date.now();
     const key = text.slice(0, 200);
@@ -16980,8 +17121,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // rejects the message afterwards still consumes the throttle window, which
     // is the pre-existing semantic and not something this change alters.
     let dispatched = false;
-    if (general) {
-      dispatched = this.notifyInstanceTopic(general, body);
+    // A native-exec General is a web-chat status line (an SSE event with no browser receipt and no store): fine for a message nobody must not miss, never an acknowledgement.
+    // For a caller that needs one it is shown best-effort (once) and delivery goes on to the primary channel or the durable Notice.
+    const generalIsNative = !!general && isNativeExecInstance(this.fleetConfig?.instances[general]);
+    if (general && opts.ack && generalIsNative && !this.ownerNoticeLive.has(body)) {
+      this.ownerNoticeLive.add(body); if (this.ownerNoticeLive.size > 200) this.ownerNoticeLive.delete(this.ownerNoticeLive.values().next().value as string);
+      this.emitSseEvent("message", { instance: general, role: "status", sender: "AgEnD", text: body, ts: new Date().toISOString() });
+    }
+    if (general && !(opts.ack && generalIsNative)) {
+      dispatched = this.notifyInstanceTopic(general, body, undefined, opts.ack);
     } else {
       // No General instance — fall back to the primary channel's own notice
       // target. Posting to the bare group id looked right but is a guild id on
@@ -16990,14 +17138,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.adapter && target) {
         const out = this.renderPlaces(this.getPrimaryAdapterId(), body, target.opts);
         this.adapter.sendText(target.chatId, out.text, out.opts)
-          .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
+          .then(() => opts.ack?.(true), err => { this.logger.warn({ err }, "Failed to send fleet error notification"); opts.ack?.(false); });
         dispatched = true;
       }
     }
 
     // #2910 D2: a web-only fleet has no General: the notice goes to the dashboard's Notices instead (and spends the
     // throttle window like a post would).
-    if (!dispatched && this.recordWebNotice("fleet", body)) dispatched = true;
+    // A caller that needs an acknowledgement (the owner notice) gets one only from a Notice that was WRITTEN: WebNotices.add keeps its item in memory even when the file cannot be written.
+    if (!dispatched) {
+      const recorded = opts.ack ? this.recordWebNoticeDurable("fleet", body) : this.recordWebNotice("fleet", body);
+      if (recorded) { dispatched = true; opts.ack?.(true); }
+    }
     if (!dispatched) {
       // Do NOT record the throttle key. It used to be claimed before delivery
       // was attempted, so a message nobody could receive — every fleet error
@@ -17049,10 +17201,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #3373 review P2: recordWebNotice for a notice that must be on disk first — true only once it was written. */
-  private recordWebNoticeDurable(kind: NoticeKind, text: string): boolean {
+  private recordWebNoticeDurable(kind: NoticeKind, text: string, instance?: string): boolean {
     if (!this.webOnlyPromptPlace()) return false;
     const store = this.webNoticeStore();
-    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text) }) ?? null;
+    const known = instance !== undefined && Object.hasOwn(this.fleetConfig?.instances ?? {}, instance) ? instance : undefined;
+    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text), ...(known ? { instance: known } : {}) }) ?? null;
     if (!notice) return false;
     this.emitSseEvent("notice", { notice, unread: store!.unread() });
     return true;
@@ -17071,15 +17224,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * rejection surfaces only as a warn in its .catch. True delivery confirmation
    * would have to make this async and change every caller.
    */
-  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
+  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts, ack?: (delivered: boolean) => void): boolean {
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
-      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return true;
+      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return !ack;   // an SSE event is no acknowledgement
     }
     // #2910 D2: a web-only fleet has no topics: what the agent's topic would have been told is a Notice about it.
-    if (this.webOnlyPromptPlace()) return this.recordWebNotice("instance", text, instanceName);
+    if (this.webOnlyPromptPlace()) { const recorded = ack ? this.recordWebNoticeDurable("instance", text, instanceName) : this.recordWebNotice("instance", text, instanceName); if (recorded) ack?.(true); return recorded; }
     const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
     if (!send) return false;
-    send.sent.catch(e => this.logger.warn({ err: e, instanceName }, send.failure));
+    // `ack` (a caller that must not lose the message) is told when the platform took it or refused it; everyone else only gets the log line.
+    send.sent.then(() => ack?.(true), e => { this.logger.warn({ err: e, instanceName }, send.failure); ack?.(false); });
     return true;
   }
 
@@ -19044,7 +19198,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
@@ -19055,12 +19209,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
-    const choicesFromCache = (instance: string): WebChoices | null => {
+    const choicesFromCache = async (instance: string, more = false): Promise<WebChoices> => {
+      if(isWindowsInstance(this.fleetConfig?.instances[instance])){
+        const catalog=await this.listModelCatalog({instanceName:instance});
+        return {current:catalog.current_model,options:catalog.models.map(m=>({id:m.id,label:m.label})),actions:["refresh"]};
+      }
       const backend = this.backendNameForInstance(instance);
-      const cached = this.readCliEnv(backend, this.catalogProfile(backend, instance));     // the cached catalog only: never a probe here
-      if (!cached?.models.length) return null;
+      const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
-      return { current, options: this.withCurrentModel(cached.models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
+      const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
+      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+        actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
       scope: (instance) => this.webCommandScope(instance),
@@ -19081,6 +19240,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       applyModel: (instance, name) => this.applyModel(instance, name),
       modelChoices: choicesFromCache,
+      modelAction: async (instance, command, args, action, actionOpts) => {
+        const tokens = backendArgs(args);
+        if ((command === "model" && args) || (command === "backend" && (tokens.length !== 1 || action !== "refresh"))) return { error: t("menu.click_stale") };
+        const backend = command === "model" ? this.backendNameForInstance(instance) : tokens[0]!;
+        if (command === "backend") {
+          const refusal = this.backendCommandRefusal(instance);
+          if (refusal) return { error: refusal };
+          const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, tokens);
+          if (step.kind !== "choose" || step.step !== "model") return { error: step.kind === "refuse" ? step.text : t("menu.click_stale") };
+        }
+        if (action === "more" && backend !== "claude-code") return { error: t("menu.click_stale") };
+        if (action !== "more" || !this.webModelEnv(backend, instance)?.apiModels?.length) {
+          const result = await this.refreshModelCatalogFor(backend, instance);
+          if (!result.refreshed) return { error: t("model.refresh_failed") };
+        }
+        if (command === "model") return { choices: await choicesFromCache(instance, action !== "refresh") };
+        // Re-enter the shared backend→model→effort→confirm flow; no configuration write during refresh.
+        return this.webCommand({ instance, command: "backend", args }, { ...opts, publicLink: actionOpts.publicLink }).then(r => r.body as import("./web-commands.js").WebBackendAnswer);
+      },
       applyEffort: (instance, level) => this.applyEffort(instance, level),
       effortChoices: (instance) => {
         const levels = this.effortLevelsFor(instance);
@@ -19092,11 +19270,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const refusal = this.backendCommandRefusal(instance);
         if (refusal) return { error: refusal };
         // The cached model lists only, as the web's /model: never a live probe on this path.
-        const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, backendArgs(args));
+        const step = await backendStep({ ...this.backendCommandDeps(instance, { live: false }), models: async backend => this.modelCatalogFor(backend, instance) }, instance, backendArgs(args));
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
-          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
+          return { choices: { step: step.step, args: joinBackendArgs(step.args), ...(step.step === "model" ? { actions: ["refresh" as const] } : {}), prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
             // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
             const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
@@ -23193,7 +23371,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     configured: string | null | undefined = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model,
   ): { known: boolean; names: string[] } {
     const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
-    const api = (this.readCliEnv("claude-code", this.catalogProfile("claude-code", instanceName))?.apiModels ?? []).map(m => m.id);
+    const api = (this.webModelEnv("claude-code", instanceName)?.apiModels ?? []).map(m => m.id);
     const lower = model.trim().toLowerCase();
     const bare = lower.replace(/\[1m\]$/, "");
     const known = aliases.some(a => a.toLowerCase() === bare)
@@ -23334,6 +23512,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pendingCliEnvProbes.clear();
     this.pendingVendorCliEnvProbes.clear();
     this.pendingInstanceModelProbes.clear();
+    this.webModelRefreshes.clear();
+    this.webModelCatalogs.clear();
   }
 
   private runBackendProbeWorker(key: string, input: BackendProbeInput): Promise<BackendProbeResult | null> {
@@ -23511,16 +23691,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #724: use the bounded variant so background startup probes cannot hang
     // indefinitely — each is wrapped by CLI_ENV_PROBE_DEADLINE_MS.
     for (const b of backends) void this.probeBackendBounded(b);
-    // #2072: each Claude credential profile in use has its own account catalog. Only fleet.yaml's agents are walked
-    // here; a ClassicBot room on a profile is probed on its first /model (catalogProfile knows rooms too).
-    const profiles = new Set<string>();
+    this.probeChangedCliEnvs(null);
+  }
+
+  /** Maintain discovery after committed config changes; a model-field read remains passive. */
+  private probeChangedCliEnvs(previous: FleetConfig | null): void {
+    const signature = (fleet: FleetConfig | null, name: string) => {
+      const inst = fleet?.instances[name];
+      if (!inst) return null;
+      const backend = inst.backend ?? fleet?.defaults?.backend ?? "claude-code";
+      return JSON.stringify({ backend, options: { ...fleet?.defaults?.backend_options?.[backend], ...inst.backend_options?.[backend] } });
+    };
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (isWindowsInstance(this.fleetConfig?.instances[name])) continue;
-      if (this.backendNameForInstance(name) !== "claude-code") continue;
-      const profile = this.catalogProfile("claude-code", name);
-      if (profile) profiles.add(profile);
+      const backend = this.backendNameForInstance(name);
+      const binding = this.webModelBinding(backend, name);
+      // A named agy account has no verified relocation/discovery contract. In particular,
+      // never publish the ambient account's models under that profile (#3526 / D7).
+      if (!binding || (binding.profile && !credentialHomeSpec(backend))) continue;
+      // A description/defaults save can retire a scoped answer's full binding even
+      // though its account signature is unchanged. Keep the conservative fence and
+      // re-arm the current binding, unless its answer or flight is already present.
+      if (previous && signature(previous, name) === signature(this.fleetConfig, name)
+          && (!binding.scoped || this.webModelEnv(backend, name) || this.webModelRefreshes.has(binding.key))) continue;
+      const work = binding.scoped
+        ? this.refreshModelCatalogFor(backend, name)
+        : this.probeBackendBounded(backend, { profile: binding.profile });
+      void work.catch(err => this.logger.debug({ backend, name, err }, "Background model discovery failed"));
     }
-    for (const profile of profiles) void this.probeBackendBounded("claude-code", { profile });
   }
 
   /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
@@ -23608,9 +23806,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Detection is admin-owned. A read never launches a provider or falls back to this host's account.
       let inventory: import("./windows-cli.js").WindowsCliProbe | null = null;
       try { inventory = await this.runtimeWindowsExecutor().probe({ force: false, machineId: config.machine_id }); } catch { /* offline remains unavailable */ }
+      const refreshed=cachedNativeModelCatalog(this,{backend,instance:instanceName});
+      const profile=config.backend_options?.[backend]?.credential_profile || (backend==="claude-code"?inventory?.credentialProfiles?.default:undefined);
       const row = inventory?.clis.find(value => value.id === backend);
       return { backend, scope: "instance", instance: instanceName, current_model: config.model || null,
-        models: (row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
+        models: refreshed?.models ?? (profile ? [] : row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
         source: row?.models?.length ? "cache" : "fallback",
         ...(inventory?.probedAt ? { probed_at: new Date(inventory.probedAt).toISOString() } : {}),
         note: "Windows runtime's last detected inventory; no coordinator account or live probe is used." };
@@ -24493,7 +24693,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       currentBackend: (name) => this.backendNameForInstance(name),
       currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
       availability: () => this.backendAvailabilityFor(instanceName),
-      models: (backend) => this.backendModelOptions(backend, opts),
+      models: (backend) => this.backendModelOptions(backend, { ...opts, instance: instanceName }),
       // #1808: the same rule update_instance_config's switch applies (backendModelVerdict).
       modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
       effortLevels: (backend, model) => this.backendEffortLevels(instanceName, backend, model),
@@ -24547,7 +24747,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A custom provider has its own catalog, which the CLI reads at launch and AgEnD cannot see before one (#1815
     // review): only the launch-line rule applies — never the account's list or the default provider's naming pattern.
     if (opts.provider) return modelNameCarried(backend, model) ? { ok: true } : { ok: false, choices: [] };
-    const listed = this.readCliEnv(backend)?.models ?? [];
+    const listed = this.webModelEnv(backend, instanceName)?.models ?? [];
     const choices = listed.slice(0, 24).map(o => o.id);
     if (!modelNameCarried(backend, model)) return { ok: false, choices };
     if (listed.some(o => o.id === model)) return { ok: true };
@@ -24600,15 +24800,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2072 part 3: the models a Settings field offers for `backend` — the cached catalog (an instance's own credential
    * profile's, when it is named and has one), claude's account catalog included. Read only: never a probe.
    */
-  modelCatalogFor(backend: string, instance: string | null): import("./backend/types.js").ModelOption[] {
-    if (instance && isWindowsInstance(this.fleetConfig?.instances[instance])) return [];
-    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return [];
-    const own = instance && Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, instance) ? instance
-      : instance && this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? instance : null;
-    const env = this.readCliEnv(backend, this.catalogProfile(backend, own));
-    const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
-    for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
-    return out;
+  private webModelTargetIds = new WeakMap<object, number>();
+  private webModelTargetSequence = 0;
+  private webModelCatalogs = new Map<string, import("./backend/types.js").CliEnv>();
+  private webModelRefreshes = new Map<string, Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }>>();
+
+  /** Resolve only trusted config; the browser never supplies a home, provider URL or credentials. */
+  private webModelBinding(backend: string, instance: string | null, selection?: {profile?:string}) {
+    this.webModelTargetIds ??= new WeakMap(); this.webModelTargetSequence ??= 0;
+    this.webModelCatalogs ??= new Map(); this.webModelRefreshes ??= new Map();
+    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return null;
+    const instances = this.fleetConfig?.instances ?? {};
+    const own = instance && Object.hasOwn(instances, instance) ? instances[instance] : null;
+    const classic = instance && !own ? this.classicChannels?.getAll().find(c => c.instanceName === instance) : null;
+    if (instance && !own && !classic || own && isWindowsInstance(own)) return null;
+    const options = { ...this.fleetConfig?.defaults?.backend_options?.[backend], ...(own?.backend_options?.[backend] ?? (instance ? this.classicChannels?.getBackendOptionsByInstance(instance)?.[backend] : undefined)) };
+    if (selection?.profile !== undefined) {
+      if (selection.profile && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(selection.profile)) return null;
+      options.credential_profile = selection.profile || this.fleetConfig?.defaults?.backend_options?.[backend]?.credential_profile || undefined;
+    }
+    const profile = typeof options.credential_profile === "string" ? options.credential_profile : null;
+    const instanceDir = instance ? this.getInstanceDir(instance) : join(getAgendHome(), "cli-env");
+    const config = structuredClone({ workingDirectory: own?.working_directory ?? "", instanceDir,
+      instanceName: instance ?? `probe-${backend}`, mcpServers: {}, backendOptions: options,
+      ...(profile ? { credentialStoreHome: credentialProfileStoreHome(getAgendHome(), backend, profile) } : {}) });
+    const target = own ?? classic;
+    if (target && !this.webModelTargetIds.has(target)) this.webModelTargetIds.set(target, ++this.webModelTargetSequence);
+    const targetId = target ? this.webModelTargetIds.get(target) : 0;
+    const key = JSON.stringify({ backend, instance, config, targetId, target: own ?? classic, defaults: this.fleetConfig?.defaults });
+    return { key, own, classic, profile, config, scoped: !!options.provider || (!!profile && backend !== "claude-code") };
+  }
+
+  private webModelEnv(backend: string, instance: string | null, selection?: {profile?:string}) {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding) return null;
+    const disk = binding.scoped ? null : this.readCliEnv(backend, binding.profile);
+    const hit = this.webModelCatalogs.get(binding.key);
+    if (hit && Date.now() - hit.probedAt < CLI_ENV_TTL_MS && (!disk || hit.probedAt >= disk.probedAt)) return hit;
+    return disk;
+  }
+
+  modelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): import("./backend/types.js").ModelOption[] {
+    const env = this.webModelEnv(backend, instance, selection);
+    const seen = new Set<string>();
+    return [...(env?.models ?? []), ...(env?.apiModels ?? [])].filter(m => !seen.has(m.id) && !!seen.add(m.id));
+  }
+
+  /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */
+  async refreshModelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }> {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding || this.shuttingDown) return { models: [], refreshed: false };
+    const pending = this.webModelRefreshes.get(binding.key);
+    if (pending) return pending;
+    const epoch = this.cliEnvProbeEpoch;
+    const current = () => {
+      const next = this.webModelBinding(backend, instance, selection);
+      return !this.shuttingDown && epoch === this.cliEnvProbeEpoch && next?.key === binding.key && next.own === binding.own && next.classic === binding.classic;
+    };
+    const work = this.runBackendProbeWorker(binding.scoped && !binding.profile ? `instance:${backend}:${binding.config.instanceDir}` : `global:${backend}${binding.profile ? `@${binding.profile}` : ""}`, {
+      mode: "env", backend, instanceDir: binding.config.instanceDir, config: binding.config, refreshVendorCatalog: true,
+    }).then(result => {
+      if (!current()) return { models: [], refreshed: false };
+      // Raw failure/empty discovery never masquerades as a successful refresh of the retained catalog.
+      if (!result || Array.isArray(result) || (!Array.isArray(result.models) || !result.models.length || result.catalogRefreshFailed)) return { models: this.modelCatalogFor(backend, instance, selection), refreshed: false };
+      if (this.webModelCatalogs.size >= 64) this.webModelCatalogs.delete(this.webModelCatalogs.keys().next().value!);
+      this.webModelCatalogs.set(binding.key, { ...result, backend, probedAt: Date.now() });
+      return { models: this.modelCatalogFor(backend, instance, selection), refreshed: true };
+    }).finally(() => { if (this.webModelRefreshes.get(binding.key) === work) this.webModelRefreshes.delete(binding.key); });
+    this.webModelRefreshes.set(binding.key, work);
+    return work;
   }
 
   /** Host-default fallback only: Grok has no modeled profile home. Never construct a backend or start a probe. */
@@ -24683,7 +24943,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The models `/model` would offer on a backend: the cached CLI env, else (live) a bounded probe. Never throws. */
-  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void }): Promise<import("./backend/types.js").ModelOption[]> {
+  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void; instance?: string }): Promise<import("./backend/types.js").ModelOption[]> {
+    if (!opts.live && opts.instance) return this.modelCatalogFor(backend, opts.instance);
     const cached = this.readCliEnv(backend);
     if (!opts.live || (cached?.models.length && !this.cliEnvNeedsRefresh(cached))) return cached?.models ?? [];
     opts.onLiveProbe?.();
@@ -25280,6 +25541,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
     this.fleetWindowsRuntime=null;
     this.runtimeHub?.close();this.runtimeHub=null;
+    if(this.ownerNoticeTimer){clearTimeout(this.ownerNoticeTimer);this.ownerNoticeTimer=null;}
     this.localPaneRelay?.stop(); this.localPaneRelay = null;
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
@@ -25766,6 +26028,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
+    this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
 
@@ -27506,46 +27769,70 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Update check ────────────────────────────────────────────────────
 
-  private async checkForUpdates(): Promise<void> {
-    try {
-      // Both npm lookups are async: as execSync they froze the fleet event loop for
-      // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
-      // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
-      // for a background version check.
-      const { execFile } = await import("./child-process.js");
-      const { promisify } = await import("node:util");
-      const execFileP = promisify(execFile);
-      const npmVersion = async (spec: string): Promise<string> => {
-        const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
-        return stdout.toString().trim();
-      };
-      const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-      const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
-      const latest = await npmVersion("@songsid/agend");
-      let target = latest;
-      let fromChannel = false;
-      // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
-      const channel = installedChannel(currentVersion);
-      if (channel !== "latest") {
-        let pre = "";
-        try {
-          pre = await npmVersion(`@songsid/agend@${channel}`);
-        } catch { /* no such tag */ }
-        // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
-        // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
-        // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
-        target = pre;
-        fromChannel = true;
-        // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
-        // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
-        // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
-        // @alpha like any channel release.
-        const core = (v: string) => v.replace(/^v/, "").split("-")[0];
-        if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
-          target = latest;
-          fromChannel = false;
-        }
+  /** The running package's version (package.json next to this code). */
+  private runningAgendVersion(): string {
+    // M-2738 (rig): the version THIS process runs, read when it loaded. The file on disk is the installed one: during an
+    // update it is briefly missing, then the new version while the old fleet still runs (a tab would be told to reload early).
+    if (!RUNNING_AGEND_VERSION) throw new Error("the running AgEnD version is unknown");
+    return RUNNING_AGEND_VERSION;
+  }
+
+  /**
+   * What the install's own channel offers: the target version and whether it came from that channel's dist-tag. Throws
+   * when npm cannot be asked (the callers decide what a failed look means).
+   */
+  private async lookUpUpdateTarget(currentVersion: string): Promise<{ target: string; fromChannel: boolean }> {
+    // Both npm lookups are async: as execSync they froze the fleet event loop for
+    // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
+    // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
+    // for a background version check.
+    const { execFile } = await import("./child-process.js");
+    const { promisify } = await import("node:util");
+    const execFileP = promisify(execFile);
+    const npmVersion = async (spec: string): Promise<string> => {
+      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+      return stdout.toString().trim();
+    };
+    const latest = await npmVersion("@songsid/agend");
+    let target = latest;
+    let fromChannel = false;
+    // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
+    const channel = installedChannel(currentVersion);
+    if (channel !== "latest") {
+      let pre = "";
+      try {
+        pre = await npmVersion(`@songsid/agend@${channel}`);
+      } catch { /* no such tag */ }
+      // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
+      // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
+      // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
+      target = pre;
+      fromChannel = true;
+      // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
+      // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
+      // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
+      // @alpha like any channel release.
+      const core = (v: string) => v.replace(/^v/, "").split("-")[0];
+      if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
+        target = latest;
+        fromChannel = false;
       }
+    }
+    return { target, fromChannel };
+  }
+
+  /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
+  private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
+    const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
+    this.updateCheckState = { offer, checkedAt: Date.now(), failed: found === null };
+  }
+
+  private async checkForUpdates(): Promise<void> {
+    let currentVersion: string;
+    try { currentVersion = this.runningAgendVersion(); } catch { return; }
+    try {
+      const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
+      this.recordUpdateCheck(currentVersion, { target, fromChannel });
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
@@ -27560,12 +27847,93 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
           if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
-          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily); installed from this computer.
+          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
           if (this.webNoticeStore()?.latest("update")?.text !== text) this.recordWebNotice("update", text);
         }
       }
-    } catch { /* silent — network issues */ }
+    } catch { this.recordUpdateCheck(currentVersion, null); /* silent — network issues */ }
+  }
+
+  // ── M-2738: updating from the web (src/web-update.ts) ───────────────
+
+  /** The web's update routes (web-api.ts handleWebUpdate) read and start through this. */
+  get webUpdate(): WebUpdateHost {
+    return {
+      updateState: () => {
+        let current: string | null = null;
+        try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
+        const s = this.updateCheckState;
+        return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+      },
+      checkUpdateNow: () => this.checkUpdateNow(),
+      updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
+      startWebUpdate: (key, person, stillAllowed) => this.startWebUpdateOnce(key, person, stillAllowed),
+      updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
+    };
+  }
+
+  /** "Check for updates": look now, no chat notice. One a minute; a second ask while one runs waits for it. */
+  private async checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const c = this.updateCheckNow;
+    if (c.running) { await c.running; return { ok: true }; }
+    if (Date.now() - c.lastAt < 60_000 && Date.now() >= c.lastAt) return { ok: false, status: 429, error: "checked_recently" };
+    c.lastAt = Date.now();
+    c.running = (async () => {
+      let currentVersion: string;
+      try { currentVersion = this.runningAgendVersion(); } catch { return; }
+      try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
+      catch { this.recordUpdateCheck(currentVersion, null); }
+    })();
+    try { await c.running; } finally { c.running = null; }
+    return { ok: true };
+  }
+
+  /**
+   * M-2738: Update from the web — a fleet admin's session, after its own confirmation (the leader's D1). Only what the
+   * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
+   * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
+   */
+  private async startWebUpdate(person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
+    // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
+    if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
+    const offer = this.updateCheckState?.offer;
+    if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    const startedAt = Date.now();
+    const claim = { startedAt };
+    this.webUpdateOwned = claim;
+    const release = () => { if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
+    // Its progress must be recorded before anything runs: every other tab, and the next start, read it.
+    if (!persistUpdateProgress(this.dataDir, webUpdateTarget(startedAt), startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: offer.version })) {
+      release();
+      this.logger.error("Web update refused: its progress marker could not be written");
+      return { ok: false, status: 503, error: "progress_not_recorded" };
+    }
+    const origin = `web update by ${person}`;
+    // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed()).then(child => {
+      if (!child) { release(); return; }
+      child.once("exit", release);
+      child.once("error", release);
+    }, err => {
+      release();
+      this.logger.error({ err }, "Web update launch failed");
+      this.failUpdateProgress(t("update.failure.launch"));
+    });
+    return { ok: true };
+  }
+
+  /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
+  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    // Prism #3505 P3: reserved before anything is awaited — a concurrent request with the same key shares this answer.
+    const known = this.webUpdateStarts.get(key);
+    if (known) return known;
+    const answer = this.startWebUpdate(person, stillAllowed);
+    this.webUpdateStarts.set(key, answer);
+    while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
+    return answer;
   }
 
   /**
@@ -27849,7 +28217,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), noChat: this.signinWithoutChat(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);

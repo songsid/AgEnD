@@ -20,6 +20,7 @@ import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-
 import { usageRailStore } from "./header-tools.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 import { initSettingsContentWidth } from "./settings-width.js";
 
@@ -638,6 +639,17 @@ const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
  * corner, except in Settings itself, which shows the same cards in its column, right under the operation (`inline`),
  * so they never cover it (alpha.2 sweep).
  */
+// #3511: the immutable diff stays in the Fleet's locale; this known line is display-only in the page's locale.
+// Own dictionary also works when app-i18n.js was cached before the Hub connection flow shipped.
+register("pendingHub", {
+  en: { connect: "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate." },
+  "zh-TW": { connect: "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。" },
+});
+function pendingSummaryLine(line) {
+  if (typeof line !== "string") return line;
+  const known = /^(?:Connect this Fleet to Hub (.+) using your company account\. Agent sharing stays separate\.|以公司帳號將這個 Fleet 連接到 Hub (.+)。分享 Agent 需另外選擇。)$/.exec(line);
+  return known ? t("pendingHub.connect", known[1] ?? known[2]) : line;
+}
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
   const list = pendingChanges || [];
@@ -662,7 +674,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(line).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}
@@ -751,16 +763,16 @@ register("pendingHost", {
     unknown: "這項變更沒有 General 可以接收確認卡。",
     go: "前往",
     details: "變更明細",
-    codeLead: "輸入驗證器 App 的 6 位數代碼，就能確認這項變更。",
-    codeLabel: "驗證器代碼", codeGo: "確認",
-    codeWrong: "代碼不正確，請使用驗證器 App 目前顯示的代碼。",
+    codeLead: "輸入驗證器 App 的 6 位數驗證碼，就能確認這項變更。",
+    codeLabel: "6 位數驗證碼（驗證器 App）", codeGo: "確認",
+    codeWrong: "驗證碼不正確，請使用驗證器 App 目前顯示的 6 位數驗證碼。",
     codePaused: "錯誤次數太多，請 {0} 分鐘後再試。",
-    codeNotHere: "這個頁面已無法用代碼確認這項變更。",
-    codeUnavailable: "無法檢查代碼，請再試一次。",
+    codeNotHere: "這個頁面已無法用驗證碼確認這項變更。",
+    codeUnavailable: "無法檢查驗證碼，請再試一次。",
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
     cantHere: "你目前在這台裝置還無法直接確認這項變更。",
-    setupLead: "你開啟了「從其他裝置確認變更時要我的驗證器代碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦，在「設定 → 存取與安全」重新設定，或在那裡關閉這個開關。",
+    setupLead: "你開啟了「從其他裝置確認變更時要我的驗證碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦，在「設定 → 存取與安全」重新設定，或在那裡關閉這個開關。",
     onHost: "會開放公開連結的變更無法透過連結確認。請改用直接連線，或在執行 AgEnD 的那台電腦的瀏覽器中確認。",
     hostOnly: "目前只有執行 AgEnD 的那台電腦能確認變更（已開啟「只有這台電腦可以授權」）。請到那台電腦的瀏覽器確認。",
     more: "其他確認方式",
@@ -1095,6 +1107,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub || !hubMarks().member || (nav.route?.panel === "settings" && nav.route.section === "hub") ? null : html`<${MemberPairingNoticesSlot} />`}
       ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest || hub ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

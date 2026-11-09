@@ -90,6 +90,8 @@ exec "${realDd}" "$@"
     let received = "";
     stream.on("data", (b: Buffer | string) => { received += b.toString(); });
     const child = spawn("sh", ["-c", command(fifo)], { stdio: ["pipe", "ignore", "pipe"], env: { ...process.env, PATH: `${pathPrefix}${pathPrefix ? ":" : ""}${process.env.PATH}` } });
+    // A dd that refuses its operand exits at once: a write that lost the race with that exit is an EPIPE on stdin, which must not surface as an unhandled error.
+    child.stdin.on("error", () => {});
     let stderr = ""; child.stderr.on("data", (b) => { stderr += b.toString(); });
     const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
     const until = async (want: string, ms: number) => { const t0 = Date.now(); while (!received.includes(want) && Date.now() - t0 < ms && child.exitCode === null) await new Promise((r) => setTimeout(r, 10)); return received.includes(want); };

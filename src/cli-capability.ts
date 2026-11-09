@@ -86,8 +86,8 @@ export interface HostCapabilities {
   readonly chatLogin: Cap<{ aliases: readonly string[]; mode: ChatLoginMode }>;
   /** The dashboard can sign this CLI in (the browser-terminal flow, `dashboardSignInSupported`); `named`: a named account too. */
   readonly dashboardSignIn: Cap<{ named: boolean }>;
-  /** The structured sign-in (Sign in → open the page → paste the code): the exact command it launches, and its place in the lists. */
-  readonly structuredSignIn: Cap<{ argv: readonly string[]; rank: number }>;
+  /** Structured controls: command, list order, and whether those controls also support a named account (separate from the chat/browser-terminal flow). */
+  readonly structuredSignIn: Cap<{ argv: readonly string[]; rank: number; named: boolean }>;
   /** The first-run page offers it: as browser controls, or only as the console command. */
   readonly firstRunSignIn: Cap<{ mode: "browser" | "console"; rank: number }>;
   /** A cheap, token-free probe of whether the sign-in works (the command, run with a 5 s timeout). */

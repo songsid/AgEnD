@@ -1,0 +1,15 @@
+{
+  "version": "8.24.3",
+  "officialArchiveSha256": "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c",
+  "officialChecksumVerified": true,
+  "historyMainExit": 0,
+  "historyAlphaExit": 0,
+  "sameSyntheticDigestAtDifferentLocationExit": 2,
+  "sameSyntheticDigestAtDifferentLocationFindings": 1,
+  "ignoreFileSha256": "e925b72e15a8d7ea3c022e724168ea0219882ca5331da640655f093ae058c404",
+  "historyExceptions": 4,
+  "scope": "exact historical commit/path/rule/line; current log row keys masked; default scanner rules unchanged",
+  "baselineFingerprintsPreserved": 6,
+  "newHistoryExceptions": 4,
+  "totalFingerprints": 10
+}

@@ -7,6 +7,7 @@ import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
+    startHint: "Enter the Hub address and a Fleet name to continue.",
     checking: "Checking this connection’s status. Review any local confirmation before continuing.",
     pending: "Local confirmation is required. Hub sign-in has not started.",
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
@@ -16,6 +17,7 @@ register("companyJoinWait", {
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
+    startHint: "請先填入 Hub 位址與 Fleet 名稱以繼續。",
     checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
     pending: "需要先完成本機確認，Hub 登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
@@ -28,7 +30,8 @@ register("companyJoinWait", {
 const jw = key => t(`companyJoinWait.${key}`);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
-export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
+export const companyJoinEmbedV1 = true;
+export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false } = {}) {
   const notified = useRef(null);
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
   const [view, setView] = useState(undefined), [error, setError] = useState(null), [busy, setBusy] = useState(false), [pending, setPending] = useState(null), [identityChanged, setIdentityChanged] = useState(false);
@@ -90,7 +93,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     const control = pending && card.querySelector("button, input, a");
     if (control) control.focus(); else { card.tabIndex = -1; card.focus(); }
   };
-  useEffect(() => { if (view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved]);
+  useEffect(() => { if ((!embedded || bound) && view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved, embedded, bound]);
   const start = async e => {
     e.preventDefault(); if (busy) return;
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false);
@@ -128,10 +131,12 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) setBusy(false); }
   };
-  const canStart = !waiting && (view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
+  const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
+  const canStart = !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
   // The existing connection card owns ready status, sharing and disconnect. Do not duplicate it after handoff.
-  if (!waiting && bound && view === null || view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
-  return html`<section class="card s-company-join"><h3>${hj("title")}</h3><p class="note">${hj("lead")}</p>
+  if (!waiting && bound && view === null || !retired && view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
+  const Frame = embedded ? "div" : "section";
+  return html`<${Frame} class=${embedded ? "form s-company-join" : "card s-company-join"}>${!embedded ? html`<h3>${hj("title")}</h3>` : null}<p class="note">${hj("lead")}</p>
     ${view === undefined && !waiting && !timedOut && !error ? html`<${Skeleton} variant="form" lines=${4} label=${hj("loading")} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${notice ? html`<p role="status" class="note">${notice}</p>` : null}
@@ -146,15 +151,15 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     ${canStart ? html`<form class="form" onSubmit=${start}>
       <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${hj("addressHint")}</small></label>
       <label class="field" for="hubCompanyFleetName"><span>${hj("fleetName")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>
-      <p class="note">${hj("firstUse")}</p><div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
+      <p class="note">${hj("firstUse")}</p>${!form.address.trim() || !form.label.trim() ? html`<p class="note" id="hubCompanyStartHint">${jw("startHint")}</p>` : null}<div class="field-row"><button class="btn btn-primary" type="submit" aria-describedby=${!form.address.trim() || !form.label.trim() ? "hubCompanyStartHint" : undefined} disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
       ${identityChanged ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || !form.address.trim()} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
-    ${view && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
+    ${view && !retired && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
       ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${joinError(view.reason)}</p>` : null}
       ${view.issued && view.state !== "saved" ? html`<p class="note">${hj("issued")}</p>` : null}
       <div class="field-row">${view.state === "awaiting-sign-in" ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${hj("start")}</a>` : null}${view.state === "held" && !["authority", "expired"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
         ${!["saved", "cancelled", "ended"].includes(view.state) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${hj("stop")}</button>` : null}
         ${view.hubOrigin ? html`<a class="btn btn-sm" href=${view.hubOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hj("inspect")}</a>` : null}</div>
     </div>` : null}
-  </section>`;
+  </${Frame}>`;
 }

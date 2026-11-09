@@ -75,7 +75,9 @@ describe("host lists, as they were", () => {
     expect(hostIdsByRank("firstRunSignIn")).toEqual(["kiro-cli", "claude-code", "codex", "antigravity"]);
     expect(hostIdsByRank("firstRunSignIn").filter(id => hostFacts(id, "firstRunSignIn")!.mode === "browser")).toEqual(["kiro-cli", "claude-code", "codex"]);
     expect(hostIdsByRank("firstRunSignIn").filter(id => hostFacts(id, "firstRunSignIn")!.mode === "console")).toEqual(["antigravity"]);
-    expect([...CHAT_PROFILE_LOGIN_BACKENDS]).toEqual(["claude-code"]);
+    // #3307 adds the existing /login flow for named Codex/Kiro accounts;
+    // structured named-account controls remain Claude-only below.
+    expect([...CHAT_PROFILE_LOGIN_BACKENDS]).toEqual(["claude-code", "codex", "kiro-cli"]);
   });
 
   it("the CLIs' own logout commands, and keep-alive", () => {

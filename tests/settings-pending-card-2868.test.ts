@@ -123,7 +123,7 @@ describe("this browser", () => {
     const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "zh-TW",
       { [`/api/settings/pending/${ID}/confirm`]: { __status: 403, error: "self_confirm_unavailable" } });
     fire(c.button("立即套用"), "click"); await settle(4);
-    expect([c.button("立即套用"), c.text().includes("或你要求時用你的驗證器代碼。"), c.text().includes("擁有者要求")]).toEqual([undefined, true, false]);
+    expect([c.button("立即套用"), c.text().includes("或你要求時用你的驗證碼。"), c.text().includes("擁有者要求")]).toEqual([undefined, true, false]);
   });
 });
 
@@ -167,7 +167,7 @@ describe("confirm with the authenticator code (web-only fleet, this computer or 
   it("no authenticator set up (your own switch asks for a code): says so, no link — set it up again on the AgEnD computer or turn your switch off there", async () => {
     const c = await withCode({ __status: 200 }, "zh-TW", "not_set_up");
     expect(c.text()).toContain("你目前在這台裝置還無法直接確認這項變更。");
-    expect(c.text()).toContain("你開啟了「從其他裝置確認變更時要我的驗證器代碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦");
+    expect(c.text()).toContain("你開啟了「從其他裝置確認變更時要我的驗證碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦");
     expect(c.p.root.querySelector(".pending-code-setup a"), "no link to a page that cannot set it up").toBeNull();
   });
 });

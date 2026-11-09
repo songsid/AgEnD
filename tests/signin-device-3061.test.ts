@@ -181,12 +181,12 @@ describe("#3061 P2a the sign-in page: Sign in with another device", () => {
   it("zh-TW: the button, the page and the answers", async () => {
     const p = await page("zh-TW", { deviceLogin: true, replies: {
       "/auth/device-login": [ASKED], "/auth/device-login/poll": [{ status: 200, body: { state: "expired" } }] } });
-    expect([p.i18n("another"), p.i18n("dev_title"), p.i18n("dev_new"), p.i18n("dev_back")]).toEqual(["使用其他裝置登入", "使用其他裝置登入", "取得新代碼", "返回"]);
-    expect(p.i18n("dev_lead")).toBe("在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組代碼。");
+    expect([p.i18n("another"), p.i18n("dev_title"), p.i18n("dev_new"), p.i18n("dev_back")]).toEqual(["使用其他裝置登入", "使用其他裝置登入", "取得新的裝置登入碼", "返回"]);
+    expect(p.i18n("dev_lead")).toBe("在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組裝置登入碼。");
     await p.click("another");
     expect(p.text("devStatus")).toBe("等待核准中… 5:00 後失效。");
     await p.flush(2000);
-    expect(p.text("devStatus")).toBe("這組代碼已失效。");
+    expect(p.text("devStatus")).toBe("這組裝置登入碼已失效。");
   });
 });
 
@@ -298,6 +298,6 @@ describe("#3061 P2b the sign-in page: the QR code of the approve link", () => {
 
   it("zh-TW: its words", async () => {
     const p = await page("zh-TW", { deviceLogin: true, loginQr: true, replies: {} });
-    expect(p.i18n("dev_qr")).toBe("也可以用已登入且已驗證擁有者的裝置掃描這個 QR Code。裡面只有這個頁面的網址和上面的代碼，沒有其他東西。");
+    expect(p.i18n("dev_qr")).toBe("也可以用已登入且已驗證擁有者的裝置掃描這個 QR Code。裡面只有這個頁面的網址和上面的裝置登入碼，沒有其他東西。");
   });
 });

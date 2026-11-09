@@ -1,0 +1,15 @@
+/* Optional chat progress disclosure; its own lazy stylesheet survives an older cached app.css. */
+.subagent-progress { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); margin-block: var(--s-2); }
+.subagent-progress > summary { min-height: var(--tap); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); cursor: pointer; font-weight: var(--fw-medium); }
+.subagent-progress > summary .note { margin-inline-start: auto; font-weight: var(--fw-regular); }
+.subagent-scroll { max-height: 32vh; overflow: auto; padding: 0 var(--s-3) var(--s-3); overscroll-behavior: contain; }
+.subagent-group + .subagent-group, .subagent-item + .subagent-item { border-block-start: 1px solid var(--border); margin-block-start: var(--s-3); padding-block-start: var(--s-3); }
+.subagent-parent { overflow-wrap: anywhere; margin-block: var(--s-2); }
+.subagent-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-2); }
+.subagent-head strong { overflow-wrap: anywhere; }
+.subagent-item p { white-space: pre-wrap; overflow-wrap: anywhere; margin-block: var(--s-2); }
+.subagent-report { color: var(--text-2); }
+
+.subagent-progress > summary::before { content: "▸"; flex: none; }
+.subagent-progress[open] > summary::before { transform: rotate(90deg); }
+.subagent-scroll-hint { margin: 0 var(--s-3) var(--s-2); }

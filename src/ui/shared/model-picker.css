@@ -1,0 +1,21 @@
+/* Feature stylesheet: an upgraded lazy panel remains usable with cached app.css. */
+.model-refresh { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+.model-refresh > .btn { width: auto; gap: var(--s-2); }
+.model-refresh .error-state { align-self: stretch; }
+.cmd-head-actions, .model-entry-row { display: flex; align-items: center; gap: var(--s-2); }
+.cmd-model-more { display: flex; justify-content: flex-start; }
+.cmd-card .cmd-choices .btn:disabled { text-decoration: none; opacity: 0.5; }
+.cmd-card .cmd-choices .btn.current { border-color: var(--accent); color: var(--accent); }
+.cmd-card.cmd-model .cmd-choices .btn.current::before { content: "✓"; }
+.model-entry-row { display: none; }
+@media (max-width: 899px) {
+  .model-refresh .btn, .cmd-card .btn, .cmd-card .icon-btn { min-height: var(--tap); min-width: var(--tap); }
+  .chat-model-entry { display: none; }
+  .model-entry-row { display: flex; flex-wrap: wrap; padding: var(--s-1) var(--s-2); border-bottom: 1px solid var(--border); }
+  .p-chat .composer-box { border: 1px solid var(--border); }
+  .model-entry-row .btn { border-radius: var(--r-full); min-height: var(--tap); min-width: var(--tap); max-width: 100%; overflow-wrap: anywhere; }
+  /* The latest button lives in a dedicated dock row, clear of message text and the command/composer content. */
+  .p-chat .jump-dock { position: static; height: auto; display: flex; justify-content: center; padding: var(--s-1); }
+  .p-chat .jump-dock:empty { display: none; }
+  .p-chat .jump-latest { position: static; transform: none; min-height: var(--tap); }
+}

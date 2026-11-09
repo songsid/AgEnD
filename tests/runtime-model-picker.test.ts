@@ -4,7 +4,7 @@ import { fire } from "./helpers/mini-dom.js";
 
 let p:AppPage, ModelSelect:any, CreateInstanceDialog:any, NativeInstanceSettings:any, catalogs:any, nativeCatalog:any, app:any;
 const realFetch=globalThis.fetch;
-const requests:string[]=[];
+const requests:string[]=[];const refreshes:any[]=[];
 const listed={models:[{id:"claude-opus-5-5",label:"Claude Opus 5.5"},{id:"claude-sonnet-5-5",label:"Claude Sonnet 5.5"}],source:"official-catalog"};
 const inventory={home:"C:\\Test",clis:[{id:"claude-code",path:"C:\\claude.exe",runnable:true,authenticated:true,readOnlySupport:true,supports:{execution:true,resume:true},models:[]}]};
 const response=(body:any,ok=true)=>({ok,status:ok?200:503,json:async()=>body});
@@ -15,8 +15,12 @@ const button=(text:string)=>p.root.querySelectorAll("button").find((item:any)=>i
 
 beforeAll(async()=>{
   p=page({url:"http://localhost/settings/agents",storage:{agend_lang:"en"}});
-  globalThis.fetch=(async(url:string)=>{
+  globalThis.fetch=(async(url:string,opts:any={})=>{
     requests.push(url);
+    if(url==="/ui/models/refresh"){
+      refreshes.push(JSON.parse(opts.body));const result=await modelFetch(url);
+      return {...result,json:async()=>({...await result.json(),refreshed:result.ok===true})};
+    }
     if(url.startsWith("/ui/models?"))return modelFetch(url);
     return response(url==="/ui/windows-cli/probe"?inventory:url==="/ui/backends"?{backends:[{name:"claude-code",installed:true}],defaultBackend:"claude-code"}:{});
   }) as any;
@@ -26,7 +30,7 @@ beforeAll(async()=>{
   NativeInstanceSettings=(await import("/ui/js/native-instance-settings.js")).NativeInstanceSettings;
   catalogs=await import("/ui/js/settings-catalog.js");nativeCatalog=await import("/ui/js/windows-cli-catalog.js");app=await import("/assets/app-store.js");
 });
-beforeEach(()=>{requests.length=0;catalogs.forgetCatalogs();nativeCatalog.forgetWindowsCliCatalog();modelFetch=async()=>response(listed);});
+beforeEach(()=>{requests.length=0;refreshes.length=0;catalogs.forgetCatalogs();nativeCatalog.forgetWindowsCliCatalog();modelFetch=async()=>response(listed);});
 afterEach(async()=>{await p.unmount();});
 afterAll(()=>{p.restore();globalThis.fetch=realFetch;});
 
@@ -35,7 +39,7 @@ describe("runtime-specific model choices",()=>{
     app.appStore.set({windowsCli:true});await p.mount(h(CreateInstanceDialog,{onClose(){}}));await settle(8);
     const windows=p.root.querySelectorAll(".agent-runtime-picker input").find((item:any)=>item.value==="windows");windows.checked=true;fire(windows,"change");await settle();
     button("Next").click();await settle(8);
-    expect(requests).toContain("/ui/models?backend=claude-code&runtime=windows");
+    expect(requests).toContain("/ui/models?backend=claude-code&runtime=windows&profile=");
     expect(options()).toContain("claude-opus-5-5");expect(options()).toContain("claude-sonnet-5-5");
     expect(p.root.querySelector(".model-pick select").value).toBe("");
     expect(p.root.querySelector(".model-catalog-status").textContent).toContain("account and provider");
@@ -69,12 +73,12 @@ describe("runtime-specific model choices",()=>{
     expect(requests).toContain("/ui/models?backend=claude-code");expect(options()).toContain("wsl-model");expect(options()).not.toContain("native-model");
     expect(options()).toContain("custom-current");expect(p.root.querySelector(".model-pick input")).toBeNull();
   });
-  it("reports failure and retries with refresh=1 without changing the selected model",async()=>{
+  it("reports failure and retries with explicit POST rediscovery without changing the selected model",async()=>{
     modelFetch=async()=>response({},false);
     const onChange=vi.fn();await p.mount(h(ModelSelect,{backend:"claude-code",runtime:"windows",value:"keep-model",onChange,inherit:"CLI default"}));await settle(8);
     expect(p.root.querySelector(".model-catalog-status [role=alert]").textContent).toContain("Could not load models");
-    expect(options()).toContain("keep-model");modelFetch=async()=>response(listed);button("Retry").click();await settle(8);
-    expect(requests).toContain("/ui/models?backend=claude-code&runtime=windows&refresh=1");expect(options()).toContain("claude-opus-5-5");
+    expect(options()).toContain("keep-model");modelFetch=async()=>response(listed);p.root.querySelector(".error-state button").click();await settle(8);
+    expect(requests).toContain("/ui/models/refresh");expect(refreshes).toEqual([{backend:"claude-code",runtime:"windows"}]);expect(options()).toContain("claude-opus-5-5");
     expect(onChange).not.toHaveBeenCalled();expect(p.root.querySelector(".model-catalog-status [role=alert]")).toBeNull();
   });
 });

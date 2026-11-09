@@ -207,12 +207,12 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
   let csrf = null;
   const ended = new Set();
-  async function call(method, path, body) {
+  async function call(method, path, body, signal) {
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (method !== "GET" && csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
     let r;
-    try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", body: body === undefined ? undefined : JSON.stringify(body) }); }
+    try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", ...(signal ? { signal } : {}), body: body === undefined ? undefined : JSON.stringify(body) }); }
     catch { return { ok: false, status: 0, code: "unreachable" }; }
     let json = null;
     try { json = await r.json(); } catch { json = null; }
@@ -308,6 +308,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     commitHubName(ref) { return call("POST", "/hub/v1/admin/hub/name/commit", { ref }); },
     /** This client has the This Hub calls (a cached older client does not: the card is then left out). */
     thisHubV1: true,
+    /** Paired with directory-editor-v1 and the current read DTO; cached clients cannot offer the editor. */
+    directoryEditorV1: true,
+    directorySettings(signal) { return call("GET", "/hub/v1/admin/hub/directory", undefined, signal); },
+    prepareDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/prepare", input, signal); },
+    testDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/test", input, signal); },
+    saveDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/save", input, signal); },
+    cancelDirectorySettings(input) { return call("POST", "/hub/v1/admin/hub/directory/cancel", input); },
+    inspectDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/inspect", input, signal); },
+    fetchDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/fetch", input, signal); },
     /** This client has the group permissions calls (a cached older client does not: the pages then hide them). */
     groupPolicyV1: true,
   };

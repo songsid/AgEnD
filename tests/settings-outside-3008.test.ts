@@ -295,7 +295,7 @@ describe("#3008 ② Settings → Access & security → Owner verification (Conne
         const w = await open(away);
         await w.click(w.$("#outAgain"));
         expect([w.$("dialog .dlg-title").textContent, w.$("#outAsk .note").textContent, w.$("#outAskGo").textContent, w.$("#outAskCode").parentNode.querySelector("label").textContent])
-          .toEqual(["請輸入目前的代碼", "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的代碼才能繼續。", "繼續", "目前的代碼"]);
+          .toEqual(["請輸入目前的驗證碼", "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的驗證碼才能繼續。", "繼續", "目前的驗證碼"]);
         answers["POST /ui/outside/enroll"] = { status: 429, body: { error: "paused", retryAfterMs: 60 * 60_000 } };
         await w.type(w.$("#outAskCode"), "123456");
         await w.click(w.$("#outAskGo"));
@@ -387,16 +387,16 @@ describe("#outStrict: the caller's own switch", () => {
     i18n.setLang("zh-TW");
     try {
       const w = await open({ ...mine, here: false, strict: true, codeNeeded: true });
-      expect([text(w.$("#outStrict").parentNode), text(w.$("#outStrict-hint")).startsWith("關閉（預設）：你可以在任何裝置按「直接套用」完成變更。開啟：在執行 AgEnD 的那台電腦以外，「你自己」的每次確認都要輸入該項變更的代碼。只約束你自己，不影響其他管理員")])
-        .toEqual(["從其他裝置確認變更時要我的驗證器代碼", true]);
+      expect([text(w.$("#outStrict").parentNode), text(w.$("#outStrict-hint")).startsWith("關閉（預設）：你可以在任何裝置按「直接套用」完成變更。開啟：在執行 AgEnD 的那台電腦以外，「你自己」的每次確認都要輸入該項變更的驗證碼。只約束你自己，不影響其他管理員")])
+        .toEqual(["從其他裝置確認變更時要我的驗證碼", true]);
       await w.check(w.$("#outStrict"), false);
-      expect([w.$("dialog .dlg-title").textContent, text(w.$("#outAsk")).includes("關閉需要你目前的代碼。"), w.posts()]).toEqual(["請輸入目前的代碼", true, []]);
+      expect([w.$("dialog .dlg-title").textContent, text(w.$("#outAsk")).includes("關閉需要你目前的驗證碼。"), w.posts()]).toEqual(["請輸入目前的驗證碼", true, []]);
       await w.type(w.$("#outAskCode"), "123456");
       answers["POST /ui/outside/strict"] = { status: 401, body: { error: "wrong" } };
       await w.click(w.$("#outAskGo"));
-      expect(w.$("#outAskMsg").textContent).toBe("代碼不對。請確認手機時間正確，並輸入最新的代碼。");
+      expect(w.$("#outAskMsg").textContent).toBe("驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。");
       const chat = await open({ webOnly: false, here: false, manage: true });
-      expect(text(chat.$("#outLead"))).toBe("你自己的驗證器 App。可以在每次從其他裝置確認變更時要求它的 6 位數代碼；別人無法替你設定、更換或開關。");
+      expect(text(chat.$("#outLead"))).toBe("你自己的驗證器 App。可以在每次從其他裝置確認變更時要求它的 6 位數驗證碼；別人無法替你設定、更換或開關。");
     } finally { i18n.setLang("en"); }
   });
 });
@@ -448,7 +448,7 @@ describe("Owner verification and Web authorization: the reference page's words",
     try {
       const w = await open();
       expect([text(w.$("#outsideCard h3")), text(w.$("#outState")), w.$("#outSetUp").textContent]).toEqual(["擁有者驗證", "尚未設定", "設定驗證器"]);
-      expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。");
+      expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數驗證碼，從外面證明你是這個 fleet 的擁有者。");
       expect([...w.$("#outApps").querySelectorAll(".tag")].map((e: any) => text(e))).toEqual(["Google Authenticator", "Microsoft Authenticator", "其他 TOTP 驗證器"]);
       expect(text(w.$("#outNoRecovery"))).toBe("遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。");
       const on = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
@@ -458,7 +458,7 @@ describe("Owner verification and Web authorization: the reference page's words",
       expect(p.root.textContent).not.toContain("備用碼");
       const setup = await open();
       await setup.click(setup.$("#outSetUp"));
-      expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入驗證器代碼以完成綁定", "驗證並啟用"]);
+      expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入 6 位數驗證碼以完成綁定", "驗證並啟用"]);
       const away = await open({ here: false, manage: false });
       expect(text(away.$("#outHereOnly"))).toBe("只能在執行 AgEnD 的那台電腦上變更。");
       const other = await open({ here: false });

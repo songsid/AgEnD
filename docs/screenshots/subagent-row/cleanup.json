@@ -1,0 +1,16 @@
+{
+  "case": "alpha-mature-parent",
+  "head": "a800df82b613151606d9ed38e36a7c29e6c0e60b",
+  "commandScript": "scripts/manual/subagent-row/accept.mts",
+  "extras": {
+    "HP": "48782"
+  },
+  "exitCode": 0,
+  "trackedPids": 47,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/saqa-slqcsapy",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794221682.0277355,
+  "ownedTempRemoved": true,
+  "ownedHomeRemoved": true
+}

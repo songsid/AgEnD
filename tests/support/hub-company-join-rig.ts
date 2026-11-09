@@ -132,6 +132,6 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       const saved = await call(admin, "PUT", policyPath, { policy, previewDigest: preview.body.previewDigest });
       if (saved.status !== 200) throw Error("Fixture policy save refused");
     };
-    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, deps, directory, db, call, signIn, enable, close };
+    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, deps, directory, db, call, signIn, enable, stopService: () => service.close(), close };
   } catch (error) { await close(); throw error; }
 }

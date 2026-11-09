@@ -76,7 +76,7 @@ describe("what the page says", () => {
     expect(codes).toEqual(["tailscale serve --https=443 http://127.0.0.1:19555",
       "ssh -N -L 127.0.0.1:19555:127.0.0.1:19555 user@this-computer"]);
     expect(guide.textContent).toContain("Then use http://localhost:19555:");
-    expect(guide.textContent).toContain("3. When that PC asks to join, approve it here.");
+    expect(guide.textContent).toContain("3. That PC then appears under Connected computers, with a notice and a Revoke button. Pairing-code and ZIP connections ask you to approve here.");
     expect(guide.textContent).toContain("Never use Tailscale Funnel: it puts this fleet on the internet.");
     expect(guide.textContent).toContain("A plain http:// address on your network (such as http://192.168.1.20) is refused");
     const docs = guide.querySelector("a");

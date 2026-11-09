@@ -44,7 +44,8 @@ function Fingerprint({ label, fp }) {
   </div>`;
 }
 
-export function HubConnectCard() {
+export const hubConnectEmbedV1 = true;
+export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}) {
   const client = hubClient();
   const [pairing, setPairing] = useState(null);
   const [readError, setReadError] = useState(false);
@@ -115,6 +116,7 @@ export function HubConnectCard() {
   });
   const cancel = () => act(async () => { const p = await client.cancel(); if (live.current) setPairing(p); });
 
+  useEffect(() => { if (pairing) onPairing?.(pairing); }, [pairing]);
   const p = pairing;
   let body = null;
   if (!p) body = readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${readPairing} />` : html`<${Skeleton} variant="form" lines=${4} />`;
@@ -125,7 +127,7 @@ export function HubConnectCard() {
         placeholder=${hw("addressPh")} value=${form.address} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, address: v })); }} /><small class="note">${hw("addressHint")}</small></label>
       <label class="field"><span>${hw("code")}</span><input id="hubCode" autocomplete="one-time-code" spellcheck=${false} autocapitalize="characters"
         value=${form.code} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, code: v })); }} /></label>
-      <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !addressOk || !codeOk}>${hw("connect")}</button></div>
+      <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !addressOk || !codeOk}>${embedded ? labels.pair : hw("connect")}</button></div>
     </form>`;
   } else if (p.state === "pending") {
     const step = (ok, key) => html`<li class=${ok ? "is-done" : ""}><${Icon} name=${ok ? "check" : "clock"} size=${14} /><span>${hw(key)}</span><small>${hw(ok ? "done" : "waiting")}</small></li>`;
@@ -151,7 +153,10 @@ export function HubConnectCard() {
     </div>`;
   } else if (p.state === "paired") {
     const origin = safeWebOrigin(p), name = p.hub.name || p.hub.memberOrigin;
-    body = html`<div class="hub-state hub-paired">
+    body = embedded ? html`<details class="s-ui-disclosure hub-connection-settings"><summary>${labels.settings}</summary><div class="s-disclosure-body form">
+      <${Fingerprint} label=${hw("hubKeyFp")} fp=${p.hub.fingerprint} />
+      <div class="field-row"><button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => disconnect(name)}>${labels.disconnect || hw("disconnect")}</button></div>
+    </div></details>` : html`<div class="hub-state hub-paired">
       <h4>${hw("pairedTitle", name)} <span class=${`hub-link ${p.link === "online" ? "is-online" : "is-offline"}`}>${hw(p.link === "online" ? "online" : "offline")}</span></h4>
       <p class="hub-origin"><code>${p.hub.memberOrigin}</code></p>
       <${Fingerprint} label=${hw("hubKeyFp")} fp=${p.hub.fingerprint} />
@@ -183,15 +188,15 @@ export function HubConnectCard() {
       <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw(p.hold === "disconnected" ? "startOver" : "holdClear")}</button></div>
     </div>`;
   }
-  return html`<section class="card s-hub-connect" id="hub-connect">
-    <h3>${hw("title")}</h3>
-    <p class="note">${hw("lead")}</p>
+  const Frame = embedded ? "div" : "section";
+  return html`<${Frame} class=${embedded ? "form s-hub-connect" : "card s-hub-connect"} id="hub-connect">
+    ${!embedded ? html`<h3>${hw("title")}</h3><p class="note">${hw("lead")}</p>` : null}
     ${client.stub ? html`<p class="note hub-preview" role="note">${hw("preview")}</p>` : null}
     ${body}
     ${p?.state === "paired" && client.pairingNotices?.().length ? html`<${PairingNotices} memberNotices=${client.pairingNotices()} memberOrigin=${safeWebOrigin(p)} />` : null}
     ${msg && waitingForPairing(msg, p) ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
     ${p && p.state === "paired" ? html`<${HubExposures} key=${`${p.binding}|${p.hub.hubId}|${p.hub.fingerprint?.digest}|${safeWebOrigin(p)}`} client=${client} pairing=${p} />` : null}
-  </section>`;
+  </${Frame}>`;
 }
 
 /**
@@ -215,11 +220,23 @@ function HubExposures({ client, pairing }) {
       if (!live.current) return;
       if (!r.ok) { setMsg({ error: true, text: hw(PUBLISH_ERRORS[r.error] || "errUnsaved") }); if (r.error === "conflict") await load(); return; }
       if (!on && r.remote === "pending") setMsg({ error: false, text: hw("withdrawPending") });
-      if (r.pending) { setMsg({ error: false, text: hw("pendingSent") }); if (r.settled && r.settled.then) r.settled.then(() => { if (live.current) load(); }, () => { if (live.current) load(); }); }
+      if (r.pending) {
+        const pending = { agent: row.agent, revision: row.revision, on };
+        setMsg({ error: false, text: hw("pendingSent"), pending });
+        const settled = () => { if (live.current) { setMsg(current => current?.pending === pending ? null : current); load(); } };
+        if (r.settled?.then) r.settled.then(settled, settled);
+      }
       await load();
     } catch { if (live.current) setMsg({ error: true, text: hw("errUnsaved") }); }
     finally { if (live.current) setBusy(null); }
   };
+  // An older client's settled promise may be absent: the matching saved projection also retires the old hint.
+  useEffect(() => {
+    if (!msg?.pending) return;
+    const row = rows?.find(row => row.agent === msg.pending.agent);
+    if (row && !row.pending && row.revision > msg.pending.revision && (row.state === "published") === msg.pending.on)
+      setMsg(current => current === msg ? null : current);
+  }, [rows, msg]);
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
     <p class="note">${hw("agentLead")}</p>

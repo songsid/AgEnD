@@ -280,16 +280,16 @@ describe("Refs #3061: the authenticator set-up is a dialog", () => {
       await w.click(w.$("#outSetUp"));
       let d = w.dialog();
       expect([text(d.querySelector(".dlg-title")), text(d.querySelector("#outStep1")), text(d.querySelector("#outStep2")), text(d.querySelector("#outCancel")), text(d.querySelector("#outConfirm"))])
-        .toEqual(["設定驗證器", "1. 在驗證器中新增 AgEnD", "2. 輸入驗證器代碼以完成綁定", "取消", "驗證並啟用"]);
+        .toEqual(["設定驗證器", "1. 在驗證器中新增 AgEnD", "2. 輸入 6 位數驗證碼以完成綁定", "取消", "驗證並啟用"]);
       expect(text(d.querySelector("#outEnrollNoRecovery"))).toBe("遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。");
       await w.type(w.$("#outCode"), "123456");
       answers["POST /ui/outside/enroll/confirm"] = { status: 400, body: { error: "wrong" } };
       await w.click(w.$("#outConfirm"));
-      expect(text(w.dialog().querySelector("#outMsg"))).toBe("代碼不對。請確認手機時間正確，並輸入最新的代碼。");
+      expect(text(w.dialog().querySelector("#outMsg"))).toBe("驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。");
       const on = await open(ENROLLED);
       await on.click(on.$("#outAgain"));
       d = on.dialog();
-      expect([text(d.querySelector(".dlg-title")), text(d.querySelector("#outAgainNote"))]).toEqual(["重新綁定驗證器", "舊 App 的代碼會失效，所有從外面登入的人都會被登出。"]);
+      expect([text(d.querySelector(".dlg-title")), text(d.querySelector("#outAgainNote"))]).toEqual(["重新綁定驗證器", "舊 App 的驗證碼會失效，所有從外面登入的人都會被登出。"]);
     } finally { i18n.setLang("en"); }
   });
 });

@@ -1,0 +1,161 @@
+{
+  "head": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+  "checks": [
+    {
+      "name": "desk-light-en actual pending gate",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en settings exact summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en wait exact summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en exact withdrawal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en Stop promise",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en cancel keeps Run",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual pending gate",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW settings exact summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW wait exact summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW exact withdrawal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW Stop promise",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW dialog action taps",
+      "ok": true,
+      "detail": [
+        {
+          "label": "取消",
+          "cls": "btn",
+          "w": 171,
+          "h": 44
+        },
+        {
+          "label": "停止 Hub",
+          "cls": "btn btn-danger",
+          "w": 171,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW cancel keeps Run",
+      "ok": true
+    },
+    {
+      "name": "/assets/app-shell.js served source digest",
+      "ok": true
+    },
+    {
+      "name": "/ui/js/settings-hub-run.js served source digest",
+      "ok": true
+    },
+    {
+      "name": "source images stayed fixed",
+      "ok": true
+    },
+    {
+      "name": "no foreign requests or script errors",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-settings-summary.png",
+    "desk-light-en-wait-summary.png",
+    "desk-light-en-stop-dialog.png",
+    "phone-dark-zh-TW-settings-summary.png",
+    "phone-dark-zh-TW-wait-summary.png",
+    "phone-dark-zh-TW-stop-dialog.png"
+  ],
+  "errors": [],
+  "foreign": [],
+  "cases": [
+    "desk-light-en",
+    "phone-dark-zh-TW"
+  ],
+  "assetSkew": false,
+  "scope": "Real Fleet HTTP/browser/pending Settings gate; no response stubs. Stop dialog uses an initialized config projection without starting that Hub; actual Stop/Run session lifecycle is a separate owned HTTPS/LDAPS test. No real account/directory/native/model/pilot. Dummy Hub is never contacted.",
+  "provenance": {
+    "startedAt": "2026-11-09T14:42:29.778Z",
+    "server": {
+      "head": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "tree": "58a8ecf500bdf81a431382d89672ab54610fdf0d",
+      "sourceStatus": ""
+    },
+    "runner": {
+      "head": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "tree": "58a8ecf500bdf81a431382d89672ab54610fdf0d",
+      "sourceStatus": ""
+    },
+    "runnerScript": "1c365e283e9edf5d20f11d01d6f90700dc71fc03a2581ca9fa955dab23f09acf",
+    "sourceInputs": {
+      "src/ui/shared/app-shell.js": "8a9a41ea714b8dc233e7f234449b5f907e4b6a10d7cee8a67f3f1b645777e955",
+      "src/ui/shared/app-i18n.js": "9b42a48fff33b8a43151e392fa534969164885d64ef08a6cd7f7fb3df9d15800",
+      "src/ui/settings-hub-run.js": "d4b0450e6e175e8642b33f761a6f3877cba9a30c38229cc932640205970c14a9",
+      "src/locale.ts": "685d1aabd2fbfcffc6f2f21a1be4eb544be6ff9000da902bbf01259ed61573ba",
+      "src/ui/app.html": "0722e98592188ff6871f0b77004ae765f1ddd59a86c96f6bf98a459c13b018e6"
+    },
+    "retainedCommit": "95fbbd1adf98ae861972136ae6efc2162aa7ff61",
+    "finishedAt": "2026-11-09T14:42:48.061Z",
+    "servedAssets": {
+      "/assets/app-i18n.js": [
+        "9b42a48fff33b8a43151e392fa534969164885d64ef08a6cd7f7fb3df9d15800"
+      ],
+      "/assets/app-shell.js": [
+        "8a9a41ea714b8dc233e7f234449b5f907e4b6a10d7cee8a67f3f1b645777e955"
+      ],
+      "/assets/app.css": [
+        "58e85cbeff8f36a359bcc0e100d113147c7a7f15c99a000e1e99acc4806972d5"
+      ],
+      "/ui/js/settings-hub-run.js": [
+        "18ff42d6c51967b856e71f2ae0fc3109b64f86935382fb1ea5b9af195dc4b1c9"
+      ]
+    },
+    "substitutions": {
+      "/ui/js/settings-hub-run.js": {
+        "commit": "95fbbd1adf98ae861972136ae6efc2162aa7ff61",
+        "file": "src/ui/settings-hub-run.js",
+        "digest": "18ff42d6c51967b856e71f2ae0fc3109b64f86935382fb1ea5b9af195dc4b1c9"
+      }
+    }
+  },
+  "browser": "156.0.8078.4",
+  "serverLocale": "en",
+  "before": false,
+  "skew": "old-run",
+  "status": "PASS",
+  "cleaned": true
+}

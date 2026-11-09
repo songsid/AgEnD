@@ -366,3 +366,18 @@ describe("the new inventory reaches AgEnD before the answer to an account operat
     expect(f.frames.filter((frame: any) => frame.type === "inventory")).toEqual([]);
   });
 });
+
+describe("M-2731 model refresh frames",()=>{
+  it("uses the existing nonreplayed account frames and the exact owned profile, behind the local accounts switch",async()=>{
+    const models=vi.fn(async()=>({models:[{id:"claude-new",name:"New"}],source:"account-api"}));
+    const f=await fixture({remoteAccounts:{models}});const directory=createRuntimeProfile(f.root,"claude-code","work").directory;
+    expect(f.hello().runtimeInfo.capabilities).toContain("model-catalog-refresh");
+    const payload={cli:"claude-code",profile:"work",actor:"admin:fixture"};
+    expect(await f.call("models.refresh",payload)).toMatchObject({type:"account.response",ok:false});expect(models).not.toHaveBeenCalled();
+    setRemoteSwitch(f.home,"accounts",true);
+    expect(await f.call("models.refresh",payload)).toMatchObject({type:"account.response",ok:true,result:{profile:"work",models:[{id:"claude-new"}]}});
+    expect(models).toHaveBeenCalledWith("claude-code",directory,expect.any(Function));
+    expect(f.frames.filter(x=>x.type==="response")).toEqual([]);
+    const old=await fixture({credentialProfilesRoot:undefined});expect(old.hello().runtimeInfo.capabilities).not.toContain("model-catalog-refresh");
+  });
+});

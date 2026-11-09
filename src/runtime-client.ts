@@ -8,17 +8,18 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
-import { probeCredentialProfileStatus, validateNativeTask, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
+import { refreshNativeModels, probeCredentialProfileStatus, validateNativeTask, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialStatus, requireCredentialProfile, credentialCacheStamp,
   assertCredentialProfileName, assertCredentialProfileCli, type CredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
-import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint, RUNTIME_ENROLL_HELLO_PATH, RUNTIME_ENROLL_PATH, RUNTIME_ENROLL_TOKEN_PATTERN, RUNTIME_SERVER_FINGERPRINT_PATTERN, RUNTIME_ENROLL_REFUSALS,
+  runtimeEnrollHelloMessage, verifyRuntimeServerProof, runtimeEnrollTokenId, newRuntimeEnrollEphemeral, runtimeEnrollChannel, sealRuntimeEnroll, openRuntimeEnroll, type RuntimeEnrollRefusal } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
 import { isCreatedProfile } from "./runtime-profile-ownership.js";
 import { killTree } from "./runtime-signin.js";
-import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { CLI_INSTALL_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
@@ -35,9 +36,11 @@ import type { RuntimePaneHost } from "./runtime-pane-host.js";
 import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
 export { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
 
+/** The line the client reports each time AgEnD welcomes it; the background launcher waits for it to say "connected". */
+export const RUNTIME_CONNECTED_REPORT = "Connected to AgEnD.";
 export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible" | "reinstall";
 export interface RuntimeStopReason { kind: RuntimeStopKind; /** The close reason AgEnD gave, when it gave one. */ detail?: string }
-const REPAIR = "run .\\agend-runtime.cmd disconnect in this folder (add the same --profile if you used one), then double-click connect-agend.bat and enter a new pairing code.";
+const REPAIR = "run .\\agend-runtime.cmd disconnect in this folder (add the same --profile if you used one), then double-click connect-agend.bat and enter a new pairing code, or paste a new one-time install command from AgEnD Settings -> Runtime -> Connect a computer (no pairing code needed).";
 /** Plain-language cause and next step for a stop AgEnD caused. AgEnD answers an unknown and a revoked credential with the same bare 401, so "refused" covers both. */
 export function describeRuntimeStop(reason: RuntimeStopReason): string {
   switch (reason.kind) {
@@ -96,7 +99,7 @@ export interface RuntimeClientOptions {
    */
   /** The Runtime's installation root, where the shared install lock is taken for a CLI install. Default: the managed install root this code runs from, else the CLI folder. */
   installRoot?: string;
-  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs" | "models">> & { systemBootId?: () => Promise<string | undefined> };
   /** Internal supervisor seam, never a server-supplied configuration option. */
   managedUpdate?: { trialId?: string; authenticated?(value: { bootId: string; generation: number; updateProtocol?: 1; runtimeInfo: ReturnType<typeof readRuntimeInfo> }): void };
   /** Isolated tests can supply a private pane service. Production uses attach-only discovery and physical exit proof. */
@@ -219,7 +222,7 @@ export class RuntimeClient {
     this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY) ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -343,7 +346,7 @@ export class RuntimeClient {
       this.updateStatusProtocol = value.updateStatusProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
-      this.report("Connected to AgEnD.");
+      this.report(RUNTIME_CONNECTED_REPORT);
       if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
       this.publishUpdateStatus();
       this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
@@ -586,6 +589,7 @@ export class RuntimeClient {
     if (process.platform !== "win32" && !extra) throw new Error("Managing accounts from AgEnD needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
     return this.remoteAccounts ??= new RemoteAccounts({
       pairingDirectory: this.options.store.directory, credentialRoot: root,
+      models: extra?.models ?? ((cli, directory, authorized) => refreshNativeModels({cli,directory,authorized,environment:extra?.environment?.() ?? nativeCliEnvironment()})),
       status: (cli, directory) => this.statusOf(cli, directory),
       find: extra?.find ?? ((cli) => findCli(cli)),
       environment: extra?.environment ?? (() => nativeCliEnvironment()),
@@ -909,6 +913,68 @@ export async function pairRuntime(input: { server: string; code: string; name: s
     });
   }
   throw new Error(input.signal?.aborted ? "Runtime pairing was cancelled" : "Runtime pairing expired before the computer was approved. Open AgEnD Settings -> Runtime, then double-click connect-agend.bat again and enter a new pairing code.");
+}
+
+/** Where a person is sent in every enrollment failure: the one place that makes a new token. */
+const ENROLL_NEXT = "Open AgEnD Settings -> Runtime -> Connect a computer, generate a new install command there and run it again.";
+const ENROLL_REFUSALS: Record<RuntimeEnrollRefusal, string> = {
+  invalid: `This install command's one-time token is not valid for this AgEnD (it may be incomplete, mistyped, or from another AgEnD). ${ENROLL_NEXT}`,
+  expired: `This install command's one-time token has expired (it lasts 15 minutes). ${ENROLL_NEXT}`,
+  used: `This install command's one-time token was already used; each token works once. If this computer is already connected, run agend-runtime run (or double-click connect-agend.bat). Otherwise ${ENROLL_NEXT.replace(/^Open/, "open")}`,
+  revoked: `This install command's one-time token was revoked in AgEnD. ${ENROLL_NEXT}`,
+  mismatch: `This install command's token was issued by a different AgEnD than the one at this address. Nothing was sent anywhere else. ${ENROLL_NEXT}`,
+  limit: "This AgEnD has reached its limit of connected computers. Revoke a computer you no longer use in AgEnD Settings -> Runtime, then run the install command again.",
+};
+/** One plain sentence plus the next step for each reason AgEnD refuses an install-command token, and for a token or fingerprint that is malformed here. */
+export function describeEnrollRefusal(reason: unknown): string { return ENROLL_REFUSALS[(RUNTIME_ENROLL_REFUSALS as readonly unknown[]).includes(reason) ? reason as RuntimeEnrollRefusal : "invalid"]; }
+/**
+ * joins this computer to AgEnD with the one-time token from the install command. No pairing code and no approval step: the token is the
+ * authorisation, and it could only come from an administrator's signed-in AgEnD page.
+ * Order matters, and nothing secret goes out in the clear. (1) The server proves it is the AgEnD the command pinned: an Ed25519 signature, by the key whose
+ * fingerprint is in the command, over a fresh nonce AND a fresh X25519 key it made for this request. (2) Only then is the token sent, sealed (AES-256-GCM under a
+ * key from X25519 with that fresh key) so that only the server that holds the fresh private key can read it: a relay that forwards step 1 to the real server gets a
+ * valid proof and still cannot read the token. (3) The answer carrying the new credential is sealed under the other direction's key, so the relay cannot read it or
+ * forge one; it is opened and checked before anything is saved. The token is used once and is not kept anywhere here.
+ */
+export async function enrollRuntime(input: { server: string; token: string; fingerprint: string; name: string; store: RuntimeClientStore; signal?: AbortSignal; report?: (text: string) => void }): Promise<RuntimeCredentials> {
+  const server = validateRuntimeServer(input.server);
+  if (!RUNTIME_ENROLL_TOKEN_PATTERN.test(input.token)) throw new Error(describeEnrollRefusal("invalid"));
+  if (!RUNTIME_SERVER_FINGERPRINT_PATTERN.test(input.fingerprint)) throw new Error("The server fingerprint in this install command is not valid (it is 64 hexadecimal characters). " + ENROLL_NEXT);
+  if (!input.name.trim() || input.name.length > 100) throw new Error("Enter a valid machine name");
+  input.store.assertCanPair();
+  const nonce = randomBytes(24).toString("hex"), tid = runtimeEnrollTokenId(input.token);   // tid: the token's non-secret id, only so AgEnD can rate-limit this token's own traffic apart from everyone else's
+  // Something that is not an AgEnD answering (an HTML page, an old AgEnD without this route) is the same failure as a wrong fingerprint: the token stays unsent.
+  const hello = await post(server, RUNTIME_ENROLL_HELLO_PATH, { nonce, tid }, input.signal).catch((error: unknown) => {
+    if (error instanceof Error && /^Invalid runtime pairing response$|is too large$/.test(error.message)) return { status: 0, data: {} as Record<string, unknown> };
+    throw error;
+  });
+  if (hello.status === 429) throw new Error("AgEnD is receiving too many requests from this address. Wait a minute, then run the same command again; the one-time token was NOT sent.");
+  const ephemeral = hello.data.ephemeral;
+  let helloMessage: Buffer | null = null; try { helloMessage = typeof ephemeral === "string" ? runtimeEnrollHelloMessage(nonce, ephemeral) : null; } catch { helloMessage = null; }
+  if (hello.status !== 200 || typeof ephemeral !== "string" || !helloMessage || !verifyRuntimeServerProof(input.fingerprint, hello.data.publicKey, hello.data.signature, helloMessage)) {
+    throw new Error(`The AgEnD at ${server.origin} did not prove it is the AgEnD this install command was made for (its server fingerprint differs from the one in the command). The one-time token was NOT sent. Check the address; if it is right, ${ENROLL_NEXT.replace(/^Open/, "open")}`);
+  }
+  input.report?.(`AgEnD server verified (fingerprint ${input.fingerprint.slice(0, 16)}…).`);
+  const mine = newRuntimeEnrollEphemeral(), channel = runtimeEnrollChannel(mine.privateKey, ephemeral, nonce, tid, ephemeral, mine.publicKey);
+  const request = sealRuntimeEnroll(channel.requestKey, channel.context, "request", Buffer.from(JSON.stringify({ token: input.token, fingerprint: input.fingerprint, name: input.name.trim(), platform: process.platform, hostname: hostname() }), "utf8"));
+  const granted = await post(server, RUNTIME_ENROLL_PATH, { nonce, tid, clientKey: mine.publicKey, ...request }, input.signal);
+  if (granted.status !== 201) {
+    if ([400, 403, 409].includes(granted.status) && typeof granted.data.reason === "string") throw new Error(describeEnrollRefusal(granted.data.reason));
+    throw new Error(granted.status === 429 ? "AgEnD is receiving too many requests from this address; wait a minute, then run the same command again." : `Joining AgEnD was refused (HTTP ${granted.status}). ${ENROLL_NEXT}`);
+  }
+  const opened = openRuntimeEnroll(channel.replyKey, channel.context, "reply", granted.data.box);
+  let grant: Record<string, unknown> = {}; try { grant = opened ? JSON.parse(opened.toString("utf8")) as Record<string, unknown> : {}; } catch { grant = {}; }
+  const { machineId, credential } = grant;
+  if (!opened || grant.status !== "enrolled" || typeof machineId !== "string" || !/^[a-f0-9-]{36}$/i.test(machineId) || typeof credential !== "string" || !/^[A-Za-z0-9._-]{16,256}$/.test(credential)) {
+    throw new Error(`AgEnD's answer could not be verified, so nothing was saved on this computer. The token may have been used up: ${ENROLL_NEXT.replace(/^Open/, "open")} If a computer with this name shows up connected-but-never-online in Settings, revoke it there.`);
+  }
+  const credentials = { server: server.origin, machineId, credential, name: input.name.trim() };
+  // Save first: the credential is only ever sent once. A ledger that changed since the check above is reported after it is safe.
+  input.store.saveCredentials(credentials);
+  try { input.store.adoptMachine(credentials.machineId, true); }
+  catch (error) { throw new Error(`The computer joined AgEnD and its credential is saved. ${error instanceof Error ? error.message : "Its job ledger could not be updated."}`); }
+  input.report?.("This computer joined AgEnD with the one-time token. Its machine credential was saved in the private local profile.");
+  return credentials;
 }
 
 import type {} from "./runtime-pane-stdio.js";

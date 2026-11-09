@@ -1,3 +1,5 @@
+import * as ownerEntryWords from "./hub-owner-strings.js";
+import * as companyViews from "./hub-company-join.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
 import { joinRequest, companyInfoRequest, CompanyJoinInfoPage, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
@@ -38,6 +40,12 @@ import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quo
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+register("hubAccess", {
+  en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
+  "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
+});
+const ha = key => t(`hubAccess.${key}`);
+
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
 // The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
@@ -564,16 +572,20 @@ function HubRoomView({ room: given }) {
     return () => { off(); release(); };
   }, [store]);
   const closed = store.closed() || room.state === "closed";
+  const denied = store.accessDenied?.() === true;
+  useEffect(() => {
+    if (!denied) setMsg(current => current === errText({ code: "denied" }) ? null : current);
+  }, [denied]);
   const frozen = !closed && room.exposureState === "frozen";
   const working = store.working();
   const name = room.exposureName || "";
   const client = hubClient();
   const pageFiles = pageCarriesFiles(client, store);
-  const takesFiles = pageFiles && roomTakesFiles(room) && !closed && !frozen;
+  const takesFiles = pageFiles && roomTakesFiles(room) && !closed && !frozen && !denied;
   const uploading = files.some((f) => f.state === "uploading");
   const send = async () => {
     const q = draft.trim();
-    if (!q || sending || closed || frozen) return;
+    if (!q || sending || closed || frozen || denied) return;
     if (uploading) { setMsg(hf("waitUpload")); return; }
     // Chosen files are never dropped quietly: while the room can't take them, the question waits (or they are removed).
     const chosen = filesRef.current.filter((f) => f.state === "ready");
@@ -600,9 +612,9 @@ function HubRoomView({ room: given }) {
     setRail((v) => { setRailPref(!v); return !v; });
   };
   const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
-    : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
+    : denied ? html`<span class="tag warn">${ha("tag")}</span>` : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
   const back = !wide ? html`<a class="icon-btn hub-back" href="/ui/hub" aria-label=${hc("back")} title=${hc("back")}><${Icon} name="back" /></a>` : null;
-  const info = html`<${HubRoomInfo} room=${room} closed=${closed} />`;
+  const info = html`<${HubRoomInfo} room=${room} closed=${closed} denied=${denied} />`;
   // The panel takes the info rail's place while it shows a page (the rail's button brings the rail back).
   const showRail = wide && rail && !panelOpen;
   return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
@@ -617,15 +629,16 @@ function HubRoomView({ room: given }) {
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
+        ${denied && !closed ? html`<div class="hub-banner warn" role="status">${ha("refused")}<div class="n-actions"><button type="button" class="btn btn-sm" onClick=${() => store.refresh()}>${ha("check")}</button></div></div>` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
-        ${!closed && !frozen && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
+        ${!closed && !frozen && !denied && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
         ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
           formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
           <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
           onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
-          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || uploading, label: hc("send"), onClick: send }} /></div>`}
+          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || denied || uploading, label: hc("send"), onClick: send }} /></div>`}
         ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>
@@ -699,13 +712,13 @@ function HubThread({ store, name, panelKey, threadRef }) {
 }
 
 /** The right-hand panel's cards (the usage rail's look): the agent, its quota (G), your access, who sees it, what is not here. */
-function HubRoomInfo({ room, closed = false }) {
+function HubRoomInfo({ room, closed = false, denied = false }) {
   const name = room.exposureName || "", owner = room.ownerName || "";
   return html`<section class="u-provider hub-card hub-agent-card"><${Avatar} name=${name} size="lg" /><strong>${name}</strong>
       ${owner ? html`<span class="note">${hc("answersFor", owner)}</span>` : null}</section>
     <${QuotaCard} room=${room} />
     ${room.grantExpiresAt && !closed ? html`<section class="u-provider hub-card"><div class="u-head"><strong>${hc("yourAccess")}</strong></div>
-      <dl class="hub-kv"><dt>${hc("canDo")}</dt><dd>${hc("canDoValue")}</dd><dt>${hc("until")}</dt><dd>${dateOnly(room.grantExpiresAt)} <span class="tag">${daysLeft(room.grantExpiresAt)}</span></dd></dl>
+      <dl class="hub-kv"><dt>${hc("canDo")}</dt><dd>${denied ? ha("limited") : hc("canDoValue")}</dd><dt>${hc("until")}</dt><dd>${dateOnly(room.grantExpiresAt)} <span class="tag">${daysLeft(room.grantExpiresAt)}</span></dd></dl>
     </section>` : null}
     <section class="u-provider hub-card"><div class="u-head"><strong>${hc("whoSees")}</strong></div>
       <ul class="hub-aud" role="list">
@@ -857,17 +870,24 @@ function HubAdmin({ admin }) {
   useStore(navStore);                               // ?view= changes without a new route
   const s = useSession();
   if (!admin) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
+  const directory = s?.features?.includes("directory-editor-v1") && hubClient()?.directoryEditorV1 === true;
+  if (directory && adminView() === "directory") return html`<${LazyDirectory} session=${s} />`;
   if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
   const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
   return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
-    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} />`;
+    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} directory=${directory} />`;
+}
+function LazyDirectory({ session }) {
+  const [Page, setPage] = useState(null);
+  useEffect(() => { let live = true; import("./hub-directory-editor.js").then(m => { if (live) setPage(() => m.HubDirectoryPage); }, () => {}); return () => { live = false; }; }, []);
+  return Page ? html`<${Page} client=${hubClient()} offered=${true} login=${session.login} afterSave=${async () => !!(await readSession())} />` : null;
 }
 /** M-2682: Administration → This Hub, its own lazy module (an older server doesn't serve it: then it's left out). */
-function LazyThisHub() {
+function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);
   useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
-  return C ? html`<${C} />` : null;
+  return C ? html`<${C} directory=${directory} />` : null;
 }
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
 function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
@@ -875,7 +895,7 @@ function adminView() { try { return new URLSearchParams(location.search).get("vi
 function GroupPermissionsEntry() {
   return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
 }
-function HubAdminPage({ groups = false, companyJoin = false } = {}) {
+function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -909,13 +929,15 @@ function HubAdminPage({ groups = false, companyJoin = false } = {}) {
     <div class="s-section-layout">${view?.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />`
       : html`<section class="card"><h3>${ho("pairSteps")}</h3><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section>`}</div></div>`;
   const fleets = view.fleets || [], pairings = view.pairings || [];
+  const accessEntry = companyJoin && companyViews.companyJoinAdminEntryV1 === true && ownerEntryWords.ownerAdminEntryV1 === true;
+  const ManualFrame = accessEntry ? "details" : "div";
   return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">
-      ${groups ? html`<${GroupPermissionsEntry} />` : null}
-      ${companyJoin ? html`<${CompanyJoinAdminCard} />` : null}
+      ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
+      ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-      <section class="card"><h3>${ho("pairSteps")}</h3>
+      <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
@@ -935,7 +957,7 @@ function HubAdminPage({ groups = false, companyJoin = false } = {}) {
             : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
-      </section>
+      </section></${ManualFrame}>
       <section class="card"><h3>${ho("pairedFleets", fleets.length)}</h3>
         ${fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row">
           <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
@@ -944,7 +966,7 @@ function HubAdminPage({ groups = false, companyJoin = false } = {}) {
             : html`<span class="tag">${ho("revokedTag")}</span>`}
         </div>`)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
-      <${LazyThisHub} />
+      <${LazyThisHub} directory=${directory} />
     </div></div>`;
 }
 

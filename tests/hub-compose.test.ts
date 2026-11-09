@@ -1613,7 +1613,9 @@ describe.skipIf(process.platform === "win32")("configured administrator AD setti
       const result = await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH);
       expect(result.status).toBe(200); expect(result.json.bindPasswordSet).toBe(true);
       expect(signed.json.features).toContain("directory-settings-v1");
+      expect(signed.json.features).toContain("directory-editor-v1");
       expect(r.http.features).toContain("directory-settings-v1");
+      expect(r.http.features).toContain("directory-editor-v1");
       expect(create).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
       expect(read.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: "hub-administrator", person: ADMIN.key } });
     } finally { await r.runtime.close(); }
@@ -1665,6 +1667,7 @@ describe.skipIf(process.platform === "win32")("configured administrator AD setti
     try {
       const signed = await noticeSignInForDirectory(r, ADMIN);
       expect(signed.json.features).not.toContain("directory-settings-v1");
+      expect(signed.json.features).not.toContain("directory-editor-v1");
       expect(signed.json.features).not.toContain("directory-ca-v1");
       expect((await directoryBrowser(r.hub, signed.cookie, undefined, DIRECTORY_SETTINGS_PATH)).status).toBe(404);
     } finally { await r.runtime.close(); }

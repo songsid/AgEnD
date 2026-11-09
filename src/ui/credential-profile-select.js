@@ -7,15 +7,15 @@ import { identityText } from "./account-identity.js";
  * stays on that computer, and a Runtime reports nothing but each name and whether it is signed in. No path, e-mail or token is read here.
  */
 register("claudeAccount", {
-  en: { label:"Claude account", none:"This computer's default sign-in", default:"default", signedOut:"not signed in", unchecked:"not checked", notReported:"not reported",
+  en: { label:"Claude account", none:"This computer's default connection", default:"default", signedOut:"not connected", unchecked:"not checked", notReported:"not reported",
     old:"Update the Runtime on that computer to choose a Claude account for this agent.",
     empty:"No Claude accounts reported yet. On that computer run agend-runtime login claude-code NAME, then choose Detect again in that computer's CLI diagnostics (Settings → Runtime).",
-    hint:"The account is chosen by name; its sign-in stays on that computer. A name that does not exist or is not signed in there is refused, never replaced by another account.",
+    hint:"The account is chosen by name; its connection stays on that computer. A name that does not exist or is not connected there is refused, never replaced by another account.",
     changeNote:"Changing the account starts a new conversation." },
-  "zh-TW": { label:"Claude 帳號", none:"這台電腦的預設登入", default:"預設", signedOut:"尚未登入", unchecked:"未確認", notReported:"未回報",
+  "zh-TW": { label:"Claude 帳號", none:"這台電腦的預設連接", default:"預設", signedOut:"尚未連接", unchecked:"未確認", notReported:"未回報",
     old:"請更新那台電腦上的 Runtime，才能為這個 Agent 選擇 Claude 帳號。",
     empty:"尚未回報任何 Claude 帳號。請在那台電腦執行 agend-runtime login claude-code 名稱，再到設定 → Runtime，在該電腦的「CLI 診斷」按「重新偵測」。",
-    hint:"帳號以名稱選擇，登入資料只保留在那台電腦。不存在或尚未登入的名稱會被拒絕，不會改用其他帳號。",
+    hint:"帳號以名稱選擇，連接資料只保留在那台電腦。不存在或尚未連接的名稱會被拒絕，不會改用其他帳號。",
     changeNote:"更換帳號會開始新的對話。" },
 });
 export const accountText = (key, ...values) => t(`claudeAccount.${key}`, ...values);

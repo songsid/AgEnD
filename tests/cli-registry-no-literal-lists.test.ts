@@ -23,8 +23,10 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/windows-agents.ts": 2, "src/windows-cli-worker.ts": 2, "src/backend/native-pane.ts": 1, "src/ui/general-location.js": 1, "src/ui/agent-runtime-settings.js": 1, "src/ui/panel-windows-cli.js": 1,
   } },
   { why: "delivery, turn resume, transcripts and usage reports: which CLIs write which kind of transcript or report", files: {
-    "src/daemon.ts": 7, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
+    "src/daemon.ts": 8, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
     "src/transcript-sources.ts": 1, "src/usage-report.ts": 2, "src/usage-rollup.ts": 1,
+    // Exact structured subagent formats supported by this reader, not CLI account/install capabilities.
+    "src/subagent-records.ts": 2, "src/subagent-service.ts": 1,
   } },
   { why: "the names of the backends in configuration checks, schemas, commands and help text", files: {
     "src/config-validator.ts": 2, "src/config.ts": 2, "src/outbound-schemas.ts": 1, "src/backend/types.ts": 2, "src/bug-report-cli.ts": 1, "src/setup-wizard.ts": 1, "src/quickstart-api.ts": 1,
@@ -35,6 +37,7 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/ui/panel-chat.js": 1, "src/ui/shared/instance-nav.js": 2, "src/ui/fleet-office-model.js": 1, "src/ui/provider-marks.js": 1, "src/ui/shared/panel-view.js": 1, "src/interaction-observation.ts": 3,
     "src/ui/structured-signin.js": 1, "src/ui/runtime-cli-install.js": 1,
   } },
+  { why: "model rediscovery: Claude/Codex have explicit scoped credential protocols; other CLIs must have their own registered listing contract", files: { "src/backend/cli-env-probe.ts": 1, "src/runtime-remote-accounts.ts": 1 } },
   { why: "code for Kiro that compares its id with the default backend's", files: { "src/kiro-engine-status.ts": 1, "src/kiro-migrate.ts": 2 } },
   { why: "quota notices (which backends have one)", files: { "src/quota-notice-config.ts": 1, "src/ui/settings-quota-notice.js": 1 } },
   { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },

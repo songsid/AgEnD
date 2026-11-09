@@ -4,13 +4,13 @@ Implementation of [#3423](https://github.com/songsid/AgEnD/issues/3423), includi
 
 ## Use
 
-A configured Hub administrator enables **Administration → Company sign-in joining** and distributes its public company link. Group permissions must grant `pair_fleet` for automatic connections. The public link explains how to open the person's own Fleet Settings; it neither signs in nor enrolls anything.
+A configured Hub administrator starts at **Administration → Allowed groups and people**. The leading card contains the company-account Fleet connection switch; **Manage group permissions** opens the separate group editor. **Copy colleague connection link** copies the exact server-supplied address and identity descriptor; copying creates no invitation, pairing offer or grant. Group permissions must grant `pair_fleet` for automatic connections. The public link explains how to open the person's own Fleet Settings; it neither signs in nor enrolls anything.
 
 In the Fleet's real **Settings → Hub**, enter the company link or the Hub's HTTPS web address, name the Fleet, and choose **Sign in with company account**. The initiating host operator's own current loopback session folds local consent into Start, including on a chat Fleet. Other local admin sessions use the existing General/authenticator confirmation; company sign-in never supplies that local authority.
 
 A separate tab shows the exact Fleet address. Submit **Sign in and connect Fleet**, or explicitly **Connect as …** for an existing Hub session. The normal host-owned path takes two submissions and an optional Return navigation, with no administrator action per Fleet. No Agent is shared automatically. Once the pinned member link is ready, the existing connection card owns status, sharing and disconnect.
 
-An eligible person without group permission can receive a short-lived **Invitation exceptions** link. Issuance records the exact configured administrator and immutable recipient, and is that invitation's approval. The recipient still signs in and the Fleet still provides its local consent and key proof. Existing v1 codes retain their old checks; a failed company discovery never silently downgrades to them.
+An eligible person without group permission can receive a short-lived **Invitation exceptions** link. Issuance records the exact configured administrator and immutable recipient, and is that invitation's approval. The recipient still signs in and the Fleet still provides its local consent and key proof. The same leading card contains these existing individual Fleet-connection exceptions; they grant no chat or Agent-sharing permission. Existing manual pairing codes remain under **Advanced**, which opens automatically when a confirmed request awaits administrator approval. Their checks are unchanged; a failed company discovery never silently downgrades to them.
 
 ## Trust and authority
 

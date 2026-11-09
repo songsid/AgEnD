@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **Windows Runtime 連上後在背景持續執行，登入時自動重新連線。** `connect`、`connect-agend.bat` 與一次性安裝指令現在會在 Runtime 連上後把它移到背景並結束，所以關掉視窗不會再斷線，貼指令的 AI agent 或 CI 也會立刻拿到 exit status。配對碼、指紋與核准（或 token）仍先在視窗裡完成。`--foreground`（或在安裝指令前先 `$agendForeground = 1`）保留舊行為。`agend-runtime status` 現在會列出每個 profile（狀態、程序、AgEnD 位址、autostart、log 資料夾；`--json` 給程式讀取）；新增 `stop`、`restart`、`logs`、`start` 管理背景 Runtime，而且每個 profile 只跑一個 Runtime：再啟動一次會回報「已在執行」並以 status 0 結束。背景 Runtime 會寫 `%LOCALAPPDATA%\agend-runtime\logs\<profile>\runtime.log`（每檔 2 MiB、最多六個檔案），也能撐過就地更新。第一次背景連線也會為你自己的帳號加一個工作排程器工作，在你登入時執行 `start`（不需要系統管理員權限，也不是 Windows 服務）；`agend-runtime autostart enable|disable|status` 可以逐個 profile 切換，`disconnect` 會移除它。安裝指令在切到不同 build 之後，以及修復執行，都會重新啟動背景的 Runtime。沒有 `--profile` 的 `status` 不再印出單一 profile 的 JSON：請改用 `status --json`。`connect-agend.bat` 的結尾訊息改了；下次安裝改寫它之前，請先關掉還在執行舊版的視窗。

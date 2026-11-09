@@ -18,6 +18,7 @@ import { chooseRuntimeProfile, runtimeProfileName, runtimeServerProfile, RUNTIME
 import { runtimeMain } from "../src/runtime-cli.js";
 import { rotateRuntimeCredentials } from "../src/runtime-client.js";
 import { reusedRuntimeLockPid } from "../src/runtime-pane-boot.js";
+import { runtimeProfileLabel } from "../src/runtime-background.js";
 
 const A = "https://fleet.example.test:10443", B = "https://preview.example.test:8445";
 const roots: string[] = [];
@@ -73,7 +74,7 @@ describe("connect-agend.bat with a default profile paired to another server", ()
     writeFileSync(join(program, RUNTIME_SERVER_FILE), JSON.stringify({ server: B }));
     const before = pairTo(base, A, "a"), own = runtimeServerProfile(base, B);
 
-    await runtimeMain(["connect"], { home, programDirectory: program, env: {} });
+    await runtimeMain(["connect", "--foreground"], { home, programDirectory: program, env: {} });
     expect(pairing.pair).toHaveBeenCalledTimes(1);
     const call = pairing.pair.mock.calls[0][0] as { server: string; store: Store };
     expect(call.server).toBe(B); expect(call.store.directory).toBe(own);
@@ -84,7 +85,7 @@ describe("connect-agend.bat with a default profile paired to another server", ()
     expect(printed).toContain(A); expect(printed).toContain(own);
 
     pairing.pair.mockClear(); pairing.started.mockClear();
-    await runtimeMain(["connect"], { home, programDirectory: program, env: {} });
+    await runtimeMain(["connect", "--foreground"], { home, programDirectory: program, env: {} });
     expect(pairing.pair).not.toHaveBeenCalled();
     expect(pairing.started).toHaveBeenCalledWith(own);
     expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
@@ -93,11 +94,12 @@ describe("connect-agend.bat with a default profile paired to another server", ()
     const { home, program, base } = fixture();
     writeFileSync(join(program, RUNTIME_SERVER_FILE), JSON.stringify({ server: B }));
     const before = pairTo(base, A, "a"), own = runtimeServerProfile(base, B);
-    await runtimeMain(["connect"], { home, programDirectory: program, env: {} });
+    await runtimeMain(["connect", "--foreground"], { home, programDirectory: program, env: {} });
 
-    await runtimeMain(["status"], { home, programDirectory: program, env: {} });
-    const status = JSON.parse(String(vi.mocked(process.stdout.write).mock.calls.at(-1)![0]));
-    expect(status).toMatchObject({ profile: own, paired: true, server: B });
+    await runtimeMain(["status", "--json"], { home, programDirectory: program, env: {} });
+    const status = JSON.parse(String(vi.mocked(process.stdout.write).mock.calls.at(-1)![0])) as { profiles: Record<string, unknown>[] };
+    // status lists every profile on this computer, the old pairing and the separate one for the bundled server
+    expect(status.profiles).toEqual(expect.arrayContaining([expect.objectContaining({ profile: own, paired: true, server: B, label: runtimeProfileLabel(own, home) }), expect.objectContaining({ profile: base, paired: true, server: A, label: "default" })]));
     pairing.started.mockClear();
     await runtimeMain(["run"], { home, programDirectory: program, env: {} });
     expect(pairing.started).toHaveBeenCalledWith(own);
@@ -108,7 +110,7 @@ describe("connect-agend.bat with a default profile paired to another server", ()
   it("keeps the default profile when it is unpaired or already paired to the bundled server", async () => {
     const { home, program, base } = fixture();
     writeFileSync(join(program, RUNTIME_SERVER_FILE), JSON.stringify({ server: B }));
-    await runtimeMain(["connect"], { home, programDirectory: program, env: {} });
+    await runtimeMain(["connect", "--foreground"], { home, programDirectory: program, env: {} });
     expect((pairing.pair.mock.calls[0][0] as { store: Store }).store.directory).toBe(base);
     expect(existsSync(join(base, "profiles"))).toBe(false);
   });
@@ -130,11 +132,68 @@ describe("connect-agend.bat with a default profile paired to another server", ()
     expect(existsSync(join(base, "profiles"))).toBe(false);
     pairTo(base, A, "a");
     // An explicit --server is not redirected either: it fails with the same guidance instead of silently picking another profile.
-    await expect(runtimeMain(["connect", "--server", B], { home, programDirectory: program, env: {} })).rejects.toThrow(runtimeServerProfile(base, B));
+    await expect(runtimeMain(["connect", "--foreground", "--server", B], { home, programDirectory: program, env: {} })).rejects.toThrow(runtimeServerProfile(base, B));
     // An explicit profile that is already paired to the bundled server still connects.
     const matching = join(home, "matching"); pairTo(matching, B, "d");
-    await runtimeMain(["connect", "--profile", matching], { home, programDirectory: program, env: {} });
+    await runtimeMain(["connect", "--foreground", "--profile", matching], { home, programDirectory: program, env: {} });
     expect(pairing.started).toHaveBeenCalledWith(matching);
+  });
+});
+
+describe("--connection-dir: the one-line installer's reconnect folder picks the profile exactly as the ZIP's connect-agend.bat does", () => {
+  const connectDir = (root: string, server: string, name = "reconnect"): string => { const dir = join(root, "connect", name); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, RUNTIME_SERVER_FILE), JSON.stringify({ server }, null, 2) + "\n"); return dir; };
+  const printed = (): string => vi.mocked(process.stdout.write).mock.calls.map(call => String(call[0])).join("");
+  it("pairs a new profile from the folder's address, asks for the code, and never takes the address from anywhere else", async () => {
+    const { home, program, base } = fixture();
+    const dir = connectDir(program, B);
+    await runtimeMain(["connect", "--foreground", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).toHaveBeenCalledTimes(1);
+    const call = pairing.pair.mock.calls[0][0] as { server: string; store: Store; code: string };
+    expect(call.server).toBe(B); expect(call.store.directory).toBe(base); expect(call.code).toBe("ABCD-EFGH");   // the code came from the interactive prompt
+    expect(pairing.started).toHaveBeenCalledWith(base); expect(printed()).toContain(`AgEnD server: ${B}`);
+  });
+  it("reconnects a profile already paired to this AgEnD without asking for a code, and leaves the stored credentials byte for byte alone", async () => {
+    const { home, program, base } = fixture();
+    const before = pairTo(base, B, "a"), dir = connectDir(program, B);
+    await runtimeMain(["connect", "--foreground", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).toHaveBeenCalledWith(base);
+    expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+  });
+  it("gives another AgEnD its own profile and keeps the existing pairing, then finds it again, and run/status/disconnect land there too", async () => {
+    const { home, program, base } = fixture();
+    const before = pairTo(base, A, "a"), dir = connectDir(program, B), own = runtimeServerProfile(base, B);
+    await runtimeMain(["connect", "--foreground", "--connection-dir", dir], { home, env: {} });
+    expect((pairing.pair.mock.calls[0][0] as { store: Store }).store.directory).toBe(own); expect(printed()).toContain(`using a separate profile for this server:\n  ${own}`);
+    expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+    pairing.pair.mockClear(); pairing.started.mockClear();
+    await runtimeMain(["connect", "--foreground", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).toHaveBeenCalledWith(own);
+    await runtimeMain(["status", "--json", "--connection-dir", dir], { home, env: {} });
+    expect(JSON.parse(String(vi.mocked(process.stdout.write).mock.calls.at(-1)![0])).profiles).toEqual([expect.objectContaining({ profile: own, paired: true, server: B })]);
+    pairing.started.mockClear(); await runtimeMain(["run", "--connection-dir", dir], { home, env: {} }); expect(pairing.started).toHaveBeenCalledWith(own);
+    await runtimeMain(["disconnect", "--connection-dir", dir], { home, env: {} });
+    expect(existsSync(join(own, "connection.json"))).toBe(false); expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+  });
+  it("is not combined with --server, does not fall back to a stored address when the folder has none, and refuses a bad file", async () => {
+    const { home, program, base } = fixture();
+    pairTo(base, A, "a");
+    await expect(runtimeMain(["connect", "--foreground", "--connection-dir", connectDir(program, B), "--server", B], { home, env: {} })).rejects.toThrow(/cannot be used together/);
+    const empty = join(program, "empty"); mkdirSync(empty);
+    for (const command of ["connect", "run", "status"]) await expect(runtimeMain([command, "--connection-dir", empty], { home, env: {} }), command).rejects.toThrow(/No agend-server\.json in the --connection-dir folder/);
+    const bad = join(program, "bad"); mkdirSync(bad); writeFileSync(join(bad, RUNTIME_SERVER_FILE), JSON.stringify({ server: "http://192.168.1.2:19280", password: "x" }));
+    await expect(runtimeMain(["connect", "--foreground", "--connection-dir", bad], { home, env: {} })).rejects.toThrow(/Invalid agend-server\.json/);
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).not.toHaveBeenCalled();
+  });
+  it("still takes the pairing code only from the interactive prompt: a code in the arguments is refused, and without a console nothing is asked", async () => {
+    const { home, program } = fixture(), dir = connectDir(program, B);
+    for (const argv of [["connect", "--connection-dir", dir, "--code", "ABCD-EFGH"], ["connect", "--connection-dir", dir, "ABCD-EFGH"]]) await expect(runtimeMain(argv, { home, env: {} })).rejects.toThrow(/Pairing codes must be entered interactively/);
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    await expect(runtimeMain(["connect", "--foreground", "--connection-dir", dir], { home, env: {} })).rejects.toThrow(/Pairing requires an interactive terminal/);
+    expect(pairing.pair).not.toHaveBeenCalled();
+  });
+  it("documents the flag in --help", async () => {
+    await runtimeMain(["--help"], { env: {} });
+    expect(printed()).toContain("connect --connection-dir DIRECTORY"); expect(printed()).toContain("--connection-dir and --server are exclusive");
   });
 });
 

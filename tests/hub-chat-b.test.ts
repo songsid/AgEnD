@@ -75,6 +75,28 @@ describe("createHubChatStore", () => {
       ask: async (...a: unknown[]) => { calls.push(["ask", ...a]); return { ok: true, receipt: { messageId: "m9", stage: "queued", at: 5 } }; } };
   }
   const room = { id: "11111111-2222-4333-8444-555555555555", exposureName: "Sales numbers", features: [] };
+  it("qualifies a definite refusal until a fresh room check, without closing on unknown", async () => {
+    const t = fakeTimers(), c = client([{ ok: true, entries: [], room }]);
+    c.ask = async () => ({ ok: false, code: "denied" }) as any;
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    expect((await s.send("Q")).code).toBe("denied");
+    expect(s.accessDenied()).toBe(true); expect(s.closed()).toBe(false);
+    c.read = async () => ({ ok: false, code: "backpressure" }) as any;
+    t.run(); await flush(); expect(s.accessDenied()).toBe(true);
+    c.read = async () => ({ ok: true, entries: [] }) as any;
+    t.run(); await flush(); expect(s.accessDenied()).toBe(true); // old Hub's unqualified answer isn't current access proof
+    c.read = async () => ({ ok: true, entries: [], room }) as any;
+    s.refresh(); t.run(); await flush(); expect(s.accessDenied()).toBe(false);
+    s.stop();
+  });
+  it("a read admitted before a refusal cannot restore its optimistic access label", async () => {
+    const t = fakeTimers(); let done!: (v: unknown) => void;
+    const c = client([]); c.read = () => new Promise(resolve => { done = resolve; }) as any;
+    c.ask = async () => ({ ok: false, code: "denied" }) as any;
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null });
+    await s.send("Q"); done({ ok: true, entries: [], room }); await flush();
+    expect(s.accessDenied()).toBe(true); s.stop();
+  });
   it("one read at once, the next only after POLL_MS; backpressure waits as long as the server says (at least POLL_MS)", async () => {
     const t = fakeTimers(), c = client([{ ok: true, entries: [] }, { ok: false, code: "backpressure", retryAfter: 30 }]);
     const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();

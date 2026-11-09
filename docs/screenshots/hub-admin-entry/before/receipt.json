@@ -1,0 +1,104 @@
+{
+  "base": "ffd4eba02",
+  "before": true,
+  "skew": "",
+  "browser": "156.0.8078.4",
+  "checks": [
+    {
+      "name": "desk-light-en retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "nonempty matrix",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "desk-dark-en",
+      "ok": true
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "phone-light-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-earlier-entry.png",
+    "desk-light-en-earlier-enabled.png",
+    "desk-light-zh-TW-earlier-entry.png",
+    "desk-light-zh-TW-earlier-enabled.png",
+    "desk-dark-en-earlier-entry.png",
+    "desk-dark-en-earlier-enabled.png",
+    "desk-dark-zh-TW-earlier-entry.png",
+    "desk-dark-zh-TW-earlier-enabled.png",
+    "phone-light-en-earlier-entry.png",
+    "phone-light-en-earlier-enabled.png",
+    "phone-light-zh-TW-earlier-entry.png",
+    "phone-light-zh-TW-earlier-enabled.png",
+    "phone-dark-en-earlier-entry.png",
+    "phone-dark-en-earlier-enabled.png",
+    "phone-dark-zh-TW-earlier-entry.png",
+    "phone-dark-zh-TW-earlier-enabled.png"
+  ],
+  "errors": [],
+  "cleaned": true,
+  "scope": "Owned Hub HTTPS + recorded LDAPS; actual admin session, CSRF, group navigation, company link, scoped invitation and manual pairing offer. No Fleet/native/model/CLI/pilot/real directory or account. No API replies replaced.",
+  "status": "PASS"
+}

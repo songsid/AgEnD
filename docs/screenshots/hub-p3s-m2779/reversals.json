@@ -1,0 +1,72 @@
+{
+  "results": [
+    {
+      "name": "render-page-language",
+      "caught": true,
+      "failed": 2,
+      "assertions": [
+        "Hub connection summary in the page's language zh-TW page localizes only the recognized server line",
+        "Hub connection summary in the page's language en page localizes only the recognized server line"
+      ],
+      "restored": true
+    },
+    {
+      "name": "exact-target",
+      "caught": true,
+      "failed": 4,
+      "assertions": [
+        "Hub connection summary in the page's language zh-TW page localizes only the recognized server line",
+        "Hub connection summary in the page's language en page localizes only the recognized server line",
+        "Hub connection summary in the page's language zh-TW page localizes only the recognized server line",
+        "Hub connection summary in the page's language en page localizes only the recognized server line"
+      ],
+      "restored": true
+    },
+    {
+      "name": "unknown-extended-copy",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Hub connection summary in the page's language leaves an unknown or extended summary visible verbatim"
+      ],
+      "restored": true
+    },
+    {
+      "name": "dialog-retained-session",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "en Stop dialog and both summaries describe retained valid sign-ins"
+      ],
+      "restored": true
+    },
+    {
+      "name": "client-summary-retained-session",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "en Stop dialog and both summaries describe retained valid sign-ins"
+      ],
+      "restored": true
+    },
+    {
+      "name": "server-summary-retained-session",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "en Stop dialog and both summaries describe retained valid sign-ins"
+      ],
+      "restored": true
+    },
+    {
+      "name": "wording-whitelist-stays-exact",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "#2906 wording (the user: never \u516c\u53f8 / company) keeps network copy free of \u516c\u53f8/company/corporate; #3423 explicitly permits company sign-in wording"
+      ],
+      "restored": true
+    }
+  ],
+  "restored": true
+}

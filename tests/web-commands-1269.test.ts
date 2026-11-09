@@ -42,6 +42,17 @@ const run = (d: WebCommandDeps, command: string, args?: string, extra: Record<st
   runWebCommand(d, { instance: "w", command, args, ...extra }, { publicLink });
 
 describe("runWebCommand", () => {
+  it("M-2731: model actions are typed and never reach applyModel; unsupported/guest actions refuse", async () => {
+    const d = deps(); const action = vi.fn(async () => ({ choices: { current: "a", options: [{ id: "a", label: "A" }], actions: ["refresh" as const] } }));
+    d.modelAction = action;
+    expect((await run(d, "model", "", { action: "refresh" })).body.choices!.options[0].id).toBe("a");
+    expect(action).toHaveBeenCalledWith("w", "model", "", "refresh", { publicLink: false }); expect(d.applyModel).not.toHaveBeenCalled();
+    for (const command of ["ctx", "effort"]) expect((await run(d, command, "", { action: "refresh" })).status).toBe(400);
+    expect((await run(d, "model", "", { action: "not-an-action" })).status).toBe(400);
+    await runWebCommand(d, { instance: "w", command: "model", action: "more" }, { publicLink: false, guest: true });
+    expect(action).toHaveBeenCalledTimes(1); expect(d.applyModel).not.toHaveBeenCalled();
+  });
+
   it("only the instance commands: /raw and the fleet-level ones are not commands here", async () => {
     expect([...WEB_COMMANDS].sort()).toEqual(["backend", "btw", "cancel", "clear", "compact", "ctx", "effort", "model", "pause", "save", "steer", "wake"]);
     const d = deps();

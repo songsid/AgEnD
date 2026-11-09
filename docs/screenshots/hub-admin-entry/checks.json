@@ -1,0 +1,80 @@
+{
+  "baseline": "ffd4eba02",
+  "focused": {
+    "numTotalTests": 167,
+    "numPassedTests": 167,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "hub-admin-entry-ui.test.ts",
+    "hub-company-join-ui.test.ts",
+    "hub-groups-ui-s89.test.ts",
+    "hub-ui-s3c.test.ts",
+    "i18n-ui-literals-2390.test.ts",
+    "ui-css-literals-ratchet.test.ts",
+    "hub-shared-modules-a.test.ts",
+    "named-link-test-2906.test.ts"
+  ],
+  "types": {
+    "source": "PASS",
+    "tests": "PASS"
+  },
+  "failFirst": {
+    "restoredEarlierProductFiles": 5,
+    "failed": 8,
+    "total": 11
+  },
+  "before": {
+    "cases": 8,
+    "checks": 10,
+    "png": 16
+  },
+  "after": {
+    "cases": 8,
+    "checks": 94,
+    "png": 36
+  },
+  "skew": {
+    "cases": 10,
+    "checks": 41,
+    "retained": [
+      "panel-hub.js",
+      "hub-company-join.js",
+      "hub-company-join-strings.js",
+      "hub-owner-strings.js",
+      "shared/hub-owner.css"
+    ]
+  },
+  "style": {
+    "stockGateChecks": 314,
+    "scope": "Stock Hub rig does not compose company-join; new-card tap and overflow checked in the actual owned-HTTPS after/SKEW matrix."
+  },
+  "reversals": {
+    "unitAssertionsCaught": 9,
+    "retainedModuleBrowserContractCaught": 3
+  },
+  "cleanup": "Every final owned browser receipt confirms physical cleanup. No real directory/account/Fleet/native/model/CLI or pilot operations.",
+  "changelog": {
+    "passed": 75,
+    "failed": 0
+  },
+  "postSync": {
+    "alphaParent": "54c8275dcea7b68b152b04e386ba2e250d611b30",
+    "mergeHead": "97fdc87b7ad2df26d995b83b82a0865330e9ebc3",
+    "focused": {
+      "numTotalTests": 242,
+      "numPassedTests": 242,
+      "numFailedTests": 0,
+      "numPendingTests": 0
+    },
+    "sourceTypes": "PASS",
+    "testTypes": "PASS",
+    "browser": {
+      "cases": 2,
+      "checks": 25,
+      "cleaned": true
+    },
+    "ownProductFiles": "Five product blobs byte-identical to tested own source commit 9e26ffaa434f6e9b16a04d349082f29efd882566."
+  }
+}

@@ -5,7 +5,7 @@ import { readBoundedWebBody } from "./web-body.js";
 import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, runtimePairingAdmin, type WindowsCliApiContext } from "./windows-cli-api.js";
 import { INSTALLABLE_CLIS, isInstallableCli, type InstallableCliId } from "./runtime-cli-install.js";
 import type { RuntimeSwitchStates } from "./runtime-protocol.js";
-import type { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { RuntimeNotPendingError, type RuntimeCoordinator } from "./runtime-coordinator.js";
 import { createRuntimeBundle } from "./runtime-bundle.js";
 import type { RuntimeMachine } from "./runtime-protocol.js";
 import type { WindowsCliProbe } from "./windows-cli.js";
@@ -82,7 +82,28 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   const hub = ctx.runtimeCoordinator!();
   // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session on the directly reached dashboard is (accountIdentityVisible).
   const machineFor = (machine: RuntimeMachine): RuntimeMachine => accountIdentityVisible(req, url, ctx) ? machine : machineWithoutAccountIdentity(machine);
-  if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines().map(machineFor) }); return true; }
+  // `enrollments` is what the page shows next to a token it issued (a status and a time, never the token or its hash), so a computer that joins is noticed on the next refresh. Only the administrator
+  // session that makes and revokes them is shown them: the header token (an agent's) gets none.
+  if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines().map(machineFor), enrollments: accountIdentityVisible(req, url, ctx) ? hub.listEnrollments() : [] }); return true; }
+  // One-time install-command tokens. Exactly the people who may create a pairing code (#3327): an administrator signed in on this dashboard (its session and CSRF, the
+  // page's own buttons), never the bare header token, because a token is a way to join a computer with nobody approving it. Asked again after the body is read. The token
+  // is in the one reply that issues it and nowhere else. `actor` is the opaque session handle the audit record keeps.
+  const enrollRoute = /^\/ui\/runtimes\/enrollment(?:\/([a-f0-9-]{36})\/(revoke))?$/.exec(url.pathname);
+  if (enrollRoute) {
+    if (method !== "POST") { json(res, 404, { error: "Unknown runtime operation" }); return true; }
+    const actorNow = (): string | null => nativeCliAuthorization(req, url, ctx) ? remoteSetupActor(req, url, ctx) : null;
+    if (!actorNow()) { json(res, 403, { error: "An install command needs an administrator signed in on this dashboard" }); return true; }
+    void (async () => {
+      const raw = await readBoundedWebBody(req, 1024);
+      const actor = actorNow();
+      if (!actor) { json(res, 403, { error: "Authorization expired" }); return; }
+      const body: unknown = raw.length ? JSON.parse(raw.toString("utf8")) : {};
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length) throw Error("Install-command tokens take no fields");
+      if (enrollRoute[1]) json(res, 200, { enrollment: hub.revokeEnrollment(enrollRoute[1], actor) });
+      else json(res, 201, hub.createEnrollment(actor));
+    })().catch(error => { const authorized = actorNow() !== null; json(res, authorized ? 400 : 403, { error: authorized ? error instanceof Error ? error.message : "Runtime operation failed" : "Authorization expired" }); });
+    return true;
+  }
   const tasksRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/tasks(?:\/([a-z0-9-]{16,80})\/cancel)?$/.exec(url.pathname);
   if (tasksRoute) {
     const id = tasksRoute[1], runId = tasksRoute[2];
@@ -172,7 +193,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     }
     json(res, 404, { error: "Unknown runtime operation" }); return true;
   }
-  const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
+  const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|reject|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
   if (method === "GET" && route) {
     const found = hub.machine(route[1]), machine = found ? machineFor(found) : found;
     json(res, machine ? 200 : 404, machine ? route[2] === "inventory" ? { machineId: machine.id, inventory: machine.inventory ?? null, updatedAt: machine.inventoryUpdatedAt ?? null, status: machine.status } : { machine } : { error: "Runtime machine not found" }); return true;
@@ -197,6 +218,11 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     if (Object.keys(input).some(key => op === "rename" ? key !== "name" : op === "approve" ? key !== "fingerprint" : true)) throw Error("Unknown runtime operation field");
     if (op === "approve") json(res, 200, { machine: machineFor(hub.approve(id, input.fingerprint)) });
     else if (op === "revoke") json(res, 200, { machine: machineFor(hub.revoke(id)) });
+    // The page's Reject: only a computer still waiting. One that was approved meanwhile (another tab) is not touched: 409, and the page says it was already handled.
+    else if (op === "reject") {
+      try { json(res, 200, { machine: machineFor(hub.reject(id)) }); }
+      catch (error) { if (error instanceof RuntimeNotPendingError) json(res, 409, { error: error.message, code: "not-pending" }); else throw error; }
+    }
     else if (op === "rename") json(res, 200, { machine: machineFor(hub.rename(id, input.name)) });
     else if (op === "refresh" || op === "probe") {
       const inventory = await hub.call(id, "probe", { force: true });
