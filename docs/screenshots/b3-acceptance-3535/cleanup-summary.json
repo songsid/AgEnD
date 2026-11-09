@@ -1,0 +1,12 @@
+{
+  "candidate": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "campaigns": 21,
+  "allRecordedProcessesExited": true,
+  "allOwnedTempsRemoved": true,
+  "allOwnedWrapperHomesRemoved": true,
+  "realCliFinalNamespacePids": {
+    "claude": 16,
+    "codex": 13
+  },
+  "noRealAccountLiveFleetOrUpdater": true
+}

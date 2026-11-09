@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.319
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /scratch/cwd
+
+
+❯ [from:proof] idle delivery ALPHA
+
+● ack: <system-reminder>
+  Codebase and user inst
+
+✻ Worked for 0s · done 10:56 PM
+
+❯ [from:proof] SLOW turn BRAVO
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✽ Scurrying…
+  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

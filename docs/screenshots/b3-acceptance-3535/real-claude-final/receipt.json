@@ -1,0 +1,33 @@
+{
+  "sourceHead": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "version": "2.1.319 (Claude Code)",
+  "privateSocket": "agend-test-cc2317-4048935",
+  "localMock": true,
+  "realAccount": false,
+  "mode": "--permission-mode=default",
+  "cases": [
+    {
+      "label": "idle",
+      "dialogsOnScreen": 0,
+      "probe": "clear",
+      "enterSent": true,
+      "receivedByApi": true
+    },
+    {
+      "label": "busy",
+      "dialogsOnScreen": 0,
+      "probe": "clear",
+      "enterSent": true,
+      "receivedByApi": true
+    },
+    {
+      "label": "resumed",
+      "dialogsOnScreen": 0,
+      "probe": "clear",
+      "enterSent": true,
+      "receivedByApi": true
+    }
+  ],
+  "passed": true,
+  "ownedChildrenExited": true
+}

@@ -1,0 +1,41 @@
+{
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "binarySha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+  "version": "0.167.0",
+  "complete": true,
+  "cases": [
+    {
+      "label": "idle",
+      "clear": true,
+      "paste": true,
+      "enter": true,
+      "apiReceived": true
+    },
+    {
+      "label": "busy-seed",
+      "clear": true,
+      "paste": true,
+      "enter": true,
+      "apiReceived": true
+    },
+    {
+      "label": "busy",
+      "clear": true,
+      "paste": true,
+      "enter": true,
+      "apiReceived": true
+    },
+    {
+      "label": "resumed",
+      "clear": true,
+      "paste": true,
+      "enter": true,
+      "apiReceived": true
+    }
+  ],
+  "mockOnly": true,
+  "privateSocket": "b3-codex-4048627",
+  "managedChildren": [],
+  "remainingManaged": [],
+  "scratchRemoved": true
+}

@@ -1,0 +1,13 @@
+{
+  "case": "held-tab",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/held-tab.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-wj6tsiyl",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235750.3614402,
+  "ownedTempRemoved": true
+}

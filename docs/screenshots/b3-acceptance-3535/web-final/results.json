@@ -1,0 +1,188 @@
+{
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "scope": "real Fleet HTTP/Chromium; mock probe worker and inert delivery sink; no CLI/tmux/model/account",
+  "checks": [
+    {
+      "name": "web-only automatic worker publishes nonempty catalog",
+      "ok": true,
+      "detail": {
+        "backend": "claude-code",
+        "probes": 3
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:fresh signin no disconnected /web",
+      "ok": true,
+      "detail": "AgEnD\n登入 AgEnD\n\n輸入裝置登入碼。\n\n一次性裝置登入碼\n 登入\n在這台電腦重新登入：在終端機執行 agend web，它會開啟登入頁並顯示新的裝置登入碼。\n登入後畫面不對勁？"
+    },
+    {
+      "name": "desk-light-zh-TW:fresh non-loopback no /web",
+      "ok": true,
+      "detail": "AgEnD\n登入 AgEnD\n\n輸入裝置登入碼。\n\n一次性裝置登入碼\n 登入\n在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。\n登入後畫面不對勁？"
+    },
+    {
+      "name": "desk-light-zh-TW:AI account connect wording",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:host model choices nonempty",
+      "ok": true,
+      "detail": [
+        "CLI 自己的預設",
+        "驗收模型",
+        "其他…"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW:settings agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:settings agent-defaults",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:settings notifications",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:settings chat",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:settings web",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:settings advanced",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:chat send receive",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "received": 1
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:chat reload keeps answer",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:usage endpoint",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "desk-light-zh-TW:usage visible button",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:Kiro Office level estimated",
+      "ok": true,
+      "detail": "10\nagend-reviewer-t1503382598640996543\nagend-reviewer-t1503382598640996543\n閒置 · 學徒\n×\nLv 10 · 10M 工作 token (估算)\n再 2M 到 Lv 11\n辦公室\n整個 fleet · 休息區\n模型\n預設（這個 CLI 不提供預設值）\n後端\nKiro CLI\n今天\n0 工作 token · 0 次請求\n首次出現\n第 91 天\n現在: 喝茶休息\n在辦公室找他\n聊天"
+    },
+    {
+      "name": "desk-light-zh-TW:no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:no errors",
+      "ok": true,
+      "detail": {
+        "errors": [],
+        "csp": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:fresh signin no disconnected /web",
+      "ok": true,
+      "detail": "AgEnD\n登入 AgEnD\n\n輸入裝置登入碼。\n\n一次性裝置登入碼\n 登入\n在這台電腦重新登入：在終端機執行 agend web，它會開啟登入頁並顯示新的裝置登入碼。\n登入後畫面不對勁？"
+    },
+    {
+      "name": "phone-dark-zh-TW:fresh non-loopback no /web",
+      "ok": true,
+      "detail": "AgEnD\n登入 AgEnD\n\n輸入裝置登入碼。\n\n一次性裝置登入碼\n 登入\n在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。\n登入後畫面不對勁？"
+    },
+    {
+      "name": "phone-dark-zh-TW:AI account connect wording",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:host model choices nonempty",
+      "ok": true,
+      "detail": [
+        "CLI 自己的預設",
+        "驗收模型",
+        "其他…"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW:settings agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:settings agent-defaults",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:settings notifications",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:settings chat",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:settings web",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:settings advanced",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:chat send receive",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "received": 1
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:chat reload keeps answer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:usage endpoint",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "phone-dark-zh-TW:usage visible button",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:Kiro Office level estimated",
+      "ok": true,
+      "detail": "10\nagend-reviewer-t1503382598640996543\nagend-reviewer-t1503382598640996543\n閒置 · 學徒\n×\nLv 10 · 10M 工作 token (估算)\n再 2M 到 Lv 11\n辦公室\n整個 fleet · 休息區\n模型\n預設（這個 CLI 不提供預設值）\n後端\nKiro CLI\n今天\n0 工作 token · 0 次請求\n首次出現\n第 91 天\n現在: 喝茶休息\n在辦公室找他\n聊天"
+    },
+    {
+      "name": "phone-dark-zh-TW:no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:no errors",
+      "ok": true,
+      "detail": {
+        "errors": [],
+        "csp": []
+      }
+    }
+  ],
+  "cases": [
+    "desk-light-zh-TW",
+    "phone-dark-zh-TW"
+  ]
+}

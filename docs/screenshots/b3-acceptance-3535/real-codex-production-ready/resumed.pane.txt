@@ -1,0 +1,40 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     <scratch>/w
+  permissions: YOLO mode
+
+  Tip: Use /side to start a side conversation in a temporary fork without polluting the main thread.
+
+
+› B3_CODEX_IDLE
+
+
+• ack B3_CODEX_IDLE
+
+  Worked for <1s • 22:56
+
+
+› B3_CODEX_SLOW
+
+
+• ack B3_CODEX_SLOW
+
+
+› B3_CODEX_BUSY
+
+
+• ack B3_CODEX_BUSY
+
+  Worked for 8s • 22:56
+
+
+› Ask Codex to do anything
+
+  Context 100% left · ← for agents                                                             ⚠ 1 warning · f2 to view
+
+
+
+
+
+
+

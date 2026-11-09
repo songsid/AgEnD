@@ -1,0 +1,13 @@
+{
+  "case": "web",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/web.mts",
+  "extras": {},
+  "exitCode": 1,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-9k225ddy",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235388.450998,
+  "ownedTempRemoved": true
+}

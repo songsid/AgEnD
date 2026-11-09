@@ -1,0 +1,15 @@
+{
+  "case": "update",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/smoke/smoke-web-update-2738.mts",
+  "extras": {
+    "OLD_CSS": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b3-acceptance/old-app.css"
+  },
+  "exitCode": 0,
+  "trackedPids": 20,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-77haero0",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235224.6663022,
+  "ownedTempRemoved": true
+}

@@ -1,0 +1,15 @@
+{
+  "case": "real-claude",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/claude-delivery.mts",
+  "extras": {
+    "CLAUDE_BIN": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/m2739/r/bin/claude"
+  },
+  "exitCode": 1,
+  "trackedPids": 2,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-tx2efmpk",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235909.8550644,
+  "ownedTempRemoved": true
+}

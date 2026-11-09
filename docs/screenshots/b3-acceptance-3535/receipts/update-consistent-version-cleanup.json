@@ -1,0 +1,15 @@
+{
+  "case": "update-consistent-version",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/update.mts",
+  "extras": {
+    "OLD_CSS": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b3-acceptance/old-app.css"
+  },
+  "exitCode": 0,
+  "trackedPids": 20,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-lkpmi6pb",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235727.976607,
+  "ownedTempRemoved": true
+}

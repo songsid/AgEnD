@@ -1,0 +1,17 @@
+{
+  "namespaceAudit": "net:[4026532734]",
+  "case": "real-codex-production-ready",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/codex-delivery.mts",
+  "extras": {
+    "CODEX_BIN": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/m2739/packages/codex-linux/package/vendor/x86_64-unknown-linux-musl/bin/codex",
+    "AUDIT_NAMESPACE": "1"
+  },
+  "exitCode": 0,
+  "trackedPids": 13,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-ydgjetoz",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794236201.9272165,
+  "ownedTempRemoved": true
+}

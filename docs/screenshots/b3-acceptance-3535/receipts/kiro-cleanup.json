@@ -1,0 +1,13 @@
+{
+  "case": "kiro",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/smoke/smoke-3450-kiro-history.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 4,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-us_zd27j",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235413.0017474,
+  "ownedTempRemoved": true
+}

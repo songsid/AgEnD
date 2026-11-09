@@ -1,0 +1,15 @@
+{
+  "case": "web-r3",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/b3-acceptance/web.mts",
+  "extras": {
+    "KIRO_RESULT": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b3-acceptance/kiro/results.json"
+  },
+  "exitCode": 0,
+  "trackedPids": 21,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-is2fyf5h",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235568.6463852,
+  "ownedTempRemoved": true
+}

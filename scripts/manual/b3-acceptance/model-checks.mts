@@ -1,0 +1,2 @@
+import {execFileSync} from 'node:child_process';
+execFileSync(process.execPath,['node_modules/vitest/vitest.mjs','run','tests/codex-refresh-model-catalog.test.ts','tests/web-model-refresh-route-m2731.test.ts','tests/web-model-picker-m2731.test.ts','tests/web-model-refresh-m2731.test.ts','--maxWorkers=1','--reporter=json','--outputFile='+process.env.OUT+'/vitest.json'],{cwd:process.env.REPO,env:process.env,stdio:'inherit'});

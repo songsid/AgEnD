@@ -1,0 +1,3 @@
+import {execFileSync} from 'node:child_process';
+const files=['tests/general-debug-authority-m2721.test.ts','tests/update-instance-config-tool-set-814.test.ts','tests/create-instance-priv-1490.test.ts','tests/classic-delegated-results-3513.test.ts','tests/instructions.test.ts','tests/classic-outbound-address-1626.test.ts','tests/kiro-lifetime-3450.test.ts','tests/croner-clock-step-1995.test.ts','tests/fleet-model-probes-3526.test.ts','tests/signin-glossary-s117.test.ts','tests/subagent-web.test.ts'];
+execFileSync(process.execPath,['node_modules/vitest/vitest.mjs','run',...files,'--maxWorkers=1','--reporter=json','--outputFile='+process.env.OUT+'/vitest.json'],{cwd:process.env.REPO,stdio:'inherit',env:process.env});

@@ -1,0 +1,95 @@
+[
+  {
+    "campaign": "checks",
+    "total": 250,
+    "passed": 250,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      {
+        "name": "classic-delegated-results-3513.test.ts",
+        "status": "passed",
+        "tests": 12
+      },
+      {
+        "name": "classic-outbound-address-1626.test.ts",
+        "status": "passed",
+        "tests": 98
+      },
+      {
+        "name": "create-instance-priv-1490.test.ts",
+        "status": "passed",
+        "tests": 9
+      },
+      {
+        "name": "croner-clock-step-1995.test.ts",
+        "status": "passed",
+        "tests": 2
+      },
+      {
+        "name": "fleet-model-probes-3526.test.ts",
+        "status": "passed",
+        "tests": 10
+      },
+      {
+        "name": "general-debug-authority-m2721.test.ts",
+        "status": "passed",
+        "tests": 29
+      },
+      {
+        "name": "instructions.test.ts",
+        "status": "passed",
+        "tests": 25
+      },
+      {
+        "name": "kiro-lifetime-3450.test.ts",
+        "status": "passed",
+        "tests": 29
+      },
+      {
+        "name": "signin-glossary-s117.test.ts",
+        "status": "passed",
+        "tests": 12
+      },
+      {
+        "name": "subagent-web.test.ts",
+        "status": "passed",
+        "tests": 17
+      },
+      {
+        "name": "update-instance-config-tool-set-814.test.ts",
+        "status": "passed",
+        "tests": 7
+      }
+    ]
+  },
+  {
+    "campaign": "model-checks",
+    "total": 26,
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      {
+        "name": "codex-refresh-model-catalog.test.ts",
+        "status": "passed",
+        "tests": 10
+      },
+      {
+        "name": "web-model-picker-m2731.test.ts",
+        "status": "passed",
+        "tests": 5
+      },
+      {
+        "name": "web-model-refresh-m2731.test.ts",
+        "status": "passed",
+        "tests": 8
+      },
+      {
+        "name": "web-model-refresh-route-m2731.test.ts",
+        "status": "passed",
+        "tests": 3
+      }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "case": "model-skew",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/smoke/smoke-3500-model-picker.mts",
+  "extras": {
+    "SKEW": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b3-acceptance/skew-beta2"
+  },
+  "exitCode": 0,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-9q7cjoay",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235409.1827078,
+  "ownedTempRemoved": true
+}

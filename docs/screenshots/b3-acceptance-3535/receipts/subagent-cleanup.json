@@ -1,0 +1,13 @@
+{
+  "case": "subagent",
+  "head": "186b104cfc547e587d54d09058bd1939fcff8c55",
+  "commandScript": "scripts/manual/subagent-row/accept.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 29,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-x92i6ald",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794235346.126017,
+  "ownedTempRemoved": true
+}

@@ -1,0 +1,40 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     <scratch>/w
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› B3_CODEX_IDLE
+
+
+• ack B3_CODEX_IDLE
+
+  Worked for <1s • 22:56
+
+
+› Ask Codex to do anything
+
+  Context 100% left · ← for agents                                                            ⚠ 2 warnings · f2 to view
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

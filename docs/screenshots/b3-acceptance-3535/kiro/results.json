@@ -1,0 +1,21 @@
+{
+  "scope": "synthetic classic/TUI; production worker; no real CLI/store/fleet",
+  "requests": 5020,
+  "expectedWorkTokens": 10050040,
+  "level": {
+    "level": 10,
+    "workTokens": 10050040,
+    "estimated": true,
+    "today": {
+      "workTokens": 0,
+      "requests": 0
+    },
+    "firstSeen": "2026-08-11"
+  },
+  "mainLoopHeartbeats": 1970,
+  "restartIdempotent": true,
+  "storeSha256Before": "77e4393f5ed899cf11c120d9f3cbb8bf7ab0c3574d0fb630420b58bd8f1f3124",
+  "storeSha256After": "77e4393f5ed899cf11c120d9f3cbb8bf7ab0c3574d0fb630420b58bd8f1f3124",
+  "marker": "done",
+  "scratchRemoved": true
+}

@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.319
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /scratch/cwd
+
+
+❯ [from:proof] idle delivery ALPHA
+
+● ack: <system-reminder>
+  Codebase and user inst
+
+✻ Worked for 0s · done 10:56 PM
+
+❯ [from:proof] SLOW turn BRAVO
+
+● ack: [from:proof] SLOW turn BRAVO
+
+✻ Cogitated for 8s · done 10:57 PM
+
+❯ [from:proof] busy delivery CHARLIE
+
+● ack: [from:proof] busy delivery CHARLIE
+
+✻ Cooked for 0s · done 10:57 PM
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                    ◐ medium · /effort
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

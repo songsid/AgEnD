@@ -1,0 +1,193 @@
+{
+  "before": false,
+  "skew": false,
+  "probes": 10,
+  "saves": 2,
+  "restarts": 2,
+  "records": [
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "settings",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "refresh-busy",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "refresh-error",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "agent-dialog",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "chat-model",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "chat-more",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "backend",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "backend-model",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "backend-effort",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "backend-confirm",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "label": "backend-applied",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "settings",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "refresh-busy",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "refresh-error",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "agent-dialog",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "chat-model",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "chat-more",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "backend",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "backend-model",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "backend-effort",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "backend-confirm",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "backend-applied",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "label": "phone-latest",
+      "geometry": {
+        "scroll": 390,
+        "width": 390
+      }
+    }
+  ]
+}
