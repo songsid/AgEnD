@@ -34,6 +34,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -52,6 +59,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -70,6 +84,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -88,6 +109,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -106,6 +134,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -124,6 +159,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -142,6 +184,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
@@ -160,6 +209,13 @@
         "composer": true,
         "overflow": false,
         "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
         "css": true
       },
       "errors": [],
