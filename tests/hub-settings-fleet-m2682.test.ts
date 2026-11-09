@@ -17,7 +17,7 @@ import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
 
 const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any, recovery: "normal", directory: null as any,
-  controlDeps: null as any, controls: 0, controller: { close: async () => {} } }));
+  controlDeps: null as any, controls: 0, controller: { fence: () => {}, close: async () => {} } }));
 vi.mock("../src/hub/settings-directory-control.js", () => ({ createHubDirectorySettingsControl(deps: unknown) {
   hub.controlDeps = deps; hub.controls++; return hub.controller;
 } }));
@@ -47,7 +47,7 @@ const MEMBER = "https://hub.example.test:8443", ADMIN = { realm: "corp", objectI
 const actor = { person: ADMIN, sessionId: "s1", requestId: "r1" };
 const roots: string[] = [];
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; hub.recovery = "normal";
-  hub.directory = null; hub.controlDeps = null; hub.controls = 0; });
+  hub.directory = null; hub.controlDeps = null; hub.controls = 0; hub.controller = { fence: () => {}, close: async () => {} }; });
 const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 async function harness() {
@@ -78,10 +78,41 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     expect(hub.options.directorySettings).toEqual(expect.any(Function));
     const [first, second] = await Promise.all([fm.hubDirectorySettings(), hub.options.directorySettings()]);
     expect(first).toBe(second); expect(first).toBe(hub.controller); expect(hub.controls).toBe(1);
+    expect(await fm.hubDirectorySettings()).toBe(first); expect(hub.controls).toBe(1);
     expect(hub.controlDeps.writer()).toBe(hub.options.settingsWriter.directory);
     expect(hub.controlDeps.mounted()).toBe(hub.directory);
     expect(await hub.controlDeps.withDecision((d: unknown) => d)).toBe(hub.directory.decision);
     expect(hub.controlDeps.current()).toBe(true); fm.shuttingDown = true; expect(hub.controlDeps.current()).toBe(false);
+  });
+  it.each(["Hub identity","runtime"])("replaces an expired directory controller after %s changes",async reason=>{
+    const {fm}=await harness(),fence=vi.fn(),close=vi.fn(async()=>{});
+    hub.controller={fence,close};hub.directory={decision:{hubId:fm.rawFleetConfig.hub.hubId}};
+    const before=await fm.hubDirectorySettings(),previous=hub.controlDeps;
+    const replacement={fence:vi.fn(),close:vi.fn(async()=>{})};hub.controller=replacement;
+    if(reason==="Hub identity"){
+      fm.rawFleetConfig.hub.hubId="11111111-1111-4111-8111-111111111111";
+      hub.directory={decision:{hubId:fm.rawFleetConfig.hub.hubId}};
+    }else fm.hubRuntime=Object.create(Object.getPrototypeOf(fm.hubRuntime));
+    expect(previous.current()).toBe(false);
+    const [first,second]=await Promise.all([fm.hubDirectorySettings(),fm.hubDirectorySettings()]);
+    expect(first).toBe(replacement);expect(first).not.toBe(before);expect(second).toBe(first);expect(hub.controls).toBe(2);
+    expect(fence).toHaveBeenCalled();expect(close).toHaveBeenCalled();expect(hub.controlDeps.current()).toBe(true);
+  });
+  it.each(["replace","Stop"])("drains an expired controller before %s can publish a successor",async mode=>{
+    const {fm}=await harness();let release!:()=>void;const held=new Promise<void>(r=>{release=r;});
+    const old={fence:vi.fn(),close:vi.fn(async()=>{await held;})};hub.controller=old;hub.directory={decision:{hubId:fm.rawFleetConfig.hub.hubId}};
+    await fm.hubDirectorySettings();
+    fm.rawFleetConfig.hub.hubId="11111111-1111-4111-8111-111111111111";hub.directory={decision:{hubId:fm.rawFleetConfig.hub.hubId}};
+    const replacement={fence:vi.fn(),close:vi.fn(async()=>{})};hub.controller=replacement;
+    const calls=[fm.hubDirectorySettings(),fm.hubDirectorySettings()];for(const call of calls)void call.catch(()=>{});
+    try{
+      expect(old.fence).toHaveBeenCalled();expect(old.close).toHaveBeenCalled();
+      await new Promise<void>(r=>setImmediate(r));expect(hub.controls).toBe(1);
+      if(mode==="Stop")fm.shuttingDown=true;
+      release();const results=await Promise.allSettled(calls);
+      if(mode==="Stop"){expect(results.every(x=>x.status==="rejected")).toBe(true);expect(hub.controls).toBe(1);}
+      else{expect(results).toEqual([{status:"fulfilled",value:replacement},{status:"fulfilled",value:replacement}]);expect(hub.controls).toBe(2);}
+    }finally{release();await Promise.allSettled(calls);}
   });
   it("Stop during the lazy import refuses before constructing a directory control", async () => {
     const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };

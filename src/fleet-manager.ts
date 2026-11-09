@@ -1644,8 +1644,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubSetupInit: Promise<import("./hub/init/web.js").HubWebInitializer> | null = null;
   private hubDirectoryControl: import("./hub/settings-directory-control.js").HubDirectorySettingsControl | null = null;
   private hubDirectoryInit: Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> | null = null;
+  private hubDirectoryCurrent: (() => boolean) | null = null;
   /** Both private listeners share this controller and the already-created sealed writer; callers prove authority first. */
   async hubDirectorySettings(): Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> {
+    const previous = this.hubDirectoryInit, expired = this.hubDirectoryControl;
+    if (expired && this.hubDirectoryCurrent?.() !== true) {
+      // Retire physical work before constructing the next host owner; concurrent readers share its one initialization.
+      expired.fence();
+      await expired.close();
+      if (this.hubDirectoryInit === previous) {
+        this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
+      }
+    }
     const pending = this.hubDirectoryInit ??= (async () => {
       const runtime = this.hubRuntime;
       if (this.shuttingDown || !runtime?.directorySettings() || !this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
@@ -1660,7 +1670,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         writer: () => this.hubSettingsWriter!.directory!, createDirectory: createHubDirectory, current,
         withDecision: work => runtime.withDirectoryDecision(hubId, work, current), remount: () => this.applyHubSwitches() });
       if (!current()) { await control.close(); throw Error("The Hub directory changed"); }
-      this.hubDirectoryControl = control; return control;
+      this.hubDirectoryControl = control; this.hubDirectoryCurrent = current; return control;
     })();
     try { return await pending; }
     catch (error) { if (this.hubDirectoryInit === pending) this.hubDirectoryInit = null; throw error; }
@@ -25156,7 +25166,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     this.hubSetupController=null; this.hubSetupInit=null;
     const directoryNow = this.hubDirectoryControl, directoryInit = this.hubDirectoryInit;
-    this.hubDirectoryControl = null; this.hubDirectoryInit = null;
+    this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
     const directoryClosed = (directoryNow ? directoryNow.close() : directoryInit?.then(control => control.close()))?.catch(() => {
       this.logger.warn("Hub directory settings cleanup is unconfirmed; settings remain fenced");
     });
