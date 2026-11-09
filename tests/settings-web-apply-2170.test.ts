@@ -225,7 +225,8 @@ describe("#2453 / AGEND-122: turning a link option on is confirmed like any othe
     expect([(await applyNow(f, s.req, p.view.id)).state, p.apply.mock.calls.length]).toEqual(["applied", 1]);
     expect(notice).toHaveBeenCalledOnce();
     expect(notice.mock.calls[0]).toEqual([expect.stringMatching(/^🔔 A Settings change that opens a public link was confirmed from another device by \S+\.\n.*\nOutcome: Change applied\.\nIf this was not you/s), { throttle: false }]);
-    expect(f.adapters.every(a => a.sendText.mock.calls.length === 0), "the Notice is the one announcement (not General's \"confirmed from the web\" too)").toBe(true);
+    // General's own "confirmed from the web" message is not sent too: what a General may receive is the security Notice (to every General, besides the primary one notifyFleetError mocks).
+    for (const a of f.adapters) for (const c of a.sendText.mock.calls) expect(String(c[1]), "no \"confirmed from the web\" notice").not.toMatch(/confirmed from the web/);
   });
   it("…who still must not: a guest, a header token, the web authorization switch off, \"Only this computer can authorize\" from another device, an admin of nothing here", () => {
     const f = fleet(), p = proposeWeb(f, { named_link: true }), ask = (req: any) => f.any.settingsSelfConfirmation(f.store, req, p.view.id);

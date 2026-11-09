@@ -760,3 +760,39 @@ describe("changing an app that exists is its owner's: the current code off the c
     expect(f.any.webOutsideConfirmEnrollment(host.req, appCode(begun, -1))).toBe("ok");
   });
 });
+
+describe("the security Notice reaches every connection's admins and survives a failed chat delivery (Prism round 2, #3)", () => {
+  /** Two connections whose admin lists do not overlap, each with its own General; chat delivery is a spy (it reports a dispatch, never a delivery). */
+  function twoConnections() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-122-two-")); roots.push(dir);
+    const fm = new FleetManager(dir), any = fm as any;
+    fm.fleetConfig = { defaults: { backend: "codex" },
+      channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN] } },
+        { id: "b", type: "telegram", mode: "topic", group_id: "-1002", access: { mode: "locked", allowed_users: [ADMIN_B] } }],
+      instances: { general_a: { working_directory: dir, general_topic: true, channel_id: "a", topic_id: 1 }, general_b: { working_directory: dir, general_topic: true, channel_id: "b", topic_id: 2 } } } as any;
+    writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
+    fleets.push({ fm, any });
+    const sent: string[] = [], failing = { on: false };
+    vi.spyOn(any, "notifyInstanceTopic").mockImplementation(((name: string) => { sent.push(name); if (failing.on) throw new Error("sendText rejected"); return true; }) as any);
+    const c = any.webSessions.create({ tier: "admin", surface: "local", label: "browser", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: ADMIN } });
+    const req: any = { method: "POST", socket: { remoteAddress: "192.0.2.20" }, headers: { host: "192.0.2.5:19280", origin: "http://192.0.2.5:19280", "sec-fetch-site": "same-origin", cookie: `agend_session=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
+    const enrol = () => { const b = any.webOutsideBeginEnrollment(req); expect(any.webOutsideConfirmEnrollment(req, appCode(b, -1))).toBe("ok"); };
+    return { any, sent, failing, enrol };
+  }
+  it("a Notice goes to BOTH connections' Generals and, on a chat fleet, always to the dashboard's Notices — once", () => {
+    const f = twoConnections();
+    expect(f.any.webNoticesFeed()).toBeNull();
+    f.enrol();
+    expect(f.sent.sort()).toEqual(["general_a", "general_b"]);
+    const feed = f.any.webNoticesFeed();
+    expect(feed).not.toBeNull();
+    expect(feed.view().items.length).toBe(1);
+  });
+  it("a chat send that throws or never arrives still leaves the dashboard Notice (exactly one), and the other connection is still tried", () => {
+    const f = twoConnections();
+    f.failing.on = true;
+    f.enrol();
+    expect(f.sent).toEqual(["general_a", "general_b"]);
+    expect(f.any.webNoticesFeed()!.view().items.length).toBe(1);
+  });
+});

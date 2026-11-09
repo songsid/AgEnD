@@ -3442,10 +3442,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * chat fleet's dashboard then shows (recordWebNotice itself refuses a chat fleet). Never throttled; redacted like any Notice.
    */
   private postFleetSecurityNotice(text: string, id?: string): void {
-    if (this.notifyFleetError(text, { throttle: false })) return;
+    // The usual fleet notice (General, else the primary connection's notice target; a web-only fleet's dashboard Notices) ...
+    let sent = false;
+    try { sent = this.notifyFleetError(text, { throttle: false }); } catch (err) { this.logger.warn({ err, id }, "A security Notice could not be sent to the primary General"); }
+    if (this.isWebOnlyFleet()) {
+      if (sent) return;
+    } else {
+      // ... and every OTHER connection's General too: their admin lists can be disjoint, so the primary one is not everyone.
+      const generals = Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic === true).map(([name]) => name);
+      for (const name of generals.slice(1)) { try { this.notifyInstanceTopic(name, text); } catch (err) { this.logger.warn({ err, id }, "A security Notice could not be sent to one General"); } }
+    }
+    // And on a chat fleet always the shared web Notices — persisted, shown to every admin of the dashboard: a chat send reports a
+    // dispatch, not a delivery, and may fail afterwards or never reach an admin of another connection.
     const store = this.webNoticeStore(), note = store?.add({ kind: "fleet", text: stripPlaceRefs(text) });
     if (note && store) this.emitSseEvent("notice", { notice: note, unread: store.unread() });
-    else this.logger.warn({ id }, "A security Notice could not be announced anywhere");
+    else this.logger.warn({ id }, "A security Notice could not be announced on the dashboard");
   }
   /** Who an authenticator action is named after in its Notice. */
   private adminName(actor: { adapter_id: string; user_id: string }): string {
