@@ -1315,7 +1315,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Settings → Runtime, so the fact is never dropped. Delivery is at least once: a crash between the send and its acknowledgement can send a notice twice.
    */
   private ownerNoticeTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly ownerNoticeInFlight = new Map<string, number>();
+  /** One physical send per kept notice at a time: the claim is held until THAT attempt settles (never aged out) and each attempt's callbacks only act on its own claim. */
+  private readonly ownerNoticeLive = new Set<string>();
+  private readonly ownerNoticeInFlight = new Map<string, symbol>();
   private pendingOwnerNoticesFile(): string | null { return this.dataDir ? join(this.dataDir, "pending-owner-notices.json") : null; }
   private readPendingOwnerNotices(): Array<{ id: string; text: string; folded?: number }> {
     const file = this.pendingOwnerNoticesFile();
@@ -1357,12 +1359,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.scheduleOwnerNoticeFlush();
   }
   private attemptOwnerNotice(id: string, text: string): void {
-    const startedAt = this.ownerNoticeInFlight.get(id);
-    if (startedAt !== undefined && Date.now() - startedAt < 120_000) return;                    // an attempt is still waiting for its answer
-    this.ownerNoticeInFlight.set(id, Date.now());
+    if (this.ownerNoticeInFlight.has(id)) return;                                               // a send is still waiting for its answer: it keeps the claim until it settles
+    const claim = Symbol(id); this.ownerNoticeInFlight.set(id, claim);
     let settled = false;
     const finish = (delivered: boolean): void => {
-      if (settled) return; settled = true; this.ownerNoticeInFlight.delete(id);
+      if (settled) return; settled = true;
+      if (this.ownerNoticeInFlight.get(id) === claim) this.ownerNoticeInFlight.delete(id);      // only its own claim: a late answer never retires a successor
       if (delivered) this.writePendingOwnerNotices(this.readPendingOwnerNotices().filter(row => row.id !== id));
     };
     let dispatched = false;
@@ -17029,7 +17031,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // rejects the message afterwards still consumes the throttle window, which
     // is the pre-existing semantic and not something this change alters.
     let dispatched = false;
-    if (general) {
+    // A native-exec General is a web-chat status line (an SSE event with no browser receipt and no store): fine for a message nobody must not miss, never an acknowledgement.
+    // For a caller that needs one it is shown best-effort (once) and delivery goes on to the primary channel or the durable Notice.
+    const generalIsNative = !!general && isNativeExecInstance(this.fleetConfig?.instances[general]);
+    if (general && opts.ack && generalIsNative && !this.ownerNoticeLive.has(body)) {
+      this.ownerNoticeLive.add(body); if (this.ownerNoticeLive.size > 200) this.ownerNoticeLive.delete(this.ownerNoticeLive.values().next().value as string);
+      this.emitSseEvent("message", { instance: general, role: "status", sender: "AgEnD", text: body, ts: new Date().toISOString() });
+    }
+    if (general && !(opts.ack && generalIsNative)) {
       dispatched = this.notifyInstanceTopic(general, body, undefined, opts.ack);
     } else {
       // No General instance — fall back to the primary channel's own notice
@@ -17046,7 +17055,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // #2910 D2: a web-only fleet has no General: the notice goes to the dashboard's Notices instead (and spends the
     // throttle window like a post would).
-    if (!dispatched && this.recordWebNotice("fleet", body)) { dispatched = true; opts.ack?.(true); }
+    // A caller that needs an acknowledgement (the owner notice) gets one only from a Notice that was WRITTEN: WebNotices.add keeps its item in memory even when the file cannot be written.
+    if (!dispatched) {
+      const recorded = opts.ack ? this.recordWebNoticeDurable("fleet", body) : this.recordWebNotice("fleet", body);
+      if (recorded) { dispatched = true; opts.ack?.(true); }
+    }
     if (!dispatched) {
       // Do NOT record the throttle key. It used to be claimed before delivery
       // was attempted, so a message nobody could receive — every fleet error
@@ -17096,10 +17109,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #3373 review P2: recordWebNotice for a notice that must be on disk first — true only once it was written. */
-  private recordWebNoticeDurable(kind: NoticeKind, text: string): boolean {
+  private recordWebNoticeDurable(kind: NoticeKind, text: string, instance?: string): boolean {
     if (!this.webOnlyPromptPlace()) return false;
     const store = this.webNoticeStore();
-    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text) }) ?? null;
+    const known = instance !== undefined && Object.hasOwn(this.fleetConfig?.instances ?? {}, instance) ? instance : undefined;
+    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text), ...(known ? { instance: known } : {}) }) ?? null;
     if (!notice) return false;
     this.emitSseEvent("notice", { notice, unread: store!.unread() });
     return true;
@@ -17120,10 +17134,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts, ack?: (delivered: boolean) => void): boolean {
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
-      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});ack?.(true);return true;
+      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return !ack;   // an SSE event is no acknowledgement
     }
     // #2910 D2: a web-only fleet has no topics: what the agent's topic would have been told is a Notice about it.
-    if (this.webOnlyPromptPlace()) { const recorded = this.recordWebNotice("instance", text, instanceName); if (recorded) ack?.(true); return recorded; }
+    if (this.webOnlyPromptPlace()) { const recorded = ack ? this.recordWebNoticeDurable("instance", text, instanceName) : this.recordWebNotice("instance", text, instanceName); if (recorded) ack?.(true); return recorded; }
     const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
     if (!send) return false;
     // `ack` (a caller that must not lose the message) is told when the platform took it or refused it; everyone else only gets the log line.

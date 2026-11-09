@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -15,11 +15,12 @@ beforeEach(() => { vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); vi.useFakeTimers(); 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); for (const dir of roots.splice(0)) { if (!resolve(dir).startsWith(resolve(tmpdir()))) throw Error("Unsafe scratch path"); rmSync(dir, { recursive: true, force: true }); } });
 
 const quiet = () => {};
-function fleet(dir?: string, destination = true) {
+/** `kind`: "chat" (a Telegram channel, with or without a place for fleet notices), or "web" (no chat at all: the dashboard's Notices). `native`: a native-exec Windows General. */
+function fleet(dir?: string, destination: boolean | "web" = true, native = false) {
   const home = dir ?? mkdtempSync(join(tmpdir(), "agend-owner-notice-")); if (!dir) roots.push(home);
   const fm = new FleetManager(home) as any;
   fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
-  fm.fleetConfig = { defaults: {}, instances: {}, channel: destination ? { type: "telegram", group_id: "g1" } : { type: "telegram" } };   // a chat-connected fleet, with or without a place for fleet notices
+  fm.fleetConfig = { defaults: {}, instances: native ? { general: { general_topic: true, runtime: "windows", native_agent_id: "12345678-1234-4321-abcd-123456789012", native_adapter: "exec", working_directory: "C:\\x" } } : {}, ...(destination === "web" ? {} : { channel: destination ? { type: "telegram", group_id: "g1" } : { type: "telegram" } }) };   // a chat-connected fleet, with or without a place for fleet notices
   // sends: "ok" resolves, "reject" rejects after being dispatched, "none" is no adapter at all
   const sends: string[] = []; let mode: "ok" | "reject" | "none" = "ok";
   const adapter = { id: "telegram", type: "telegram", sendText: vi.fn((_chat: string, text: string): Promise<void> => { sends.push(text); return mode === "reject" ? Promise.reject(new Error("the platform refused it")) : Promise.resolve(); }) };
@@ -70,6 +71,23 @@ describe("the notice that a computer joined with an install-command token", () =
     control.set("ok"); await settle(60_000);
     expect(control.sends).toHaveLength(3); expect(pending(dir)).toEqual([]); fm.runtimeHub?.close();
   });
+  it("keeps the send claim until the send settles, however long that takes: a held promise is never sent again, and a late answer retires only its own attempt", async () => {
+    const { dir, fm, control, adapter } = fleet(); let late!: { ok: () => void; fail: () => void };
+    adapter.sendText.mockImplementationOnce((_chat: string, text: string) => { control.sends.push(text); return new Promise<void>((ok, fail) => { late = { ok: () => ok(), fail: () => fail(new Error("late refusal")) }; }); });
+    join_(fm.runtimeCoordinator()); await settle(); expect(control.sends).toHaveLength(1);
+    await settle(10 * 60_000); expect(control.sends, "ten minutes on, with the first send still held: no second physical send").toHaveLength(1); expect(pending(dir)).toHaveLength(1);
+    late.fail(); await settle(); expect(pending(dir), "a late refusal keeps it").toHaveLength(1); expect(control.sends).toHaveLength(1);
+    await settle(60_000); expect(control.sends, "now free: the retry sends and is acknowledged").toHaveLength(2); expect(pending(dir)).toEqual([]);
+    fm.runtimeHub?.close();
+    // a late acknowledgement of the old attempt after a successor exists cannot retire the successor's claim
+    const second = fleet(); let held: Array<() => void> = [];
+    second.adapter.sendText.mockImplementation((_chat: string, text: string) => { second.control.sends.push(text); return new Promise<void>(ok => { held.push(() => ok()); }); });
+    second.fm.deliverOwnerNotice("⚠️ one"); await settle(); expect(second.control.sends).toHaveLength(1);
+    held[0](); await settle(); expect(pending(second.dir)).toEqual([]);
+    second.fm.deliverOwnerNotice("⚠️ two"); await settle(); expect(second.control.sends).toHaveLength(2); held[0](); await settle();          // the first attempt answers AGAIN (it already settled): nothing happens to the second
+    expect(pending(second.dir).map(row => row.text)).toEqual(["⚠️ two"]); expect(second.fm.flushOwnerNotices()).toBe(1); expect(second.control.sends, "still one send for the second notice").toHaveLength(2);
+    held[1](); await settle(); expect(pending(second.dir)).toEqual([]);
+  });
   it("does not let a second attempt start while one is waiting for its answer, and keeps unrelated notices apart", async () => {
     const { dir, fm, control, adapter } = fleet(); let answer!: () => void;
     adapter.sendText.mockImplementationOnce((_chat: string, text: string) => { control.sends.push(text); return new Promise<void>(done => { answer = done; }); });
@@ -92,6 +110,31 @@ describe("the notice that a computer joined with an install-command token", () =
     fm.fleetConfig.channel = { type: "telegram" }; control.set("ok");
     for (let i = 0; i < cap + 5; i++) fm.deliverOwnerNotice(`n${i}`);
     expect(pending(dir)[0].folded).toBe(6); hub.close?.(); fm.runtimeHub?.close();
+  });
+  it("on a web-only fleet it is acknowledged only by a Notice that was WRITTEN: a failed file write keeps it, and it is recovered after a restart (positive control: normal storage)", async () => {
+    const ok = fleet(undefined, "web"); join_(ok.fm.runtimeCoordinator()); await settle();
+    expect(pending(ok.dir), "a written Notice is the acknowledgement").toEqual([]); expect((ok.fm.webNoticeStore() as any).items.map((n: { text: string }) => n.text)).toHaveLength(1); ok.fm.runtimeHub?.close();
+    const bad = fleet(undefined, "web"); mkdirSync(join(bad.dir, "web-notices.json"));                                    // the file cannot be written
+    join_(bad.fm.runtimeCoordinator()); await settle();
+    expect(pending(bad.dir), "an in-memory Notice is not durable: the notice is kept").toHaveLength(1);
+    await settle(60_000); expect(pending(bad.dir)).toHaveLength(1);
+    rmSync(join(bad.dir, "web-notices.json"), { recursive: true });                                                        // fixed, and a restart
+    const next = fleet(bad.dir, "web"); next.fm.runtimeCoordinator(); await settle(30_000);
+    expect(pending(bad.dir)).toEqual([]); expect(JSON.parse(readFileSync(join(bad.dir, "web-notices.json"), "utf8")).items).toHaveLength(1);
+    next.fm.runtimeHub?.close(); bad.fm.runtimeHub?.close();
+  });
+  it("a native-exec General is never an acknowledgement (an SSE line has no receipt): it is shown once, and the notice is delivered by the channel or kept", async () => {
+    const noPlace = fleet(undefined, false, true), live = vi.spyOn(noPlace.fm, "emitSseEvent");
+    join_(noPlace.fm.runtimeCoordinator()); await settle();
+    expect(pending(noPlace.dir), "nowhere durable to put it: kept").toHaveLength(1); expect(live.mock.calls.filter(call => call[0] === "message")).toHaveLength(1);
+    await settle(3 * 60_000); expect(pending(noPlace.dir)).toHaveLength(1); expect(live.mock.calls.filter(call => call[0] === "message"), "not repeated on every retry").toHaveLength(1);
+    noPlace.fm.fleetConfig.channel = { type: "telegram", group_id: "g1" }; await settle(60_000);                         // a place appears
+    expect(noPlace.control.sends).toHaveLength(1); expect(pending(noPlace.dir)).toEqual([]); noPlace.fm.runtimeHub?.close();
+    const chat = fleet(undefined, true, true); join_(chat.fm.runtimeCoordinator()); await settle();
+    expect(chat.control.sends, "a channel exists: it goes there and that is the acknowledgement").toHaveLength(1); expect(pending(chat.dir)).toEqual([]); chat.fm.runtimeHub?.close();
+    // a restart keeps what was kept
+    const web = fleet(undefined, "web", true); mkdirSync(join(web.dir, "web-notices.json")); join_(web.fm.runtimeCoordinator()); await settle();
+    expect(pending(web.dir)).toHaveLength(1); web.fm.runtimeHub?.close();
   });
   it("a damaged or foreign file keeps nothing it cannot read, and a legacy plain-text entry is still delivered", async () => {
     const { dir, fm, control } = fleet();
