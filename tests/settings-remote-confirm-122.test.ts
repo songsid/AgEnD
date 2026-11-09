@@ -38,7 +38,7 @@ import { webPeerOf } from "../src/web-api.js";
 import { authorizeSession, WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
 import { bindGatewayRequest, gatewayRequestContext } from "../src/web-request-context.js";
-import { base32Encode, base32Decode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Encode, base32Decode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, TOTP_WRONG_LIMIT, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { settingsRequestExecution } from "../src/settings-request-capability.js";
 import { settingsFingerprint } from "../src/settings-transaction.js";
 import { t } from "../src/locale.js";
@@ -805,5 +805,17 @@ describe("capacity and the shared limiter at fleet level (Prism round 2, #4 and 
     expect(f.any.webRemoteAccess().isEnrolled(adminKey("a", ADMIN))).toBe(false);
     const reopened = new WebRemoteAccess(join(f.any.dataDir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} });
     expect(Array.from({ length: 64 }, (_, n) => reopened.isEnrolled(adminKey("a", `u${n}`))).every(Boolean)).toBe(true);
+  });
+  it("#5: A is paused by five wrong codes; the host identity's FIRST enrolment from another device leaves the pause; on the computer itself it is cleared", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: {} } }), access = f.any.webRemoteAccess(), A = adminKey("a", ADMIN);
+    for (let n = 0; n < TOTP_WRONG_LIMIT; n++) access.verify("000000", A);
+    expect(access.verify("000000", A)).toMatchObject({ kind: "paused" });
+    const remote = f.session("host", "lan"), b = f.any.webOutsideBeginEnrollment(remote.req);
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, appCode(b, -1))).toBe("ok");                    // the host identity enrols, remotely
+    expect(access.isEnrolled(HOST_ADMIN_KEY)).toBe(true);
+    expect(access.verify("000000", A)).toMatchObject({ kind: "paused" });                                // still paused
+    const here = f.session("host", "here"), c = f.any.webOutsideBeginEnrollment(here.req);
+    expect(f.any.webOutsideConfirmEnrollment(here.req, appCode(c, -1))).toBe("ok");                      // the computer's own browser
+    expect(access.status(A).pausedForMs).toBe(0);
   });
 });

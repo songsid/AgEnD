@@ -18655,7 +18655,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const had = store.isEnrolled(owner.who);
     // Asked again here, not only at the start: the switch may have been turned on since (see authenticatorStarts).
     if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && this.authenticatorStarts.get(owner.handle) !== "code") return "not_here";
-    const r = store.confirmEnrollment(owner.handle, code);
+    const r = store.confirmEnrollment(owner.handle, code, { physicalHost: owner.onHost });
     if (r === "ok") {
       this.authenticatorStarts.delete(owner.handle);
       this.logger.info({ again: had, here: owner.onHost }, "Authenticator app set up");

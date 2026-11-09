@@ -38,10 +38,10 @@ function rig(start = 1_800_000_000_000) {
   const open = () => new WebRemoteAccess(path, quiet, () => clock.wall, () => clock.mono);
   const store = open();
   /** Set up with a fresh secret; returns it decoded. */
-  const enroll = (s = store, handle = "h1", who?: string) => {
+  const enroll = (s = store, handle = "h1", who?: string, opts?: { physicalHost?: boolean }) => {
     const { secret } = s.beginEnrollment(handle, "pc", who);
     const key = base32Decode(secret)!;
-    expect(s.confirmEnrollment(handle, hotp(key, totpStep(clock.wall)))).toBe("ok");
+    expect(s.confirmEnrollment(handle, hotp(key, totpStep(clock.wall)), opts)).toBe("ok");
     clock.wall += 30_000;                                         // the next step: the code just used cannot repeat
     return key;
   };
@@ -322,11 +322,45 @@ describe("AGEND-122: each admin's own authenticator and switch", () => {
     r.enroll(r.store, "ha2", A);
     expect(r.store.verify("000000", A)).toMatchObject({ kind: "wrong", paused: true, retryAfterMs: 2 * TOTP_PAUSE_MS });
     expect(r.store.verify(r.code(base32Decode(JSON.parse(readFileSync(r.path, "utf8")).admins[A].secret)!), A).kind).toBe("paused");
-    // Control: the host operator's enrolment starts the limiter afresh and forgets the admitted sessions.
-    r.enroll();
+    // Control: the host operator's enrolment made on the AgEnD computer starts the limiter afresh and forgets the admitted sessions.
+    r.enroll(r.store, "hp", undefined, { physicalHost: true });
     expect([r.store.status().pausedForMs, r.store.admitted.size]).toEqual([0, 0]);
     for (let n = 1; n < TOTP_WRONG_LIMIT; n++) r.store.verify("000000", A);
     expect(r.store.verify("000000", A)).toMatchObject({ paused: true, retryAfterMs: TOTP_PAUSE_MS });   // back to the first wait
+  });
+  it("P5: a host-operator enrolment used REMOTELY (physicalHost false or absent) never clears the fleet-wide pause (wrong/level/pausedUntil), yet still ends the admitted outside sessions; a physical-host one resets all three", () => {
+    const r = rig(), H = "a".repeat(16);
+    r.enroll(); r.store.setOutside(true);
+    const pause = () => { for (let n = 1; n <= TOTP_WRONG_LIMIT; n++) r.store.verify("000000"); };
+    r.store.admit(H);
+    pause();
+    expect(r.store.status().pausedForMs).toBe(TOTP_PAUSE_MS);
+    expect(r.store.verify("000000")).toMatchObject({ kind: "paused" });
+    const stateOf = () => { const s = JSON.parse(readFileSync(r.path, "utf8")); return [s.wrong, s.level, s.pausedUntil, s.handles.length]; };
+    const paused = stateOf();
+    expect(paused).toEqual([0, 1, r.clock.wall + TOTP_PAUSE_MS, 1]);
+    // A host enrolment with no proof of being on the computer (absent, then false), twice: nothing of the limiter moves, the sessions end.
+    for (const opts of [undefined, { physicalHost: false }]) {
+      r.store.admit(H);
+      r.enroll(r.store, "hr", undefined, opts);
+      const [wrong, level, until, handles] = stateOf();
+      expect([wrong, level, until, handles]).toEqual([paused[0], paused[1], paused[2], 0]);   // pause fields untouched in the file…
+      expect(r.open().status().pausedForMs).toBe(paused[2]! - r.clock.wall);                  // …and after a restart
+      expect(r.store.verify("000000")).toMatchObject({ kind: "paused" });                     // A (any app) is still paused
+      expect(r.store.verify("000000", A)).toMatchObject({ kind: "not_enrolled" });
+    }
+    // Control: a physical-host enrolment resets the fleet-wide pause and the admitted sessions.
+    r.store.admit(H);
+    r.enroll(r.store, "hp", undefined, { physicalHost: true });
+    expect(stateOf()).toEqual([0, 0, 0, 0]);
+    expect(r.store.status().pausedForMs).toBe(0);
+    // A non-host admin's enrolment never resets it, even when asserted as physical (it is the host operator's proof only).
+    pause();
+    expect(r.store.status().pausedForMs).toBeGreaterThan(0);
+    const before = stateOf();
+    r.enroll(r.store, "ha", A, { physicalHost: true });
+    expect(stateOf()).toEqual(before);
+    expect(r.store.status().pausedForMs).toBeGreaterThan(0);
   });
   it("remove(who) with no app does nothing: a pending set-up (the host's recovery) is not cleared by another admin's Remove, and nothing is written", () => {
     const r = rig(); r.enroll();

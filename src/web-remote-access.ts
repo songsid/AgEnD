@@ -312,11 +312,12 @@ export class WebRemoteAccess {
 
   /**
    * The first code from the app being set up, by the session that began it. "ok": it is now `who`'s (a previous one is
-   * replaced, their switch kept). The host operator's also starts the limiter afresh and ends what was authorized from
-   * outside; another admin's does neither — enrolling must not be a way to reset the fleet-wide wrong-code limit. "full": no room for another admin's record (a record is never accepted that a restart
+   * replaced, their switch kept). The host operator's also ends what was authorized from outside, and starts the limiter
+   * afresh only when made on the AgEnD computer itself (`physicalHost`); another admin's does neither — enrolling must not be a way
+   * to reset the fleet-wide wrong-code limit. "full": no room for another admin's record (a record is never accepted that a restart
    * would drop).
    */
-  confirmEnrollment(handle: string, code: string): "ok" | "wrong" | "expired" | "unsaved" | "full" {
+  confirmEnrollment(handle: string, code: string, opts: { physicalHost?: boolean } = {}): "ok" | "wrong" | "expired" | "unsaved" | "full" {
     const p = this.pending.get(handle);
     if (!p || this.monotonic() > p.until) { this.pending.delete(handle); return "expired"; }
     // Capacity is enforced before a new record is acknowledged: one that would not survive a restart is never accepted.
@@ -325,8 +326,11 @@ export class WebRemoteAccess {
     if (step === null) return "wrong";
     const before = this.state, wasDirty = this.dirty, old = this.rec(p.who);
     const rec: Rec = { secret: p.secret, enrolledAt: this.now(), lastStep: step, ...(old?.strict ? { strict: true } : {}) };
-    // A new host app replaces the old one: what was authorized under it ends (the admitted sessions are forgotten).
-    this.state = p.who === HOST_ADMIN_KEY ? { ...this.withRec(this.state, p.who, rec), wrong: 0, level: 0, pausedUntil: 0, handles: [] } : this.withRec(this.state, p.who, rec);
+    // A new host app replaces the old one: what was authorized under it ends (the admitted sessions are forgotten). The fleet-wide
+    // wrong-code pause is reset only by an enrolment made on the AgEnD computer itself (`physicalHost`, the caller's proof of where
+    // it came from): the host operator's identity used remotely — a host cookie on another device — never clears it.
+    const reset = p.who === HOST_ADMIN_KEY && opts.physicalHost === true;
+    this.state = p.who === HOST_ADMIN_KEY ? { ...this.withRec(this.state, p.who, rec), ...(reset ? { wrong: 0, level: 0, pausedUntil: 0 } : {}), handles: [] } : this.withRec(this.state, p.who, rec);
     if (!this.flush()) {
       // Not set up: the state before stands — and if it was itself still owed to the disk (an unsaved Off), it still is.
       this.restore(before, wasDirty);
