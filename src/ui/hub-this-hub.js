@@ -12,7 +12,7 @@ import { hubClient, compareGroups } from "./hub-client.js";
 
 register("hubThisHub", {
   en: {
-    title: "This Hub", lead: "Its name is shown on the sign-in page and when you point at AgEnD Hub in the sidebar. The rest identifies this Hub and can't be changed here.",
+    directoryOpen: "Edit AD connection", title: "This Hub", lead: "Its name is shown on the sign-in page and when you point at AgEnD Hub in the sidebar. The rest identifies this Hub and can't be changed here.",
     name: "Hub name", noName: "No name", namePlaceholder: "No name: shown as AgEnD Hub", nameHint: "Up to 64 characters.",
     save: "Save name", removeName: "Remove name", saving: "Saving…",
     saved: "Saved. The Hub is reloading with its new name.", removed: "Name removed. The Hub is reloading.",
@@ -31,7 +31,7 @@ register("hubThisHub", {
     err_failed: "The name wasn't saved. Try again.",
   },
   "zh-TW": {
-    title: "這個 Hub", lead: "名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。",
+    directoryOpen: "編輯 AD 連線", title: "這個 Hub", lead: "名稱會顯示在登入頁，滑鼠移到側邊欄的 AgEnD Hub 上也會看到。其餘資料用來識別這個 Hub，不能在這裡變更。",
     name: "Hub 名稱", noName: "沒有名稱", namePlaceholder: "沒有名稱：顯示為 AgEnD Hub", nameHint: "最多 64 個字元。",
     save: "儲存名稱", removeName: "移除名稱", saving: "儲存中…",
     saved: "已儲存。Hub 正在以新名稱重新載入。", removed: "已移除名稱。Hub 正在重新載入。",
@@ -67,7 +67,7 @@ async function reloadWhenRenamed(name, { tries = 30, every = 1000 } = {}) {
   location.reload();
 }
 
-export function ThisHubCard() {
+export function ThisHubCard({ directory = false } = {}) {
   const client = hubClient();
   const [info, setInfo] = useState(undefined);            // undefined: reading; null: not offered here
   const [draft, setDraft] = useState("");
@@ -101,6 +101,7 @@ export function ThisHubCard() {
       </div>
     </form>` : html`<div class="field"><span>${ht("name")}</span><span>${current || ht("namePlaceholder")}</span></div>`}
     ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+    ${directory ? html`<div class="s-row"><a class="btn" href="/ui/hub/admin?view=directory">${ht("directoryOpen")}</a></div>` : null}
     <dl class="hub-this-facts">
       <dt>${ht("hubId")}</dt><dd><code>${info.hubId}</code></dd>
       <dt>${ht("memberKey")}</dt><dd><code class="hub-fp-groups" title=${info.memberSpkiSha256}>${compareGroups(info.memberSpkiSha256)}</code><small class="note">${ht("memberKeyHint")}</small></dd>

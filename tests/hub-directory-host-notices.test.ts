@@ -100,10 +100,13 @@ describe.skipIf(process.platform === "win32")("host directory notices from exist
         let html = ""; res.on("data", data => { html += data; }); res.on("end", () => resolve(html));
       }); req.on("error", reject); req.end();
     });
-    expect(await shell(r.headers())).toContain('data-hub-directory-notices="1"');
+    const localShell = await shell(r.headers());
+    expect(localShell).toContain('data-hub-directory-notices="1"'); expect(localShell).toContain('data-hub-directory-settings="1"');
     const other = await r.signIn(r.fm.issueDashboardLogin()!.display);
-    expect(await shell(r.headers(other.id))).not.toContain('data-hub-directory-notices="1"');
-    expect(await shell({ ...r.headers(), "x-forwarded-for": "198.51.100.1" })).not.toContain('data-hub-directory-notices="1"');
+    const remoteShell = await shell(r.headers(other.id));
+    expect(remoteShell).not.toContain('data-hub-directory-notices="1"'); expect(remoteShell).not.toContain('data-hub-directory-settings="1"');
+    const publicShell = await shell({ ...r.headers(), "x-forwarded-for": "198.51.100.1" });
+    expect(publicShell).not.toContain('data-hub-directory-notices="1"'); expect(publicShell).not.toContain('data-hub-directory-settings="1"');
     const configured = r.internal.rawFleetConfig.hub;
     try { r.internal.rawFleetConfig.hub = undefined; expect(await shell(r.headers())).not.toContain('data-hub-directory-notices="1"'); }
     finally { r.internal.rawFleetConfig.hub = configured; }

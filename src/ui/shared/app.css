@@ -4129,3 +4129,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 @media (max-width: 600px) {
   .hub-setup :is(input:not([type="checkbox"]), select) { min-height: var(--tap); }
 }
+
+/* Shared AD editor: both the host Settings card and Hub Administration, including the native trust dialog. */
+.hub-directory-editor { min-width: 0; }
+.hub-directory-editor :is(code, .field) { min-width: 0; overflow-wrap: anywhere; }
+.hub-directory-editor textarea { max-width: 100%; resize: vertical; }
+.hub-directory-fingerprint { white-space: normal; overflow-wrap: anywhere; }
+.hub-directory-fingerprint > span { display: inline-block; white-space: nowrap; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-directory-editor :is(.btn, .dlg-x) { min-width: var(--tap); min-height: var(--tap); }
+  .hub-directory-editor .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; padding-block: var(--s-2); }
+  .hub-directory-editor .dlg-actions .btn-primary { flex: 0 1 auto; }
+  .hub-directory-editor :is(input, select) { min-height: var(--tap); font-size: 16px; }
+  .hub-directory-editor textarea { font-size: 16px; }
+}
