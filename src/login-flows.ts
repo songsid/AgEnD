@@ -193,7 +193,11 @@ export const KIRO_LOGIN_REQUIRED_SCREEN = /(?:^|\n)[ \t]*You are not logged in\.
 /** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
 const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}|${KIRO_LOGIN_REQUIRED_SCREEN.source}`);
 
-export const LOGIN_FLOWS: Record<string, LoginFlow> = {
+/**
+ * #3474 (M-2716, #3471 review): both maps are looked up with words a person types (`/login <backend>`), so they have no
+ * prototype — `__proto__`, `constructor` or `toString` must read as "no such backend", never an inherited property.
+ */
+export const LOGIN_FLOWS: Record<string, LoginFlow> = Object.assign(Object.create(null) as Record<string, LoginFlow>, {
   "codex": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
@@ -305,15 +309,15 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     successPattern: /\? for shortcuts|^>\s*$/m,
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
-};
+} satisfies Record<string, LoginFlow>);
 
 /**
  * Chat-command aliases accepted by `/login <backend>`: every CLI's id and the other names its spec gives it (cli-registry.ts: `host.chatLogin`). That includes
  * a CLI chat declines (`agy`) and one it can only install (`opencode`: no sign-in flow); the flow table above says which.
  */
-export const LOGIN_BACKEND_ALIASES: Record<string, string> = Object.fromEntries(
+export const LOGIN_BACKEND_ALIASES: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, Object.fromEntries(
   hostIds("chatLogin").flatMap(id => [id, ...hostFacts(id, "chatLogin")!.aliases].map(name => [name, id] as const)),
-);
+));
 
 /**
  * Extract the authorization URL and one-time code from joined pane text.
