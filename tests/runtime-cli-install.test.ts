@@ -373,9 +373,17 @@ describe("pinned download (Antigravity, #3521)", () => {
   const GOOGLE = 'CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US, SERIALNUMBER=3582691, OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US';
   const google = async () => ({ status: "Valid", subject: GOOGLE });
   /** A fake PowerShell: saves `content` where the environment says (as `Invoke-WebRequest -OutFile` would), or answers as told. */
-  function fakeDownload(options: { content?: Buffer; code?: number | null; nothing?: boolean } = {}): { run: NonNullable<InstallDeps["run"]>; calls: Array<{ file: string; args: string[]; env: NodeJS.ProcessEnv }> } {
+  function fakeDownload(options: { content?: Buffer; code?: number | null; nothing?: boolean; savesAnyway?: boolean; place?: (file: string) => void; after?: () => void } = {}): { run: NonNullable<InstallDeps["run"]>; calls: Array<{ file: string; args: string[]; env: NodeJS.ProcessEnv }> } {
     const calls: Array<{ file: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
-    return { calls, run: async (file, args, { env }) => { calls.push({ file, args, env }); if (options.code !== undefined && options.code !== 0) return { code: options.code, stdout: "" }; if (!options.nothing) writeFileSync(env.AGEND_DOWNLOAD_FILE!, options.content ?? body); return { code: 0, stdout: "" }; } };
+    return { calls, run: async (file, args, { env }) => {
+      calls.push({ file, args, env });
+      // `savesAnyway`: PowerShell exits non-zero but the file is on disk (complete, or cut short) — what a failed `Invoke-WebRequest` can leave behind.
+      if (options.code !== undefined && options.code !== 0) { if (options.savesAnyway) writeFileSync(env.AGEND_DOWNLOAD_FILE!, options.content ?? body); return { code: options.code, stdout: "" }; }
+      if (options.place) options.place(env.AGEND_DOWNLOAD_FILE!);
+      else if (!options.nothing) writeFileSync(env.AGEND_DOWNLOAD_FILE!, options.content ?? body);
+      options.after?.();
+      return { code: 0, stdout: "" };
+    } };
   }
   /** No npm anywhere: a download never needs it. */
   const deps = (over: Partial<InstallDeps> = {}): InstallDeps => ({ root: join(home, "cli"), nodePath: join(home, "nowhere", "node.exe"), pins: pins(), signerOf: google, ...over });
@@ -439,6 +447,44 @@ describe("pinned download (Antigravity, #3521)", () => {
     await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ code: null }).run }))).rejects.toMatchObject({ reason: "timed-out" });
     await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ nothing: true }).run }))).rejects.toMatchObject({ reason: "install-failed" });
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
+  });
+  it("a download that exits non-zero is install-failed (the download's own reason), never integrity-mismatch — even when the file it left is complete", async () => {
+    const root = join(home, "cli");
+    // Exit 1 with the whole, correct file on disk: the exit code alone decides. (Without the exit-code check this would be installed.)
+    const complete = fakeDownload({ code: 1, savesAnyway: true });
+    await expect(installManagedCli("antigravity", deps({ run: complete.run }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("could not be completed") });
+    expect(managedCliExecutable(root, "antigravity")).toBeNull();
+    expect(existsSync(join(root, "antigravity", "current.json"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.3"))).toBe(false);
+    // Exit 1 with a file cut short: named for the download, not for a size nobody asked about.
+    await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ code: 1, savesAnyway: true, content: body.subarray(0, 5) }).run }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("could not be completed") });
+    expect(existsSync(join(root, "antigravity", "1.5.3.staging"))).toBe(false);
+  });
+  it("a symlink or a folder where the download should be is refused as not-a-file, before the size or the checksum is looked at", async () => {
+    const root = join(home, "cli"), other = join(home, "elsewhere.exe");
+    // A link to a file that is, byte for byte, the pinned one: size, sha512 and signer would all pass. Only the not-a-regular-file check stops it.
+    writeFileSync(other, body);
+    let signerAsked = 0;
+    const asked = async () => { signerAsked++; return { status: "Valid", subject: GOOGLE }; };
+    await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ place: f => symlinkSync(other, f) }).run, signerOf: asked }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("expected file") });
+    // A folder of the pinned size's worth of nothing: the reason is "not the expected file", not a size mismatch.
+    await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ place: f => mkdirSync(f) }).run, signerOf: asked }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("expected file") });
+    expect(signerAsked).toBe(0);
+    expect(managedCliExecutable(root, "antigravity")).toBeNull();
+    expect(existsSync(join(root, "antigravity", "current.json"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.3.staging"))).toBe(false);
+    expect(readFileSync(other)).toEqual(body);
+  });
+  it("the owner switching install off while the file downloads stops it before the checksum is read (the Runtime's gate is asked once more after the download)", async () => {
+    const root = join(home, "cli");
+    let on = true, asks = 0;
+    const gate = () => { asks++; if (!on) throw new CliInstallError("install-failed", "The owner of that computer has turned this off"); };
+    // A file that would fail the checksum: if the checksum were read first, the answer would be integrity-mismatch; the gate's answer must come first.
+    const { run } = fakeDownload({ content: Buffer.from("MZ-not-the-pinned-file!!!!!!").subarray(0, body.length), after: () => { on = false; } });
+    await expect(installManagedCli("antigravity", deps({ run, gate }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("turned this off") });
+    expect(asks).toBeGreaterThanOrEqual(2);
+    expect(managedCliExecutable(root, "antigravity")).toBeNull();
+    expect(existsSync(join(root, "antigravity", "1.5.3.staging"))).toBe(false);
   });
   it("a download that keeps growing past the pinned size is stopped while it runs, not at the deadline", async () => {
     const root = join(home, "cli");
