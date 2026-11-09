@@ -310,6 +310,12 @@
   "2ab9b96ab4d69e709fe15aadf2deba34d5e34c9225bd85d7ba84771dd1e4e7f2": [
     "docs/screenshots/hub-connection-card/r2/checks.json"
   ],
+  "bdf393bb2bd8745bade786c03195424c7fe5615b0dd7df5a9f71d8d557498767": [
+    "docs/screenshots/hub-connection-card/r3/README.md"
+  ],
+  "7e60f68e35fb0938b76928c967139f0b8537933a35447593a4cddec06b16366b": [
+    "docs/screenshots/hub-connection-card/r3/checks.json"
+  ],
   "0b1c172dca99578fbeb85de165465ca537bea49f8c08c791b2b2e5bbb2db74c3": [
     "docs/screenshots/hub-connection-card/skew/old-company/desk-light-en-skew-old-company.png"
   ],
@@ -412,7 +418,7 @@
   "21bb6302e70a457c94e599b9f1433c59e3a88fd1469e3b9d3f7f7692b7af1da9": [
     "tests/hub-connection-card-ui.test.ts"
   ],
-  "66b57f983fa50c47b458df7cf7920756e5917866ba82731764d7c07073af42b1": [
+  "741e2e7dee75d3ab7ae5348b467acf467c079add93da53ce2616ee7bc1d567de": [
     "tests/named-link-test-2906.test.ts"
   ],
   "c17f7e3a0bdfdc8af334dcc11e3a8c26da12d9b796464cc3f57a0318e888e06c": [
