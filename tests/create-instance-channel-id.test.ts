@@ -34,6 +34,8 @@ async function create(channels: unknown[], caller: "telegram" | "discord" | unde
     "general-discord": { working_directory: temp("agend-chan-gd-"), general_topic: true, channel_id: "discord" },
   }, ...extra }));
   const fm = new FleetManager(dataDir);
+  // Creation now schedules discovery (#3526); this routing fixture owns no CLI worker.
+  vi.spyOn(fm as any, "startCliEnvProbeWorker").mockReturnValue({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   fm.loadConfig(configPath);
   const made = vi.spyOn(fm, "createForumTopic").mockImplementation(async (_name: string, adapterId?: string) =>
     TOPIC[(adapterId ?? (channels[0] as { id: string }).id) as keyof typeof TOPIC]);

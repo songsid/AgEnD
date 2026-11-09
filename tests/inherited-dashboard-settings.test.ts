@@ -24,6 +24,8 @@ async function rig() {
     explicit: { working_directory: dir, office_access: true, dashboard: { appearance: true, task_board: true, web_settings: true } },
   } }));
   const fm = new FleetManager(dir) as any; fm.loadConfig(path);
+  // #3526 maintains catalogs on accepted saves; this permission fixture owns no CLI worker.
+  fm.startCliEnvProbeWorker = () => ({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   Object.defineProperty(fm, "webToken", { value: TOKEN, configurable: true });
   const sessions = fm.webSessions = new WebSessionStore();
   fm.promptSettingsChange = vi.fn(async () => {}); fm.settingsSelfConfirmation = () => null;
@@ -112,7 +114,7 @@ describe("Settings immediately resolves inherited dashboard access", () => {
     const f = await rig();
     const inherited = f.makeDaemon("classic", f.fm.fleetConfig.instances.inherited);
     f.fm.daemons.set("classic", inherited);
-    f.fm.classicChannels = { getAll: () => [{ instanceName: "classic" }] };
+    f.fm.classicChannels = { getAll: () => [{ instanceName: "classic" }], getBackendOptionsByInstance: () => undefined };
     expect((await f.send("PUT", "/api/settings/fleet/defaults", { office_access: false })).status).toBe(200);
     expect(dashboardFeaturesOff(dashboardAccessOf(inherited.getConfigSnapshot()))).toContain("office");
     expect(readDashboardOff(f.dir, "classic", [])).toContain("office");
