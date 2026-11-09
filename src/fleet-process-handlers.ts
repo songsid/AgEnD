@@ -71,7 +71,7 @@ export function installFleetProcessHandlers(options: FleetProcessOptions): { rea
   return { get stopping() { return stopping; } };
 }
 
-/** A deliberate config-recovery refusal is a failed start, not an arbitrary runtime rejection to keep alive. */
+/** Deliberate config/tmux refusals are failed starts, not runtime rejections to keep alive. */
 export async function startFleetOrExit(
   manager: { startAll(path: string): Promise<void>; stopAll(): Promise<void> },
   path: string,
@@ -81,7 +81,8 @@ export async function startFleetOrExit(
   try { await manager.startAll(path); }
   catch (error) {
     const { ConfigStartupError } = await import("./config-history.js");
-    if (!(error instanceof ConfigStartupError)) throw error;
+    const { BundledTmuxStartupError } = await import("./bundled-tmux-guard.js");
+    if (!(error instanceof ConfigStartupError) && !(error instanceof BundledTmuxStartupError)) throw error;
     output.error(error.message);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

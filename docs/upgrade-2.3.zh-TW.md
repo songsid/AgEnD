@@ -111,3 +111,9 @@ agend doctor      # 檢查 service、runtime 與各 backend
 ```
 
 接著打開儀表板（在 General 傳 `/web`），確認 instance 都在、每個的聊天都能打開。
+
+## 直接降版後啟動 2.3
+
+如果新版自帶 tmux 的私有 server 還在執行，2.3 會拒絕在旁邊啟動另一組 Agent。`agend fleet start` 只印一次原因與處理方式，清理後以狀態碼 1 結束。服務可以重試，每次都會印出這段拒絕訊息。這是預期的拒絕，不會發送泛用的「未處理錯誤」通知。這時聊天 adapter 尚未啟動，因此無法發送話題通知。
+
+請從新版執行 `agend rollback`，或用新版的 `agend tmux kill-server` 關閉它的私有 server，再重新啟動。拒絕啟動本身不會關閉該 server，也不會略過降版防護。

@@ -40,6 +40,14 @@ export const guardMessage = (hit: GuardHit | string): string => {
   `(agend tmux kill-server, from 2.4), then start AgEnD again. Run as a service, AgEnD keeps retrying the start until it is closed.`;
 };
 
+/** An expected failed start; the CLI prints its remedy and exits after cleanup. */
+export class BundledTmuxStartupError extends Error {
+  constructor(hit: GuardHit) {
+    super(guardMessage(hit));
+    this.name = "BundledTmuxStartupError";
+  }
+}
+
 function recordedPid(agendHome: string): number | null {
   try {
     const r = JSON.parse(readFileSync(join(agendHome, "tmux", "server.json"), "utf8"));
