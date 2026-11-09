@@ -49,7 +49,7 @@ import { signCompanyInvitation } from "../join/invitation.js";
 import { signCompanyDescriptor } from "../join/descriptor.js";
 import { HubCompanyJoin } from "../join/service.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } from "../settings-directory-decision.js";
-import { createHubDirectoryNotices, type HubDirectoryNotices } from "../settings-directory-notices.js";
+import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { parseGroupPolicy } from "../group-policy/model.js";
@@ -314,7 +314,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
         generation: groupGeneration, directory, audit, current: live, now });
       const directoryNotices = createHubDirectoryNotices({ db, transport: store, hubId: settings.hubId,
-        hostSink: "owner-needs-you", audit, current: live, now });
+        hostSink: HUB_DIRECTORY_HOST_NOTICE_SINK, audit, current: live, now });
       teardown.add("directory security notices", () => directoryNotices.close());
       const mountedDirectory: HubMountedDirectory = Object.freeze({
         decision: directoryDecision,

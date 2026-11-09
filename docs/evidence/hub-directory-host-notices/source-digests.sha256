@@ -1,0 +1,8 @@
+66fa1fefae0d4f3a86c7830a26a22c432ede2695c29a8daab790ee0a9a6aa229  src/fleet-manager.ts
+da12aea0d328ff1caaa763222713d67972ffac2b9bdf36df7100713317996989  src/settings-api.ts
+aef4112e4fbe8235db9242d1a28b63e7c61f84175a27a464822652cf98270c15  src/hub/compose/server.ts
+4fb208b6c8094ae8ceb67b106103dc1f11a38ece4a32404efb0688afcee07d2e  src/hub/settings-directory-notices.ts
+e705c1c23fdddf8919810223936dbf0639b1a39de8a60910a0e8291acb4494dd  src/hub/settings-directory-recovery.ts
+441d39c6a50f290d31e97492885d981864345c4d13c180c982b5d2cf04a806d8  src/hub/settings-directory-host-notices.ts
+b00fa04ba11b053f8b216cc247f482e3795488657172c57011ff45e659c5476f  src/hub/settings-directory-host-notice-http.ts
+fc4868b814a7a1333211cf0a9a06600ad62c54c4c9bb2712eb605d2a51edde07  tests/hub-directory-host-notices.test.ts
