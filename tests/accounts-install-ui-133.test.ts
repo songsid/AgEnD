@@ -64,6 +64,17 @@ describe("the Install button", () => {
     expect(card("opencode").classList?.contains?.("s-account-install-only") ?? true).toBe(true);
     expect(card("opencode").querySelector(".s-account-used")).toBeNull();      // no sign-in rows, no "used by"
   });
+  it("a CLI with named accounts that is not installed offers Install — and not Move agents here or Keep sign-in alive, which need an installed CLI", async () => {
+    view = { clis: [{ ...CODEX, installed: false, rows: [hostRow("codex", "not_installed", { install: "curl … | sh", keepAlive: { enabled: false } })] }] };
+    await mount();
+    const labels = card("codex").querySelectorAll(".s-account-row button").map((b: any) => b.textContent.trim());
+    expect(labels).toEqual(["Install"]);
+    expect(card("codex").querySelector(".s-account-keepalive")).toBeNull();
+    await p.unmount();
+    view = { clis: [{ ...CODEX, rows: [hostRow("codex", "usable", { signIn: true, keepAlive: { enabled: false } })] }] };
+    await mount();
+    expect(card("codex").querySelector(".s-account-keepalive")).not.toBeNull();     // the control is there when installed: the check above is not vacuous
+  });
   it("Install sends the CLI's id and nothing else — never the command the row carries", async () => {
     postAnswer = () => ({ body: { install: RUN() } });
     await mount();

@@ -119,9 +119,7 @@ export const installRunning = (state) => !!state.starting || !!(state.run && sta
 export function InstallButton({ backend, blocked = false }) {
   const state = useStore(hostInstallStore);
   if (!hostInstallOffered()) return null;
-  const mine = runFor(state, backend);
-  const running = mine && mine.phase === "running";
-  return html`<button type="button" class="btn btn-sm btn-primary s-account-install" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostInstall(backend); }}>${running || state.starting === backend ? th("installing") : th("install")}</button>`;
+  return html`<button type="button" class="btn btn-sm btn-primary s-account-install" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostInstall(backend); }}>${th("install")}</button>`;
 }
 
 /** The progress and the verdict of this CLI's install, under its row; nothing when there is none (or it was dismissed). */
