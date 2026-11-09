@@ -1,7 +1,7 @@
 [
   {
     "file": "README.md",
-    "sha256": "b138628f076cdea7d9dcff44c35c03387e2f18972f2216ad2520734dbc89a06a"
+    "sha256": "58811cd2abd0e2d7af0110835a87884a35f519c28f2dbebd16cbd0d287c7ca5e"
   },
   {
     "file": "browser-receipt.json",
@@ -281,7 +281,7 @@
   },
   {
     "file": "review-fixes/M1-parent-sidechain.log",
-    "sha256": "3d8a5e4bb08c78ff5044d57a68717ce78a5e6ac3f2bc05a78daed17eb87f30c0"
+    "sha256": "0d1aebdda65c0c32bc36aea2ce7aa0b5d103fb344f42b06b9aba348dedf1043d"
   },
   {
     "file": "review-fixes/M16-client-visibility.log",
@@ -289,7 +289,7 @@
   },
   {
     "file": "review-fixes/M2-assistant-call.log",
-    "sha256": "5a42f956683f0d5c14dc4a7f4fd3145db36502cd4f785c8165ac480bace8abb9"
+    "sha256": "e6b74c9004a43aab6ba62eacea6af9fb790584a60db2c06eede380e30fcd194b"
   },
   {
     "file": "review-fixes/M6-finished-sidecar.log",
@@ -390,6 +390,10 @@
   {
     "file": "run-binding/skew-old-server.png",
     "sha256": "2f2f771d6b6656e4bcc4c650e8fce0767c16b25a99e155a84b848de6ac997729"
+  },
+  {
+    "file": "scanner-validation.json",
+    "sha256": "66a965343a14984f855d3065ca6a1287ad7ba2cb2928f68d46e243e2a2d66028"
   },
   {
     "file": "skew-missing-module.png",

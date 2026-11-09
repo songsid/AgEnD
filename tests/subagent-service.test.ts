@@ -1,11 +1,13 @@
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SubagentService, readSubagentFile, type SubagentSource } from "../src/subagent-service.js";
 import { subagentFixture } from "./helpers/subagent-fixtures.js";
 const dirs: string[] = [];
 const deferred = <T>() => { let resolve!: (v:T)=>void; const promise = new Promise<T>(r=>resolve=r); return { promise, resolve }; };
+// Filesystem positives use an explicit deadline clock; only the deadline case advances it.
+beforeEach(() => { vi.useFakeTimers(); });
 afterEach(async () => { vi.useRealTimers(); await Promise.all(dirs.splice(0).map(p=>rm(p,{recursive:true,force:true}))); });
 async function rig() {
  const root = await mkdtemp(join(tmpdir(),"agend-subagents-")); dirs.push(root);

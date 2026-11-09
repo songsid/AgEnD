@@ -15,7 +15,7 @@ AssertionError: expected [ { …(9) }, { …(9) } ] to deeply equal []
 - []
 + [
 +   {
-+     "key": "bf291dc100a53e0bb924fd53",
++     "key": "<opaque-run-key>",
 +     "name": "核對第一份範例資料",
 +     "parentStartedAt": 1794208348273,
 +     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
@@ -26,7 +26,7 @@ AssertionError: expected [ { …(9) }, { …(9) } ] to deeply equal []
 +     "type": "reader",
 +   },
 +   {
-+     "key": "d1b80bad193f4d1eb488b1f5",
++     "key": "<opaque-run-key>",
 +     "name": "核對第二份範例資料",
 +     "parentStartedAt": 1794208348273,
 +     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
