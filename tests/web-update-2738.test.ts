@@ -10,18 +10,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[]; env?: Record<string, string | undefined> }>);
+const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[]; env?: Record<string, string | undefined>; child: any }>);
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, spawn: ((cmd: string, args: string[], o?: { env?: Record<string, string | undefined> }) => {
-    spawned.push({ cmd, args, env: o?.env }); return Object.assign(new EventEmitter(), { unref: () => {}, pid: 0 });
+    const child = Object.assign(new EventEmitter(), { unref: () => {}, pid: 0 }); spawned.push({ cmd, args, env: o?.env, child }); return child;
   }) as never };
 });
 const AGEND = "/home/u/.npm-global/bin/agend";
-const installed = vi.hoisted(() => ({ ok: true as boolean }));
+const installed = vi.hoisted(() => ({ ok: true as boolean, gate: null as Promise<void> | null }));
 vi.mock("../src/update-dispatch.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/update-dispatch.js")>();
-  return { ...real, resolveInstalledAgend: vi.fn(async () => installed.ok ? { ok: true, agend: AGEND, version: "2.3.5-beta.2" } : { ok: false, reason: "npm could not say where AgEnD is installed" }) };
+  return { ...real, resolveInstalledAgend: vi.fn(async () => { if (installed.gate) await installed.gate; return installed.ok ? { ok: true, agend: AGEND, version: "2.3.5-beta.2" } : { ok: false, reason: "npm could not say where AgEnD is installed" }; }) };
 });
 vi.mock("../src/update-launch.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/update-launch.js")>();
@@ -38,7 +38,7 @@ const { readUpdateProgress, beginUpdateProgress, setUpdateProgressStage } = awai
 const { failureCause, updateOffer, webProgressOf, webUpdateTarget, WEB_UPDATE_ADAPTER, SETTLED_SHOWN_MS } = await import("../src/web-update.js");
 
 const dirs: string[] = [];
-afterEach(() => { spawned.length = 0; installed.ok = true; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { spawned.length = 0; installed.ok = true; installed.gate = null; vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function raw(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
@@ -64,7 +64,7 @@ async function fleet() {
     const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken),
       owner: { adapterId: "discord", userId: tier === "guest" ? "7" : "1" } });
     const cookie = `agend_session=${sessionId}`;
-    return { read: { cookie }, write: (key?: string) => ({ cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}) }) };
+    return { id: sessionId, read: { cookie }, write: (key?: string) => ({ cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}) }) };
   };
   const offer = async (target: string, fromChannel = true) => {
     fm.lookUpUpdateTarget = vi.fn(async () => ({ target, fromChannel }));
@@ -199,6 +199,95 @@ describe("M-2738: /ui/update on the dashboard", () => {
       f.fm.lookUpUpdateTarget = vi.fn(async () => { throw new Error("offline"); });
       f.fm.updateCheckNow.lastAt = 0;
       expect((await raw(f.port, "POST", "/ui/update/check", admin.write(), "{}")).body).toMatchObject({ check_failed: true, offer: null });
+    } finally { await f.stop(); }
+  });
+});
+
+describe("M-2738 Prism #3505 review: ownership, the asking session, idempotency, idle sessions", () => {
+  const held = () => { let open!: () => void; installed.gate = new Promise<void>(r => { open = r; }); return () => { installed.gate = null; open(); }; };
+  const settle = () => new Promise(r => setTimeout(r, 30));
+
+  it("P2-2: a progress marker that cannot be written refuses the start, and nothing is launched", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(join(f.dir, "update-in-progress.json"));                      // a write the marker cannot make
+      const admin = f.session("admin");
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-unwr-001"), START)).toEqual({ status: 503, body: { error: "progress_not_recorded" } });
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-unwr-002"), START)).toEqual({ status: 503, body: { error: "progress_not_recorded" } });
+      await settle();
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("P2-2: the marker's 15-minute expiry never admits a second update while this fleet's first is still being launched; its exit does", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const open = held();
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-ttl-0001"), START)).status).toBe(202);
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 16 * 60_000 });  // past the marker's own expiry
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-ttl-0002"), START)).toEqual({ status: 409, body: { error: "update_running" } });
+      vi.useRealTimers();
+      open();
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-ttl-0003"), START)).toEqual({ status: 409, body: { error: "update_running" } });
+      // Control: the updater failed and exited — an ordinary retry is admitted and launches once more.
+      setUpdateProgressStage(f.dir, "failed", { error: "updater exited 1" });
+      spawned[0]!.child.emit("exit", 1, null);
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-ttl-0004"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(2));
+    } finally { await f.stop(); }
+  });
+
+  it("P2-3: revoking the asking session before the launch means nothing is launched (the progress says why)", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const open = held();
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-rev-0001"), START)).status).toBe(202);
+      expect(f.fm.webSessions.revokeById(admin.id).removed).toBe(true);
+      open();
+      await vi.waitFor(() => expect(readUpdateProgress(f.dir)!.progress.stage).toBe("failed"));
+      await settle();
+      expect(spawned).toEqual([]);
+      // Control: a session still current launches.
+      const again = f.session("admin");
+      expect((await raw(f.port, "POST", "/ui/update/start", again.write("k-rev-0002"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    } finally { await f.stop(); }
+  });
+
+  it("P3: two concurrent starts with the same key share one answer, and the kept receipt is that answer", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const host = f.fm.webUpdate;
+      const yes = () => true;
+      const [a, b] = await Promise.all([host.startWebUpdate("k-same-001", "p", yes), host.startWebUpdate("k-same-001", "p", yes)]);
+      expect([a, b]).toEqual([{ ok: true }, { ok: true }]);
+      expect(await host.startWebUpdate("k-same-001", "p", yes)).toEqual({ ok: true });
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+    } finally { await f.stop(); }
+  });
+
+  it("P2-1: the update line's own read does not extend an idle session; a person's request does", async () => {
+    const { isPassiveWebRead } = await import("../src/web-auth.js");
+    expect([isPassiveWebRead("GET", "/ui/update"), isPassiveWebRead("POST", "/ui/update/start"), isPassiveWebRead("GET", "/ui/update/log")]).toEqual([true, false, false]);
+    const f = await fleet();
+    try {
+      const admin = f.session("admin");
+      const seen = () => f.fm.webSessions.list().find((x: any) => x.handle).lastSeen;
+      const before = seen();
+      await new Promise(r => setTimeout(r, 15));
+      expect((await raw(f.port, "GET", "/ui/update", admin.read)).status).toBe(200);
+      expect(seen()).toBe(before);
+      await new Promise(r => setTimeout(r, 15));
+      expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).status).toBe(200);           // control: the person opened the log
+      expect(seen()).toBeGreaterThan(before);
     } finally { await f.stop(); }
   });
 });

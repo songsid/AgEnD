@@ -114,7 +114,10 @@ export interface WebUpdateHost {
   /** Look now (no chat notice); rate-limited by the caller's host. */
   checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateProgress(): WebUpdateProgress | null;
-  /** Start the update for `person` (a fleet admin's web session); the same answer again for the same `key`. */
-  startWebUpdate(key: string, person: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  /**
+   * Start the update for `person` (a fleet admin's web session); the same answer again for the same `key`. `stillAllowed`
+   * asks whether that session is still current and an admin's: checked again right before the updater is launched.
+   */
+  startWebUpdate(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateLog(): { text: string | null; error: string | null };
 }
