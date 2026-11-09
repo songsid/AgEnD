@@ -1757,8 +1757,12 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .pending-summary { list-style: disc; padding-left: var(--s-5); color: var(--text-2); font-size: var(--fs-xs); }
 .pending-actions { display: flex; justify-content: flex-end; }
 .pending-self { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.pending-self > .note { flex: 1 1 16rem; min-width: 0; }
 .pending-host summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-xs); }
-.pending-host code { display: block; margin-top: var(--s-1); font-size: var(--fs-xs); overflow-wrap: anywhere; user-select: all; }
+/* AGEND-118: the host's command with its Copy button, and the other ways to confirm folded under one summary. */
+.pending-more { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.pending-cmd { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-1); }
+.pending-cmd code { flex: 1 1 12rem; min-width: 0; font-size: var(--fs-xs); overflow-wrap: anywhere; user-select: all; }
 /* Settings' pending bar sits at the bottom of the page: toasts and request cards stand above it, never on its buttons. */
 .shell:has(.s-pending) .toasts { bottom: calc(var(--s-6) + 64px); }
 /* In a chat the composer owns the bottom (Stop reply, Send): toasts come in under the header instead (alpha.2 sweep). */

@@ -666,9 +666,25 @@ export function PendingChanges({ inline = false } = {}) {
     ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
-    ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
+    ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}
     ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
   </section>`)}</div>`;
+}
+
+const ENDED_WHY = ["withdrawn", "rejected", "expired", "not_found", "settings_changed", "request_no_longer_current", "fleet_stopped"];
+/**
+ * AGEND-118: a change that did not go through says why — withdrawn, turned down, ran out, settings moved on — in the page's
+ * language (the server's own sentence only for a reason this page does not know), and offers to send it again when the page
+ * still has the request (p.retry: not for one that touches a secret).
+ */
+function PendingEnded({ p }) {
+  const [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
+  const o = p.outcome || {};
+  const why = ENDED_WHY.includes(o.reason_code) ? t(`app.pendingWhy_${o.reason_code}`) : o.message;
+  const again = async () => { setBusy(true); setFailed(false); const r = await p.retry(); if (!r || !r.ok) { setFailed(true); setBusy(false); } };
+  return html`${why ? html`<p class="note pending-ended">${why}</p>` : null}
+    ${failed ? html`<p class="note" role="alert">${t("app.pendingResendFailed")}</p>` : null}
+    ${p.retry ? html`<div class="pending-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${again}>${t("app.pendingResend")}</button></div>` : null}`;
 }
 
 /** #2868: where the confirm card was posted: "Discord", or "Discord (team-b)" for a connection with an id of its own. */
@@ -688,7 +704,7 @@ function whereText(where) {
 register("pendingHost", {
   en: {
     no_chat: "This fleet has no chat app connected, so there is no General to send the confirm card to.",
-    no_chat_do: "This computer's owner confirms it here with Apply now. To confirm from Discord or Telegram, connect one in Settings → Chat & connections.",
+    no_chat_do: "To confirm from Discord or Telegram instead, connect one in Settings → Chat & connections.",
     cross_platform: "This change affects chat apps on more than one platform, so no single General can confirm it.",
     cross_platform_do: "Make the change for one platform at a time.",
     no_general: "No agent is the General in a connected chat app, so there is nowhere to send the confirm card.",
@@ -701,20 +717,28 @@ register("pendingHost", {
     post_failed_do: "Check General's chat connection in Settings → Chat & connections, then make the change again.",
     unknown: "No General could take the confirm card for this change.",
     go: "Open",
-    codeLead: "Or confirm it here with the code from your authenticator app.",
+    codeLead: "Enter the 6-digit code from your authenticator app to confirm this change.",
     codeLabel: "Authenticator code", codeGo: "Confirm",
     codeWrong: "That code is not right. Use the current code in your authenticator app.",
     codePaused: "Too many wrong codes. Try again in {0} minutes.",
     codeNotHere: "This page can no longer confirm it with a code.",
     codeUnavailable: "The code could not be checked. Try again.",
     codeChanged: "This change is no longer the one shown here. Reload the page and check it again.",
-    onHost: "This change can't be confirmed over a link. Confirm it in the browser on the computer running AgEnD, or in General.",
+    // AGEND-118: the one next step this device can take, by state; the other ways are folded under "Other ways to confirm".
+    applyLead: "Press Apply now to confirm this change from this browser.", applyRefused: "This browser can't apply it here now. Use one of the other ways to confirm.",
+    cantHere: "This device can't confirm this change yet.",
+    setupLead: "Set up an authenticator app first. This card stays here: once it is set up, enter its 6-digit code on the card. If the time runs out before that, make the change again.",
+    setupGo: "Set up authenticator",
+    onHost: "This device can't confirm this change over a link. Do it from the computer running AgEnD.",
     hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
-    codeSetUp: "To confirm changes here with a code, set up an authenticator app in Access & security.",
+    more: "Other ways to confirm",
+    moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
+    moreCmd: "Or, on that computer, run this command:",
+    copy: "Copy", copied: "Copied",
   },
   "zh-TW": {
     no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
-    no_chat_do: "這台電腦的擁有者可以在這裡按「立即套用」確認。若要從 Discord 或 Telegram 確認，請到「設定 → 聊天與連線」連接其中一個。",
+    no_chat_do: "若要改從 Discord 或 Telegram 確認，請到「設定 → 聊天與連線」連接其中一個。",
     cross_platform: "這項變更涉及多個聊天平台，沒有單一的 General 可以確認。",
     cross_platform_do: "請一次只變更一個平台。",
     no_general: "已連接的聊天平台中沒有任何 Agent 是 General，所以確認卡無處可送。",
@@ -727,16 +751,23 @@ register("pendingHost", {
     post_failed_do: "請到「設定 → 聊天與連線」檢查 General 的連線，再重新做一次這項變更。",
     unknown: "這項變更沒有 General 可以接收確認卡。",
     go: "前往",
-    codeLead: "也可以在這裡輸入驗證器 App 的代碼確認。",
+    codeLead: "輸入驗證器 App 的 6 位數代碼，就能確認這項變更。",
     codeLabel: "驗證器代碼", codeGo: "確認",
     codeWrong: "代碼不正確，請使用驗證器 App 目前顯示的代碼。",
     codePaused: "錯誤次數太多，請 {0} 分鐘後再試。",
     codeNotHere: "這個頁面已無法用代碼確認這項變更。",
     codeUnavailable: "無法檢查代碼，請再試一次。",
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
-    onHost: "這項變更無法透過連結確認。請在執行 AgEnD 的那台電腦的瀏覽器中確認，或在 General 確認。",
+    applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
+    cantHere: "你目前在這台裝置還無法直接確認這項變更。",
+    setupLead: "請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。若倒數結束前還沒完成，請重新送出這項變更。",
+    setupGo: "綁定驗證器",
+    onHost: "你目前在這台裝置無法透過連結確認這項變更，請到執行 AgEnD 的那台電腦操作。",
     hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
-    codeSetUp: "若要在這裡用代碼確認變更，請先到「存取與安全」設定驗證器 App。",
+    more: "其他確認方式",
+    moreHost: "到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。",
+    moreCmd: "或在那台電腦上執行這行指令：",
+    copy: "複製", copied: "已複製",
   },
 });
 const PENDING_HOST_REASONS = ["no_chat", "cross_platform", "no_general", "chat_disconnected", "no_topic", "post_failed"];
@@ -767,32 +798,61 @@ function PendingCode({ p }) {
       <button type="submit" class="btn btn-sm btn-primary" disabled=${busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))}>${t("pendingHost.codeGo")}</button></label>
   </form>${msg ? html`<p class="note" role="alert">${msg}</p>` : null}`;
 }
+/** AGEND-118: a line of text with a Copy button; it stays selectable on the page when the browser refuses the clipboard. */
+function CopyLine({ text }) {
+  const [done, setDone] = useState(false);
+  const copy = async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 2000); } catch { /* the text is on screen to copy by hand */ } };
+  return html`<div class="pending-cmd"><code>${text}</code>
+    <button type="button" class="btn btn-sm" onClick=${copy}>${t(done ? "pendingHost.copied" : "pendingHost.copy")}</button></div>`;
+}
+/**
+ * AGEND-118: how this page can confirm the change, as ONE next step by state (the server's read decides which; nothing here
+ * grants anything): the authenticator's code field when this page may use it, Apply now when the browser may confirm it,
+ * set up the authenticator when that would let it, or — over a link / when nothing is open to this page — where it has to be
+ * done. Every other way sits folded under "Other ways to confirm", the host's command last (and only there).
+ */
 function PendingHow({ p }) {
   const a = useWebAuthorization();
   const [refused, setRefused] = useState(false);
   const c = p.confirmation || {}, cmd = `agend settings confirm ${p.id}`;
-  const why = c.kind === "host_cli" && PENDING_HOST_REASONS.includes(c.reason) ? c.reason : null;
-  const lead = c.kind === "posting" ? t("app.pendingPosting") : c.kind === "host_cli" ? t(`pendingHost.${why || "unknown"}`) : t("app.pendingChatWhere", whereText(c.where));
+  const cli = c.kind === "host_cli";
+  const why = cli && PENDING_HOST_REASONS.includes(c.reason) ? c.reason : null;
   const go = why && Object.hasOwn(PENDING_HOST_GO, why) ? PENDING_HOST_GO[why] : null;
-  // A browser that isn't verified but could be: authorizing it makes this one (and later ones) "Apply now".
-  const route = c.kind !== "host_cli" && !p.applyNow && a.st;
-  const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
-  const asking = route && a.st.state === "pending";
   const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
-  return html`<p class="note">${lead}</p>
-    ${why ? html`<p class="note pending-why">${t(`pendingHost.${why}_do`)}${go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null}</p>` : null}
-    ${p.confirmWithCode && !p.applyNow ? html`<${PendingCode} p=${p} />` : null}
-    ${p.onHost && !p.applyNow ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>` : null}
-    ${p.hostBrowser && !p.applyNow ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>` : null}
-    ${p.totpNotSetUp && !p.applyNow ? html`<p class="note pending-code-setup">${t("pendingHost.codeSetUp")} <a class="btn btn-sm" href=${settingsPath("access")}>${t("pendingHost.go")}</a></p>` : null}
-    ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
-      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
-    ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
-    ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
-      <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
-    ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
-    ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
-    <details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>`;
+  const goLink = go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null;
+  const whyDo = (why || cli) ? html`<p class="note pending-why">${t(`pendingHost.${why || "unknown"}`)}${why ? html` ${t(`pendingHost.${why}_do`)}${goLink}` : null}</p>` : null;
+  // The change is waiting for a General's card (or it is still being sent): that card is the step. A browser that isn't
+  // verified but could be can authorize itself (the same DM card as the composer's).
+  const mode = p.applyNow ? "apply" : p.confirmWithCode ? "code" : p.totpNotSetUp ? "setup" : p.onHost ? "link" : p.hostBrowser ? "hostBrowser" : "none";
+  if (!cli && (mode === "none" || mode === "apply")) {
+    const route = !p.applyNow && a.st;
+    const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
+    const asking = route && a.st.state === "pending";
+    const lead = c.kind === "posting" ? t("app.pendingPosting") : t("app.pendingChatWhere", whereText(c.where));
+    return html`<p class="note">${lead}</p>
+      ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
+        <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
+      ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
+      ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
+        <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
+      ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
+      ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
+      <details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><${CopyLine} text=${cmd} /></details>`;
+  }
+  const next = mode === "apply" ? html`<div class="pending-self"><span class="note">${t("pendingHost.applyLead")}</span>
+      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>`
+    : mode === "code" ? html`<${PendingCode} p=${p} />`
+    : mode === "setup" ? html`<p class="note pending-cant">${t("pendingHost.cantHere")}</p>
+      <div class="pending-self pending-code-setup"><span class="note">${t("pendingHost.setupLead")}</span>
+        <a class="btn btn-sm btn-primary" href=${settingsPath("access")}>${t("pendingHost.setupGo")}</a></div>`
+    : mode === "link" ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>`
+    : mode === "hostBrowser" ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>`
+    : html`${refused ? html`<p class="note" role="status">${t("pendingHost.applyRefused")}</p>` : null}${whyDo}`;
+  return html`${next}
+    <details class="pending-host"><summary>${t("pendingHost.more")}</summary><div class="pending-more">
+      ${mode !== "none" ? whyDo : null}
+      ${mode === "setup" ? html`<p class="note">${t("pendingHost.moreHost")}</p>` : null}
+      <p class="note">${t("pendingHost.moreCmd")}</p><${CopyLine} text=${cmd} /></div></details>`;
 }
 
 /** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
