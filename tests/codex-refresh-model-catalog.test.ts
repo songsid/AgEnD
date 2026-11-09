@@ -2,6 +2,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FleetManager } from "../src/fleet-manager.js";
+import { runBackendProbe } from "../src/backend/cli-env-probe.js";
 import { CodexBackend } from "../src/backend/codex.js";
 
 /**
@@ -120,6 +122,21 @@ describe("CodexBackend.refreshModelCatalog", () => {
     const config = { instanceDir: join(root, "instance"), instanceName: "w", workingDirectory: root, mcpServers: {} };
     await backend.refreshModelCatalog(config); expect(recorded()[0].home).toBe(shared);
     expect((await backend.listModels(config)).map(m => m.id)).not.toContain("foreign-private");
+  });
+
+  it.each(['model_provider = "glm"\n', 'profile = "work"\n'])("explicit default refuses shared config selecting another provider/profile (%s)", async toml => {
+    stubCodex("refetch");
+    writeFileSync(join(shared, "config.toml"), toml);
+    writeFileSync(join(shared, "models_cache.json"), catalog("foreign-account-model"));
+    const fm = new FleetManager(root) as any;
+    fm.fleetConfig = { defaults: { backend: "codex" }, instances: { w: { backend: "codex" } } };
+    // Exercise the real models-only worker body on the same isolated fixture CLI, without spawning a Fleet or a worker.
+    fm.runBackendProbeWorker = async (_key: string, input: Parameters<typeof runBackendProbe>[0]) => runBackendProbe(input).catch(() => null);
+    try {
+      expect(await fm.refreshModelCatalogFor("codex", "w")).toEqual({ refreshed: false, models: [] });
+      expect(fm.modelCatalogFor("codex", "w")).toEqual([]);
+      expect(recorded()).toEqual([]); // refused before even the vendor refresh command
+    } finally { fm.stopCliEnvProbes(); }
   });
 
   it("ordinary Codex probes retain the documented fallback; explicit discovery cannot call it fresh", async () => {
