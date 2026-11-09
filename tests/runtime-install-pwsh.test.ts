@@ -8,7 +8,7 @@ import { join, resolve, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBundle } from "../src/runtime-bundle.js";
 import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RuntimeInstallService } from "../src/runtime-install.js";
-import { runtimeInstallCommand, runtimeInstallOnlyCommand } from "../src/ui/runtime-commands.js";
+import { runtimeEnrollCommand, runtimeInstallCommand, runtimeInstallOnlyCommand } from "../src/ui/runtime-commands.js";
 import { runtimeFreshInstallCommand } from "../src/ui/runtime-update-commands.js";
 import { extractPsFunction } from "./support/installer-ps-extract.js";
 import { acquireRuntimeInstallLock, parseRuntimeInstallLock, RUNTIME_INSTALL_LOCK } from "../src/runtime-update-lock.js";
@@ -93,6 +93,7 @@ function scratch() {
     "  if ($env:T_MODE -eq 'direct') { if ($env:T_AGEND -ne $null) { $agend = $env:T_AGEND }; $direct = (Invoke-WebRequest \"$env:T_FETCH/runtime/install.ps1\" -UseBasicParsing).Content; Invoke-Expression $direct }",
     "  else { Invoke-Expression $env:T_COMMAND }",
     "} catch { Write-Host ('COMMAND-ERROR: ' + $_.Exception.Message) }",
+    "'VARS=[' + $agendEnroll + '|' + $agendFingerprint + ']'",
     "'LASTEXITCODE=' + $LASTEXITCODE",
   ].join("\n"));
   return { root, local, harness, install: join(local, "agend-runtime"), marker: join(root, "script-ran.txt") };
@@ -117,7 +118,7 @@ function run(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, mo
   });
 }
 const LOCK_HELPERS = ["Resolve-AgendOrigin", "Set-AgendFile", "Assert-AgendDirectory", "Read-AgendSmallFile", "Get-AgendBootProof", "Test-AgendOwnerRecord", "Get-AgendProcessMatch", "Read-AgendLock", "Assert-AgendLock", "Remove-AgendLock", "Enter-AgendInstallLock", "Register-AgendInstallOrigin",
-  "Test-AgendSwitch", "Test-AgendInteractive", "Get-AgendConnectMode", "Get-AgendConnectName", "Write-AgendConnectEntry"]
+  "Test-AgendSwitch", "Test-AgendInteractive", "Get-AgendConnectMode", "Test-AgendEnrollToken", "Test-AgendFingerprint", "Get-AgendConnectName", "Write-AgendConnectEntry"]
   .map(name => extractPsFunction(TEMPLATE, name)).join("\n");
 /** The script's own `$connectBatText = (...) -join` statement, so a helper run writes exactly the text the installer writes. */
 const BAT_STATEMENT = /\$connectBatText = \([\s\S]*?\) -join "`r`n"/.exec(TEMPLATE)![0];
@@ -491,6 +492,27 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     });
   });
 
+  /**
+   * A real pty (util-linux `script`), so stdin and stdout are a console the way they are when a person pastes the command. The progress bar is
+   * switched off: on a pty with no terminal behind it, PowerShell asks the terminal for the cursor position and waits ten seconds for an answer.
+   */
+  const hasScript = process.platform !== "win32" && spawnSync("script", ["--version"]).status === 0;
+  function runInteractive(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, pwshArgs: string[] = []): Promise<{ out: string; code: number }> {
+    clock += 600_000; seen.length = 0;
+    const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+    return new Promise(done => {
+      const previousMask = process.umask(0o077);
+      let child;
+      try {
+        child = spawn("script", ["-qec", [quote(PWSH), "-NoProfile", ...pwshArgs, "-File", quote(s.harness)].join(" "), "/dev/null"],
+          { env: { PATH: process.env.PATH ?? "", HOME: s.root, TERM: "dumb", DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_FETCH: origin(), T_AGEND: origin(), T_MODE: "command", T_COMMAND: pageCommand(), ...env, T_PRESET: `$ProgressPreference = 'SilentlyContinue'; ${env.T_PRESET ?? ""}` }, stdio: ["ignore", "pipe", "pipe"] });
+      } finally { process.umask(previousMask); }
+      let raw = ""; child.stdout.on("data", d => { raw += d; }); child.stderr.on("data", d => { raw += d; });
+      const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+      const finish = (): void => { clearTimeout(timer); const out = raw.replace(/\r/g, "").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""); done({ out, code: Number(/LASTEXITCODE=(\d+)/.exec(out)?.[1] ?? NaN) }); };
+      child.on("error", error => { raw += `spawn failed: ${error.message}`; finish(); }); child.on("close", finish);
+    });
+  }
   describe("connecting after the install: one pasted command installs and connects, only at an interactive console", () => {
     // A runtime that records how it was started, so what the installer launches can be checked without Windows.
     const RECORDER = `const fs=require("fs"),path=require("path");
@@ -504,27 +526,6 @@ process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.
       "  echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.", "  pause", "  exit /b 1", ")",
       'call "%~dp0..\\..\\bin\\agend-runtime.cmd" connect --connection-dir "%~dp0."', 'set "AGEND_EXIT=%errorlevel%"', "echo.",
       'if not "%AGEND_EXIT%"=="0" (', "  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.", ") else (", "  echo AgEnD Runtime stopped.", ")", "pause", ""].join("\r\n");
-    /**
-     * A real pty (util-linux `script`), so stdin and stdout are a console the way they are when a person pastes the command. The progress bar is
-     * switched off: on a pty with no terminal behind it, PowerShell asks the terminal for the cursor position and waits ten seconds for an answer.
-     */
-    const hasScript = process.platform !== "win32" && spawnSync("script", ["--version"]).status === 0;
-    function runInteractive(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, pwshArgs: string[] = []): Promise<{ out: string; code: number }> {
-      clock += 600_000; seen.length = 0;
-      const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
-      return new Promise(done => {
-        const previousMask = process.umask(0o077);
-        let child;
-        try {
-          child = spawn("script", ["-qec", [quote(PWSH), "-NoProfile", ...pwshArgs, "-File", quote(s.harness)].join(" "), "/dev/null"],
-            { env: { PATH: process.env.PATH ?? "", HOME: s.root, TERM: "dumb", DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_FETCH: origin(), T_AGEND: origin(), T_MODE: "command", T_COMMAND: pageCommand(), ...env, T_PRESET: `$ProgressPreference = 'SilentlyContinue'; ${env.T_PRESET ?? ""}` }, stdio: ["ignore", "pipe", "pipe"] });
-        } finally { process.umask(previousMask); }
-        let raw = ""; child.stdout.on("data", d => { raw += d; }); child.stderr.on("data", d => { raw += d; });
-        const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
-        const finish = (): void => { clearTimeout(timer); const out = raw.replace(/\r/g, "").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""); done({ out, code: Number(/LASTEXITCODE=(\d+)/.exec(out)?.[1] ?? NaN) }); };
-        child.on("error", error => { raw += `spawn failed: ${error.message}`; finish(); }); child.on("close", finish);
-      });
-    }
     beforeEach(() => { active = serviceFor(bundleR); });
 
     it.skipIf(!hasScript)("installs, then connects in the same window with the Runtime's own --connection-dir, after the install lock is gone", async () => {
@@ -625,17 +626,128 @@ process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.
         "REFUSED:the install folder name contains % or ^, which a batch file cannot carry safely", "REFUSED:the install folder name contains % or ^, which a batch file cannot carry safely"]);
       expect(tree(s.install)).toEqual([]);
     });
-    it("decides in one fixed order: repair, then $agendNoConnect, then no console, then no entry, otherwise connect", async () => {
-      const out = await helperRun(scratch(), `foreach ($r in $false,$true) { foreach ($n in $false,$true) { foreach ($i in $false,$true) { foreach ($h in $false,$true) { '' + [int]$r + [int]$n + [int]$i + [int]$h + '=' + (Get-AgendConnectMode $r $n $i $h) } } } }`);
-      const expected = (r: number, n: number, i: number, h: number): string => r ? "repair" : n ? "switch" : !i ? "noninteractive" : !h ? "noentry" : "connect";
-      const rows = out.split(/\r?\n/); expect(rows).toHaveLength(16);
-      for (const row of rows) { const [bits, mode] = row.split("="); expect(mode, row).toBe(expected(Number(bits[0]), Number(bits[1]), Number(bits[2]), Number(bits[3]))); }
-      expect(rows.filter(row => row.endsWith("=connect"))).toEqual(["0011=connect"]);   // exactly one way to connect
-    });
     it("reads $agendNoConnect as on for anything but empty, 0, false, no and off; and a redirected console is never interactive", async () => {
       const out = await helperRun(scratch(), `foreach ($v in @($null, '', ' ', '0', 0, $false, 'false', 'FALSE', 'no', 'Off', 1, '1', $true, 'true', 'yes', 'x')) { [string](Test-AgendSwitch $v) }
         'interactive=' + (Test-AgendInteractive)`);
       expect(out.split(/\r?\n/)).toEqual([...Array(10).fill("False"), ...Array(6).fill("True"), "interactive=False"]);
+    });
+  });
+
+  describe("connecting with a one-time token: any window, no pairing code, the token only ever on the Runtime's standard input", () => {
+    const TOKEN = "agend_enroll_" + "Qw3_-".repeat(9).slice(0, 43), FP = "cd".repeat(32);
+    // A runtime that records exactly how it was started: arguments, what arrived on standard input, whether a token is in its environment, whether the lock is gone.
+    const RECORDER = `const fs=require("fs"),path=require("path");
+const dir=process.argv[process.argv.indexOf("--connection-dir")+1], root=path.dirname(path.dirname(__dirname));
+let stdin="";try{stdin=fs.readFileSync(0,"utf8")}catch{}
+fs.writeFileSync(process.env.T_MARK,JSON.stringify({argv:process.argv.slice(2),stdin,stdinTTY:!!process.stdin.isTTY,envHasToken:Object.entries(process.env).some(([k,v])=>!k.startsWith("T_")&&(/enroll/i.test(k)||String(v).includes("agend_enroll_"))),lockHeld:fs.existsSync(path.join(root,".agend-runtime-install.lock")),files:fs.readdirSync(dir).sort()}));
+process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.env.T_EXIT||0);\n`;
+    const bundleT = makeBundle("2.3.8-alpha.1", "token-recorder", RECORDER);
+    const recorded = (s: ReturnType<typeof scratch>) => existsSync(s.marker) ? JSON.parse(readFileSync(s.marker, "utf8")) : undefined;
+    const entryOf = (s: ReturnType<typeof scratch>) => { const [name] = readdirSync(join(s.install, "connect")); return join(s.install, "connect", name); };
+    const tokenCommand = (): string => runtimeEnrollCommand(origin(), active.installer().scriptSha256, TOKEN, FP);
+    /** Everything under the install folder and the scratch home, as text, to prove the token was written nowhere. */
+    const everything = (s: ReturnType<typeof scratch>): string => [s.root].flatMap(dir => readdirSync(dir, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile() && entry.name !== "harness.ps1" && entry.name !== "pasted.ps1" && entry.name !== "script-ran.txt").map(entry => readFileSync(join(entry.parentPath, entry.name), "latin1"))).join("\n");
+    beforeEach(() => { active = serviceFor(bundleT); });
+
+    it("connects with no console at all (-NonInteractive, no stdin): the Runtime gets the token on stdin and nowhere else, then the fingerprint as an argument", async () => {
+      const s = scratch(), r = await run(s, { T_COMMAND: tokenCommand(), T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0);
+      const got = recorded(s), dir = entryOf(s);
+      expect(got, r.out).toMatchObject({ argv: ["connect", "--connection-dir", dir, "--enroll-stdin", "--server-fingerprint", FP], stdin: TOKEN + "\n", stdinTTY: false, envHasToken: false, lockHeld: false, files: ["agend-server.json", "connect-agend.bat"] });
+      expect(got.argv.join(" ")).not.toContain(TOKEN); expect(got.argv.join(" ")).not.toMatch(/agend_enroll/);
+      expect(r.out).toContain("with the one-time token from the install command: no pairing code and no approval step"); expect(r.out).toContain("RECORDER-CONNECT-RAN");
+      expect(r.out).not.toContain("not an interactive console"); expect(r.out).not.toContain(TOKEN);
+      expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`, `GET ${RUNTIME_BUNDLE_PATH}`]);                  // the script never touches an enrollment endpoint: the Runtime does
+    });
+    it("writes the token to no file: not the install folder, the reconnect entry, the batch file or the profile", async () => {
+      const s = scratch(), r = await run(s, { T_COMMAND: tokenCommand(), T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0);
+      const text = everything(s); expect(text).not.toContain(TOKEN); expect(text).not.toContain(TOKEN.slice("agend_enroll_".length));
+      expect(readdirSync(entryOf(s)).sort()).toEqual(["agend-server.json", "connect-agend.bat"]);
+      expect(readFileSync(join(entryOf(s), "agend-server.json"), "utf8")).toBe(JSON.stringify({ server: origin() }, null, 2) + "\n");   // address only
+      expect(sha(readFileSync(join(entryOf(s), "connect-agend.bat")))).toBe(BAT_SHA256);                             // the same pinned bytes as without a token
+    });
+    it.skipIf(!hasScript)("connects at an interactive console too, the same way, with the token piped (stdin is not the console)", async () => {
+      const s = scratch(), r = await runInteractive(s, { T_COMMAND: tokenCommand(), T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0);
+      expect(recorded(s), r.out).toMatchObject({ argv: ["connect", "--connection-dir", entryOf(s), "--enroll-stdin", "--server-fingerprint", FP], stdin: TOKEN + "\n", stdinTTY: false, envHasToken: false });
+      expect(r.out).not.toContain(TOKEN);
+    });
+    it("clears $agendEnroll and $agendFingerprint: after a connection, and after a command the page's check refused to run", async () => {
+      // (the test's harness prints both variables after the command, whatever happened to it)
+      const s = scratch(), done = await run(s, { T_COMMAND: tokenCommand(), T_MARK: s.marker });
+      expect(done.out, done.out).toContain("VARS=[|]"); expect(done.out).not.toContain(TOKEN);
+      // a script the check refuses (a stale hash): `throw` ends the command, so only try/finally can still clear the token
+      const refused = scratch(), stale = runtimeEnrollCommand(origin(), "f".repeat(64), TOKEN, FP);
+      const r = await run(refused, { T_COMMAND: stale, T_MARK: refused.marker });
+      expect(r.verifyFailed, r.out).toBe(true); expect(recorded(refused)).toBeUndefined(); expect(r.out).toContain("VARS=[|]"); expect(r.out).not.toContain(TOKEN);
+    });
+    it("installs only, and says the token was not used, when $agendNoConnect is set (the switch wins over the token)", async () => {
+      const s = scratch(), r = await run(s, { T_PRESET: "$agendNoConnect = 1", T_COMMAND: tokenCommand(), T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0); expect(recorded(s)).toBeUndefined();
+      expect(r.out).toContain("The one-time token in this command was NOT used"); expect(r.out).toContain("$agendNoConnect is set in this window"); expect(r.out).not.toContain(TOKEN);
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(folderOf(bundleT));
+    });
+    it("passes the Runtime's exit code through and says how to try again", async () => {
+      const s = scratch(), r = await run(s, { T_COMMAND: tokenCommand(), T_MARK: s.marker, T_EXIT: "7" });
+      expect(r.code, r.out).toBe(7); expect(r.out).toContain("could not connect (status 7)"); expect(r.out).toContain(join(entryOf(s), "connect-agend.bat"));
+    });
+    it("returns the outcome to the shell as its exit status (powershell -Command): 0 when the Runtime ends normally, 1 when the install or the connection failed", async () => {
+      const exitStatus = async (env: Record<string, string>): Promise<{ status: number | null; out: string }> => {
+        clock += 600_000; const s = scratch();
+        return new Promise(done => {
+          const child = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-Command", `${BOOT_FIXTURE}; ${tokenCommand()}`],
+            { env: { PATH: process.env.PATH ?? "", HOME: s.root, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_MARK: s.marker, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+          let out = ""; child.stdout.on("data", d => { out += d; }); child.stderr.on("data", d => { out += d; });
+          const timer = setTimeout(() => child.kill("SIGKILL"), 45_000);
+          child.on("close", status => { clearTimeout(timer); done({ status, out }); });
+        });
+      };
+      const ok = await exitStatus({}); expect(ok.status, ok.out).toBe(0);
+      const stopped = await exitStatus({ T_EXIT: "7" }); expect(stopped.status, stopped.out).toBe(1);
+      expect(stopped.out).toContain("could not connect (status 7)"); expect(stopped.out).not.toContain(TOKEN);
+      // a stale $LASTEXITCODE from an earlier command is not mistaken for a failure: the command starts by resetting it
+      const stale = scratch(); clock += 600_000;
+      const staleRun = await new Promise<{ status: number | null; out: string }>(done => {
+        const child = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-Command", `${BOOT_FIXTURE}; $global:LASTEXITCODE = 9; $agendNoConnect = 1; ${tokenCommand()}; $agendNoConnect = $null`],
+          { env: { PATH: process.env.PATH ?? "", HOME: stale.root, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: stale.local, AGEND_RUNTIME_NO_PATH: "1", T_MARK: stale.marker }, stdio: ["ignore", "pipe", "pipe"] });
+        let out = ""; child.stdout.on("data", d => { out += d; }); child.stderr.on("data", d => { out += d; });
+        child.on("close", status => done({ status, out }));
+      });
+      expect(staleRun.status, staleRun.out).toBe(0);                       // install only, nothing failed: 0, whatever the session's $LASTEXITCODE was
+    });
+    it("refuses a malformed token or fingerprint BEFORE installing or downloading anything, exit 1, and does not print it", async () => {
+      for (const [token, fingerprint, said] of [["", FP, "one-time token in this install command is not valid"], ["   ", FP, "one-time token in this install command is not valid"], ["agend_enroll_short", FP, "one-time token in this install command is not valid"], [TOKEN.toUpperCase(), FP, "one-time token in this install command is not valid"],
+        [TOKEN + "x", FP, "one-time token in this install command is not valid"], [TOKEN, "nope", "server fingerprint in this install command is missing or not valid"], [TOKEN, "", "server fingerprint in this install command is missing or not valid"],
+        [TOKEN, FP.toUpperCase(), "server fingerprint in this install command is missing or not valid"]] as const) {
+        const s = scratch(), r = await run(s, { T_PRESET: `$agendEnroll = '${token}'; $agendFingerprint = '${fingerprint}'`, T_MARK: s.marker });
+        expect(r.code, `${token} ${fingerprint}\n${r.out}`).toBe(1); expect(r.out).toContain(said); expect(r.out).toContain("generate a new install command");
+        expect(recorded(s)).toBeUndefined(); expect(existsSync(s.install)).toBe(false); expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+        if (token.length > 20) expect(r.out).not.toContain(token);
+      }
+    });
+    it("treats a variable that is not there, or is $null (what the page's command leaves behind), as no token; only an empty or blank one is an error", async () => {
+      for (const preset of ["$agendEnroll = $null; $agendFingerprint = $null", "$agendEnroll = $null"]) {
+        const s = scratch(), r = await run(s, { T_PRESET: preset, T_MARK: s.marker });
+        expect(r.code, `${preset}\n${r.out}`).toBe(0); expect(recorded(s)).toBeUndefined(); expect(r.out).toContain("not an interactive console"); expect(r.out).not.toContain("one-time token");
+      }
+    });
+    it("without a token it connects only through the pairing-code flow: no console, no connection, the manual command is printed", async () => {
+      const s = scratch(), r = await run(s, { T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0); expect(recorded(s)).toBeUndefined(); expect(r.out).toContain("not an interactive console"); expect(r.out).not.toContain("one-time token");
+    });
+    it("decides in one fixed order: repair, $agendNoConnect, a token (connect in any window), no console, no entry, otherwise connect", async () => {
+      const out = await helperRun(scratch(), `foreach ($r in $false,$true) { foreach ($n in $false,$true) { foreach ($i in $false,$true) { foreach ($h in $false,$true) { foreach ($t in $false,$true) { '' + [int]$r + [int]$n + [int]$i + [int]$h + [int]$t + '=' + (Get-AgendConnectMode $r $n $i $h $t) } } } } }
+        'default=' + (Get-AgendConnectMode $false $false $true $true)`);
+      const expected = (r: number, n: number, i: number, h: number, t: number): string => r ? "repair" : n ? "switch" : t ? (h ? "enroll" : "noentry") : !i ? "noninteractive" : !h ? "noentry" : "connect";
+      const rows = out.split(/\r?\n/); expect(rows.pop()).toBe("default=connect");                         // the token argument is optional: a call without it decides as one without a token
+      expect(rows).toHaveLength(32);
+      for (const row of rows) { const [bits, mode] = row.split("="); expect(mode, row).toBe(expected(...[...bits].map(Number) as [number, number, number, number, number])); }
+    });
+    it("accepts only a lower-case-exact token and fingerprint shape", async () => {
+      const out = await helperRun(scratch(), `foreach ($v in @('${TOKEN}', 'agend_enroll_short', '${TOKEN}x', ' ${TOKEN}', '${TOKEN.toUpperCase()}', ('agend_enroll_' + ('a' * 43)), $null, 5, '')) { [string](Test-AgendEnrollToken $v) }
+        foreach ($v in @('${FP}', '${FP.toUpperCase()}', 'ab', '${FP}0', $null, '${FP.slice(0, 63)}g')) { [string](Test-AgendFingerprint $v) }`);
+      expect(out.split(/\r?\n/)).toEqual(["True", "False", "False", "False", "False", "True", "False", "False", "False", "True", "False", "False", "False", "False", "False"]);
     });
   });
 

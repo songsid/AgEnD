@@ -4,8 +4,11 @@
  *
  * A command only ever contains: the origin the administrator reviewed in step 1 (inert host and port characters, https or loopback
  * http), and, for the install command, the SHA-256 of install.ps1 that the AgEnD server itself reported to this signed-in page. No
- * pairing code, token, credential or flag the page did not choose is ever put in one.
+ * pairing code, credential or flag the page did not choose is ever put in one. The ONE exception is the install command that carries a
+ * one-time enrollment token (`runtimeEnrollCommand`): that token is a short-lived (15 minutes), single-use authorisation made by this page for
+ * exactly that command; the token and the server fingerprint are checked for their shape here and are inert (single-quoted) characters only.
  */
+const ENROLL_TOKEN = /^agend_enroll_[A-Za-z0-9_-]{43}$/, SERVER_FINGERPRINT = /^[a-f0-9]{64}$/;
 
 /** The origin, only when it is composed of inert hostname/port characters; "" otherwise. Nothing else is placed in a copyable shell command. */
 export function safeRuntimeOrigin(server) {
@@ -55,6 +58,22 @@ export function runtimeInstallCommand(server, scriptSha256) {
     + `$h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); `
     + `if ($s -and $h -eq '${scriptSha256}') { iex $s } `
     + `else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }`;
+}
+/**
+ * The install command with a ONE-TIME enrollment token inside: pasted on ANY computer, or handed to an AI agent running there, it installs the
+ * Runtime and connects it with no pairing code and no approval step. The token (and the server fingerprint the Runtime must see before it sends it) are
+ * set in two variables that install.ps1 reads and clears at once; `try/finally` clears them again even when the command is refused before install.ps1
+ * runs (a thrown error would otherwise skip a trailing clear and leave the token in the PowerShell session). install.ps1 hands the token to the Runtime on
+ * its standard input; it is never a command-line argument. The token works once, for 15 minutes, and is revoked from this page; anyone who gets this text
+ * while it is valid can connect THEIR computer as your Runtime, so treat it like a password: do not paste it into chats or tickets.
+ */
+export function runtimeEnrollCommand(server, scriptSha256, token, fingerprint) {
+  const body = runtimeInstallCommand(server, scriptSha256);
+  if (!body || typeof token !== "string" || !ENROLL_TOKEN.test(token) || typeof fingerprint !== "string" || !SERVER_FINGERPRINT.test(fingerprint)) return "";
+  // `$LASTEXITCODE` is reset first (a stale value from an earlier command must not look like a failure) and checked last: `powershell -Command` returns 1 only when
+  // its last statement failed, so an AI agent or CI step sees a non-zero exit status when the install or the connection did not succeed. Silent and harmless at a prompt.
+  return `$global:LASTEXITCODE = 0; $agendEnroll = '${token}'; $agendFingerprint = '${fingerprint}'; try { ${body} } finally { $agendEnroll = $null; $agendFingerprint = $null }; `
+    + `if ($LASTEXITCODE) { Write-Error 'The AgEnD Runtime was not installed or did not connect (the message above says why).' -ErrorAction SilentlyContinue }`;
 }
 /** After the install script: agend-runtime is on the user's PATH. The pairing code is typed into the terminal, never here. */
 export function runtimeWindowsConnectCommand(server) {

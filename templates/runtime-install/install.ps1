@@ -32,9 +32,17 @@
 #      left alone. The code is typed into the terminal by a person: the Runtime accepts it from nothing else, so this script never sees it.
 #      Anywhere else (an AI agent, CI, a pipeline, $agendNoConnect) it only installs, prints the exact command to run next and ends with
 #      exit code 0. The Runtime is started after the install lock is released, because a running Runtime needs that lock for updates.
+#   7b. With a ONE-TIME TOKEN ($agendEnroll and $agendFingerprint, set by the page's "install command") it connects in ANY window, interactive or
+#      not, with no pairing code and no approval step: the token is the authorisation, and it could only come from an administrator's signed-in
+#      AgEnD page. The token is checked for its shape before anything is installed, copied out of the variable (which is cleared at once), and
+#      handed to the Runtime on its standard input - never on the command line, never in an environment variable, never in a file. The Runtime
+#      first checks that the server is the AgEnD whose fingerprint $agendFingerprint names and sends the token only then; the token works once, for 15
+#      minutes, and can be revoked on the AgEnD page. A computer already connected to this AgEnD just reconnects and the token is not used.
+#      Without a token everything is exactly as in 7. $agendNoConnect (and a repair run) still win: with them nothing is connected and the token is not used.
 #
 # Optional, set in the same PowerShell window before running it:
 #   $agendNoConnect = 1                           install only: do not connect, even in an interactive window (unset it with $null)
+#   $agendEnroll = '<token>'; $agendFingerprint = '<64 hex>'   the one-time token and server fingerprint from the page's install command (both are cleared by this script)
 #   $env:AGEND_RUNTIME_REPAIR = '1'               keep PATH unchanged; print run with an existing profile, never pairing steps or a connection
 #   $env:AGEND_RUNTIME_NO_PATH = '1'              leave PATH alone (the final message then shows the full path to run)
 #   $env:AGEND_RUNTIME_INSTALL_DIR = 'D:\agend'   install somewhere other than %LOCALAPPDATA%\agend-runtime
@@ -66,6 +74,10 @@
         $text = ([string]$value).Trim()
         return -not ($text -eq '' -or $text -in '0', 'false', 'no', 'off')
     }
+    # The one-time install-command token ("agend_enroll_" and 43 URL-safe base64 characters) and the AgEnD server fingerprint (the SHA-256 of its enrollment
+    # key, 64 lower-case hex digits). Case-sensitive on purpose. A value that fails is refused before anything is installed, and is never echoed.
+    function Test-AgendEnrollToken($value) { return ($value -is [string]) -and ($value -cmatch '\Aagend_enroll_[A-Za-z0-9_-]{43}\z') }
+    function Test-AgendFingerprint($value) { return ($value -is [string]) -and ($value -cmatch '\A[a-f0-9]{64}\z') }
     # True only at a real, interactive console. The pairing code is typed by a person and the Runtime reads it from nothing else, so a
     # redirected stdin or stdout (an AI agent, CI, a pipeline), -NonInteractive (any abbreviation of it), the ISE (no console for a child
     # process) and a CI environment variable (CI, GITHUB_ACTIONS, TF_BUILD, ...: an agent on a pseudo-terminal) are all "not interactive". When in
@@ -83,11 +95,12 @@
             return $true
         } catch { return $false }
     }
-    # What to do after the install, as one word: repair (never connect), switch ($agendNoConnect), noninteractive, noentry (the reconnect
-    # entry could not be written) or connect. The order is the order of precedence.
-    function Get-AgendConnectMode([bool]$Repair, [bool]$NoConnect, [bool]$Interactive, [bool]$HasEntry) {
+    # What to do after the install, as one word: repair (never connect), switch ($agendNoConnect), enroll (a valid one-time token: connect with it in
+    # any window), noninteractive, noentry (the reconnect entry could not be written) or connect. The order is the order of precedence.
+    function Get-AgendConnectMode([bool]$Repair, [bool]$NoConnect, [bool]$Interactive, [bool]$HasEntry, [bool]$HasToken = $false) {
         if ($Repair) { return 'repair' }
         if ($NoConnect) { return 'switch' }
+        if ($HasToken) { if ($HasEntry) { return 'enroll' } else { return 'noentry' } }
         if (-not $Interactive) { return 'noninteractive' }
         if (-not $HasEntry) { return 'noentry' }
         return 'connect'
@@ -363,6 +376,31 @@
             return
         }
 
+        # the one-time token and server fingerprint the page's command set. They are copied here and cleared from the caller's scope at
+        # once (the page's command clears them again afterwards), and checked for their shape before anything is installed: a malformed token is
+        # refused with the next step, without being printed. Nothing about the token goes into a file, a log or the command line.
+        $enrollToken = $null; $enrollFingerprint = $null
+        $rawToken = $agendEnroll; $rawFingerprint = $agendFingerprint
+        foreach ($scopeName in 1, 'Global') { foreach ($varName in 'agendEnroll', 'agendFingerprint') { try { Set-Variable -Name $varName -Value $null -Scope $scopeName -ErrorAction Stop } catch { } } }
+        # A variable that is not there, or is $null (what the page's command and this script leave behind), is "no token". One that holds anything else, an empty or
+        # blank string included, is a token that was meant to be there and is not valid: refused, never quietly turned into the pairing-code route.
+        if ($null -ne $rawToken) {
+            if (-not (Test-AgendEnrollToken $rawToken)) {
+                Write-Problem 'The one-time token in this install command is not valid (it may have been copied incompletely). Nothing was installed.'
+                Write-Host 'Open AgEnD Settings -> Runtime -> Connect a computer, generate a new install command there and run it again.'
+                $global:LASTEXITCODE = 1
+                return
+            }
+            if (-not (Test-AgendFingerprint $rawFingerprint)) {
+                Write-Problem 'The AgEnD server fingerprint in this install command is missing or not valid (it is 64 hexadecimal characters). Nothing was installed.'
+                Write-Host 'Open AgEnD Settings -> Runtime -> Connect a computer, generate a new install command there and run it again.'
+                $global:LASTEXITCODE = 1
+                return
+            }
+            $enrollToken = [string]$rawToken; $enrollFingerprint = [string]$rawFingerprint
+        }
+        $rawToken = $null
+
         $nodeText = ''
         $node = Get-Command node -ErrorAction SilentlyContinue
         $nodeExe = $null
@@ -471,7 +509,7 @@
         $connectBat = $null
         if ($connectDir) { $connectBat = Join-Path $connectDir 'connect-agend.bat' }
         $noConnect = Test-AgendSwitch $agendNoConnect
-        $mode = Get-AgendConnectMode $repair $noConnect (Test-AgendInteractive) ([bool]$connectDir)
+        $mode = Get-AgendConnectMode $repair $noConnect (Test-AgendInteractive) ([bool]$connectDir) ([bool]$enrollToken)
 
         Write-Host ''
         if ($mode -eq 'repair') {
@@ -479,7 +517,7 @@
             Write-Host 'Use the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME. Run this exact new executable and enter that folder:'
             $literalShim = $shim.Replace("'", "''")
             Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' run --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
-        } elseif ($mode -eq 'connect') {
+        } elseif ($mode -eq 'connect' -or $mode -eq 'enroll') {
             Write-Host 'AgEnD Runtime is installed.'
             Write-Host ('Next time, double-click ' + $connectBat + ' to reconnect this computer.')
             $cliJs = Join-Path $target 'dist\runtime-cli.js'
@@ -496,6 +534,10 @@
             Write-Host ''
             Write-Host 'A person types the pairing code when asked, compares the fingerprint with the one AgEnD shows, then approves this computer in AgEnD. The code cannot be put in a command, a variable or a file, so an AI agent or script should stop here and give this command to the person.'
             if ($connectBat) { Write-Host ('Or double-click ' + $connectBat + ' on that computer: it connects, and next time it reconnects without asking for the code.') }
+            if ($enrollToken) {
+                Write-Host 'The one-time token in this command was NOT used. It stays valid until it expires (15 minutes after it was made) or is revoked on the AgEnD page; running the same command again uses it.'
+                if ($mode -eq 'noentry') { $global:LASTEXITCODE = 1 }
+            }
         }
     } catch {
         Write-Problem ('install failed: ' + $_.Exception.Message)
@@ -515,8 +557,15 @@
         try {
             $ErrorActionPreference = 'Continue'
             Write-Host ''
-            Write-Step ('connecting this computer to ' + $origin + '. If it asks for the one-time pairing code, type the one on the AgEnD page (Settings -> Runtime -> Connect a computer); a computer that is already paired just reconnects. Ctrl+C stops it.')
-            & $nodeExe $cliJs connect --connection-dir $connectDir
+            if ($enrollToken) {
+                Write-Step ('connecting this computer to ' + $origin + ' with the one-time token from the install command: no pairing code and no approval step. The Runtime stays running in this window until you press Ctrl+C (an AI agent or script that must not wait for it should start this command as its own background process). A computer that is already connected to this AgEnD just reconnects, and the token is not used.')
+                # The token goes in on standard input, once: not as an argument (it would show in the process list), not in the environment, not in a file.
+                $enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint
+                $enrollToken = $null
+            } else {
+                Write-Step ('connecting this computer to ' + $origin + '. If it asks for the one-time pairing code, type the one on the AgEnD page (Settings -> Runtime -> Connect a computer); a computer that is already paired just reconnects. Ctrl+C stops it.')
+                & $nodeExe $cliJs connect --connection-dir $connectDir
+            }
             $connectExit = $LASTEXITCODE
             Write-Host ''
             if ($connectExit -eq 0) { Write-Step ('stopped. To reconnect, double-click ' + $connectBat) }

@@ -71,7 +71,8 @@ describe("install.ps1 template", () => {
   it("connects only through the Runtime's own `connect --connection-dir`, never contacts a pairing endpoint, and carries no credential", () => {
     // The script never pairs itself and never sees the code: it starts the Runtime, which asks the person.
     expect(code).not.toMatch(/\/runtime\/v1\/(pair|claim|rotate|connect)/);
-    expect(code).not.toMatch(/token|secret|password|credential|pairing code\s*=|claimSecret/i);
+    // (the one-time install-command token is the single legitimate "token": how it may be handled is locked down in its own test below)
+    expect(code).not.toMatch(/secret|password|credential|pairing code\s*=|claimSecret/i);
     expect(code).not.toMatch(/Read-Host[^\n]*(code|pair)|Get-Credential|ConvertTo-SecureString|AGEND_PAIR|--code\b|--pairing/i);
     // The one thing it runs: the Node.js it checked, the file of the version it just installed, `connect --connection-dir <the reconnect folder>`.
     const runs = code.split("\n").filter(line => /^\s*&\s*\$/.test(line) && !/Write-Host/.test(line));
@@ -84,13 +85,38 @@ describe("install.ps1 template", () => {
     expect(code.indexOf("& $nodeExe $cliJs connect")).toBeGreaterThan(code.indexOf("Remove-AgendLock $installLock } catch"));
     expect(code.indexOf("& $nodeExe $cliJs connect")).toBeGreaterThan(code.indexOf("$createdRoot -and $root -and"));
     // Only on the `connect` decision, which only a fixed-order function can make; a failed lock release cancels it.
-    expect(code).toMatch(/\} elseif \(\$mode -eq 'connect'\) \{[\s\S]*?\$doConnect = \$true/);
+    expect(code).toMatch(/\} elseif \(\$mode -eq 'connect' -or \$mode -eq 'enroll'\) \{[\s\S]*?\$doConnect = \$true/);
     expect(code.match(/\$doConnect = \$true/g)).toHaveLength(1);
     expect(code).toMatch(/Remove-AgendLock \$installLock \} catch \{[^\n]*\$doConnect = \$false/);
     expect(code).toMatch(/if \(\$doConnect\) \{/);
     // It prints the manual command for every case that does not connect (the pairing code is typed by a person).
     expect(code).toContain("connect --server");
     expect(code).toContain("The code cannot be put in a command, a variable or a file");
+  });
+  it("handles the one-time token as: read, shape-checked before anything is installed, cleared, then piped to the Runtime's standard input - never anywhere else", () => {
+    const tokenLines = code.split("\n").filter(line => /\$(enrollToken|rawToken|agendEnroll)\b/.test(line));
+    // never printed, never written to a file, never put in the environment or on a command line
+    expect(tokenLines.filter(line => /Write-(Host|Step|Problem|Output|Verbose|Warning|Error)|Out-File|Set-Content|Add-Content|WriteAllText|Set-AgendFile|\$env:|Set-Item|\[Environment\]::SetEnvironmentVariable|ConvertTo-Json|Start-Process|Invoke-Expression|\biex\b/i.test(line))).toEqual([]);
+    expect(tokenLines.filter(line => /\s--[a-z]/i.test(line)).map(line => line.trim())).toEqual(["$enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint"]);
+    expect(code).not.toMatch(/--(?:token|enroll|code)\b(?!-stdin)/);
+    // the Runtime is started with the token on stdin as the ONLY way: the piped line is the only place the variable is used as data
+    expect(code.match(/\$enrollToken \|/g)).toHaveLength(1);
+    // shape-checked case-sensitively before Node is checked, before any download, before anything is written
+    const check = code.indexOf("Test-AgendEnrollToken $rawToken");
+    expect(check).toBeGreaterThan(-1); expect(check).toBeLessThan(code.indexOf("Test-NodeVersion $nodeText")); expect(check).toBeLessThan(code.indexOf("Save-AgendArchive (")); expect(check).toBeLessThan(code.indexOf("Enter-AgendInstallLock $root"));
+    expect(code).toContain("-cmatch '\\Aagend_enroll_[A-Za-z0-9_-]{43}\\z'"); expect(code).toContain("-cmatch '\\A[a-f0-9]{64}\\z'");
+    // cleared from the caller's scope at once, in both places a variable could live
+    expect(code).toMatch(/foreach \(\$scopeName in 1, 'Global'\) \{ foreach \(\$varName in 'agendEnroll', 'agendFingerprint'\) \{ try \{ Set-Variable -Name \$varName -Value \$null -Scope \$scopeName/);
+    expect(code.indexOf("Set-Variable -Name $varName")).toBeLessThan(check);
+    // after use it is dropped from this script's own variables too
+    expect(code).toContain("$enrollToken = $null");
+    // a malformed one stops with the next step and exit code 1, before the network
+    expect(code).toMatch(/Test-AgendEnrollToken \$rawToken\)\) \{[\s\S]*?\$global:LASTEXITCODE = 1\s*return/);
+    expect(code).toMatch(/Test-AgendFingerprint \$rawFingerprint\)\) \{[\s\S]*?\$global:LASTEXITCODE = 1\s*return/);
+    expect(code).toContain("generate a new install command there and run it again");
+    // the switch and a repair run win over the token, and the token is reported unused
+    expect(code).toContain("The one-time token in this command was NOT used");
+    expect(template).toContain("Get-AgendConnectMode([bool]$Repair, [bool]$NoConnect, [bool]$Interactive, [bool]$HasEntry, [bool]$HasToken = $false)");
   });
   it("connects only at an interactive console: a redirected stdin or stdout, -NonInteractive in any spelling and the ISE all count as not interactive", () => {
     const fn = extractPsFunction(template, "Test-AgendInteractive");

@@ -232,7 +232,7 @@ describe("every gate reads the switch in force", () => {
     await expect(windowsBridgeFor(owner).probe()).resolves.toMatchObject({ clis: [], probedAt: null });
   });
   it("paired PCs: the runtime API is enabled with the switch on (Settings or environment) and answers 'not enabled' with it off", () => {
-    const ctx = { webToken: "t".repeat(48), runtimeCoordinator: () => ({ listMachines: () => [] }) } as unknown as RuntimeApiContext;
+    const ctx = { webToken: "t".repeat(48), runtimeCoordinator: () => ({ listMachines: () => [], listEnrollments: () => [] }) } as unknown as RuntimeApiContext;
     const call = () => {
       const req = new EventEmitter() as any; req.method = "GET"; req.url = "/ui/runtimes"; req.headers = { host: "localhost", "x-agend-token": "t".repeat(48) };
       req.socket = { remoteAddress: "127.0.0.1" };

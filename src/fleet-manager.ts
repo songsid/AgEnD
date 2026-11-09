@@ -406,6 +406,7 @@ import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninP
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
@@ -1318,6 +1319,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
+      // Issue, use, revocation (and a refused use) of an install-command token: ids and an opaque actor handle only, never the token.
+      audit:entry=>{
+        this.logger[entry.event==="rejected" || entry.event==="throttled" ? "warn" : "info"]({runtimeEnrollment:entry},`Runtime install-command token ${entry.event}`);
+        // A computer that joined with a token was approved by the token alone: tell the owner out of band (never lets a failure here change the join).
+        if(entry.event==="used")try{
+          const text=enrolledRuntimeNotice(entry,entry.machineId ? this.runtimeHub?.machine(entry.machineId) ?? null : null);
+          if(text)this.notifyFleetError(text,{throttle:false});
+        }catch(error){this.logger.warn({err:error},"Could not announce a computer that joined with an install-command token");}
+      },
       changed:event=>{
         if (event?.type === "machine") this.needsYou?.poke();
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {

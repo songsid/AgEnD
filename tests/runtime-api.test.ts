@@ -108,6 +108,55 @@ describe("runtime administration API", () => {
       expect(make(false).status).toBe(403); const res = make(true); await vi.waitFor(() => expect(res.status).toBe(tier === "admin" ? 201 : 403));
     }
   });
+  describe("install-command tokens need the same authorization as a pairing code", () => {
+    it("is refused to read, guest and gateway callers and to a session without its CSRF proof; only an administrator session on the local dashboard makes or revokes one", async () => {
+      for (const tier of ["admin", "read", "guest"] as const) {
+        const { ctx: base, hub } = context(), store = new WebSessionStore(), ctx: RuntimeApiContext = { ...base, webSessions: store }, issue = vi.spyOn(hub, "createEnrollment");
+        const session = store.create({ tier, surface: "local", label: "test", tokenEpoch: tokenEpoch(token), ...(tier === "guest" ? { owner: { adapterId: "tg", userId: "1" } } : {}) });
+        const make = (path: string, csrf: boolean) => { const req = request(path, "POST"), res = new Response(req); delete req.headers["x-agend-token"]; req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`; req.headers.origin = "http://localhost"; if (csrf) req.headers["x-agend-csrf"] = csrfTokenFor(session.sessionId); handleRuntimeRequest(req, res, new URL(req.url!, "http://localhost"), ctx); return res; };
+        expect(make("/ui/runtimes/enrollment", false).status).toBe(403);                      // no CSRF proof
+        const res = make("/ui/runtimes/enrollment", true); await vi.waitFor(() => expect(res.status).toBe(tier === "admin" ? 201 : 403));
+        expect(issue).toHaveBeenCalledTimes(tier === "admin" ? 1 : 0);
+        const revoke = make(`/ui/runtimes/enrollment/${hub.listEnrollments()[0]?.id ?? "00000000-0000-4000-8000-000000000000"}/revoke`, true); await vi.waitFor(() => expect(revoke.status).toBe(tier === "admin" ? 200 : 403));
+        if (tier === "admin") expect(JSON.parse(res.body).token).toMatch(/^agend_enroll_/); else expect(res.body).not.toMatch(/agend_enroll_/);
+      }
+    });
+    it("is refused on a public gateway link and to a foreign Origin, for making, revoking and listing", () => {
+      const { ctx, hub } = context(), issue = vi.spyOn(hub, "createEnrollment"), revoke = vi.spyOn(hub, "revokeEnrollment"), id = "00000000-0000-4000-8000-000000000000";
+      for (const kind of ["origin", "gateway"]) for (const [path, method] of [["/ui/runtimes/enrollment", "POST"], [`/ui/runtimes/enrollment/${id}/revoke`, "POST"], ["/ui/runtimes", "GET"]] as const) {
+        const req = request(path, method), res = new Response(req);
+        if (kind === "origin") req.headers.origin = "https://foreign.example";
+        if (kind === "gateway") bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+        handleRuntimeRequest(req, res, new URL(req.url!, "http://localhost"), ctx); expect(res.status, `${kind} ${path}`).toBe(403); expect(res.body).not.toMatch(/agend_enroll_/);
+      }
+      expect(issue).not.toHaveBeenCalled(); expect(revoke).not.toHaveBeenCalled();
+    });
+    it("is refused to the bare header token, which is what #3327 keeps from pairing a computer: it makes, revokes and lists nothing", () => {
+      const { ctx, hub } = context(), issue = vi.spyOn(hub, "createEnrollment"), revoke = vi.spyOn(hub, "revokeEnrollment"), { id } = hub.createEnrollment("admin:0123456789abcdef");
+      issue.mockClear();
+      for (const [path, method] of [["/ui/runtimes/enrollment", "POST"], [`/ui/runtimes/enrollment/${id}/revoke`, "POST"]] as const) {
+        const { res } = run(ctx, path, method); expect(res.status, path).toBe(403); expect(res.body).not.toMatch(/agend_enroll_/);
+      }
+      expect(issue).not.toHaveBeenCalled(); expect(revoke).not.toHaveBeenCalled(); expect(hub.listEnrollments()[0]?.status).toBe("unused");
+      const listed = run(ctx, "/ui/runtimes"); expect(listed.res.status).toBe(200); expect(JSON.parse(listed.res.body).enrollments, "the header token is shown no install-command token, not even a status").toEqual([]);
+    });
+    it("is made and revoked by an administrator session, recorded under that session's opaque handle and never under a header-token name", async () => {
+      const { ctx, hub } = context(), admin = adminSession(ctx), issue = vi.spyOn(hub, "createEnrollment"), revoke = vi.spyOn(hub, "revokeEnrollment");
+      const made = admin.run("/ui/runtimes/enrollment", "POST"); await vi.waitFor(() => expect(made.res.status).toBe(201));
+      const { id } = JSON.parse(made.res.body) as { id: string };
+      expect(issue).toHaveBeenCalledWith(expect.stringMatching(/^admin:[a-f0-9]{16}$/));
+      const ended = admin.run(`/ui/runtimes/enrollment/${id}/revoke`, "POST"); await vi.waitFor(() => expect(ended.res.status).toBe(200));
+      expect(revoke).toHaveBeenCalledWith(id, expect.stringMatching(/^admin:[a-f0-9]{16}$/)); expect(hub.listEnrollments()[0]?.status).toBe("revoked");
+      const listed = admin.run("/ui/runtimes"); expect(JSON.parse(listed.res.body).enrollments).toEqual([expect.objectContaining({ id, status: "revoked" })]);
+      expect(listed.res.body).not.toMatch(/agend_enroll_|tokenHash/);
+    });
+    it("rechecks authorization after reading the body: the session withdrawn meanwhile issues and revokes nothing", async () => {
+      const { ctx, hub } = context(), admin = adminSession(ctx), issue = vi.spyOn(hub, "createEnrollment"), revoke = vi.spyOn(hub, "revokeEnrollment"), { id } = hub.createEnrollment("admin:0123456789abcdef");
+      issue.mockClear(); const a = admin.run("/ui/runtimes/enrollment", "POST"), b = admin.run(`/ui/runtimes/enrollment/${id}/revoke`, "POST");
+      admin.store.revokeByHandle(admin.record.handle); await vi.waitFor(() => { expect(a.res.status).toBe(403); expect(b.res.status).toBe(403); });
+      expect(issue).not.toHaveBeenCalled(); expect(revoke).not.toHaveBeenCalled(); expect(hub.listEnrollments()[0]?.status).toBe("unused");
+    });
+  });
   it("rechecks authorization after reading a mutation body", async () => {
     const { ctx, hub } = context(), admin = adminSession(ctx), create = vi.spyOn(hub, "createPairing"), { res } = admin.run("/ui/runtimes/pairing", "POST");
     admin.store.revokeByHandle(admin.record.handle); await vi.waitFor(() => expect(res.status).toBe(403)); expect(create).not.toHaveBeenCalled();

@@ -4,7 +4,8 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
-import { RuntimeClient, describeRuntimeStop, pairRuntime, rotateRuntimeCredentials } from "./runtime-client.js";
+import { RuntimeClient, describeEnrollRefusal, describeRuntimeStop, enrollRuntime, pairRuntime, rotateRuntimeCredentials } from "./runtime-client.js";
+import { RUNTIME_ENROLL_TOKEN_PATTERN, RUNTIME_SERVER_FINGERPRINT_PATTERN } from "./runtime-protocol.js";
 import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-store.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
@@ -24,6 +25,7 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime --version
   agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY] [--credential-profile NAME]
   agend-runtime connect --connection-dir DIRECTORY [--name NAME] [--profile DIRECTORY] [--credential-profile NAME]
+  <one-time token> | agend-runtime connect (--server URL | --connection-dir DIRECTORY) --enroll-stdin --server-fingerprint SHA256HEX [--name NAME] [--profile DIRECTORY]
   agend-runtime run [--profile DIRECTORY]
   agend-runtime status [--profile DIRECTORY]
   agend-runtime rotate [--profile DIRECTORY]
@@ -35,6 +37,9 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime remote-setup (accounts | install) (on | off) [--for 2h] [--profile DIRECTORY]
 
 connect asks for a one-time pairing code, waits for approval in AgEnD, then runs in the foreground.
+With --enroll-stdin it takes the one-time install-command token from standard input instead (never from arguments, never from the keyboard, never kept):
+it first checks that the server is the AgEnD whose fingerprint --server-fingerprint names, sends the token only then, and needs no pairing code and
+no approval step. It works without a console, for an AI agent or CI. A profile that is already connected to this AgEnD just reconnects and the token is not used.
 Connection-ready downloads include the server address; double-click connect-agend.bat to connect or reconnect.
 The one-line installer leaves the same connect-agend.bat beside an agend-server.json under <install folder>\\connect\\<server>; it passes that
 folder as --connection-dir, which picks the profile exactly as the ZIP's connect-agend.bat does (--connection-dir and --server are exclusive).
@@ -68,6 +73,17 @@ export interface RuntimeMainOptions {
   /** Test seam for the same check with the account in it. Wins over `probeLogin`. */
   probeStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
   runLogin?: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<number>;
+  /** Test seam: where `--enroll-stdin` reads the one-time token. Production reads standard input. */
+  stdin?: AsyncIterable<string | Buffer> & { isTTY?: boolean };
+}
+/** Reads the one-time token from a pipe, once, at most a few hundred bytes. It is never echoed, logged or written, and a refusal does not quote what was read. */
+async function readEnrollToken(stream: AsyncIterable<string | Buffer> & { isTTY?: boolean }): Promise<string> {
+  if (stream.isTTY) throw new Error("--enroll-stdin reads the one-time token from a pipe, not from the keyboard. Paste the install command from AgEnD Settings -> Runtime -> Connect a computer instead, or use the pairing-code route (connect without --enroll-stdin).");
+  let text = "";
+  for await (const chunk of stream) { text += typeof chunk === "string" ? chunk : chunk.toString("utf8"); if (text.length > 512) throw new Error(describeEnrollRefusal("invalid")); }
+  const token = text.replace(/^\uFEFF/, "").trim();
+  if (!RUNTIME_ENROLL_TOKEN_PATTERN.test(token)) throw new Error(describeEnrollRefusal("invalid"));
+  return token;
 }
 function interactiveLogin(executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((done, fail) => {
@@ -103,12 +119,16 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   for (let index = 0; index < args.length;) {
     const key = args[index];
     if (takesNames && key === "--clear" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
+    if (command === "connect" && key === "--enroll-stdin" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
     if (takesNames && !key.startsWith("--") && positional.length < (command === "remote-setup" ? 2 : 2)) { positional.push(key); index++; continue; }
     const value = args[index + 1];
-    if (!["--server", "--name", "--profile", "--credential-profile", "--connection-dir", ...(command === "remote-setup" ? ["--for"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
+    if (!["--server", "--name", "--profile", "--credential-profile", "--connection-dir", "--server-fingerprint", ...(command === "remote-setup" ? ["--for"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
     flags[key] = value; index += 2;
   }
   if (command !== "connect" && (flags["--server"] || flags["--name"])) throw new Error("--server and --name are used only by connect");
+  if (command !== "connect" && (flags["--enroll-stdin"] || flags["--server-fingerprint"])) throw new Error("--enroll-stdin and --server-fingerprint are used only by connect");
+  if ((flags["--enroll-stdin"] !== undefined) !== (flags["--server-fingerprint"] !== undefined)) throw new Error("--enroll-stdin and --server-fingerprint go together: the one-time token comes on standard input and the server fingerprint names the AgEnD it may be sent to.");
+  if (flags["--server-fingerprint"] !== undefined && !RUNTIME_SERVER_FINGERPRINT_PATTERN.test(flags["--server-fingerprint"])) throw new Error("--server-fingerprint is the AgEnD server fingerprint from the install command: 64 hexadecimal characters.");
   if (command !== "connect" && flags["--credential-profile"]) throw new Error("--credential-profile is used only by connect; use profile default NAME to change it later");
   if (flags["--connection-dir"] !== undefined && flags["--server"] !== undefined) throw new Error("--connection-dir and --server cannot be used together: the folder's agend-server.json is the address.");
   const explicitProfile = flags["--profile"] || env.AGEND_RUNTIME_HOME;
@@ -268,7 +288,17 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
       if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", wantedProfile, answer.loggedIn);
     }
     if (choice?.separate) process.stdout.write(`This computer's default profile is paired with ${choice.defaultServer}; using a separate profile for this server:\n  ${store.directory}\nThe same connect-agend.bat reuses it. The existing pairing is untouched.\n`);
-    if (!current) {
+    if (current && flags["--enroll-stdin"] !== undefined) {
+      // Already joined to this AgEnD (a different one would have been given its own profile, or stopped above): reconnect, and leave the token unused.
+      process.stdout.write("This computer is already connected to this AgEnD, so the one-time token was not used; reconnecting. (An unused token expires by itself, and can be revoked in AgEnD Settings -> Runtime.)\n");
+    }
+    if (!current && flags["--enroll-stdin"] !== undefined) {
+      const token = await readEnrollToken(options.stdin ?? process.stdin);
+      const controller = new AbortController();
+      const abort = (): void => controller.abort(); process.once("SIGINT", abort);
+      try { await enrollRuntime({ server: server.origin, token, fingerprint: flags["--server-fingerprint"]!, name: flags["--name"] || hostname(), store, signal: controller.signal, report: text => process.stdout.write(`${text}\n`) }); }
+      finally { process.removeListener("SIGINT", abort); }
+    } else if (!current) {
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("Pairing requires an interactive terminal. The code must not be supplied in arguments or environment variables.");
       const readline = createInterface({ input: process.stdin, output: process.stdout });
       let code: string;
