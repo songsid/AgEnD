@@ -66,6 +66,7 @@ describe("company join local wait",()=>{
  });
  it("one slow status read retains physical ownership across polling and Retry; unmount retires its continuation",async()=>{
   const c=clock();let finish:any;fetcher(()=>new Promise(resolve=>{finish=resolve;}));const p=await mount();
+  expect(p.root.querySelector(".skeleton")).toBeNull();
   const poll=c.fire(1500);await settle(4);expect(calls).toHaveLength(1);
   await c.next(300000);fire(btn(p,"Check again"),"click");await settle(4);expect(calls).toHaveLength(1);
   await p.unmount();finish(response({ok:true,operation:{operationId:handoff,handoffId:handoff,state:"awaiting-sign-in"}}));await poll;await settle(6);
