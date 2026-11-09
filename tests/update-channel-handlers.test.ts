@@ -172,7 +172,8 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     const fm = new FleetManager(scratch());
     const posted: string[] = [];
     try {
-      Object.assign(fm, { findGeneralInstance: () => "general", notifyInstanceTopic: (_n: string, text: string) => { posted.push(text); } });
+      // M-2738: the version this fleet runs is read once as it loads (RUNNING_AGEND_VERSION), not the file on disk at each check.
+      Object.assign(fm, { runningAgendVersion: () => version, findGeneralInstance: () => "general", notifyInstanceTopic: (_n: string, text: string) => { posted.push(text); } });
       await (fm as any).checkForUpdates();
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
     return { posted, views: [...registry.views] };
