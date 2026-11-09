@@ -74,9 +74,10 @@ describe("install.ps1 template", () => {
     // (the one-time install-command token is the single legitimate "token": how it may be handled is locked down in its own test below)
     expect(code).not.toMatch(/secret|password|credential|pairing code\s*=|claimSecret/i);
     expect(code).not.toMatch(/Read-Host[^\n]*(code|pair)|Get-Credential|ConvertTo-SecureString|AGEND_PAIR|--code\b|--pairing/i);
-    // The one thing it runs: the Node.js it checked, the file of the version it just installed, `connect --connection-dir <the reconnect folder>`.
+    // What it runs: the Node.js it checked and the file of the version it just installed: `connect --connection-dir <the reconnect folder>` (with --foreground
+    // only when $agendForeground asks for it), and `restart --all` after an update or a repair so a Runtime in the background uses the new build.
     const runs = code.split("\n").filter(line => /^\s*&\s*\$/.test(line) && !/Write-Host/.test(line));
-    expect(runs.map(line => line.trim())).toEqual(["& $nodeExe $cliJs connect --connection-dir $connectDir"]);
+    expect(runs.map(line => line.trim())).toEqual(["& $nodeExe $restartCli restart --all", "& $nodeExe $cliJs connect --connection-dir $connectDir @connectExtra"]);
     expect(code).toContain("$cliJs = Join-Path $target 'dist\\runtime-cli.js'");
     // never through Start-Process or cmd.exe (a path with an & in it would be read as a command there), never the shim or the version folder by `&`
     expect(code).not.toMatch(/Start-Process|Invoke-Item|&\s*\$shim|&\s*\$target|cmd(\.exe)?\s+\/c/i);
@@ -97,7 +98,7 @@ describe("install.ps1 template", () => {
     const tokenLines = code.split("\n").filter(line => /\$(enrollToken|rawToken|agendEnroll)\b/.test(line));
     // never printed, never written to a file, never put in the environment or on a command line
     expect(tokenLines.filter(line => /Write-(Host|Step|Problem|Output|Verbose|Warning|Error)|Out-File|Set-Content|Add-Content|WriteAllText|Set-AgendFile|\$env:|Set-Item|\[Environment\]::SetEnvironmentVariable|ConvertTo-Json|Start-Process|Invoke-Expression|\biex\b/i.test(line))).toEqual([]);
-    expect(tokenLines.filter(line => /\s--[a-z]/i.test(line)).map(line => line.trim())).toEqual(["$enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint"]);
+    expect(tokenLines.filter(line => /\s--[a-z]/i.test(line)).map(line => line.trim())).toEqual(["$enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint @connectExtra"]);
     expect(code).not.toMatch(/--(?:token|enroll|code)\b(?!-stdin)/);
     // the Runtime is started with the token on stdin as the ONLY way: the piped line is the only place the variable is used as data
     expect(code.match(/\$enrollToken \|/g)).toHaveLength(1);
@@ -139,7 +140,7 @@ describe("install.ps1 template", () => {
     const body = /\$connectBatText = \(([\s\S]*?)\) -join/.exec(code)![1], text = [...body.matchAll(/'([^']*)'/g)].map(match => match[1]).join("\r\n");
     // Like the shim, this file may be running in a window when an install rewrites it (Set-AgendFile rewrites it whenever the text differs).
     // If this fails you changed it: do that only for a bug that makes it unusable, update the hash here and in tests/runtime-install-pwsh.test.ts, and note it in the docs and changelog.
-    expect(createHash("sha256").update(text).digest("hex")).toBe("8862ccd8c9ca4238fa073d42f3594f46fe049d8b2bb9107d9c8f5c7745a05c89");
+    expect(createHash("sha256").update(text).digest("hex")).toBe("becead46b15ae681a41fc33143e48c54f5f1cebb3f9d60c23b8ab8c6f0d3d85a");
     expect(text).not.toMatch(/\d+\.\d+\.\d+/);   // it names no version: it follows current.txt through the shim
     const rows = text.split("\r\n"), setlocal = rows.indexOf("setlocal DisableDelayedExpansion");
     expect(setlocal).toBe(1); expect(rows.slice(0, setlocal)).toEqual(["@echo off"]); expect(rows.findIndex(row => /[%!]/.test(row))).toBeGreaterThan(setlocal);

@@ -907,3 +907,22 @@ describe("machine snapshot boundary",()=>{
     expect([requests.filter(r=>r.path.endsWith("/rename")),!!p.root.querySelector("dialog .runtime-rename")]).toEqual([[],false]);
   });
 });
+
+describe("the page says the Runtime keeps running in the background (en and zh-TW)",()=>{
+  const source=readFileSync("src/ui/panel-runtimes.js","utf8");
+  const text=(name:string):string[]=>[...source.matchAll(new RegExp(`${name}:"((?:[^"\\\\]|\\\\.)*)"`,"g"))].map(match=>match[1]);
+  it("the install and connect steps, and the ZIP's launch step, tell that closing the window does not disconnect it and name status, stop and logs",()=>{
+    for(const name of ["stepConnectHint","stepLaunchHint"]){
+      const [en,zh]=text(name);
+      expect(en,name).toMatch(/background/);expect(en,name).toMatch(/agend-runtime status, stop and logs/);expect(en,name).toMatch(/sign in to Windows|you sign in/);
+      expect(zh,name).toMatch(/背景/);expect(zh,name).toMatch(/agend-runtime status、stop、logs/);expect(zh,name).toMatch(/登入/);
+    }
+    const [installEn,installZh]=text("stepInstallHint");
+    expect(installEn).toMatch(/keeps running in the background \(closing the window does not disconnect it/);expect(installZh).toMatch(/背景持續執行（關掉視窗不會斷線/);
+    const [approveEn,approveZh]=text("stepApproveHint");
+    expect(approveEn).toMatch(/running in the background/);expect(approveZh).toMatch(/背景執行/);
+  });
+  it("no copy still tells a person to keep the Runtime window open for the Runtime to stay connected",()=>{
+    expect(source).not.toMatch(/Keep the Runtime window open/);expect(source).not.toMatch(/請保持 Runtime 視窗開啟/);expect(source).not.toMatch(/connects and keeps running; there is nothing to type/);
+  });
+});

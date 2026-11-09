@@ -45,7 +45,7 @@
 
 **配對碼**只能在互動式終端機輸入，不接受指令參數、環境變數或檔案，所以腳本無法代為傳遞，也看不到它；配對碼這條路的指紋比對與 AgEnD 的核准都沒有改變。**一次性 token** 是另一條有時效的授權，有自己的規則（下一節），不是把配對碼放進參數。`$agend` 只當成伺服器位址使用，沿用原本的來源檢查（HTTPS，或僅限本機的 HTTP；不得含帳密、路徑、查詢或片段）。
 
-**給 AI agent 或腳本使用**：請給它**一次性安裝指令**：它會在任何視窗自己連線，不用輸入任何東西；以 `powershell -Command "<指令>"` 執行時，安裝或連線失敗會讓 exit status 為 1（否則為 0），`$LASTEXITCODE` 則是 Runtime 自己的狀態碼。（Runtime 之後會一直在那個視窗執行，直到被停止；不能等的 agent 請把這個指令當成獨立的背景程序啟動。讓 Runtime 自己在背景常駐是另外的工作。）頁面上預設收合的「手動選項」列出配對碼這條路的兩行。第一行只安裝（它只對那一次指令設定 `$agendNoConnect = 1`，結束後會清掉，免得變數留在視窗裡，讓之後的貼上悄悄變成只安裝）；第二行用配對碼連線，必須由人在互動終端機執行：
+**給 AI agent 或腳本使用**：請給它**一次性安裝指令**：它會在任何視窗自己連線，不用輸入任何東西；以 `powershell -Command "<指令>"` 執行時，安裝或連線失敗會讓 exit status 為 1（否則為 0），`$LASTEXITCODE` 則是 Runtime 自己的狀態碼。（Runtime 一連上就會移到背景，指令隨即結束，所以 agent 不會被拖住，也不用把它當成獨立程序啟動；見〈在背景執行〉。）頁面上預設收合的「手動選項」列出配對碼這條路的兩行。第一行只安裝（它只對那一次指令設定 `$agendNoConnect = 1`，結束後會清掉，免得變數留在視窗裡，讓之後的貼上悄悄變成只安裝）；第二行用配對碼連線，必須由人在互動終端機執行：
 
 ```powershell
 $agendNoConnect = 1; <同一個安裝指令>; $agendNoConnect = $null
@@ -115,7 +115,7 @@ agend-runtime connect --server "https://your-agend-host"
 5. 讓 `agend-runtime` 指向它（見下），並把 `%LOCALAPPDATA%\agend-runtime\bin` 加進**你的使用者 PATH**。
 6. 寫入重連入口（見上），然後在同一個視窗連線：帶有一次性 token 時任何視窗都會連線，沒有 token 時只在互動式主控台連線；設定了 `$agendNoConnect` 則絕不連線（此時 token 會被回報為未使用）。否則印出連線指令。Runtime 是在安裝鎖**釋放之後**才啟動，因為執行中的 Runtime 會取這個鎖來更新自己。
 
-**版本並存。** 既有的資料夾永遠不會被刪除或取代，因為它可能就是正在執行的 Runtime（執行中的 Windows 程式會鎖住它的檔案）。安裝資料夾叫 `<版本>+<build>`，所以較新 AgEnD 的 Runtime，以及同一個版本號的不同 build，都只會在舊資料夾旁邊多一個新資料夾；再執行同一個 build 的指令會找到它自己的資料夾，只重新指向 `agend-runtime`。更新時不需要任何人手動刪資料夾。`bin\agend-runtime.cmd` 只寫一次、之後不再改變：它啟動單行檔 `bin\current.txt` 所記的版本，安裝在新版本**完整就位之後**，才用原子取代把這個檔案換掉。所以 `agend-runtime` 啟動的不是舊版就是新版，不會是裝到一半的版本，正在執行的批次檔也不會被改寫。shim 一開始就是 `setlocal DisableDelayedExpansion`，所以安裝資料夾裡的 `!`（可接受的 `AGEND_RUNTIME_INSTALL_DIR` 可以含有）即使在 cmd.exe 開啟延遲展開（`/V:ON` 或登錄檔的 DelayedExpansion 設定）時也會保留。已經在執行的 Runtime 會維持自己的版本，直到你以 Ctrl+C 停止、再用 `agend-runtime run` 啟動。若在切換之前失敗，`current.txt` 仍指向可用的版本。**這個安裝程式不會移除舊資料夾**（其中一個可能正在執行）；清理舊版本留到之後的更新與解除安裝指令。在那之前它們會留著，等沒有 Runtime 使用時你可以自己刪除。腳本唯一會拒絕的情況，是已經有一個資料夾剛好叫這個 build 的名字、內容卻不是它：只有被手動改過或沒裝完才會發生，它會被原樣保留，腳本也會說明。
+**版本並存。** 既有的資料夾永遠不會被刪除或取代，因為它可能就是正在執行的 Runtime（執行中的 Windows 程式會鎖住它的檔案）。安裝資料夾叫 `<版本>+<build>`，所以較新 AgEnD 的 Runtime，以及同一個版本號的不同 build，都只會在舊資料夾旁邊多一個新資料夾；再執行同一個 build 的指令會找到它自己的資料夾，只重新指向 `agend-runtime`。更新時不需要任何人手動刪資料夾。`bin\agend-runtime.cmd` 只寫一次、之後不再改變：它啟動單行檔 `bin\current.txt` 所記的版本，安裝在新版本**完整就位之後**，才用原子取代把這個檔案換掉。所以 `agend-runtime` 啟動的不是舊版就是新版，不會是裝到一半的版本，正在執行的批次檔也不會被改寫。shim 一開始就是 `setlocal DisableDelayedExpansion`，所以安裝資料夾裡的 `!`（可接受的 `AGEND_RUNTIME_INSTALL_DIR` 可以含有）即使在 cmd.exe 開啟延遲展開（`/V:ON` 或登錄檔的 DelayedExpansion 設定）時也會保留。在視窗裡執行的 Runtime 會維持自己的版本，直到你以 Ctrl+C 停止、再重新啟動；在背景執行的 Runtime，則會在安裝程式把 `agend-runtime` 切到不同 build 時由安裝程式自己重新啟動（見〈在背景執行〉）。若在切換之前失敗，`current.txt` 仍指向可用的版本。**這個安裝程式不會移除舊資料夾**（其中一個可能正在執行）；清理舊版本留到之後的更新與解除安裝指令。在那之前它們會留著，等沒有 Runtime 使用時你可以自己刪除。腳本唯一會拒絕的情況，是已經有一個資料夾剛好叫這個 build 的名字、內容卻不是它：只有被手動改過或沒裝完才會發生，它會被原樣保留，腳本也會說明。
 
 **PATH。** `bin` 資料夾是寫進**使用者** PATH：直接寫登錄檔，並保留原本的值型別，所以含 `%VARIABLES%` 的 PATH 仍然可展開。寫入不使用 `[Environment]::SetEnvironmentVariable('Path', …, 'User')`，因為它會把 `REG_EXPAND_SZ` 的 PATH 變成純字串（已在 Windows PowerShell 5.1 與 PowerShell 7 實測）；也絕不使用 `setx`，因為它會在 1024 字元截斷。已經存在的項目（寫成完整路徑或含 `%VARIABLES%`）不會重複加入，PATH 的其他部分也不動。已開啟的終端機看不到變更，請開新的，或使用腳本印出的完整路徑。
 
@@ -135,7 +135,7 @@ agend-runtime connect --server "https://your-agend-host"
 AgEnD 需要說得出自己支援的協定（目前是協定 1）、並提供 `exec` 能力的 Runtime。回報內容不符的 Runtime，是從另一個 AgEnD 版本安裝的，所以 AgEnD **會明確拒絕，而不是讓它連上後才出錯**：
 
 - AgEnD 不會歡迎它、也不會派工給它。**設定 → Runtime** 的電腦卡片會維持離線，並說明它不相容、需要重新執行安裝指令；回報內容會保留，讓你看得到是哪個版本。
-- Runtime 自己的視窗會以非零結束碼停止，並說：AgEnD 因為版本不相容而拒絕它，請**重新執行安裝指令**（設定 → Runtime → 連接電腦），再用 `agend-runtime run` 啟動。配對會保留，不需要新的配對碼。
+- Runtime 自己的視窗會以非零結束碼停止，並說：AgEnD 因為版本不相容而拒絕它，請**重新執行安裝指令**（設定 → Runtime → 連接電腦），再用 `agend-runtime start` 在背景啟動（或 `agend-runtime run` 留在視窗）。配對會保留，不需要新的配對碼。
 - 再次執行安裝指令，會把這台 AgEnD 的 Runtime 安裝在舊版**旁邊**，不會刪除或取代任何版本資料夾，所以正在執行的 Runtime 仍可繼續運作；`agend-runtime` 是在新版本完整就位後才改指向它。若你是用 ZIP 安裝的，請改從同一個頁面下載 ZIP。
 
 什麼都沒回報的 Runtime（在有版本回報之前安裝的）不會被拒絕：它會顯示為舊版，並提示重新執行安裝指令。目前沒有自動更新或遠端安裝。
@@ -160,14 +160,47 @@ AgEnD 需要說得出自己支援的協定（目前是協定 1）、並提供 `e
 
 ### 移除
 
-先中斷本機連線並刪除程式資料夾，再從使用者 PATH 移除它的 `bin` 資料夾（Windows **設定 → 系統 → 關於 → 進階系統設定 → 環境變數**，使用者變數 `Path`）：
+先中斷本機連線（這會停止它在背景執行的 Runtime，並移除它的登入工作）並刪除程式資料夾，再從使用者 PATH 移除它的 `bin` 資料夾（Windows **設定 → 系統 → 關於 → 進階系統設定 → 環境變數**，使用者變數 `Path`）：
 
 ```powershell
 agend-runtime disconnect
 Remove-Item -Recurse -Force "$env:LOCALAPPDATA\agend-runtime"
 ```
 
+這會一次刪掉所有版本資料夾和所有 profile 的 log；請先關掉所有 Runtime 視窗。請**先**對每個 profile 執行 `agend-runtime disconnect`（或 `agend-runtime autostart disable`）：程式資料夾被刪掉之後，留下來的登入工作只會在下次登入時悄悄失敗。`agend-runtime status` 會列出所有 profile。目前還沒有獨立的解除安裝指令。
+
 配對資料夾（預設 `%USERPROFILE%\.agend-runtime`）是分開的，需要自己刪除。要在 AgEnD 端讓憑證失效，請在設定撤銷該電腦。
+
+## 在背景執行
+
+Runtime 連上之後（第一次，或已儲存的配對資料重新連線），`connect` 會把它移到背景並結束：Runtime 沒有視窗地持續執行，所以關掉執行安裝指令、`connect-agend.bat` 或 `agend-runtime connect` 的視窗**不會斷線**。配對碼、指紋比對與核准（或一次性 token）仍在前景視窗完成，而且在這之前。AI agent 或 CI 執行一次性安裝指令時，Runtime 一連上就拿到 exit status；不需要另外把什麼當成獨立程序啟動。
+
+| | |
+|---|---|
+| `agend-runtime connect … --foreground`（或在安裝指令前先 `$agendForeground = 1`） | 像以前一樣讓 Runtime 留在視窗裡，Ctrl+C 停止。不會建立登入工作。 |
+| `agend-runtime start [--profile 資料夾]` | 在背景啟動已配對 profile 的 Runtime；登入工作執行的就是它。 |
+| `agend-runtime run` | 沒有變：重新連線既有 profile 並留在視窗。 |
+| `agend-runtime status [--profile 資料夾\|名稱] [--json]` | 列出這台電腦上的每個 profile：狀態（在背景執行、在視窗執行、未執行）、程序編號、從何時開始、配對到哪台 AgEnD、autostart 與 log 資料夾。`--profile` 可以是資料夾，也可以是 `status` 印出的 profile 名稱。 |
+| `agend-runtime stop [--profile …\|--all]` | 請背景 Runtime 像 Ctrl+C 一樣停止，並等到它結束（30 秒）。同時有多個在執行時，請指定一個或用 `--all`。在視窗裡執行的會被拒絕：請關掉那個視窗。不會關掉 autostart。 |
+| `agend-runtime restart [--profile …\|--all]` | 先 `stop`，再用已安裝的版本 `start`。沒有在執行就什麼都不啟動。 |
+| `agend-runtime logs [--profile …] [--tail N]` | 該 profile 的 log 結尾（預設 50 行）。 |
+| `agend-runtime autostart [enable\|disable\|status]` | 見下。 |
+
+**每個 profile 只跑一個 Runtime。** 由 profile 的鎖決定。再啟動一次（第二次雙擊、登入工作碰到已經在執行、`start`、`connect --foreground`）會回報「已在執行」、指出程序編號，並以 exit status 0 結束；不會啟動也不會停止任何東西。
+
+**Log。** 背景 Runtime 把視窗原本會顯示的內容寫到 `%LOCALAPPDATA%\agend-runtime\logs\<profile>\runtime.log`，每個事件一行並帶時間。`<profile>` 對 `%USERPROFILE%\.agend-runtime` 是 `default`，對各伺服器自己的 profile 是資料夾名稱（`<host>-<port>`），對用 `--profile` 或 `AGEND_RUNTIME_HOME` 指定的資料夾是 `custom-<資料夾>-<8 位十六進位>`。單一檔案最多 2 MiB，之後變成 `runtime.log.1`，舊的依序往上移到 `.5`，最舊的刪除，所以一個 profile 的 log 最多佔 12 MiB。log 只有 Runtime 自己的訊息（已連線、中斷、更新、停止、AgEnD 結束連線的原因）；和它取代的視窗一樣，裡面沒有配對碼、token 或憑證。
+
+**Autostart。** 背景連線第一次成功時，Runtime 會為你自己的帳號加一個 Windows **工作排程器**工作 `AgEnD Runtime - <profile>`，在你**登入**後 20 秒觸發。它不是 Windows 服務，也不需要系統管理員權限：它用 `schtasks.exe` 從 XML 定義建立，內容指定你的帳號、一般（受限）權杖、沒有密碼也沒有提升權限，所以不會出現 UAC 提示。工作本身不負責讓 Runtime 活著；它只執行短指令 `agend-runtime start --profile <資料夾>`（安裝程式的 `agend-runtime.cmd`，永遠啟動最新已安裝的版本），由它啟動背景 Runtime，或回報已經有一個在執行，然後結束。所以電腦關機過、或使用者登出過，下次登入就會讓 Runtime 回來，並自動重新連線。`autostart disable` 會移除工作並讓這個 profile 保持關閉（之後的 `connect` 不會再打開）；`autostart enable` 再建立；`autostart status` 會告訴你目前的狀態。若 Windows 拒絕（公司原則），`connect` 仍然成功並說明這件事，之後可以用 `autostart enable` 再試。`disconnect` 會移除工作。
+
+**怎麼停止。** 脫離視窗的 Windows 程序沒有主控台，也沒有能讓它有秩序停止的訊號，而強制結束會略過帳號程序與 profile 鎖的有序收尾。所以 `stop` 會在 profile 資料夾寫一個很小的請求檔（`stop-request.json`，只有時間），背景 Runtime 會監看並取走它；`stop` 接著等 profile 鎖被釋放，若 Runtime 正在交接給新版本就再請求一次。能寫入 profile 資料夾的人（同一個 Windows 使用者）本來就能結束這個程序，所以這沒有增加任何權限。
+
+**profile 資料夾裡有什麼。** 除了 `connection.json` 與 `jobs.json`：`instance.json`（哪個程序是背景 Runtime，讓 `status` 說得出來）、`autostart.json`（你的 autostart 選擇）、`background-state.json`（啟動中的 Runtime 留給啟動它的指令的話），以及短暫存在的 `stop-request.json`。沒有一個含有祕密。背景 Runtime 的命令列是 `node.exe …\runtime-cli.js run --profile <資料夾>`：永遠沒有配對碼、一次性 token 或憑證（token 是 `connect` 在啟動 Runtime 之前從標準輸入讀走的）。
+
+**啟動時不拖住呼叫端。** 在 Windows 上，Node 以「detached」啟動的程序仍會繼承父程序所有可繼承的 handle，其中包括執行指令的人（AI agent 的 shell、CI）的輸出管線：呼叫端會因為管線一直不關閉而等到 Runtime 結束。在 Windows 上實測：用替身程序時等了 40 秒，用這裡的做法是 0.3 秒。所以背景 Runtime 是用 Windows PowerShell 的 `Start-Process` 啟動的（隱藏、沿用相同的環境變數、有自己隱藏的主控台），它不會傳遞任何 handle，而啟動端是從 `background-state.json` 得知它已連上。它也不受執行啟動端的工作排程器工作結束影響（實測：工作結束 20 秒後仍然在線）。
+
+**更新、修復與安裝程式。** 受管理安裝的就地更新會交接給新的 build，新的程序接手上述所有東西：同一份 log、同一個停止請求、同一個標記（實測：交接後 `status` 顯示新的程序仍在背景，`stop` 也能停止它）。當安裝指令把 `agend-runtime` 切到不同的 build，或是修復執行（`AGEND_RUNTIME_REPAIR=1`），它會在安裝鎖釋放後執行 `agend-runtime restart --all`，讓背景的 Runtime 用到已安裝的 build；在視窗裡執行的 Runtime 不會被動，重新啟動失敗只是警告，不會變成「安裝失敗」。`$agendNoConnect = 1` 仍然代表「只安裝、不連線」，不會擋下這個重新啟動。
+
+**限制。** 登入工作只在你登入時執行，這也正是你的 Windows CLI 與登入存在的時候；沒有登入前的服務。背景的 Runtime 沒有視窗可以顯示問題：請看 `status` 與 `logs`，`status` 會印出 log 資料夾。驗證時沒有真的登出再登入（那會結束執行測試的工作階段）；工作是用 `schtasks /Run` 手動執行的，也就是 Windows 在登入時執行的同一個動作。
 
 ## 帳號識別：看得出登入的是哪一個 Claude 帳號
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-store.js";
 
 export const RUNTIME_SERVER_FILE = "agend-server.json";
-export const RUNTIME_CONNECT_BAT = '@echo off\r\nsetlocal\r\nnode.exe "%~dp0dist\\runtime-cli.js" connect\r\nset "AGEND_EXIT=%errorlevel%"\r\necho.\r\nif not "%AGEND_EXIT%"=="0" (\r\n  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.\r\n) else (\r\n  echo AgEnD Runtime stopped.\r\n)\r\npause\r\n';
+export const RUNTIME_CONNECT_BAT = '@echo off\r\nsetlocal\r\nnode.exe "%~dp0dist\\runtime-cli.js" connect\r\nset "AGEND_EXIT=%errorlevel%"\r\necho.\r\nif not "%AGEND_EXIT%"=="0" (\r\n  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.\r\n) else (\r\n  echo Done. Read the message above: a Runtime that was started keeps running in the background after this window closes.\r\n)\r\npause\r\n';
 export function runtimeServerOrigin(value: unknown): string {
   if (typeof value !== "string" || !value.length || value.length > 2048) throw Error("Invalid AgEnD server address");
   return validateRuntimeServer(value).origin;
