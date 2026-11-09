@@ -16,6 +16,7 @@ vi.mock("../src/logger.js", async () => ({
 }));
 vi.mock("../src/backend/factory.js", () => ({ createBackend: () => { throw new Error("backend constructor on fleet thread"); } }));
 import { FakeProbeWorker } from "./helpers/probe-worker.js";
+import { FleetManager } from "../src/fleet-manager.js";
 
 let home: string, dataDir: string;
 const realHome = process.env.AGEND_HOME;
@@ -32,7 +33,6 @@ afterEach(() => {
 
 const profiled = (profile: string) => ({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: profile } } });
 async function makeFleet(instances: Record<string, unknown>) {
-  const { FleetManager } = await import("../src/fleet-manager.js");
   const fm = new FleetManager(dataDir) as any;
   fm.fleetConfig = { defaults: { backend: "claude-code" }, channel: {}, instances };
   return fm;

@@ -47,3 +47,5 @@ The shared implementation uses `ModelSelect`, `Icon`, secondary `.btn`, `ErrorSt
 Codex's own short catalog TTL still applies. A custom provider/profile that cannot be proved reports unavailable and retains the previous bound list; it never borrows another account. Main has no native Windows control surface; the alpha twin supplies runtime/computer handling separately.
 
 Reproduce with `scripts/manual/smoke/smoke-3500-model-picker.mts`, the shared fixture's `REPO`/`PW_DIR`/`CHROME`/`OUT` variables, and `MATRIX=full`. Set `SKEW` to a directory containing the old `app.css` and `settings-catalog.js`. For before images, set `BEFORE=1 BASELINE=<directory with the three old UI modules>`. The fixture refuses occupied ports, and closes only its own browsers/listeners and scratch home.
+
+R4 retains the pre-existing 30-second passive catalog cache and its `forgetCatalogs()` reset. The new fields reuse that cache rather than keeping an independent snapshot; a successful explicit refresh updates it. A tab holding the older catalog module uses a namespace import and an in-flight-only fallback. Layout and the screenshots above are unchanged.

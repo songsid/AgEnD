@@ -100,7 +100,7 @@ describe("the pickers on a page", () => {
     expect(asked()).toBe(1);                                    // still fresh: no request
     await p.unmount(); clock += 2_000; await p.mount(h(Two, {})); await settle(8);
     expect(asked()).toBe(2);                                    // past 30 s: asked again
-    await p.unmount(); C.forgetCatalogs(); (await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs(); await p.mount(h(Two, {})); await settle(8);
+    await p.unmount(); C.forgetCatalogs(); await p.mount(h(Two, {})); await settle(8);
     expect(asked()).toBe(3);
     now.mockRestore();
   });
