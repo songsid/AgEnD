@@ -13,7 +13,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }, { id: "opencode", version: "1.19.5" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -136,6 +136,24 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-others" })); await settle(14);
     const others = card().querySelector(".runtime-cli-install-others").textContent;
     expect(others).toContain("irm https://x.ai/cli/install.ps1 | iex"); expect(others).toContain("irm https://antigravity.google/cli/install.ps1 | iex"); expect(others).toContain("needs an administrator");
+  });
+  it("AGEND-133: OpenCode is listed and installed like the others (its pin comes from the computer's catalog)", async () => {
+    await p.mount(h(Panel, { navKey: "install-opencode" })); await settle(14);
+    expect(rowOf("opencode").textContent).toContain("Not installed");
+    expect(installButton("opencode").textContent).toBe("Install 1.19.5");
+    expect(installButton("opencode").disabled).toBe(false);
+    expect(card().querySelector(".runtime-cli-install-others").textContent).not.toContain("OpenCode");
+  });
+  it("AGEND-133: every CLI it does not install says WHY, not just the command (both languages)", async () => {
+    await p.mount(h(Panel, { navKey: "install-why" })); await settle(14);
+    const why = (id: string) => card().querySelector(`.runtime-cli-install-why[data-why="${id}"]`)?.textContent ?? "";
+    expect(why("grok")).toContain("not signed by its publisher");
+    expect(why("antigravity")).toContain("whatever version is current");
+    expect(why("kiro")).toContain("needs an administrator");
+    await p.unmount(); i18n.setLang("zh-TW", { store: false });
+    await p.mount(h(Panel, { navKey: "install-why-zh" })); await settle(14);
+    for (const id of ["grok", "antigravity", "kiro"]) expect(why(id), id).toMatch(/為什麼不能從這裡安裝/);
+    i18n.setLang("en", { store: false });
   });
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });

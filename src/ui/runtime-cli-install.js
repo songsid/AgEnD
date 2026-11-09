@@ -7,7 +7,7 @@ import { CLI_CAPS } from "./cli-caps.js";
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
  * package, the exact version, the folder and the checks. It happens only while that computer's owner has turned the "install" switch on THERE (the page can
- * read the switch, never change it). Claude Code and Codex only; the other CLIs show their official command for the computer's owner to run.
+ * read the switch, never change it). Only what AgEnD can pin and check (Claude Code, Codex, OpenCode); the other CLIs show their official command, and why for the computer's owner to run.
  */
 register("runtimeInstall", {
   en: { title: "Install a CLI", lead: "Installs the fixed version AgEnD pins, into this Runtime's own folder on that computer. No administrator, no PATH change, no vendor script.",
@@ -33,9 +33,9 @@ export const SWITCH_COMMAND = "agend-runtime remote-setup install on --for 2h";
 export const INSTALL_CLIS = Object.keys(CLI_CAPS).filter((id) => CLI_CAPS[id].runtimeInstall).map((id) => ({ id, label: CLI_CAPS[id].runtimeName }));
 /** Vendor commands, for the computer's owner to run: AgEnD never sends them anywhere. */
 export const OFFICIAL_COMMANDS = [
-  { id: "grok", label: "Grok", command: "irm https://x.ai/cli/install.ps1 | iex" },
-  { id: "antigravity", label: "Antigravity", command: "irm https://antigravity.google/cli/install.ps1 | iex" },
-  { id: "kiro", label: "Kiro", command: "irm https://cli.kiro.dev/install.ps1 | iex", administrator: true },
+  { id: "grok", label: "Grok", command: "irm https://x.ai/cli/install.ps1 | iex", why: "whyGrok" },
+  { id: "antigravity", label: "Antigravity", command: "irm https://antigravity.google/cli/install.ps1 | iex", why: "whyAntigravity" },
+  { id: "kiro", label: "Kiro", command: "irm https://cli.kiro.dev/install.ps1 | iex", administrator: true, why: "whyKiro" },
 ];
 /** A computer shows this only when its Runtime says it can (and it is a paired, approved one). */
 /**
@@ -49,6 +49,19 @@ export const offersCliInstall = machine => !!machine && !machine.isLocal && mach
 register("runtimeInstall", {
   en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer" },
   "zh-TW": { loading: "正在讀取這台電腦的安裝設定…", copy: "複製", copied: "已複製", switchCommand: "在那台電腦執行的指令" },
+});
+// AGEND-133 (#3521): why a CLI is not installed from here — AgEnD installs only what it can pin and check (an exact version, its hashes, and who published it).
+register("runtimeInstall", {
+  en: {
+    whyGrok: "Why not here: Grok's Windows program is not signed by its publisher, so AgEnD could not check who built it, and the vendor script installs whatever version is current.",
+    whyAntigravity: "Why not here: the vendor script installs whatever version is current. A fixed, signed download exists, and AgEnD will install it from here once its Runtime can download one.",
+    whyKiro: "Why not here: Kiro's Windows installer is an MSI into Program Files, which needs an administrator; the Runtime never has one.",
+  },
+  "zh-TW": {
+    whyGrok: "為什麼不能從這裡安裝：Grok 的 Windows 程式沒有發行者的數位簽章，AgEnD 無法確認是誰建置的；廠商腳本也是裝當下最新的版本。",
+    whyAntigravity: "為什麼不能從這裡安裝：廠商腳本裝的是當下最新的版本。有固定版本且已簽章的下載檔，等 Runtime 能下載之後，AgEnD 會從這裡安裝。",
+    whyKiro: "為什麼不能從這裡安裝：Kiro 在 Windows 的安裝程式是裝進 Program Files 的 MSI，需要系統管理員權限，而 Runtime 沒有。",
+  },
 });
 /** Ridge #3321 S09: a command to run on that computer — Runtime's labelled command card (runtime-install.css), with Copy. */
 function CommandCard({ label, command }) {
@@ -130,6 +143,7 @@ export function CliInstall({ machine, lease, onChanged }) {
       ${note ? html`<p class="note" role="status">${note}</p>` : null}
       ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}`}
     <details class="runtime-cli-install-others"><summary>${text("othersTitle")}</summary><p class="note">${text("othersLead")}</p>
-      <ul>${OFFICIAL_COMMANDS.map(item => html`<li key=${item.id}><${CommandCard} label=${item.administrator ? `${item.label} (${text("needsAdmin")})` : item.label} command=${item.command} /></li>`)}</ul></details>
+      <ul>${OFFICIAL_COMMANDS.map(item => html`<li key=${item.id}><${CommandCard} label=${item.administrator ? `${item.label} (${text("needsAdmin")})` : item.label} command=${item.command} />
+        <p class="note runtime-cli-install-why" data-why=${item.id}>${text(item.why)}</p></li>`)}</ul></details>
   </div>`;
 }
