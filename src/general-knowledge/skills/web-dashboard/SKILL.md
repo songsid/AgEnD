@@ -194,16 +194,16 @@ Turn it off with Settings → Chat & connections → **Web echo** (`web.echo_to_
 
 `/ui/needs`, the sidebar row **Needs you** with a count, the phone tab of the same name, and "(N)" in the browser
 tab title. Items, grouped by instance, oldest first:
-- the CLI waiting: "Permission needed", "Dangerous command waiting", "Sign-in needed", "Waiting at a dialog", "May be
+- the CLI waiting: "Permission needed", "Dangerous command waiting", "Waiting to connect its AI account", "Waiting at a dialog", "May be
   waiting for input", "Waiting at its terminal", "Not responding", "Exited";
-- the instance: "Paused: sign-in needed", "Crashed";
+- the instance: "Paused: AI account not connected", "Crashed";
 - deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
 
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
 filled in at the terminal (View).
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
-"Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
+"Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).

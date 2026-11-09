@@ -142,6 +142,7 @@ describe("S-117 story 1: signing in again on this computer; no /web without a ch
       for (const noChat of [false, true]) {
         const p = await signin(lang, { noChat });
         expect([p.text("hint"), p.parts("hint")], `noChat=${noChat}`).toEqual([local, ["text", "code", "text"]]);
+        expect(p.help[0].hidden, "the \"No chat bot?\" help is the hint here").toBe(true);
         expect(await p.submit()).not.toContain("/web");
       }
     });
@@ -153,6 +154,7 @@ describe("S-117 story 1: signing in again on this computer; no /web without a ch
   it("from another device, a fleet whose chat is connected still says /web; one without a chat never does", async () => {
     const chat = await signin("zh-TW", { host: "192.168.1.20" });
     expect(chat.text("hint")).toContain("/web");
+    expect(chat.help[0].hidden).toBe(false);
     const none = await signin("zh-TW", { host: "192.168.1.20", noChat: true });
     expect(none.text("hint")).not.toContain("/web");
     expect(await none.submit()).not.toContain("/web");
