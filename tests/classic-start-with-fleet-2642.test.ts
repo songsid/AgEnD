@@ -93,6 +93,7 @@ instances:
     topic_id: "333333333333333333"
 `);
   const fm: any = new FleetManager(dir);
+  vi.spyOn(fm, "startCliEnvProbeWorker").mockReturnValue({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   // Admission ignores the HOST's memory pressure (the gate's lowMemoryBytes: 0 opt-out): a loaded CI runner at elevated
   // PSI paces startup one at a time, 5 s apart — the room's start then came 5 s+ late. This test is about order.
   fm.spawnGate.shutdown();

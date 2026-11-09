@@ -282,6 +282,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - **Refresh models** beside a model menu’s title runs discovery again for that Agent and account; **More models…** opens Claude’s full account catalog separately from the model chips. Refresh never selects a model, saves Settings or restarts an Agent. Failure keeps the previous choices.
   - Switching backend keeps the shared backend → model → reasoning effort → confirmation flow. The confirmation warns that the new backend starts a fresh conversation; nothing is changed before it is confirmed.
   - Settings’ model fields have the same explicit **Refresh models** button below the full-width select. Discovery uses the selected backend/account/provider. If a scoped catalog cannot be proved, it reports failure instead of borrowing another account’s models. Codex still honors its own short catalog TTL.
+  - Host model catalogs are discovered in the background at fleet startup, including web-only fleets, and after adding an Agent or changing its backend/account. An empty probe keeps the last good list. The default Antigravity account is covered; named Antigravity accounts remain unsupported until their account-specific discovery can be verified.
   - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
 
 ## Fleet (`/ui/fleet`)
