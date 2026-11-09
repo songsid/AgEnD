@@ -23,10 +23,11 @@ try{for(const c of matrix()){
  const dialog=page.locator('.agent-runtime-change-dialog');await dialog.locator(`input[value="machine:${ids[0]}"]`).check();await dialog.getByRole('button',{name:/^(Next|下一步)$/}).click();
  await page.waitForSelector('#runtime-change-model');
  const shot=async(label:string)=>{await page.evaluate(()=>document.fonts.ready);await page.locator('#runtime-change-model').scrollIntoViewIfNeeded();
- if(c.device==='desk'){
+ {
   const account=page.locator('#runtime-change-claude-account');await account.scrollIntoViewIfNeeded();
-  const field=await account.boundingBox(),body=await dialog.locator('.dlg-body').boundingBox();
+  const field=await account.boundingBox(),model=await page.locator('#runtime-change-model').boundingBox(),body=await dialog.locator('.dlg-body').boundingBox();
   if(!field||!body||field.y<body.y-1||field.y+field.height>body.y+body.height+1)throw Error('Account selector is clipped');
+  if(!model||model.y<body.y-1||model.y+model.height>body.y+body.height+1)throw Error('Model selector is clipped');
  }
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('page overflow');const file=`${caseName(c)}-${label}.png`;await page.screenshot({path:join(out,file)});shots.push(file);};
  for(const profile of ['work','personal']){

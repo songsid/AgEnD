@@ -1,8 +1,8 @@
-# Model picker — alpha preparation (M-2731 / #3500)
+# Model picker — alpha twin (M-2731 / #3500)
 
-This is local preparation for the alpha twin of main #3502 (`642f758b`). It is based on alpha `da70c790`, plain-merged into the feature branch. No PR, publication or release is implied. The alpha.10 freeze remains in force until its tag.
+This is the alpha twin of merged main #3502 (`642f758b`). After the alpha.10 tag/unfreeze, alpha `a32b177d` was plain-merged into the prepared branch at `5b7127985`. These fresh captures use that source; all 668 added/removed production lines are identical to prepared `0cd4a024`. No release or deployment is implied.
 
-The candidate snapshot is labelled `2.3.5-alpha.10-m2731-prep.0` through its own package metadata. These are real Chromium captures of the production Settings shell, Agent dialog, chat command cards and final confirmation. Private CJK/emoji fonts are used only by the capture process. The adjacent `model-picker-3500-main` directory remains main's earlier evidence; it is not alpha evidence.
+The candidate snapshot is labelled `2.3.5-alpha.10-m2731-sync.0` through its own package metadata. These are real Chromium captures of the production Settings shell, Agent dialog, chat command cards and final confirmation. Private CJK/emoji fonts are used only by the capture process. The adjacent `model-picker-3500-main` directory remains main's earlier evidence; it is not alpha evidence.
 
 ## Scope and isolation
 
@@ -14,7 +14,7 @@ All confirmations are cancelled: **zero Settings saves and zero Agent restarts**
 
 ## Before / after
 
-Before uses alpha `da70c790`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the prepared implementation.
+Before uses alpha `a32b177d`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the prepared implementation.
 
 | Case | Before Settings | After Settings | After Agent dialog | After chat |
 |---|---|---|---|---|
@@ -45,23 +45,23 @@ The phone's latest-message button sits outside the scroller and above the compos
 
 ## Local checks
 
-- 21 focused suites: **439/439**, zero skips; the additional closed Runtime bundle suite passes **8/8** (22 files / 447 unique tests). This includes the structural continuation/CSP checks and the settings catalog's unchanged 30-second TTL/reset regression.
+- Fresh post-sync focused checks: **453/453**, zero skips, across 23 unique files (22 combined suites / 444 tests, including the five-test closed Runtime bundle suite, plus nine prototype-built FleetManager regression tests). This includes the structural continuation/CSP checks and the settings catalog's unchanged 30-second TTL/reset regression.
 - Both source and test typechecks pass.
-- 13/13 isolated mutations caught: selected native profile, API failure, changed credential, Codex provider proof, peer capability, late target, returned account, changed default profile, draft account, UI account/computer cache key, reply bounds, chosen computer, and admission after runtime selection. Restored route/worker controls pass 22/22.
+- Fresh post-sync 13/13 isolated mutations caught: selected native profile, API failure, changed credential, Codex provider proof, peer capability, late target, returned account, changed default profile, draft account, UI account/computer cache key, reply bounds, chosen computer, and admission after runtime selection. Restored route/worker/prototype controls pass 31/31.
 - Fail-first continuation probe: hold runtime selection, revoke admission, release selection returning portable; the prior code starts a portable probe. The fix rechecks admission before that dispatch. Native chat's real HTTP control confirms no portable command or discovery is called.
 - Deliberately update the old registry test's exact capability list for the new optional shared capability; protocol remains v1 and no per-CLI flag is invented.
-- Changelog assembly: **302 fragments OK**; diff check passes.
+- Changelog assembly: **303 fragments OK**; diff check passes.
 - Production Settings style gate: **24/24** on Agent defaults and Agents, desktop EN / phone zh-TW plus the middle-width check.
 - Chromium: **42 current + 12 before + 21 cached-shell common checkpoints**, and **12 current + 6 cached-shell native checkpoints**. No page/CSP errors or page overflow; phone controls and latest-pill geometry are asserted.
 
-Cached-shell common runs retain `v2.3.5-alpha.9`'s `app.css` and `settings-catalog.js`; the native runs retain both as well. The feature loads its own stylesheet and uses the old catalog's optional-export fallback.
+Cached-shell common runs retain `v2.3.5-alpha.10`'s `app.css` and `settings-catalog.js`; the native runs retain both as well. The feature loads its own stylesheet and uses the old catalog's optional-export fallback.
 
 Reproduce with `scripts/manual/smoke/smoke-3500-model-picker.mts` and `smoke-3500-model-context.mts`, using the shared fixture's `REPO`, `PW_DIR`, `CHROME`, `OUT`, `MATRIX`, `PORT`, `BASELINE` and `SKEW` variables. All ports must be free before boot. The scripts close only their own listeners and browser contexts.
 
 Focused commands (the full suite remains CI’s):
 
 ```sh
-npx vitest run tests/backend-command-1806.test.ts tests/backend-probe-worker.test.ts tests/codex-refresh-model-catalog.test.ts tests/profile-model-catalogs-2072.test.ts tests/runtime-build-info.test.ts tests/runtime-client-remote.test.ts tests/runtime-coordinator.test.ts tests/runtime-remote-accounts.test.ts tests/settings-model-dropdowns-2072.test.ts tests/web-chat-commands-1269.test.ts tests/web-commands-1269.test.ts tests/web-model-picker-m2731.test.ts tests/web-model-refresh-m2731.test.ts tests/web-model-refresh-route-m2731.test.ts tests/native-model-refresh-api-m2731.test.ts tests/native-model-refresh-m2731.test.ts tests/web-continuation-coverage.test.ts tests/web-app-fences-1408.test.ts tests/web-csp-1300.test.ts tests/i18n-ui-literals-2390.test.ts tests/web-left-bar-2330.test.ts --maxWorkers=2
+npx vitest run tests/backend-command-1806.test.ts tests/backend-probe-worker.test.ts tests/codex-refresh-model-catalog.test.ts tests/profile-model-catalogs-2072.test.ts tests/runtime-build-info.test.ts tests/runtime-client-remote.test.ts tests/runtime-coordinator.test.ts tests/runtime-remote-accounts.test.ts tests/settings-model-dropdowns-2072.test.ts tests/web-chat-commands-1269.test.ts tests/web-commands-1269.test.ts tests/web-model-picker-m2731.test.ts tests/web-model-refresh-m2731.test.ts tests/web-model-refresh-route-m2731.test.ts tests/native-model-refresh-api-m2731.test.ts tests/native-model-refresh-m2731.test.ts tests/web-continuation-coverage.test.ts tests/web-app-fences-1408.test.ts tests/web-csp-1300.test.ts tests/i18n-ui-literals-2390.test.ts tests/web-left-bar-2330.test.ts tests/fleet-model-proto-1490.test.ts --maxWorkers=2
 npx vitest run tests/cli-registry-runtime-bundle.test.ts --maxWorkers=1
 npm run typecheck
 npm run typecheck:tests
@@ -70,4 +70,4 @@ node scripts/changelog-assemble.mjs --check
 
 ## Limits and rollback
 
-This is production-page and mock-boundary evidence, not native Windows/vendor integration evidence. The alpha twin still needs its post-freeze PR, acceptance on the opened head, parity review and CI. It changes no stored Settings or schema during refresh. Reverting the twin restores the previous model picker; older peers simply lack the optional refresh operation.
+This is production-page and mock-boundary evidence, not native Windows/vendor integration evidence. The alpha twin still needs acceptance on its opened head, current-route review and settled CI before coordinator merge. It changes no stored Settings or schema during refresh. Reverting the twin restores the previous model picker; older peers simply lack the optional refresh operation.
