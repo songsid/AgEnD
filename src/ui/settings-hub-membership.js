@@ -73,7 +73,7 @@ export function HubMembershipSettings() {
     if (publicPage || !view || owner.current.busy) return;
     owner.current.busy = true; owner.current.seq++; setBusy(true); setMessageKey("");
     try {
-      const result = await confirmedWrite(path, { method: "PUT", body: { enabled }, label: copy("title"),
+      const result = await confirmedWrite(path, { method: "PUT", body: { enabled }, resendable: true, label: copy("title"),
         onPending: () => { if (owner.current.mounted) setMessageKey("pending"); } });
       if (!owner.current.mounted) return;
       if (result.ok) await read();

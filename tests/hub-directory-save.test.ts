@@ -1,6 +1,8 @@
 /** Inert orchestration controls. Real SQL/HTTPS composition is covered separately in hub-compose. */
 import { describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { HubSettingsError } from "../src/hub/settings-commit.js";
+import { HubProtocolError } from "../src/hub/validation.js";
 import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps } from "../src/hub/settings-directory-save.js";
 import type { HubDirectorySettingsDecision, HubDirectorySettingsOperation } from "../src/hub/settings-directory-decision.js";
 import type { HubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
@@ -48,7 +50,7 @@ function fixture() {
   const coordinator = createHubDirectorySaveCoordinator(deps);
   const save = () => coordinator.apply("owned-draft", {}, context, { capture, rotation });
   return { coordinator, context, deps, proof, rotation, response, packets, events, capture, save, id, compensation, head, original, complete,
-    compensate, remount, intent, settled, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
+    compensate, remount, intent, settled, decision, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
     fail: (restore = false) => { failure = true; failRestore = restore; }, proofGate: (gate: () => Promise<void>) => { proofGate = gate; },
     mountGate: (gate: () => Promise<void>) => { mountGate = gate; } };
 }
@@ -149,4 +151,64 @@ describe("private directory Save coordinator", () => {
     await expect(r.save()).rejects.toThrow("unconfirmed socket"); await expect(r.coordinator.close()).rejects.toThrow("unconfirmed socket");
     failed = false; await r.coordinator.close(); expect(r.response.discard).toHaveBeenCalledTimes(5);
   });
+});
+
+
+describe("captured pre-decision Save refusals", () => {
+  it("replies with a bounded refusal only after proving the same authoritative pre-decision image", async () => {
+    const r = fixture(), error = new HubSettingsError("stale");
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    await expect(r.save()).rejects.toBe(error);
+    expect(r.packets).toEqual([{status:409,json:JSON.stringify({ok:false,code:"stale",committed:false})}]);
+    expect(r.complete).not.toHaveBeenCalled(); expect(r.remount).not.toHaveBeenCalled(); expect(r.compensate).not.toHaveBeenCalled();
+    await r.coordinator.close();
+  });
+  it("never exposes arbitrary error text on the captured response", async () => {
+    const r = fixture(), error = Error("Dummy-private-bind-material");
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    await expect(r.save()).rejects.toBe(error);
+    expect(r.packets).toEqual([{status:503,json:JSON.stringify({ok:false,code:"unavailable",committed:false})}]);
+    expect(JSON.stringify(r.packets)).not.toContain(error.message); await r.coordinator.close();
+  });
+  it.each(["advanced", "uncertain"])("discards an %s decision outcome without claiming the settings were not committed", async mode => {
+    const r = fixture(), error = new HubSettingsError("recovery");
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => {
+      capture?.(); if (mode === "advanced") { r.head.operationId=r.id; r.head.directoryEpoch=1; }
+      else vi.mocked(r.deps.withDecision).mockRejectedValue(new HubProtocolError("uncertain"));
+      throw error;
+    });
+    await expect(r.save()).rejects.toBe(error); expect(r.packets).toEqual([]); expect(r.complete).not.toHaveBeenCalled(); await r.coordinator.close();
+  });
+  it("rechecks the expected image at the final reply proof", async () => {
+    const r = fixture(), error = new HubSettingsError("stale");
+    let currentAtReply: boolean | undefined;
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    vi.mocked(r.response.reply).mockImplementation(async (_build,current) => { r.head.authorizationVersion++; currentAtReply = current(); });
+    await expect(r.save()).rejects.toBe(error); expect(currentAtReply).toBe(false);
+    expect(r.response.reply).toHaveBeenCalledOnce(); expect(r.packets).toEqual([]); await r.coordinator.close();
+  });
+  it("refuses a packet build after a synchronous authority change", async () => {
+    const r = fixture(), error = new HubSettingsError("stale"); let buildError: unknown;
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    vi.mocked(r.response.reply).mockImplementation(async build => {
+      r.head.authorizationVersion++;
+      try { r.packets.push(build()); } catch (error) { buildError = error; }
+    });
+    await expect(r.save()).rejects.toBe(error); expect(buildError).toMatchObject({ code: "revoked" });
+    expect(r.packets).toEqual([]); await r.coordinator.close();
+  });
+  it("rejects a borrowed participant for another Hub without publishing a refusal", async () => {
+    const r = fixture(), error = new HubSettingsError("stale");
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    vi.mocked(r.deps.withDecision).mockImplementation(async work => work({...r.decision,hubId:randomUUID()}));
+    await expect(r.save()).rejects.toBe(error); expect(r.packets).toEqual([]); await r.coordinator.close();
+  });
+  it("Stop during the held failure lookup prevents any late refusal packet", async () => {
+    const r = fixture(), error = new HubSettingsError("stale"), entered = deferred(), held = deferred();
+    r.proof.apply.mockImplementation(async (_ref, _input, _ctx, _rotation, capture) => { capture?.(); throw error; });
+    vi.mocked(r.deps.withDecision).mockImplementation(async work => { entered.resolve(); await held.promise; return work(r.decision); });
+    const saving = r.save(); void saving.catch(() => {}); await entered.promise; r.stop(); held.resolve();
+    await expect(saving).rejects.toBe(error); expect(r.packets).toEqual([]); await r.coordinator.close();
+  });
+
 });

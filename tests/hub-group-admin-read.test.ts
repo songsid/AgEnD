@@ -96,6 +96,15 @@ describe("Hub group admin read and exact resume", () => {
     const w = fixture(); w.lookup.mockResolvedValue({ ok: false, reason });
     expect(await w.reads.resolve({ dn: "CN=G,DC=example,DC=test" }, w.ctx)).toEqual({ ok: false, reason });
   });
+  it("M-2724: an unknown lookup keeps its step name (a closed list), nothing else", async () => {
+    const w = fixture();
+    for (const failure of ["unreachable", "certificate", "service-sign-in", "lookup"] as const) {
+      w.lookup.mockResolvedValueOnce({ ok: false, reason: "unknown", failure });
+      expect(await w.reads.resolve({ dn: "CN=G,DC=example,DC=test" }, w.ctx)).toEqual({ ok: false, reason: "unknown", failure });
+    }
+    w.lookup.mockResolvedValueOnce({ ok: false, reason: "unknown", failure: "CN=private,DC=example,DC=test" } as unknown as PolicyGroupLookup);
+    expect(await w.reads.resolve({ dn: "CN=G,DC=example,DC=test" }, w.ctx)).toEqual({ ok: false, reason: "unknown" });
+  });
   it("maps an unreadable group to unknown and refuses a driver key from another realm", async () => {
     const w = fixture(); w.lookup.mockRejectedValueOnce(Error("private directory diagnostic"));
     expect(await w.reads.resolve({ dn: "CN=G,DC=example,DC=test" }, w.ctx)).toEqual({ ok: false, reason: "unknown" });
