@@ -537,6 +537,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .hub-directory-notices .directory-notice h3 { font-size: var(--fs-sm); margin: 0 0 var(--s-1); }
 .hub-directory-notices .directory-notice p { margin: var(--s-1) 0 var(--s-2); }
 .hub-directory-notices .s-actions { margin-top: var(--s-3); }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-directory-notices .btn { min-height: var(--tap); min-width: var(--tap); }
+}
 .s-section-layout .field > label { overflow-wrap: anywhere; }
 .s-ui-disclosure { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .s-ui-disclosure > summary { display: block; position: relative; padding: 16px 44px 16px 20px; color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); cursor: pointer; list-style: none; }

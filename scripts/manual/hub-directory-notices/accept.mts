@@ -50,7 +50,12 @@ try {
   const login = await api.request.post(hostOrigin + "/auth/login", { headers: { origin: hostOrigin }, data: { code: (await issue.json()).code } }); check("host-d3-login", login.status() === 200);
   const hostCookies = await api.cookies();
   const cases = [ ["desktop", "en", 1440, 1000], ["phone", "en", 390, 844], ["desktop", "zh-TW", 1440, 1000], ["phone", "zh-TW", 390, 844] ] as const;
-  for (const [device, lang, width, height] of cases) {
+  for (const [device, lang, width, height] of cases.filter(([device, lang]) => !process.env.CASE || process.env.CASE.split(",").includes(`${device}-${lang}`))) {
+    const tap = async (page: any, surface: string) => {
+      if (device !== "phone") return;
+      const boxes = await page.locator(".hub-directory-notices .btn").evaluateAll((buttons: HTMLElement[]) => buttons.map(button => { const b = button.getBoundingClientRect(); return { text: button.textContent, width: b.width, height: b.height }; }));
+      check(`${device}-${lang}:${surface}-tap`, boxes.length > 0 && boxes.every((b: any) => b.width >= 44 && b.height >= 44), boxes);
+    };
     const tag = `${device}-${lang}`, actor = { kind: "host-owner", sessionId: "owned-browser-fixture", requestId: randomUUID() }, mounted = runtime.directorySettings();
     const draft = writer.directory.prepare({ directory: { ...plan.directory, url: `ldaps://change-${tag.toLowerCase()}.example.test:636` }, bindPassword: "Dummy-service-only",
       changes: ["server", "ca", "search", "service-account", "secret", "query"], recipients: [{ kind: "host", sink: "owner-needs-you" }, { kind: "person", person: ADMIN.key }] }, actor, mounted.current);
@@ -65,7 +70,7 @@ try {
     await page.goto(hostOrigin + "/ui/needs"); await page.locator(`[data-directory-notice="${id}"]`).waitFor(); await page.waitForTimeout(150);
     check(tag + ":host-shell", await page.locator("#sidebar").count() === 1 && await page.locator(".p-needs").count() === 1);
     check(tag + ":host-unacknowledged", (inspect("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='host'", id)[0] as any).state === "queued");
-    await page.screenshot({ path: join(OUT, `${tag}-host.png`), fullPage: true });
+    await tap(page, "host"); await page.screenshot({ path: join(OUT, `${tag}-host.png`), fullPage: true });
     await page.locator(`[data-directory-notice="${id}"] button`).click(); await page.locator(`[data-directory-notice="${id}"] button`).waitFor({ state: "detached" });
     check(tag + ":host-exact-ack", (inspect("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='host'", id)[0] as any).state === "delivered");
     check(tag + ":person-still-unread", (inspect("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='person'", id)[0] as any).state === "queued");
@@ -73,7 +78,13 @@ try {
     await page.locator(`[data-directory-notice="${id}"]`).waitFor(); await page.waitForTimeout(150);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
     check(tag + ":hub-no-overflow", !overflow); check(tag + ":hub-shell", await page.locator(".p-hub-notices .panel-head").count() === 1);
-    await page.screenshot({ path: join(OUT, `${tag}-hub.png`), fullPage: true });
+    await tap(page, "hub"); await page.screenshot({ path: join(OUT, `${tag}-hub.png`), fullPage: true });
+    if (process.env.REACHABILITY === "1") {
+      const refresh = page.locator(".hub-directory-notices .s-actions button").first(); await refresh.scrollIntoViewIfNeeded();
+      const geometry = await refresh.evaluate((button: HTMLElement) => { const b = button.getBoundingClientRect(), p = button.closest(".panel-body")!.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, visibleTop: Math.max(0,p.top), visibleBottom: Math.min(innerHeight,p.bottom) }; });
+      check(tag + ":refresh-fully-reachable", geometry.top >= geometry.visibleTop && geometry.bottom <= geometry.visibleBottom, geometry);
+      await page.screenshot({ path: join(OUT, `${tag}-hub-scrolled.png`), fullPage: true });
+    }
     await page.locator(`[data-directory-notice="${id}"] button`).click(); await page.locator(`[data-directory-notice="${id}"] button`).waitFor({ state: "detached" });
     check(tag + ":person-exact-ack", (inspect("SELECT state FROM hub_settings_security_targets WHERE notice_id=? AND kind='person'", id)[0] as any).state === "delivered");
     check(tag + ":no-page-errors", errors.length === 0, errors); check(tag + ":one-read-each", requests.filter(r => r.startsWith("GET ")).length === 2, requests);

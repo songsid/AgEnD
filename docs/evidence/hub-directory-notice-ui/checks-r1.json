@@ -1,0 +1,29 @@
+{
+  "focused": {
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      "hub-directory-notice-ui.test.ts",
+      "hub-shared-modules-a.test.ts",
+      "i18n-ui-literals-2390.test.ts"
+    ]
+  },
+  "types": "Both source and test typechecks pass after R1",
+  "phoneBrowser": {
+    "checks": 30,
+    "passed": 30,
+    "receipt": "browser-r1.json",
+    "tapChecks": 4,
+    "reachabilityChecks": 2,
+    "phoneImagesRetaken": 4,
+    "scrolledDetailsAdded": 2
+  },
+  "tapReversal": "tap-reversal-r1.json",
+  "visual": "All six phone images clear in read-only image review",
+  "ciCorrections": [
+    "Exact Hub-only module expectation includes the two new modules",
+    "Error-key state setter renamed; display still localized, no allowlist added"
+  ],
+  "scope": "CSS/measurement + nonsemantic state rename + tests/evidence. No new API or authority."
+}
