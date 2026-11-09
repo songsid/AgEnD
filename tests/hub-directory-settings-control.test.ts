@@ -5,6 +5,7 @@ import { createHubDirectorySettingsControl } from "../src/hub/settings-directory
 import { HubSettingsError, type HubDirectorySettingsWriter } from "../src/hub/settings-commit.js";
 import type { HubMountedDirectory } from "../src/hub/settings-directory-runtime.js";
 import type { HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
+import * as certificates from "../src/hub/init/directory-certificate.js";
 import { BIND_PASSWORD_REF } from "../src/hub/init/layout.js";
 
 function fixture() {
@@ -91,6 +92,20 @@ describe("shared AD settings control", () => {
       expect(r.candidate).toHaveBeenCalledWith(expect.objectContaining({ url: "ldaps://next.example.test" }),
         { bindPassword: "Dummy-next-service-only" }, { expectedServerFingerprint: "A".repeat(64) });
     } finally { await r.control.close(); }
+  });
+  it.each(["inspect","fetch"] as const)("Stop drains physical CA %s through the shared controller",async mode=>{
+    let release!:()=>void,enter!:()=>void;const held=new Promise<void>(r=>{release=r;}),entered=new Promise<void>(r=>{enter=r;});
+    const inspect=vi.spyOn(certificates,"inspectDirectoryCertificate").mockImplementation(async url=>{if(mode==="inspect"){enter();await held;}return {url,leafPem:"inert-leaf",chain:[],certificate:{fingerprint256:"AA".repeat(32),subject:"Fixture",issuer:"Root",validTo:"fixture"}};});
+    const fetch=vi.spyOn(certificates,"fetchDirectoryCa").mockImplementation(async()=>{enter();await held;return {pem:"inert-public-ca",certificates:[]};});
+    const r=fixture();let pending:Promise<unknown>|undefined,closing:Promise<void>|undefined;
+    try{
+      if(mode==="inspect")pending=r.control.inspectCa({url:"ldaps://next.example.test"},r.context);
+      else{const p=await r.control.inspectCa({url:"ldaps://next.example.test"},r.context);pending=r.control.fetchCa({ref:p.ref,fingerprint:p.certificate.fingerprint256},r.context);}
+      void pending.catch(()=>{});await entered;expect(r.physical).toBe(1);
+      let closed=false;closing=r.control.close().then(()=>{closed=true;});await new Promise<void>(resolve=>setImmediate(resolve));
+      expect(closed).toBe(false);expect(r.physical).toBe(1);release();await expect(pending).rejects.toThrow();await closing;
+      expect(r.physical).toBe(0);expect(r.prepare).not.toHaveBeenCalled();
+    }finally{release();await pending?.catch(()=>{});await closing;await r.control.close();inspect.mockRestore();fetch.mockRestore();}
   });
   it("Stop retains shared-pool physical work and fences the held preparation before any writer effect", async () => {
     const r = fixture(); let release!: () => void, enter!: () => void;

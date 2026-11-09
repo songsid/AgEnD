@@ -6,6 +6,7 @@ import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type Hu
 import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps, type HubDirectorySaveDelivery } from "./settings-directory-save.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import { HUB_DIRECTORY_HOST_NOTICE_SINK } from "./settings-directory-notices.js";
+import { createHubDirectorySettingsCa } from "./settings-directory-ca.js";
 
 const text = (max: number) => z.string().min(1).max(max);
 const editable = z.strictObject({ url: text(2048), baseDn: text(1024), bindDn: text(1024), caPem: text(64 * 1024).optional(),
@@ -46,12 +47,19 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
     withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work), createDirectory: deps.createDirectory,
     recentAuthentication: actor => mounted().sessions().recentAuthentication(actor), ...(deps.probeTls ? { probeTls: deps.probeTls } : {}) });
   const save = createHubDirectorySaveCoordinator({ ...deps, proof });
+  const ca = createHubDirectorySettingsCa({ source, now, withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work) });
   const track = <T>(work: () => Promise<T>): Promise<T> => {
     const pending = Promise.resolve().then(() => { if (!owned()) throw new HubProtocolError("revoked"); return work(); });
     active.add(pending); void pending.finally(() => { active.delete(pending); }).catch(() => {}); return pending;
   };
-  const fence = () => { stopped = true; save.fence(); };
+  const fence = () => { stopped = true; ca.close(); save.fence(); };
   return {
+    inspectCa(raw: unknown, input: HubDirectoryProofContext) {
+      const request = structuredClone(raw), ctx = context(input); return track(() => ca.inspect(request, ctx));
+    },
+    fetchCa(raw: unknown, input: HubDirectoryProofContext) {
+      const request = structuredClone(raw), ctx = context(input); return track(() => ca.fetch(request, ctx));
+    },
     read(input: HubDirectoryProofContext) {
       const ctx = context(input), s = source(ctx);
       // The secret and its filesystem reference are never returned, even to the administrator or host owner.

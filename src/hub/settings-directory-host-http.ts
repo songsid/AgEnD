@@ -19,7 +19,7 @@ function send(res: ServerResponse, status: number, value: unknown) {
   res.end(JSON.stringify(value));
 }
 export function handleHubDirectoryHostSettingsHttp(req: IncomingMessage, res: ServerResponse, url: URL, deps: HubDirectoryHostSettingsHttpDeps): boolean {
-  if (url.pathname !== prefix && !["/prepare", "/test", "/save", "/cancel"].some(action => url.pathname === prefix + action)) return false;
+  if (url.pathname !== prefix && !["/prepare", "/test", "/save", "/cancel", "/ca/inspect", "/ca/fetch"].some(action => url.pathname === prefix + action)) return false;
   if (!deps.hubSetupSession || !deps.hubDirectorySettings) { send(res, 404, { ok: false, code: "unavailable" }); return true; }
   let owner: HubInitHostOwner | null;
   try { owner = deps.hubSetupSession(req); } catch { owner = null; }
@@ -48,6 +48,7 @@ export function handleHubDirectoryHostSettingsHttp(req: IncomingMessage, res: Se
     if (!current()) throw new HubProtocolError("revoked");
     const result = !action ? control.read(context) : action === "/prepare" ? await control.prepare(input, context)
       : action === "/test" ? await control.test(input, context) : action === "/cancel" ? control.cancel(input, context)
+      : action === "/ca/inspect" ? await control.inspectCa(input, context) : action === "/ca/fetch" ? await control.fetchCa(input, context)
       : await control.apply(input, context); // The fleet listener survives the Hub remount; no Hub cookie or response transfer.
     if (!current()) throw new HubProtocolError("revoked");
     send(res, action === "/save" && "state" in result && result.state === "restored" ? 503 : 200, result);
