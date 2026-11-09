@@ -168,6 +168,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "side-panel.js",
     // #1665: the host-kept preferences and their browser cache.
     "app-prefs.js",
+    // M-2738: the update line and its confirmation (static code; the update state is read behind the gate).
+    "app-update.js",
     // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
     "setup-host-text.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).

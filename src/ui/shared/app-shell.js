@@ -21,6 +21,7 @@ import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 import { initSettingsContentWidth } from "./settings-width.js";
 
@@ -1105,6 +1106,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub || !hubMarks().member || (nav.route?.panel === "settings" && nav.route.section === "hub") ? null : html`<${MemberPairingNoticesSlot} />`}
       ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest || hub ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

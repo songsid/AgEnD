@@ -36,6 +36,7 @@ function nativeCliTag(inst) {
   const cli = inst.backend === "codex" ? "Codex" : inst.backend === "claude-code" ? "Claude Code" : inst.backend;
   return html`<span class="tag native-cli-unverified" title=${t("nativecli.unverifiedHint", cli, inst.native_cli_version || "")}>${t("nativecli.unverified")}</span>`;
 }
+import { openUpdateDialog } from "/assets/app-update.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
@@ -91,7 +92,7 @@ import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
 import { PreviewPanel, claimPanel, openMarkdown, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
-import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
+import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMAND } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
@@ -698,7 +699,9 @@ function Composer({ name, inst, label = name, lease, busy }) {
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments"), commandsSupported = supportsInstanceFeature(inst,"commands");
   const machineUnavailable = !!inst?.machine_id && inst.machine_status !== "online";
   const sendingBlocked = machineUnavailable || inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
-  const palette = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  const palette0 = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  // M-2738 (D3): /update is the fleet's, not the agent's: offered (never to a guest) and it opens the app's Update dialog.
+  const palette = palette0 && !guest && UPDATE_COMMAND.name.startsWith(value.slice(1)) ? [...palette0, UPDATE_COMMAND] : palette0;
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   useEffect(() => { if (input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
@@ -716,6 +719,8 @@ function Composer({ name, inst, label = name, lease, busy }) {
     if (sendingBlocked) return;
     if (!attachmentsSupported && files.length) { toast(t("chat.runtimeNoAttachments"),false); return; }
     if (!commandsSupported && parseCommandLine(value)) { toast(t("chat.runtimeNoCommands"),false); return; }
+  // M-2738 (D3): /update is the fleet's, not the agent's: offered (never to a guest) and it opens the app's Update dialog.
+  const palette = palette0 && !guest && UPDATE_COMMAND.name.startsWith(value.slice(1)) ? [...palette0, UPDATE_COMMAND] : palette0;
     if (pick) {
       if (value === `/${pick.name}` && !needsArgument(pick.name)) runLine({ command: pick.name, args: "" });
       else complete(pick);
