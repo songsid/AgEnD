@@ -16,9 +16,14 @@ async function getJson(url) {
 function cached(url) {
   const hit = cache.get(url), now = performance.now();
   if (hit && (hit.pending || now - hit.at < TTL_MS)) return hit.pending ?? Promise.resolve(hit.value);
-  const pending = getJson(url).then((value) => { cache.set(url, { at: performance.now(), value, pending: null }); return value; })
-    .catch(() => { cache.delete(url); return null; });
-  cache.set(url, { at: now, value: null, pending });
+  const entry = { at: now, value: null, pending: null };
+  const pending = getJson(url).then((value) => {
+    // Explicit rediscovery/reset may have replaced this request while it waited.
+    if (cache.get(url) === entry) cache.set(url, { at: performance.now(), value, pending: null });
+    return value;
+  }).catch(() => { if (cache.get(url) === entry) cache.delete(url); return null; });
+  entry.pending = pending;
+  cache.set(url, entry);
   return pending;
 }
 /**
