@@ -5,7 +5,7 @@ import { readBoundedWebBody } from "./web-body.js";
 import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, runtimePairingAdmin, type WindowsCliApiContext } from "./windows-cli-api.js";
 import { INSTALLABLE_CLIS, isInstallableCli, type InstallableCliId } from "./runtime-cli-install.js";
 import type { RuntimeSwitchStates } from "./runtime-protocol.js";
-import type { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { RuntimeNotPendingError, type RuntimeCoordinator } from "./runtime-coordinator.js";
 import { createRuntimeBundle } from "./runtime-bundle.js";
 import type { RuntimeMachine } from "./runtime-protocol.js";
 import type { WindowsCliProbe } from "./windows-cli.js";
@@ -193,7 +193,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     }
     json(res, 404, { error: "Unknown runtime operation" }); return true;
   }
-  const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
+  const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|reject|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
   if (method === "GET" && route) {
     const found = hub.machine(route[1]), machine = found ? machineFor(found) : found;
     json(res, machine ? 200 : 404, machine ? route[2] === "inventory" ? { machineId: machine.id, inventory: machine.inventory ?? null, updatedAt: machine.inventoryUpdatedAt ?? null, status: machine.status } : { machine } : { error: "Runtime machine not found" }); return true;
@@ -218,6 +218,11 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     if (Object.keys(input).some(key => op === "rename" ? key !== "name" : op === "approve" ? key !== "fingerprint" : true)) throw Error("Unknown runtime operation field");
     if (op === "approve") json(res, 200, { machine: machineFor(hub.approve(id, input.fingerprint)) });
     else if (op === "revoke") json(res, 200, { machine: machineFor(hub.revoke(id)) });
+    // The page's Reject: only a computer still waiting. One that was approved meanwhile (another tab) is not touched: 409, and the page says it was already handled.
+    else if (op === "reject") {
+      try { json(res, 200, { machine: machineFor(hub.reject(id)) }); }
+      catch (error) { if (error instanceof RuntimeNotPendingError) json(res, 409, { error: error.message, code: "not-pending" }); else throw error; }
+    }
     else if (op === "rename") json(res, 200, { machine: machineFor(hub.rename(id, input.name)) });
     else if (op === "refresh" || op === "probe") {
       const inventory = await hub.call(id, "probe", { force: true });

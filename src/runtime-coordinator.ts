@@ -101,11 +101,13 @@ function inventory(value: unknown): WindowsCliProbe {
   }
   return probe;
 }
-function machineView(machine: RuntimeMachine): RuntimeMachine {
-  return { ...structuredClone(machine), ...(machine.inventory ? { inventory: withNativePaneVerification(machine.inventory) } : {}), runtimeCompatibility: machine.runtimeInfo
+function machineView(machine: RuntimeMachine, claimExpiresAt?: number, now = Date.now()): RuntimeMachine {
+  return { ...structuredClone(machine), ...(machine.status === "pending" && claimExpiresAt !== undefined && claimExpiresAt <= now ? { pairingExpired: true as const } : {}), ...(machine.inventory ? { inventory: withNativePaneVerification(machine.inventory) } : {}), runtimeCompatibility: machine.runtimeInfo
     ? runtimeInfoCompatible(machine.runtimeInfo) ? "compatible" : "incompatible"
     : machine.bootId ? "legacy" : "unknown" };
 }
+/** `reject` of a computer that is not waiting for approval any more. */
+export class RuntimeNotPendingError extends Error { constructor() { super("This computer was already handled"); this.name = "RuntimeNotPendingError"; } }
 interface MachineRecord { machine: RuntimeMachine; credentialHash?: string; claimHash?: string; claimExpiresAt?: number }
 interface PairRecord { id: string; codeHash: string; expiresAt: number }
 /**
@@ -296,8 +298,8 @@ export class RuntimeCoordinator {
     for (const listener of this.listeners) { try { listener(structuredClone(event)); } catch { /* Observer isolation. */ } }
   }
   private entry(id: string): MachineRecord { const row = this.state.machines.find(v => v.machine.id === id); if (!row) throw Error("Runtime machine not found"); return row; }
-  listMachines(): RuntimeMachine[] { return this.state.machines.map(row => machineView(row.machine)); }
-  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? machineView(row.machine) : null; }
+  listMachines(): RuntimeMachine[] { const now = this.now(); return this.state.machines.map(row => machineView(row.machine, row.claimExpiresAt, now)); }
+  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? machineView(row.machine, row.claimExpiresAt, this.now()) : null; }
   subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   createPairing(): RuntimePairing {
     this.state.pairings = this.state.pairings.filter(row => row.expiresAt > this.now());
@@ -471,6 +473,15 @@ export class RuntimeCoordinator {
   rename(id: string, name: unknown): RuntimeMachine {
     if (!text(name, 100) || !name.trim()) throw Error("Invalid runtime machine name");
     const row = this.entry(id); row.machine.name = name.trim(); this.save(); this.emit({ type: "machine", machineId: id }); return structuredClone(row.machine);
+  }
+  /**
+   * Drops a computer's request to pair while it is still waiting (an expired request too: that is how it is cleared). A computer that is no longer waiting, because it was approved
+   * meanwhile (another tab, another administrator) or was revoked, is left exactly as it is and the call says so: rejecting is never a way to revoke a computer that was approved.
+   */
+  reject(id: string): RuntimeMachine {
+    const row = this.entry(id);
+    if (row.machine.status !== "pending") throw new RuntimeNotPendingError();
+    return this.revoke(id);
   }
   revoke(id: string): RuntimeMachine {
     const row = this.entry(id); row.machine.status = "revoked"; delete row.credentialHash; delete row.claimHash; delete row.claimExpiresAt;

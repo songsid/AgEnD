@@ -219,6 +219,8 @@ export interface RuntimeMachine {
   bootId?: string;
   generation: number;
   pairingFingerprint?: string;
+  /** Only in what the administrator's page reads: a computer still waiting for approval whose request has run out (it can no longer be approved, only dropped). */
+  pairingExpired?: true;
   /** this computer joined with a one-time token from the install command (no pairing code, no approval step). Shown to the administrator, with a way to revoke. */
   enrolledVia?: "install-command";
   enrollmentId?: string;

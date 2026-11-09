@@ -171,6 +171,52 @@ describe("runtime administration API", () => {
       const result = run(ctx, `/ui/runtimes/machines/${pending.machineId}/${op}`, "POST", body); await vi.waitFor(() => expect(result.res.status).toBe(200)); const machine = JSON.parse(result.res.body).machine; expect(op === "rename" ? machine.name : machine.status).toBe(expected);
     }
   });
+  describe("rejecting a computer that asks to pair", () => {
+    const waiting = (hub: RuntimeCoordinator) => { const code = hub.createPairing().code; return hub.pair({ code, name: "Desk", platform: "win32" }); };
+    it("drops a request that is still waiting: the Runtime's claim is refused, the computer is gone from the list's waiting set, nothing was approved", async () => {
+      const { ctx, hub } = context(), pending = waiting(hub), result = run(ctx, `/ui/runtimes/machines/${pending.machineId}/reject`, "POST");
+      await vi.waitFor(() => expect(result.res.status).toBe(200)); expect(JSON.parse(result.res.body).machine.status).toBe("revoked");
+      expect(() => hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toThrow(/invalid or expired/);
+      expect(hub.machine(pending.machineId)).toMatchObject({ status: "revoked" }); expect(hub.machine(pending.machineId)?.approvedAt).toBeUndefined();
+    });
+    it("is refused with 409 for a computer that was approved meanwhile, which stays approved and keeps its credential path", async () => {
+      const { ctx, hub } = context(), pending = waiting(hub), revoke = vi.spyOn(hub, "revoke");
+      hub.approve(pending.machineId, hub.machine(pending.machineId)?.pairingFingerprint);
+      const result = run(ctx, `/ui/runtimes/machines/${pending.machineId}/reject`, "POST");
+      await vi.waitFor(() => expect(result.res.status).toBe(409)); expect(JSON.parse(result.res.body)).toMatchObject({ code: "not-pending", error: "This computer was already handled" });
+      expect(revoke).not.toHaveBeenCalled(); expect(hub.machine(pending.machineId)).toMatchObject({ status: "offline" });
+      expect(hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toMatchObject({ status: "approved" });   // it can still collect its credential
+    });
+    it("is refused with 409 for a computer already revoked, and the plain revoke route still works for an approved one", async () => {
+      const { ctx, hub } = context(), pending = waiting(hub); hub.revoke(pending.machineId);
+      const again = run(ctx, `/ui/runtimes/machines/${pending.machineId}/reject`, "POST"); await vi.waitFor(() => expect(again.res.status).toBe(409));
+      const approved = waiting(hub); hub.approve(approved.machineId, hub.machine(approved.machineId)?.pairingFingerprint);
+      const revoke = run(ctx, `/ui/runtimes/machines/${approved.machineId}/revoke`, "POST"); await vi.waitFor(() => expect(revoke.res.status).toBe(200));
+      expect(hub.machine(approved.machineId)?.status).toBe("revoked");
+    });
+    it("clears a request that has run out, which the list marks as expired and no longer approvable", async () => {
+      let now = 1_000_000; const home = mkdtempSync(join(tmpdir(), "agend-runtime-api-")); homes.push(home); const hub = new RuntimeCoordinator(home, { now: () => now }); hubs.push(hub);
+      const ctx: RuntimeApiContext = { webToken: token, runtimeCoordinator: () => hub }, pending = waiting(hub), other = waiting(hub);
+      expect(JSON.parse(run(ctx, "/ui/runtimes").res.body).machines.map((machine: { pairingExpired?: boolean }) => machine.pairingExpired)).toEqual([undefined, undefined]);
+      now += 11 * 60_000;
+      const listed = JSON.parse(run(ctx, "/ui/runtimes").res.body).machines as Array<{ id: string; status: string; pairingExpired?: boolean }>;
+      expect(listed.map(machine => [machine.status, machine.pairingExpired])).toEqual([["pending", true], ["pending", true]]);
+      expect(() => hub.approve(pending.machineId, hub.machine(pending.machineId)?.pairingFingerprint)).toThrow(/no longer pending/);
+      const cleared = run(ctx, `/ui/runtimes/machines/${pending.machineId}/reject`, "POST"); await vi.waitFor(() => expect(cleared.res.status).toBe(200));
+      expect(hub.machine(pending.machineId)).toMatchObject({ status: "revoked" }); expect(hub.machine(other.machineId)).toMatchObject({ status: "pending", pairingExpired: true });
+    });
+    it("is refused to a public gateway link and a foreign Origin, and takes no field", async () => {
+      const { ctx, hub } = context(), pending = waiting(hub), reject = vi.spyOn(hub, "reject");
+      for (const kind of ["origin", "gateway"]) {
+        const req = request(`/ui/runtimes/machines/${pending.machineId}/reject`, "POST"), res = new Response(req);
+        if (kind === "origin") req.headers.origin = "https://foreign.example";
+        if (kind === "gateway") bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+        handleRuntimeRequest(req, res, new URL(req.url!, "http://localhost"), ctx); expect(res.status, kind).toBe(403);
+      }
+      const extra = run(ctx, `/ui/runtimes/machines/${pending.machineId}/reject`, "POST", { fingerprint: "x" }); await vi.waitFor(() => expect(extra.res.status).toBe(400));
+      expect(reject).not.toHaveBeenCalled(); expect(hub.machine(pending.machineId)?.status).toBe("pending");
+    });
+  });
   it("returns inventory freshness without exposing credentials", () => {
     const { ctx, hub } = context(), p = hub.createPairing(), pending = hub.pair({ code: p.code, name: "Desk", platform: "win32" });
     const response = run(ctx, `/ui/runtimes/machines/${pending.machineId}/inventory`); expect(response.res.status).toBe(200); expect(JSON.parse(response.res.body)).toEqual({ machineId: pending.machineId, inventory: null, updatedAt: null, status: "pending" });
