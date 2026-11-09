@@ -82,7 +82,7 @@ describe("company join local wait",()=>{
  });
  it("the original Start reveals the exact shared card and uses its sole Withdraw control",async()=>{
   heldFetch();const p=await mount(false);await start(p);expect(btn(p,"Review local confirmation")).toBeTruthy();
-  const other=p.document.createElement("section");other.setAttribute("data-pending","b".repeat(32));other.className="pending-card";const wrong=vi.fn();other.scrollIntoView=wrong;p.root.appendChild(other);
+  const other=p.document.createElement("section");other.setAttribute("data-pending","b".repeat(32));other.className="pending-card";const wrong=vi.fn();other.scrollIntoView=wrong;p.root.insertBefore(other,p.root.firstChild);
   const exact=p.root.querySelector('.pending-card[data-pending="'+pendingId+'"]');expect(exact).toBeTruthy();const scroll=vi.fn();exact.scrollIntoView=scroll;
   expect(p.root.querySelector(".s-company-join").textContent).not.toContain("Withdraw connection request");
   fire(btn(p,"Review local confirmation"),"click");expect(scroll).toHaveBeenCalledOnce();expect(wrong).not.toHaveBeenCalled();
