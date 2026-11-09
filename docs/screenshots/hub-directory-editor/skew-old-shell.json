@@ -1,0 +1,48 @@
+{
+  "cases": [
+    {
+      "case": "desk-light-en",
+      "host:no-editor": "PASS",
+      "host:no-private-read": "PASS",
+      "host:no-js-error": "PASS",
+      "hub:overflow": "PASS",
+      "hub:real-shell": "PASS",
+      "hub:no-early-effect": "PASS",
+      "hub:one-dialog": "PASS",
+      "hub:trust-overflow": "PASS",
+      "hub:saved": "PASS",
+      "hub:secret-cleared": "PASS",
+      "hub:no-failed-request": "PASS",
+      "hub:no-js-error": "PASS",
+      "hub:healthy": "PASS",
+      "hub:rotated-session": "PASS"
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "host:no-editor": "PASS",
+      "host:no-private-read": "PASS",
+      "host:no-js-error": "PASS",
+      "hub:overflow": "PASS",
+      "hub:tap": "PASS",
+      "hub:real-shell": "PASS",
+      "hub:no-early-effect": "PASS",
+      "hub:one-dialog": "PASS",
+      "hub:trust-overflow": "PASS",
+      "hub:trust-tap": "PASS",
+      "hub:saved": "PASS",
+      "hub:secret-cleared": "PASS",
+      "hub:no-failed-request": "PASS",
+      "hub:no-js-error": "PASS",
+      "hub:healthy": "PASS",
+      "hub:rotated-session": "PASS"
+    }
+  ],
+  "skew": "old-shell",
+  "before": false,
+  "limits": "scratch only; fake people/LDAPS; initializer public D3 API is fixture preparation; no API reply stubs; no real AD/account/pilot/CLI/native service",
+  "cleaned": true,
+  "identity-kept": "PASS",
+  "certificate-kept": "PASS",
+  "groups-off": "PASS",
+  "known-fixture-credentials-only": "PASS"
+}

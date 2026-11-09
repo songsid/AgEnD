@@ -64,9 +64,11 @@ let timer = null, polling = false;
 
 function publish() {
   appStore.set({
-    pendingChanges: [...tracked.values()].map(({ view, at, label, retry }) => ({
+    pendingChanges: [...tracked.values()].map(({ view, at, label, retry, displaySummary }) => ({
       ...view,
       label: label || null,
+      // Display only: the server owns the diff, confirmation digest and execution.
+      summary: displaySummary ? displaySummary(view) : view.summary,
       // Monotonic: when the server's countdown reaches zero on this page's clock.
       deadline: at + Math.max(0, Number(view.remaining_ms) || 0),
       withdraw: view.can_withdraw && view.state === "pending" ? () => withdraw(view.id) : null,
@@ -145,14 +147,20 @@ async function poll() {
  * Follow a pending request until it is decided. Resolves with its final view (applied, rejected, expired, stale or
  * failed). The same id twice is followed once.
  */
-export function track(view, label, retry) {
+export function track(view, label, retry, displaySummary) {
   if (finals.has(view.id) && !tracked.has(view.id)) return Promise.resolve(finals.get(view.id));   // decided and dismissed
   // `retry`: a function that sends the same write again (confirmedWrite makes one only for a write its caller marked
   // `resendable`). Also never kept for a request the server marks `section: "secret"` — a second line of defence, not the rule.
   const again = typeof retry === "function" && view.section !== "secret" ? retry : null;
   let e = tracked.get(view.id);
-  if (!e) { e = { view, at: now(), label, retry: again, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
+  if (!e) { e = { view, at: now(), label, displaySummary, retry: again, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
   else { if (label && !e.label) e.label = label; if (again && !e.retry) e.retry = again; }
+  if (typeof displaySummary === "function") {
+    e.displaySummary = displaySummary;
+    // Discovery may have settled this request before its original response arrives. Publish only its new copy;
+    // update() still rejects the older pending view, without changing the decided state, digest or deadline.
+    if (e.done) publish();
+  }
   const settled = e.done ? Promise.resolve(e.view) : new Promise((resolve) => e.waiters.push(resolve));
   update(view, ticket(e));
   schedule();
@@ -222,8 +230,9 @@ export async function attach() {
  * network failure throws. Every other answer is returned as it is. `key` is the request's Idempotency-Key: pass the same one to
  * retry the same request. `onPending(id, view)` is told when it starts waiting — or, held and confirmed by its own
  * web-verified account (selfConfirmed(view), #2170), applying.
+ * `displaySummary(view)` describes a known write in the page's language; it changes only the local card, never the server diff or digest.
  */
-export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending, resendable = false } = {}) {
+export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending, resendable = false, displaySummary } = {}) {
   // The payload and headers as handed off now: a later change to the caller's objects is not what "the same write" sends again.
   const payload = body === undefined ? undefined : JSON.stringify(body), sent = { ...(headers || {}) };
   const res = await api(path, { method, headers: { ...sent, "Idempotency-Key": key }, body: payload });
@@ -233,7 +242,7 @@ export async function confirmedWrite(path, { method = "POST", body, key = newKey
   // Only a caller that says its body holds nothing sensitive (`resendable: true`) gets a way to send it again: the body is
   // otherwise not kept past this call. Nothing is inferred from the server's `section` (an Add bot request, which carries
   // a raw token, is not marked "secret" there).
-  const final = await track(res.body.pending_change, label, resendable === true ? resendOf(path, { method, payload, label, headers: sent }) : undefined);
+  const final = await track(res.body.pending_change, label, resendable === true ? resendOf(path, { method, payload, label, headers: sent }) : undefined, displaySummary);
   return outcomeResponse(final);
 }
 

@@ -171,9 +171,9 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   };
   const readManifest = (): string => readFileSync(privatePath(deps.home, MANIFEST), "utf8");
   /** The pair in force verifies against its own digest; returns the image a change is bound to. */
-  const image = () => {
+  const image = (directory = false) => {
     const hub = obj(deps.readHub());
-    if (hub.enabled !== true || typeof hub.hubId !== "string" || typeof hub.memberOrigin !== "string") throw new HubSettingsError("unavailable");
+    if ((hub.enabled !== true && !(directory && hub.enabled === false)) || typeof hub.hubId !== "string" || typeof hub.memberOrigin !== "string") throw new HubSettingsError("unavailable");
     const digest = hubPlanDigest(hub), manifest = readManifest();
     let confirmationId: string;
     try { ({ confirmationId } = verifyHubInitialization({ home: deps.home, hubId: hub.hubId, memberOrigin: hub.memberOrigin, planDigest: digest })); }
@@ -257,7 +257,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     step("config");
     assertHead();
     if (!same(directoryImage(), op.after)) throw new HubSettingsError("recovery", "the installed directory image differs from the decision");
-    image(); // same issuer/identity, actual installed seal; no browser authority is published here
+    image(true); // same issuer/identity, actual installed seal; no browser authority is published here
     writeDirectoryPrivate(SETTINGS_RECEIPTS, `${SETTINGS_RECEIPTS}/${j.id}.json`, receipt);
     writeDirectoryJournal({ ...j, phase: "done" }); step("done");
     rmSync(file(SETTINGS_JOURNAL), { force: true });
@@ -273,11 +273,11 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     const check = () => {
       checkTime();
       if (!currentProof(current)) throw new HubSettingsError("denied");
-      image();
+      image(true);
       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
     };
     if (pending()) throw new HubSettingsError("busy");
-    check(); image();
+    check(); image(true);
     const id = randomUUID(), at = now(), oldHub = structuredClone(obj(deps.readHub())), oldSecret = readSecret(), oldManifest = readManifest();
     const nextDigest = hubPlanDigest(p.next);
     const receipt = { v: 2, kind: "agend-hub-settings-receipt", id, op: original ? "directory-compensation" : "directory", compensates: original?.id ?? null,
@@ -314,7 +314,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   const directoryWriter: HubDirectorySettingsWriter = {
     prepare(candidate, actor, current) {
       const metadata = parseHubDirectoryDecisionMetadata({ actor, changes: candidate.changes, recipients: candidate.recipients });
-      const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(), oldCfg = obj(old.hub.directory);
+      const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(true), oldCfg = obj(old.hub.directory);
       const oldSecret = readSecret(), before = directoryImage(old.hub, old.manifest, oldSecret);
       if (metadata.actor.kind === "hub-administrator" && !same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
       if (oldCfg.bindPasswordRef !== BIND_PASSWORD_REF || cfg.bindPasswordRef !== undefined && cfg.bindPasswordRef !== BIND_PASSWORD_REF
@@ -356,7 +356,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
         const receiptText = readDirectoryFile(original.id, "receipt"), receipt = JSON.parse(receiptText);
         if (sha(receiptText) !== original.receiptSha || !same(receipt.recovery, original.recovery)) throw new HubSettingsError("recovery");
         // SQL and a staged receipt can agree with each other without agreeing with the issuer's signed receipt binding.
-        if (receipt.id !== original.id || image().confirmationId !== sha(canonical(receipt)).slice(0, 32)) throw new HubSettingsError("recovery");
+        if (receipt.id !== original.id || image(true).confirmationId !== sha(canonical(receipt)).slice(0, 32)) throw new HubSettingsError("recovery");
         const intent = d.mountRecovery();
         if (intent?.operation.id !== original.id || intent.state !== "pending") throw new HubSettingsError("stale");
         expiresAt = Math.min(expiresAt ?? Infinity, original.recovery.expiresAt);

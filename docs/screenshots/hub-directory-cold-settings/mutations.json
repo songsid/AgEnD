@@ -1,0 +1,166 @@
+{
+  "v": 1,
+  "baseline": {
+    "962dba8e4b7c7ae4819efb19cf74c8cb5d6535182f68fbd72dc4f6f29c4de9c7": "src/fleet-manager.ts",
+    "9ae57e2e2920e6583f53f9700165f90284cd607920c441459dec854a04b4a634": "src/hub/runtime.ts",
+    "cb3edf8b6876fdae40485bf7c8280b0bf3737943ec32b68bc3cdb6ccdac41f38": "src/hub/settings-commit.ts",
+    "94357075dfa97d8a7776fe5022dbb915b178e53dc01ac9c1d119d3856857dd2a": "src/hub/settings-directory-recovery.ts",
+    "d92bd2679f8bb74aeb03c4844d6a25e1d4e9b81199d0ce7ffa9cb6f1c2001b7c": "src/hub/settings-directory-save.ts"
+  },
+  "rows": [
+    {
+      "name": "final-material",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "    barrier.assertCurrent(); // Construction callbacks cannot publish changed material.",
+      "passed": 8,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "source-material",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "const stamp = barrier.capture();",
+      "passed": 6,
+      "failed": 3,
+      "assertionFailures": 3
+    },
+    {
+      "name": "shared-pool",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "const pending = policy.withDirectoryRead(person, work);",
+      "passed": 7,
+      "failed": 2,
+      "assertionFailures": 2
+    },
+    {
+      "name": "physical-reads",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "          await Promise.allSettled([...active]);",
+      "passed": 8,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "driver-close",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "          await (acceptedDirectory as HubDirectory & { close?(): Promise<void> }).close?.();",
+      "passed": 8,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "database-close",
+      "path": "src/hub/settings-directory-recovery.ts",
+      "pattern": "          state.close();",
+      "passed": 8,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "off-writer",
+      "path": "src/hub/settings-commit.ts",
+      "pattern": "(hub.enabled !== true && !(directory && hub.enabled === false))",
+      "passed": 8,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "held-not-ready",
+      "path": "src/hub/settings-directory-save.ts",
+      "pattern": " || mounted.recoveryMode === \"held\"",
+      "passed": 7,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "host-acquisition",
+      "path": "src/fleet-manager.ts",
+      "pattern": "      await runtime.acquireDirectorySettings();",
+      "passed": 1,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "replacement-drain",
+      "path": "src/hub/runtime.ts",
+      "pattern": "if (this.coldDirectory && (obj(config.hub)?.enabled === true || !this.coldDirectory.current())) await this.drainColdDirectory();",
+      "passed": 10,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "stop-drain",
+      "path": "src/hub/runtime.ts",
+      "pattern": "await this.coldDirectoryInit?.catch(() => {});\n      await this.drainColdDirectory();",
+      "passed": 10,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "admission-ticket",
+      "path": "src/hub/runtime.ts",
+      "pattern": "ticket === this.directoryAdmissionTicket && admissionTicket === this.admissionTicket",
+      "passed": 10,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "refresh-ticket",
+      "path": "src/hub/runtime.ts",
+      "pattern": "ticket === this.directoryAdmissionTicket && admissionTicket === this.admissionTicket",
+      "passed": 9,
+      "failed": 3,
+      "assertionFailures": 3
+    },
+    {
+      "name": "construction-drain",
+      "path": "src/hub/runtime.ts",
+      "pattern": "    if (this.coldDirectoryBuild) await this.coldDirectoryBuild.catch(() => {});",
+      "passed": 10,
+      "failed": 2,
+      "assertionFailures": 2
+    },
+    {
+      "name": "construction-registration",
+      "path": "src/hub/runtime.ts",
+      "pattern": "      this.coldDirectoryBuild = build;",
+      "passed": 10,
+      "failed": 2,
+      "assertionFailures": 2
+    },
+    {
+      "name": "post-build-admission",
+      "path": "src/hub/runtime.ts",
+      "pattern": "        if (!current()) { await this.drainColdDirectory(); throw Error(\"Directory settings admission changed\"); }",
+      "passed": 11,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "participant-owner",
+      "path": "src/hub/runtime.ts",
+      "pattern": "this.recoveryDirectory ?? this.coldDirectory?.decision ?? this.mountedDirectory?.decision ?? null",
+      "passed": 11,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "off-view-revocation",
+      "path": "src/hub/runtime.ts",
+      "pattern": "    this.observeDirectoryAdmission(config.hub);",
+      "passed": 11,
+      "failed": 1,
+      "assertionFailures": 1
+    },
+    {
+      "name": "member-isolation",
+      "path": "src/hub/runtime.ts",
+      "pattern": "await this.mount.closeServer();",
+      "passed": 11,
+      "failed": 1,
+      "assertionFailures": 1
+    }
+  ],
+  "restored": true,
+  "method": "One reversal per process; only assertion failures accepted. Nine unchanged-source rows carry from the first run; ten final runtime rows were rerun after admission/construction changes. Each row baseline matches the final source. Failed harness-classification attempts are excluded."
+}

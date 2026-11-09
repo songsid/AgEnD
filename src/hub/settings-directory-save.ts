@@ -62,7 +62,7 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
     };
     const ready = (saved: Applied): HubMountedDirectory | null => {
       const mounted = deps.mounted();
-      if (!mounted?.current() || mounted.decision.hubId !== deps.hubId) return null;
+      if (!mounted?.current() || mounted.decision.hubId !== deps.hubId || mounted.recoveryMode === "held") return null;
       const head = mounted.decision.inspect();
       return head.operationId === saved.receiptId && head.directoryEpoch === saved.directoryEpoch && mounted.current() ? mounted : null;
     };

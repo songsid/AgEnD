@@ -22,7 +22,7 @@ beforeAll(async () => {
   card = await import("/ui/js/settings-hub.js");
   pg.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); });
+afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); (await import("/assets/app-i18n.js")).setLang("en", { store: false }); });
 
 const ROW = { agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,
   choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null };
@@ -83,6 +83,42 @@ describe("the card's agent share and pending rows", () => {
     expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [] });
     expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
     expect(pg.root.querySelector(".hub-exposures [role=status]")!.textContent).toContain("Sent for confirmation");
+  });
+  it.each(["en", "zh-TW"])("retires only the settled publication hint (%s)", async language => {
+    const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
+    let finish!: (v: unknown) => void;
+    const rows = [{ ...ROW }];
+    const setExposed = vi.fn(async () => {
+      rows[0] = { ...ROW, pending: { expiresAt: 9 } } as any;
+      return { ok: true, pending: { expiresAt: 9 }, settled: new Promise(r => { finish = r; }) };
+    });
+    const c = { ...fakeClient(rows, setExposed), exposures: async () => rows.map(row => ({ ...row })) };
+    const pg = await cardWith(c);
+    const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
+    await until(() => pg.root.querySelector(".hub-exposures [role=status]"));
+    expect(pg.root.textContent).toContain(language === "en" ? "Sent for confirmation" : "已送出確認");
+    rows[0] = { ...ROW, revision: 1, state: "published", pending: null } as any;
+    finish({ state: "applied" }); await until(() => (pg.root.querySelector(".hub-exposure input") as any).checked);
+    await settle(8);
+    expect((pg.root.querySelector(".hub-exposure input") as any).checked).toBe(true);
+    expect(pg.root.textContent).not.toContain(language === "en" ? "Sent for confirmation" : "已送出確認");
+    i18n.setLang("en", { store: false });
+  });
+  it("an older publication settlement cannot retire another Agent's newer pending hint", async () => {
+    const rows = [{ ...ROW }, { ...ROW, agent: "beta", display: "Beta" }];
+    let first!: (v: unknown) => void;
+    const c = { ...fakeClient(rows), exposures: async () => rows.map(row => ({ ...row })), setExposed: async (agent: string) => {
+      const row = rows.find(row => row.agent === agent)!; row.pending = { expiresAt: 9 } as any;
+      return { ok: true, pending: { expiresAt: 9 }, settled: agent === "atlas" ? new Promise(r => { first = r; }) : new Promise(() => {}) };
+    } };
+    const pg = await cardWith(c);
+    for (const index of [0, 1]) {
+      const box = pg.root.querySelectorAll(".hub-exposure input")[index] as any; box.checked = true; fire(box, "change");
+      await until(() => !pg.root.querySelectorAll(".hub-exposure input")[1]!.disabled || index === 1);
+      await settle(8);
+    }
+    first({ state: "rejected" }); await settle(10);
+    expect(pg.root.querySelector(".hub-exposures [role=status]")?.textContent).toContain("Sent for confirmation");
   });
   it("a shared agent says where questions go; switching off withdraws", async () => {
     const shared = { ...ROW, exposureId: "e1", revision: 1, state: "published", policy: { dataView: "agent", tools: [] } };

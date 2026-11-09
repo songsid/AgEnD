@@ -46,8 +46,8 @@ export function HubRetentionSettings() {
     <p class="note">${copy("hint")}</p>
     ${!policy && !messageKey ? html`<${Skeleton} variant="form" lines=${4} />` : null}
     ${policy ? html`<form class="form" onSubmit=${save}><div class="grid2">
-      <label class="field">${copy("content")}<input type="number" min="1" max="3650" step="1" value=${content} disabled=${busy} onInput=${e => setContent(e.target.value)} /></label>
-      <label class="field">${copy("events")}<input type="number" min="1" max="3650" step="1" value=${events} disabled=${busy} onInput=${e => setEvents(e.target.value)} /></label>
+      <label class="field">${copy("content")}<input type="number" inputmode="numeric" min="1" max="3650" step="1" value=${content} disabled=${busy} onInput=${e => setContent(e.target.value)} /></label>
+      <label class="field">${copy("events")}<input type="number" inputmode="numeric" min="1" max="3650" step="1" value=${events} disabled=${busy} onInput=${e => setEvents(e.target.value)} /></label>
     </div><button class="btn" type="submit" disabled=${busy || !valid(content) || !valid(events)}>${copy("save")}</button></form>` : null}
     ${messageKey ? html`<p role="status">${copy(messageKey)}</p>` : null}
   </section>`;

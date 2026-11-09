@@ -14,7 +14,7 @@ import { hubPlanDigest } from "./init/plan-digest.js";
 import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, hubServerDatabasePlan, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
-import { withHubDirectoryRecovery } from "./settings-directory-recovery.js";
+import { createHubDirectoryColdSettings, HubDirectoryColdCleanupError, withHubDirectoryRecovery } from "./settings-directory-recovery.js";
 import type { HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import { canonicalArguments } from "./identity.js";
@@ -122,19 +122,87 @@ export function hubDirectoryDiagnostics(log: HubRuntimeOptions["log"]): (d: HubD
 export class HubRuntime {
   private readonly directoryResponses: HubDirectoryResponseOwner;
   private mountedDirectory: HubMountedDirectory | null = null;
+  private coldDirectory: Awaited<ReturnType<typeof createHubDirectoryColdSettings>> | null = null;
+  private coldDirectoryCleanup: HubDirectoryColdCleanupError | null = null;
+  private coldDirectoryInit: Promise<HubMountedDirectory> | null = null;
+  private coldDirectoryBuild: Promise<HubMountedDirectory> | null = null;
+  private directoryAdmission: string | null = null;
+  private directoryAdmissionTicket = 0;
+  private observeDirectoryAdmission(hub: unknown): void {
+    const view = canonicalArguments(hub ?? null);
+    if (view !== this.directoryAdmission) {
+      this.directoryAdmission = view; this.directoryAdmissionTicket++; this.coldDirectory?.fence();
+    }
+  }
+  private async drainColdDirectory(): Promise<void> {
+    const cleanup = this.coldDirectoryCleanup;
+    if (cleanup) {
+      await cleanup.close();
+      if (this.coldDirectoryCleanup === cleanup) this.coldDirectoryCleanup = null;
+    }
+    const cold = this.coldDirectory;
+    if (!cold) return;
+    cold.fence(); await cold.close();
+    if (this.coldDirectory === cold) this.coldDirectory = null;
+  }
+  /** Called only after a listener has proved local D3/Hub-admin authority. It never starts a listener. */
+  async acquireDirectorySettings(): Promise<HubMountedDirectory> {
+    if (this.stopped || this.options.settingsWriter?.pending()) throw Error("Directory settings are unavailable");
+    const existing = this.directorySettings(); if (existing) return existing;
+    const read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
+    const snapshot = structuredClone(read()), hub = obj(snapshot.hub);
+    if (!hub) throw Error("The Hub has not been initialized");
+    this.observeDirectoryAdmission(hub);
+    const ticket = this.directoryAdmissionTicket, admissionTicket = this.admissionTicket, view = canonicalArguments(hub);
+    const current = () => !this.stopped && ticket === this.directoryAdmissionTicket && admissionTicket === this.admissionTicket && canonicalArguments(read().hub) === view;
+    const pending = this.coldDirectoryInit ??= (async () => {
+      await this.running;
+      if (!current()) throw Error("Directory settings admission changed");
+      const mounted = this.directorySettings(); if (mounted) return mounted;
+      await this.drainColdDirectory();
+      // Positively drain a held server before borrowing its existing state; its member connection is independent.
+      await this.mount.closeServer();
+      await this.drainLeftovers({ server: true, member: false }, true);
+      if (!current() || this.options.settingsWriter?.pending()) throw Error("Directory settings admission changed");
+      const entry = await (this.options.components ?? { http: S3B_HTTP_ENTRY }).http?.();
+      if (!current() || !entry) throw Error("Directory settings admission changed");
+      const { settings, groupGeneration, migrations } = hubServerDatabasePlan(hub, entry.migrations);
+      // Publish the physical construction participant BEFORE invoking callbacks that may re-enter Refresh.
+      let resolve!: (source: HubMountedDirectory) => void, reject!: (error: unknown) => void;
+      const build = new Promise<HubMountedDirectory>((yes, no) => { resolve = yes; reject = no; });
+      this.coldDirectoryBuild = build;
+      void (async () => {
+        let cold: Awaited<ReturnType<typeof createHubDirectoryColdSettings>>;
+        try {
+          cold = await createHubDirectoryColdSettings({ home: this.options.home, hubId: settings.hubId, memberOrigin: settings.memberOrigin,
+            hub, generation: groupGeneration, migrations, current, createDirectory: this.options.createDirectory ?? createHubDirectory });
+        } catch (error) {
+          if (error instanceof HubDirectoryColdCleanupError) this.coldDirectoryCleanup = error;
+          throw error;
+        }
+        this.coldDirectory = cold; // Retain physical ownership even when logical admission just expired.
+        if (!current()) { await this.drainColdDirectory(); throw Error("Directory settings admission changed"); }
+        return cold;
+      })().then(resolve, reject);
+      try { return await build; }
+      finally { if (this.coldDirectoryBuild === build) this.coldDirectoryBuild = null; }
+    })();
+    try { return await pending; }
+    finally { if (this.coldDirectoryInit === pending) this.coldDirectoryInit = null; }
+  }
   private recoveryDirectory: HubDirectorySettingsDecision | null = null;
   private settingsRecoveryGeneration = 0;
   private directoryStartupAttempted = false;
   directorySettings(): HubMountedDirectory | null {
-    return !this.stopped && this.mountedDirectory?.current() ? this.mountedDirectory : null;
+    return this.stopped ? null : this.mountedDirectory?.current() ? this.mountedDirectory : this.coldDirectory?.current() ? this.coldDirectory : null;
   }
   /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
-  directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.mountedDirectory?.decision ?? null; }
+  directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.coldDirectory?.decision ?? this.mountedDirectory?.decision ?? null; }
   /** Physical Save completion may borrow the exact existing state after its old listener has closed. Never migrate/create here. */
   async withDirectoryDecision<T>(hubId: string, work: (decision: HubDirectorySettingsDecision) => T, current: () => boolean): Promise<T> {
-    const ticket = this.admissionTicket, read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
+    const ticket = this.admissionTicket, directoryTicket = this.directoryAdmissionTicket, read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
     const snapshot = structuredClone(read()), view = effectiveHubView(snapshot);
-    const owned = () => !this.stopped && ticket === this.admissionTicket && current() === true;
+    const owned = () => !this.stopped && ticket === this.admissionTicket && directoryTicket === this.directoryAdmissionTicket && current() === true;
     const run = (decision: HubDirectorySettingsDecision): T => {
       if (!owned() || decision.hubId !== hubId) throw Error("Directory decision owner changed");
       let open = true;
@@ -354,6 +422,7 @@ export class HubRuntime {
   apply(config: HubConfigView): Promise<void> {
     if (this.stopped) return Promise.resolve();
     this.settingsRecoveryGeneration++;
+    this.observeDirectoryAdmission(config.hub);
     const view = effectiveHubView(config);
     if (this.admit(view)) {
       if (this.running) {
@@ -384,6 +453,8 @@ export class HubRuntime {
   }
 
   private async applyOnce(config: HubConfigView): Promise<void> {
+    if (this.coldDirectoryBuild) await this.coldDirectoryBuild.catch(() => {});
+    if (this.coldDirectoryCleanup || this.coldDirectory && (obj(config.hub)?.enabled === true || !this.coldDirectory.current())) await this.drainColdDirectory();
     if (this.options.settingsWriter?.pending()) {
       await this.refuseSettingsMount(config, Error("Hub settings recovery must finish before mounting"));
       return;
@@ -477,6 +548,7 @@ export class HubRuntime {
     this.stopped = true;
     this.pending = null;
     this.directoryResponses.fence();
+    this.coldDirectory?.fence();
     this.mount.fence();
   }
 
@@ -488,6 +560,8 @@ export class HubRuntime {
       /* already reported */
     }
     try {
+      await this.coldDirectoryInit?.catch(() => {});
+      await this.drainColdDirectory();
       await this.mount.close();
       await this.drainLeftovers({ server: true, member: true }, true);
     } finally { await this.directoryResponses.close(); }

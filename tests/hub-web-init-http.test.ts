@@ -316,18 +316,38 @@ describe("host AD HTTP boundaries", () => {
     expect(JSON.stringify([unavailable,busy])).not.toContain("Dummy-private-directory-detail");
   },20_000);
 
-  it("replaces an unreachable AD through D3 and the real shared writer, without AD sign-in",async()=>{
+  it.each(["running","off"])("replaces an unreachable AD through D3 and the real shared writer while %s, without AD sign-in",async mode=>{
     const r=await fixture(),replacement=await groupWirePeer(certs.leaf,r.users);
     try{
       const draft=await r.call("/prepare",r.input);expect(draft.status).toBe(200);
       expect((await r.call("/commit",{ref:draft.body.ref})).status).toBe(200);
       r.internal.hubEffectsReady=true;await r.internal.applyHubSwitches();
       const runtime=r.internal.hubRuntime as HubRuntime;expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
-      const source=runtime.directorySettings()!.source(),signin=vi.spyOn(source.directory,"signIn"),eligibility=vi.spyOn(source.directory,"checkEligibility");
+      if(mode==="off") { r.fm.saveFleetConfig([{path:["hub","enabled"],value:false}]); await r.internal.applyHubSwitches(); }
+      expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe(mode==="off"?"off":"ready");
       const identity=readFileSync(join(r.home,"hub/keys/identity.json")),certificate=readFileSync(join(r.home,"hub/web-tls/cert.pem"));
       await r.peer.close(); // Actual owned old LDAPS listener is unreachable throughout read/prepare/test/Save.
       const call=(action:string,value?:unknown)=>request(r.port,action?"POST":"GET",directoryPrefix+action,r.headers(),value===undefined?undefined:JSON.stringify(value));
-      const view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
+      let view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
+      if(mode==="off") {
+        const control=await r.fm.hubDirectorySettings(), oldSource=runtime.directorySettings()!;
+        const {realm:_realm,profile:_profile,...directory}=view.body.directory;
+        const stale=await call("/prepare",{directory:{...directory,url:`ldaps://127.0.0.1:${replacement.port}`},bindPassword:"Dummy-service-only"});
+        expect(stale.status).toBe(200);
+        await runtime.refresh(); expect(oldSource.current()).toBe(false);
+        view=await call(""); expect(view.status).toBe(200);
+        expect(await r.fm.hubDirectorySettings()).toBe(control);
+        expect(runtime.directorySettings()!.source().epoch).toBe(0);
+        expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("off");
+        const refused=await call("/save",{ref:stale.body.ref,confirmation:stale.body.trust.challenge});
+        expect(refused.status).toBe(403); expect(refused.body.code).toBe("denied");
+        expect(runtime.directorySettings()!.source().epoch).toBe(0); expect(replacement.bindRecords).toHaveLength(0);
+      }
+      const source=runtime.directorySettings()!.source(),signin=vi.spyOn(source.directory,"signIn"),eligibility=vi.spyOn(source.directory,"checkEligibility");
+      const inspected=await call("/ca/inspect",{url:`ldaps://127.0.0.1:${replacement.port}`});
+      expect(inspected.status).toBe(200);expect(inspected.body.certificate.fingerprint256.replace(/:/g,"")).toBe(new X509Certificate(certs.leaf.cert).fingerprint256.replace(/:/g,""));
+      expect(replacement.bindRecords).toHaveLength(0);
+
       expect(view.body.directory.bindPasswordRef).toBeUndefined();expect(JSON.stringify(view.body)).not.toContain(r.input.bindPassword);
       const {realm:_realm,profile:_profile,...editable}=view.body.directory;
       const prepared=await call("/prepare",{directory:{...editable,url:`ldaps://127.0.0.1:${replacement.port}`},bindPassword:"Dummy-service-only"});
@@ -342,7 +362,7 @@ describe("host AD HTTP boundaries", () => {
       expect((await call("/test",confirmed)).status).toBe(200);
       const saved=await call("/save",confirmed);expect(saved.status).toBe(200);expect(saved.body.state).toBe("ready");
       expect((saved.headers["set-cookie"]??[]).some(c=>c.startsWith("agend_hub_"))).toBe(false);expect(signin).not.toHaveBeenCalled();expect(eligibility).not.toHaveBeenCalled();
-      expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
+      expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe(mode==="off"?"off":"ready");
       expect((r.fm.getRawFleetConfig().hub as {directory:{url:string}}).directory.url).toBe(`ldaps://127.0.0.1:${replacement.port}`);
       expect(readFileSync(join(r.home,"hub/keys/identity.json"))).toEqual(identity);expect(readFileSync(join(r.home,"hub/web-tls/cert.pem"))).toEqual(certificate);
       const db=new Database(join(r.home,"hub/hub.sqlite"),{readonly:true});try{
@@ -354,6 +374,9 @@ describe("host AD HTTP boundaries", () => {
       }finally{db.close();}
       expect(replacement.bindRecords.length).toBeGreaterThan(0);
       expect(replacement.bindRecords.every(b=>b.dn===r.input.directory.bindDn&&b.password==="Dummy-service-only")).toBe(true);
+      if(mode==="off") { r.fm.saveFleetConfig([{path:["hub","enabled"],value:true}]); await r.internal.applyHubSwitches();
+        expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");expect(runtime.directorySettings()!.source().epoch).toBe(1); }
+
     }finally{await replacement.close();}
   },30_000);
 });

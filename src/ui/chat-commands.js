@@ -31,6 +31,13 @@ export function paletteFor(draft, allowed) {
   return CHAT_COMMANDS.filter((c) => c.name.startsWith(m[1]) && (!allowed || allowed.includes(c.name)));
 }
 
+/**
+ * M-2738 (the leader's D3): `/update` in a web chat is AgEnD's own update, never a message to the agent — it opens the
+ * app's Update dialog (an admin's; the dialog says so to anyone else). Offered in the palette after the agent's own.
+ */
+export const UPDATE_COMMAND = Object.freeze({ name: "update", arg: "" });
+export function isUpdateLine(draft) { return /^\/update\s*$/.test((draft || "").trim()); }
+
 /** `/name args` for a known command → { command, args }; anything else (unknown, not a command) → null. */
 export function parseCommandLine(draft) {
   const m = /^\/([a-z]+)(?:[ \t]+([\s\S]*))?$/.exec((draft || "").trim());

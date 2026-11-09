@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "files": {
+    "186d1a228c8c7a4f84fecfccc4124aac4ec340384479423153071a411bea4f0c": "changes/3425-hub-directory-cold-settings.md",
+    "11e328bed321d7dfa2aa948b3a451f53e5c38ba0406d79453cec64bc0a90331c": "changes/3425-hub-directory-cold-settings.zh-TW.md",
+    "50fc9493cd401c5b857e429727e67eb3ac70a486493197dcd417d08888579030": "docs/design/hub-directory-cold-settings.md",
+    "caa85ca6b55ebbfd63d764eb6bdc3c00492072554a953c782f438422d7617a61": "docs/screenshots/hub-directory-cold-settings/checks.json",
+    "c8a044147a73d8977fef085e05bdfb261b5200288340fe0f67ba41507f476a31": "docs/screenshots/hub-directory-cold-settings/mutations.json",
+    "a110b2d5b7df12770b912e1607ed3492f3bb27e621706b15d5256bfb77d96f02": "scripts/manual/hub-directory-cold-settings/README.md",
+    "962d3ee47431fa9e2cb5c05ba661a921b95966c133d46832402c63e6c75f244a": "scripts/manual/hub-directory-cold-settings/verify.py",
+    "c84485c2bbd9a3d73cc2e518d18d4b81dcc0661aa7989decae720f634d96f8ff": "src/fleet-manager.ts",
+    "e8dee46ff5cce90006042a21fc28cdf24836ea7edb703616aa714de7ee98b87b": "src/hub/mount.ts",
+    "495b6e855a0965bfc1528877f549efdad60eecc0cd19ccac09f4b3f89e720132": "src/hub/runtime.ts",
+    "cb3edf8b6876fdae40485bf7c8280b0bf3737943ec32b68bc3cdb6ccdac41f38": "src/hub/settings-commit.ts",
+    "e45a99268dba6f172e1bd14e7ef222e0ef5f592f3781cc6ec61f82f666f386d7": "src/hub/settings-directory-recovery.ts",
+    "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303": "src/hub/settings-directory-runtime.ts",
+    "d92bd2679f8bb74aeb03c4844d6a25e1d4e9b81199d0ce7ffa9cb6f1c2001b7c": "src/hub/settings-directory-save.ts",
+    "655d9cbd2af5cb56807a14e75b60ff81d395ab493e4fdc4ca64ba7feaa3a11f1": "tests/hub-compose.test.ts",
+    "93bcb3610d044b8d3031a69b097b7a224f7e13efc7683be3bafe66895af2047a": "tests/hub-directory-settings-decision.test.ts",
+    "1b7668b43ecc5552cd67017501ab08f13518490ff23f8b1eec8c8c2cb87c3a69": "tests/hub-settings-fleet-m2682.test.ts",
+    "37e8c471d66a2b09282b240cd82641c948f207e6d06eaf6ca21393bff24a2000": "tests/hub-web-init-http.test.ts",
+    "945e81a0d3892ee808db64a2192b0c65f477924d2dde188a5018291c03c2b23d": "docs/screenshots/hub-directory-cold-settings/mutations-r1.json"
+  }
+}

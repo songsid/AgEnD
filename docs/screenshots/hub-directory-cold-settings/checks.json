@@ -1,0 +1,79 @@
+{
+  "v": 1,
+  "base": "de8aaf586a18c40855648b9f58b1becd22ecb404",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-directory-settings-decision.test.ts -t 'reads the sealed existing source while off'",
+    "passed": 0,
+    "failed": 1,
+    "reason": "AssertionError expected undefined to be defined; no collection failure"
+  },
+  "focused": {
+    "command": "npx vitest run tests/hub-directory-settings-decision.test.ts tests/hub-compose.test.ts tests/hub-web-init-http.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-health.test.ts tests/hub-directory-save.test.ts",
+    "passed": 328,
+    "failed": 0,
+    "skipped": 0
+  },
+  "addendum": {
+    "command": "npx vitest run tests/hub-compose.test.ts -t 'local directory settings while off or held'",
+    "passed": 12,
+    "failed": 0,
+    "deselected": 96,
+    "scope": "Final additional microtask-Refresh case plus matcher cleanup; production source is the same as the full focused run."
+  },
+  "matcherControl": {
+    "passed": 1,
+    "failed": 0,
+    "scope": "Retained-participant identity assertion compares booleans so Chai does not call a closed decision.inspect() while formatting the reversed guard."
+  },
+  "types": [
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json"
+  ],
+  "wire": "Actual D3 HTTP, initialized sealed state and fake TLS/LDAP in running/off modes. Old LDAPS peer physically closed before read/prepare/test/Save. Candidate immutable eligibility and service-only binds, CA inspection with zero binds, off Save then explicit Run at epoch1. No browser API response interception.",
+  "doubles": "Other source/runtime tests use inert directory drivers with real SQLite/seals/listeners. FleetManager ownership tests use recorder runtime/controller doubles. The retained old-participant check reinstates an expired reference; it does not claim a new transferred-response journey.",
+  "lifecycle": "Physical reads, driver close acknowledgment and database close are held/observed. Cold source admission/import/constructor/microtask phases have ABA, Refresh and Stop controls; an off source cannot make a held enabled listener ready.",
+  "remaining": [
+    "AD form and single trust-dialog UI",
+    "desktop/phone EN/zh-TW PNGs and retained-module SKEW"
+  ],
+  "operations": "No real directory/account/native/pilot/live-fleet operation. No new writer, schema or migration.",
+  "r1": {
+    "reviewedHead": "e0b2466066bf5e83ff104565c889441bdbab5b4d",
+    "findings": [
+      "Reacquire on every authorized cached-controller access; Refresh retires only the source, not its controller owner.",
+      "Register a physical read before invoking its callback.",
+      "Both changelog entries use list syntax.",
+      "Retain constructor cleanup on driver-close rejection; drain before replacement, Run or Stop."
+    ],
+    "focused": {
+      "command": "npx vitest run tests/hub-directory-settings-decision.test.ts tests/hub-compose.test.ts tests/hub-web-init-http.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-health.test.ts tests/hub-directory-save.test.ts tests/changelog-fragments.test.ts",
+      "passed": 409,
+      "failed": 0,
+      "skipped": 0
+    },
+    "addendum": {
+      "scope": "The additional Run cleanup case and explicit cached-refusal matcher are verified separately after this focused run. Production source is unchanged.",
+      "command": "npx vitest run tests/hub-compose.test.ts tests/hub-settings-fleet-m2682.test.ts -t 'retains a failed constructor cleanup|a cached controller'",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "uniqueFocusedIncludingAddendum": 410
+    },
+    "reversals": {
+      "file": "mutations-r1.json",
+      "assertionCaught": 8,
+      "restored": true,
+      "scope": "Eight scoped guards, including original cached-acquisition and callback-order behavior; original 19-guard receipt remains scoped to R0."
+    },
+    "failFirst": {
+      "cachedRead": "Reinstating first-initialization-only acquisition makes the actual stopped D3 post-Refresh GET return 503 rather than 200.",
+      "readOwnership": "Restoring callback-before-registration makes close complete while its physical read remains held.",
+      "construction": "Before retention, both replacement/Stop controls observe the physical database closing after rejected driver cleanup."
+    },
+    "types": [
+      "npx tsc --noEmit",
+      "npx tsc --noEmit -p tsconfig.test.json"
+    ],
+    "limits": "No cap change. Actual scratch D3/fake-LDAPS only; constructor rejection uses an injected driver, not a claimed production failure. AD form/PNG/SKEW remain unfinished."
+  }
+}

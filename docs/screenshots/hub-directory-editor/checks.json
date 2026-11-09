@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "base": "47106e8d0c3769021e30881b026ff7707747e72f",
+  "runs": [
+    {
+      "command": "npx vitest run tests/hub-directory-editor-ui.test.ts tests/hub-shared-modules-a.test.ts tests/i18n-ui-literals-2390.test.ts tests/hub-directory-settings-control.test.ts tests/hub-directory-host-notices.test.ts",
+      "passed": 73,
+      "failed": 0,
+      "unselectedOrSkipped": 0
+    },
+    {
+      "command": "npx vitest run tests/hub-compose.test.ts -t 'authorizes the configured administrator before lazily|composes S1'",
+      "passed": 2,
+      "failed": 0,
+      "unselectedOrSkipped": 109
+    },
+    {
+      "command": "npx vitest run tests/changelog-fragments.test.ts",
+      "passed": 75,
+      "failed": 0,
+      "unselectedOrSkipped": 0
+    }
+  ],
+  "typechecks": {
+    "npx tsc --noEmit": "PASS",
+    "npx tsc --noEmit -p tsconfig.test.json": "PASS"
+  },
+  "gates": {
+    "Hub full": {
+      "passed": 314,
+      "note": "ordinary rig does not compose the AD editor"
+    },
+    "Settings full SECTIONS=hub": {
+      "passed": 62,
+      "note": "ordinary rig does not compose the AD editor"
+    }
+  },
+  "notes": [
+    "One earlier local compose run timed out at 10075ms while gates/typechecks were also active. An isolated three-case compose/control selection and the final two-case compose selection passed. No timeout or test change and no confirmed flake claim.",
+    "The full 8-case two-surface browser run preceded the final phone-caption CSS and held-Stop test. English phone light/dark were rechecked and retaken with text and footer bounds. The wrapping rule is phone/coarse-only; desktop paint is unchanged.",
+    "The 25 first-pass guard reversals plus the targeted late-life reversal are combined; no fresh full 26-guard rerun is claimed.",
+    "Screenshots: after full 8-case two-surface matrix, matching genuine old-server before matrix, plus targeted local recovery. All fixtures and values are fictional."
+  ],
+  "isolatedEarlierSelection": {
+    "passed": 3,
+    "failed": 0,
+    "unselectedOrSkipped": 122,
+    "titles": [
+      "authorizes the configured administrator before lazily acquiring the AD control",
+      "omits the mark and keeps routes unavailable without a controller",
+      "returns editable connection values but never the bind password or its reference"
+    ]
+  }
+}

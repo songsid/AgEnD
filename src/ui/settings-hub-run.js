@@ -9,18 +9,20 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubRun", {
   en: {
-    title: "Run this Hub", on: "This Hub is running",
+    title: "Run this Hub", on: "Run this Hub",
     hint: "When this is off, the Hub stops: nobody can sign in to it, and chats with shared agents wait until it runs again. Its settings, people and records are kept.",
     stopTitle: "Stop this Hub?", stopAsk: "Everyone signed in to the Hub is signed out, and chats with shared agents stop until you turn it on again. Nothing is deleted.",
+    summary_on: "Start this Hub. People can sign in again and shared Agent chats resume.", summary_off: "Stop this Hub. Everyone is signed out and shared Agent chats pause. Nothing is deleted.",
     stopGo: "Stop the Hub", saved_on: "The Hub is starting.", saved_off: "The Hub is stopped.",
     busy: "Another change to the Hub's settings is still finishing. Try again in a moment.",
     failed: "The change could not be saved. Reload and try again.",
     unavailable: "This switch applies once this fleet's Hub is set up.",
   },
   "zh-TW": {
-    title: "執行這個 Hub", on: "這個 Hub 正在執行",
+    title: "執行這個 Hub", on: "執行這個 Hub",
     hint: "關閉後 Hub 會停止：沒有人能登入，與分享的 Agent 的對話會暫停，直到再次開啟。設定、人員和紀錄都會保留。",
     stopTitle: "要停止這個 Hub 嗎？", stopAsk: "所有登入 Hub 的人都會被登出，與分享的 Agent 的對話會暫停，直到你再次開啟。不會刪除任何資料。",
+    summary_on: "啟動這個 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。", summary_off: "停止這個 Hub。所有登入的人都會被登出，與分享的 Agent 的對話會暫停。不會刪除任何資料。",
     stopGo: "停止 Hub", saved_on: "Hub 正在啟動。", saved_off: "Hub 已停止。",
     busy: "Hub 設定的另一項變更還在完成中，請稍後再試。",
     failed: "無法儲存這項變更。請重新整理後再試。",
@@ -46,7 +48,7 @@ export function HubRunSettings() {
     if (!on && !(await confirmDialog({ title: copy("stopTitle"), message: copy("stopAsk"), confirmLabel: copy("stopGo"), danger: true }))) return;
     setBusy(true); setMessageKey("");
     try {
-      const r = await confirmedWrite("/api/settings/hub/run", { method: "PUT", label: copy("title"), body: { enabled: on } });
+      const r = await confirmedWrite("/api/settings/hub/run", { method: "PUT", label: copy("title"), displaySummary: () => [copy(on ? "summary_on" : "summary_off")], body: { enabled: on } });
       if (r.ok && r.body?.ok) { setView(r.body); setMessageKey(r.body.enabled ? "saved_on" : "saved_off"); }
       else setMessageKey((/^apply_rejected: ([a-z_]+)$/.exec(r.confirmed?.outcome?.detail ?? "")?.[1] ?? r.body?.error) === "busy" ? "busy" : "failed");   // #3451
     } catch { setMessageKey("failed"); } finally { setBusy(false); }
