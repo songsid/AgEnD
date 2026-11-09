@@ -3396,23 +3396,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * change and takes their code). Everything else is as before the role existed.
    */
   private settingsDirectCreationAllowed(req: IncomingMessage): boolean {
-    const { role } = this.settingsRole(req);
-    // A refused role is not permission: an admin who is no longer one (a chat account removed from its connection's list, an
-    // owner-less session that is not the host's on a chat fleet), a rotated token, "Only this computer can authorize" — none of
-    // them may create. The one legacy exception, kept apart from admin eligibility: the web authorization switch being off, which
-    // governs what a web message carries to an agent and never stopped a local admin creating one.
-    if (!role.ok) return role.reason === "disabled";
+    // Admin eligibility is asked with the web authorization switch taken OUT of the question (`ignoreSwitch`): that switch governs
+    // what a web message carries to an agent and has never stopped a local admin creating one, but it must not stand in for the
+    // other checks — an admin tier session, the token epoch, "Only this computer can authorize", and a chat account that is
+    // still an admin of its connection (or the host's / a web-only fleet's own admin). A refused role is not permission.
+    const { role } = this.settingsRole(req, { ignoreSwitch: true });
+    if (!role.ok) return false;
+    // Switch off: no Apply now exists, so nothing is asked of an admin's own "ask for my code" switch either (the legacy path).
+    if (!this.webAuthorityState().enabled) return true;
     return role.onHost || !this.strictFor(role.actor);
   }
   /** AGEND-122: this request's role over a held change — its cookie session asked afresh each time (settings-role.ts). */
-  private settingsRole(req: IncomingMessage): { role: SettingsRole; handle: string | null } {
+  private settingsRole(req: IncomingMessage, opts: { ignoreSwitch?: boolean } = {}): { role: SettingsRole; handle: string | null } {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return { role: { ok: false, reason: "not_session" }, handle: null };
     const state = this.webAuthorityState();
     const role = evaluateSettingsRole({
       session: auth.session, gateway: !!gatewayRequestContext(req), peer: webPeerOf(req),
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null, webOnly: this.isWebOnlyFleet(),
-      policy: { enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink },
+      policy: { enabled: state.enabled || opts.ignoreSwitch === true, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink },
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok", outside: this.outsideLink(),
     });
     return { role, handle: auth.session.handle };

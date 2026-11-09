@@ -656,6 +656,65 @@ describe("the ordinary New Agent shortcut follows the same policy (Prism P2-1), 
     await vi.waitFor(() => expect(g.created.length).toBe(1));
     expect(r.status).toBe(202);
   });
+  // Round 3 (Prism P2-1, second half): the switch being off is the one legacy exception, and it must not stand in for admin eligibility —
+  // the other checks (admin tier, a chat account still an admin, the host's / a web-only admin, "Only this computer can authorize") still run.
+  it("(i1) switch off, a revoked chat account: held at admission (nothing created); admitted while an admin and revoked before execution → stale", async () => {
+    const f = fleet({ chat: true, va: { enabled: false } }), g = creationGate(f);
+    const ada = f.session("account", "lan", { user: ADMIN }), adaHere = f.session("account", "here", { user: ADMIN });
+    expect((await g.create(ada)).status, "control: a current admin creates at once with the switch off").toBe(202);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+    const late = f.session("account", "lan", { user: ADMIN }), release = g.holdExecution();
+    const admitted = await g.create(late);                                          // admitted while still an admin
+    expect(admitted.status).toBe(202);
+    (f.fm.fleetConfig as any).channels[0].access.allowed_users = [ADMIN_B];         // revoked: its cookie is still a valid admin-tier session
+    expect(f.any.settingsRole(ada.req)).toMatchObject({ role: { ok: false, reason: "disabled" } });
+    expect(f.any.settingsRole(ada.req, { ignoreSwitch: true }).role).toMatchObject({ ok: false, reason: "not_admin" });
+    release();
+    await vi.waitFor(() => expect(g.stateOf(admitted, late)).toBe("stale"));        // execution asks again
+    for (const s of [ada, adaHere]) {
+      expect(f.any.settingsDirectCreationAllowed(s.req)).toBe(false);
+      const r = await g.create(s);
+      expect(r.body.pending_change.state, "waits as a held change").toBe("pending");
+      await g.settle();
+      expect(g.stateOf(r, s)).toBe("pending");
+    }
+    expect(g.created.length).toBe(1);                                               // only the control
+  });
+  it("(i2) switch off, a chat fleet's owner-less session that is not the host's (no account): held, never created — on this computer too", async () => {
+    const f = fleet({ chat: true, va: { enabled: false } }), g = creationGate(f);
+    for (const where of ["lan", "here"] as const) {
+      const bare = f.session("code", where);
+      expect(f.any.settingsRole(bare.req, { ignoreSwitch: true }).role).toMatchObject({ ok: false, reason: "no_account" });
+      expect(f.any.settingsDirectCreationAllowed(bare.req)).toBe(false);             // the same policy the execution asks again
+      const r = await g.create(bare);
+      expect(r.body.pending_change.state).toBe("pending");
+      await g.settle();
+      expect([g.created.length, g.stateOf(r, bare)]).toEqual([0, "pending"]);
+    }
+    const host = f.session("host", "here");                                          // control: the host's own session still creates
+    const ok = await g.create(host);
+    expect(ok.status).toBe(202);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+  });
+  it("(i3) switch off + \"Only this computer can authorize\": from the LAN held at admission; admitted on the LAN before it was turned on → stale; on this computer created", async () => {
+    const f = fleet({ enrolled: true, va: { enabled: false } }), g = creationGate(f), lan = f.session("code", "lan"), here = f.session("code", "here");
+    const release = g.holdExecution();
+    const admitted = await g.create(lan);                                            // loopback_only still off: created like (h)
+    expect(admitted.status).toBe(202);
+    (f.fm.fleetConfig as any).web.verified_authority.loopback_only = true;
+    release();
+    await vi.waitFor(() => expect(g.stateOf(admitted, lan)).toBe("stale"));
+    expect(g.created.length).toBe(0);
+    expect(f.any.settingsRole(lan.req, { ignoreSwitch: true }).role).toMatchObject({ ok: false, reason: "loopback_only" });
+    expect(f.any.settingsDirectCreationAllowed(lan.req)).toBe(false);
+    const r = await g.create(lan);
+    expect(r.body.pending_change.state).toBe("pending");
+    await g.settle();
+    expect([g.created.length, g.stateOf(r, lan)]).toEqual([0, "pending"]);
+    const q = await g.create(here);                                                  // this computer: the one place it is allowed
+    expect(q.status).toBe(202);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+  });
 });
 
 describe("who can never confirm (agents, paired Windows PCs)", () => {
