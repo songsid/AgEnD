@@ -9,7 +9,7 @@ import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
 import type { CredentialProfileReport } from "./runtime-credential-profiles.js";
-import { parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
+import { isNativeProviderId, parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
 /** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
@@ -140,12 +140,18 @@ export class WindowsCliBridge {
     if (!authorized()) throw new Error("Authorization expired while creating the Windows workspace");
     return value.cwd;
   }
+  async refreshModels(cli: string, authorized: () => boolean = () => true): Promise<{models:import("./windows-cli-providers.js").NativeModelOption[];source:string}> {
+    if (!isNativeProviderId(cli)) throw Error("Model refresh is not supported by this Windows CLI");
+    const value = await this.workerResult({op:"models",cli},25_000,authorized);
+    if (!authorized() || value.type !== "models" || !Array.isArray(value.models)) throw Error("Windows model refresh failed");
+    return {models:value.models as import("./windows-cli-providers.js").NativeModelOption[],source:String(value.source)};
+  }
   private async doProbe(authorized: () => boolean): Promise<WindowsCliProbe> {
     const value = await this.workerResult({ op: "probe" }, 60_000, authorized);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
     return { clis: value.clis, home: value.home, probedAt: Date.now(), ...inventoryHostname(value.hostname) };
   }
-  private async workerResult(request: { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
+  private async workerResult(request: { op: "models"; cli: string } | { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
     const generation = this.workerGeneration;
     const transport = await this.launcher();

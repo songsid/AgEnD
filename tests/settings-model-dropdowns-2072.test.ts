@@ -60,7 +60,7 @@ describe("the pickers on a page", () => {
     D = await import("/ui/js/settings-dialogs.js"); P = await import("/assets/app-html.js"); C = await import("/ui/js/settings-catalog.js");
   });
   afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
-  beforeEach(async () => { await p.unmount(); requests = []; C.forgetCatalogs(); });
+  beforeEach(async () => { await p.unmount(); requests = []; C.forgetCatalogs(); (await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs(); });
 
   it("a model field lists the instance's catalog, keeps the current model, and Other… opens a box", async () => {
     let value = "claude-legacy-9";

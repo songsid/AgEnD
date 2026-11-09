@@ -76,7 +76,7 @@ function LocationRow({ row, machines, attentionOnly, refresh }) {
         ${["claude-code", "codex"].map(id => html`<option value=${id} disabled=${!machine?.clis.some(item => item.id === id)}>${id}</option>`)}
       </select></div>` : null}
     </div>
-    ${target !== "host" ? html`<${ModelSelect} value=${model} onChange=${setModel} backend=${cli} runtime="windows" machineId=${target} instance=${row.name} />` : null}
+    ${target !== "host" ? html`<${ModelSelect} value=${model} onChange=${setModel} backend=${cli} runtime="windows" machineId=${target} />` : null}
     <div class="general-location-actions">
       <button type="button" class="btn btn-sm" onClick=${refresh}>${t("settings.refresh")}</button>
       <button type="button" class="btn btn-primary btn-sm" disabled=${busy || row.switching || target === "host" && !row.canSwitchBack || target !== "host" && (!machine?.online || !machine.clis.some(item => item.id === cli))} onClick=${() => propose(target === "host" ? { location: "host" } : { location: "windows", machineId: target, cli, model })}>${t("settings.save")}</button>

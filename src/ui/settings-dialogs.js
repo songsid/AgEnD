@@ -19,14 +19,15 @@ import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
-import "./settings-shared-strings.js";   // the words Shared agent settings added and this file draws (backendNotInstalledHost, changeInDefaults, …)
-import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
+import "./settings-shared-strings.js";
+import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
+import { ModelRefresh, useRefreshableModels } from "./model-picker.js";
 import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
 import { AccountSelect } from "./accounts-view.js";   // #3212: the Account field (a new module: never a stale named import)
 import { capsOf } from "./cli-caps.js";
@@ -83,25 +84,20 @@ export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
  * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
-export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride }) {
-  const state = useModelCatalogState(catalogOverride === undefined ? backend : null, instance, runtime, machineId);
+export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride, profile }) {
+  const state = useRefreshableModels(catalogOverride === undefined ? backend : null, instance, { runtime, machineId, profile });
   const catalog = catalogOverride === undefined ? state.models : catalogOverride;
   const [typing, setTyping] = useState(false);
-  useEffect(() => { setTyping(false); }, [backend, instance, runtime]);
+  useEffect(() => { setTyping(false); }, [backend, instance, runtime, machineId, profile]);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   const managed = catalogOverride === undefined && !!backend;
-  const sourceNote = state.source === "cli-list" ? "modelCatalogCliList" : state.source === "cli-cache" ? "modelCatalogCliCache"
-    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogOfficial" : "modelCatalogCached";
-  const note = state.loading ? "modelCatalogLoading" : state.error ? "modelCatalogFailed" : !catalog?.length ? "modelCatalogEmpty"
-    : sourceNote;
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
-    ${managed ? html`<div class="model-catalog-status"><span class="note" role=${state.error ? "alert" : "status"} aria-live="polite">${state.loading ? html`<span class="out-spin" aria-hidden="true"></span> ` : null}${tn(note)}</span><button type="button" class="btn btn-ghost btn-sm" disabled=${disabled || state.loading} onClick=${state.refresh}>${tn(state.error || !catalog?.length ? "modelCatalogRetry" : "modelCatalogRefresh")}</button></div>` : null}
-  </div>`;
+    ${managed ? html`<${ModelRefresh} state=${state} disabled=${disabled} />` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark }) {
@@ -344,7 +340,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
           <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} profile=${inst.runtime === "windows" ? undefined : acct} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
       ${(f.backend || defaults.backend || "claude-code") === "codex" && inst.runtime !== "windows" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
@@ -397,7 +393,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
         <div class="field">${L(tn("modelFailover"), "instance.model_failover", "ag-fo")}
           <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}
             inherited=${inh("model_failover", (defaults.model_failover && defaults.model_failover[0]) || tn("modelNone"), null, "", !!(defaults.model_failover && defaults.model_failover.length))}>
-            <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("modelNone")}
+            <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} profile=${inst.runtime === "windows" ? undefined : acct} inherit=${tn("modelNone")}
               value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
           <${Feedback} warning=${failoverWarn} /></div>
       </div>

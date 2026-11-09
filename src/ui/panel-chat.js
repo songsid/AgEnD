@@ -8,12 +8,12 @@ import { GeneralLocation } from "./general-location.js";
 // right, the agent's at full width, and one rounded composer pinned below with attach, Stop reply and Send inside it.
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
-import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { html, Fragment, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
-import { modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
+import { backendLabel, modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
 import { machineName } from "/assets/machine-name.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath, textLinkSegments, sectionPath } from "/assets/app-route.js";
@@ -37,6 +37,7 @@ function nativeCliTag(inst) {
   return html`<span class="tag native-cli-unverified" title=${t("nativecli.unverifiedHint", cli, inst.native_cli_version || "")}>${t("nativecli.unverified")}</span>`;
 }
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { colorMenuItem } from "/assets/identity-color.js";
@@ -367,11 +368,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const guest = guestPage();
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
+  modelPickerStyles();
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
     ${nativeCliTag(inst)}${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
-    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => supportsInstanceFeature(inst,"commands") ? pick("model") : navigate(sectionPath("agents"))}>${modelText(inst)}</button>` : null}
+    ${!guest && supportsInstanceFeature(inst,"commands") ? html`<button type="button" class="hd-chip chat-model-entry" title=${mw("backend")} aria-label=${mw("backend")} onClick=${() => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend")}>${backendLabel(inst.backend)} ▾</button>
+      <button type="button" class="hd-chip chat-model-entry" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelLabel(inst.model || modelText(inst))} ▾</button>` : null}
     ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
+
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
@@ -564,13 +568,13 @@ function Thread({ name, label = name, th }) {
       else letGo(e, false);                                                // let go meanwhile (a new language)
     };
   }, [name]);
-  return html`<div class="scroller" ref=${scroller}>
+  return html`<${Fragment}><div class="scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
       : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
+    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
-  </div>`;
+  </${Fragment}>`;
 }
 
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
@@ -600,20 +604,27 @@ function openBackendSignIn(backend) {
 function CommandCard({ name, lease }) {
   const c = store.state.commands[name];
   if (!c) return null;
-  const run = (args) => store.runCommand(name, c.command, args, { alive: () => lease.current() });
-  return html`<div class=${`cmd-card${c.error ? " bad" : ""}`} role=${c.error ? "alert" : "status"}>
-    <div class="cmd-head"><span class="cmd-name mono">/${c.command}</span>
+  const run = (args, action) => store.runCommand(name, c.command, args, { alive: () => lease.current(), ...(action ? { action } : {}) });
+  const actions = c.choices?.actions || [];
+  const refresh = actions.find(a => a === "refresh" || a === "refreshAll");
+  return html`<div class=${`cmd-card${c.command === "model" ? " cmd-model" : ""}${c.error ? " bad" : ""}`} role=${c.error ? "alert" : "status"}>
+    <div class="cmd-head"><span class="cmd-name mono">/${c.command}${c.command === "model" || c.choices?.step === "model" ? html` · ${mw("model")}` : null}</span>
+      <div class="cmd-head-actions">${refresh ? html`<button type="button" class="icon-btn" data-model-action=${refresh} title=${mw("refresh")} aria-label=${mw("refresh")} disabled=${c.busy}
+        onClick=${() => run(c.choices.args || "", refresh)}><${Icon} name="restart" size=${16} /></button>` : null}
       ${c.busy ? html`<span class="wait">${t("chat.cmdRunning", c.command)}</span>` : html`<button type="button" class="icon-btn" title=${t("chat.cmdDismiss")}
-        aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div>
+        aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div></div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
     ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
     ${c.compact ? html`<p class="cmd-text cmd-phase">${c.compact === "running" ? t("chat.compactRunning")
       : c.compact === "done" ? t("chat.compactDone") : c.compact === "timeout" ? t("chat.compactTimeout", "10")
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
-    ${c.choices && c.choices.prompt ? html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
+    ${c.choices?.step === "backend" ? html`<p class="note">${mw("next")}</p>` : null}
+    ${c.choices && c.choices.prompt ?  html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined}
-      disabled=${!!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${o.label}</button>`)}</div>` : null}
+      disabled=${c.busy || !!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${c.choices.step === "backend" ? html`<span>${backendLabel(o.id)}</span>${o.disabled ? html`<span class="note">${o.disabled}</span>` : null}` : modelLabel(c.command === "model" ? o.label.replace(/^✓\s*/, "") : o.label)}</button>`)}</div>` : null}
+    ${c.command === "model" && c.choices ? html`<p class="note">${mw("selectionHint")}</p>` : null}
+    ${actions.includes("more") ? html`<div class="cmd-model-more"><button type="button" class="btn btn-sm btn-ghost" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button></div>` : null}
     ${c.choices && c.choices.options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
       key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
@@ -753,6 +764,9 @@ function Composer({ name, inst, label = name, lease, busy }) {
   return html`<div class="composer-box">
     ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
+    ${!guestPage() && supportsInstanceFeature(inst,"commands") ? html`<div class="model-entry-row" role="group" aria-label=${mw("model")}>
+      <button type="button" class="btn btn-sm" onClick=${() => inst?.runtime === "windows" ? navigate(sectionPath("agents")) : store.runCommand(name, "backend", "", { alive: () => lease.current() })}>${backendLabel(inst?.backend)} ▾</button>
+      <button type="button" class="btn btn-sm" onClick=${() => store.runCommand(name, "model", "", { alive: () => lease.current() })}>${modelLabel(inst?.model || modelText(inst || {}))} ▾</button></div>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>

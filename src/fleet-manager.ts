@@ -276,6 +276,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
+import { cachedNativeModelCatalog } from "./native-model-catalog.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
@@ -18844,7 +18845,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
@@ -18855,12 +18856,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
-    const choicesFromCache = (instance: string): WebChoices | null => {
+    const choicesFromCache = async (instance: string, more = false): Promise<WebChoices> => {
+      if(isWindowsInstance(this.fleetConfig?.instances[instance])){
+        const catalog=await this.listModelCatalog({instanceName:instance});
+        return {current:catalog.current_model,options:catalog.models.map(m=>({id:m.id,label:m.label})),actions:["refresh"]};
+      }
       const backend = this.backendNameForInstance(instance);
-      const cached = this.readCliEnv(backend, this.catalogProfile(backend, instance));     // the cached catalog only: never a probe here
-      if (!cached?.models.length) return null;
+      const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
-      return { current, options: this.withCurrentModel(cached.models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
+      const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
+      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+        actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
       scope: (instance) => this.webCommandScope(instance),
@@ -18881,6 +18887,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       applyModel: (instance, name) => this.applyModel(instance, name),
       modelChoices: choicesFromCache,
+      modelAction: async (instance, command, args, action, actionOpts) => {
+        const tokens = backendArgs(args);
+        if ((command === "model" && args) || (command === "backend" && (tokens.length !== 1 || action !== "refresh"))) return { error: t("menu.click_stale") };
+        const backend = command === "model" ? this.backendNameForInstance(instance) : tokens[0]!;
+        if (command === "backend") {
+          const refusal = this.backendCommandRefusal(instance);
+          if (refusal) return { error: refusal };
+          const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, tokens);
+          if (step.kind !== "choose" || step.step !== "model") return { error: step.kind === "refuse" ? step.text : t("menu.click_stale") };
+        }
+        if (action === "more" && backend !== "claude-code") return { error: t("menu.click_stale") };
+        if (action !== "more" || !this.webModelEnv(backend, instance)?.apiModels?.length) {
+          const result = await this.refreshModelCatalogFor(backend, instance);
+          if (!result.refreshed) return { error: t("model.refresh_failed") };
+        }
+        if (command === "model") return { choices: await choicesFromCache(instance, action !== "refresh") };
+        // Re-enter the shared backend→model→effort→confirm flow; no configuration write during refresh.
+        return this.webCommand({ instance, command: "backend", args }, { ...opts, publicLink: actionOpts.publicLink }).then(r => r.body as import("./web-commands.js").WebBackendAnswer);
+      },
       applyEffort: (instance, level) => this.applyEffort(instance, level),
       effortChoices: (instance) => {
         const levels = this.effortLevelsFor(instance);
@@ -18892,11 +18917,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const refusal = this.backendCommandRefusal(instance);
         if (refusal) return { error: refusal };
         // The cached model lists only, as the web's /model: never a live probe on this path.
-        const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, backendArgs(args));
+        const step = await backendStep({ ...this.backendCommandDeps(instance, { live: false }), models: async backend => this.modelCatalogFor(backend, instance) }, instance, backendArgs(args));
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
-          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
+          return { choices: { step: step.step, args: joinBackendArgs(step.args), ...(step.step === "model" ? { actions: ["refresh" as const] } : {}), prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
             // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
             const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
@@ -22993,7 +23018,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     configured: string | null | undefined = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model,
   ): { known: boolean; names: string[] } {
     const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
-    const api = (this.readCliEnv("claude-code", this.catalogProfile("claude-code", instanceName))?.apiModels ?? []).map(m => m.id);
+    const api = (this.webModelEnv("claude-code", instanceName)?.apiModels ?? []).map(m => m.id);
     const lower = model.trim().toLowerCase();
     const bare = lower.replace(/\[1m\]$/, "");
     const known = aliases.some(a => a.toLowerCase() === bare)
@@ -23134,6 +23159,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pendingCliEnvProbes.clear();
     this.pendingVendorCliEnvProbes.clear();
     this.pendingInstanceModelProbes.clear();
+    this.webModelRefreshes.clear();
+    this.webModelCatalogs.clear();
   }
 
   private runBackendProbeWorker(key: string, input: BackendProbeInput): Promise<BackendProbeResult | null> {
@@ -23408,9 +23435,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Detection is admin-owned. A read never launches a provider or falls back to this host's account.
       let inventory: import("./windows-cli.js").WindowsCliProbe | null = null;
       try { inventory = await this.runtimeWindowsExecutor().probe({ force: false, machineId: config.machine_id }); } catch { /* offline remains unavailable */ }
+      const refreshed=cachedNativeModelCatalog(this,{backend,instance:instanceName});
+      const profile=config.backend_options?.[backend]?.credential_profile || (backend==="claude-code"?inventory?.credentialProfiles?.default:undefined);
       const row = inventory?.clis.find(value => value.id === backend);
       return { backend, scope: "instance", instance: instanceName, current_model: config.model || null,
-        models: (row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
+        models: refreshed?.models ?? (profile ? [] : row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
         source: row?.models?.length ? "cache" : "fallback",
         ...(inventory?.probedAt ? { probed_at: new Date(inventory.probedAt).toISOString() } : {}),
         note: "Windows runtime's last detected inventory; no coordinator account or live probe is used." };
@@ -24293,7 +24322,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       currentBackend: (name) => this.backendNameForInstance(name),
       currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
       availability: () => this.backendAvailabilityFor(instanceName),
-      models: (backend) => this.backendModelOptions(backend, opts),
+      models: (backend) => this.backendModelOptions(backend, { ...opts, instance: instanceName }),
       // #1808: the same rule update_instance_config's switch applies (backendModelVerdict).
       modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
       effortLevels: (backend, model) => this.backendEffortLevels(instanceName, backend, model),
@@ -24347,7 +24376,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A custom provider has its own catalog, which the CLI reads at launch and AgEnD cannot see before one (#1815
     // review): only the launch-line rule applies — never the account's list or the default provider's naming pattern.
     if (opts.provider) return modelNameCarried(backend, model) ? { ok: true } : { ok: false, choices: [] };
-    const listed = this.readCliEnv(backend)?.models ?? [];
+    const listed = this.webModelEnv(backend, instanceName)?.models ?? [];
     const choices = listed.slice(0, 24).map(o => o.id);
     if (!modelNameCarried(backend, model)) return { ok: false, choices };
     if (listed.some(o => o.id === model)) return { ok: true };
@@ -24400,15 +24429,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2072 part 3: the models a Settings field offers for `backend` — the cached catalog (an instance's own credential
    * profile's, when it is named and has one), claude's account catalog included. Read only: never a probe.
    */
-  modelCatalogFor(backend: string, instance: string | null): import("./backend/types.js").ModelOption[] {
-    if (instance && isWindowsInstance(this.fleetConfig?.instances[instance])) return [];
-    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return [];
-    const own = instance && Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, instance) ? instance
-      : instance && this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? instance : null;
-    const env = this.readCliEnv(backend, this.catalogProfile(backend, own));
-    const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
-    for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
-    return out;
+  private webModelTargetIds = new WeakMap<object, number>();
+  private webModelTargetSequence = 0;
+  private webModelCatalogs = new Map<string, import("./backend/types.js").CliEnv>();
+  private webModelRefreshes = new Map<string, Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }>>();
+
+  /** Resolve only trusted config; the browser never supplies a home, provider URL or credentials. */
+  private webModelBinding(backend: string, instance: string | null, selection?: {profile?:string}) {
+    this.webModelTargetIds ??= new WeakMap(); this.webModelTargetSequence ??= 0;
+    this.webModelCatalogs ??= new Map(); this.webModelRefreshes ??= new Map();
+    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return null;
+    const instances = this.fleetConfig?.instances ?? {};
+    const own = instance && Object.hasOwn(instances, instance) ? instances[instance] : null;
+    const classic = instance && !own ? this.classicChannels?.getAll().find(c => c.instanceName === instance) : null;
+    if (instance && !own && !classic || own && isWindowsInstance(own)) return null;
+    const options = { ...this.fleetConfig?.defaults?.backend_options?.[backend], ...(own?.backend_options?.[backend] ?? (instance ? this.classicChannels?.getBackendOptionsByInstance(instance)?.[backend] : undefined)) };
+    if (selection?.profile !== undefined) {
+      if (selection.profile && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(selection.profile)) return null;
+      options.credential_profile = selection.profile || this.fleetConfig?.defaults?.backend_options?.[backend]?.credential_profile || undefined;
+    }
+    const profile = typeof options.credential_profile === "string" ? options.credential_profile : null;
+    const instanceDir = instance ? this.getInstanceDir(instance) : join(getAgendHome(), "cli-env");
+    const config = structuredClone({ workingDirectory: own?.working_directory ?? "", instanceDir,
+      instanceName: instance ?? `probe-${backend}`, mcpServers: {}, backendOptions: options,
+      ...(profile ? { credentialStoreHome: credentialProfileStoreHome(getAgendHome(), backend, profile) } : {}) });
+    const target = own ?? classic;
+    if (target && !this.webModelTargetIds.has(target)) this.webModelTargetIds.set(target, ++this.webModelTargetSequence);
+    const targetId = target ? this.webModelTargetIds.get(target) : 0;
+    const key = JSON.stringify({ backend, instance, config, targetId, target: own ?? classic, defaults: this.fleetConfig?.defaults });
+    return { key, own, classic, profile, config, scoped: !!options.provider || (!!profile && backend !== "claude-code") };
+  }
+
+  private webModelEnv(backend: string, instance: string | null, selection?: {profile?:string}) {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding) return null;
+    const disk = binding.scoped ? null : this.readCliEnv(backend, binding.profile);
+    const hit = this.webModelCatalogs.get(binding.key);
+    if (hit && Date.now() - hit.probedAt < CLI_ENV_TTL_MS && (!disk || hit.probedAt >= disk.probedAt)) return hit;
+    return disk;
+  }
+
+  modelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): import("./backend/types.js").ModelOption[] {
+    const env = this.webModelEnv(backend, instance, selection);
+    const seen = new Set<string>();
+    return [...(env?.models ?? []), ...(env?.apiModels ?? [])].filter(m => !seen.has(m.id) && !!seen.add(m.id));
+  }
+
+  /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */
+  async refreshModelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }> {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding || this.shuttingDown) return { models: [], refreshed: false };
+    const pending = this.webModelRefreshes.get(binding.key);
+    if (pending) return pending;
+    const epoch = this.cliEnvProbeEpoch;
+    const current = () => {
+      const next = this.webModelBinding(backend, instance, selection);
+      return !this.shuttingDown && epoch === this.cliEnvProbeEpoch && next?.key === binding.key && next.own === binding.own && next.classic === binding.classic;
+    };
+    const work = this.runBackendProbeWorker(binding.scoped && !binding.profile ? `instance:${backend}:${binding.config.instanceDir}` : `global:${backend}${binding.profile ? `@${binding.profile}` : ""}`, {
+      mode: "env", backend, instanceDir: binding.config.instanceDir, config: binding.config, refreshVendorCatalog: true,
+    }).then(result => {
+      if (!current()) return { models: [], refreshed: false };
+      // Raw failure/empty discovery never masquerades as a successful refresh of the retained catalog.
+      if (!result || Array.isArray(result) || (!Array.isArray(result.models) || !result.models.length || result.catalogRefreshFailed)) return { models: this.modelCatalogFor(backend, instance, selection), refreshed: false };
+      if (this.webModelCatalogs.size >= 64) this.webModelCatalogs.delete(this.webModelCatalogs.keys().next().value!);
+      this.webModelCatalogs.set(binding.key, { ...result, backend, probedAt: Date.now() });
+      return { models: this.modelCatalogFor(backend, instance, selection), refreshed: true };
+    }).finally(() => { if (this.webModelRefreshes.get(binding.key) === work) this.webModelRefreshes.delete(binding.key); });
+    this.webModelRefreshes.set(binding.key, work);
+    return work;
   }
 
   /** Host-default fallback only: Grok has no modeled profile home. Never construct a backend or start a probe. */
@@ -24483,7 +24572,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The models `/model` would offer on a backend: the cached CLI env, else (live) a bounded probe. Never throws. */
-  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void }): Promise<import("./backend/types.js").ModelOption[]> {
+  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void; instance?: string }): Promise<import("./backend/types.js").ModelOption[]> {
+    if (!opts.live && opts.instance) return this.modelCatalogFor(backend, opts.instance);
     const cached = this.readCliEnv(backend);
     if (!opts.live || (cached?.models.length && !this.cliEnvNeedsRefresh(cached))) return cached?.models ?? [];
     opts.onLiveProbe?.();

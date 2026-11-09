@@ -291,6 +291,76 @@ const HELP_PROBES: Record<NativeCliId, { args: string[]; required: string[] }> =
   opencode: { args: ["run", "--help"], required: ["--format", "json", "--session", "--dir"] },
   muse: { args: ["exec", "--help"], required: ["--json", "--prompt-file", "--session-id"] },
 };
+/** Explicit models-only discovery, on the execution computer. No launch/config writes or caller-supplied URL/argv. */
+export async function refreshNativeModels(options: {
+  cli: string; directory?: string; home?: string; environment?: NodeJS.ProcessEnv; authorized?: () => boolean;
+  find?: (id: NativeCliId) => Promise<NativeCliExecutable | null>;
+  run?: (entry: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput>;
+  request?: typeof fetch;
+}): Promise<{ models: NativeModelOption[]; source: string }> {
+  const check = (): void => { if (options.authorized && !options.authorized()) throw Error("Model discovery authorization expired"); };
+  const env = options.environment ?? nativeCliEnvironment(), home = options.home ?? homedir();
+  check();
+  if (options.cli === "codex") {
+    if (options.directory) throw Error("Native Codex named accounts are not supported");
+    const directory = env.CODEX_HOME || join(home, ".codex");
+    // Native custom providers/profiles have no proved discovery adapter. Never borrow the ambient OpenAI list.
+    let toml = "";
+    try { toml = readFileSync(join(directory, "config.toml"), "utf8"); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw Error("Model discovery config is unavailable"); }
+    const auth = (): string | null => { try { return readFileSync(join(directory,"auth.json"),"utf8"); } catch(e) { if((e as NodeJS.ErrnoException).code==="ENOENT")return null; throw Error("Model discovery account is unavailable"); } };
+    const account=auth();
+    const root = toml.split(/^\s*\[/m)[0];
+    if (/^\s*(?:profile|"profile"|'profile')\s*=/m.test(root) || /^\s*(?:model_provider|"model_provider"|'model_provider')\s*=/m.test(root) && !/^\s*(?:model_provider|"model_provider"|'model_provider')\s*=\s*["']openai["']\s*(?:#.*)?$/m.test(root)) throw Error("Native model provider could not be proved");
+    const entry = await (options.find ?? findCli)("codex"); check();
+    if (!entry) throw Error("Codex is not installed on this computer");
+    const selected = { ...env, CODEX_HOME: directory };
+    const args = [...nativeUpdateGuard("codex"), "debug", "models"];
+    const result = await (options.run ? options.run(entry, args, selected) : output(entry.command, [...entry.args, ...args], 15_000, selected)); check();
+    if (!result.ok) throw Error("Model discovery failed");
+    let now="";try{now=readFileSync(join(directory,"config.toml"),"utf8");}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw Error("Model config is unavailable");}
+    if(now!==toml || auth()!==account)throw Error("Model discovery account or provider changed");
+    const models = readNativeCodexModels(home, selected); if (!models.length) throw Error("Model discovery returned no models");
+    return { models: boundNativeModelOptions(models), source: "cli-list" };
+  }
+  if (options.cli !== "claude-code") {
+    if (options.directory || !isNativeProviderId(options.cli) || !nativeProvider(options.cli).modelProbe) throw Error("Model refresh is not supported by this native CLI");
+    const cli=options.cli,entry=await (options.find??findCli)(cli);check();if(!entry)throw Error("The selected CLI is not installed");
+    const args=[...nativeUpdateGuard(cli),...nativeProvider(cli).modelProbe!];
+    const result=await (options.run?options.run(entry,args,env):output(entry.command,[...entry.args,...args],15_000,env));check();
+    if(!result.ok)throw Error("Model discovery failed");
+    const models=boundNativeModelOptions(parseNativeModels(cli,result.text));if(!models.length)throw Error("Model discovery returned no models");
+    return {models,source:"cli-list"};
+  }
+  const directory = options.directory || env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  // A selected profile never falls back to another home, keychain, API key or ambient account.
+  const file = join(directory, ".credentials.json"), info = lstatSync(file);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) throw Error("Model discovery credentials are unavailable");
+  const credentialText = readFileSync(file,"utf8"), credentials = JSON.parse(credentialText);
+  const token = credentials?.claudeAiOauth?.accessToken;
+  if (typeof token !== "string" || !token || token.length > 16_384) throw Error("Model discovery credentials are unavailable");
+  check();
+  const response = await (options.request ?? fetch)("https://api.anthropic.com/v1/models?limit=100", {
+    headers: { Authorization: `Bearer ${token}`, "anthropic-version": "2023-06-01", "anthropic-beta": "oauth-2025-04-20" },
+    redirect: "error", signal: AbortSignal.timeout(8_000),
+  }); check();
+  if (!response.ok) throw Error("Model discovery failed");
+  const reader = response.body?.getReader(); if (!reader) throw Error("Model discovery returned no data");
+  let text = "", size = 0;
+  try { for (;;) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length; if (size > 128 * 1024) throw Error("Model discovery response is too large"); text += new TextDecoder().decode(chunk.value,{stream:true}); } }
+  finally { await reader.cancel().catch(() => {}); }
+  check();
+  if (readFileSync(file,"utf8") !== credentialText || lstatSync(file).isSymbolicLink()) throw Error("Model discovery account changed");
+  const raw = JSON.parse(text);
+  if (!Array.isArray(raw?.data)) throw Error("Model discovery returned no models");
+  const models: NativeModelOption[] = [];
+  for (const row of raw.data.slice(0,100)) {
+    if (!row || typeof row.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(row.id)) continue;
+    models.push({ id:row.id, name:row.id, ...(typeof row.display_name === "string" ? {description:row.display_name.slice(0,200)} : {}) });
+  }
+  if (!models.length) throw Error("Model discovery returned no models");
+  return { models:boundNativeModelOptions([...models,...claudeDocumentedModels(null).map(m => ({id:m.id,name:m.label}))]), source:"account-api" };
+}
+
 export interface NativeProbeOptions {
   find?: (id: NativeCliId) => Promise<NativeCliExecutable | null>;
   run?: (executable: NativeCliExecutable, args: string[]) => Promise<NativeCommandOutput>;
@@ -412,6 +482,10 @@ async function workerMain(): Promise<void> {
     void (async () => {
       if (Buffer.byteLength(line) > 80_000) throw new Error("Request too large");
       const request = JSON.parse(line);
+      if (request.op === "models") {
+        if (Object.keys(request).some(k => !["op","cli"].includes(k)) || !isNativeProviderId(request.cli)) throw Error("Invalid model refresh request");
+        const result = await refreshNativeModels({cli:request.cli,authorized:()=>!disconnected&&!stopping}); completed=true; finish({type:"models",...result},0); return;
+      }
       if (request.op === "probe") { const result = await probeNativeClis(); completed = true; finish({ type: "probe", ...result }, 0); return; }
       if (request.op === "workspace") {
         if (Object.keys(request).some(key => !["op", "agentId"].includes(key)) || !validWindowsAgentId(request.agentId)) throw new Error("Invalid Windows workspace request");

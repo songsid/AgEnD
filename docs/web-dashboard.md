@@ -270,7 +270,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - `/compact [instructions]`
   - `/clear`: asks first.
   - `/model [name]` and `/effort [level]`: with nothing after them, the list to choose from.
-  - `/backend [backend] [model] [effort]`: another CLI backend, one choice at a time (the backend, its model, its effort), then asks first. It restarts once, in a fresh session. Model lists come from the cache only, as for `/model`.
+  - `/backend [backend] [model] [effort]`: another CLI backend, one choice at a time (the backend, its model, its effort), then asks first. It restarts once, in a fresh session. Opening a model step reads its cached list; Refresh models explicitly runs discovery again.
   - `/cancel`
   - `/btw <question>`
   - `/steer <text>`
@@ -286,7 +286,10 @@ Type `/` at the start of the message box for the instance's own chat commands, t
 - **Fleet-wide commands** (`/status`, `/restart`, `/update`, `/login`, …) stay in General.
 - **`/raw`** is not offered. Over the temporary public link a message starting with `/raw ` is refused, and so is `/save`.
 - **Quick actions:**
-  - The model and effort in the chat's header open their lists.
+  - The backend, model and effort in the chat’s header open their lists. On a phone, backend and model are inside the composer. The current model is marked.
+  - **Refresh models** beside a model menu’s title runs discovery again for that Agent and account; **More models…** opens Claude’s full account catalog separately from the model chips. Refresh never selects a model, saves Settings or restarts an Agent. Failure keeps the previous choices.
+  - Switching backend keeps the shared backend → model → reasoning effort → confirmation flow. The confirmation warns that the new backend starts a fresh conversation; nothing is changed before it is confirmed.
+  - Settings’ model fields have the same explicit **Refresh models** button below the full-width select. Discovery uses the selected backend/account/provider. If a scoped catalog cannot be proved, it reports failure instead of borrowing another account’s models. Codex still honors its own short catalog TTL.
   - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
 
 ## Fleet (`/ui/fleet`)
