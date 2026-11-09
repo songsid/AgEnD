@@ -7,13 +7,16 @@ import type { HubDirectoryResponse } from "./directory-response-owner.js";
 import { HubProtocolError } from "./validation.js";
 import { HubSettingsError } from "./settings-commit.js";
 import { HubDirectoryProofError } from "./settings-directory-proof.js";
+import { HubDirectorySettingsCaError } from "./settings-directory-ca.js";
 
 export const HUB_DIRECTORY_SETTINGS_FEATURE = "directory-settings-v1";
+export const HUB_DIRECTORY_CA_FEATURE = "directory-ca-v1";
 const PREFIX = "/hub/v1/admin/hub/directory";
 const STATUS: Readonly<Record<string, number>> = Object.freeze({ invalid: 400, denied: 403, revoked: 403, reauthentication: 403,
-  trust: 409, stale: 409, expired: 409, unchanged: 409, conflict: 409, busy: 409, backpressure: 429, unavailable: 503, recovery: 503, uncertain: 503 });
-const known = (error: unknown): error is HubSettingsError | HubDirectoryProofError | HubProtocolError =>
-  error instanceof HubSettingsError || error instanceof HubDirectoryProofError || error instanceof HubProtocolError;
+  trust: 409, stale: 409, expired: 409, unchanged: 409, conflict: 409, busy: 409, backpressure: 429, unavailable: 503, recovery: 503, uncertain: 503,
+  "ca-invalid": 400, "ca-trust": 409, "ca-auth-required": 403, "ca-unavailable": 503, "ca-unsupported": 409 });
+const known = (error: unknown): error is HubSettingsError | HubDirectoryProofError | HubProtocolError | HubDirectorySettingsCaError =>
+  error instanceof HubSettingsError || error instanceof HubDirectoryProofError || error instanceof HubProtocolError || error instanceof HubDirectorySettingsCaError;
 async function invoke<T>(work: () => T | Promise<T>): Promise<T> {
   try { return await work(); } catch (error) { throw known(error) ? error : new HubProtocolError("unavailable"); }
 }
@@ -30,7 +33,7 @@ export interface HubDirectorySettingsHttpRequest {
   capture?(proof: () => boolean): HubDirectoryResponse;
 }
 export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubDirectorySettingsControl>) | undefined, q: HubDirectorySettingsHttpRequest): Promise<boolean> {
-  if (q.path !== PREFIX && !["/prepare", "/test", "/save", "/cancel"].some(action => q.path === PREFIX + action)) return false;
+  if (q.path !== PREFIX && !["/prepare", "/test", "/save", "/cancel", "/ca/inspect", "/ca/fetch"].some(action => q.path === PREFIX + action)) return false;
   if (!create) { q.send(404, { code: "not-found" }); return true; }
   if (q.query.size) { q.send(400, { code: "invalid" }); return true; }
   const action = q.path.slice(PREFIX.length);
@@ -53,6 +56,8 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
     else if (action === "/prepare") result = await invoke(() => control.prepare(input, context));
     else if (action === "/test") result = await invoke(() => control.test(input, context));
     else if (action === "/cancel") result = await invoke(() => control.cancel(input, context));
+    else if (action === "/ca/inspect") result = await invoke(() => control.inspectCa(input, context));
+    else if (action === "/ca/fetch") result = await invoke(() => control.fetchCa(input, context));
     else {
       if (!q.ctx.token || !q.capture) throw new HubProtocolError("unavailable");
       const rotation = q.sessions.prepareDirectoryRotation(q.ctx.token, context.actor);

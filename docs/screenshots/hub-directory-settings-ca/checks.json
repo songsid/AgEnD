@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "base": "7063b614c2439743b04d5d4ff28d225d7c8d07a9",
+  "ownPaths": "The alpha fast-forward imported3495 only; all CA own source/test paths and the4 source baselines were unchanged.",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'routes CA inspection'",
+    "passed": 0,
+    "failed": 1,
+    "deselected": 26,
+    "reason": "AssertionError expected404 to be200; no collection failure"
+  },
+  "selected": [
+    {
+      "command": "npx vitest run tests/hub-directory-settings-ca.test.ts tests/hub-directory-settings-control.test.ts tests/hub-directory-certificate.test.ts",
+      "passed": 64,
+      "failed": 0,
+      "deselected": 0
+    },
+    {
+      "command": "npx vitest run tests/hub-compose.test.ts -t 'configured administrator AD settings HTTP'",
+      "passed": 8,
+      "failed": 0,
+      "deselected": 88
+    },
+    {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'routes CA|refuses other admin|a held factory|inspects CA without'",
+      "passed": 7,
+      "failed": 0,
+      "deselected": 21
+    }
+  ],
+  "types": [
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json"
+  ],
+  "wire": "Real CA-verified loopback TLS/LDAP AIA, no application credentials during inspection/pin refusal; only explicitly supplied dummy service credentials during pinned fetch. Fresh ordinary CA verification succeeds.",
+  "doubles": "Source/controller/pool doubles exercise authority, expiry, last-slot reservation, stale-probe pruning and Stop occupancy. Listener tests use actual Hub/fleet auth with contract-faithful controller doubles. No browser API-response interception.",
+  "physical": "Three owned client close events are delayed. Presented issuer chain isolates fetch sockets from LDAP-unbind ordering. Removing each await fails its own assertion.",
+  "remaining": [
+    "AD editor and single trust-dialog UI",
+    "desktop/phone EN/zh-TW PNGs and browser SKEW",
+    "cold off/held source access"
+  ],
+  "operations": "No real directory/account/native/pilot/live fleet operation; no migration or second writer.",
+  "counts": "79 selected across5 files:64 library/control/TLS,8 Hub HTTP,7 fleet HTTP.109 other cases deliberately deselected; no selected platform skip."
+}

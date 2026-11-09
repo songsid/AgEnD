@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "files": {
+    "cb1b5a49f736340bd81a37d24b35f4d89616fef58efa382cc6113547a39f3540": "src/hub/settings-directory-ca.ts",
+    "6391ee14300df8e5531284a5c1dc52b74cdf42c20b7456db71b2b21398ee4c3a": "src/hub/settings-directory-control.ts",
+    "30de1501e83477724a8df9037497aa75f41dc60bd49d604f41d99114bffd1525": "src/hub/settings-directory-http.ts",
+    "4a82b32c18df29434ee957b4643f9eef385c18495d78e04afd136940a048d8d2": "src/hub/settings-directory-host-http.ts",
+    "dbac0093d307fa69cb3d739998397d54290ab9f3d22ed64c1e8f04089c48f8a6": "src/hub/http/compose.ts",
+    "3890de0b95cc11a179195e498db05e99d43723856e996303bcf423b7918c75f9": "src/hub/init/directory-certificate.ts",
+    "2e2af9bd5ed2d35b21319ca839fb9edbb586eb16834e35b301bf5e81ad798ee1": "tests/hub-directory-settings-ca.test.ts",
+    "c0cf6d3b07b74490d3aad1b17e6ed9808752b991e65f81418b256d2e28abfe73": "tests/hub-directory-settings-control.test.ts",
+    "c222b5867128e93607710628e0464b695dfab2053085216e441a71cc6651087a": "tests/hub-directory-certificate.test.ts",
+    "5757c14cde22e1dfd4974225a5cd0fbe323055ec85e7bf9131cba5860fbf3669": "tests/hub-compose.test.ts",
+    "ce62490f6eafd242e6e639fdfc4bff334af68269a0326bc54c7cca26b77c39dd": "tests/hub-web-init-http.test.ts",
+    "c0f174335a19e819077cc18aa1e684a642811b824d9c87b7c29b3728e5d89dee": "scripts/manual/hub-directory-admin-api/verify.py",
+    "79897f730eded1f891fb5b9407d25006b235a9174525660bc0386a8ebfcd1be1": "scripts/manual/hub-directory-settings-ca/verify.py",
+    "47492c1ff2138bcb7c04b393bb7b3fc4eba20d556832ef9a40a19e5dcf581ab2": "scripts/manual/hub-directory-settings-ca/README.md",
+    "548eabf954de7742bd8493909b18cbec498ae4a8d57cd778031544c8aac6d70d": "docs/design/hub-directory-settings-ca.md",
+    "858d3f5b0c8952ffebf37a51f469a45a49a96fb6ed5161e1b4ae43f0ca7065de": "changes/3425-hub-directory-settings-ca.md",
+    "fc8ab01780c449f7367740bd64244c777618615f66433fb5d107ef416c9826f6": "changes/3425-hub-directory-settings-ca.zh-TW.md",
+    "e64fa9f969a070eb8f9011ced6e3ae944831b68f592a51f22830eb8203a7eeb7": "docs/screenshots/hub-directory-settings-ca/checks.json",
+    "2cff49b00849e5a9347ee368a4958dbb22143bf66f04f9c97d8a8dbdeddbeebc": "docs/screenshots/hub-directory-settings-ca/mutations.json"
+  }
+}

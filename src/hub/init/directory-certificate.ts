@@ -1,4 +1,4 @@
-/** Local initializer bootstrap only. No runtime directory-verification switch, credential-bearing inspection or URL fetching. */
+/** Explicit directory trust bootstrap. No runtime verification switch, credential-bearing inspection or arbitrary URL fetching. */
 import { X509Certificate } from "node:crypto";
 import { isIP } from "node:net";
 import * as tls from "node:tls";
@@ -53,7 +53,12 @@ export async function inspectDirectoryCertificate(url: string): Promise<Director
       seen.add(c.fingerprint256); chain.push(c.toString()); next = next.issuerCertificate;
     }
     return { url: cfg.url, leafPem: leaf.toString(), chain, certificate: info(leaf) };
-  } catch (err) { throw known(err); } finally { socket.destroy(); }
+  } catch (err) { throw known(err); } finally { await closeSocket(socket); }
+}
+/** Callers retain their shared physical directory slot until every owned socket acknowledges close. */
+async function closeSocket(socket: tls.TLSSocket): Promise<void> {
+  if (socket.closed) return;
+  await new Promise<void>(resolve => { socket.once("close", resolve); socket.destroy(); });
 }
 function known(err: unknown): Error {
   return err instanceof Error && /^directory_ca_(?:unavailable|invalid|expired|hostname|pin|auth_required|unsupported|aia)$/.test(err.message) ? err : error();
@@ -100,7 +105,7 @@ async function pinned(probe: DirectoryCertificateProbe, pin: string): Promise<tl
     if (!socket.authorized || !socket.encrypted || socket.destroyed || !socket.getPeerCertificate().raw
       || fingerprint(new X509Certificate(socket.getPeerCertificate().raw).fingerprint256) !== fingerprint(pin)) throw error("directory_ca_pin");
     return socket;
-  } catch (err) { socket.destroy(); throw known(err); }
+  } catch (err) { await closeSocket(socket); throw known(err); }
 }
 export async function fetchDirectoryCa(probe: DirectoryCertificateProbe, confirmedLeafFingerprint: string,
   credentials?: { bindDn: string; password: string }): Promise<DirectoryCaBundle> {
@@ -147,10 +152,10 @@ export async function fetchDirectoryCa(probe: DirectoryCertificateProbe, confirm
     // Prove normal runtime verification with the fetched CA before returning it for owner confirmation/configuration.
     const verified = tls.connect({ host: cfg.host, port: cfg.port, ...(isIP(cfg.host) ? {} : { servername: cfg.host }), minVersion: "TLSv1.2",
       ca: bundle.pem, rejectUnauthorized: true });
-    try { await connected(verified); if (!verified.authorized) throw error(); } finally { verified.destroy(); }
+    try { await connected(verified); if (!verified.authorized) throw error(); } finally { await closeSocket(verified); }
     return bundle;
   } catch (err) {
     if (!credentials && [1, 48, 50].includes(Number((err as { code?: number }).code))) throw error("directory_ca_auth_required");
     throw known(err);
-  } finally { socket.destroy(); if (client) await client.unbind().catch(() => {}); }
+  } finally { const closed = closeSocket(socket); if (client) await client.unbind().catch(() => {}); await closed; }
 }
