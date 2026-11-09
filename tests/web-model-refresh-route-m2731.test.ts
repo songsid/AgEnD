@@ -40,6 +40,6 @@ describe("explicit model rediscovery route", () => {
     const r = await rig(vi.fn(async () => { started(); return new Promise(resolve2 => { resolve = resolve2; }); }));
     const pending = r.post({ backend: "codex", instance: "w" }); await entered; r.ctx.webToken = "b".repeat(48);
     resolve({ models: [{ id: "private", label: "Private" }], refreshed: true });
-    const result = await pending; expect(result.status).toBe(401); expect(await result.text()).not.toContain("private");
+    const result = await pending; expect(result.status).toBe(403); expect(await result.text()).not.toContain("private");
   });
 });

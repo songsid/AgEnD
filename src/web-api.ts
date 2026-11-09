@@ -1678,14 +1678,14 @@ export function handleWebRequest(
     void (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
-      if (!stillAuthorized(req, res, url, ctx)) return;
+      if (!permitWebContinuation(req, res, ctx)) return;
       if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
       if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(k => k !== "backend" && k !== "instance")) { json(res, 400, { error: "invalid model target" }); return; }
       const backend = body.backend, instance = body.instance ?? null;
       if (typeof backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (typeof instance !== "string" || !isSafeInstanceName(instance)))) { json(res, 400, { error: "invalid model target" }); return; }
       if (!ctx.refreshModelCatalogFor) { json(res, 503, { error: "model_refresh_unavailable" }); return; }
       const result = await ctx.refreshModelCatalogFor(backend, instance);
-      if (!stillAuthorized(req, res, url, ctx)) return;
+      if (!permitWebContinuation(req, res, ctx)) return;
       if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
       json(res, 200, { backend, ...result });
     })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });

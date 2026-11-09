@@ -12,7 +12,7 @@ export function modelPickerStyles() {
   if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/model-picker.css"]')) return;
   const link = document.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/model-picker.css"); document.head.appendChild(link);
 }
-const answers = new Map(), TTL = 30_000;
+const answers = new Map(); // share only in-flight passive reads; the server owns catalog freshness
 export function forgetModelPickerCatalogs() { answers.clear(); }
 /** Selection remains owned by the form; rediscovery never calls its onChange or stages a change. */
 export function useRefreshableModels(backend, instance) {
@@ -25,10 +25,11 @@ export function useRefreshableModels(backend, instance) {
   useEffect(() => {
     let live = true; const gen = ++generation.current;
     const url = `/ui/models?backend=${encodeURIComponent(backend || "")}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}`;
-    const hit = answers.get(key), fresh = hit && performance.now() - hit.at < TTL;
+    const hit = answers.get(key), fresh = !!hit;
     const promise = fresh ? hit.promise : fetch(url, { credentials: "same-origin" }).then(async r => { if (!r.ok) throw Error(); const data = await r.json(); return Array.isArray(data.models) ? data.models : []; });
-    if (!fresh) { answers.set(key, { at: performance.now(), promise }); if (answers.size > 64) answers.delete(answers.keys().next().value); }
+    if (!fresh) { answers.set(key, { promise }); if (answers.size > 64) answers.delete(answers.keys().next().value); }
     set({ key, models: [], phase: "loading" }); flight.current = null;
+    promise.finally(() => { if (answers.get(key)?.promise === promise) answers.delete(key); }).catch(() => {});
     promise.then(models => { if (live && gen === generation.current) set({ key, models, phase: "idle" }); }, () => { answers.delete(key); if (live && gen === generation.current) set({ key, models: [], phase: "error" }); });
     return () => { live = false; };
   }, [key]);
@@ -42,7 +43,6 @@ export function useRefreshableModels(backend, instance) {
       const data = await r.json();
       if (!r.ok || data.refreshed !== true || !Array.isArray(data.models)) throw Error();
       if (!mounted.current || current.current !== key || flight.current !== token) return;
-      answers.set(key, { at: performance.now(), promise: Promise.resolve(data.models) });
       set({ key, models: data.models, phase: "done" });
     } catch { if (mounted.current && current.current === key && flight.current === token) set({ ...shown, phase: "error" }); }
     finally { if (flight.current === token) flight.current = null; }

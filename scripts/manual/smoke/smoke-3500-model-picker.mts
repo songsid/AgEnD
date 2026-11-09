@@ -56,7 +56,7 @@ try {
       if (geometry.scroll > geometry.width + 1) throw Error(`overflow ${tag}:${label}`);
       await page.screenshot({ path: join(out, `${tag}-${label}.png`) }); records.push({ tag, label, geometry });
     }
-    await page.goto(fx.base + "/settings/agent-defaults"); await mounted(page, ".p-settings"); await page.waitForSelector("#g-model");
+    await page.goto(fx.base + "/settings/agent-defaults"); await mounted(page, ".p-settings"); await page.waitForSelector("#g-model"); await page.locator("#g-model").scrollIntoViewIfNeeded();
     await shot("settings");
     if (!before) {
       const field = page.locator("#g-model").locator(".."); const value = await page.locator("#g-model").inputValue();
@@ -70,7 +70,7 @@ try {
     await page.goto(fx.base + "/settings/agents"); await page.waitForSelector(".p-settings .s-row");
     const row = page.locator(".p-settings .s-row").filter({ has: page.locator(`.s-name[title="${name}"]`) });
     await row.locator("button").filter({ hasText: /^(Settings|設定)$/ }).click(); await page.waitForSelector("#ag-model");
-    await page.locator("#ag-model").scrollIntoViewIfNeeded(); await shot("agent-dialog");
+    await page.locator("#ag-model").scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await shot("agent-dialog");
     await page.goto(fx.base + `/ui/chat/${encodeURIComponent(name)}`); await mounted(page, ".p-chat");
     const open = async (command: string) => { await page.locator("#msgIn").fill(`/${command}`); await page.locator("#sendBtn").click(); };
     await open("model"); await page.waitForSelector(".cmd-card .cmd-choices"); await shot("chat-model");
