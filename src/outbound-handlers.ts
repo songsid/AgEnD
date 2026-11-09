@@ -1378,11 +1378,14 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
   return after.errors.filter(issue => !had.has(`${issue.path}\u0000${issue.message}`));
 }
 
-const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
-  // Privilege boundary (#804/#814): tool_set must be set via Settings or
-  // fleet.yaml, not through the MCP tool. Check the raw args before Zod
-  // strips unknown fields, so the field is never silently ignored.
-  if (typeof (rawArgs as any)?.config?.tool_set === "string" || (rawArgs as any)?.config?.tool_set !== undefined) {
+const updateInstanceConfig: Handler = (ctx, rawArgs, respond, meta) => {
+  // Check raw fields before Zod strips them. Decision 36525f1b exempts only
+  // the authenticated General identity for tool_set, never skipPermissions.
+  if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
+    respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
     respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
@@ -1458,7 +1461,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
-  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description"] as const) {
+  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description", "tool_set"] as const) {
     if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
   }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
@@ -1474,6 +1477,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
+  if (patch.tool_set !== undefined) inst.tool_set = patch.tool_set;
   // backend_options is read when the CLI is launched, so a change to it is not
   // in effect until the instance restarts. Merged per backend namespace so
   // setting a kiro option cannot silently drop a codex one.
@@ -1795,10 +1799,10 @@ const reportResult = wrapAsSend(
 );
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Privilege boundary (#804/#814): tool_set and skipPermissions must be set
-  // via Settings or fleet.yaml, not through the MCP tool. Check raw args before
-  // Zod's passthrough() silently forwards them to instance-lifecycle.
-  if ((rawArgs as any)?.tool_set !== undefined || (rawArgs as any)?.skipPermissions !== undefined) {
+  // Decision 36525f1b: only General may supply tool_set. Raw skipPermissions
+  // stays refused for everyone before passthrough can reach the lifecycle.
+  if ((rawArgs as any)?.skipPermissions !== undefined ||
+      ((rawArgs as any)?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? ""))) {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }

@@ -236,6 +236,8 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 
 `tool_set` enforces policy for the resolved instance identity, not isolation between shell-capable agents on the same uid. A sibling can read another instance’s `agent.token` or use its IPC socket; see [the shared-account threat model](SECURITY.md#tool-profiles-and-the-shared-host-account).
 
+General may set another agent’s `tool_set` directly through `update_instance_config({ name, config: { tool_set: "worker" } })` or supply `tool_set` to `create_instance`, without a confirmation card. Other callers, including coordinators and non-General `full` instances, retain the #804/#814 refusal. Both tools refuse `skipPermissions` for everyone. Valid writable profiles are `full`, `standard`, `worker`, `coordinator` and `minimal`; `general` is assigned by role, never written. General’s default profile includes `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`, but excludes `checkout_repo` and `release_repo`. Sensitive Settings confirmations are unchanged.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `working_directory` | string | auto-created | Absolute path to project directory |

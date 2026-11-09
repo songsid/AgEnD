@@ -31,6 +31,18 @@ templates:        # Reusable fleet deployment templates
 - Instance logs: `~/.agend/instances/<name>/output.log`
 - Runtime logs: `agend logs` / `~/.agend/daemon.log`; service startup errors and Node warnings: `~/.agend/fleet.log`
 
+## Inspect and set an agent’s tool profile
+
+Use `get_fleet_config({ scope: "instance", name })` or `scope: "defaults"` to inspect the current configuration, and `list_deployments` to inspect deployed groups. These read-only tools and `validate_config` are in General’s default profile.
+
+As General, set another agent’s profile directly, without asking for a confirmation card:
+
+```js
+update_instance_config({ name: "worker", config: { tool_set: "worker" } })
+create_instance({ topic_name: "new-worker", tool_set: "worker" })
+```
+Writable values: `full`, `standard`, `worker`, `coordinator`, `minimal`. `general` is assigned by role and cannot be written. Other callers (including coordinators and non-General `full` agents) remain refused under #804/#814. Both tools refuse `skipPermissions` for everyone, including General; do not pass it. Sensitive Settings changes (tokens, access and admin membership) still use their existing confirmation. An explicitly narrowed General remains narrowed.
+
 ## kiro-cli UI mode (kiro_ui)
 
 For `backend: kiro-cli` instances, `kiro_ui` selects the CLI's UI/agent profile:

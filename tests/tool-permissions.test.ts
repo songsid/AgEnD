@@ -76,6 +76,8 @@ const BEFORE: Record<string, string[]> = {
     // #1823: closing its own poll early (reply's `poll`).
     "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report", "get_usage_report",
+    // Decision 36525f1b: General also has the read-only debug tools.
+    "get_instance_logs", "get_fleet_config", "validate_config", "list_deployments",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     // Decision 9e3bea6c (#3043): General is AgEnD's administrator and carries every orchestration tool.
     "create_instance", "delete_instance", "replace_instance",
@@ -609,14 +611,9 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general equals coordinator minus the 6 worker-only repo/raw-config tools (decision 9e3bea6c + hmsg-07371500)", () => {
-    // General carries the full own-appearance family and every orchestration tool
-    // (decision 9e3bea6c), omitting only the 6 worker-only repo/raw-config tools.
-    const workerOnlyInCoordinator = [
-      "checkout_repo", "release_repo",
-      "get_fleet_config", "get_instance_logs", "list_deployments", "validate_config",
-    ];
-    expect(TOOL_PROFILES.general.length).toBe(TOOL_PROFILES.coordinator.length - workerOnlyInCoordinator.length);
+  it("general equals coordinator except for repository leases (36525f1b)", () => {
+    const excluded = new Set(["checkout_repo", "release_repo"]);
+    expect([...toolsFor("general")].sort()).toEqual([...toolsFor("coordinator")].filter(t => !excluded.has(t)).sort());
   });
 });
 
@@ -879,7 +876,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
     }
   });
 
-  it("keeps the #804/#814 privilege guard unchanged when General calls update_instance_config (refuses tool_set, ignores skipPermissions)", async () => {
+  it("lets General set tool_set while explicitly refusing skipPermissions (36525f1b)", async () => {
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const targetInstance: Record<string, unknown> = { description: "before", skipPermissions: false };
     const ctx = {
@@ -901,7 +898,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
       senderSessionName: undefined,
     };
 
-    // 1. General attempting to set tool_set via update_instance_config is refused (#804/#814)
+    // 1. The General-only exception writes the requested profile directly.
     let result1: unknown;
     let error1: string | null | undefined;
     await outboundHandlers.get("update_instance_config")!(
@@ -910,12 +907,13 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
       (r, e) => { result1 = r; error1 = e; },
       generalMeta,
     );
-    expect(result1).toBeNull();
-    expect(error1).toMatch(/privilege boundary[\s\S]*#804[\s\S]*#814/);
-    expect(targetInstance.tool_set).toBeUndefined();
-    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+    expect(result1).toMatchObject({ success: true });
+    expect(error1).toBeUndefined();
+    expect(targetInstance.tool_set).toBe("full");
+    expect(ctx.saveFleetConfig).toHaveBeenCalledOnce();
+    ctx.saveFleetConfig.mockClear();
 
-    // 2. General passing skipPermissions via update_instance_config does not escalate skipPermissions
+    // 2. skipPermissions refuses the whole patch, even for General.
     let result2: unknown;
     let error2: string | null | undefined;
     await outboundHandlers.get("update_instance_config")!(
@@ -924,13 +922,14 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
       (r, e) => { result2 = r; error2 = e; },
       generalMeta,
     );
-    expect(error2).toBeUndefined();
-    expect(result2).toMatchObject({ success: true });
-    expect(targetInstance.description).toBe("after");
+    expect(error2).toMatch(/skipPermissions.*#804\/#814/);
+    expect(result2).toBeNull();
+    expect(targetInstance.description).toBe("before");
     expect(targetInstance.skipPermissions).toBe(false);
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
   });
 
-  it("keeps create_instance's tool_set/skipPermissions refusal for General while preserving schema pass-through", async () => {
+  it("keeps create_instance's skipPermissions refusal for General while preserving internal schema pass-through", async () => {
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const { CreateInstanceArgs } = await import("../src/outbound-schemas.js");
     const handleCreate = vi.fn().mockResolvedValue(undefined);
@@ -954,7 +953,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
       senderSessionName: undefined,
     };
 
-    for (const forbidden of [{ tool_set: "full" }, { skipPermissions: true }, { skipPermissions: false }]) {
+    for (const forbidden of [{ skipPermissions: true }, { skipPermissions: false }]) {
       let result: unknown;
       let error: string | null | undefined;
       await outboundHandlers.get("create_instance")!(

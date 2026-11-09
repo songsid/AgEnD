@@ -1,6 +1,6 @@
 /**
  * #814 decision (2026-10-09): update_instance_config must REFUSE any patch
- * that includes tool_set. This is a privilege boundary (#804/#814): only an
+ * that includes tool_set for a non-General caller (General is exempt since decision 36525f1b). This is a privilege boundary (#804/#814): only an
  * administrator via Settings or fleet.yaml may change the tool-permission
  * profile.
  *

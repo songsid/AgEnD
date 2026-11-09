@@ -4,6 +4,10 @@ description: restart vs replace vs pause/wake; when to use each
 roles: [general]
 ---
 
+## Create with a tool profile
+
+General may supply `tool_set` to `create_instance` directly, without a confirmation card, or change another agent’s profile through `update_instance_config`. See the fleet-config skill for valid profiles. `skipPermissions` remains refused even for General. Do not add a redundant reload after creation; the fleet reconciles itself.
+
 ## Restart vs Replace vs Stop / Delete
 
 - `restart_instance("<name>")` — keeps the session, reloads config. Use when config changed.
