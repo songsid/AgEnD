@@ -1,0 +1,15 @@
+# Directory startup reconciliation
+
+M-2687 / S-112 / #3425, based on #3477's durable signed mount intent. This composes recovery into the existing runtime, not a second file writer. Public AD settings routes and the AD editor still need composition.
+
+Once per runtime, after its first enabled local-server mount attempt, the runtime reads the current head's intent. An exact ready generation closes a pending intent through its existing audited `completeMount` transaction. A legacy operation or an already-closed intent needs no new action. An initial Off/member-only apply does not inspect or restore local-server state.
+
+If that replacement cannot mount, the runtime borrows the same strictly validated cold participant used by file-journal recovery. The pointer is callback-scoped and cleared before the participant closes; no DB or migration is created during this read. It gives the shared writer the exact captured operation and its existing deadline. The writer authenticates the original receipt against its issuer-signed manifest and performs the one forward compensation. No browser authority, session or cookie is recreated. Expired/backward clocks, a changed operation, a later head, changed material or failed proof hold the server without inventing another allowance.
+
+FleetManager supplies a fresh read of its accepted raw configuration. After compensation the runtime checks that image against the committed restoration, then queues it through the ordinary serialized mount loop. A stale read refuses. Failed restoration remains unavailable at its newer epoch and never recursively compensates. The existing server-only hold preserves a separately configured member link; Stop and a changed admitted view fence continuation after import awaits and inside the final writer proof.
+
+This runs only on startup. Later operations in that runtime belong to the private Save coordinator; startup handling must not compete with an active request's response/session handoff. The two existing real HTTPS Save outcomes are retained as controls for this separation.
+
+Tests use the actual initializer/seal, shared writer, SQLite/floor/audit and owned CA-verified HTTPS listeners with an inert directory driver. Fail-first cases cover a ready pending intent, a post-decision crash after cold recovery, and an unavailable replacement that must restore forward. Additional controls cover expiry/backward clocks, failed restoration, Stop/replacement while a cold registry read is held, Stop during final writer staging, operation replacement, and stale accepted-config reads. FleetManager's existing scratch fixture uses a recording runtime to verify the fresh-reader wiring. No real directory, account, native manager, pilot or live fleet is used.
+
+Rollback of this runtime wiring requires a build compatible with #3477's Hub schema. A completed compensation is a new operation, not permission to restore an old database, epoch, grant, deny, session or floor. A fresh authorized settings save is required to change the connection again.

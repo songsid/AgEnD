@@ -1,0 +1,36 @@
+{
+  "scope": "M-2687 / S-112 / #3425 production startup recovery only; public AD settings routes/form remain uncomposed",
+  "dependency": "#3477 issuer-authenticated durable intent at b4c4f393c; clean alpha sync will be merged before push",
+  "failFirst": {
+    "cases": 3,
+    "failures": "test expectations",
+    "scope": "ready pending intent, cold post-decision crash, refused replacement requiring one forward restoration"
+  },
+  "focused": {
+    "command": "npx vitest run tests/hub-compose.test.ts tests/hub-health.test.ts tests/hub-settings-fleet-m2682.test.ts",
+    "passed": 95,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": [
+    "npx tsc --noEmit: passed",
+    "npx tsc -p tsconfig.test.json --noEmit: passed"
+  ],
+  "mutations": {
+    "command": "python3 scripts/manual/hub-directory-startup-reconcile/mutations.py",
+    "caught": 9,
+    "total": 9,
+    "independent": true,
+    "restored": true,
+    "note": "Only matcher assertions count. An initial overly broad startup-call selection and the private Save error-based witness were not counted; replaced with precise ready and live-request state assertions."
+  },
+  "runtime": "Owned CA-verified HTTPS, actual initializer/seal/shared writer/SQLite/floor/audit, inert directory driver. Existing normal/restored private Save journeys retained.",
+  "fleetManager": "Own scratch instance with recording runtime; reader compared against newest accepted raw config before and after a real sealed rename. No live-fleet lifecycle handler driven.",
+  "rollback": "Use a matching build for #3477 schema. Completed compensation is a new forward operation; never rewind a DB, epoch, floor, deny, grant or session.",
+  "limitations": [
+    "No public AD Save or AD editor yet",
+    "No real directory/account/native/pilot/live fleet",
+    "No repeated full browser rig",
+    "No new browser capability or session creation"
+  ]
+}

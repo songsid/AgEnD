@@ -68,12 +68,16 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     const writer = hub.options.settingsWriter;
     expect(writer).toBeTruthy();
     expect(writer.directory).toBeDefined();
+    expect(hub.options.readConfig).toEqual(expect.any(Function));
+    expect(hub.options.readConfig()).toBe(fm.rawFleetConfig);
     expect(hub.options.version === null || typeof hub.options.version === "string").toBe(true);
     writer.commit(writer.prepare({ kind: "rename", name: "Design Hub" }, actor).ref, actor, () => true);
     const text = readFileSync(path, "utf8");
     expect(text).toContain("# the owner's own note");
     expect((yaml.load(text) as any).hub.name).toBe("Design Hub");
     expect(fm.rawFleetConfig.hub.name).toBe("Design Hub");
+    expect(hub.options.readConfig()).toBe(fm.rawFleetConfig);
+    expect(hub.options.readConfig().hub.name).toBe("Design Hub");
     expect(verifies()).toBe(true);
     await settle();
     expect(hub.applied.at(-1).hub.name).toBe("Design Hub");
