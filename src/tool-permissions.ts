@@ -99,9 +99,8 @@ const ALL_TOOLS = TOOLS.map(t => t.name);
  *
  * `general` includes the full `ORCHESTRATION` list (fleet decision 9e3bea6c, #3043):
  * General is AgEnD's administrator, so it gets every orchestration tool without a
- * separate confirmation gate, while keeping repository leases and raw host-config/log
- * inspection (`checkout_repo`, `release_repo`, `get_fleet_config`, `get_instance_logs`,
- * `list_deployments`, `validate_config`) out of its default profile.
+ * separate confirmation gate. Decision 36525f1b adds read-only debugging tools;
+ * repository leases (`checkout_repo`, `release_repo`) stay out of its default profile.
  */
 export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   full: ALL_TOOLS,
@@ -110,6 +109,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   general: [
     "reply", "react", "edit_message", "download_attachment", "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report", "get_usage_report",
+    "get_instance_logs", "get_fleet_config", "validate_config", "list_deployments",
     // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
     "kiro_engine_status",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",

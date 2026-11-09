@@ -295,6 +295,8 @@ templates:
 
 `tool_set` 對已辨識的 instance 身分執行政策防護，不會隔離同 uid、具有 shell 能力的 agent。另一個 agent 能讀它的 `agent.token` 或使用其 IPC socket；見[共用帳號威脅模型](SECURITY.zh-TW.md#工具組與共用主機帳號)。
 
+General 可透過 `update_instance_config({ name, config: { tool_set: "worker" } })` 直接修改其他 agent 的 `tool_set`，也可在 `create_instance` 指定，不需確認卡片。其他呼叫者（包含 coordinator 與非 General 的 `full` instance）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`，General 也一樣。可寫入的工具組是 `full`、`standard`、`worker`、`coordinator`、`minimal`；`general` 由角色指派，不能手設。General 的預設工具組包含 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，不包含 `checkout_repo`、`release_repo`。敏感設定原有的確認流程不變。General 不得透過這兩個工具修改自己的 `tool_set`，建立操作最後指向現有 General 時也一樣；人員仍可在設定頁或 fleet.yaml 修改。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
+
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |

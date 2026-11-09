@@ -45,23 +45,20 @@ pause, wake and restart; templates; teams; `update_fleet_defaults`;
 `update_instance_config`; the kiro migrate and reconcile tools;
 `update_decision`; web settings — with no extra confirmation. The existing
 confirmations stay: sensitive config (tokens and access) is confirmed by a
-fleet admin, and #804 still refuses `tool_set` or `skipPermissions` escalation.
+fleet admin. Decision 36525f1b (user 2026-11-09) adds `get_instance_logs`,
+`get_fleet_config`, `validate_config` and `list_deployments`, and lets General
+set another agent’s `tool_set` directly through `update_instance_config` or
+`create_instance`, without confirmation. Non-General callers, coordinators
+included, retain the #804/#814 refusal; `skipPermissions` is refused for everyone.
 It supersedes the 2026-09-21 "dispatcher" rationale and lands in beta.8 (agy's
 PR). General is the fleet's admin instance — the first agent on a new fleet —
 and owns the General topic. An instance runs under the `general` tool set when
 `general_topic: true` or its name is `general`.
 
-- Can (as of beta.8): everything in the worker profile plus the full
-  ORCHESTRATION set, delegation, schedules, and the user's web-appearance
-  settings.
-- Can't: exceed that set. Note the code on main is pre-beta.8 and still shows
-  the smaller subset (`src/tool-permissions.ts:107-136` holds only
-  `create/start/restart/wake_instance` plus the web settings
-  (`get/set_web_settings`) of the orchestration verbs) — expected
-  to change when beta.8 lands; see Mismatches.
-- Code: `src/tool-permissions.ts:107-136`, `:201-208`;
-  `src/instance-lifecycle.ts:2741` (the General instance cannot be replaced).
-- Refs: fleet decision 9e3bea6c.
+- Can: use the coordinator tools except repository leases, including the read-only debug tools, and directly set another agent’s `tool_set` to a writable profile (`full`, `standard`, `worker`, `coordinator` or `minimal`).
+- Can’t: use `checkout_repo` or `release_repo` under the default General profile, assign the role-derived `general` profile, or pass `skipPermissions` through either configuration tool. General cannot change its own `tool_set` through either tool (including a create operation that resolves to itself); a person may still set it in Settings or fleet.yaml. An explicitly narrowed General remains narrowed. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
+- Code: `src/tool-permissions.ts`, `src/general-instance.ts`, `src/outbound-handlers.ts`.
+- Refs: fleet decisions 9e3bea6c and 36525f1b.
 
 ## `coordinator` tool set
 
