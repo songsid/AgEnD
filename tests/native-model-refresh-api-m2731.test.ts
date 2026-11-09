@@ -13,7 +13,9 @@ async function rig(){
  const local=vi.fn(),ctx:any={webToken:token,webSessions:sessions,fleetConfig:{instances:{w:{working_directory:'C:\\work',runtime:'windows',backend:'claude-code',machine_id:a,backend_options:{'claude-code':{credential_profile:'work'}}}}},runtimeCoordinator:()=>({machine:(id:string)=>machines.get(id),callAccount:call}),refreshModelCatalogFor:local,logger:{error(){},info(){},warn(){},debug(){}}};
  const s=createServer((req,res)=>{handleWebRequest(req,res,new URL(req.url!,`http://${req.headers.host}`),ctx);});servers.push(s);s.listen(0,'127.0.0.1');await once(s,'listening');const base=`http://127.0.0.1:${(s.address() as any).port}`;
  const post=(body:any,headers:any={})=>fetch(base+'/ui/models/refresh',{method:'POST',headers:{'content-type':'application/json',cookie:`agend_session=${admin.sessionId}`,origin:base,'x-agend-csrf':csrfTokenFor(admin.sessionId),...headers},body:JSON.stringify(body)});
- return {ctx,local,call,machines,post,base,sessions,admin};
+ const command = vi.fn(); ctx.webCommand = command;
+ const postCommand = (body:any) => fetch(base+'/ui/command',{method:'POST',headers:{'content-type':'application/json',cookie:`agend_session=${admin.sessionId}`,origin:base,'x-agend-csrf':csrfTokenFor(admin.sessionId)},body:JSON.stringify(body)});
+ return {ctx,local,call,machines,post,base,sessions,admin,command,postCommand};
 }
 it('rediscovery goes only to the chosen computer/profile; passive GET does not dispatch and never borrows default models',async()=>{
  const r=await rig();let response=await r.post({backend:'claude-code',instance:'w'});expect(response.status).toBe(200);expect(await response.json()).toMatchObject({refreshed:true,models:[{id:`model-${a}`}]});
@@ -44,4 +46,15 @@ it("rejects oversized or malformed remote model rows before projecting them",asy
  const r=await rig();for(const models of [Array.from({length:201},(_,i)=>({id:`m${i}`})),[{id:"../bad\nname"}],[{id:"ok",description:{secret:"no"}}]]){
   r.call.mockResolvedValue({cli:"claude-code",profile:"work",source:"account-api",models});const res=await r.post({backend:"claude-code",instance:"w"});expect(res.status).toBe(503);expect(await res.text()).not.toContain('"models"');
  }
+});
+
+it("native pane chat refresh uses the same chosen account without dispatching a portable command",async()=>{
+ const r=await rig();r.ctx.fleetConfig.instances.w.native_adapter='pane';
+ const response=await r.postCommand({instance:'w',command:'model',action:'refresh'});
+ expect(response.status).toBe(200);expect(await response.json()).toMatchObject({choices:{options:[{id:`model-${a}`}],actions:['refresh']}});
+ expect(r.call).toHaveBeenCalledWith(a,'models.refresh',{cli:'claude-code',profile:'work',actor:expect.stringMatching(/^admin:/)},25000);
+ expect(r.local).not.toHaveBeenCalled();expect(r.command).not.toHaveBeenCalled();
+ r.ctx.fleetConfig.instances.w.native_adapter='exec';
+ expect((await r.postCommand({instance:'w',command:'model',action:'refresh'})).status).toBe(400);
+ expect(r.call).toHaveBeenCalledOnce();expect(r.command).not.toHaveBeenCalled();
 });

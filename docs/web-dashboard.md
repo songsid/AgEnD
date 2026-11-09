@@ -290,6 +290,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - **Refresh models** beside a model menu’s title runs discovery again for that Agent and account; **More models…** opens Claude’s full account catalog separately from the model chips. Refresh never selects a model, saves Settings or restarts an Agent. Failure keeps the previous choices.
   - Switching backend keeps the shared backend → model → reasoning effort → confirmation flow. The confirmation warns that the new backend starts a fresh conversation; nothing is changed before it is confirmed.
   - Settings’ model fields have the same explicit **Refresh models** button below the full-width select. Discovery uses the selected backend/account/provider. If a scoped catalog cannot be proved, it reports failure instead of borrowing another account’s models. Codex still honors its own short catalog TTL.
+  - Native Windows model refresh runs on the selected computer, CLI and account. It needs that Runtime’s model-refresh capability and its owner’s account-access permission; an older or offline peer reports unavailable and never falls back to this computer’s catalog. Persistent native chat exposes `/model`; change its backend in Agent Settings.
   - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
 
 ## Fleet (`/ui/fleet`)

@@ -2028,6 +2028,9 @@ export function handleWebRequest(
       let result;
       try {
         result=await refreshNativeModelCatalog(req,url,ctx,target);
+        // Recheck after runtime selection, before any portable probe is admitted.
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
         if(!result){
           if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
           result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));

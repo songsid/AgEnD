@@ -3,8 +3,9 @@ import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { handleWebRequest } from "../src/web-api.js";
+import * as nativeCatalog from "../src/native-model-catalog.js";
 const servers: Server[] = [];
-afterEach(async () => { for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); } });
+afterEach(async () => { vi.restoreAllMocks(); for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); } });
 async function rig(refresh = vi.fn(async (_b: string, _i: string | null): Promise<any> => ({ models: [{ id: "new", label: "New" }], refreshed: true }))) {
   const token = "a".repeat(48); const ctx: any = { webToken: token, refreshModelCatalogFor: refresh, logger: { info() {}, error() {}, warn() {}, debug() {} } };
   const server = createServer((req, res) => { handleWebRequest(req, res, new URL(req.url!, `http://${req.headers.host}`), ctx); });
@@ -42,4 +43,25 @@ describe("explicit model rediscovery route", () => {
     resolve({ models: [{ id: "private", label: "Private" }], refreshed: true });
     const result = await pending; expect(result.status).toBe(403); expect(await result.text()).not.toContain("private");
   });
+});
+
+// The native selector is asynchronous even for a portable target. Admission must
+// still hold before the portable discovery starts, not only before publication.
+it("revocation while selecting a runtime never starts portable discovery", async () => {
+  let finish!: () => void, started!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  vi.spyOn(nativeCatalog, "refreshNativeModelCatalog").mockImplementationOnce(async () => {
+    started();
+    await new Promise<void>(resolve => { finish = resolve; });
+    return null;
+  });
+  const r = await rig();
+  const pending = r.post({ backend: "codex" });
+  await entered;
+  r.ctx.webToken = "b".repeat(48);
+  finish();
+  const response = await pending;
+  expect(response.status).toBe(403);
+  expect(r.refresh).not.toHaveBeenCalled();
+  expect(await response.text()).not.toContain('"models"');
 });

@@ -14,12 +14,21 @@ fx.fm.runBackendProbeWorker=async()=>{portable++;throw Error('A native picker mu
 const shots:any[]=[];
 try{for(const c of matrix()){
  (await import(repo+'/src/locale.ts')).setLocale(c.lang);const {page,ctx,csp}=await fx.page(c),errors:string[]=[];page.on('pageerror',(e:any)=>errors.push(String(e)));
- if(process.env.SKEW)await page.route('**/assets/app.css*',(r:any)=>r.fulfill({contentType:'text/css',body:readFileSync(join(process.env.SKEW!,'app.css'))}));
+ if(process.env.SKEW){
+  await page.route('**/assets/app.css*',(r:any)=>r.fulfill({contentType:'text/css',body:readFileSync(join(process.env.SKEW!,'app.css'))}));
+  await page.route('**/ui/js/settings-catalog.js*',(r:any)=>r.fulfill({contentType:'text/javascript',body:readFileSync(join(process.env.SKEW!,'settings-catalog.js'))}));
+ }
  await page.goto(fx.base+'/settings/agents');await mounted(page,'.p-settings');const row=page.locator('.s-row').filter({has:page.locator(`.s-name[title="${name}"]`)});await row.locator('button').filter({hasText:/^(Settings|設定)$/}).click();await page.waitForSelector('#ag-model');
  await page.locator('.agent-runtime-settings > button').click();await page.waitForSelector('.agent-runtime-change-dialog');
  const dialog=page.locator('.agent-runtime-change-dialog');await dialog.locator(`input[value="machine:${ids[0]}"]`).check();await dialog.getByRole('button',{name:/^(Next|下一步)$/}).click();
  await page.waitForSelector('#runtime-change-model');
- const shot=async(label:string)=>{await page.evaluate(()=>document.fonts.ready);await page.locator('#runtime-change-model').scrollIntoViewIfNeeded();if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('page overflow');const file=`${caseName(c)}-${label}.png`;await page.screenshot({path:join(out,file)});shots.push(file);};
+ const shot=async(label:string)=>{await page.evaluate(()=>document.fonts.ready);await page.locator('#runtime-change-model').scrollIntoViewIfNeeded();
+ if(c.device==='desk'){
+  const account=page.locator('#runtime-change-claude-account');await account.scrollIntoViewIfNeeded();
+  const field=await account.boundingBox(),body=await dialog.locator('.dlg-body').boundingBox();
+  if(!field||!body||field.y<body.y-1||field.y+field.height>body.y+body.height+1)throw Error('Account selector is clipped');
+ }
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('page overflow');const file=`${caseName(c)}-${label}.png`;await page.screenshot({path:join(out,file)});shots.push(file);};
  for(const profile of ['work','personal']){
   await page.locator('#runtime-change-claude-account').selectOption(profile);const count=calls.length;await dialog.locator('.model-refresh > button').click();await page.waitForFunction((selected:string)=>document.querySelector('#runtime-change-model option[value^="'+selected+'-"]'),profile,{timeout:10000});
   if(calls.length!==count+1||calls.at(-1).id!==ids[0]||calls.at(-1).payload.profile!==profile)throw Error('wrong model account/computer');await shot(profile);
