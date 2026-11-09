@@ -1,6 +1,6 @@
 {
   "scope": "M-2687 / S-112 / #3425 production startup recovery only; public AD settings routes/form remain uncomposed",
-  "dependency": "#3477 issuer-authenticated durable intent at b4c4f393c; clean alpha sync will be merged before push",
+  "dependency": "#3477 at f7ce55738 (R1 b4c4f393c plus clean alpha f16a83171 sync); all inherited PR blobs unchanged",
   "failFirst": {
     "cases": 3,
     "failures": "test expectations",
