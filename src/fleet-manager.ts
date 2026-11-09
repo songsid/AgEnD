@@ -293,6 +293,7 @@ import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
+import { isWebUpdateTarget, readLogTail, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -1504,6 +1505,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  /** M-2738: the last update check's answer, for the web (null until the first check settles). */
+  private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
+  /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
+  private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
+  private webUpdateStarts = new Map<string, { ok: true } | { ok: false; status: number; error: string }>();
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
@@ -3520,7 +3527,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = updateMarkerIdentity(this.dataDir);
     if (current && !sameUpdateMarker(current, bootUpdateMarker)) return;
     const leftover = readUpdateProgress(this.dataDir)?.progress;
-    if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
+    if (leftover?.cleanup === "pending" && !isWebUpdateTarget(leftover.target) && leftover.stage !== "failed" && leftover.stage !== "complete") return;
     clearUpdateMarker(this.dataDir);
   }
 
@@ -3885,23 +3892,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
-    const { spawn } = await import("./child-process.js");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
+    await this.launchInstalledUpdate(`slash /update by ${adapterId}:${data.userId}`,
+      () => this.fleetAdminGate(data.userId, adapterId) === "ok" && !this.shuttingDown);
+  }
+
+  /**
+   * The update itself, for slash `/update` and the web's Update (M-2738): the installed `agend`, verified, launched
+   * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
+   * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
+   */
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<void> {
+    const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
       return;
     }
-    const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
     }
-    if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {
+    if (!stillAllowed()) {
       this.failUpdateProgress(t("not_authorized"));
       return;
     }
@@ -8086,6 +8102,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     operation: UpdateProgressOperation | null,
   ): { render: { warning: string; cleanupCommand?: string } } | { watch: UpdateReceipt } | null {
     if (!pending || operation !== "update") return null;
+    // M-2738: no chat message to append a retire warning to; the updater's log keeps it.
+    if (isWebUpdateTarget(pending.progress.target)) return null;
     const receipt = updateReceiptOf(pending);
     if (!receipt) return null;
     const current = readUpdateProgress(this.dataDir);
@@ -8680,7 +8698,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
-        if (pendingUpdateProgress) {
+        // M-2738: a web-started update has no chat message to adopt: the boot is announced as any restart is.
+        if (pendingUpdateProgress && !isWebUpdateTarget(pendingUpdateProgress.progress.target)) {
           const saved = pendingUpdateProgress.progress.target;
           const target: RestartProgressTarget = {
             adapter: this.adapters.get(saved.adapterId),
@@ -24167,46 +24186,68 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   // ── Update check ────────────────────────────────────────────────────
 
-  private async checkForUpdates(): Promise<void> {
-    try {
-      // Both npm lookups are async: as execSync they froze the fleet event loop for
-      // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
-      // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
-      // for a background version check.
-      const { execFile } = await import("./child-process.js");
-      const { promisify } = await import("node:util");
-      const execFileP = promisify(execFile);
-      const npmVersion = async (spec: string): Promise<string> => {
-        const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
-        return stdout.toString().trim();
-      };
-      const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-      const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
-      const latest = await npmVersion("@songsid/agend");
-      let target = latest;
-      let fromChannel = false;
-      // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
-      const channel = installedChannel(currentVersion);
-      if (channel !== "latest") {
-        let pre = "";
-        try {
-          pre = await npmVersion(`@songsid/agend@${channel}`);
-        } catch { /* no such tag */ }
-        // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
-        // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
-        // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
-        target = pre;
-        fromChannel = true;
-        // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
-        // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
-        // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
-        // @alpha like any channel release.
-        const core = (v: string) => v.replace(/^v/, "").split("-")[0];
-        if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
-          target = latest;
-          fromChannel = false;
-        }
+  /** The running package's version (package.json next to this code). */
+  private runningAgendVersion(): string {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    return JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
+  }
+
+  /**
+   * What the install's own channel offers: the target version and whether it came from that channel's dist-tag. Throws
+   * when npm cannot be asked (the callers decide what a failed look means).
+   */
+  private async lookUpUpdateTarget(currentVersion: string): Promise<{ target: string; fromChannel: boolean }> {
+    // Both npm lookups are async: as execSync they froze the fleet event loop for
+    // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
+    // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
+    // for a background version check.
+    const { execFile } = await import("./child-process.js");
+    const { promisify } = await import("node:util");
+    const execFileP = promisify(execFile);
+    const npmVersion = async (spec: string): Promise<string> => {
+      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+      return stdout.toString().trim();
+    };
+    const latest = await npmVersion("@songsid/agend");
+    let target = latest;
+    let fromChannel = false;
+    // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
+    const channel = installedChannel(currentVersion);
+    if (channel !== "latest") {
+      let pre = "";
+      try {
+        pre = await npmVersion(`@songsid/agend@${channel}`);
+      } catch { /* no such tag */ }
+      // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
+      // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
+      // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
+      target = pre;
+      fromChannel = true;
+      // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
+      // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
+      // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
+      // @alpha like any channel release.
+      const core = (v: string) => v.replace(/^v/, "").split("-")[0];
+      if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
+        target = latest;
+        fromChannel = false;
       }
+    }
+    return { target, fromChannel };
+  }
+
+  /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
+  private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
+    const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
+    this.updateCheckState = { offer, checkedAt: Date.now(), failed: found === null };
+  }
+
+  private async checkForUpdates(): Promise<void> {
+    let currentVersion: string;
+    try { currentVersion = this.runningAgendVersion(); } catch { return; }
+    try {
+      const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
+      this.recordUpdateCheck(currentVersion, { target, fromChannel });
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
@@ -24221,12 +24262,78 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
           if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
-          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily); installed from this computer.
+          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
           if (this.webNoticeStore()?.latest("update")?.text !== text) this.recordWebNotice("update", text);
         }
       }
-    } catch { /* silent — network issues */ }
+    } catch { this.recordUpdateCheck(currentVersion, null); /* silent — network issues */ }
+  }
+
+  // ── M-2738: updating from the web (src/web-update.ts) ───────────────
+
+  /** The web's update routes (web-api.ts handleWebUpdate) read and start through this. */
+  get webUpdate(): WebUpdateHost {
+    return {
+      updateState: () => {
+        let current = "0.0.0";
+        try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+        const s = this.updateCheckState;
+        return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+      },
+      checkUpdateNow: () => this.checkUpdateNow(),
+      updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
+      startWebUpdate: (key, person) => this.startWebUpdateOnce(key, person),
+      updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
+    };
+  }
+
+  /** "Check for updates": look now, no chat notice. One a minute; a second ask while one runs waits for it. */
+  private async checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const c = this.updateCheckNow;
+    if (c.running) { await c.running; return { ok: true }; }
+    if (Date.now() - c.lastAt < 60_000 && Date.now() >= c.lastAt) return { ok: false, status: 429, error: "checked_recently" };
+    c.lastAt = Date.now();
+    c.running = (async () => {
+      let currentVersion: string;
+      try { currentVersion = this.runningAgendVersion(); } catch { return; }
+      try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
+      catch { this.recordUpdateCheck(currentVersion, null); }
+    })();
+    try { await c.running; } finally { c.running = null; }
+    return { ok: true };
+  }
+
+  /**
+   * M-2738: Update from the web — a fleet admin's session, after its own confirmation (the leader's D1). Only what the
+   * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
+   * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
+   */
+  private async startWebUpdate(person: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
+    // Synchronous with the marker write below: a second start cannot slip in between on the event loop.
+    if (isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
+    const offer = this.updateCheckState?.offer;
+    if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    const startedAt = Date.now();
+    persistUpdateProgress(this.dataDir, webUpdateTarget(startedAt), startedAt);
+    setUpdateProgressStage(this.dataDir, "preparing", { version: offer.version });
+    const origin = `web update by ${person}`;
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown).catch(err => {
+      this.logger.error({ err }, "Web update launch failed");
+      this.failUpdateProgress(t("update.failure.launch"));
+    });
+    return { ok: true };
+  }
+
+  /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
+  private async startWebUpdateOnce(key: string, person: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const known = this.webUpdateStarts.get(key);
+    if (known) return known;
+    const answer = await this.startWebUpdate(person);
+    this.webUpdateStarts.set(key, answer);
+    while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
+    return answer;
   }
 
   /**

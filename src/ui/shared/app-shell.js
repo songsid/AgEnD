@@ -21,6 +21,7 @@ import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
@@ -846,6 +847,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       <${StartupLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

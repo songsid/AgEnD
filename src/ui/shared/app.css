@@ -1647,6 +1647,47 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .restart-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2); color: var(--text);
   --lbar-color: var(--warn); }
 .restart-line .restart-keys { font-family: var(--font-mono); }
+/* M-2738: the update line (a new version, progress, failure, reload). Its own padding and the top safe area: on a phone
+   it can be the first thing under the status bar. No accent bar (the restart line's): tone by background. */
+.update-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2) var(--s-3);
+  padding: max(10px, env(safe-area-inset-top)) max(var(--s-4), env(safe-area-inset-right)) 10px max(var(--s-4), env(safe-area-inset-left));
+  text-align: left; font-size: var(--fs-sm); line-height: 1.45; color: var(--text); border-bottom: 1px solid var(--border); }
+.update-line.bad { background: var(--danger-bg); border-bottom-color: var(--danger-line); }
+.update-line.bad .update-title, .update-line.bad .update-icon { color: var(--danger); }
+.update-line.ok { background: var(--ok-bg); }
+.update-line.ok .update-icon { color: var(--ok); }
+.update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
+.update-icon { display: inline-flex; flex: none; margin-top: 1px; }
+.update-words { min-width: 0; }
+.update-title { font-weight: 600; }
+.update-sub { font-size: var(--fs-xs); color: var(--text-2); }
+.update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
+.update-actions { display: flex; align-items: center; gap: var(--s-2); flex: none; }
+.update-actions .btn { white-space: nowrap; word-break: keep-all; }
+.update-x { border: 0; background: transparent; padding: 4px; color: inherit; }
+.update-spinner { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--border);
+  border-top-color: var(--accent); box-sizing: border-box; animation: update-spin 0.9s linear infinite; }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-spinner { animation-duration: 2.4s; } }
+.update-bar { height: 4px; margin-top: 6px; min-width: 240px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.update-fill { display: block; height: 100%; background: var(--accent); width: 0; }
+.update-fill.s1 { width: 25%; } .update-fill.s2 { width: 50%; } .update-fill.s3 { width: 75%; } .update-fill.s4 { width: 100%; }
+.update-log { max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2); }
+.update-log-cause { word-break: break-word; }
+@media (max-width: 700px) {
+  .update-line { justify-content: flex-start; }
+  .update-text { flex: 1 1 100%; }
+  .update-actions.indent { margin-left: 26px; }
+}
+/* M-2738: Settings → Advanced → Version and update */
+.s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
+.s-update dt { color: var(--text-2); }
+.s-update dd { margin: 0; }
+.s-update dd.new { color: var(--accent); font-weight: 600; }
+.s-update .s-update-note { color: var(--text-2); margin: 0 0 var(--s-3); }
+.s-update .s-update-row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.pill.ver-new { text-transform: none; letter-spacing: 0; background: var(--accent-fill); color: var(--accent); margin-left: 6px; }
 /* #2233: the backend sign-in dialog and Settings' list */
 .signin-field { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-2) 0; }
 .signin-label { color: var(--text-2); font-size: var(--fs-xs); min-width: 6em; }

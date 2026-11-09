@@ -26,6 +26,7 @@ import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -427,6 +428,8 @@ export interface WebApiContext {
   readonly ownerCss?: OwnerCssStore;
   /** #2308: the person's own app icon; changed by a signed-in admin only (never the public link, a guest or the token). */
   readonly appIcon?: AppIconStore;
+  /** M-2738: updating AgEnD from the web (src/web-update.ts); absent: /ui/update is not offered. */
+  readonly webUpdate?: WebUpdateHost;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
@@ -646,6 +649,71 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
     try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * M-2738 (#3332): updating AgEnD from the web.
+ *   GET  /ui/update        { admin, current, offer?, checked_at?, check_failed?, progress?, now } — an admin session; a
+ *                          read-only session gets { admin: false, current } (its stale-tab reload line)
+ *   POST /ui/update/check  look now (one a minute) → the GET's answer
+ *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
+ *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
+ * Signed-in sessions only (never the CLI's token, a guest or the public link: none of these is a public route); an
+ * admin's for all but the version. Asked again once a body is in.
+ */
+function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const host = ctx.webUpdate;
+  if (!host) { json(res, 404, { error: "not found" }); return true; }
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
+  if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
+  if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 404, { error: "not found" }); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
+    const owner = verdict.session.owner;
+    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session" };
+  };
+  const view = (admin: boolean) => {
+    const st = host.updateState();
+    if (!admin) return { admin: false, current: st.current };
+    const progress = host.updateProgress();
+    return { admin: true, current: st.current, offer: st.offer, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  if (path === "/ui/update") { json(res, 200, view(first.admin)); return true; }
+  if (!first.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return true; }
+  if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
+  (async () => {
+    let body: Record<string, unknown> = {};
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!now.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return; }
+    if (path === "/ui/update/check") {
+      const r = await host.checkUpdateNow();
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      json(res, 200, view(true));
+      return;
+    }
+    const header = req.headers["idempotency-key"];
+    const key = typeof header === "string" ? header : "";
+    if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+    // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
+    if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
+    const r = await host.startWebUpdate(key, now.person);
+    if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+    ctx.logger.info({ person: now.person }, "web: update started");
+    json(res, 202, { started: true });
+  })().catch((err) => {
+    ctx.logger.error({ err: (err as Error).message }, "Web update request failed");
+    try { json(res, 500, { error: "update_request_failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2337,6 +2405,7 @@ export function handleWebRequest(
 
   // #2308: the app icon (handleAppIcon: its state for a signed-in person; changing it, an admin's session only).
   if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
+  if (path === "/ui/update" || path.startsWith("/ui/update/")) return handleWebUpdate(req, res, url, ctx, path, method);
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
