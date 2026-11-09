@@ -1482,4 +1482,48 @@ describe.skipIf(process.platform === "win32")("durable directory startup reconci
     } finally { await r.runtime.close(); }
   });
 
+  it.each([1, 2])("A-Off-A during startup import %s never revives the superseded attempt", async heldCall => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === heldCall) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered;
+      void r.runtime.apply({...r.hub.config,hub:{...r.hub.config.hub,enabled:false}}); void r.runtime.apply(r.hub.config);
+      release(); await startup;
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("an unchanged admitted view during cold selection retains the original restoration attempt", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === 2) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered; void r.runtime.apply(r.hub.config); release(); await startup;
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      const d = r.runtime.directorySettings()!.decision;
+      expect(d.operation(d.inspect().operationId!)).toMatchObject({kind:"directory-compensation",compensates:saved.receiptId,directoryEpoch:2});
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("A-Off-A inside final staging cannot revive the writer compensation proof", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build(); r.refuseNextDirectory();
+      r.atStage(() => { void r.runtime.apply({...r.hub.config,hub:{...r.hub.config.hub,enabled:false}}); void r.runtime.apply(r.hub.config); });
+      await r.runtime.apply(r.hub.config);
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(r.writer.pending()).toBe(false);
+    } finally { await r.runtime.close(); }
+  });
+
 });

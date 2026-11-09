@@ -2,14 +2,17 @@
 import json,os,pathlib,subprocess
 root=pathlib.Path.cwd();runtime='src/hub/runtime.ts'
 cases=[
- ('startup-call',runtime,'if (reconcile) await this.reconcileDirectoryStartup(structuredClone(config), view);','', 'closes an exact pending intent'),
+ ('startup-call',runtime,'if (reconcile) await this.reconcileDirectoryStartup(structuredClone(config), view, admissionTicket);','', 'closes an exact pending intent'),
  ('close-exact-intent',runtime,'mounted.decision.completeMount(intent.operation.id, (this.options.now ?? Date.now)(), () => current() && mounted.current());','', 'closes an exact pending intent'),
  ('late-stop-proof',runtime,'operation => current()\n          && canonicalArguments(operation)','operation => canonicalArguments(operation)', 'Stop inside the final writer'),
  ('captured-operation',runtime,'canonicalArguments(operation) === canonicalArguments(intent.operation)','true', 'changed intent between cold'),
  ('startup-only',runtime,'!this.directoryStartupAttempted && obj(config.hub)?.enabled === true','obj(config.hub)?.enabled === true', 'live Save remount leaves its pending intent'),
  ('accepted-image',runtime,'hubPlanDigest(next.hub) !== restored.after.configDigest','false', 'stale accepted-config reader'),
- ('queue-restoration',runtime,'this.pending = next; this.lastConfig = next; this.admitted = effectiveHubView(next); this.view = null;','this.view = null;', 'refused replacement mount consumes'),
+ ('queue-restoration',runtime,'this.pending = next; this.lastConfig = next; this.admit(effectiveHubView(next)); this.view = null;','this.view = null;', 'refused replacement mount consumes'),
  ('owning-cold-participant',runtime,'        this.recoveryDirectory = decision;\n        try { return work(decision); }','        try { return work(decision); }', 'refused replacement mount consumes'),
+ ('admission-ticket',runtime,'admissionTicket === this.admissionTicket && ','','A-Off-A during startup import'),
+ ('advance-admission',runtime,'this.admitted = view; this.admissionTicket++;','this.admitted = view;','A-Off-A during startup import'),
+ ('capture-before-await',runtime,'this.reconcileDirectoryStartup(structuredClone(config), view, admissionTicket);','this.reconcileDirectoryStartup(structuredClone(config), view, this.admissionTicket);','A-Off-A during startup import 1'),
  ('fleet-config-reader','src/fleet-manager.ts','        readConfig: () => this.rawFleetConfig as { hub?: unknown; hub_member?: unknown },','', 'runtime is handed the writer', 'tests/hub-settings-fleet-m2682.test.ts'),
 ]
 output=root/'.artifacts/startup-mutations.json'

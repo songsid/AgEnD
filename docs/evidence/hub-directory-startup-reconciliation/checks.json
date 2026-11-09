@@ -8,7 +8,7 @@
   },
   "focused": {
     "command": "npx vitest run tests/hub-compose.test.ts tests/hub-health.test.ts tests/hub-settings-fleet-m2682.test.ts",
-    "passed": 95,
+    "passed": 99,
     "failed": 0,
     "skipped": 0
   },
@@ -18,11 +18,11 @@
   ],
   "mutations": {
     "command": "python3 scripts/manual/hub-directory-startup-reconcile/mutations.py",
-    "caught": 9,
-    "total": 9,
+    "caught": 12,
+    "total": 12,
     "independent": true,
     "restored": true,
-    "note": "Only matcher assertions count. An initial overly broad startup-call selection and the private Save error-based witness were not counted; replaced with precise ready and live-request state assertions."
+    "note": "All twelve current isolated guard reversals fail matcher assertions, restored. Includes ticket comparison, advancement, and capture before the first factory await. Earlier broad/exception-based probes are excluded."
   },
   "runtime": "Owned CA-verified HTTPS, actual initializer/seal/shared writer/SQLite/floor/audit, inert directory driver. Existing normal/restored private Save journeys retained.",
   "fleetManager": "Own scratch instance with recording runtime; reader compared against newest accepted raw config before and after a real sealed rename. No live-fleet lifecycle handler driven.",
@@ -32,5 +32,11 @@
     "No real directory/account/native/pilot/live fleet",
     "No repeated full browser rig",
     "No new browser capability or session creation"
-  ]
+  ],
+  "revision": "R1 permanent admission ticket across A-Off-A",
+  "r1FailFirst": {
+    "assertionFailures": 3,
+    "unchangedViewControlPassed": 1,
+    "scope": "A-Off-A held first factory, held cold selection, and final writer staging; no original intent consumed"
+  }
 }

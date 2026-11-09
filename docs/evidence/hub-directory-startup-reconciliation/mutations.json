@@ -40,6 +40,21 @@
     "failures": 1
   },
   {
+    "name": "admission-ticket",
+    "caughtByAssertion": true,
+    "failures": 2
+  },
+  {
+    "name": "advance-admission",
+    "caughtByAssertion": true,
+    "failures": 2
+  },
+  {
+    "name": "capture-before-await",
+    "caughtByAssertion": true,
+    "failures": 1
+  },
+  {
     "name": "fleet-config-reader",
     "caughtByAssertion": true,
     "failures": 1

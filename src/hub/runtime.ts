@@ -130,6 +130,12 @@ export class HubRuntime {
   private view: string | null = null;
   /** The newest configuration view asked for (admitted), which may still be waiting behind a running apply. */
   private admitted: string | null = null;
+  private admissionTicket = 0;
+  private admit(view: string | null): boolean {
+    if (view === this.admitted) return false;
+    this.admitted = view; this.admissionTicket++;
+    return true;
+  }
   private running: Promise<void> | null = null;
   private pending: HubConfigView | null = null;
   private lastConfig: HubConfigView | null = null;
@@ -258,7 +264,7 @@ export class HubRuntime {
 
   private async refuseSettingsMount(config: HubConfigView, err: unknown): Promise<void> {
     this.view = null;
-    this.admitted = effectiveHubView(config);
+    this.admit(effectiveHubView(config));
     this.addHold({ side: "server", code: "hub-storage", reason: "settings-recovery", detail: (err as Error).message,
       since: (this.options.now ?? Date.now)() });
     try { await this.mount.holdServer(config); }
@@ -299,8 +305,7 @@ export class HubRuntime {
     if (this.stopped) return Promise.resolve();
     this.settingsRecoveryGeneration++;
     const view = effectiveHubView(config);
-    if (view !== this.admitted) {
-      this.admitted = view;
+    if (this.admit(view)) {
       if (this.running) {
         // A changed configuration revokes the current generation now, even while a factory or start is still held:
         // S1's fence is synchronous, and a held service must not start for a configuration that is already gone.
@@ -341,13 +346,14 @@ export class HubRuntime {
     this.view = view;
     const reconcile = !this.directoryStartupAttempted && obj(config.hub)?.enabled === true
       && !this.options.createServer && !!this.options.settingsWriter?.directory;
+    const admissionTicket = this.admissionTicket; // Capture before the mount/factory's first await.
     if (reconcile) this.directoryStartupAttempted = true;
     this.clearHolds();
     this.reported = null;
     try {
       await this.mount.apply(config); // fences, closes the previous services, then mounts what is on
       await this.drainLeftovers({ server: obj(config.hub)?.enabled !== true, member: obj(config.hub_member)?.enabled !== true });
-      if (reconcile) await this.reconcileDirectoryStartup(structuredClone(config), view);
+      if (reconcile) await this.reconcileDirectoryStartup(structuredClone(config), view, admissionTicket);
     } catch (err) {
       // HubMount already raised its hold (service-unavailable on an unconfirmed cleanup).
       this.options.log("warn", "Hub apply did not finish cleanly", { err: (err as Error).message });
@@ -358,8 +364,8 @@ export class HubRuntime {
   }
 
   /** Once per runtime, after its first enabled server attempt. A live Save owns subsequent operations itself. */
-  private async reconcileDirectoryStartup(config: HubConfigView, view: string): Promise<void> {
-    const current = () => !this.stopped && this.admitted === view;
+  private async reconcileDirectoryStartup(config: HubConfigView, view: string, admissionTicket: number): Promise<void> {
+    const current = () => !this.stopped && admissionTicket === this.admissionTicket && this.admitted === view;
     const withDecision = async <T>(work: (decision: HubDirectorySettingsDecision) => T): Promise<T> => {
       if (!current()) throw Error("Hub startup reconciliation was superseded");
       const mounted = this.directoryDecision();
@@ -397,7 +403,7 @@ export class HubRuntime {
       if (hubPlanDigest(next.hub) !== restored.after.configDigest) throw Error("Restored directory config is not current");
       // Queue the writer's accepted image through the ordinary serialized mount loop. No recursive compensation.
       this.mount.fenceServer();
-      this.pending = next; this.lastConfig = next; this.admitted = effectiveHubView(next); this.view = null;
+      this.pending = next; this.lastConfig = next; this.admit(effectiveHubView(next)); this.view = null;
     } catch (err) {
       if (current()) await this.refuseSettingsMount(config, err);
     }
@@ -409,7 +415,7 @@ export class HubRuntime {
    */
   refresh(): Promise<void> {
     if (this.stopped || !this.lastConfig) return Promise.resolve();
-    this.admitted = null;
+    this.admit(null);
     this.view = null;
     if (this.running) this.mount.fence();
     return this.apply(this.lastConfig);
