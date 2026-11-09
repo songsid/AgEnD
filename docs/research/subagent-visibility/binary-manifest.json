@@ -1,0 +1,19 @@
+{
+  "claude": {
+    "version": "2.1.319",
+    "sha256": "dabafec82ca1319fa43d8be36a10fc61b1d11821cb98ad5df04ad95e199b8eed",
+    "source": "owned audited artifact .artifacts/ctrlu-port/claude-2.1.319"
+  },
+  "codex": [
+    {
+      "path": ".artifacts/m2739/packages/codex-linux/package/vendor/x86_64-unknown-linux-musl/bin/codex",
+      "sha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+      "bytes": 320575976
+    },
+    {
+      "path": ".artifacts/m2739/packages/codex-linux/package/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host",
+      "sha256": "83f3e174c2da2f1ca8655cce686e302509640d34c0f4407c1155056f64536e0f",
+      "bytes": 79209744
+    }
+  ]
+}

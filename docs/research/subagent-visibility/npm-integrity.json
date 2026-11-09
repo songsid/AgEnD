@@ -1,0 +1,12 @@
+{
+  "codex-wrapper": {
+    "version": "0.167.0",
+    "dist.tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.167.0.tgz",
+    "dist.integrity": "sha512-1FSQgbTIKAdTub5Ln6z36NT4eXDmBRkinfigzycbgn9yLZdJ3UdkQZqr0N7jnl8/D1xxT/Pz3Fl2l7S2dmRaFA=="
+  },
+  "codex-linux": {
+    "version": "0.167.0-linux-x64",
+    "dist.tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.167.0-linux-x64.tgz",
+    "dist.integrity": "sha512-FNc7danfUng9Sp6w+Fh7kofNHHZpA6VMyNKWsWrS3OwHly69gywTWeiuwrUPXpJSho8Df4xqRsHfHRPzj7zYQg=="
+  }
+}

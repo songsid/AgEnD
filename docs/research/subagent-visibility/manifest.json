@@ -1,0 +1,98 @@
+{
+  "capturedAt": "2026-11-09",
+  "base": "47106e8d0c3769021e30881b026ff7707747e72f",
+  "normalization": "Selected actual records only, no reconstructed events. Drop model/system/developer instructions, API request blobs, environment attachments and gitBranch; preserve message/tool/lifecycle fields. Replace owned absolute paths with $RIG or $CLAUDE_TASK_TMP. Raw SHA binds full original; exported SHA binds selected normalized bytes. No auth headers saved.",
+  "files": [
+    {
+      "name": "claude-parent.jsonl",
+      "rawSource": "claude/.claude/projects/-home-han-Projects-AgEnD-agend-dev-sol--artifacts-m2739-r-work/60fe0b33-f528-4141-ab28-208166c3315d.jsonl",
+      "rawSha256": "d04a56c9fe9ee45771fd2673c371fb924506bf2ab9c480b13abfc3a435ae4315",
+      "exportSha256": "5b7eb84e994ebc1753fb123ebf2b4527f5ee9cf6b035b44c7b5e245dba7d8a34",
+      "selectedRecords": 13
+    },
+    {
+      "name": "claude-agent-ab5b36ac3f402d58b.jsonl",
+      "rawSource": "claude/.claude/projects/-home-han-Projects-AgEnD-agend-dev-sol--artifacts-m2739-r-work/60fe0b33-f528-4141-ab28-208166c3315d/subagents/agent-ab5b36ac3f402d58b.jsonl",
+      "rawSha256": "59cd179128f41e8b931ace0d032ce68e6662b7aa82c1f88fd5f14001bc2779eb",
+      "exportSha256": "bd94c8717affc9438df23dcbb4212bd66e55a2016fc946626df3f8594bda160a",
+      "selectedRecords": 4
+    },
+    {
+      "name": "claude-agent-a9947907a82e086d7.jsonl",
+      "rawSource": "claude/.claude/projects/-home-han-Projects-AgEnD-agend-dev-sol--artifacts-m2739-r-work/60fe0b33-f528-4141-ab28-208166c3315d/subagents/agent-a9947907a82e086d7.jsonl",
+      "rawSha256": "1fde62ccf839762ce0c1807960ed63ed48b2bef6c3cf5794859f06b809ef394b",
+      "exportSha256": "a6975abcea0a07f2180c6ed8e8cc796c46623fa44e3263e56ef4c056f8b915f9",
+      "selectedRecords": 4
+    },
+    {
+      "name": "claude-agent-a9947907a82e086d7.meta.json",
+      "rawSource": "claude/.claude/projects/-home-han-Projects-AgEnD-agend-dev-sol--artifacts-m2739-r-work/60fe0b33-f528-4141-ab28-208166c3315d/subagents/agent-a9947907a82e086d7.meta.json",
+      "rawSha256": "c43905a3fcf7b52e8c37268e6d144f4f462d86e631b1e4d4a8e4e75c19ef8733",
+      "exportSha256": "a3234f59c0a3213e3ba8198db201b02dd73e4e4994a6c8b71da804aaf5c40ebd",
+      "selectedRecords": 1
+    },
+    {
+      "name": "claude-agent-ab5b36ac3f402d58b.meta.json",
+      "rawSource": "claude/.claude/projects/-home-han-Projects-AgEnD-agend-dev-sol--artifacts-m2739-r-work/60fe0b33-f528-4141-ab28-208166c3315d/subagents/agent-ab5b36ac3f402d58b.meta.json",
+      "rawSha256": "21f8242d5ba152fd3a107e81ef52957ea90c9e4c5a260cfa8d57b410296bef95",
+      "exportSha256": "4312f48bfb4154f7f5bf84cff6470eba347977a27cf295399feffa273bb9fa85",
+      "selectedRecords": 1
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-21-48-01a1bf2f-4617-7843-9ce1-312893cb5957.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-21-48-01a1bf2f-4617-7843-9ce1-312893cb5957.jsonl",
+      "rawSha256": "ebb2611003323759cd27f451a30f538c7322511a5f57f11b61efa8a1bd91fec5",
+      "exportSha256": "40caa464569d889fed91ff3a1f49a720bdcac374b0c9c9bedd34d2765ea97ebf",
+      "selectedRecords": 6
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-19-02-01a1bf2c-bb82-7930-840a-1a0dfea70198.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-19-02-01a1bf2c-bb82-7930-840a-1a0dfea70198.jsonl",
+      "rawSha256": "b085f593c2bbbd7c21569a32fcbdeb98a6d287a5f70e9b43aa6c32997e92b7f1",
+      "exportSha256": "4928ea11a24ab8b6628ef1f61c06a45d29d28a9b76cee6d37afe233fa9577889",
+      "selectedRecords": 6
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-22-23-01a1bf2f-ceb2-7832-a633-ce55586993a7.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-22-23-01a1bf2f-ceb2-7832-a633-ce55586993a7.jsonl",
+      "rawSha256": "da92dfd5815b27f59fd0c1e4668cfb608a42189e406ceb4a0fe610c954d3ebac",
+      "exportSha256": "a4fa25d825c0449a6d14814609f1cd9f16879c88787557a999be3fb69f6559e1",
+      "selectedRecords": 5
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-18-16-01a1bf2c-0674-7b81-be8e-36e9fc503cc7.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-18-16-01a1bf2c-0674-7b81-be8e-36e9fc503cc7.jsonl",
+      "rawSha256": "b785839827f7defa18d311fe94871cb327aba36e3e12406caad2c607a48239d7",
+      "exportSha256": "d5d48b52b7610cf3e5f5d3685f5a0345825b3558362220bb1b52baad08dfdc6d",
+      "selectedRecords": 11
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-18-36-01a1bf2c-55a3-7bf0-9de2-e5aa4c4e27ef.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-18-36-01a1bf2c-55a3-7bf0-9de2-e5aa4c4e27ef.jsonl",
+      "rawSha256": "7060cdf8aa510a3e2e4244128d5531f41290aff8c6faf5e003492fbd88d8edd4",
+      "exportSha256": "508d3f201b13874408d5172736ab3f9290442cc7b3d3d2b679a499eefc92e9b6",
+      "selectedRecords": 4
+    },
+    {
+      "name": "codex-rollout-2026-11-09T15-18-36-01a1bf2c-57b5-7e01-ac42-b1c7bb5576ed.jsonl",
+      "rawSource": "codex3/sessions/2026/11/09/rollout-2026-11-09T15-18-36-01a1bf2c-57b5-7e01-ac42-b1c7bb5576ed.jsonl",
+      "rawSha256": "c4facf7748cc523ee3dd285cab07065eae58887fad070eb8c0d31b1a3ec2cee8",
+      "exportSha256": "838adc0dd45fa323a6bb47ed9664b767e81c04ddda2285a537453c2e944d3c91",
+      "selectedRecords": 4
+    },
+    {
+      "name": "claude-tool-schemas.jsonl",
+      "rawSource": "requests/0004.json",
+      "rawSha256": "da03d278a006426164cb8fea5917b301496421e81e8e1a0d6a4185ed644efca0",
+      "exportSha256": "cb67631a5c96ab7e9f92dc464e77b90bd3a3103042655b058e6d4ee048e381ba",
+      "selectedRecords": 1
+    },
+    {
+      "name": "codex-tool-schemas.jsonl",
+      "rawSource": "requests/0001.json",
+      "rawSha256": "b187d9de3689844a573f57cfa7cb8cb0a148f433d93ac9568f2200bffc0a880d",
+      "exportSha256": "152f5c859d2aa69d4a7606ee78dd21972fbb4b00bb57c91b2b0e3237e95a4db3",
+      "selectedRecords": 2
+    }
+  ]
+}

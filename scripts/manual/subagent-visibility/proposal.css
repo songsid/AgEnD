@@ -1,0 +1,15 @@
+/* Static research proposal only. Shared shell and tokens; no production import. */
+.sa-proposal-banner{margin:var(--s-4);padding:var(--s-3) var(--s-4);border-radius:var(--r-sm);background:var(--warn-bg);color:var(--text);font-size:var(--fs-sm)}
+.sa-proposal{margin-top:var(--s-4);background:var(--surface);border-radius:var(--r-md);padding:0 var(--s-4)}
+.sa-proposal>summary{display:flex;align-items:center;gap:var(--s-2);min-height:var(--tap);cursor:pointer;list-style:none;font-size:var(--fs-sm);font-weight:var(--fw-medium)}
+.sa-proposal>summary::before{content:'›';color:var(--text-3)}
+.sa-proposal[open]>summary::before{content:'⌄'}
+.sa-proposal .sa-count{margin-left:auto;color:var(--text-3);font-size:var(--fs-xs);font-weight:var(--fw-regular)}
+.sa-proposal .sa-item{padding:var(--s-2) 0;border-top:1px solid var(--border)}
+.sa-proposal .sa-item-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s-2);font-size:var(--fs-sm)}
+.sa-proposal .sa-task{margin-top:var(--s-1);font-size:var(--fs-sm);color:var(--text)}
+.sa-proposal .sa-result{margin-top:var(--s-1);font-size:var(--fs-sm);color:var(--text-2)}
+.sa-proposal .sa-state{font-size:var(--fs-xs);white-space:nowrap;color:var(--ok)}
+.sa-proposal .sa-state.active{color:var(--accent)}
+.sa-proposal .sa-state.unknown{color:var(--warn)}
+.sa-proposal .sa-foot{padding:var(--s-2) 0 var(--s-3);font-size:var(--fs-xs);color:var(--text-3);line-height:var(--lh-sm)}

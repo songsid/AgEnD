@@ -1,0 +1,37 @@
+{
+  "controller": {
+    "tmuxClosed": true,
+    "serverClosed": true
+  },
+  "daemons": [
+    {
+      "pid": 3150199,
+      "start": "25918938",
+      "cmd": "$AUDIT/r/codex/packages/app-server-daemon/releases/0.167.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled --managed-daemon ",
+      "netns": "net:[4026533348]",
+      "stillOwnedProcess": false
+    },
+    {
+      "pid": 3148343,
+      "start": "25915427",
+      "cmd": "$AUDIT/r/codex/packages/app-server-daemon/releases/0.167.0-x86_64-unknown-linux-musl/bin/codex app-server daemon pid-update-loop ",
+      "netns": "net:[4026533348]",
+      "stillOwnedProcess": false
+    },
+    {
+      "pid": 3152970,
+      "start": "25922479",
+      "cmd": "$AUDIT/r/codex3/packages/app-server-daemon/releases/0.167.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled --managed-daemon ",
+      "netns": "net:[4026533278]",
+      "stillOwnedProcess": false
+    },
+    {
+      "pid": 3153124,
+      "start": "25922588",
+      "cmd": "$AUDIT/r/codex3/packages/app-server-daemon/releases/0.167.0-x86_64-unknown-linux-musl/bin/codex app-server daemon pid-update-loop ",
+      "netns": "net:[4026533278]",
+      "stillOwnedProcess": false
+    }
+  ],
+  "socketListening": false
+}

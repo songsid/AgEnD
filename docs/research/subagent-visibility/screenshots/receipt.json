@@ -1,0 +1,46 @@
+{
+  "kind": "static proposal; not implemented",
+  "base": "47106e8d0c3769021e30881b026ff7707747e72f",
+  "cases": [
+    {
+      "backend": "claude",
+      "device": "desk",
+      "overflow": false,
+      "viewport": {
+        "width": 1366,
+        "height": 900
+      },
+      "expanded": true
+    },
+    {
+      "backend": "claude",
+      "device": "phone",
+      "overflow": false,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "expanded": true
+    },
+    {
+      "backend": "codex",
+      "device": "desk",
+      "overflow": false,
+      "viewport": {
+        "width": 1366,
+        "height": 900
+      },
+      "expanded": true
+    },
+    {
+      "backend": "codex",
+      "device": "phone",
+      "overflow": false,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "expanded": true
+    }
+  ]
+}
