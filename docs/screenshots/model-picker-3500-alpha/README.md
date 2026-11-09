@@ -2,7 +2,7 @@
 
 This is the alpha twin of merged main #3502 (`642f758b`). After the alpha.10 tag/unfreeze, alpha `a32b177d` was plain-merged into the prepared branch at `5b7127985`. The initial acceptance matched all 668 added/removed prepared production lines. R1 below repairs the reviewed cache-ordering and native-home issues and restores the alpha catalog status UI. No release or deployment is implied.
 
-The candidate snapshot is labelled `2.3.5-alpha.10-m2731-sync.0` through its own package metadata. These are real Chromium captures of the production Settings shell, Agent dialog, chat command cards and final confirmation. Private CJK/emoji fonts are used only by the capture process. The adjacent `model-picker-3500-main` directory remains main's earlier evidence; it is not alpha evidence.
+The candidate snapshot is labelled `2.3.5-alpha.10-m2731-sync.1` through its own package metadata. These are real Chromium captures of the production Settings shell, Agent dialog, chat command cards and final confirmation. Private CJK/emoji fonts are used only by the capture process. The adjacent `model-picker-3500-main` directory remains main's earlier evidence; it is not alpha evidence.
 
 ## Scope and isolation
 
@@ -14,7 +14,7 @@ All confirmations are cancelled: **zero Settings saves and zero Agent restarts**
 
 ## Before / after
 
-Before uses alpha `a32b177d`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the R1 implementation; unchanged before screenshots remain the alpha baseline.
+Before uses alpha `a32b177d`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the aligned R2 implementation; unchanged before screenshots remain the alpha baseline.
 
 | Case | Before Settings | After Settings | After Agent dialog | After chat |
 |---|---|---|---|---|
@@ -43,7 +43,18 @@ The matching before dialog/chat PNGs are included for each case.
 
 The phone's latest-message button sits outside the scroller and above the composer: [EN](after-phone-light-en-phone-latest.png), [zh-TW](after-phone-dark-zh-TW-phone-latest.png).
 
-## R1 (current)
+## R2: aligned alpha (current)
+
+The branch plain-merges alpha `ffd4eba028da77ca4709f6e01fdf6b34b080b83d` at `0b10957e8fceb81a1c8f0eada629ea749483bf58`. Git resolved six overlapping files automatically; the sole conflict was the asset map, where both `model-picker.css` and `subagent-row.css` are kept. Every added/removed line of all **27 product source files** matches source-cleared R1 exactly against the respective alpha base. The new subagent hook/route/reader and S-117 glossary changes remain intact.
+
+The missing PR-event runs at R1 were caused by merge conflicts. The same-SHA close/reopen did not repair that; no current GitHub incident is claimed. The superseded R1 manual CI was cancelled. This aligned head needs its own PR-event CI, required scan and exact-head review.
+
+- Both typechecks pass. The combined 41-file run passed **816/817**, with one S-117 test timing out at its existing 20-second limit during concurrent local validation. Its isolated file passes **14/14** in seven seconds, with no test or timeout edits. The closed Runtime bundle passes **5/5**. The six added subagent suites and every earlier CI-consumer regression pass in the combined run. Full-suite acceptance remains CI's.
+- Nine guard reversals are caught again on the aligned source; restored affected suites pass **36/36**. Changelog assembly: **304 fragments OK**. Fresh Settings style gate: **24/24**.
+- All **81 current/SKEW PNGs** are recaptured from the aligned source and inspected, including selected originals. The 12 before PNGs carry unchanged. No errors, overflow, saves/restarts or native-to-portable discovery. Native account/model geometry and source provenance are asserted. The captured subagent source is empty; no populated subagent-row browser claim is made.
+- The private snapshot label is `2.3.5-alpha.10-m2731-sync.1`; all product source includes the final cache retirement and the alpha sync. All 93 hashes are in `SHA256SUMS`.
+
+## R1 review scope (earlier checks)
 
 - Restored the existing loading/error/source states and WSL catalog key, keeping Windows/account/computer bindings. Initial failures and explicit refresh use the shared error/Retry component; Retry now performs POST rediscovery, rather than the old cached GET refresh.
 - A slow GET can neither overwrite nor evict a newer refresh; reopening before or after that GET settles keeps the refreshed list. The shared passive TTL remains 30 seconds. The main-line cache correction is carried separately at `4856ee1f1`; its three ordering regressions fail first on main.
