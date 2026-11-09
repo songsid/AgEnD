@@ -57,7 +57,7 @@ and owns the General topic. An instance runs under the `general` tool set when
 `general_topic: true` or its name is `general`.
 
 - Can: use the coordinator tools except repository leases, including the read-only debug tools, and directly set another agent’s `tool_set` to a writable profile (`full`, `standard`, `worker`, `coordinator` or `minimal`).
-- Can’t: use `checkout_repo` or `release_repo` under the default General profile, assign the role-derived `general` profile, or pass `skipPermissions` through either configuration tool. An explicitly narrowed General remains narrowed.
+- Can’t: use `checkout_repo` or `release_repo` under the default General profile, assign the role-derived `general` profile, or pass `skipPermissions` through either configuration tool. General cannot change its own `tool_set` through either tool (including a create operation that resolves to itself); a person may still set it in Settings or fleet.yaml. An explicitly narrowed General remains narrowed.
 - Code: `src/tool-permissions.ts`, `src/general-instance.ts`, `src/outbound-handlers.ts`.
 - Refs: fleet decisions 9e3bea6c and 36525f1b.
 

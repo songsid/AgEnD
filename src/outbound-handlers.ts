@@ -1389,6 +1389,14 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond, meta) => {
     respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
+  const target = (rawArgs as any)?.name, caller = meta?.instanceName ?? "";
+  const instances = ctx.fleetConfig?.instances;
+  const selfTarget = target === caller || (instances && typeof target === "string" &&
+    Object.hasOwn(instances, target) && Object.hasOwn(instances, caller) && instances[target] === instances[caller]);
+  if ((rawArgs as any)?.config?.tool_set !== undefined && selfTarget) {
+    respond(null, "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
@@ -1407,7 +1415,8 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  * the backend (fresh, #1217), a credential profile or backend_options changed. Answers through `respond` like the tool.
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
-  const inst = ctx.fleetConfig?.instances[name];
+  const instances = ctx.fleetConfig?.instances;
+  const inst = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);
@@ -1819,7 +1828,11 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
   }
   const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
-  await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
+  if (isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
+    // Out-of-band authenticated identity: raw passthrough fields cannot choose
+    // the protected target. The lifecycle checks the final allocated name.
+    await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, meta.instanceName);
+  } else await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
 
 const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {

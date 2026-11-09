@@ -41,7 +41,7 @@ As General, set another agent’s profile directly, without asking for a confirm
 update_instance_config({ name: "worker", config: { tool_set: "worker" } })
 create_instance({ topic_name: "new-worker", tool_set: "worker" })
 ```
-Writable values: `full`, `standard`, `worker`, `coordinator`, `minimal`. `general` is assigned by role and cannot be written. Other callers (including coordinators and non-General `full` agents) remain refused under #804/#814. Both tools refuse `skipPermissions` for everyone, including General; do not pass it. Sensitive Settings changes (tokens, access and admin membership) still use their existing confirmation. An explicitly narrowed General remains narrowed.
+Writable values: `full`, `standard`, `worker`, `coordinator`, `minimal`. `general` is assigned by role and cannot be written. Other callers (including coordinators and non-General `full` agents) remain refused under #804/#814. Both tools refuse `skipPermissions` for everyone, including General; do not pass it. Sensitive Settings changes (tokens, access and admin membership) still use their existing confirmation. An explicitly narrowed General remains narrowed. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml.
 
 ## kiro-cli UI mode (kiro_ui)
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
+import { InstanceLifecycle } from "../src/instance-lifecycle.js";
 import type { FleetConfig } from "../src/types.js";
 
 const dirs: string[] = [];
@@ -47,7 +48,7 @@ function rig() {
     expect(responses).toHaveLength(1);
     return responses[0]!;
   };
-  return { home, config, saveFleetConfig, handleCreate, call };
+  return { home, config, saveFleetConfig, handleCreate, call, fm };
 }
 function argsFor(tool: string, extra: Record<string, unknown>) {
   return tool === "create_instance" ? { topic_name: "new-agent", ...extra } : { name: "worker", config: extra };
@@ -75,7 +76,7 @@ describe("General debug and tool-set authority (36525f1b)", () => {
       if (tool === "update_instance_config") {
         expect(r.config.instances.worker!.tool_set).toBe(tool_set);
         expect((yaml.load(readFileSync(join(r.home, "fleet.yaml"), "utf8")) as FleetConfig).instances.worker!.tool_set).toBe(tool_set);
-      } else expect(r.handleCreate).toHaveBeenLastCalledWith(expect.objectContaining({ tool_set }), expect.any(Function), "test");
+      } else expect(r.handleCreate).toHaveBeenLastCalledWith(expect.objectContaining({ tool_set }), expect.any(Function), "test", undefined, "admin");
     }
     if (tool === "update_instance_config") expect(r.saveFleetConfig).toHaveBeenCalledTimes(5);
     else expect(r.handleCreate).toHaveBeenCalledTimes(5);
@@ -143,5 +144,64 @@ describe("General debug and tool-set authority (36525f1b)", () => {
     const r = rig(); r.config.instances.admin!.tool_set = "minimal";
     expect((await r.call("admin", "update_instance_config", argsFor("update_instance_config", { tool_set: "full" }))).error).toMatch(/not available/);
     expect(r.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it.each(["admin", "general"])("%s cannot change its own tool_set through update_instance_config", async caller => {
+    const r = rig(); const before = structuredClone(r.config.instances[caller]);
+    const out = await r.call(caller, "update_instance_config", { name: caller, config: { tool_set: "full", description: "must not save" } });
+    expect(out.result).toBeNull(); expect(out.error).toMatch(/own tool_set.*#804\/#814/);
+    expect(r.config.instances[caller]).toEqual(before); expect(r.saveFleetConfig).not.toHaveBeenCalled();
+    expect((await r.call(caller, "checkout_repo", {})).error).toMatch(/not available/);
+  });
+
+  it("an own alias of General's config is still a self-target", async () => {
+    const r = rig(); r.config.instances.alias = r.config.instances.admin!;
+    const before = structuredClone(r.config.instances.admin);
+    const out = await r.call("admin", "update_instance_config", { name: "alias", config: { tool_set: "full" } });
+    expect(out.result).toBeNull(); expect(out.error).toMatch(/own tool_set/);
+    expect(r.config.instances.admin).toEqual(before); expect(r.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it.each(["__proto__", "constructor", "toString"])("rejects inherited target %s without changing prototypes or other agents", async name => {
+    const r = rig(), before = structuredClone(r.config.instances);
+    const inherited = (r.config.instances as unknown as Record<string, object>)[name]!;
+    const keys = ["tool_set", "description"];
+    const descriptors = keys.map(key => Object.getOwnPropertyDescriptor(inherited, key));
+    try {
+      const out = await r.call("admin", "update_instance_config", { name, config: { tool_set: "full", description: "must not save" } });
+      expect(out.result).toBeNull(); expect(out.error).toMatch(/not found/);
+      expect(r.saveFleetConfig).not.toHaveBeenCalled(); expect(r.config.instances).toEqual(before);
+      keys.forEach((key, i) => expect(Object.getOwnPropertyDescriptor(inherited, key)).toEqual(descriptors[i]));
+      expect((await r.call("worker", "create_instance", { topic_name: "forbidden" })).error).toMatch(/not available/);
+      expect(r.handleCreate).not.toHaveBeenCalled();
+    } finally {
+      keys.forEach((key, i) => { if (descriptors[i]) Object.defineProperty(inherited, key, descriptors[i]!); else Reflect.deleteProperty(inherited, key); });
+    }
+  });
+
+  it.each([[true, true, false], [true, false, false], [false, true, false], [true, true, true]])("create_instance resolved self=%s, explicit profile=%s, direct directory=%s, with native start stubbed", async (self, explicit, direct) => {
+    const r = rig(), caller = "admin-t987654", topic = self ? "987654" : "987655";
+    r.config.instances[caller] = { ...r.config.instances.admin!, working_directory: join(r.home, caller), topic_id: "987654", channel_id: "test" };
+    r.fm.instanceIpcClients.set(caller, r.fm.instanceIpcClients.get("admin")!);
+    const before = structuredClone(r.config.instances[caller]);
+    const project = direct ? r.config.instances[caller]!.working_directory : join(r.home, "new-project"); mkdirSync(project);
+    const removeTopic = vi.fn(), register = vi.fn(), connectIpcToInstance = vi.fn();
+    const lifecycle = new InstanceLifecycle({
+      fleetConfig: r.config, dataDir: r.home, logger: r.fm.logger, saveFleetConfig: r.saveFleetConfig,
+      getInstanceDir: (name: string) => join(r.home, "instances", name),
+      createForumTopic: vi.fn(async () => topic), getForumTopicDeleter: () => removeTopic,
+      routing: { register }, connectIpcToInstance,
+    } as never);
+    const start = vi.spyOn(lifecycle, "start").mockResolvedValue(undefined);
+    Object.assign(r.fm, { lifecycle });
+    const out = await r.call(caller, "create_instance", { directory: project, topic_name: "admin", ...(explicit ? { tool_set: "full" } : {}), toolSetCaller: "someone-else" });
+    expect(r.config.instances[caller]).toEqual(before); expect(removeTopic).not.toHaveBeenCalled();
+    if (self) {
+      expect(out.result).toBeNull(); expect(out.error).toMatch(/own tool_set.*#804\/#814/);
+      expect(r.saveFleetConfig).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled(); expect(register).not.toHaveBeenCalled();
+    } else {
+      expect(out.error).toBeUndefined(); expect(out.result).toMatchObject({ success: true, name: "admin-t987655" });
+      expect(r.config.instances["admin-t987655"]!.tool_set).toBe("full"); expect(start).toHaveBeenCalledOnce();
+    }
   });
 });
