@@ -84,6 +84,8 @@ export interface AuthApiContext {
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
+  /** S-117 story 1: web-only, or no chat connected yet — the sign-in page never says "send /web" then. */
+  signinWithoutChat?(): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -266,7 +268,7 @@ export function handleAuthRequest(
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true });
+    serveSigninPage(res, 200, { webOnly: (ctx.signinWithoutChat ?? ctx.isWebOnlyFleet)?.call(ctx) === true });
     return true;
   }
 

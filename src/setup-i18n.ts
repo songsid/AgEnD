@@ -31,10 +31,10 @@ export const SETUP_CODE_STRINGS: Record<SetupLang, Table> = {
     title: "設定 AgEnD",
     otherLang: "English",
     langTitle: "語言",
-    lead: "請輸入執行 {0} 的終端機上顯示的設定代碼。",
+    lead: "請輸入執行 {0} 的終端機上顯示的設定碼。",
     continue: "繼續",
     unreachable: "無法連到設定頁。",
-    notAccepted: "這個代碼不正確。",
+    notAccepted: "這組設定碼不正確。",
   },
 };
 
@@ -102,7 +102,7 @@ export const SETUP_FORM_STRINGS: Record<SetupLang, Table> = {
     requesting: "Requesting host confirmation…",
     expectedPending: "Expected a pending host confirmation.",
     connectionFailed: "Connection failed. Retry to find the same confirmation.",
-    upWeb: "AgEnD is up. Open its dashboard: {0} — sign in with the code from agend web --code on the machine running AgEnD. Sign your agents' CLIs in from Settings → Agents → Sign-ins.",
+    upWeb: "AgEnD is up. Open its dashboard: {0} — sign in with the code from agend web --code on the machine running AgEnD. Connect your agents' AI accounts in Settings → Agents → AI accounts.",
     upChat: "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: {0} (sign in with agend web --code on the machine running AgEnD, or send /web to your bot).",
     notUp: "AgEnD has not come up within 60 seconds. Run `agend start` on the machine itself and check fleet.log — this page cannot tell you any more.",
     // A host confirmation's outcome (settings-confirmation.ts reason_code; the words of locale.ts settings_confirm.result.*).
@@ -176,7 +176,7 @@ export const SETUP_FORM_STRINGS: Record<SetupLang, Table> = {
     requesting: "正在請主機確認…",
     expectedPending: "預期會有一個等待主機確認的變更。",
     connectionFailed: "連線失敗。重試會找回同一個確認。",
-    upWeb: "AgEnD 已啟動。打開它的儀表板：{0} —— 用執行 AgEnD 的電腦上 agend web --code 顯示的代碼登入。agent 的 CLI 請在 設定 → Agents → 登入 裡登入。",
+    upWeb: "AgEnD 已啟動。打開它的儀表板：{0} —— 用執行 AgEnD 的電腦上 agend web --code 顯示的裝置登入碼登入。Agent 的 AI 帳號請在 設定 → Agents → AI 帳號 裡連接。",
     upChat: "AgEnD 已啟動。在你剛設定的頻道和它對話，或打開它的儀表板：{0}（在執行 AgEnD 的電腦上用 agend web --code 登入，或對你的 bot 傳 /web）。",
     notUp: "AgEnD 在 60 秒內沒有啟動。請在那台電腦上執行 `agend start` 並查看 fleet.log —— 這個頁面無法告訴你更多。",
     outcome_apply_failed: "變更無法套用。請檢查設定後再試一次。",

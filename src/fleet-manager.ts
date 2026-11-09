@@ -11516,6 +11516,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return isWebOnlyFleetConfig(this.fleetConfig);
   }
 
+  /**
+   * S-117 story 1: the sign-in page's "no chat" words (no /web to send) — a web-only fleet, or one whose chat is not
+   * connected yet (a fresh install whose bot is still being set up, or is down): /web cannot answer there.
+   */
+  signinWithoutChat(): boolean {
+    return this.isWebOnlyFleet() || ![...this.adapterState.values()].some(state => state.status === "connected");
+  }
+
   /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
   private webOnlyPromptPlace(): { adapter: ChannelAdapter; adapterId: string; chatId: string } | null {
     return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
@@ -24715,7 +24723,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet() });
+            serveSigninPage(res, 401, { webOnly: this.signinWithoutChat() });
             return;
           }
           res.writeHead(decision.status);

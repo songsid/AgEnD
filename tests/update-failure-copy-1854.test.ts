@@ -27,7 +27,7 @@ describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
     child.emit("exit", 1, null);
     const reason = locale === "en"
       ? event === "error" ? "updater launch failed" : event === "signal" ? "updater was interrupted" : event === "exit" ? "updater exited 7" : "updater exited without a status"
-      : event === "error" ? "更新程序啟動失敗" : event === "signal" ? "更新程序遭中斷" : event === "exit" ? "更新程序以代碼 7 結束" : "更新程序未提供結束代碼";
+      : event === "error" ? "更新程序啟動失敗" : event === "signal" ? "更新程序遭中斷" : event === "exit" ? "更新程序結束，結束碼 7" : "更新程序沒有回報結束碼";
     expect(messages).toEqual([`${genericFailure(locale)} ${locale === "en" ? `/update could not complete (${reason}).` : `/update 未完成（${reason}）。`}`]);
     expect(messages[0]).not.toContain("private manager detail");
   });

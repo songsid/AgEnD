@@ -28,32 +28,48 @@
       hint_web: "On the AgEnD computer, run agend web --code to get a sign-in code.",
       refused_web: "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one.",
       resend_refused_web: "A new code could not be sent. Run agend web --code on the AgEnD computer for one.",
+      // S-117 story 1: on this computer (a loopback address) — sign in again here, never "send /web" (no chat may be
+      // connected yet). A Windows browser here is a WSL install's: its desktop shortcut opens the page with a new code.
+      hint_local: "On this computer, run agend web in a terminal: it opens the sign-in page and shows a new device sign-in code.",
+      hint_local_win: "On this computer, open the \u201cAgEnD 儀表板\u201d shortcut on the desktop: it opens the sign-in page with a new device sign-in code. Or run agend web in a WSL terminal.",
+      refused_local: "The code is invalid or no longer works. On this computer, run agend web in a terminal for a new one.",
+      refused_local_win: "The code is invalid or no longer works. On this computer, open the \u201cAgEnD 儀表板\u201d shortcut on the desktop for a new one.",
     },
     "zh-TW": {
       signout_unsaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
-      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
-      label: "一次性登入碼", submit: "登入", working: "登入中…",
+      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入裝置登入碼。",
+      label: "一次性裝置登入碼", submit: "登入", working: "登入中…",
       hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
       nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
       safe: "登入後畫面不對勁？", safe_body: "可能是你的自訂 CSS 把東西藏起來了。在網址最後加上 ?safe=1，就會不套用它地載入；再到「設定 → 外觀」修正或關閉。",
-      refused: "登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+      refused: "裝置登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
       unconfirmed: "登入暫時無法確認。請重新取碼再試；若仍失敗，請聯絡管理員。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
-      resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
-      resend_wait: "剛剛才要過登入碼，請稍候再試。",
-      resend_refused: "無法傳送新的登入碼。請用 /web 再要一個。",
-      hint_web: "在 AgEnD 電腦上執行 agend web --code 取得登入碼。",
-      refused_web: "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
-      resend_refused_web: "無法傳送新的登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
+      resend: "傳一組新的裝置登入碼給我", resent: "新的裝置登入碼已私訊給你，請在上方輸入。",
+      resend_wait: "剛剛才要過裝置登入碼，請稍候再試。",
+      resend_refused: "無法傳送新的裝置登入碼。請用 /web 再要一個。",
+      hint_web: "在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。",
+      refused_web: "裝置登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
+      resend_refused_web: "無法傳送新的裝置登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
+      hint_local: "在這台電腦重新登入：在終端機執行 agend web，它會開啟登入頁並顯示新的裝置登入碼。",
+      hint_local_win: "在這台電腦重新登入：點桌面上的「AgEnD 儀表板」捷徑，它會開啟登入頁並帶上新的裝置登入碼；或在 WSL 終端機執行 agend web。",
+      refused_local: "裝置登入碼無效或已失效。請在這台電腦的終端機執行 agend web 取得新的裝置登入碼。",
+      refused_local_win: "裝置登入碼無效或已失效。請點桌面上的「AgEnD 儀表板」捷徑取得新的裝置登入碼。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
   // #2910 D5: the server marks a web-only fleet's page (<body data-web-only="1">): its own words where it has them.
   const webOnly = !!document.body && document.body.getAttribute("data-web-only") === "1";
-  const t = (k) => (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  // S-117 story 1: this computer (a loopback address) has its own words first — sign in again here; a Windows browser
+  // here (a WSL install) is pointed at its desktop shortcut. Only words change: the page issues nothing itself (D3).
+  const local = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/i.test((typeof location !== "undefined" && location.hostname) || "");
+  const win = local && /Windows/i.test((typeof navigator !== "undefined" && navigator.userAgent) || "");
+  const pick = (k) => (win && (T[lang][`${k}_local_win`] || T.en[`${k}_local_win`])) || (local && (T[lang][`${k}_local`] || T.en[`${k}_local`]))
+    || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`]));
+  const t = (k) => pick(k) || T[lang][k] || T.en[k] || k;
   // …and no "No chat bot?" help: the hint above already is it.
-  if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
+  if (webOnly || local) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
   $("checking").setAttribute?.("aria-label", t("checking"));
 
@@ -69,14 +85,14 @@
   } catch { /* nothing to clean */ }
   // The command in the "No chat bot?" help is a <code> that never breaks across lines (a break inside "--code" reads as
   // two dashes and a word, alpha.2 sweep); the text around it is text.
-  const CMD = "agend web --code";
+  const CMD = /agend web(?: --code)?/;
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const text = t(el.getAttribute("data-i18n"));
-    const at = text.indexOf(CMD);
-    if (at < 0) { el.textContent = text; return; }
+    const m = CMD.exec(text);
+    if (!m) { el.textContent = text; return; }
     const code = document.createElement("code");
-    code.textContent = CMD;
-    el.replaceChildren(text.slice(0, at), code, text.slice(at + CMD.length));
+    code.textContent = m[0];
+    el.replaceChildren(text.slice(0, m.index), code, text.slice(m.index + m[0].length));
   });
 
   // An old deep link, /ui#instance=<name> (#1408 §3): the fragment never reaches the server, and the sign-in page is
