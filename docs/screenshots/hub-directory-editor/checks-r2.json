@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "base": "47106e8d0c3769021e30881b026ff7707747e72f",
+  "scope": "R2 final leader copy/layout/consistent-port gallery plus two deterministic R1 CI corrections; no server authority change",
+  "suite": {
+    "command": "npx vitest run tests/hub-directory-editor-ui.test.ts tests/hub-directory-settings-control.test.ts tests/hub-directory-host-notices.test.ts tests/hub-groups-ui-s89.test.ts tests/hub-company-join-ui.test.ts tests/skeleton-hub-3290.test.ts tests/hub-shared-modules-a.test.ts tests/i18n-ui-literals-2390.test.ts tests/hub-compose.test.ts tests/changelog-fragments.test.ts --maxWorkers=2 tests/ui-css-literals-ratchet.test.ts tests/named-link-test-2906.test.ts",
+    "passed": 395,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": {
+    "npx tsc --noEmit": "PASS",
+    "npx tsc --noEmit -p tsconfig.test.json": "PASS"
+  },
+  "mutations": {
+    "caught": 29,
+    "restored": true,
+    "run": "fresh full reversal run; see mutations-r2.json",
+    "additionalCase": "same hostname, different port trust reply"
+  },
+  "gates": {
+    "Hub full": 314,
+    "Settings full SECTIONS=hub": 62,
+    "note": "Carried from R1: the new editor is omitted by these ordinary rigs. R2 changes only scoped editor geometry, token-equivalent phone font sizes and a shorter existing hint. Its fresh own matrix checks the changed surfaces."
+  },
+  "browser": {
+    "matrixCases": 8,
+    "surfaces": [
+      "host",
+      "Hub"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "languages": [
+      "en",
+      "zh-TW"
+    ],
+    "devices": [
+      "desk",
+      "phone390"
+    ],
+    "caseChecks": 420,
+    "record": "matrix-r2.json",
+    "screenshots": 107,
+    "recovery": "recovery-r2.json",
+    "skew": [
+      "skew-old-modules-r1.json",
+      "skew-old-shell-r1.json",
+      "skew-old-server-r1.json"
+    ],
+    "skewCarry": "R1 static imports and display marks are unchanged; three R1 SKEW receipts retain their original scope."
+  },
+  "limits": [
+    "No real directory/account/native/CLI/pilot/live-fleet operation.",
+    "No new server crash/compensation/reauthentication/epoch claim. Existing focused library/HTTPS evidence keeps its scope.",
+    "The final after gallery is one run. A separate recovery run deliberately uses other fake endpoints.",
+    "R1 CI 42585074832 had deterministic CSS-literal and company-wording test failures. R2 uses the existing phone font token and shortens the new hint; both tests are in the restored395.",
+    "An early fixture reset request omitted already-returned optional fields and received recovery. A fresh GET plus round-tripping the displayed directory before changing only its URL passes. Cause was not isolated; no production workaround, writer change or repair claim was added."
+  ],
+  "stage": "final-polish-r2"
+}

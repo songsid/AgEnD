@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "case": "host-offline-and-CA-bootstrap",
+      "old-AD-down-read": "PASS",
+      "inspect-no-bind": "PASS",
+      "anonymous-first": "PASS",
+      "CA-service-text-fits": "PASS",
+      "same-trust-dialog": "PASS",
+      "new-CA-shown": "PASS",
+      "no-save-before-confirm": "PASS",
+      "CA-confirm-text-fits": "PASS",
+      "CA-save-ready": "PASS",
+      "service-only-bootstrap": "PASS",
+      "host-Run-off-with-AD-down": "PASS",
+      "stopped-offline-editor": "PASS",
+      "stopped-save-stays-off": "PASS",
+      "test-has-no-effect": "PASS",
+      "same-host-test-no-dialog": "PASS",
+      "same-host-one-save": "PASS",
+      "plain-save-stays-off": "PASS",
+      "host-Run-on-ready": "PASS",
+      "no-page-errors": "PASS",
+      "only-expected-CA-refusal": "PASS"
+    }
+  ],
+  "skew": "",
+  "before": false,
+  "limits": "scratch only; fake people/LDAPS; initializer public D3 API is fixture preparation; no API reply stubs; no real AD/account/pilot/CLI/native service",
+  "cleaned": true,
+  "identity-kept": "PASS",
+  "certificate-kept": "PASS",
+  "groups-off": "PASS",
+  "known-fixture-credentials-only": "PASS",
+  "stage": "polish-r1"
+}

@@ -78,10 +78,31 @@ describe("the chat's commands (the real page modules)", () => {
     return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
   }
 
+  it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
+    const asked: string[] = [];
+    const realFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = async (url: string, init: any = {}) => {
+      asked.push(`${init.method ?? "GET"} ${url}`);
+      const body = url === "/ui/update" ? { admin: true, current: "2.3.5-beta.2", offer: { version: "2.3.5-beta.3", channel: "beta", installable: true }, progress: null, now: Date.now() }
+        : url === "/ui/update/start" ? { started: true } : {};
+      return { ok: true, status: url === "/ui/update/start" ? 202 : 200, json: async () => body };
+    };
+    try {
+      const c = await chatPage();
+      let question = "";
+      (globalThis as any).confirm = (q: string) => { question = q; return true; };
+      await c.type("/update"); await c.key("Enter");
+      await vi.waitFor(() => expect(asked).toContain("POST /ui/update/start"));
+      expect([c.sends(), c.commands(), c.box().value]).toEqual([[], [], ""]);
+      expect(question).toContain("v2.3.5-beta.3");
+    } finally { (globalThis as any).fetch = realFetch; }
+  });
+
   it("'/' opens the palette; typing filters; ↑/↓ moves; Tab completes; Esc closes it (and is not a Stop)", async () => {
     const c = await chatPage();
     await c.type("/");
-    expect(c.options().map((o: any) => o.querySelector(".cmd-name").textContent.split(" ")[0])).toEqual(CHAT_COMMANDS.map((x: { name: string }) => `/${x.name}`));
+    // M-2738 (D3): /update is offered last — AgEnD's own Update dialog, never sent to the agent.
+    expect(c.options().map((o: any) => o.querySelector(".cmd-name").textContent.split(" ")[0])).toEqual([...CHAT_COMMANDS.map((x: { name: string }) => `/${x.name}`), "/update"]);
     expect(c.box().getAttribute("aria-expanded")).toBe("true");
     await c.type("/c");
     expect(c.options().map((o: any) => o.id)).toEqual(["cmd-ctx", "cmd-compact", "cmd-clear", "cmd-cancel"]);

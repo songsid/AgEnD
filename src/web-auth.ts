@@ -392,6 +392,7 @@ function authorize(
  * - `GET /ui/steps`: the Log tab (#1218), on each new-step tick (or every few seconds over the public link) while it is open.
  * - `GET /ui/authorization`: this browser's authorization (#1939 S2b), every 3 s while its Confirm card waits (the ask
  *   itself is a POST: the person).
+ * - `GET /ui/update` (M-2738): the update line's own reads — once a minute, every 2 s while an update runs.
  * - `GET /ui/notices/list` and `POST /ui/notices/seen` (#2910 D2): a web-only fleet's Notices, read again when the stream
  *   or the status frame says one arrived, and marked read by the page that shows them.
  *
@@ -400,7 +401,7 @@ function authorize(
  * default and then touch nothing at all.
  */
 // #1665: /ui/prefs is read by the page when another device changed a preference — the page's doing, not the person's.
-const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/browser-backend-signins", "/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices", "/ui/office-acts", "/ui/office-levels", "/ui/notices/list"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed (and its agents' acts, #2578)
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/browser-backend-signins", "/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices", "/ui/office-acts", "/ui/office-levels", "/ui/notices/list", "/ui/update"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed (and its agents' acts, #2578)
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 /** #1630: the pictures a page draws (avatars, server emoji) and the emoji list are loaded by the page, not done by a person. */
 const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/;   // #1682: mention names too

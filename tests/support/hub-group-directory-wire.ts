@@ -1,19 +1,20 @@
 /** Private, loopback-only LDAP wire peer. It implements only test bind/search/unbind, no external directory. */
 import { createServer, type TLSSocket } from "node:tls";
+import { X509Certificate } from "node:crypto";
 import { BerReader, BerWriter } from "ldapts";
 import { guidStringToBytes } from "../../src/hub/directory/profiles.js";
 export const GROUP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", GROUP_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=Owners,DC=example,DC=test";
 /** Optional recorded users also exercise production browser sign-in/eligibility; dummy passwords only. */
 export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
-export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[]) {
+export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[], ca?: { dn: string; pem: string; requireBind?: boolean }) {
   const sockets = new Set<TLSSocket>(), binds: string[] = [], bindRecords: Array<{ dn: string; password: string }> = [], searches: any[] = [];
   // "continuation" (M-2724): as AD does for every subtree search at a domain root, each one also returns continuation
   // references to the DNS-zone and Configuration partitions, whether or not it found the entry.
   const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged" | "continuation", memberships: [GROUP_A],
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
-    sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0);
+    sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0), bound = false;
     const reply = (id: number, tag: number, fill: (w: BerWriter) => void) => {
       const w = new BerWriter(); w.startSequence(); w.writeInt(id); w.startSequence(tag); fill(w); w.endSequence(); w.endSequence(); socket.write(w.buffer);
     };
@@ -44,8 +45,9 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
           r.readInt(); const dn = r.readString()!, password = r.readString(0x80); binds.push(dn);
           bindRecords.push({ dn, password: password! });
           const user = users?.find(u => u.dn.toLowerCase() === dn.toLowerCase());
-          result(id, 0x61, users && !(dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
-            && !(user && user.password === password) ? 49 : 0);
+          const accepted = !users || (dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
+            || !!(user && user.password === password) || !!(ca && !dn && !password);
+          bound = accepted && !!dn; result(id, 0x61, accepted ? 0 : 49);
         }
         else if (tag === 0x42) socket.end();
         else if (tag === 0x63) {
@@ -64,7 +66,10 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
             objectGUID: [guidStringToBytes(selected?.id ?? PERSON_ID)!], userAccountControl: [selected?.eligible === false ? "514" : "512"],
             sAMAccountName: [selected?.login ?? "person"], displayName: [selected?.login ?? "Person"],
           });
-          if (controls.length) {
+          if (ca && base?.toLowerCase() === ca.dn.toLowerCase()) {
+            if (ca.requireBind && !bound) result(id, 0x65, 50);
+            else { entry(id, ca.dn, { "cACertificate;binary": [new X509Certificate(ca.pem).raw] }); result(id, 0x65); }
+          } else if (controls.length) {
             state.beforeMembership?.();
             if (state.mode === "outage") socket.destroy();
             else if (state.mode === "unsupported") result(id, 0x65, 12);
