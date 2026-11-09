@@ -78,7 +78,7 @@ export function modelText(it, raw = it && it.model) {
   if (it.model_source === "cli-default") { const m = /^(.*) \(default\)$/.exec(raw); if (m) return tn("modelCliDefault", { model: m[1] }); }
   return raw;
 }
-const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode" };
+const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode", muse: "Muse" };
 export function backendLabel(backend) { return BACKEND_LABELS[backend] || backend || "Unknown"; }
 export function runtimeLabel(runtime) { return runtime === "windows" ? "Windows" : runtime === "wsl" ? "WSL / Linux" : runtime || ""; }
 /** Missing capabilities preserve the existing Linux UI; native runtimes expose only implemented controls. */
