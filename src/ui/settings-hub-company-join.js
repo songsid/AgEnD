@@ -42,7 +42,10 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
     const gen = token.current;
     const request = (async () => {
-      try { const result = await api(root + (view?.operationId ? `?operationId=${encodeURIComponent(view.operationId)}` : ""));
+      // An older operation can be current while this handoff still awaits local confirmation.
+      // Discover the current pointer until our handoff matches; only then retain its operation id.
+      const operationId = view?.operationId && (!waiting || view.handoffId === waiting) ? view.operationId : null;
+      try { const result = await api(root + (operationId ? `?operationId=${encodeURIComponent(operationId)}` : ""));
         if (!live.current || gen !== token.current) return;
         if (!result.ok) { setError(joinError(result.body?.error)); return; }
         setView(result.body.operation ?? null); setBound(result.body.bound === true); setError(null);
