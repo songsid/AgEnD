@@ -1,6 +1,6 @@
 # Web model refresh and chat choice parity — proposal
 
-繁中摘要：設定頁的模型欄位加入「重新整理模型」，實際重新取得清單，保留已選模型；失敗時保留原清單並就地重試。聊天沿用現有 `/model`、`/backend` 選單，補齊 Discord／Telegram 的重新整理與 Claude「更多模型」。桌面保留標頭入口，手機在輸入框上方提供可點選的入口。這是設計提案，尚未修改產品程式；等待使用者看圖確認。
+繁中摘要：設定頁的模型欄位加入「重新整理模型」，實際重新取得清單，保留已選模型；失敗時保留原清單並就地重試。聊天沿用現有 `/model`、`/backend` 選單，補齊 Discord／Telegram 的重新整理與 Claude「更多模型」。桌面保留標頭入口，手機把入口放在輸入框內的上緣。這是設計提案，尚未修改產品程式；等待使用者看圖確認。
 
 Survey baselines: main `3b2ccfeb0d5b707e9d238c6b1a7fd4b88c0f3b8d`; alpha `7063b614c2439743b04d5d4ff28d225d7c8d07a9`.
 
@@ -33,8 +33,8 @@ Source seams: `settings-catalog.js:5,49`; `web-api.ts:1674`; `fleet-manager.ts:1
 
 ## Proposed behavior
 
-- **Settings:** the shared model field gets one “重新整理模型” button beside the select. It refreshes the list, without changing the selected value or creating a Settings draft. The existing “Other…” input remains. During refresh, retain the options and selection, disable the refresh action and show inline progress. Failure uses the shared error/retry component and keeps the last usable list.
-- **Chat:** keep `/model`, `/backend` and the existing command card. Add a direct backend entry beside the desktop model chip. On a phone, where header chips are currently hidden, put two touch-sized entries above the composer. `/model` offers the same current-model marking, refresh and Claude More action as Discord/Telegram. The backend flow gets the same model-refresh action at its model step; it keeps the existing effort step and confirmation. No additional confirmation for refreshing or choosing a same-backend model.
+- **Settings:** the shared model field keeps its full-width select and gets one bordered secondary “重新整理模型” button, with the shared refresh icon, below it. It refreshes the list, without changing the selected value or creating a Settings draft. The existing “Other…” input remains. During refresh, retain the options and selection, disable the refresh action and show inline progress. Failure uses the shared error/retry component and keeps the last usable list.
+- **Chat:** keep `/model`, `/backend` and the existing command card. Add a direct backend entry beside the desktop model chip. Use matching “Claude Code ▾” / “Sonnet ▾” labels. On a phone, where header chips are currently hidden, put two touch-sized entries inside the composer’s rounded input area. `/model` offers the same current-model marking, refresh and Claude More action as Discord/Telegram. Refresh is an icon action beside the command-card title; “更多模型…” is a separate ghost action below the model choices, never another model chip. The backend flow gets the same model-refresh action at its model step; it keeps the existing effort step and confirmation. No additional confirmation for refreshing or choosing a same-backend model.
 - **Actions are not model names:** Refresh/More must be separate typed actions, never sentinel IDs sent through `applyModel`. An old command card must continue receiving only valid model IDs in its ordinary options.
 - **Scope:** an explicit authenticated refresh reuses the bounded worker/single-flight machinery and rechecks the requested target after the await. Opening a picker remains a cheap snapshot read. Changing Agent, backend, account or computer retires an older response.
 - **Alpha/native:** preserve its existing stateful picker and native authorization. Native rediscovery uses the already authorized detection path for that selected computer, not coordinator-side CLI probing or a WSL fallback. A surface that cannot authorize detection explains that in place; it does not present a cache reread as fresh discovery.
@@ -43,7 +43,7 @@ The model-switch execution path is retained. Claude can switch at runtime when s
 
 ## PNG proposal
 
-These are real-shell browser captures, not standalone page mockups. The existing app, sidebar, Settings subnavigation, dialog, command card and composer are rendered by the current product. Only the proposed controls/status and synthetic command answers are composed for design review. They prove appearance, not feature implementation or model discovery.
+These are real-shell browser captures, not standalone page mockups. The existing app, sidebar, Settings subnavigation, dialog, command card and composer are rendered by the published `@songsid/agend@2.3.5-beta.2` package. Its tarball SHA-1 is `d1710c0dda72d835a8b11c56d21fcfb6bda2343f`; the capture asserts the real `v2.3.5-beta.2` version pill. Only the proposed controls/status and synthetic command answers are composed for design review. They prove appearance, not feature implementation or model discovery.
 
 | View | Desktop 1366 × 900, light | Phone 390 × 844, dark |
 |---|---|---|
@@ -56,7 +56,11 @@ These are real-shell browser captures, not standalone page mockups. The existing
 | Refresh in progress | [PNG](../screenshots/model-picker-m2731/06-proposal-refresh-busy-desk-light-zh-TW.png) | [PNG](../screenshots/model-picker-m2731/06-proposal-refresh-busy-phone-dark-zh-TW.png) |
 | Refresh failed, retry | [PNG](../screenshots/model-picker-m2731/07-proposal-refresh-error-desk-light-zh-TW.png) | [PNG](../screenshots/model-picker-m2731/07-proposal-refresh-error-phone-dark-zh-TW.png) |
 
-Both cases use the zh-TW UI locale. The 16 captures have no horizontal page overflow; both contexts report no page errors. New refresh controls and phone entry controls are at least 44px tall. The Retry was enlarged to the same target. Catalogs, availability and command replies are fixtures; native functionality is not exercised. No live Fleet, CLI, account or tmux operation was performed. Owned listeners and browser contexts were closed afterward.
+Both cases use the zh-TW UI locale. The 16 captures have no horizontal page overflow; both contexts report no page errors. New refresh controls and phone entry controls are at least 44px tall. The Retry and command-card icon targets were enlarged to the same size. A private fontconfig loads Noto Sans TC and Noto Color Emoji; the emoji table cell is checked through Chrome’s platform-font inspection. Sample conversation text is zh-TW. Catalogs, availability and command replies are fixtures; native functionality is not exercised. No live Fleet, CLI, account or tmux operation was performed. Owned listeners and browser contexts were closed afterward.
+
+## Existing issues kept separate
+
+[Pre-existing wording and phone authorization-line layout](web-model-picker-m2731-existing-copy.md) are excluded from this card: Dashboard 權限 / 網頁儀表板, Agent / Agents / backend, raw `off` / `full` / `summary` / `hidden`, and the cramped phone 未驗證 line. They remain unchanged.
 
 ## Style and acceptance after UI approval
 
