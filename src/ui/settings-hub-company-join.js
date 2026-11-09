@@ -1,8 +1,31 @@
 /** Fleet-only company handoff; all fields live in the actual Settings section and use its shared confirmation card. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, withdraw } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
+// Own words: a new panel must also work with a cached older company-join dictionary.
+register("companyJoinWait", {
+  "en": {
+    pending: "Local confirmation is required. Company sign-in has not started.",
+    pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
+    localWithdrawn: "Local confirmation was withdrawn. Company sign-in did not start.",
+    reviewConfirmation: "Review local confirmation",
+    withdraw: "Withdraw connection request",
+    localExpired: "Local confirmation has not completed within five minutes. Check this request before starting another connection.",
+    leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
+  },
+  "zh-TW": {
+    pending: "需要先完成本機確認，公司帳號登入尚未開始。",
+    pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
+    localWithdrawn: "已撤回本機確認，尚未開始公司帳號登入。",
+    reviewConfirmation: "開啟本機確認",
+    withdraw: "撤回連接請求",
+    localExpired: "已等待五分鐘，本機確認尚未完成。請先檢查這次請求，再開始其他連接。",
+    leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
+  },
+});
+const jw = key => t(`companyJoinWait.${key}`);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
@@ -81,8 +104,8 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
       const result = await confirmedWrite(root + "/start", { body: { ...form, handoffId }, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
       if (!result.ok || !result.body?.operation) { await read();
-        if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(hj("localWithdrawn")); return; }
-        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? hj("localExpired") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
+        if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(jw("localWithdrawn")); return; }
+        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
       const operation = result.body.operation; setView(operation); setError(null);
 
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
@@ -116,13 +139,13 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${notice ? html`<p role="status" class="note">${notice}</p>` : null}
     ${pending || unmatched ? html`<div role="status" class="company-local-wait">
-      <p class="note">${hj(timedOut ? "localExpired" : "pending")}</p>
-      <p class="note">${hj("pendingNext")}</p>
-      <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${hj("reviewConfirmation")}</button>
-        ${pending ? html`<button type="button" class="btn btn-sm" disabled=${withdrawing} onClick=${cancelPending}>${hj("withdraw")}</button>` : null}
+      <p class="note">${jw(timedOut ? "localExpired" : "pending")}</p>
+      <p class="note">${jw("pendingNext")}</p>
+      <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
+        ${pending ? html`<button type="button" class="btn btn-sm" disabled=${withdrawing} onClick=${cancelPending}>${jw("withdraw")}</button>` : null}
         ${timedOut ? html`<button type="button" class="btn btn-sm" onClick=${read}>${hj("retry")}</button>` : null}
         ${waiting ? html`<a class="btn btn-sm" href="/settings/hub">${hj("return")}</a>` : null}</div>
-      ${waiting ? html`<p class="note">${hj("leaveWait")}</p>` : null}
+      ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}
     </div>` : null}
     ${canStart ? html`<form class="form" onSubmit=${start}>
       <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${hj("addressHint")}</small></label>

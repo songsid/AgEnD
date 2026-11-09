@@ -2,7 +2,7 @@
  * REPO=$PWD OUT=<owned-output> PW_DIR=<private-playwright> CHROME=<binary> node --import tsx <this-file>
  * MATRIX=full default. The timeout leg advances only the browser clock, never the server authorization deadline.
  */
-import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,chmodSync,rmSync} from "node:fs";
+import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,chmodSync,rmSync,existsSync} from "node:fs";
 import {resolve,join,dirname} from "node:path";
 import {execFileSync} from "node:child_process";
 const repo=resolve(process.env.REPO!),out=resolve(process.env.OUT!);mkdirSync(out,{recursive:true});
@@ -12,7 +12,7 @@ for(const k of ["OPENAI_API_KEY","ANTHROPIC_API_KEY","DISCORD_BOT_TOKEN","TELEGR
 for(const name of ["tmux","agend","claude","codex","kiro-cli"]){const file=join(bin,name);writeFileSync(file,`#!${process.execPath}\nprocess.exit(97)\n`);chmodSync(file,0o755)}
 process.env.PATH=[bin,dirname(process.execPath),"/usr/bin","/bin"].join(":");process.env.AGEND_TMUX_BIN=join(bin,"tmux");
 const {bootFixture,matrix,caseName}=await import("../smoke-fixture/index.mts");
-const r:any={head:execFileSync("git",["rev-parse","HEAD"],{cwd:repo,encoding:"utf8"}).trim(),checks:[],shots:[],errors:[],foreign:[],cases:[],scope:"Real Fleet HTTP/browser/Settings gate; dummy Hub address is never contacted. No native/model/account/live fleet. Browser-only clock for timeout."};
+const r:any={head:execFileSync("git",["rev-parse","HEAD"],{cwd:repo,encoding:"utf8"}).trim(),checks:[],shots:[],errors:[],foreign:[],cases:[],assetSkew:!!process.env.ASSET_ROOT,scope:"Real Fleet HTTP/browser/Settings gate; dummy Hub address is never contacted. No native/model/account/live fleet. Browser-only clock for timeout."};
 const check=(name:string,ok:boolean,detail?:unknown)=>{r.checks.push({name,ok,detail});if(!ok)throw Error(name)};
 let fx:any;
 try{
@@ -25,7 +25,10 @@ try{
   const tag=caseName(c),zh=c.lang==="zh-TW",{ctx,page:p}=await fx.page(c,{path:"/settings/hub"});
   try{
    ctx.on("page",(p:any)=>p.on("pageerror",(e:Error)=>r.errors.push({tag,message:e.message})));
-   await ctx.route("**/*",(route:any)=>{const u=new URL(route.request().url());if(u.origin!==fx.base){r.foreign.push(u.origin);return route.abort()}return route.continue()});
+   await ctx.route("**/*",(route:any)=>{const u=new URL(route.request().url());if(u.origin!==fx.base){r.foreign.push(u.origin);return route.abort()}const assets=process.env.ASSET_ROOT;
+    if(assets&&(u.pathname.startsWith("/assets/")||u.pathname.startsWith("/ui/js/"))){const file=join(resolve(assets),u.pathname.split("/").pop()!);if(existsSync(file))return route.fulfill({path:file,contentType:file.endsWith(".css")?"text/css":"application/javascript"});}
+    return route.continue()});
+   if(process.env.ASSET_ROOT)await p.reload();
    await p.locator("#hubCompanyAddress").waitFor();await p.fill("#hubCompanyAddress","https://synthetic-hub.example.test");await p.fill("#hubCompanyFleetName","QA Fleet");
    const response=p.waitForResponse((q:any)=>new URL(q.url()).pathname.endsWith("/company-join/start")&&q.request().method()==="POST"),popup=ctx.waitForEvent("page");
    await p.locator(".s-company-join button[type=submit]").click();const first=await response,body=await first.json(),wait=await popup;wait.setDefaultTimeout(15000);
