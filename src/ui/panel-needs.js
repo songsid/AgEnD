@@ -47,7 +47,7 @@ register("needs", {
     notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
-    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送", typeMissed: "離線時錯過",
+    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Agent", typeDelivery: "傳送", typeMissed: "離線時錯過",
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
