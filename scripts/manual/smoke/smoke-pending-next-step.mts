@@ -82,7 +82,7 @@ try {
     await h.page.unrouteAll({ behavior: "ignoreErrors" });
     await h.page.waitForFunction(() => !!document.querySelector(".pending-code-setup, .pending-on-host"), null, { timeout: 8000 });
     await h.page.waitForTimeout(2600);
-    await h.page.click(".pending-card details.pending-host > summary");
+    for (const summary of await h.page.locator(".pending-card details > summary").all()) await summary.click();
     await h.page.waitForTimeout(300);
     await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "7-unbound-open") });
     await h.ctx.close();
@@ -93,7 +93,7 @@ try {
     await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "2-bound") });
     check(`${cn}:bound`, h.errs.length === 0 && (await h.csp()).length === 0, { errs: h.errs });
     // bound again, with the folded ways opened
-    await h.page.click(".pending-card details.pending-host > summary");
+    for (const summary of await h.page.locator(".pending-card details > summary").all()) await summary.click();
     await h.page.waitForTimeout(300);
     await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "8-bound-open") });
     // expired: the same card, after its five minutes

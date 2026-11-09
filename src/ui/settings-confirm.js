@@ -147,8 +147,8 @@ async function poll() {
  */
 export function track(view, label, retry) {
   if (finals.has(view.id) && !tracked.has(view.id)) return Promise.resolve(finals.get(view.id));   // decided and dismissed
-  // `retry`: a function that sends the same write again. Never kept for a request that touches a secret (view.section
-  // "secret"): its body would otherwise outlive the request, in the page, until the card is dismissed.
+  // `retry`: a function that sends the same write again (confirmedWrite makes one only for a write its caller marked
+  // `resendable`). Also never kept for a request the server marks `section: "secret"` — a second line of defence, not the rule.
   const again = typeof retry === "function" && view.section !== "secret" ? retry : null;
   let e = tracked.get(view.id);
   if (!e) { e = { view, at: now(), label, retry: again, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
@@ -223,23 +223,29 @@ export async function attach() {
  * retry the same request. `onPending(id, view)` is told when it starts waiting — or, held and confirmed by its own
  * web-verified account (selfConfirmed(view), #2170), applying.
  */
-export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending } = {}) {
-  const res = await api(path, { method, headers: { ...(headers || {}), "Idempotency-Key": key }, body: body === undefined ? undefined : JSON.stringify(body) });
+export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending, resendable = false } = {}) {
+  // The payload and headers as handed off now: a later change to the caller's objects is not what "the same write" sends again.
+  const payload = body === undefined ? undefined : JSON.stringify(body), sent = { ...(headers || {}) };
+  const res = await api(path, { method, headers: { ...sent, "Idempotency-Key": key }, body: payload });
   if (isUnreadableAccept(res)) return { ok: false, status: 202, ambiguous: true, body: { error: "unreadable_confirmation_response" } };
   if (!isPendingResponse(res)) return res;
   if (onPending) onPending(res.body.pending_change.id, res.body.pending_change);
-  const final = await track(res.body.pending_change, label, resendOf(path, { method, body, label, headers }));
+  // Only a caller that says its body holds nothing sensitive (`resendable: true`) gets a way to send it again: the body is
+  // otherwise not kept past this call. Nothing is inferred from the server's `section` (an Add bot request, which carries
+  // a raw token, is not marked "secret" there).
+  const final = await track(res.body.pending_change, label, resendable === true ? resendOf(path, { method, payload, label, headers: sent }) : undefined);
   return outcomeResponse(final);
 }
 
 /**
- * AGEND-118: send the same write again from its card (withdrawn, expired, turned down…; see RESENDABLE).
- * Assumption: a change that carries a secret is marked `section: "secret"` by the server (from the keys the change touches,
- * not from the body), and track() keeps no way to send those again. A new confirmedWrite whose body holds a secret
- * the server would not mark that way must not be given a retry. A new key, so it is a new request;
- * it asks for a new confirmation like any other, and its card replaces this one. { ok: true } when the server took it
- * (held for confirmation, or applied outright); { ok: false } when it refused it or could not be reached — the card says so
- * and the person makes the change again in Settings. Nothing is followed here to the end: the new card does that.
+ * AGEND-118: send the same write again from its card (withdrawn, expired, turned down…; see RESENDABLE). Only a write whose
+ * caller passed `resendable: true` has one: that is the caller saying its body holds nothing sensitive, and it is the only
+ * thing that decides it — not the server's `section`, which does not mark every request that carries a secret.
+ * It is a new request with a key of its own, asking for a new confirmation like any other; its card replaces this one.
+ * { ok: true } when the server took it (held for confirmation, or applied outright); { ok: false } when it refused it (the
+ * card says so and the person makes the change again in Settings); { ok: false, uncertain: true } when it may have
+ * arrived and the answer is lost or unreadable: the next press sends the same key, so it asks about the same request and
+ * can never make a second one. Nothing is followed here to the end: the new card does that.
  */
 export async function resend(id) {
   const e = tracked.get(id);
@@ -247,19 +253,29 @@ export async function resend(id) {
   if (e.resending) return { ok: false };
   e.resending = true;
   let sent;
-  try { sent = await e.retry(); } catch { sent = null; } finally { e.resending = false; }
-  if (!sent || !sent.ok) return { ok: false };
+  try { sent = await e.retry(); } catch { sent = { ok: false, uncertain: true }; } finally { e.resending = false; }
+  if (!sent || !sent.ok) return { ok: false, uncertain: !!(sent && sent.uncertain) };
   forget(id);
   return { ok: true };
 }
 
-/** The write again, for resend(): the same path, method, body and label, with a key of its own. */
-function resendOf(path, { method, body, label, headers }) {
+/**
+ * The write again, for resend(): the payload and headers as they were handed off, with a key of its own. The key is made
+ * once and kept while the outcome is not known (no answer, an accepted answer that cannot be read, a server error): the
+ * server finds that key again, applying or decided, and answers with that request instead of starting another. A definite
+ * answer (held, applied, refused) ends it; the next resend from the card it made has a key of its own.
+ */
+function resendOf(path, { method, payload, label, headers }) {
+  let held = null;
   return async () => {
-    const res = await api(path, { method, headers: { ...(headers || {}), "Idempotency-Key": newKey("w") }, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (isUnreadableAccept(res)) return { ok: false };
+    const key = held ??= newKey("w");
+    let res;
+    try { res = await api(path, { method, headers: { ...headers, "Idempotency-Key": key }, body: payload }); }
+    catch { return { ok: false, uncertain: true }; }
+    if (isUnreadableAccept(res) || res.status >= 500) return { ok: false, uncertain: true };
+    held = null;
     if (!isPendingResponse(res)) return { ok: res.ok };      // applied outright (no confirmation needed any more), or refused
-    track(res.body.pending_change, label, resendOf(path, { method, body, label, headers }));
+    track(res.body.pending_change, label, resendOf(path, { method, payload, label, headers }));
     return { ok: true };
   };
 }

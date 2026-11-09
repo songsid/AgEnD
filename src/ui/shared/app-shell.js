@@ -679,13 +679,14 @@ const ENDED_WHY = ["withdrawn", "rejected", "expired", "not_found", "settings_ch
  * change that touches a secret).
  */
 function PendingEnded({ p }) {
-  const [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(""), [busy, setBusy] = useState(false);
   const o = p.outcome || {};
-  const why = ENDED_WHY.includes(o.reason_code) ? t(`app.pendingWhy_${o.reason_code}`) : o.message;
-  const again = async () => { setBusy(true); setFailed(false); const r = await p.retry(); if (!r || !r.ok) { setFailed(true); setBusy(false); } };
+  const why = ENDED_WHY.includes(o.reason_code) ? t(`pendingEnded.why_${o.reason_code}`) : o.message;
+  // Not sure it was sent (no answer, or one that could not be read): the same press again asks about the same request.
+  const again = async () => { setBusy(true); setFailed(""); const r = await p.retry(); if (!r || !r.ok) { setFailed(r && r.uncertain ? "resendUnsure" : "resendFailed"); setBusy(false); } };
   return html`${why ? html`<p class="note pending-ended">${why}</p>` : null}
-    ${failed ? html`<p class="note" role="alert">${t("app.pendingResendFailed")}</p>` : null}
-    ${p.retry ? html`<div class="pending-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${again}>${t("app.pendingResend")}</button></div>` : null}`;
+    ${failed ? html`<p class="note" role="alert">${t(`pendingEnded.${failed}`)}</p>` : null}
+    ${p.retry ? html`<div class="pending-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${again}>${t("pendingEnded.resend")}</button></div>` : null}`;
 }
 
 /** #2868: where the confirm card was posted: "Discord", or "Discord (team-b)" for a connection with an id of its own. */
@@ -734,8 +735,6 @@ register("pendingHost", {
     hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
     more: "Other ways to confirm",
     moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
-    moreCmd: "On the computer running AgEnD, run:",
-    copy: "Copy", copied: "Copied",
   },
   "zh-TW": {
     no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
@@ -767,8 +766,36 @@ register("pendingHost", {
     hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
     more: "其他確認方式",
     moreHost: "到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。",
-    moreCmd: "在執行 AgEnD 的那台電腦上執行：",
-    copy: "複製", copied: "已複製",
+  },
+});
+/**
+ * AGEND-118: the words of a change that did not go through, registered here with the component that reads them — a page
+ * that kept an earlier app-i18n.js (a tab left open across an upgrade) must not print raw keys.
+ */
+register("pendingEnded", {
+  en: {
+    why_withdrawn: "You withdrew this change, so nothing was changed.",
+    why_rejected: "An admin turned it down, so nothing was changed.",
+    why_expired: "It was not completed within 5 minutes. Check what the settings are now.",
+    why_not_found: "AgEnD no longer has this request (it timed out or was cleared). Check what the settings are now.",
+    why_settings_changed: "Settings changed after you asked for this, so it was not applied. Review them and make the change again in Settings.",
+    why_request_no_longer_current: "The sign-in that asked for it ended, or the fleet changed, so it was not applied. Make the change again in Settings.",
+    why_fleet_stopped: "AgEnD stopped before it could be applied. Make the change again in Settings.",
+    resend: "Send again",
+    resendFailed: "It could not be sent again. Make the change again in Settings.",
+    resendUnsure: "We could not tell whether it was sent. Press Send again to find out; it will not be sent twice.",
+  },
+  "zh-TW": {
+    why_withdrawn: "你已撤回這項變更，沒有任何設定被修改。",
+    why_rejected: "管理者拒絕了這項變更，沒有任何設定被修改。",
+    why_expired: "5 分鐘內沒有完成，請確認設定目前的內容。",
+    why_not_found: "AgEnD 已經沒有這項請求（已逾時或已清除），請確認設定目前的內容。",
+    why_settings_changed: "你送出之後設定又被修改了，所以沒有套用。請檢查設定後，到設定重新做一次這項變更。",
+    why_request_no_longer_current: "送出這項變更的登入已結束，或 fleet 有變動，所以沒有套用。請到設定重新做一次這項變更。",
+    why_fleet_stopped: "AgEnD 在套用前停止了。請到設定重新做一次這項變更。",
+    resend: "重新送出",
+    resendFailed: "無法重新送出，請到設定重新做一次這項變更。",
+    resendUnsure: "無法確定是否已經送出。再按一次「重新送出」就能查明，不會送出兩次。",
   },
 });
 const PENDING_HOST_REASONS = ["no_chat", "cross_platform", "no_general", "chat_disconnected", "no_topic", "post_failed"];
@@ -799,18 +826,13 @@ function PendingCode({ p }) {
       <button type="submit" class="btn btn-sm btn-primary" disabled=${busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))}>${t("pendingHost.codeGo")}</button></label>
   </form>${msg ? html`<p class="note" role="alert">${msg}</p>` : null}`;
 }
-/** AGEND-118: a line of text with a Copy button; it stays selectable on the page when the browser refuses the clipboard. */
-function CopyLine({ text }) {
-  const [done, setDone] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 2000); } catch { /* the text is on screen to copy by hand */ } };
-  return html`<div class="pending-cmd"><code>${text}</code>
-    <button type="button" class="btn btn-sm" onClick=${copy}>${t(done ? "pendingHost.copied" : "pendingHost.copy")}</button></div>`;
-}
 /**
  * AGEND-118: how this page can confirm the change, as ONE next step by state (the server's read decides which; nothing here
  * grants anything): the authenticator's code field when this page may use it, Apply now when the browser may confirm it,
  * set up the authenticator when that would let it, or — over a link / when nothing is open to this page — where it has to be
- * done. Every other way sits folded under "Other ways to confirm", the host's command last (and only there).
+ * done. The ways that are not the step sit folded: "Other ways to confirm" (the reason no General got a card, and what to do
+ * on the AgEnD computer) and, as before this change, "Advanced: confirm on the host" with the bare command. The card never
+ * tells the person to run it (style guide rule 9), and has no Copy for it.
  */
 function PendingHow({ p }) {
   const a = useWebAuthorization();
@@ -820,6 +842,7 @@ function PendingHow({ p }) {
   const why = cli && PENDING_HOST_REASONS.includes(c.reason) ? c.reason : null;
   const go = why && Object.hasOwn(PENDING_HOST_GO, why) ? PENDING_HOST_GO[why] : null;
   const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
+  const advanced = html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>`;
   const goLink = go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null;
   const whyDo = (why || cli) ? html`<p class="note pending-why">${t(`pendingHost.${why || "unknown"}`)}${why ? html` ${t(`pendingHost.${why}_do`)}${goLink}` : null}</p>` : null;
   // The change is waiting for a General's card (or it is still being sent): that card is the step. A browser that isn't
@@ -838,7 +861,7 @@ function PendingHow({ p }) {
         <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
       ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
       ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
-      <details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><${CopyLine} text=${cmd} /></details>`;
+      ${advanced}`;
   }
   const next = mode === "apply" ? html`<div class="pending-self"><span class="note">${t("pendingHost.applyLead")}</span>
       <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>`
@@ -849,11 +872,13 @@ function PendingHow({ p }) {
     : mode === "link" ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>`
     : mode === "hostBrowser" ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>`
     : html`${refused ? html`<p class="note" role="status">${t("pendingHost.applyRefused")}</p>` : null}${whyDo}`;
+  // What is not the step: shown folded only where there is something to say besides the command.
+  const others = mode === "setup" || mode === "link" || mode === "hostBrowser";
   return html`${next}
-    <details class="pending-host"><summary>${t("pendingHost.more")}</summary><div class="pending-more">
-      ${mode !== "none" ? whyDo : null}
-      ${mode === "setup" ? html`<p class="note">${t("pendingHost.moreHost")}</p>` : null}
-      <p class="note">${t("pendingHost.moreCmd")}</p><${CopyLine} text=${cmd} /></div></details>`;
+    ${others ? html`<details class="pending-host pending-others"><summary>${t("pendingHost.more")}</summary><div class="pending-more">
+      ${whyDo}
+      ${mode === "setup" ? html`<p class="note">${t("pendingHost.moreHost")}</p>` : null}</div></details>` : null}
+    ${advanced}`;
 }
 
 /** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
