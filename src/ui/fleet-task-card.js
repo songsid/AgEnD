@@ -42,7 +42,7 @@ register("taskcard", {
     conflict: "{0} 在你編輯時被改過了。已載入最新內容，你的修改還在，再存一次就會覆蓋。",
     moveTo: "移到…", moveLabel: "改狀態", followsSubs: "有子任務，狀態會跟著子任務自動變化",
     reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務",
-    assignee: "負責人", nobody: "沒人負責", unassign: "（不指派）", other: "其他…", otherTitle: "指派給其他 instance", otherLabel: "instance 名稱",
+    assignee: "負責人", nobody: "沒人負責", unassign: "（不指派）", other: "其他…", otherTitle: "指派給其他 Agent", otherLabel: "Agent 名稱",
     change: "改…", project: "專案", priority: "優先度", size: "大小", review: "你確認", reviewBox: "做完要停在待確認，等我確認",
     reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
     parent: "主任務", deps: "相依", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",

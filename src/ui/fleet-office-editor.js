@@ -44,7 +44,7 @@ register("orge", {
     add: "新增辦公室", newName: "新辦公室", name: "名稱", styleLabel: "風格", members: "成員", membersN: "已選 {0} 個", everyone: "全部",
     picked: "指定", nobody: "沒有人（只有 NPC）", pickSome: "還沒選任何人：選人之前會顯示全部。",
     nobodyNote: "這裡不坐任何 agent，只有風格裡的 NPC。",
-    teams: "Team", instances: "Instance", remove: "刪除", save: "儲存", cancel: "取消", saved: "辦公室已儲存。",
+    teams: "Team", instances: "Agent", remove: "刪除", save: "儲存", cancel: "取消", saved: "辦公室已儲存。",
     none: "還沒有辦公室：辦公室檢視會顯示整個 fleet。", nameNeeded: "每個辦公室都需要名稱。", tooMany: "最多 {0} 個辦公室。",
     changed: "有人在這期間修改了辦公室，你的編輯沒有儲存。你可以保留你的編輯（儲存時會取代對方的修改），或載入對方的版本。",
     changedUnread: "有人在這期間修改了辦公室，你的編輯沒有儲存，也無法讀取目前的清單。請再試一次。",

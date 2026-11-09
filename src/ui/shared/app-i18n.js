@@ -117,7 +117,7 @@ register("app", {
     needs_reason_kiro_choice: "Kiro needs your decision", needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_question: "Asking you a question", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Sign-in needed", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: sign-in needed", needs_reason_backend_signin: "Backend sign-in needed", needs_reason_config_invalid: "Configuration file needs attention", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_config_fallback: "Running on stored configuration", config_history_edit: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. The next restart would use the stored valid copy from {4}. Correct the YAML error; the file has not been changed by AgEnD.", config_history_no_history: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. No stored valid copy is available, so the next restart cannot recover automatically. Correct the YAML error before restarting; the file has not been changed by AgEnD.", config_history_fallback: "{0}, line {1}, column {2}: {3}. AgEnD started using the stored valid copy from {4}. Correct the YAML error and reload the settings. The file on disk has not been changed by AgEnD.", needs_reason_general_windows_offline: "General’s Windows PC is offline", needs_reason_general_location_hold: "Run General on", needs_reason_native_pane_hold: "Windows agent needs attention", needs_reason_crashed: "Crashed", needs_reason_usage_limit: "Usage limit reached · reset time unknown", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed", needs_reason_missed_offline: "Missed while AgEnD was offline", needs_reason_task_review: "Waiting for your confirmation", needs_reason_task_blocked: "Blocked: asks you",
   },
   "zh-TW": {
-    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance", newAgent: "新增 Agent",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Agent", newInstance: "新增 Agent", newAgent: "新增 Agent",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
     resizeSidebar: "側邊欄寬度", resizeSidebarHint: "拖曳調整寬度 · 按兩下恢復預設",
     names: "名稱", namesNickname: "暱稱優先", namesInstance: "實際名稱優先",
@@ -130,7 +130,7 @@ register("app", {
     connReconnecting: "連不上 AgEnD——可能正在重新啟動。正在重新連線…", connReconnectingIn: "連不上 AgEnD——可能正在重新啟動。{0} 秒後再試。",
     hydrating: "正在載入目前的狀態…", hydrateFailed: "無法載入目前的狀態（提示、送達標記）。",
     skip: "跳到對話", loadFailed: "無法載入。", retry: "再試一次", reloadPage: "重新載入頁面", loading: "載入中…",
-    noInstances: "還沒有 instance", noInstancesHint: "建立一個就能開始聊天。",
+    noInstances: "還沒有 Agent", noInstancesHint: "建立一個就能開始聊天。",
     guestChip: "訪客", guestAs: "訪客 · {0}", guestAsOn: "訪客 · {0}（{1}）", guestHint: "你只會看到在聊天中本來就能用的 agent。",
     session: "登入狀態", signIn: "登入", signedIn: "已登入", signedOut: "尚未登入", thisDevice: "這台裝置", devicePrefs: "主題與語言",
     lastActive: "{0}活動", justNow: "剛剛", minAgo: "{0} 分鐘前", hrAgo: "{0} 小時前", signOut: "登出",

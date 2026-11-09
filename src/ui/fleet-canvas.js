@@ -47,9 +47,9 @@ register("orgc", {
     lgWork: "in progress (until its report)", lgReturn: "done (report back)", lgStale: "no report yet",
   },
   "zh-TW": {
-    view: "檢視", canvas: "畫布", list: "清單", office: "辦公室", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
+    view: "檢視", canvas: "畫布", list: "清單", office: "辦公室", find: "尋找 Agent", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
     zoomIn: "放大", zoomOut: "縮小", fit: "符合畫面",
-    label: "組織圖畫布。用 Tab 或方向鍵在 instance 之間移動，Enter 開啟聊天，+ 和 − 縮放，0 顯示整個 fleet。",
+    label: "組織圖畫布。用 Tab 或方向鍵在 Agent 之間移動，Enter 開啟聊天，+ 和 − 縮放，0 顯示整個 fleet。",
     expand: "展開", collapse: "收合", members: "{0} 名成員", member: "1 名成員", inFolded: "找到 {0} 個 · 展開", noMembers: "沒有成員",
     openChat: "開啟聊天", minimap: "總覽：點一下移到那裡",
     live: "即時", liveOn: "隱藏即時往來", liveOff: "顯示即時往來", lgTask: "delegate_task", lgSend: "send_to_instance",

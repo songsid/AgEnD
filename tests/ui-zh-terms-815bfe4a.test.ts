@@ -35,7 +35,51 @@ export function offenders(files: Array<{ path: string; text: string }>): string[
   return found;
 }
 
+/**
+ * M-2717: a zh-TW web UI value says **Agent**, never "instance(s)" or 實例 (the English keys and values keep "instance").
+ * The value strings of every `"zh-TW": {…}` / `zh: {…}` table under src/ui; keys and code names (`send_to_instance`)
+ * are not values, so they are not read.
+ */
+const ZH_INSTANCE = /\binstances?\b|實例/i;
+export function zhBlocks(src: string): Array<[number, number]> {
+  const out: Array<[number, number]> = []; const re = /(?:["']zh-TW["']|\bzh)\s*:\s*\{/g; let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    let i = m.index + m[0].length, depth = 1, q: string | null = null;
+    for (; i < src.length && depth; i++) {
+      const c = src[i]!;
+      if (q) { if (c === "\\") i++; else if (c === q) q = null; continue; }
+      if (c === '"' || c === "'" || c === "`") q = c; else if (c === "{") depth++; else if (c === "}") depth--;
+    }
+    out.push([m.index, i]);
+  }
+  return out;
+}
+export function zhInstanceOffenders(files: Array<{ path: string; text: string }>): string[] {
+  const found: string[] = [];
+  for (const f of files) {
+    for (const [a, b] of zhBlocks(f.text)) {
+      const str = /(["'`])((?:\\.|(?!\1)[^\\])*)\1(\s*:)?/g; let s: RegExpExecArray | null;
+      while ((s = str.exec(f.text.slice(a, b)))) {
+        if (!s[3] && ZH_INSTANCE.test(s[2]!)) found.push(`${f.path}:${f.text.slice(0, a + s.index).split("\n").length}: ${s[2]!.slice(0, 80)}`);
+      }
+    }
+  }
+  return found;
+}
+
 describe("zh-TW product terms: Agent and Fleet, never 代理 / 艦隊 (decision 815bfe4a)", () => {
+  it("M-2717: no zh-TW web UI value says instance(s) or 實例 — it says Agent", () => {
+    const files = walk(join(SRC, "ui")).map((p) => ({ path: relative(ROOT, p), text: readFileSync(p, "utf8") }));
+    expect(files.length).toBeGreaterThan(50);
+    expect(zhInstanceOffenders(files)).toEqual([]);
+  });
+  it("the instance check itself: zh-TW values only, never keys, code names or the English table", () => {
+    const hits = (text: string) => zhInstanceOffenders([{ path: "x.js", text }]).length;
+    expect(hits(`register("x", { en: { a: "No instances yet" }, "zh-TW": { a: "還沒有 instance" } });`)).toBe(1);
+    expect(hits(`const S = { zh: { b: "這個實例已停止", c: "Instances" } };`)).toBe(2);
+    expect(hits(`const S = { "zh-TW": { instances: "Agent", d: "用 send_to_instance 傳送", "kind_instance": "Agent" } };`)).toBe(0);
+    expect(hits(`const S = { en: { a: "Start instance" } };`)).toBe(0);
+  });
   it("no source file under src/ says 代理 or 艦隊 (a reverse proxy, 反向代理, is not the product term)", () => {
     const files = walk(SRC).map((p) => ({ path: relative(ROOT, p), text: readFileSync(p, "utf8") }));
     expect(files.length).toBeGreaterThan(100);   // the walk reached the tree

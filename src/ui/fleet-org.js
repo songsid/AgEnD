@@ -23,10 +23,10 @@ register("org", {
     sending: "Sending:", queuedNote: "(queued)", workingNote: "(in progress)",
   },
   "zh-TW": {
-    starting: "啟動中", queued: "等待啟動", title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 instance", instance: "1 個 instance",
+    starting: "啟動中", queued: "等待啟動", title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 Agent", instance: "1 個 Agent",
     needs: "等你回應", working: "工作中", idle: "閒置", stuck: "似乎卡住", paused: "已暫停", stopped: "已停止", crashed: "已當掉",
     missing: "不在 fleet 中", thread_discord: "Discord 討論串", thread_telegram: "Telegram topic", openChat: "開啟聊天",
-    classic: "ClassicBot 頻道", empty: "還沒有 instance", emptyHint: "fleet 有 instance 和 team 後會顯示在這裡。",
+    classic: "ClassicBot 頻道", empty: "還沒有 Agent", emptyHint: "fleet 有 Agent 和 team 後會顯示在這裡。",
     noTeams: "還沒有 team——到 Fleet → Teams 定義後，組織圖會依 team 分組。", newTab: "（在新分頁開啟）",
     sending: "傳送中：", queuedNote: "（排隊中）", workingNote: "（進行中）",
   },

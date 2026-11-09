@@ -352,7 +352,7 @@ describe("the chat tour (#1366, #1854)", () => {
 
   it("speaks zh-TW where the dashboard does", async () => {
     const p = await load({ lang: "zh-TW" });
-    expect(p.text()).toMatch(/選一個 instance/);
+    expect(p.text()).toMatch(/選一個 Agent/);
     expect(p.buttons().map(b => b.textContent)).toEqual(["略過", "下一步"]);
   });
 
