@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-ui.test.ts (14 tests | 2 failed) 44ms
+     × respects guest even with an already loaded component 9ms
+     × respects publicLink even with an already loaded component 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-ui.test.ts > cached child component visibility defence > respects guest even with an already loaded component
+ FAIL  tests/subagent-ui.test.ts > cached child component visibility defence > respects publicLink even with an already loaded component
+AssertionError: expected { rendered: true } to deeply equal null
+
+- Expected:
+null
+
++ Received:
+{
+  "rendered": true,
+}
+
+ ❯ tests/subagent-ui.test.ts:32:108
+     30|   const dataset={subagents:kind==="unoffered"?"0":"1",guest:kind==="gu…
+     31|   const scope:any={document:{body:{dataset}},useState:()=>[()=>null,()…
+     32|   runInNewContext(wrapper+"\nglobalThis.result=SubagentProgress({name:…
+       |                                                                                                            ^
+     33|  });
+     34| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  18:57:18
+   Duration  720ms (transform 382ms, setup 156ms, import 306ms, tests 44ms, environment 0ms)

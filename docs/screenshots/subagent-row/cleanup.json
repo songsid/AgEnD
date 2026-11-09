@@ -1,6 +1,6 @@
 {
-  "case": "alpha-browser",
-  "head": "9416da642828892680791b0f1d42d97b87674e9d",
+  "case": "alpha-mature-parent",
+  "head": "a800df82b613151606d9ed38e36a7c29e6c0e60b",
   "commandScript": "scripts/manual/subagent-row/accept.mts",
   "extras": {
     "HP": "48782"
@@ -8,9 +8,9 @@
   "exitCode": 0,
   "trackedPids": 47,
   "liveOwnedPids": [],
-  "ownedTemp": "/tmp/saqa-x84d5u6t",
+  "ownedTemp": "/tmp/saqa-slqcsapy",
   "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
-  "at": 1794220851.0661535,
+  "at": 1794221682.0277355,
   "ownedTempRemoved": true,
   "ownedHomeRemoved": true
 }

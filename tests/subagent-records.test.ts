@@ -29,6 +29,14 @@ describe("read-only captured sub-Agent records", () => {
     expect(projectSubagents({ ...f, sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })).toEqual([]);
     expect(projectSubagents({ ...f, cwd: "/unrelated" })).toEqual([]);
   });
+  it.each(["sidechain-parent", "result-assistant-uuid"])("refuses a Claude launch with wrong %s evidence", condition => {
+    const f = fixture("claude-code");
+    for (const r of f.parent as any[]) {
+      if (condition === "sidechain-parent") r.isSidechain = true;
+      else if (r.toolUseResult?.status === "async_launched") r.sourceToolAssistantUUID = "unrelated-assistant";
+    }
+    expect(projectSubagents(f)).toEqual([]);
+  });
   it.each(["sessionId", "cwd", "agentId", "isSidechain", "toolUseId", "spawnDepth"])("pins Claude child %s", field => {
     const f = fixture("claude-code"), c = f.children.values().next().value!;
     if (field === "toolUseId" || field === "spawnDepth") (c.meta as any)[field] = field === "spawnDepth" ? 2 : "unrelated";
@@ -55,6 +63,15 @@ describe("read-only captured sub-Agent records", () => {
   it("does not treat a person's quoted notification or meta.finished alone as completion", () => {
     const f = fixture("claude-code");
     for (const r of f.parent as any[]) if (r.origin?.kind === "task-notification") r.origin.kind = "human";
+    expect(projectSubagents(f).map(r => r.state)).toEqual(["unknown", "unknown"]);
+  });
+  it.each([false, undefined])("a matching notification without finished sidecar (%s) remains unconfirmed", finished => {
+    const f = fixture("claude-code"); for (const c of f.children.values()) (c.meta as any).finished = finished;
+    expect(projectSubagents(f).map(r => r.state)).toEqual(["unknown", "unknown"]);
+  });
+  it("a notification's correct call ID cannot stand in for its different child ID", () => {
+    const f = fixture("claude-code");
+    for (const r of f.parent as any[]) if (r.origin?.kind === "task-notification") r.message.content = r.message.content.replace(/<task-id>.*?<\/task-id>/, "<task-id>unrelated-child</task-id>");
     expect(projectSubagents(f).map(r => r.state)).toEqual(["unknown", "unknown"]);
   });
   it("does not carry an old completed flag into a resumed Claude child run", () => {

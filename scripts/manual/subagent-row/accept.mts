@@ -1,5 +1,5 @@
 /** Actual Fleet web + private captured-record files. No daemon, CLI, tmux, model, account or ledger child entries. */
-import {readFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,rmSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
@@ -20,7 +20,7 @@ function seed(backend:'claude-code'|'codex',unknown=false,running=false){
  if(running&&backend==='claude-code'){const id='a9947907a82e086d7';delete(f.children.get(id)!.meta as any).finished;f.parent=f.parent.filter((r:any)=>!r.message?.content?.includes?.(`<task-id>${id}</task-id>`));}
  const root=join(roots,backend);rmSync(root,{recursive:true,force:true});mkdirSync(root,{recursive:true});
  const day=backend==='codex'?join(root,'2026/11/09'):root;mkdirSync(day,{recursive:true});
- const path=join(day,backend==='codex'?`rollout-2026-11-09T15-18-16-${f.sessionId}.jsonl`:f.sessionId+'.jsonl');writeFileSync(path,f.parent.map(r=>JSON.stringify(r)).join('\n')+'\n');
+ const path=join(day,backend==='codex'?`rollout-2026-11-09T15-18-16-${f.sessionId}.jsonl`:f.sessionId+'.jsonl');writeFileSync(path,JSON.stringify(f.parent[0])+'\n'+(JSON.stringify({padding:'x'.repeat(4096)})+'\n').repeat(800)+f.parent.map(r=>JSON.stringify(r)).join('\n')+'\n');
  if(!unknown)for(const[id,c]of f.children){const p=backend==='claude-code'?join(root,f.sessionId,'subagents',`agent-${id}`):join(day,`rollout-2026-11-09T15-18-36-${id}`);mkdirSync(join(p,'..'),{recursive:true});writeFileSync(p+'.jsonl',c.records.map(r=>JSON.stringify(r)).join('\n')+'\n');if(c.meta)writeFileSync(p+'.meta.json',JSON.stringify(c.meta));}
  active={backend,sessionId:f.sessionId,cwd:f.cwd,path,root,owner:backend+'-'+(unknown?'missing':running?'live':'finished')};
 }
@@ -29,8 +29,15 @@ try{
   const name=caseName(c);active=null;const {ctx,page,csp}=await fx.page(c,{path:'/ui/chat/general'});
   const errors:string[]=[];page.on('pageerror',(e:any)=>errors.push(String(e)));
   await page.locator('.composer-box').waitFor();if(await page.locator('.subagent-progress').count())throw Error('no child source shows empty disclosure');await page.screenshot({path:join(out,name+'-before.png')});
+  // Real unreadable/over-window no-child stores must remain quiet, not a permanent failure disclosure.
+  seed('claude-code');writeFileSync(active!.path,'{"partial":');active={...active!,owner:'unreadable'};
+  let observed=page.waitForResponse((r:any)=>r.url().includes('/ui/subagents?'));await page.reload();await (await observed).finished();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  if(await page.locator('.subagent-progress').count())throw Error('unproved unreadable parent shows error row');await page.screenshot({path:join(out,name+'-before-unreadable.png')});
+  seed('claude-code');writeFileSync(active!.path,JSON.stringify(subagentFixture('claude-code').parent[0])+'\n'+(JSON.stringify({padding:'x'.repeat(4096)})+'\n').repeat(800));active={...active!,owner:'empty-mature'};
+  observed=page.waitForResponse((r:any)=>r.url().includes('/ui/subagents?'));await page.reload();await (await observed).finished();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  if(await page.locator('.subagent-progress').count())throw Error('mature no-child parent shows error row');await page.screenshot({path:join(out,name+'-before-mature.png')});
   // This is the real service reading files, not an HTTP reply stub. Reload starts a new observer owner.
-  seed('claude-code',false,true);await page.reload();await page.locator('.subagent-progress').waitFor();
+  seed('claude-code',false,true);if(statSync(active!.path).size<=2*1024*1024)throw Error('not a mature parent');await page.reload();await page.locator('.subagent-progress').waitFor();
   if(await page.locator('.subagent-progress[open]').count())throw Error('not collapsed by default');
   await page.screenshot({path:join(out,name+'-collapsed.png')});
   await page.locator('.subagent-progress>summary').click();await page.locator('.subagent-item').nth(1).waitFor();
@@ -43,7 +50,7 @@ try{
   seed('codex',true);await page.reload();await page.locator('.subagent-progress>summary').click();await page.waitForFunction(()=>document.querySelectorAll('.subagent-item').length===2);if(await page.locator('.subagent-report').count())throw Error('missing records retain summary');
   await page.screenshot({path:join(out,name+'-unknown.png')});
   seed('codex');await page.reload();await page.locator('.subagent-progress>summary').click();await page.waitForFunction(()=>document.querySelectorAll('.subagent-report').length===2);await page.screenshot({path:join(out,name+'-codex.png')});
-  const violations=await csp();if(errors.length||violations.length)throw Error(JSON.stringify({errors,violations}));receipt.cases.push({name,placement,errors,violations,states:['collapsed','completed+running','missing unknown','Codex completed']});await ctx.close();
+  const violations=await csp();if(errors.length||violations.length)throw Error(JSON.stringify({errors,violations}));receipt.cases.push({name,placement,errors,violations,parentOver2MiB:true,quiet:['no-source','unreadable','mature-no-child'],states:['collapsed','completed+running','missing unknown','Codex completed']});await ctx.close();
  }
  const oldPanel=execFileSync('git',['show','da70c790:src/ui/panel-chat.js'],{cwd:process.env.REPO!,encoding:'utf8'});
  const oldCss=execFileSync('git',['show','da70c790:src/ui/shared/app.css'],{cwd:process.env.REPO!,encoding:'utf8'});

@@ -27,4 +27,3 @@ Received: "completed"
       Tests  1 failed | 31 passed (32)
    Start at  18:46:39
    Duration  851ms (transform 257ms, setup 322ms, import 113ms, tests 61ms, environment 0ms)
-

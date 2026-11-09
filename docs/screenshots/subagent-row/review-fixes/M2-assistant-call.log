@@ -1,0 +1,59 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-records.test.ts (37 tests | 1 failed) 54ms
+     × refuses a Claude launch with wrong result-assistant-uuid evidence 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > refuses a Claude launch with wrong result-assistant-uuid evidence
+AssertionError: expected [ { …(11) }, { …(11) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "durationMs": 8464,
++     "key": "bf291dc100a53e0bb924fd53",
++     "name": "核對第一份範例資料",
++     "parentStartedAt": 1794208348273,
++     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
++     "parentTurn": "521090a0-03e6-4799-a31b-e2cd143cc7fa",
++     "startedAt": 1794208348429,
++     "state": "completed",
++     "summary": "已核對範例檔案，內容符合預期。",
++     "task": "CHILD_ONE：只讀取指定的範例檔案，再回報內容是否符合預期。",
++     "type": "reader",
++   },
++   {
++     "durationMs": 12300,
++     "key": "d1b80bad193f4d1eb488b1f5",
++     "name": "核對第二份範例資料",
++     "parentStartedAt": 1794208348273,
++     "parentTask": "CLAUDE_SPAWN: use reader and checker subagents to check the two synthetic marker files independently. Do not execute shell commands or use external resources.",
++     "parentTurn": "521090a0-03e6-4799-a31b-e2cd143cc7fa",
++     "startedAt": 1794208348458,
++     "state": "completed",
++     "summary": "已核對範例檔案，內容符合預期。",
++     "task": "CHILD_TWO：只讀取指定的範例檔案，再回報內容是否符合預期。",
++     "type": "checker",
++   },
++ ]
+
+ ❯ tests/subagent-records.test.ts:38:33
+     36|       else if (r.toolUseResult?.status === "async_launched") r.sourceT…
+     37|     }
+     38|     expect(projectSubagents(f)).toEqual([]);
+       |                                 ^
+     39|   });
+     40|   it.each(["sessionId", "cwd", "agentId", "isSidechain", "toolUseId", …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 passed (37)
+   Start at  18:57:13
+   Duration  424ms (transform 118ms, setup 91ms, import 80ms, tests 54ms, environment 0ms)
