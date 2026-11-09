@@ -8,7 +8,7 @@ a14e556c96222e27a7a846c93227c3c56340e542c20fab5bc6829fd9a60a5591  src/ui/hub-hos
 c18ffe264edaddb0ee5e23f62344b3e5fa62120b078f5b30e642cd091c5b6b11  src/ui/panel-hub.js
 300125d74fe1eecdfc375517c38f7705af9874715b1c0835af51e9b0991cbd9c  src/ui/panel-needs.js
 22905a38de1214c3ece7cfe16df1fbb4cdfcbd84b3bf79b2ea0b9c73c8f16b3c  src/ui/shared/app.css
-5719e52632e63a6bd8875f004e68b4bb61d482182010550876ae2972013d4a8a  src/web-api.ts
+205dde20d40a08112e09b88c7e26401a2146816e987de849b95db3ec164c78c6  src/web-api.ts
 eda3955b6b168c6cc6cb3d344660bad41ec5145813baff1dc3f00e80a9a68660  tests/hub-directory-host-notices.test.ts
 4429f93cd33d5dce0ccd792f5b424bafef4a8c8117135b8898dd4556d9bc1294  tests/hub-directory-notice-ui.test.ts
 da67076404830e7be5fad2b585cf8093727af7d01ea5167edec0a764d2bbe80e  tests/hub-shared-modules-a.test.ts
