@@ -229,7 +229,8 @@ export function setUpdateProgressStage(
     ...(details.warning !== undefined ? { warning: details.warning.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
     ...(details.cleanupCommand !== undefined ? { cleanupCommand: details.cleanupCommand } : {}),
     ...(details.cleanup !== undefined ? { cleanup: details.cleanup } : {}),
-    ...(stage === "failed" ? { failedStage: previousStage } : {}),
+    // M-2738 (rig): a second failure (the CLI's, then the launch watcher's) keeps the stage the update failed in.
+    ...(stage === "failed" ? { failedStage: previousStage === "failed" ? marker.progress.failedStage ?? previousStage : previousStage } : {}),
   };
   return writeMarker(dataDir, marker);
 }
