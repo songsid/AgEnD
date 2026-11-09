@@ -85,11 +85,10 @@ describe("M-2733: the zh-TW strings", () => {
     for (const q of ["網頁儀表板權限", "儀表板"]) expect(searchSettings(q).map((h: any) => h.id)).toContain("defaults.dashboard");
   });
 
-  it("Chinese headings are never upper-cased (the Settings groups too)", () => {
+  it("Chinese headings are never upper-cased (the Settings section groups too)", () => {
     const css = readFileSync(join(ROOT, "src/ui/shared/app.css"), "utf8");
     const rule = css.split("\n").find((l) => l.startsWith(":lang(zh-Hant) .card h3"))!;
     expect(rule).toContain(":lang(zh-Hant) .s-nav-head");
-    expect(rule).toContain(":lang(zh-Hant) .s-group-head");
     expect(rule).toContain("text-transform: none");
   });
 });

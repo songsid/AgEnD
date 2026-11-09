@@ -77,7 +77,7 @@ export function modelText(it, raw = it && it.model) {
   if (it.model_source === "cli-default") { const m = /^(.*) \(default\)$/.exec(raw); if (m) return tn("modelCliDefault", { model: m[1] }); }
   return raw;
 }
-const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode" };
+const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode", muse: "Muse" };
 export function backendLabel(backend) { return BACKEND_LABELS[backend] || backend || "Unknown"; }
 export const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
 export const STATUS_KEYS = { running: "statusRunning", paused: "statusPaused", stopped: "statusStopped", crashed: "statusCrashed" };
