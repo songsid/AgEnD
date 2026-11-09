@@ -249,7 +249,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .session { position: relative; }
 .pop {
   position: absolute; left: 0; right: 0; bottom: calc(100% + var(--s-1)); z-index: 30; display: flex; flex-direction: column; gap: var(--s-2);
-  padding: var(--s-3); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-2); font-size: var(--fs-sm);
+  padding: var(--s-3); border-radius: var(--r-md); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-2); font-size: var(--fs-sm);
 }
 .pop h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .pop .sub, .pop .when { color: var(--text-3); font-size: var(--fs-xs); }
@@ -257,6 +257,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pop .devices .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pop .row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .pop .err { color: var(--danger); }
+.pop .role { margin: 0; display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; }
+.pop .webauth-rebind-form { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-1); }
+.pop .webauth-rebind-form .note, .pop .webauth-rebind-form .err { margin: 0; }
+.pop .webauth-rebind-code { flex: 1; min-width: 0; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); display: inline-block; }
 .dot.ok { background: var(--ok); }

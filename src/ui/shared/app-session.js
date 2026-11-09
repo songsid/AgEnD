@@ -4,7 +4,7 @@
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t, lang } from "./app-i18n.js";
-import { AuthorizeChip } from "./web-authorize.js";
+import { AuthorizeChip, roleName, useWebAuthorization } from "./web-authorize.js";
 
 async function getJson(url) {
   try {
@@ -24,6 +24,7 @@ export function SessionMenu() {
   const [mayEndOthers, setMayEndOthers] = useState(true);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
+  const auth = useWebAuthorization();                // AGEND-138: the role line below (the chip shares this one read)
   const btn = useRef(null), pop = useRef(null);
   async function refresh() {
     const m = await getJson("/auth/session");
@@ -58,6 +59,7 @@ export function SessionMenu() {
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>
+        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
         <${AuthorizeChip} />
         ${rows.length > 1 ? html`<h3>${t("app.devices")}</h3><ul class="devices">${rows.map(s => html`<li key=${s.handle}>
           <span class="grow"><span class="name">${s.label}${s.current ? ` · ${t("app.thisDevice")}` : ""}</span><span class="when">${t("app.lastActive", ago(s.lastSeen))}</span></span>

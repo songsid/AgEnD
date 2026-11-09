@@ -1,6 +1,6 @@
 // Refs #3061 (P2a, P2b): Settings → Access & security → Sign-in & authorization → "Devices & sign-in", on a fleet with no chat
 // connection. P2b: the signed-in devices — each with how it was approved (sign-in code / device code / host / authenticator),
-// whether its owner is verified and when it was last active, this one marked, and a Sign out for the others that only the
+// its role (AGEND-138: Owner ✓ / Admin · not verified, the session menu's words) and when it was last active, this one marked, and a Sign out for the others that only the
 // verified owner gets (POST /ui/devices/signout; the server decides, a disabled button is only the page saying so). The QR
 // code on a new device's sign-in page opens this page at ?approve=<code>: the dialog opens with the code filled in — the
 // person still presses Continue and Allow. "Add device" opens a dialog: type the 8-character code a new device is showing on its sign-in page (the
@@ -19,6 +19,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { roleName } from "/assets/web-authorize.js";
 import { api } from "./settings-confirm.js";
 
 register("devices", {
@@ -41,7 +42,6 @@ register("devices", {
     minutes: "{0} minutes", minute: "1 minute",
     listTitle: "Signed-in devices", refresh: "Refresh", approvedBy: "Approved by {0}",
     viaCode: "sign-in code", viaDevice: "device code", viaHost: "this computer", viaTotp: "authenticator app",
-    ownerOk: "Owner verified", ownerNo: "Signed in, owner not verified yet",
     signOutOwnerOnly: "Only a device whose owner is verified can sign out another device.",
     signOutTitle: "Sign out this device?", signOutLead: "{0} will have to sign in again.", signOutGo: "Sign out",
     signedOut: "{0} was signed out.", alreadyGone: "That device is already signed out.",
@@ -67,7 +67,6 @@ register("devices", {
     minutes: "{0} 分鐘", minute: "1 分鐘",
     listTitle: "已登入的裝置", refresh: "重新整理", approvedBy: "核准方式：{0}",
     viaCode: "一次性裝置登入碼", viaDevice: "其他裝置核准", viaHost: "主機", viaTotp: "驗證器 App",
-    ownerOk: "已驗證擁有者", ownerNo: "已登入，尚未驗證擁有者",
     signOutOwnerOnly: "只有已驗證擁有者的裝置才能登出其他裝置。",
     signOutTitle: "登出這台裝置？", signOutLead: "{0} 需要重新登入。", signOutGo: "登出",
     signedOut: "已登出 {0}。", alreadyGone: "這台裝置已經登出了。",
@@ -231,7 +230,7 @@ export function DevicesCard() {
       <ul class="s-dev-list" id="devicesList">${devices.map((d) => html`<li class=${`s-dev-row${d.current ? " current" : ""}`} key=${d.handle} data-handle=${d.handle}>
         <div class="s-dev-main">
           <span class="s-dev-name">${d.label}${d.current ? html` <span class="tag" data-this-device="1">${t("app.thisDevice")}</span>` : null}</span>
-          <span class="s-dev-meta">${td("approvedBy", viaText(d.via))} · <span data-owner=${d.ownerVerified ? "yes" : "no"}>${td(d.ownerVerified ? "ownerOk" : "ownerNo")}</span> · ${t("app.lastActive", agoWords(d.lastSeen))}</span>
+          <span class="s-dev-meta">${td("approvedBy", viaText(d.via))} · <span data-owner=${d.ownerVerified ? "yes" : "no"} data-role=${d.ownerVerified ? "owner" : "admin"}>${roleName("admin", d.ownerVerified)}</span> · ${t("app.lastActive", agoWords(d.lastSeen))}</span>
         </div>
         ${d.current ? null : html`<button type="button" class="btn btn-sm btn-danger" data-signout=${d.handle} disabled=${!s.owner || busy} onClick=${() => askSignOut(d)}>${t("app.signOut")}</button>`}
       </li>`)}</ul>

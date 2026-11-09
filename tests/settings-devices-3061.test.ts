@@ -238,10 +238,10 @@ describe("#3061 P2b: the signed-in devices", () => {
     const w = await open({ webOnly: true, owner: true, devices: ROWS });
     expect(w.text(w.$("#devicesListTitle"))).toBe("Signed-in devices");
     expect([...p.root.querySelectorAll(".s-dev-row")].length).toBe(4);
-    expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux This device", "Approved by this computer · Owner verified · active just now", ""]);
-    expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "Approved by device code · Signed in, owner not verified yet · active 5 min ago", "Sign out"]);
-    expect(rowText(w, "cccccccccccccccc")).toEqual(["Safari on iPhone", "Approved by authenticator app · Owner verified · active 3 h ago", "Sign out"]);
-    expect(rowText(w, "dddddddddddddddd")).toEqual(["Edge on Windows", "Approved by sign-in code · Signed in, owner not verified yet · active just now", "Sign out"]);
+    expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux This device", "Approved by this computer · Owner ✓ · active just now", ""]);
+    expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "Approved by device code · Admin · not verified · active 5 min ago", "Sign out"]);
+    expect(rowText(w, "cccccccccccccccc")).toEqual(["Safari on iPhone", "Approved by authenticator app · Owner ✓ · active 3 h ago", "Sign out"]);
+    expect(rowText(w, "dddddddddddddddd")).toEqual(["Edge on Windows", "Approved by sign-in code · Admin · not verified · active just now", "Sign out"]);
     // Only the others have a Sign out — never the device being used.
     expect(w.$('[data-handle="aaaaaaaaaaaaaaaa"] [data-signout]')).toBeNull();
     expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([false, false, false]);
@@ -342,8 +342,8 @@ describe("#3061 P2b: the signed-in devices", () => {
     try {
       const w = await open({ webOnly: true, owner: true, devices: ROWS });
       expect(w.text(w.$("#devicesListTitle"))).toBe("已登入的裝置");
-      expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 已驗證擁有者 · 剛剛活動", ""]);
-      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 已登入，尚未驗證擁有者 · 5 分鐘前活動", "登出"]);
+      expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 擁有者 ✓ · 剛剛活動", ""]);
+      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 管理者 · 未驗證 · 5 分鐘前活動", "登出"]);
       expect(rowText(w, "cccccccccccccccc")[1]).toContain("核准方式：驗證器 App");
       expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：一次性裝置登入碼");
       await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));

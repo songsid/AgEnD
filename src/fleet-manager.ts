@@ -18600,14 +18600,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1939 S1: the design's §3 for one web request (authority/web-authority.ts), with this fleet's admins, policy and
    * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
    */
-  webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult {
+  webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string; authorization?: SessionAuthorization | null }): WebAuthorityResult {
     const state = this.webAuthorityState();
     return evaluateWebAuthority({
       session: input.session, gateway: input.gateway, peer: input.peer,
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
-      authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
+      authorization: input.authorization !== undefined ? input.authorization : input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
       hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
@@ -19128,7 +19128,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * written), what fleet.yaml says, the hosts that make the dashboard reachable from elsewhere (the warning while
    * loopback_only is off), and the sessions authorized now (§0): each one's device, account, and when it runs out.
    */
-  webAuthorityOverview(): {
+  webAuthorityOverview(req?: IncomingMessage): {
+    /** AGEND-138: this browser's own session, and whether it may revoke the others' authorization (the verified owner only). */
+    you: { handle: string | null; canRevoke: boolean };
     state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
     authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
@@ -19150,7 +19152,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
+    const own = req ? authorizeSession(req, this.webToken, this.webSessions, { touch: false }) : null;
+    return { you: { handle: own && own.kind === "ok" ? own.session.handle : null, canRevoke: !!req && !!this.webAuthorityRevoker(req) },
+      state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
   }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
@@ -19262,13 +19266,60 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { state: "none", reason: this.webAuthorityQualifies(input) ?? (verdict.refusal ?? "not_authorized") };
   }
 
-  /** #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out. */
-  revokeWebAuthority(): { epoch: number; durable: boolean } {
+  /**
+   * #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out.
+   * AGEND-138: `keep` — the session that asked (the verified owner's own): the epoch still moves, so every other session
+   * and every stored receipt is ended, but this one is authorized again under the new epoch at once (§3 asked afresh,
+   * with the end it already had: a revocation never stretches an authorization). A host session only where it is
+   * allowed to be one — on this computer — as at sign-in.
+   */
+  revokeWebAuthority(keep?: { session: SessionRecord; peer: WebPeer; gateway: boolean }): { epoch: number; durable: boolean; kept: boolean } {
     this.webAuthorityState();                                            // any switch change first, then this revocation
+    const store = this.sessionAuthorizationStore();
+    const prev = keep ? store?.get(keep.session.handle) ?? null : null;
     const result = this.authorityStateStore?.revoke() ?? { epoch: 0, durable: false };
     if (result.durable) this.logger.info({ epoch: result.epoch }, "Web authority revoked");
     else this.logger.warn({ epoch: result.epoch }, "Web authority revoked in memory only — web authority stays off until its state can be written; a restart before then undoes this revocation");
-    return result;
+    let kept = false;
+    if (keep && prev && store) {
+      const now = Date.now(), epoch = this.webAuthorityState().epoch;
+      const again = { ...prev, epoch };
+      if (!this.webAuthority({ session: keep.session, gateway: keep.gateway, peer: keep.peer, authorization: again }).refusal) {
+        const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+        store.prune(a => a.handle === prev.handle && live.has(a.handle));      // every other authorization ends with the old epoch
+        store.authorize(prev.handle, prev.owner, prev.authorizedAt, epoch, prev.until, prev.peer);
+        kept = true;
+        this.logger.info({ handle: prev.handle, at: now }, "Web authority revoked: the owner's own session kept");
+      }
+    }
+    return { ...result, kept };
+  }
+
+  /**
+   * AGEND-138: who may "Revoke authorization of other devices" — the verified owner only, asked of the LIVE session each
+   * time. A web-only fleet: its owner (this computer's admin here, or signed in from outside). A fleet with a chat
+   * connection: an admin session that is web-verified now (its account confirmed in Discord / Telegram) — the same §3
+   * verdict the rest of web authority uses. A guest, a read-only session, an admin not verified (a device-code or one-time-code
+   * sign-in), the header token: null. `revoke()` ends everyone else's and keeps this session verified.
+   */
+  webAuthorityRevoker(req: IncomingMessage): { handle: string; current(): boolean; revoke(): { epoch: number; durable: boolean; kept: boolean } } | null {
+    if (gatewayRequestContext(req)) return null;
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin") return null;
+    const handle = auth.session.handle, peer = webPeerOf(req);
+    const live = () => {
+      const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      return now.kind === "ok" && now.session.handle === handle && now.session.tier === "admin" ? now.session : null;
+    };
+    const verified = (): boolean => {
+      const session = live();
+      if (!session) return false;
+      if (this.isWebOnlyFleet()) return !!this.liveOwner(req, { hostOnly: false })?.current();
+      const v = this.webAuthority({ session, gateway: false, peer });
+      return !v.refusal && v.authority.kind === "web-verified" && v.authority.session?.handle === handle;
+    };
+    if (!verified()) return null;
+    return { handle, current: verified, revoke: () => { const session = live(); return this.revokeWebAuthority(session ? { session, peer, gateway: false } : undefined); } };
   }
 
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
