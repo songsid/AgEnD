@@ -91,6 +91,8 @@ const ROWS = [
   ["access.authority-hours", "access", "#vaHours", null, "web.verified_authority.max_session_hours", ["authorization hours", "how long", "authority"], ["授權時數", "多久"], L("How long a web authorization lasts", "網頁授權持續多久")],
   ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevoke", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
   // Fleet · Advanced
+  // M-2738 (D4): the running version and Update — #3332's search for "update" found nothing.
+  ["advanced.update", "advanced", ".s-update", null, null, ["update", "upgrade", "version", "new version", "check for updates", "release"], ["更新", "版本", "新版", "檢查更新", "升級"], L("Version and update", "版本與更新")],
   ["advanced.fleet-yaml", "advanced", ".s-dev", null, null, ["fleet.yaml", "yaml", "json", "raw", "edit config"], ["fleet.yaml", "YAML", "設定檔"], L("fleet.yaml (YAML / JSON)", "fleet.yaml（YAML / JSON）")],
   ["advanced.read-only", "advanced", ".s-web-ro", "settings.webReadOnlyTitle", null, ["allowed hosts", "view access", "preview port", "read only", "web settings"], ["allowed hosts", "唯讀", "網頁設定"]],
 ];

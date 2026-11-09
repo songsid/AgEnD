@@ -23,6 +23,7 @@ import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
+import { openUpdateDialog } from "/assets/app-update.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
 import { savePref } from "/assets/app-prefs.js";
@@ -79,7 +80,7 @@ import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
 import { PreviewPanel, claimPanel, openMarkdown, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
-import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
+import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMAND } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
@@ -673,7 +674,9 @@ function Composer({ name, inst, label = name, lease, busy }) {
   const guest = guestPage();
   const app = useStore(appStore);
   const guestAllowed = guest ? (app.instances.find((i) => i.name === name)?.commands ?? []) : null;
-  const palette = files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  const palette0 = files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  // M-2738 (D3): /update is the fleet's, not the agent's: offered (never to a guest) and it opens the app's Update dialog.
+  const palette = palette0 && !guest && UPDATE_COMMAND.name.startsWith(value.slice(1)) ? [...palette0, UPDATE_COMMAND] : palette0;
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
   // (#2478 — a long name's placeholder made the box two lines tall).
@@ -695,6 +698,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
   // #2342: a completion is a step Ctrl+Z goes back from (to what was typed); a command that runs consumes the line.
   const complete = (c) => { recordEdit(input.current); setValue(`/${c.name}${c.arg ? " " : ""}`); };
   const submit = () => {
+    if (!guest && !files.length && isUpdateLine(value)) { setValue(""); openUpdateDialog(); return; }
     if (pick) {
       if (value === `/${pick.name}` && !needsArgument(pick.name)) runLine({ command: pick.name, args: "" });
       else complete(pick);
