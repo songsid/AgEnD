@@ -71,6 +71,8 @@ ClassicBot 跑單一 agent 的私聊或群組，由 `classicBot.yaml` 管理—�
 
 - 能做什麼：在房間裡 `/start` 一個 agent 並跟它聊天。
 - 不能做什麼：不能用 fleet topic 的指令；看不到艦隊；未註冊的聊天除非允許 `/start`，否則保持靜默。
+代房間裡的人委派工作時，會保留請求人、承接 Agent 與 correlation 的對應；收到匹配的結果後，在綁定頻道摘要回報並提及原請求人。不相關的同儕報告、閒聊與 FYI 維持靜默。
+
 - 程式碼：`src/classic-channel-manager.ts`。
 - 相關決議與議題：`docs/permissions.md`。
 

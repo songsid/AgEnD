@@ -127,6 +127,8 @@ A private chat or group where ClassicBot runs a single agent, managed by
 - Can: `/start` an agent in the room and chat with it.
 - Can't: use fleet-topic commands or see the fleet; an unregistered chat stays
   silent unless `/start` is allowed.
+When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
+
 - Code: `src/classic-channel-manager.ts`.
 - Refs: `docs/permissions.md`.
 
