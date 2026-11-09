@@ -120,7 +120,7 @@ describe("#2829 configuration issues", () => {
       .toEqual([["fleet.yaml: fix YAML", "classicBot.yaml: fix YAML"], ["Task asks you"], []]);
     app.appStore.set({ needs: [config("fleet.yaml"), { id: "backend:codex", type: "backend", instance: "", reason: "backend_signin", detail: "Sign in", since: 3 }] });
     await settle(4);
-    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "Fleet sign-ins"]);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "AI accounts"]);
     expect(reqs).toEqual([]);
   });
 });

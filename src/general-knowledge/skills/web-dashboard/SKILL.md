@@ -46,8 +46,11 @@ only. Pages: `/ui` chat, `/ui/fleet`, `/ui/needs`, `/view`, `/settings`.
 
 **The code.** 8 characters shown as `ABCD-EFGH` (case and the dash don't matter), valid 5 minutes, single use; asking
 again replaces it. 5 wrong tries use it up; 20 failures in 15 minutes pause sign-in for 5 minutes ("Too many wrong
-codes — sign-in is paused for a few minutes."). The sign-in page is **Sign in to AgEnD**: field **One-time code**,
-button **Sign in**.
+codes — sign-in is paused for a few minutes."). The sign-in page is **Sign in to AgEnD** (登入 AgEnD): field **One-time code** (一次性裝置登入碼 — in zh-TW
+the dashboard's code is always 裝置登入碼), button **Sign in**. Its hint (S-117): opened on the AgEnD computer itself
+(localhost), it says how to sign in again there — the desktop shortcut **AgEnD 儀表板** on Windows, `agend web` in a
+terminal otherwise; from another device it says `/web` only while a chat is connected (a fleet whose chat is not
+connected yet, or a web-only one, points at `agend web --code` on the AgEnD computer).
 
 **Send me a new code.** On the sign-in page, for a browser that signed in before with a `/web` code (remembered 90
 days). The code arrives by DM. Limits: one a minute and five an hour per browser; fleet-wide one per 20 s, 20 an hour.
@@ -520,13 +523,15 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 
 **Look** — see [Look](#look) for the cards and what they mean.
 
-**Signing a backend in (#2233)** — local admin sessions only (never a guest or the public link): Settings → Agents →
-**Sign-ins** (each backend's login and each credential profile an agent uses: state, **Sign in** / **Sign in again**,
-or the host command / install command where the dashboard cannot), the web `/backend` picker's **Sign in to
-<backend>** on a "not signed in" choice, and Needs you's **Sign in**. The dialog: the pre-check's question (still
-signed in? kiro logs out first; **Use a temporary public link** where allowed), then a device code, or **Open the
-sign-in terminal** + its one-time access code (this browser only, no DM). While it runs every admin page shows
-"Signing in to X (started on <device>)" with **Open**; another browser sees no code and may **Cancel sign-in**. Ends
+**Connecting an AI account (#2233; S-117 wording: 連接 AI 帳號 / 已連接 / 撤銷連接, never "sign in with a device
+code")** — local admin sessions only (never a guest or the public link): Settings → Agents → **AI accounts and API keys** → **Accounts** (each AI
+account connected on this machine and each credential profile an agent uses: state **connected** / **not connected**,
+**Connect account** / **Reconnect**, or the host command / install command where the dashboard cannot), the web
+`/backend` picker's **Connect your <backend> account** on a "not connected" choice, and Needs you's **Connect account**
+(group **AI accounts**). The dialog: the pre-check's question (still connected? kiro disconnects first; **Use a
+temporary public link** where allowed), titled **Connect an AI account: <CLI · account>**, then the provider's link and **authorization code** (授權碼) to finish on the
+provider's official website, or **Open the authorization terminal** + its one-time access code (this browser only, no DM). While it runs every admin page shows
+"Connecting your X account (started on <device>)" with **Open**; another browser sees no code and may **Cancel connecting**. Ends
 when the browser session ends. A missing CLI is not installed here (the dialog says the install command). agy and
 opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`). Default Kiro, Claude Code and Codex
 accounts sign in with named browser controls instead (#2599): Kiro's account method, Start URL and region and Claude's

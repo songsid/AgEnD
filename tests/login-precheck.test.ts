@@ -255,7 +255,7 @@ describe("/login auth pre-check", () => {
     const alert = alertAt(notifyAlert);
     const grok = alert.choices.find(choice => /:grok$/.test(choice.id))!;
     expect(String(grok.label)).toContain("Installed");
-    expect(String(grok.label)).toContain("Auth");
+    expect(String(grok.label)).toContain("Connect");
     // Everything else on offer is an install (#1131).
     expect(alert.choices.filter(choice => choice !== grok).every(choice => String(choice.label).includes("Not installed"))).toBe(true);
   });

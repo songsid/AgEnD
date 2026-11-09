@@ -161,7 +161,7 @@ describe("confirm with the authenticator code (web-only fleet, this computer or 
   it("no authenticator set up: says so and links to Access & security", async () => {
     const c = await withCode({ __status: 200 }, "zh-TW", "not_set_up");
     expect(c.text()).toContain("你目前在這台裝置還無法直接確認這項變更。");
-    expect(c.text()).toContain("請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。");
+    expect(c.text()).toContain("請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數驗證碼。");
     expect((c.p.root.querySelector(".pending-code-setup a") as any).getAttribute("href")).toBe("/settings/access");
   });
 });
