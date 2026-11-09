@@ -1,13 +1,14 @@
 {
-  "case": "main-browser-final",
-  "head": "4d87f3e8beb8c81ae54bb911ec655c7cc562aec1",
+  "case": "main-mature-parent",
+  "head": "5f9ac2771a14c5d72e932d8247191b4e70cee338",
   "commandScript": "scripts/manual/subagent-row/accept.mts",
   "extras": {},
   "exitCode": 0,
-  "trackedPids": 47,
+  "trackedPids": 46,
   "liveOwnedPids": [],
-  "ownedTemp": "/tmp/saqa-oqvc0y9e",
+  "ownedTemp": "/tmp/saqa-i9rp2j8n",
   "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
-  "at": 1794220586.0239754,
-  "ownedTempRemoved": true
+  "at": 1794221640.9746492,
+  "ownedTempRemoved": true,
+  "ownedHomeRemoved": true
 }

@@ -26,7 +26,12 @@ export function observeSubagents(name, { fetcher = fetch, changed, setTimer = se
       const body = await res.json(); if (!live) return;
       if (body?.subagents !== 1 || !Array.isArray(body.runs) || body.runs.length > 16) throw Error("incompatible");
       if (!body.owner) publish({ owner: null, runs: [], error: false });
-      else if (body.status !== "ok") publish({ owner: body.owner, runs: body.owner && body.owner === state.owner ? uncertain(state.runs) : [], error: true });
+      else if (body.status !== "ok") {
+        const prior = body.owner === state.owner && state.runs.length > 0;
+        // Optional evidence is often absent on mature/unsupported transcripts. Do not invent a failure row
+        // before this owner has any proved child work; previously observed work still becomes unconfirmed.
+        publish({ owner: body.owner, runs: prior ? uncertain(state.runs) : [], error: prior });
+      }
       else publish({ owner: body.owner, runs: body.runs, error: false });
     } catch { if (live) publish({ ...state, runs: uncertain(state.runs), error: true }); }
     finally { busy = false; abort = null; if (!denied) schedule(); }

@@ -42,6 +42,15 @@ describe("bounded optional sub-Agent filesystem observation",()=>{
   await writeFile(join(source.root,source.sessionId,"subagents/agent-ab5b36ac3f402d58b.meta.json"),'{');
   expect((await s.read("dev")).runs.map(r=>r.state)).toEqual(["unknown","completed"]);
  });
+ it.each(["claude-code", "codex"] as const)("reads recent %s launch evidence from a mature parent without reading the whole file",async backend=>{
+  const {source:old}=await rig(),f=subagentFixture(backend),root=join(old.root,"mature"),day=backend==="codex"?join(root,"2026/11/09"):root;await mkdir(day,{recursive:true});
+  const path=join(day,backend==="codex"?`rollout-2026-11-09T15-18-16-${f.sessionId}.jsonl`:f.sessionId+".jsonl");
+  const noise=JSON.stringify({padding:"x".repeat(4096)})+"\n",parent=JSON.stringify(f.parent[0])+"\n"+noise.repeat(800)+f.parent.map(r=>JSON.stringify(r)).join("\n")+"\n";await writeFile(path,parent);
+  expect(await readSubagentFile(root,path)).toBeNull();const tail=await readSubagentFile(root,path,2*1024*1024,true);expect(Buffer.byteLength(tail!)).toBeLessThanOrEqual(2*1024*1024);expect(tail).toContain(f.sessionId);
+  for(const[id,c]of f.children){const child=backend==="codex"?join(day,`rollout-2026-11-09T15-18-36-${id}`):join(root,f.sessionId,"subagents",`agent-${id}`);await mkdir(join(child,".."),{recursive:true});await writeFile(child+".jsonl",c.records.map(r=>JSON.stringify(r)).join("\n")+"\n");if(c.meta)await writeFile(child+".meta.json",JSON.stringify(c.meta));}
+  const source={...old,backend:f.backend,root,path,sessionId:f.sessionId,cwd:f.cwd};vi.useFakeTimers();expect((await new SubagentService(()=>source,readSubagentFile,()=>f.now).read("dev")).runs.map(r=>r.state)).toEqual(["completed","completed"]);
+  await writeFile(path,JSON.stringify(f.parent[0])+"\n"+noise.repeat(800));expect((await new SubagentService(()=>source,readSubagentFile,()=>f.now).read("dev")).runs).toEqual([]);
+ });
  it("drops disclosure if the launch owner changes during an awaited read",async()=>{
   const {source}=await rig(); let current:SubagentSource|null=source;const hold=deferred<string|null>();const entered=deferred<void>();
   const s=new SubagentService(()=>current,async()=>{entered.resolve();return hold.promise;});

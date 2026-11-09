@@ -11,21 +11,35 @@ let physicalReads = 0;
 const MAX_PHYSICAL = 2;
 const stamp = (s: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }) => [s.dev, s.ino, s.size, s.mtimeMs, s.ctimeMs].join(":");
 const inside = (root: string, path: string) => { const p = relative(root, path); return p !== "" && !p.startsWith(".." + sep) && p !== ".." && !p.startsWith(sep); };
-export async function readSubagentFile(root: string, file: string, max = SUBAGENT_READ_BYTES): Promise<string | null> {
+export async function readSubagentFile(root: string, file: string, max = SUBAGENT_READ_BYTES, parentTail = false): Promise<string | null> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     const base = await realpath(root), path = resolve(file), expected = resolve(base, relative(resolve(root), path));
     if (!inside(resolve(root), path) || !inside(base, expected) || await realpath(path) !== expected) return null;
     const before = await lstat(path);
-    if (!before.isFile() || before.size > max) return null;
+    if (!before.isFile() || (before.size > max && !parentTail)) return null;
     handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const admitted = await handle.stat();
     if (stamp(before) !== stamp(admitted) || await realpath(path) !== expected) return null;
-    const buffer = Buffer.alloc(Math.min(max + 1, before.size + 1));
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead > max || bytesRead !== before.size || stamp(await handle.stat()) !== stamp(before)
-      || stamp(await lstat(path)) !== stamp(before) || await realpath(path) !== expected) return null;
-    return buffer.subarray(0, bytesRead).toString("utf8");
+    let text: string;
+    if (before.size > max) {
+      // Parent sessions can live for months. Retain the first complete metadata record and a bounded recent
+      // window, starting after a newline; never parse an arbitrary partial JSON/UTF-8 prefix as a record.
+      const head = Buffer.alloc(Math.min(128001, Math.floor(max / 4))), tail = Buffer.alloc(max - head.length);
+      if (head.length < 1 || (await handle.read(head, 0, head.length, 0)).bytesRead !== head.length
+        || (await handle.read(tail, 0, tail.length, before.size - tail.length)).bytesRead !== tail.length) return null;
+      const first = head.indexOf(10), boundary = tail.indexOf(10);
+      if (first < 0 || boundary < 0) return null;
+      text = Buffer.concat([head.subarray(0, first + 1), tail.subarray(boundary + 1)]).toString("utf8");
+    } else {
+      const buffer = Buffer.alloc(Math.min(max + 1, before.size + 1));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      if (bytesRead > max || bytesRead !== before.size) return null;
+      text = buffer.subarray(0, bytesRead).toString("utf8");
+    }
+    if (stamp(await handle.stat()) !== stamp(before) || stamp(await lstat(path)) !== stamp(before)
+      || await realpath(path) !== expected) return null;
+    return text;
   } catch { return null; }
   finally { if (handle) await handle.close(); }
 }
@@ -64,7 +78,7 @@ export class SubagentService {
     const current = () => { const s = this.source(name); return s !== null && identity(s) === id; };
     const run = async (): Promise<SubagentAnswer> => {
       try {
-        const parent = jsonl(await this.readFile(source.root, source.path));
+        const parent = jsonl(await this.readFile(source.root, source.path, SUBAGENT_READ_BYTES, true));
         if (!current()) return empty();
         if (!parent) return { subagents: 1, owner: token(id), status: "unavailable", runs: [] };
         const input = { backend: source.backend, sessionId: source.sessionId, cwd: source.cwd, parent };
