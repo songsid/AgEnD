@@ -1,0 +1,38 @@
+{
+  "base": "e5bef1cb2c21d57f8397cd592958340445202b6c",
+  "sourceCommit": "0ec0be8bde5393b8344a408196d91495128a0048",
+  "focused": {
+    "numTotalTests": 155,
+    "numPassedTests": 155,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "changelog-fragments.test.ts",
+    "i18n-ui-literals-2390.test.ts",
+    "named-link-test-2906.test.ts",
+    "settings-control-ui-1423.test.ts",
+    "ui-css-literals-ratchet.test.ts",
+    "web-confirm-1408.test.ts",
+    "web-pending-hub-summary-3511.test.ts"
+  ],
+  "types": {
+    "source": "PASS",
+    "tests": "PASS"
+  },
+  "failFirst": {
+    "failed": 2,
+    "total": 5
+  },
+  "reversals": {
+    "assertionCaught": 4,
+    "restored": true
+  },
+  "displayFixture": {
+    "cases": 8,
+    "checks": 17,
+    "png": 8,
+    "scope": "Synthetic client-store pending row in real main Settings\u2192Advanced shell. No main company-join backend/API/authority claimed. No API reply stubs."
+  },
+  "visual": "All8 main fixture images reviewed; full target and scope, readable EN/zh, no new clipping/overflow/blankframes."
+}

@@ -1,6 +1,6 @@
-/** M-2779 main twin: display-only shared component fixture in the real main Settings shell. Actual Fleet Settings and its Settings confirmation gate, no Hub request until local approval.
- * REPO=$PWD OUT=<owned-output> PW_DIR=<private-playwright> CHROME=<binary> node --import tsx <this-file>
- * MATRIX=full default. The timeout leg advances only the browser clock, never the server authorization deadline.
+/** Main twin: synthetic shared confirmation display in the real Settings→Advanced shell.
+ * No main Hub backend, proposal, confirmation authority or action is exercised.
+ * Set REPO, OUT, PW_DIR, CHROME, FONTCONFIG_FILE and MATRIX.
  */
 import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,chmodSync,rmSync,existsSync} from "node:fs";
 import {resolve,join,dirname} from "node:path";

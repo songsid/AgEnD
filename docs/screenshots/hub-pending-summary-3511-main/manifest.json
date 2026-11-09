@@ -1,0 +1,59 @@
+{
+  "abf61075a093d199532eb980959c197f03565304498d160c119308ddaee72016": [
+    "changes/3511-hub-confirmation-summary.md"
+  ],
+  "0147214ff2d69a5b6c70f4cb78d5811c11c75f570d81e95936d03cd60492899e": [
+    "changes/3511-hub-confirmation-summary.zh-TW.md"
+  ],
+  "abbe2e8223e0f07becacf484578ad2e911679b64ef5debab2861a14b96a3250f": [
+    "docs/screenshots/hub-pending-summary-3511-main/README.md"
+  ],
+  "11073788dde3e61a7b7ca01ccc8f1e44f5182ab4a5a8ce3c81a941c82fe476e9": [
+    "docs/screenshots/hub-pending-summary-3511-main/checks.json"
+  ],
+  "80f9e1fdcfd9d0e133a40f055e870b579a521a495e608ce7638b833ca722c910": [
+    "docs/screenshots/hub-pending-summary-3511-main/desk-light-en-after.png"
+  ],
+  "48eba8be559c31dc5ed0061c49f6d1354b04b0d3442c4d82c233f8fb54564298": [
+    "docs/screenshots/hub-pending-summary-3511-main/desk-light-en-before.png"
+  ],
+  "a26d214185c9587a63a838ef82dc138164b9fe22ca1c39101c87eecafc69b8fc": [
+    "docs/screenshots/hub-pending-summary-3511-main/desk-light-zh-TW-after.png"
+  ],
+  "86a90a560d53cb5e7553ae80145b6a9c73f9afae4da75be54e8eb8630376972d": [
+    "docs/screenshots/hub-pending-summary-3511-main/desk-light-zh-TW-before.png"
+  ],
+  "7e6e2bef601dafcf037c05c968919fbd9a53e61d1590e6627faacce8cdb035e1": [
+    "docs/screenshots/hub-pending-summary-3511-main/phone-dark-en-after.png"
+  ],
+  "60505bc58ca8b09e0ac2789860a280a43c3962c2d7146128581973f09a1650c8": [
+    "docs/screenshots/hub-pending-summary-3511-main/phone-dark-en-before.png"
+  ],
+  "53c05c033e8ff27e75620c2e8e56843e90253f42bb3faa83378c3508c5e9d5f3": [
+    "docs/screenshots/hub-pending-summary-3511-main/phone-dark-zh-TW-after.png"
+  ],
+  "d198530686fa22ad50c7f3a9ccb42b25c5affc8fa1f2ffa6ce15242d7948153d": [
+    "docs/screenshots/hub-pending-summary-3511-main/phone-dark-zh-TW-before.png"
+  ],
+  "c4f63a8a032115695412d19a4760a0b779e0ce52932f49075818f929688fa50d": [
+    "docs/screenshots/hub-pending-summary-3511-main/receipt.json"
+  ],
+  "543e95be6b7be330828e4f7dddc84394636dab39acf7c7f0b7452303bc4e1a37": [
+    "docs/screenshots/hub-pending-summary-3511-main/reversals.json"
+  ],
+  "aca0cf737c0cd10491d75a68caf1cd30d541f1ebb9443e55e8110314fd249145": [
+    "scripts/manual/hub-p3s-m2779/main.mts"
+  ],
+  "4eddaef45b467fb7e13750c897d1198c6c8fac5aacccf4a660b2215fe6e056cc": [
+    "scripts/manual/hub-p3s-m2779/verify.mjs"
+  ],
+  "38e52864fc81394dbd993e333efc80f16d3ef8467fc69ce82cee1a1efd2aeb76": [
+    "src/ui/shared/app-shell.js"
+  ],
+  "04f22f73fac164ce9882e39a6693043b50a9a858fc0d40e86de8f301a74c7d4d": [
+    "tests/named-link-test-2906.test.ts"
+  ],
+  "d0f22f84cb58841ceeba7aec27592d81e661154a2bd046a1ab2403e015b9bf75": [
+    "tests/web-pending-hub-summary-3511.test.ts"
+  ]
+}
