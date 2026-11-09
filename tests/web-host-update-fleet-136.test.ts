@@ -124,7 +124,17 @@ describe("startWebInstall — update", () => {
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
-  it("a CLI that is not installed is refused as not_installed; one that updates itself, or that is not a CLI, as unsupported", async () => {
+  it("a CLI that sits only in its installer's directory (~/.grok/bin, not on any PATH) is installed: the update starts, as the Accounts page said it could", async () => {
+    writeGrok("1.0.70");                                    // in ~/.grok/bin …
+    rmSync(join(home, ".bash_profile"));                    // … which no login shell adds to PATH here
+    const { fm, reporter } = fleet();
+    const update = vi.fn<(from: string | null, target: string) => void>();
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
+    expect(fakeSessions).toHaveLength(1);
+  });
+  it("a CLI that is not installed anywhere is refused as not_installed; one that updates itself, or that is not a CLI, as unsupported", async () => {
+    rmSync(join(profileBin, "grok"));                       // not in the installer's directory, not on any PATH
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("grok", reporter(), "update")).toEqual({ refused: "not_installed" });
     for (const backend of ["antigravity", "muse", "rm -rf /", "gemini"]) expect(await fm.startWebInstall(backend, reporter(), "update"), backend).toEqual({ refused: "unsupported" });

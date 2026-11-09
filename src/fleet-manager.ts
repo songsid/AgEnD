@@ -22204,7 +22204,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
     const present = await checkBinaryInstalledAsync(base.binary);
     if (mode === "install" && present) { this.loginWindow.release(claim); return { refused: "already" }; }
-    if (mode === "update" && !present) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
+    // An update needs the CLI where the Accounts page found it: on the fleet's PATH, else (a fresh login shell, then) the installer's own directories (~/.grok/bin, ~/.opencode/bin …).
+    if (mode === "update" && !present && !(await this.locateInstalledCli(backend, base.binary).catch(() => null))) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
     let versionBefore: string | null = null;
     if (plan) {
       // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
