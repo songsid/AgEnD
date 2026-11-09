@@ -55,7 +55,11 @@ describe("fixed build-time source provenance", () => {
     f.git("add", "package.json"); f.git("commit", "-qm", "manifest"); f.git("tag", "v2.3.5-alpha.9");
     expect(builder.buildProvenance(f.root)).toMatchObject({ ref: "v2.3.5-alpha.9", channel: "release", modified: false });
     // What publish.yml does: `npm pkg set version=<tag>` — the version field only, rewritten in place.
-    execFileSync("npm", ["pkg", "set", "version=2.3.5-alpha.9"], { cwd: f.root, timeout: 20000, env: { ...process.env, npm_config_userconfig: "/dev/null" } });
+    // npm's own cache and config live outside the fixture (the fixture's HOME is its git root: npm's default ~/.npm
+    // would be an untracked directory in it), and never come from the caller's environment (#3489 review).
+    const npmEnv: NodeJS.ProcessEnv = { ...process.env, npm_config_userconfig: "/dev/null", npm_config_cache: scratch() };
+    for (const key of Object.keys(npmEnv)) if (/^npm_config_(?!userconfig$|cache$)/i.test(key)) delete npmEnv[key];
+    execFileSync("npm", ["pkg", "set", "version=2.3.5-alpha.9"], { cwd: f.root, timeout: 20000, env: npmEnv });
     expect(f.git("status", "--porcelain")).toBe(" M package.json\n");
     expect(readFileSync(join(f.root, "package.json"), "utf8").indexOf('"ws"')).toBeLessThan(readFileSync(join(f.root, "package.json"), "utf8").indexOf('"yaml"'));   // npm re-sorted them
     expect(builder.buildProvenance(f.root).modified).toBe(false);
