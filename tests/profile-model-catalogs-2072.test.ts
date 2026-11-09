@@ -165,7 +165,7 @@ describe("part 3: the catalog a Settings model field offers", () => {
     const fm = await makeFleet({ onwork: profiled("work"), plain: { backend: "claude-code" } });
     expect(fm.modelCatalogFor("claude-code", null).map((m: any) => m.id)).toEqual(["opus", "claude-default-1"]);
     expect(fm.modelCatalogFor("claude-code", "onwork").map((m: any) => m.id)).toEqual(["opus", "claude-work-1"]);
-    expect(fm.modelCatalogFor("claude-code", "no-such-instance").map((m: any) => m.id)).toEqual(["opus", "claude-default-1"]);
+    expect(fm.modelCatalogFor("claude-code", "no-such-instance").map((m: any) => m.id)).toEqual([]);
     expect(fm.modelCatalogFor("not-a-backend", null)).toEqual([]);
     expect(fm.modelCatalogFor("mock", null)).toEqual([]);
     expect(fm.modelCatalogFor("codex", null)).toEqual([]);                 // nothing cached: an empty list, not a probe

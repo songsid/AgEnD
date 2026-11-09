@@ -60,7 +60,7 @@ describe("the pickers on a page", () => {
     D = await import("/ui/js/settings-dialogs.js"); P = await import("/assets/app-html.js"); C = await import("/ui/js/settings-catalog.js");
   });
   afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
-  beforeEach(async () => { await p.unmount(); requests = []; C.forgetCatalogs(); });
+  beforeEach(async () => { await p.unmount(); requests = []; C.forgetCatalogs(); (await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs(); });
 
   it("a model field lists the instance's catalog, keeps the current model, and Other… opens a box", async () => {
     let value = "claude-legacy-9";
@@ -100,7 +100,7 @@ describe("the pickers on a page", () => {
     expect(asked()).toBe(1);                                    // still fresh: no request
     await p.unmount(); clock += 2_000; await p.mount(h(Two, {})); await settle(8);
     expect(asked()).toBe(2);                                    // past 30 s: asked again
-    await p.unmount(); C.forgetCatalogs(); await p.mount(h(Two, {})); await settle(8);
+    await p.unmount(); C.forgetCatalogs(); (await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs(); await p.mount(h(Two, {})); await settle(8);
     expect(asked()).toBe(3);
     now.mockRestore();
   });

@@ -18,13 +18,14 @@ import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
-import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
+import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
+import { ModelRefresh, useRefreshableModels } from "./model-picker.js";
 import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
 /** M-2446: Codex speed choices (backend_options.codex.speed); "" = unset. Local, not imported: a stale tab may keep an
  *  older settings-model.js, and a new named import would fail this module's load. */
@@ -67,7 +68,8 @@ export function BackendSelect({ value, onChange, disabled, id }) {
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
 export function ModelSelect({ value, onChange, disabled, id, backend, instance, inherit }) {
-  const catalog = useModelCatalog(backend, instance);
+  const state = useRefreshableModels(backend, instance);
+  const catalog = state.models;
   const [typing, setTyping] = useState(false);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   return html`<div class="model-pick">
@@ -75,7 +77,8 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
-      value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}</div>`;
+      value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
+    <${ModelRefresh} state=${state} disabled=${disabled} /></div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark }) {

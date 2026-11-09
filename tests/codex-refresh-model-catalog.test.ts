@@ -95,6 +95,41 @@ describe("CodexBackend.refreshModelCatalog", () => {
     expect((await backend.listModels()).map(m => m.id)).toContain("gpt-6-astra");
   });
 
+  it("explicit rediscovery uses the requested named account and reads the same home", async () => {
+    stubCodex("refetch"); const home = join(root, "profile"); mkdirSync(home);
+    const backend = new CodexBackend(join(root, "instance"));
+    const config = { instanceDir: join(root, "instance"), instanceName: "w", workingDirectory: root, mcpServers: {}, credentialStoreHome: home };
+    await backend.refreshModelCatalog(config);
+    expect(recorded()[0].home).toBe(home); expect((await backend.listModels(config)).map(m => m.id)).toContain("gpt-6-astra");
+    expect(JSON.parse(readFileSync(join(shared, "models_cache.json"), "utf8")).models).toHaveLength(1);
+  });
+  it("explicit provider discovery refuses a table-scoped lookalike or unproved profile before launching", async () => {
+    stubCodex("refetch"); const backend = new CodexBackend(join(root, "instance")); const home = (backend as any).isolatedCodexHome;
+    mkdirSync(home, { recursive: true }); writeFileSync(join(home, "config.toml"), '[x]\nmodel_provider = "own"\n');
+    const config = { instanceDir: join(root, "instance"), instanceName: "w", workingDirectory: root, mcpServers: {}, backendOptions: { provider: "own" } };
+    await expect(backend.refreshModelCatalog(config)).rejects.toThrow(); expect(recorded()).toEqual([]);
+    writeFileSync(join(home, "config.toml"), 'model_provider = "own"\n');
+    await expect(backend.refreshModelCatalog({ ...config, credentialStoreHome: join(root, "profile") })).rejects.toThrow(); expect(recorded()).toEqual([]);
+    // A missing/corrupt provider cache is unavailable, never the default provider's documented fallback.
+    writeFileSync(join(home, "models_cache.json"), "invalid"); expect(await backend.listModels(config)).toEqual([]);
+  });
+  it("explicit default discovery ignores a previous instance's custom-provider cache", async () => {
+    stubCodex("refetch"); const backend = new CodexBackend(join(root, "instance")); const home = (backend as any).isolatedCodexHome;
+    mkdirSync(home, { recursive: true }); writeFileSync(join(home, "models_cache.json"), catalog("foreign-private"));
+    writeFileSync(join(home, "config.toml"), 'model_provider = "foreign"\n');
+    const config = { instanceDir: join(root, "instance"), instanceName: "w", workingDirectory: root, mcpServers: {} };
+    await backend.refreshModelCatalog(config); expect(recorded()[0].home).toBe(shared);
+    expect((await backend.listModels(config)).map(m => m.id)).not.toContain("foreign-private");
+  });
+
+  it("ordinary Codex probes retain the documented fallback; explicit discovery cannot call it fresh", async () => {
+    stubCodex("fail"); rmSync(join(shared, "models_cache.json"));
+    const backend = new CodexBackend(join(root, "instance"));
+    const config = { instanceDir: join(root, "instance"), instanceName: "w", workingDirectory: root, mcpServers: {} };
+    expect((await backend.probeCLIEnv(config)).models.length).toBeGreaterThan(0);
+    expect((await backend.probeCLIEnv({ ...config, catalogDiscovery: true } as any)).models).toEqual([]);
+  });
+
   it("fails loudly when codex cannot fetch, so a stale list is not called fresh", async () => {
     stubCodex("fail");
     await expect(new CodexBackend(join(root, "instance")).refreshModelCatalog()).rejects.toThrow();
