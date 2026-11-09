@@ -4,8 +4,9 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
-import { RuntimeClient, describeRuntimeStop, pairRuntime, rotateRuntimeCredentials } from "./runtime-client.js";
-import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-store.js";
+import { RuntimeClient, describeEnrollRefusal, describeRuntimeStop, enrollRuntime, pairRuntime, rotateRuntimeCredentials } from "./runtime-client.js";
+import { RUNTIME_ENROLL_TOKEN_PATTERN, RUNTIME_SERVER_FINGERPRINT_PATTERN } from "./runtime-protocol.js";
+import { RuntimeClientStore, RuntimeProfileInUseError, validateRuntimeServer } from "./runtime-client-store.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
 import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, runtimeServerProfile } from "./runtime-connection.js";
@@ -18,13 +19,22 @@ import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
 import { createRuntimeProfile, isCreatedProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
+import { RUNTIME_BACKGROUND_ENV, readRuntimeInstance } from "./runtime-background.js";
+import { launchInBackground, manageBackground, removeAutostartForDisconnect, runBackgroundInstance, runtimeCommandName, stopForDisconnect, type BackgroundContext, type BackgroundSeams } from "./runtime-cli-background.js";
 
 const HELP = `AgEnD native Windows runtime
 
   agend-runtime --version
-  agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY] [--credential-profile NAME]
+  agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
+  agend-runtime connect --connection-dir DIRECTORY [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
+  <one-time token> | agend-runtime connect (--server URL | --connection-dir DIRECTORY) --enroll-stdin --server-fingerprint SHA256HEX [--name NAME] [--profile DIRECTORY] [--foreground]
+  agend-runtime start [--profile DIRECTORY]
   agend-runtime run [--profile DIRECTORY]
-  agend-runtime status [--profile DIRECTORY]
+  agend-runtime status [--profile DIRECTORY|NAME] [--json]
+  agend-runtime stop [--profile DIRECTORY|NAME] [--all]
+  agend-runtime restart [--profile DIRECTORY|NAME] [--all]
+  agend-runtime logs [--profile DIRECTORY|NAME] [--tail N]
+  agend-runtime autostart [enable | disable | status] [--profile DIRECTORY|NAME]
   agend-runtime rotate [--profile DIRECTORY]
   agend-runtime disconnect [--profile DIRECTORY]
   agend-runtime login claude-code NAME [--profile DIRECTORY]
@@ -33,11 +43,25 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime remote-setup status [--profile DIRECTORY]
   agend-runtime remote-setup (accounts | install) (on | off) [--for 2h] [--profile DIRECTORY]
 
-connect asks for a one-time pairing code, waits for approval in AgEnD, then runs in the foreground.
+connect asks for a one-time pairing code, waits for approval in AgEnD, then moves the Runtime to the background and ends: the Runtime keeps running
+with no window, so closing this one does not disconnect it. Pairing code, fingerprint and approval always happen here, in this window, before that.
+With --foreground the Runtime stays in this window instead (Ctrl+C stops it). One Runtime runs per profile; starting a second one says it is already running.
+With --enroll-stdin it takes the one-time install-command token from standard input instead (never from arguments, never from the keyboard, never kept):
+it first checks that the server is the AgEnD whose fingerprint --server-fingerprint names, sends the token only then, and needs no pairing code and
+no approval step. It works without a console, for an AI agent or CI. A profile that is already connected to this AgEnD just reconnects and the token is not used.
 Connection-ready downloads include the server address; double-click connect-agend.bat to connect or reconnect.
-run reconnects an existing profile. Press Ctrl+C to stop. disconnect forgets a stopped local profile;
+The one-line installer leaves the same connect-agend.bat beside an agend-server.json under <install folder>\connect\<server>; it passes that
+folder as --connection-dir, which picks the profile exactly as the ZIP's connect-agend.bat does (--connection-dir and --server are exclusive).
+start launches the background Runtime of an already paired profile (this is what the sign-in task runs). run reconnects an existing profile and stays in this window; Ctrl+C stops it.
+status lists every profile on this computer (state, process, AgEnD address, autostart, log folder); --json prints the same for a program to read.
+stop ends a background Runtime the way Ctrl+C ends one in a window; with several running, name one (--profile takes a folder or a profile name that status shows) or use --all.
+restart stops it and starts it again with the installed version (use it after an update). logs prints the end of the profile's log, kept under
+%LOCALAPPDATA%\agend-runtime\logs\<profile> (a few megabytes at most, older files rotate out).
+autostart: by default the first background connect adds a Task Scheduler task for your own Windows account that runs start when you sign in. It needs no
+administrator rights and is not a Windows service. autostart disable removes it, and it stays off for that profile until you enable it again.
+disconnect stops a background Runtime of that profile, forgets the local profile connection and removes its sign-in task;
 revoke the machine in AgEnD Settings to invalidate its credential centrally.
-rotate replaces a stopped profile's machine credential without pairing again. Stop run/connect first.
+rotate replaces a stopped profile's machine credential without pairing again. Stop the Runtime first (agend-runtime stop).
 HTTP is accepted only for loopback, for example an SSH-forwarded localhost endpoint.
 CLI login, workspaces and devices stay on this computer. No CLI login data is uploaded.
 
@@ -59,12 +83,25 @@ async function lockProfile(store: RuntimeClientStore, name: string): Promise<() 
   return store.lock(name, systemBootId, await reusedRuntimeLockPid(store.lockHolder()));
 }
 export interface RuntimeMainOptions {
-  /** Folder holding agend-server.json; defaults to the extracted Runtime folder. */ programDirectory?: string; home?: string; env?: NodeJS.ProcessEnv;
+  /** Folder holding agend-server.json; defaults to the extracted Runtime folder. `--connection-dir` overrides it. */ programDirectory?: string; home?: string; env?: NodeJS.ProcessEnv;
   /** Test seams: whether a profile folder is signed in, and the interactive `claude auth login`. Production asks the Windows CLI itself. */
   probeLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
   /** Test seam for the same check with the account in it. Wins over `probeLogin`. */
   probeStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
   runLogin?: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<number>;
+  /** Test seam: where `--enroll-stdin` reads the one-time token. Production reads standard input. */
+  stdin?: AsyncIterable<string | Buffer> & { isTTY?: boolean };
+  /** Test seams for running in the background (the detached launcher, the Task Scheduler, the profile lock's proof). Production uses the real ones. */
+  background?: BackgroundSeams;
+}
+/** Reads the one-time token from a pipe, once, at most a few hundred bytes. It is never echoed, logged or written, and a refusal does not quote what was read. */
+async function readEnrollToken(stream: AsyncIterable<string | Buffer> & { isTTY?: boolean }): Promise<string> {
+  if (stream.isTTY) throw new Error("--enroll-stdin reads the one-time token from a pipe, not from the keyboard. Paste the install command from AgEnD Settings -> Runtime -> Connect a computer instead, or use the pairing-code route (connect without --enroll-stdin).");
+  let text = "";
+  for await (const chunk of stream) { text += typeof chunk === "string" ? chunk : chunk.toString("utf8"); if (text.length > 512) throw new Error(describeEnrollRefusal("invalid")); }
+  const token = text.replace(/^\uFEFF/, "").trim();
+  if (!RUNTIME_ENROLL_TOKEN_PATTERN.test(token)) throw new Error(describeEnrollRefusal("invalid"));
+  return token;
 }
 function interactiveLogin(executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((done, fail) => {
@@ -95,23 +132,60 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if (argv.length === 1 && argv[0] === "--version") { process.stdout.write(`${JSON.stringify(readRuntimeInfo(), null, 2)}\n`); return; }
   if (!argv.length || argv.includes("--help") || argv[0] === "help") { process.stdout.write(HELP); return; }
   const [command, ...args] = argv;
-  if (!["connect", "run", "status", "disconnect", "rotate", "profile", "login", "remote-setup"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
-  const flags: Record<string, string> = {}, positional: string[] = [], takesNames = command === "profile" || command === "login" || command === "remote-setup";
+  if (!["connect", "run", "start", "status", "stop", "restart", "logs", "autostart", "disconnect", "rotate", "profile", "login", "remote-setup"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
+  const flags: Record<string, string> = {}, positional: string[] = [], takesNames = command === "profile" || command === "login" || command === "remote-setup" || command === "autostart";
   for (let index = 0; index < args.length;) {
     const key = args[index];
     if (takesNames && key === "--clear" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
-    if (takesNames && !key.startsWith("--") && positional.length < (command === "remote-setup" ? 2 : 2)) { positional.push(key); index++; continue; }
+    if (command === "connect" && key === "--enroll-stdin" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
+    if (command === "connect" && key === "--foreground" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
+    if (command === "status" && key === "--json" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
+    if ((command === "stop" || command === "restart") && key === "--all" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
+    if (takesNames && !key.startsWith("--") && positional.length < (command === "remote-setup" || command === "profile" || command === "login" ? 2 : 1)) { positional.push(key); index++; continue; }
     const value = args[index + 1];
-    if (!["--server", "--name", "--profile", "--credential-profile", ...(command === "remote-setup" ? ["--for"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
+    if (!["--server", "--name", "--profile", "--credential-profile", "--connection-dir", "--server-fingerprint", ...(command === "remote-setup" ? ["--for"] : []), ...(command === "logs" ? ["--tail"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
     flags[key] = value; index += 2;
   }
   if (command !== "connect" && (flags["--server"] || flags["--name"])) throw new Error("--server and --name are used only by connect");
+  if (command !== "connect" && (flags["--enroll-stdin"] || flags["--server-fingerprint"])) throw new Error("--enroll-stdin and --server-fingerprint are used only by connect");
+  if ((flags["--enroll-stdin"] !== undefined) !== (flags["--server-fingerprint"] !== undefined)) throw new Error("--enroll-stdin and --server-fingerprint go together: the one-time token comes on standard input and the server fingerprint names the AgEnD it may be sent to.");
+  if (flags["--server-fingerprint"] !== undefined && !RUNTIME_SERVER_FINGERPRINT_PATTERN.test(flags["--server-fingerprint"])) throw new Error("--server-fingerprint is the AgEnD server fingerprint from the install command: 64 hexadecimal characters.");
   if (command !== "connect" && flags["--credential-profile"]) throw new Error("--credential-profile is used only by connect; use profile default NAME to change it later");
+  if (flags["--connection-dir"] !== undefined && flags["--server"] !== undefined) throw new Error("--connection-dir and --server cannot be used together: the folder's agend-server.json is the address.");
   const explicitProfile = flags["--profile"] || env.AGEND_RUNTIME_HOME;
   const defaultProfile = resolve(join(home, ".agend-runtime"));
   let bundledServer: string | undefined;
   // Only connect needs a valid bundled address; run/status/rotate/disconnect just use it to find the same profile.
-  if (!flags["--server"]) { try { bundledServer = readBundledRuntimeServer(options.programDirectory); } catch (error) { if (command === "connect") throw error; } }
+  if (!flags["--server"]) {
+    try {
+      bundledServer = readBundledRuntimeServer(flags["--connection-dir"] === undefined ? options.programDirectory : resolve(flags["--connection-dir"]));
+      // A folder named on purpose must hold an address; falling back to the stored one would connect somewhere the caller did not choose.
+      if (flags["--connection-dir"] !== undefined && bundledServer === undefined) throw new Error("No agend-server.json in the --connection-dir folder. Use connect --server https://your-agend-host instead.");
+    } catch (error) { if (command === "connect" || flags["--connection-dir"] !== undefined) throw error; }
+  }
+  if (flags["--tail"] !== undefined && (!/^\d{1,5}$/.test(flags["--tail"]) || Number(flags["--tail"]) < 1)) throw new Error("--tail takes a number of lines, for example --tail 100");
+  const context: BackgroundContext = { env, home, cliPath: options.background?.cliPath ?? fileURLToPath(import.meta.url), execPath: process.execPath, seams: options.background ?? {}, write: text => { process.stdout.write(text); } };
+  if (command === "status" || command === "stop" || command === "restart" || command === "logs" || command === "autostart") {
+    const action = positional[0];
+    if (command === "autostart" && (positional.length > 1 || (action !== undefined && !["enable", "disable", "status"].includes(action)) || flags["--clear"] !== undefined)) throw new Error("Usage: agend-runtime autostart [enable | disable | status] [--profile DIRECTORY|NAME]");
+    if (flags["--all"] !== undefined && flags["--profile"]) throw new Error("--all and --profile cannot be used together");
+    // --all means every Runtime that runs here; an AGEND_RUNTIME_HOME left in the environment does not narrow it.
+    const chosenProfile = flags["--all"] !== undefined ? undefined : explicitProfile;
+    const describe = (target: RuntimeClientStore) => {
+      const root = credentialProfilesRoot(target.directory);
+      try {
+        const credentials = target.credentials();
+        let credentialProfile: string | undefined; try { credentialProfile = target.credentialDefault(); } catch { /* status must still report the rest */ }
+        return { profile: target.directory, paired: !!credentials, ...(credentials ? { server: credentials.server, machineId: credentials.machineId, name: credentials.name } : {}),
+          credentialProfiles: redactedReport(credentialProfileReport(root, credentialProfile, name => isCreatedProfile(root, "claude-code", name))),
+          rotationPending: !!credentials?.pendingCredential, blocked: target.blocked(), jobs: target.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) };
+      } catch (error) { return { profile: target.directory, paired: false, blocked: false, error: error instanceof Error ? error.message : "This profile could not be read" }; }
+    };
+    const connectionProfile = !chosenProfile && flags["--connection-dir"] !== undefined ? chooseRuntimeProfile(defaultProfile, bundledServer, false).directory : undefined;
+    await manageBackground(context, { command, selection: { ...(chosenProfile ? { explicit: chosenProfile } : {}), ...(connectionProfile ? { connectionProfile } : {}) }, all: flags["--all"] !== undefined,
+      ...(flags["--tail"] !== undefined ? { tail: Number(flags["--tail"]) } : {}), ...(action ? { action } : {}), openStore: directory => new RuntimeClientStore(resolve(directory)), describe, json: flags["--json"] !== undefined, runtimeInfo: readRuntimeInfo() });
+    return;
+  }
   // Without an explicit profile, a bundled server that differs from the default profile's pairing gets its own profile under it.
   const choice = explicitProfile ? undefined : chooseRuntimeProfile(defaultProfile, bundledServer, command === "connect");
   const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
@@ -223,18 +297,13 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     process.stdout.write(`Default credential profile for this pairing: ${name}.${before && before !== name ? ` (was ${before}; a conversation started under another account cannot be resumed under this one.)` : ""}\nA running Runtime uses it from the next run or new terminal; a terminal that is already open keeps the profile it started with.\n`);
     return;
   }
-  if (command === "status") {
-    const credentials = store.credentials();
-    let credentialProfile: string | undefined; try { credentialProfile = store.credentialDefault(); } catch { /* status must still report the rest */ }
-    process.stdout.write(`${JSON.stringify({ runtimeInfo: readRuntimeInfo(), profile: store.directory, paired: !!credentials, ...(credentials ? { server: credentials.server, machineId: credentials.machineId, name: credentials.name } : {}),
-      credentialProfiles: redactedReport(credentialProfileReport(credentialRoot, credentialProfile, name => isCreatedProfile(credentialRoot, "claude-code", name))),
-      rotationPending: !!credentials?.pendingCredential, blocked: store.blocked(), jobs: store.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) }, null, 2)}\n`);
-    return;
-  }
   if (command === "disconnect") {
+    // A Runtime in the background has no window to close: end it first, then forget the pairing and remove the task that would start it at sign-in.
+    await stopForDisconnect(context, store);
     const unlock = await lockProfile(store, "disconnect");
     try { store.forgetCredentials(); process.stdout.write("Local connection forgotten. Revoke the machine in AgEnD Settings to invalidate its credential centrally.\n"); }
     finally { unlock(); }
+    await removeAutostartForDisconnect(context, store);
     return;
   }
   if (command === "rotate") {
@@ -258,7 +327,17 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
       if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", wantedProfile, answer.loggedIn);
     }
     if (choice?.separate) process.stdout.write(`This computer's default profile is paired with ${choice.defaultServer}; using a separate profile for this server:\n  ${store.directory}\nThe same connect-agend.bat reuses it. The existing pairing is untouched.\n`);
-    if (!current) {
+    if (current && flags["--enroll-stdin"] !== undefined) {
+      // Already joined to this AgEnD (a different one would have been given its own profile, or stopped above): reconnect, and leave the token unused.
+      process.stdout.write("This computer is already connected to this AgEnD, so the one-time token was not used; reconnecting. (An unused token expires by itself, and can be revoked in AgEnD Settings -> Runtime.)\n");
+    }
+    if (!current && flags["--enroll-stdin"] !== undefined) {
+      const token = await readEnrollToken(options.stdin ?? process.stdin);
+      const controller = new AbortController();
+      const abort = (): void => controller.abort(); process.once("SIGINT", abort);
+      try { await enrollRuntime({ server: server.origin, token, fingerprint: flags["--server-fingerprint"]!, name: flags["--name"] || hostname(), store, signal: controller.signal, report: text => process.stdout.write(`${text}\n`) }); }
+      finally { process.removeListener("SIGINT", abort); }
+    } else if (!current) {
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("Pairing requires an interactive terminal. The code must not be supplied in arguments or environment variables.");
       const readline = createInterface({ input: process.stdin, output: process.stdout });
       let code: string;
@@ -273,20 +352,40 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const before = store.credentialDefault(); setDefaultChecked(flags["--credential-profile"], before);
     process.stdout.write(`Credential profile for agents that do not choose one: ${flags["--credential-profile"]}${before && before !== flags["--credential-profile"] ? ` (was ${before})` : ""}\n`);
   }
-  if (await runRuntimeWithUpdates({ store, report: text => process.stdout.write(`${text}\n`) })) return;
-  const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report: text => process.stdout.write(`${text}\n`) });
-  const stop = (): void => {
-    void client.stop().catch(error => {
-      // An account process was not confirmed ended: the Runtime keeps its lock, so say so and let the next Ctrl+C try again.
+  // after pairing (always in this window), connect and start move the Runtime to the background and end; --foreground and run keep it here.
+  const inBackground = command === "run" && env[RUNTIME_BACKGROUND_ENV] === "1";
+  if (command === "start" || (command === "connect" && flags["--foreground"] === undefined)) {
+    if (!store.credentials()) throw new Error("This profile is not paired yet, so there is nothing to start. Connect it first: double-click connect-agend.bat, or paste the install command from AgEnD Settings -> Runtime -> Connect a computer.");
+    await launchInBackground(context, { store, enableAutostartByDefault: command === "connect" });
+    return;
+  }
+  const runHere = async (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }): Promise<void> => {
+    if (await runRuntimeWithUpdates({ store, report, ...(control ? { onStopAttempt: control.onStopAttempt } : {}) })) return;
+    const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report });
+    // One attempt at a time: a signal or a stop request that arrives while one is in flight joins it. An account process that was not confirmed ended leaves the Runtime up
+    // holding its lock, so the next Ctrl+C or `agend-runtime stop` tries again.
+    let attempting: Promise<void> | undefined;
+    const attempt = (): Promise<void> => attempting ??= client.stop().catch(error => {
       process.exitCode = 1; process.stderr.write(`${error instanceof Error ? error.message : "Runtime stop was not completed"}. Press Ctrl+C to try again.\n`);
       process.once("SIGINT", stop); process.once("SIGTERM", stop);
-    });
+    }).finally(() => { attempting = undefined; });
+    const stop = (): void => { void attempt(); };
+    control?.onStopAttempt(attempt);
+    process.once("SIGINT", stop); process.once("SIGTERM", stop);
+    try { await client.start(); await client.waitUntilStopped(); }
+    finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+    // AgEnD ended the connection and someone has to act: that is a failure (non-zero exit), never a silent normal exit.
+    if (client.stopReason) throw new Error(describeRuntimeStop(client.stopReason));
   };
-  process.once("SIGINT", stop); process.once("SIGTERM", stop);
-  try { await client.start(); await client.waitUntilStopped(); }
-  finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
-  // AgEnD ended the connection and someone has to act: that is a failure (non-zero exit), never a silent normal exit.
-  if (client.stopReason) throw new Error(describeRuntimeStop(client.stopReason));
+  if (inBackground) { await runBackgroundInstance(context, store, { run: runHere }, readRuntimeInfo().version); return; }
+  // One Runtime per profile. The check first (a managed install would otherwise fail on its install ownership before it ever looked at the profile);
+  // the profile lock itself still decides a race between two starts, and its refusal is the same "already running".
+  const alreadyRunning = (pid: number | undefined): void => { process.stdout.write(`AgEnD Runtime is already running for this profile (process ${pid ?? "unknown"}). Nothing was started. Check it with ${runtimeCommandName(context.cliPath, env)} status; stop it with ${runtimeCommandName(context.cliPath, env)} stop (background) or Ctrl+C in its window.\n`); };
+  const existing = await readRuntimeInstance(store, context.seams.instance);
+  if (existing.state === "running") { alreadyRunning(existing.pid); return; }
+  try { await runHere(text => process.stdout.write(`${text}\n`)); }
+  catch (error) { if (error instanceof RuntimeProfileInUseError) { alreadyRunning(error.pid); return; } throw error; }
+  if (command === "connect") process.stdout.write("AgEnD Runtime stopped.\n");
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void runtimeMain().catch(error => { process.stderr.write(`${error instanceof Error ? error.message : "Runtime failed"}\n`); process.exitCode = 1; });

@@ -10,7 +10,8 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { createRuntimeBundle, type RuntimeBundle } from "../src/runtime-bundle.js";
 import type { RuntimeClient, RuntimeClientOptions } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
-import { RuntimeUpdateController, type RuntimeUpdateControllerOptions } from "../src/runtime-update-controller.js";
+import { RuntimeUpdateController, runRuntimeWithUpdates, stopAttempts, type RuntimeUpdateControllerOptions } from "../src/runtime-update-controller.js";
+import { requestRuntimeStop, watchStopRequest } from "../src/runtime-background.js";
 import { RuntimeUpdateJournal } from "../src/runtime-update-journal.js";
 import { RuntimeUpdateIpc, type RuntimeUpdateIpcMessage } from "../src/runtime-update-ipc.js";
 import { acquireRuntimeInstallLock, type RuntimeProcessObservation, type RuntimeProcessProof } from "../src/runtime-update-lock.js";
@@ -153,6 +154,20 @@ it("starts the exact verified child only after a positive idle stop and records 
   expect(f.controllerOptions.spawn).toHaveBeenCalledWith(process.execPath,
     [join(f.root, `${b.version}+${b.sha256.slice(0, 8)}`, "dist", "runtime-cli.js"), "--internal-update"], expect.objectContaining({ shell: false, detached: true, windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"] }));
   await controller.close(); expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toHaveLength(1);
+});
+it("a Runtime that runs in the background hands over to one that does too (the switch is in the child's environment); an ordinary one hands over as before", async () => {
+  const previous = process.env.AGEND_RUNTIME_BACKGROUND;
+  try {
+    for (const [value, expected] of [["1", true], [undefined, false], ["0", false]] as const) {
+      if (value === undefined) delete process.env.AGEND_RUNTIME_BACKGROUND; else process.env.AGEND_RUNTIME_BACKGROUND = value;
+      const f = await fixture(), controller = (await f.open())!; await controller.start(); f.clients[0].busy = false;
+      await controller.checkNow(); await controller.wait();
+      const env = (f.controllerOptions.spawn as unknown as { mock: { calls: [string, string[], { env: Record<string, string> }][] } }).mock.calls[0][2].env;
+      expect(env.AGEND_RUNTIME_BACKGROUND, String(value)).toBe(expected ? "1" : undefined);
+      expect(f.controllerOptions.spawn).toHaveBeenCalledWith(process.execPath, [expect.stringMatching(/runtime-cli\.js$/), "--internal-update"], expect.anything());   // the arguments never change, so an older program still understands them
+      await controller.close();
+    }
+  } finally { if (previous === undefined) delete process.env.AGEND_RUNTIME_BACKGROUND; else process.env.AGEND_RUNTIME_BACKGROUND = previous; }
 });
 it("remembers a checksum failure, never stops a client or retries that hash", async () => {
   const f = await fixture(); f.corrupt(); const controller = (await f.open())!; await controller.start();
@@ -463,4 +478,79 @@ it("metadata started under an older connection cannot confirm current after reco
   expect(changed).toBe(true); expect(f.clients[0].setUpdateStatus).not.toHaveBeenCalledWith({ state: "current" });
   f.beforeMetadata(() => {}); await controller.checkNow();
   expect(f.clients[0].setUpdateStatus).toHaveBeenCalledWith({ state: "current" });
+});
+
+/**
+ * A stop that cannot be confirmed (an account process is still running) leaves the Runtime up holding its ownership, so the next signal or `agend-runtime stop` must be able to
+ * attempt the shutdown again. These go through the real managed branch (`runRuntimeWithUpdates` opens a real controller over a real install layout; only the client and the process
+ * observations are inert), not a stub that answers "not managed".
+ */
+async function managedRun(f: Awaited<ReturnType<typeof fixture>>, failures: { left: number }) {
+  const stops: number[] = [];
+  const makeClient = (opts: RuntimeClientOptions): RuntimeClient => {
+    const client = new InertClient(opts, f.program), original = client.stop.bind(client);
+    client.stop = async () => { stops.push(stops.length + 1); if (failures.left-- > 0) throw new Error("An account process was not confirmed ended"); await original(); };
+    f.clients.push(client); return client as unknown as RuntimeClient;
+  };
+  let attempt: () => Promise<void> = async () => { throw Error("the managed Runtime did not hand over its stop attempt"); };
+  const settled = { value: undefined as boolean | undefined };
+  const run = runRuntimeWithUpdates({ ...f.controllerOptions, makeClient, onStopAttempt: next => { attempt = next; } }).then(value => { settled.value = value; return value; });
+  await vi.waitFor(() => expect(f.clients).toHaveLength(1));
+  return { run, settled, stops, attempt: () => attempt() };
+}
+it("a managed Runtime that could not confirm its stop stays up, and the next stop request retries and ends it, one attempt at a time", async () => {
+  const exitCode = process.exitCode; const f = await fixture(), errors = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    const m = await managedRun(f, { left: 1 });
+    await Promise.all([m.attempt(), m.attempt()]);                                              // two requests at once are one attempt
+    expect(m.stops).toEqual([1]); expect(m.settled.value, "still up after the failed stop").toBeUndefined();
+    expect(errors.mock.calls.map(call => String(call[0])).join("")).toMatch(/not confirmed ended\. Press Ctrl\+C to try again/);
+    await m.attempt();                                                                           // agend-runtime stop asks again
+    await expect(m.run).resolves.toBe(true); expect(m.stops).toEqual([1, 2]);
+  } finally { errors.mockRestore(); process.exitCode = exitCode; }
+});
+it("a managed Runtime also retries on the next Ctrl+C or SIGTERM: the one-shot handler is put back after a failed attempt", async () => {
+  const exitCode = process.exitCode; const f = await fixture(), errors = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    const m = await managedRun(f, { left: 1 });
+    process.emit("SIGTERM", "SIGTERM"); await vi.waitFor(() => expect(m.stops).toEqual([1]));
+    await vi.waitFor(() => expect(process.listenerCount("SIGTERM")).toBeGreaterThan(0)); expect(m.settled.value).toBeUndefined();
+    process.emit("SIGTERM", "SIGTERM"); await expect(m.run).resolves.toBe(true); expect(m.stops).toEqual([1, 2]);
+  } finally { errors.mockRestore(); process.exitCode = exitCode; }
+});
+it("a stop request file reaches the managed Runtime's own attempt (the way the background watcher hands it over), and a failed first stop is retried by the next request", async () => {
+  const exitCode = process.exitCode; const f = await fixture(), errors = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    const m = await managedRun(f, { left: 1 });
+    // what runBackgroundInstance does with it: the watcher's callback awaits the Runtime's attempt
+    const unwatch = watchStopRequest(f.store.directory, () => m.attempt(), 20);
+    try {
+      requestRuntimeStop(f.store.directory); await vi.waitFor(() => expect(m.stops).toEqual([1]));
+      await new Promise(done => setTimeout(done, 80)); expect(m.settled.value).toBeUndefined();
+      requestRuntimeStop(f.store.directory); await expect(m.run).resolves.toBe(true); expect(m.stops).toEqual([1, 2]);
+    } finally { unwatch(); }
+  } finally { errors.mockRestore(); process.exitCode = exitCode; }
+});
+it("the shutdown shared by a managed Runtime and the update-handoff process: one attempt at a time, and every failure puts the signal handlers back", async () => {
+  const exitCode = process.exitCode, errors = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    let fail = 2, closes = 0, release: () => void = () => {}; let cancelled = 0;
+    const controller = { close: vi.fn(async () => { closes++; await new Promise<void>(done => { release = done; }); if (fail-- > 0) throw new Error("not confirmed"); }) } as unknown as RuntimeUpdateController;
+    const { attempt, stop } = stopAttempts(() => controller, () => { cancelled++; });
+    process.once("SIGTERM", stop);
+    process.emit("SIGTERM", "SIGTERM"); void attempt(); void attempt();                                 // a signal and two requests during one attempt
+    await vi.waitFor(() => expect(closes).toBe(1)); release(); await vi.waitFor(() => expect(process.listenerCount("SIGTERM")).toBeGreaterThan(0));
+    process.emit("SIGTERM", "SIGTERM"); await vi.waitFor(() => expect(closes).toBe(2)); release();   // first failure re-armed it: the second signal is attempt two
+    await vi.waitFor(() => expect(process.listenerCount("SIGTERM")).toBeGreaterThan(0));
+    const last = attempt(); await vi.waitFor(() => expect(closes).toBe(3)); release(); await last;      // and the second failure re-armed it again; the third succeeds
+    expect(cancelled).toBe(3); expect(fail).toBe(-1);
+    process.removeAllListeners("SIGTERM");
+  } finally { errors.mockRestore(); process.exitCode = exitCode; }
+});
+it("the update-handoff process and the background watcher use that same shutdown (source wiring)", () => {
+  const controller = readFileSync("src/runtime-update-controller.ts", "utf8"), background = readFileSync("src/runtime-cli-background.ts", "utf8"), cli = readFileSync("src/runtime-cli.ts", "utf8");
+  expect(controller).toMatch(/runtimeUpdateInternalMain[\s\S]{0,900}stopAttempts\(\(\) => controller/); expect(controller).toContain("watchStopRequest(background.directory, attempt)");
+  expect(controller).not.toMatch(/const stop = \(\) => \{ cancelled = true; void controller\?\.close\(\)/);
+  expect(cli).toMatch(/runRuntimeWithUpdates\(\{ store, report, \.\.\.\(control \? \{ onStopAttempt: control\.onStopAttempt \} : \{\}\) \}\)/);
+  expect(background).toMatch(/if \(stopAttempt\) await stopAttempt\(\); else process\.emit\("SIGTERM"/);
 });

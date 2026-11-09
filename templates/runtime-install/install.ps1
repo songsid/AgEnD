@@ -4,7 +4,8 @@
 # copy, with your fleet's address and THIS file's SHA-256 filled in. The command downloads this file, checks the hash shown on
 # the page and only then runs it, so what runs is exactly what the page vouches for, whatever the TLS trust decision was.
 # The server address is the one the command put in $agend (the reviewed address, never the Host that happened to serve this
-# file); nothing here is looked up from the network, and nothing here is a secret. This file is the same bytes for everyone
+# file); nothing here is looked up from the network, and nothing here is a secret. $agend is used only as that address, after the
+# origin check below, for the download, the receipt, agend-server.json and the connection. This file is the same bytes for everyone
 # and for every request.
 #
 # It is run by the page's command (`iex` of the downloaded text), so it is kept safe for that: ASCII only (Windows
@@ -22,11 +23,34 @@
 #   4. Points agend-runtime at the new version: bin\agend-runtime.cmd never changes, and bin\current.txt (the version it
 #      starts) is swapped in with an atomic file replace. A Runtime that is already running keeps running its own version.
 #   5. Adds the bin folder to YOUR user PATH (not the system PATH).
-#   6. Prints the command that connects this PC. It does NOT connect and does NOT pair: pairing still needs the one-time
-#      code from AgEnD Settings, which you type in the terminal, and your approval in AgEnD.
+#   6. Leaves a reconnect entry for this AgEnD under <install folder>\connect\<server>: agend-server.json (only the public address, never
+#      a credential or a pairing code) and the same connect-agend.bat the ZIP has, so the next connection is a double-click.
+#   7. Connects, in this same window, when - and only when - this is an interactive console (stdin and stdout are the console, not
+#      -NonInteractive, not the ISE, no usual CI variable such as CI or GITHUB_ACTIONS set) and $agendNoConnect is not set. It runs the Runtime's own `connect --connection-dir`, the logic
+#      connect-agend.bat uses: a new profile asks for the one-time pairing code, shows the fingerprint and waits for your approval in
+#      AgEnD; a profile already paired to this AgEnD just reconnects; one paired to another AgEnD gets its own profile and that pairing is
+#      left alone. The code is typed into the terminal by a person: the Runtime accepts it from nothing else, so this script never sees it.
+#      Once it is connected the Runtime moves to the background and `connect` ends, so closing this window does not disconnect it, and the
+#      command returns (an AI agent or CI does not wait for it). It also adds a Task Scheduler task for your own account that starts it when
+#      you sign in (no administrator rights, not a Windows service). `agend-runtime status`, `stop` and `logs` manage it. $agendForeground = 1
+#      keeps the Runtime in this window instead, as before.
+#   7a. When this run switched `agend-runtime` to a different build than before, or is a repair run, a Runtime that runs in the background is
+#      stopped and started again so it uses the installed version (`agend-runtime restart --all`; a Runtime that runs in a window is never touched).
+#      Anywhere else (an AI agent, CI, a pipeline, $agendNoConnect) it only installs, prints the exact command to run next and ends with
+#      exit code 0. The Runtime is started after the install lock is released, because a running Runtime needs that lock for updates.
+#   7b. With a ONE-TIME TOKEN ($agendEnroll and $agendFingerprint, set by the page's "install command") it connects in ANY window, interactive or
+#      not, with no pairing code and no approval step: the token is the authorisation, and it could only come from an administrator's signed-in
+#      AgEnD page. The token is checked for its shape before anything is installed, copied out of the variable (which is cleared at once), and
+#      handed to the Runtime on its standard input - never on the command line, never in an environment variable, never in a file. The Runtime
+#      first checks that the server is the AgEnD whose fingerprint $agendFingerprint names and sends the token only then; the token works once, for 15
+#      minutes, and can be revoked on the AgEnD page. A computer already connected to this AgEnD just reconnects and the token is not used.
+#      Without a token everything is exactly as in 7. $agendNoConnect (and a repair run) still win: with them nothing is connected and the token is not used.
 #
 # Optional, set in the same PowerShell window before running it:
-#   $env:AGEND_RUNTIME_REPAIR = '1'               keep PATH unchanged; print run with an existing profile, never pairing steps
+#   $agendNoConnect = 1                           install only: do not connect, even in an interactive window (unset it with $null)
+#   $agendForeground = 1                          connect, but keep the Runtime in this window (Ctrl+C stops it) instead of moving it to the background
+#   $agendEnroll = '<token>'; $agendFingerprint = '<64 hex>'   the one-time token and server fingerprint from the page's install command (both are cleared by this script)
+#   $env:AGEND_RUNTIME_REPAIR = '1'               keep PATH unchanged; print run with an existing profile, never pairing steps or a connection
 #   $env:AGEND_RUNTIME_NO_PATH = '1'              leave PATH alone (the final message then shows the full path to run)
 #   $env:AGEND_RUNTIME_INSTALL_DIR = 'D:\agend'   install somewhere other than %LOCALAPPDATA%\agend-runtime
 # If it fails it says why, leaves what was installed before untouched, and sets $LASTEXITCODE to 1.
@@ -50,6 +74,51 @@
         if (-not ($uri.Scheme -eq 'https' -or ($uri.Scheme -eq 'http' -and $local))) { return '' }
         if ($uri.UserInfo -ne '' -or $uri.Query -ne '' -or $uri.Fragment -ne '' -or $uri.AbsolutePath -ne '/') { return '' }
         return $uri.GetLeftPart([UriPartial]::Authority)
+    }
+    # `$agendNoConnect = 1`, set in the same window before the command, means "install only". Empty, 0, false, no and off mean "not set".
+    function Test-AgendSwitch($value) {
+        if ($null -eq $value) { return $false }
+        $text = ([string]$value).Trim()
+        return -not ($text -eq '' -or $text -in '0', 'false', 'no', 'off')
+    }
+    # The one-time install-command token ("agend_enroll_" and 43 URL-safe base64 characters) and the AgEnD server fingerprint (the SHA-256 of its enrollment
+    # key, 64 lower-case hex digits). Case-sensitive on purpose. A value that fails is refused before anything is installed, and is never echoed.
+    function Test-AgendEnrollToken($value) { return ($value -is [string]) -and ($value -cmatch '\Aagend_enroll_[A-Za-z0-9_-]{43}\z') }
+    function Test-AgendFingerprint($value) { return ($value -is [string]) -and ($value -cmatch '\A[a-f0-9]{64}\z') }
+    # True only at a real, interactive console. The pairing code is typed by a person and the Runtime reads it from nothing else, so a
+    # redirected stdin or stdout (an AI agent, CI, a pipeline), -NonInteractive (any abbreviation of it), the ISE (no console for a child
+    # process) and a CI environment variable (CI, GITHUB_ACTIONS, TF_BUILD, ...: an agent on a pseudo-terminal) are all "not interactive". When in
+    # doubt it answers false: the cost is one command to run by hand, never a hung window.
+    function Test-AgendInteractive {
+        try {
+            if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return $false }
+            if ([string]$Host.Name -match 'ISE') { return $false }
+            foreach ($arg in [Environment]::GetCommandLineArgs()) { if ($arg -match '\A[-/]noni') { return $false } }
+            # An AI agent or CI step that gives PowerShell a pseudo-terminal looks interactive from in here, but nobody is there to type a pairing code. The usual
+            # CI variables say so: any of them set (and not 0, false, no or off, the same reading as $agendNoConnect) means "not interactive".
+            foreach ($name in 'CI', 'GITHUB_ACTIONS', 'TF_BUILD', 'BUILD_BUILDID', 'JENKINS_URL', 'GITLAB_CI', 'CIRCLECI', 'BUILDKITE', 'TEAMCITY_VERSION') {
+                if (Test-AgendSwitch ([Environment]::GetEnvironmentVariable($name))) { return $false }
+            }
+            return $true
+        } catch { return $false }
+    }
+    # What to do after the install, as one word: repair (never connect), switch ($agendNoConnect), enroll (a valid one-time token: connect with it in
+    # any window), noninteractive, noentry (the reconnect entry could not be written) or connect. The order is the order of precedence.
+    function Get-AgendConnectMode([bool]$Repair, [bool]$NoConnect, [bool]$Interactive, [bool]$HasEntry, [bool]$HasToken = $false) {
+        if ($Repair) { return 'repair' }
+        if ($NoConnect) { return 'switch' }
+        if ($HasToken) { if ($HasEntry) { return 'enroll' } else { return 'noentry' } }
+        if (-not $Interactive) { return 'noninteractive' }
+        if (-not $HasEntry) { return 'noentry' }
+        return 'connect'
+    }
+    # One folder per AgEnD address under <install>\connect, so two AgEnDs on one PC never overwrite each other's reconnect entry. The name is
+    # only a label (the Runtime picks the profile from the address inside agend-server.json): host, port and 8 hex characters of the address's hash.
+    function Get-AgendConnectName([string]$Origin) {
+        $uri = [Uri]$Origin
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Origin))) -replace '-', '').ToLowerInvariant() } finally { $sha.Dispose() }
+        return (([string]$uri.Host -replace '[^A-Za-z0-9.-]', '_').ToLowerInvariant() + '-' + $uri.Port + '-' + $hash.Substring(0, 8))
     }
     # Node.js satisfying the Runtime's engines: ^22.14.0 || ^23.6.0 || >=24.
     function Test-NodeVersion([string]$text) {
@@ -230,6 +299,22 @@
         Set-AgendFile $path ($receipt | ConvertTo-Json -Depth 4 -Compress) { Assert-AgendLock $Lock; if ((Read-AgendSmallFile $path 20000) -cne $raw) { throw 'The managed-install receipt changed; nothing was switched.' } }
     }
 
+    # <root>\connect\<server>\agend-server.json (the public address and nothing else) and connect-agend.bat. Returns that folder.
+    # The batch file calls the shim (so it follows current.txt to the newest installed Runtime) and passes its own folder as --connection-dir;
+    # the Runtime reads the address from the json and picks the profile the way the ZIP's connect-agend.bat does. `call` re-reads % and ^ in a
+    # path, so a folder whose name holds one is refused here rather than written into a batch file that would misread it.
+    function Write-AgendConnectEntry([string]$Root, [string]$Origin) {
+        if ($Origin -notmatch '\A[A-Za-z0-9.:/\[\]-]+\z') { throw 'the AgEnD address has characters that agend-server.json does not carry' }
+        if ($Root -match '[%^]') { throw 'the install folder name contains % or ^, which a batch file cannot carry safely' }
+        $parent = Join-Path $Root 'connect'
+        $null = New-Item -ItemType Directory -Path $parent -Force; Assert-AgendDirectory $parent
+        $folder = Join-Path $parent (Get-AgendConnectName $Origin)
+        $null = New-Item -ItemType Directory -Path $folder -Force; Assert-AgendDirectory $folder
+        Set-AgendFile (Join-Path $folder 'agend-server.json') ('{' + "`n" + '  "server": "' + $Origin + '"' + "`n" + '}' + "`n")
+        Set-AgendFile (Join-Path $folder 'connect-agend.bat') $connectBatText
+        return $folder
+    }
+
     # Adds a folder to the USER PATH in the registry, keeping its value kind: [Environment]::SetEnvironmentVariable would turn a
     # REG_EXPAND_SZ PATH into plain REG_SZ and stop its %VARIABLES% entries expanding, and setx truncates at 1024 characters, so
     # neither is used. An entry already there (written out or with %VARIABLES%) is not added again.
@@ -274,7 +359,22 @@
         'exit /b %errorlevel%', ':agend_rt_missing', 'echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.>&2',
         'exit /b 1', '') -join "`r`n"
 
+    # connect-agend.bat for the reconnect entry: what the ZIP's connect-agend.bat does (connect, then say how it ended and pause), pointed at the
+    # installed shim. Like the shim, its text names no version and must not change without a reason: cmd.exe reads a batch file as it runs it, and
+    # Set-AgendFile rewrites this file whenever the text differs from what is on disk, which can disturb a window that is running it right now.
+    # If it must change, update the pinned hash in tests/runtime-install-script.test.ts in the same commit.
+    # (Changed once: connect now ends after moving the Runtime to the background, so the old "AgEnD Runtime stopped." line would have
+    # been wrong. A window that is still running the previous connect-agend.bat while this one is written should be closed first.)
+    $connectBatText = ('@echo off', 'setlocal DisableDelayedExpansion', 'if not exist "%~dp0..\..\bin\agend-runtime.cmd" (',
+        '  echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.', '  pause', '  exit /b 1', ')',
+        'call "%~dp0..\..\bin\agend-runtime.cmd" connect --connection-dir "%~dp0."', 'set "AGEND_EXIT=%errorlevel%"', 'echo.',
+        'if not "%AGEND_EXIT%"=="0" (', '  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.', ') else (', '  echo Done. Read the message above: a Runtime that was started keeps running in the background after this window closes.', ')',
+        'pause', '') -join "`r`n"
+
     $tmp = $null; $installLock = $null
+    $doConnect = $false; $connectDir = $null; $cliJs = $null; $restartCli = $null
+    # Tracked apart: the restart below runs only after an installation that finished (the end of the try block was reached) and whose lock was released and confirmed.
+    $installFinished = $false; $lockReleased = $true
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }
 
@@ -287,9 +387,35 @@
             return
         }
 
+        # the one-time token and server fingerprint the page's command set. They are copied here and cleared from the caller's scope at
+        # once (the page's command clears them again afterwards), and checked for their shape before anything is installed: a malformed token is
+        # refused with the next step, without being printed. Nothing about the token goes into a file, a log or the command line.
+        $enrollToken = $null; $enrollFingerprint = $null
+        $rawToken = $agendEnroll; $rawFingerprint = $agendFingerprint
+        foreach ($scopeName in 1, 'Global') { foreach ($varName in 'agendEnroll', 'agendFingerprint') { try { Set-Variable -Name $varName -Value $null -Scope $scopeName -ErrorAction Stop } catch { } } }
+        # A variable that is not there, or is $null (what the page's command and this script leave behind), is "no token". One that holds anything else, an empty or
+        # blank string included, is a token that was meant to be there and is not valid: refused, never quietly turned into the pairing-code route.
+        if ($null -ne $rawToken) {
+            if (-not (Test-AgendEnrollToken $rawToken)) {
+                Write-Problem 'The one-time token in this install command is not valid (it may have been copied incompletely). Nothing was installed.'
+                Write-Host 'Open AgEnD Settings -> Runtime -> Connect a computer, generate a new install command there and run it again.'
+                $global:LASTEXITCODE = 1
+                return
+            }
+            if (-not (Test-AgendFingerprint $rawFingerprint)) {
+                Write-Problem 'The AgEnD server fingerprint in this install command is missing or not valid (it is 64 hexadecimal characters). Nothing was installed.'
+                Write-Host 'Open AgEnD Settings -> Runtime -> Connect a computer, generate a new install command there and run it again.'
+                $global:LASTEXITCODE = 1
+                return
+            }
+            $enrollToken = [string]$rawToken; $enrollFingerprint = [string]$rawFingerprint
+        }
+        $rawToken = $null
+
         $nodeText = ''
         $node = Get-Command node -ErrorAction SilentlyContinue
-        if ($node) { try { $nodeText = ((& $node.Source -v) | Out-String).Trim() } catch { $nodeText = '' } }
+        $nodeExe = $null
+        if ($node) { $nodeExe = $node.Source; try { $nodeText = ((& $node.Source -v) | Out-String).Trim() } catch { $nodeText = '' } }
         if (-not (Test-NodeVersion $nodeText)) {
             if ($nodeText) { Write-Problem ('Node.js ' + $nodeText + ' is too old. The AgEnD Runtime needs Node.js 22.14 or newer (22.14+, 23.6+ or 24+).') }
             else { Write-Problem 'Node.js was not found. The AgEnD Runtime needs Node.js 22.14 or newer (22.14+, 23.6+ or 24+).' }
@@ -367,8 +493,10 @@
         Set-AgendFile $shim $shimText
         Set-AgendFile $current $folder { Assert-AgendLock $installLock; if ((Read-AgendSmallFile $current 90) -cne $beforeCurrent) { throw 'The selected Runtime changed during installation; nothing was switched.' } }
         if ($was -ne '' -and $was -ne $folder) {
-            Write-Step ('agend-runtime now starts ' + $folder + ' (it was ' + $was + '). A Runtime that is already running keeps its own version until you stop it with Ctrl+C and start it again with agend-runtime run.')
+            Write-Step ('agend-runtime now starts ' + $folder + ' (it was ' + $was + '). A Runtime that runs in a window keeps its own version until you stop it with Ctrl+C and start it again; one that runs in the background is restarted below.')
         }
+        # a Runtime that runs in the background was started from an older build; restart it after the lock is released so it uses this one.
+        if (([string]$env:AGEND_RUNTIME_REPAIR -eq '1') -or ($was -ne '' -and $was -ne $folder)) { $restartCli = Join-Path $target 'dist\runtime-cli.js' }
         $others = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $folder -and $_.Name -match '\A\d+\.\d+\.\d+([-+][A-Za-z0-9.+-]+)?\z' } | ForEach-Object { $_.Name })
         # Earlier folders are not removed here: one of them may be running. Cleaning them up comes with the update and uninstall commands (phase 2).
         if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '). This installer never removes a version; clearing old ones comes later, with the update and uninstall commands.') }
@@ -384,28 +512,107 @@
             $onPath = $true
         }
 
+        # The reconnect entry: this AgEnD's address and the same connect-agend.bat the ZIP has. A repair run is for a computer that is already
+        # paired and writes nothing new beside it. A failure here never fails the install; it only means no automatic connection.
+        $repair = [string]$env:AGEND_RUNTIME_REPAIR -eq '1'
+        if (-not $repair) {
+            try { $connectDir = Write-AgendConnectEntry $root $origin }
+            catch { Write-Host ('AgEnD Runtime: warning: the reconnect entry was not written (' + $_.Exception.Message + '). The Runtime is installed; connect with the command shown below.') -ForegroundColor Yellow }
+        }
+        $connectBat = $null
+        if ($connectDir) { $connectBat = Join-Path $connectDir 'connect-agend.bat' }
+        $noConnect = Test-AgendSwitch $agendNoConnect
+        $mode = Get-AgendConnectMode $repair $noConnect (Test-AgendInteractive) ([bool]$connectDir) ([bool]$enrollToken)
+
         Write-Host ''
-        if ([string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+        if ($mode -eq 'repair') {
             Write-Host 'AgEnD Runtime is installed. Keep your existing profile and pairing; PATH was not changed.'
-            Write-Host 'Use the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME. Run this exact new executable and enter that folder:'
+            Write-Host 'A Runtime that runs in the background was restarted with this version (see below). Close any Runtime that runs in a window (Ctrl+C), then start it in the background with this exact new executable and the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME:'
             $literalShim = $shim.Replace("'", "''")
-            Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' run --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
+            Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' start --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
+        } elseif ($mode -eq 'connect' -or $mode -eq 'enroll') {
+            Write-Host 'AgEnD Runtime is installed.'
+            Write-Host ('Next time, double-click ' + $connectBat + ' to reconnect this computer.')
+            $cliJs = Join-Path $target 'dist\runtime-cli.js'
+            $doConnect = $true
         } else {
             Write-Host 'AgEnD Runtime is installed. This computer is not connected yet and nothing has been paired.'
-            Write-Host 'Next, connect it. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
+            if ($mode -eq 'noninteractive') { Write-Host 'This window is not an interactive console (a script, a pipeline, CI or an AI agent runs it), so it only installed and did not try to connect.' }
+            elseif ($mode -eq 'switch') { Write-Host 'The variable $agendNoConnect is set in this window, so it only installed and did not try to connect. To connect from here by itself next time, run $agendNoConnect = $null first.' }
+            else { Write-Host 'The reconnect entry could not be written (see above), so it did not connect by itself.' }
+            Write-Host 'Next, connect it from an interactive PowerShell window. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
             Write-Host ''
             if ($onPath) { Write-Host ('  agend-runtime connect --server "' + $origin + '"') }
             else { Write-Host ('  & "' + $shim + '" connect --server "' + $origin + '"') }
             Write-Host ''
-            Write-Host 'Type the pairing code when asked, compare the fingerprint with the one AgEnD shows, then approve this computer in AgEnD.'
+            Write-Host 'A person types the pairing code when asked, compares the fingerprint with the one AgEnD shows, then approves this computer in AgEnD. The code cannot be put in a command, a variable or a file, so an AI agent or script should stop here and give this command to the person.'
+            if ($connectBat) { Write-Host ('Or double-click ' + $connectBat + ' on that computer: it connects, and next time it reconnects without asking for the code.') }
+            if ($enrollToken) {
+                Write-Host 'The one-time token in this command was NOT used. It stays valid until it expires (15 minutes after it was made) or is revoked on the AgEnD page; running the same command again uses it.'
+                if ($mode -eq 'noentry') { $global:LASTEXITCODE = 1 }
+            }
         }
+        $installFinished = $true
     } catch {
         Write-Problem ('install failed: ' + $_.Exception.Message)
         $global:LASTEXITCODE = 1
+        $doConnect = $false
     } finally {
         if ($tmp -and (Test-Path -LiteralPath $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
-        if ($installLock) { try { Remove-AgendLock $installLock } catch { Write-Problem 'Installation cleanup is unconfirmed; ownership was retained.'; $global:LASTEXITCODE = 1 } }
+        if ($installLock) { try { Remove-AgendLock $installLock } catch { Write-Problem 'Installation cleanup is unconfirmed; ownership was retained.'; $global:LASTEXITCODE = 1; $doConnect = $false; $lockReleased = $false } }
         # A run that installed nothing leaves nothing: the install folder this run created is removed again, but only while it is still empty.
         if ($createdRoot -and $root -and (Test-Path -LiteralPath $root) -and -not (Get-ChildItem -LiteralPath $root -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $root -Force -ErrorAction SilentlyContinue }
+    }
+
+    # restart Runtimes that run in the background (repair run, or a different build was just selected). After the install lock is gone: a
+    # Runtime takes that lock itself. Only background Runtimes are touched; one that runs in a window is reported and left alone. A failure is a
+    # warning, never "install failed": the install itself is complete. If the installation failed after the build was selected, or its lock could not be confirmed released,
+    # nothing is stopped or restarted and the failure status stays.
+    if ($restartCli -and $installFinished -and $lockReleased -and (Test-Path -LiteralPath $restartCli)) {
+        $previousPreference = $ErrorActionPreference; $statusBeforeRestart = $global:LASTEXITCODE
+        try {
+            $ErrorActionPreference = 'Continue'
+            Write-Step 'restarting any Runtime that runs in the background so it uses this version.'
+            & $nodeExe $restartCli restart --all
+            if ($LASTEXITCODE -ne 0) { Write-Host 'AgEnD Runtime: warning: a background Runtime could not be restarted (see above). Run agend-runtime restart --all, or agend-runtime stop and agend-runtime start, when it is idle.' -ForegroundColor Yellow }
+        } catch {
+            Write-Host ('AgEnD Runtime: warning: could not restart a background Runtime: ' + $_.Exception.Message) -ForegroundColor Yellow
+        } finally { $ErrorActionPreference = $previousPreference }
+        $global:LASTEXITCODE = $statusBeforeRestart   # a restart that failed is the warning above; it never turns a finished install into a failure, or a success into one
+    }
+
+    # Connect in this window, after the install lock is gone (a running Runtime takes that lock to update itself). This is the Runtime's own
+    # `connect --connection-dir`, the logic of connect-agend.bat, run by the Node.js that was just checked, in the version that was just installed
+    # (the same file the shim starts). A path goes to node.exe as an argument, never through cmd.exe. The Runtime asks for the pairing code itself.
+    # Once connected it moves itself to the background and this command ends; $agendForeground = 1 keeps it in this window.
+    if ($doConnect) {
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $foreground = Test-AgendSwitch $agendForeground
+            $connectExtra = @(); if ($foreground) { $connectExtra = @('--foreground') }
+            Write-Host ''
+            if ($enrollToken) {
+                if ($foreground) { $stays = 'The Runtime stays running in this window until you press Ctrl+C ($agendForeground is set; an AI agent or script that must not wait for it should start this command as its own background process).' }
+                else { $stays = 'Once it is connected the Runtime keeps running in the background: this command ends and closing this window does not disconnect it.' }
+                Write-Step ('connecting this computer to ' + $origin + ' with the one-time token from the install command: no pairing code and no approval step. ' + $stays + ' A computer that is already connected to this AgEnD just reconnects, and the token is not used.')
+                # The token goes in on standard input, once: not as an argument (it would show in the process list), not in the environment, not in a file.
+                $enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint @connectExtra
+                $enrollToken = $null
+            } else {
+                if ($foreground) { $stays = 'Ctrl+C stops it ($agendForeground is set, so the Runtime stays in this window).' } else { $stays = 'Once it is connected it keeps running in the background and closing this window does not disconnect it.' }
+                Write-Step ('connecting this computer to ' + $origin + '. If it asks for the one-time pairing code, type the one on the AgEnD page (Settings -> Runtime -> Connect a computer); a computer that is already paired just reconnects. ' + $stays)
+                & $nodeExe $cliJs connect --connection-dir $connectDir @connectExtra
+            }
+            $connectExit = $LASTEXITCODE
+            Write-Host ''
+            if ($connectExit -eq 0 -and $foreground) { Write-Step ('stopped. To reconnect, double-click ' + $connectBat) }
+            elseif ($connectExit -eq 0) { Write-Step ('done. To reconnect later, double-click ' + $connectBat + ' (only needed if the Runtime was stopped, or autostart is off and this computer was restarted).') }
+            else { Write-Problem ('stopped or could not connect (status ' + $connectExit + '). Read the message above for what to do next, then double-click ' + $connectBat + ' to try again.') }
+        } catch {
+            Write-Problem ('could not start the connection: ' + $_.Exception.Message)
+            Write-Host ('The Runtime is installed. Connect with: double-click ' + $connectBat)
+            $global:LASTEXITCODE = 1
+        } finally { $ErrorActionPreference = $previousPreference }
     }
 }

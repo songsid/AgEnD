@@ -95,8 +95,8 @@ describe("agend-runtime profile list / default", () => {
   });
   it("status reports names and signed-in state, never a folder or an account", async () => {
     const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");
-    await f.run(["profile", "list"]); f.out.length = 0; await f.run(["status"]);
-    const status = JSON.parse(f.text()); expect(status.credentialProfiles).toEqual({ profiles: [{ name: "work", loggedIn: true, created: false }] });   // a folder made without the Runtime recording it (#3190 Part 3c)
+    await f.run(["profile", "list"]); f.out.length = 0; await f.run(["status", "--json"]);
+    const status = JSON.parse(f.text()).profiles[0]; expect(status.credentialProfiles).toEqual({ profiles: [{ name: "work", loggedIn: true, created: false }] });   // a folder made without the Runtime recording it (#3190 Part 3c)
     expect(JSON.stringify(status.credentialProfiles)).not.toContain(f.root);
   });
   it("status prints the account REDACTED, from the cache's whole address: a terminal line is not the Accounts page, and nothing wrong survives", async () => {
@@ -105,9 +105,9 @@ describe("agend-runtime profile list / default", () => {
     rememberCredentialStatus(f.root, "claude-code", "key", { loggedIn: true, identity: { apiKey: true } });
     rememberCredentialStatus(f.root, "claude-code", "plain", { loggedIn: true });
     rememberCredentialStatus(f.root, "claude-code", "odd", { loggedIn: true, identity: { maskedEmail: "ab***@example.com", plan: "max" } });        // an older cache already holds the masked form
-    await f.run(["status"]);
+    await f.run(["status", "--json"]);
     expect(f.text()).not.toMatch(/alice|fixture/);
-    const profiles = JSON.parse(f.text()).credentialProfiles.profiles as Array<{ name: string; identity?: unknown }>, byName = (name: string) => profiles.find(row => row.name === name)!;
+    const profiles = JSON.parse(f.text()).profiles[0].credentialProfiles.profiles as Array<{ name: string; identity?: unknown }>, byName = (name: string) => profiles.find(row => row.name === name)!;
     expect(byName("work").identity).toEqual({ maskedEmail: "al***@example.com", plan: "team" });
     expect(byName("key").identity).toEqual({ apiKey: true }); expect(byName("plain")).not.toHaveProperty("identity"); expect(byName("odd").identity).toEqual({ maskedEmail: "ab***@example.com", plan: "max" });
   });
@@ -116,9 +116,10 @@ describe("agend-runtime profile list / default", () => {
     rememberCredentialStatus(f.root, "claude-code", "work", { loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com", plan: "team" } });
     const { join } = await import("node:path"), { readFileSync, writeFileSync } = await import("node:fs"), file = join(f.root, "status.json");
     writeFileSync(file, readFileSync(file, "utf8").replace("alice.fixture@example.com", "alice.fixture@exämple.com"));                       // a damaged cache
-    await f.run(["status"]);
-    expect(f.text()).not.toMatch(/alice|fixture/); expect(JSON.parse(f.text()).credentialProfiles.profiles[0]).toMatchObject({ name: "work" });
-    expect(JSON.parse(f.text()).credentialProfiles.profiles[0].identity ?? {}).not.toHaveProperty("maskedEmail");
+    await f.run(["status", "--json"]);
+    const shown = JSON.parse(f.text()).profiles[0].credentialProfiles.profiles[0];
+    expect(f.text()).not.toMatch(/alice|fixture/); expect(shown).toMatchObject({ name: "work" });
+    expect(shown.identity ?? {}).not.toHaveProperty("maskedEmail");
   });
   it("the report the Runtime sends over the paired channel is NOT redacted: credentialProfileReport still carries the whole address", () => {
     const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");

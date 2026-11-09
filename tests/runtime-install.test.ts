@@ -321,7 +321,9 @@ describe("what is served carries no token, pairing code or host-specific address
     expect(script).not.toMatch(/\b[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}\b/);
     // (words are checked in the code, not in comments that explain what the script refuses to accept)
     const code = script.split("\n").filter(line => !/^\s*#/.test(line) && !/^\s*\/\//.test(line)).join("\n");
-    expect(code).not.toMatch(/\bBearer\b|\bAuthorization\b|X-Agend-Token|web\.token|claimSecret|password|secret|token/i);
+    // ("token" itself is the one-time install-command token the PAGE puts in $agendEnroll: the script holds no token value, only the check of its shape)
+    expect(code).not.toMatch(/\bBearer\b|\bAuthorization\b|X-Agend-Token|web\.token|claimSecret|password|secret/i);
+    expect(script).not.toMatch(/agend_enroll_[A-Za-z0-9_-]{43}/);
     expect(code).not.toMatch(/\bpair(ing)?\s*(code)?\s*=|\/runtime\/v1\/(pair|claim|rotate|connect)/i);
     // no IP address, no host name, no tailnet name: the only URLs are the placeholder example and nodejs.org
     // (the loopback names the script accepts for http are the one fixed exception: they name this computer, not a host)

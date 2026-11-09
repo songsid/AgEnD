@@ -25,8 +25,8 @@ describe("install.ps1 template", () => {
     expect([...template].every(ch => ch.charCodeAt(0) < 0x80)).toBe(true);
     expect(template).not.toContain("﻿");
     expect(code).not.toMatch(/\bparam\s*\(/i);
-    // (the shim's own batch lines say `exit /b`; that is text for cmd.exe inside a string, not a PowerShell exit)
-    expect(code.replace(/\$shimText = \([\s\S]*?\) -join "`r`n"/, "")).not.toMatch(/\bexit\b/i);
+    // (the shim's and connect-agend.bat's own batch lines say `exit /b`; that is text for cmd.exe inside a string, not a PowerShell exit)
+    expect(code.replace(/\$shimText = \([\s\S]*?\) -join "`r`n"/, "").replace(/\$connectBatText = \([\s\S]*?\) -join "`r`n"/, "")).not.toMatch(/\bexit\b/i);
     expect(code.trimStart().startsWith("& {")).toBe(true);
     expect(code.trimEnd().endsWith("}")).toBe(true);
     expect(Buffer.byteLength(template)).toBeLessThan(RUNTIME_INSTALL_MAX_SCRIPT_BYTES);
@@ -68,13 +68,95 @@ describe("install.ps1 template", () => {
     for (const forbidden of [/choco(latey)?\s+install/i, /Start-Process/i, /msiexec/i, /-Verb\s+RunAs/i, /Set-ExecutionPolicy/i, /Invoke-Item/i]) expect(code, String(forbidden)).not.toMatch(forbidden);
     expect(code).toContain("22.14"); expect(code).toMatch(/\$major -eq 23 -and \$minor -ge 6/); expect(code).toMatch(/\$major -ge 24/);
   });
-  it("does not connect, pair or contact the pairing endpoints, and carries no credential", () => {
+  it("connects only through the Runtime's own `connect --connection-dir`, never contacts a pairing endpoint, and carries no credential", () => {
+    // The script never pairs itself and never sees the code: it starts the Runtime, which asks the person.
     expect(code).not.toMatch(/\/runtime\/v1\/(pair|claim|rotate|connect)/);
-    expect(code).not.toMatch(/runtime-cli\.js['"`]?\s+connect|agend-runtime\.cmd['"`]?\s+connect(?! --server)/);
-    expect(code).not.toMatch(/Start-Process|&\s*\$shim|&\s*\$target/);
-    expect(code).not.toMatch(/token|secret|password|credential|pairing code\s*=|claimSecret/i);
-    // It prints the command; the pairing code is typed into the terminal by the person.
+    // (the one-time install-command token is the single legitimate "token": how it may be handled is locked down in its own test below)
+    expect(code).not.toMatch(/secret|password|credential|pairing code\s*=|claimSecret/i);
+    expect(code).not.toMatch(/Read-Host[^\n]*(code|pair)|Get-Credential|ConvertTo-SecureString|AGEND_PAIR|--code\b|--pairing/i);
+    // What it runs: the Node.js it checked and the file of the version it just installed: `connect --connection-dir <the reconnect folder>` (with --foreground
+    // only when $agendForeground asks for it), and `restart --all` after an update or a repair so a Runtime in the background uses the new build.
+    const runs = code.split("\n").filter(line => /^\s*&\s*\$/.test(line) && !/Write-Host/.test(line));
+    expect(runs.map(line => line.trim())).toEqual(["& $nodeExe $restartCli restart --all", "& $nodeExe $cliJs connect --connection-dir $connectDir @connectExtra"]);
+    expect(code).toContain("$cliJs = Join-Path $target 'dist\\runtime-cli.js'");
+    // never through Start-Process or cmd.exe (a path with an & in it would be read as a command there), never the shim or the version folder by `&`
+    expect(code).not.toMatch(/Start-Process|Invoke-Item|&\s*\$shim|&\s*\$target|cmd(\.exe)?\s+\/c/i);
+    // After the install lock is released (a running Runtime takes that lock to update itself), never while holding it.
+    expect(code.indexOf("Remove-AgendLock $installLock } catch")).toBeGreaterThan(-1);
+    expect(code.indexOf("& $nodeExe $cliJs connect")).toBeGreaterThan(code.indexOf("Remove-AgendLock $installLock } catch"));
+    expect(code.indexOf("& $nodeExe $cliJs connect")).toBeGreaterThan(code.indexOf("$createdRoot -and $root -and"));
+    // Only on the `connect` decision, which only a fixed-order function can make; a failed lock release cancels it.
+    expect(code).toMatch(/\} elseif \(\$mode -eq 'connect' -or \$mode -eq 'enroll'\) \{[\s\S]*?\$doConnect = \$true/);
+    expect(code.match(/\$doConnect = \$true/g)).toHaveLength(1);
+    expect(code).toMatch(/Remove-AgendLock \$installLock \} catch \{[^\n]*\$doConnect = \$false/);
+    expect(code).toMatch(/if \(\$doConnect\) \{/);
+    // It prints the manual command for every case that does not connect (the pairing code is typed by a person).
     expect(code).toContain("connect --server");
+    expect(code).toContain("The code cannot be put in a command, a variable or a file");
+  });
+  it("handles the one-time token as: read, shape-checked before anything is installed, cleared, then piped to the Runtime's standard input - never anywhere else", () => {
+    const tokenLines = code.split("\n").filter(line => /\$(enrollToken|rawToken|agendEnroll)\b/.test(line));
+    // never printed, never written to a file, never put in the environment or on a command line
+    expect(tokenLines.filter(line => /Write-(Host|Step|Problem|Output|Verbose|Warning|Error)|Out-File|Set-Content|Add-Content|WriteAllText|Set-AgendFile|\$env:|Set-Item|\[Environment\]::SetEnvironmentVariable|ConvertTo-Json|Start-Process|Invoke-Expression|\biex\b/i.test(line))).toEqual([]);
+    expect(tokenLines.filter(line => /\s--[a-z]/i.test(line)).map(line => line.trim())).toEqual(["$enrollToken | & $nodeExe $cliJs connect --connection-dir $connectDir --enroll-stdin --server-fingerprint $enrollFingerprint @connectExtra"]);
+    expect(code).not.toMatch(/--(?:token|enroll|code)\b(?!-stdin)/);
+    // the Runtime is started with the token on stdin as the ONLY way: the piped line is the only place the variable is used as data
+    expect(code.match(/\$enrollToken \|/g)).toHaveLength(1);
+    // shape-checked case-sensitively before Node is checked, before any download, before anything is written
+    const check = code.indexOf("Test-AgendEnrollToken $rawToken");
+    expect(check).toBeGreaterThan(-1); expect(check).toBeLessThan(code.indexOf("Test-NodeVersion $nodeText")); expect(check).toBeLessThan(code.indexOf("Save-AgendArchive (")); expect(check).toBeLessThan(code.indexOf("Enter-AgendInstallLock $root"));
+    expect(code).toContain("-cmatch '\\Aagend_enroll_[A-Za-z0-9_-]{43}\\z'"); expect(code).toContain("-cmatch '\\A[a-f0-9]{64}\\z'");
+    // cleared from the caller's scope at once, in both places a variable could live
+    expect(code).toMatch(/foreach \(\$scopeName in 1, 'Global'\) \{ foreach \(\$varName in 'agendEnroll', 'agendFingerprint'\) \{ try \{ Set-Variable -Name \$varName -Value \$null -Scope \$scopeName/);
+    expect(code.indexOf("Set-Variable -Name $varName")).toBeLessThan(check);
+    // after use it is dropped from this script's own variables too
+    expect(code).toContain("$enrollToken = $null");
+    // a malformed one stops with the next step and exit code 1, before the network
+    expect(code).toMatch(/Test-AgendEnrollToken \$rawToken\)\) \{[\s\S]*?\$global:LASTEXITCODE = 1\s*return/);
+    expect(code).toMatch(/Test-AgendFingerprint \$rawFingerprint\)\) \{[\s\S]*?\$global:LASTEXITCODE = 1\s*return/);
+    expect(code).toContain("generate a new install command there and run it again");
+    // the switch and a repair run win over the token, and the token is reported unused
+    expect(code).toContain("The one-time token in this command was NOT used");
+    expect(template).toContain("Get-AgendConnectMode([bool]$Repair, [bool]$NoConnect, [bool]$Interactive, [bool]$HasEntry, [bool]$HasToken = $false)");
+  });
+  it("connects only at an interactive console: a redirected stdin or stdout, -NonInteractive in any spelling and the ISE all count as not interactive", () => {
+    const fn = extractPsFunction(template, "Test-AgendInteractive");
+    expect(fn).toContain("[Console]::IsInputRedirected -or [Console]::IsOutputRedirected");
+    expect(fn).toMatch(/\$Host\.Name -match 'ISE'/); expect(fn).toContain("[Environment]::GetCommandLineArgs()"); expect(fn).toContain("'\\A[-/]noni'");
+    // the usual CI variables count too (an agent on a pseudo-terminal), read like $agendNoConnect: set and not 0, false, no or off
+    for (const name of ["CI", "GITHUB_ACTIONS", "TF_BUILD", "BUILD_BUILDID", "JENKINS_URL"]) expect(fn).toContain(`'${name}'`);
+    expect(fn).toContain("Test-AgendSwitch ([Environment]::GetEnvironmentVariable($name))");
+    // in doubt it answers false, never "interactive"
+    expect(fn).toMatch(/catch \{ return \$false \}/);
+    // the decision is one pure function with a fixed order, called with the console answer, and $agendNoConnect is read only by Test-AgendSwitch
+    expect(code).toContain("$mode = Get-AgendConnectMode $repair $noConnect (Test-AgendInteractive) ([bool]$connectDir)");
+    expect(code.match(/\$agendNoConnect/g)!.filter((_, index) => index >= 0).length).toBeGreaterThan(0);
+    const readers = code.split("\n").filter(line => /\$agendNoConnect/.test(line) && !/Write-Host/.test(line));
+    expect(readers.map(line => line.trim())).toEqual(["$noConnect = Test-AgendSwitch $agendNoConnect"]);
+    // $agend is still only ever read through the origin check
+    expect(code.split("\n").filter(line => /\$agend\b(?!\w)/.test(line) && !/Write-Host|^\s*Write-Problem/.test(line)).map(line => line.trim())).toEqual(["$origin = Resolve-AgendOrigin $agend"]);
+  });
+  it("leaves a reconnect entry that holds only the public address, in a folder per address, and pins the exact text of connect-agend.bat", () => {
+    const body = /\$connectBatText = \(([\s\S]*?)\) -join/.exec(code)![1], text = [...body.matchAll(/'([^']*)'/g)].map(match => match[1]).join("\r\n");
+    // Like the shim, this file may be running in a window when an install rewrites it (Set-AgendFile rewrites it whenever the text differs).
+    // If this fails you changed it: do that only for a bug that makes it unusable, update the hash here and in tests/runtime-install-pwsh.test.ts, and note it in the docs and changelog.
+    expect(createHash("sha256").update(text).digest("hex")).toBe("becead46b15ae681a41fc33143e48c54f5f1cebb3f9d60c23b8ab8c6f0d3d85a");
+    expect(text).not.toMatch(/\d+\.\d+\.\d+/);   // it names no version: it follows current.txt through the shim
+    const rows = text.split("\r\n"), setlocal = rows.indexOf("setlocal DisableDelayedExpansion");
+    expect(setlocal).toBe(1); expect(rows.slice(0, setlocal)).toEqual(["@echo off"]); expect(rows.findIndex(row => /[%!]/.test(row))).toBeGreaterThan(setlocal);
+    expect(text).toContain('call "%~dp0..\\..\\bin\\agend-runtime.cmd" connect --connection-dir "%~dp0."');   // `call`: without it cmd never returns here; "%~dp0." not "%~dp0": a trailing \ would escape the quote
+    expect(text).not.toMatch(/--server|--profile|credential|token|secret/i);
+    expect(template).toMatch(/Like the shim, its text names no version and must not change without a reason/);
+    // The folder holds agend-server.json with `server` and nothing else, written the way the ZIP writes it, and only after the address is checked.
+    const write = extractPsFunction(template, "Write-AgendConnectEntry");
+    expect(write).toContain(`Set-AgendFile (Join-Path $folder 'agend-server.json') ('{' + "\`n" + '  "server": "' + $Origin + '"' + "\`n" + '}' + "\`n")`);
+    expect(write).toContain(`-notmatch '\\A[A-Za-z0-9.:/\\[\\]-]+\\z'`); expect(write).toContain("-match '[%^]'");
+    expect(write.indexOf("-notmatch")).toBeLessThan(write.indexOf("New-Item")); expect(write.indexOf("-match '[%^]'")).toBeLessThan(write.indexOf("New-Item"));
+    expect(write.match(/Set-AgendFile/g)).toHaveLength(2);
+    expect(code).toContain("$connectDir = Write-AgendConnectEntry $root $origin");
+    // a failed write is a warning, never "install failed"; a repair run writes none
+    expect(code).toMatch(/catch \{ Write-Host \('AgEnD Runtime: warning: the reconnect entry was not written \('[^\n]*-ForegroundColor Yellow \}/);
+    expect(code).toMatch(/if \(-not \$repair\) \{\s+try \{ \$connectDir = Write-AgendConnectEntry/);
   });
   it("needs no administrator rights: it writes only under the install folder and the user's own PATH", () => {
     expect(code).toContain("[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)");
