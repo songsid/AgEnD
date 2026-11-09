@@ -2,11 +2,11 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
-let panel: any, confirmations: any;
+let panel: any, confirmations: any, shell: any;
 const mounted: AppPage[] = [], calls: any[] = [];
 const handoff = "0f1e2d3c-4b5a-4968-8776-655443322110", pendingId = "a".repeat(32);
 beforeAll(async () => {
- const p = page(); panel = await import("/ui/js/settings-hub-company-join.js"); confirmations = await import("/ui/js/settings-confirm.js"); p.restore();
+ const p = page(); panel = await import("/ui/js/settings-hub-company-join.js"); confirmations = await import("/ui/js/settings-confirm.js"); shell = await import("/assets/app-shell.js"); p.restore();
 });
 afterEach(async () => {
  for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
@@ -18,7 +18,7 @@ function fetcher(fn: (path: string, init: any) => any) {
 }
 async function mount(waiting = true) {
  const p = page({url:"http://127.0.0.1:19290/settings/hub"+(waiting?"?joinWait="+handoff:""),storage:{agend_lang:"en"}});mounted.push(p);
- await p.mount(h(panel.CompanyJoinSettings));await settle(10);return p;
+ await p.mount(h("div", null, h(shell.PendingChanges, {inline:true}), h(panel.CompanyJoinSettings)));await settle(10);return p;
 }
 const btn = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === text);
 function clock() {
@@ -80,12 +80,14 @@ describe("company join local wait",()=>{
   expect(calls.length).toBeGreaterThan(before);expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
   expect(p.root.querySelector("form")).toBeNull();
  });
- it("the original Start exposes its exact confirmation and withdraws only that request",async()=>{
+ it("the original Start reveals the exact shared card and uses its sole Withdraw control",async()=>{
   heldFetch();const p=await mount(false);await start(p);expect(btn(p,"Review local confirmation")).toBeTruthy();
   const other=p.document.createElement("section");other.setAttribute("data-pending","b".repeat(32));other.className="pending-card";const wrong=vi.fn();other.scrollIntoView=wrong;p.root.appendChild(other);
-  const exact=p.document.createElement("section");exact.setAttribute("data-pending",pendingId);exact.className="pending-card";const scroll=vi.fn();exact.scrollIntoView=scroll;p.root.appendChild(exact);
+  const exact=p.root.querySelector('.pending-card[data-pending="'+pendingId+'"]');expect(exact).toBeTruthy();const scroll=vi.fn();exact.scrollIntoView=scroll;
+  expect(p.root.querySelector(".s-company-join").textContent).not.toContain("Withdraw connection request");
   fire(btn(p,"Review local confirmation"),"click");expect(scroll).toHaveBeenCalledOnce();expect(wrong).not.toHaveBeenCalled();
-  fire(btn(p,"Withdraw connection request"),"click");await settle(14);
+  const withdraw=[...exact.querySelectorAll("button")].find((el:any)=>el.textContent==="Withdraw");expect(withdraw).toBeTruthy();
+  fire(withdraw,"click");await settle(14);
   expect(calls.filter(x=>x.init.method==="DELETE")).toMatchObject([{path:"/api/settings/pending/"+pendingId}]);
   expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);
   expect(p.root.textContent).toContain("Local confirmation was withdrawn");
@@ -93,15 +95,17 @@ describe("company join local wait",()=>{
   expect(p.root.textContent).not.toContain("Fleet connected");
  });
  it("a lost withdrawal keeps the original Start held rather than inventing cancellation or permitting another Start",async()=>{
-  heldFetch(false);const p=await mount(false);await start(p);fire(btn(p,"Withdraw connection request"),"click");await settle(12);
-  expect(p.root.textContent).toContain("could not be verified");
+  heldFetch(false);const p=await mount(false);await start(p);
+  const exact=p.root.querySelector('.pending-card[data-pending="'+pendingId+'"]');
+  const withdraw=[...exact.querySelectorAll("button")].find((el:any)=>el.textContent==="Withdraw");fire(withdraw,"click");await settle(12);
+  expect(exact.className).toContain("pending");expect(p.root.textContent).not.toContain("Local confirmation was withdrawn");
   expect(btn(p,"Sign in with company account").disabled).toBe(true);
   expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);
  });
  it("a local pending timeout does not apply, silently withdraw or retry the held change",async()=>{
   const c=clock();heldFetch();const p=await mount(false);await start(p);await c.next(300000);
   expect(p.root.textContent).toContain("The local confirmation wait has ended");
-  expect(btn(p,"Withdraw connection request")).toBeTruthy();expect(btn(p,"Sign in with company account").disabled).toBe(true);
+  expect(p.root.querySelector('.pending-card[data-pending="'+pendingId+'"] .pending-actions button')).toBeTruthy();expect(btn(p,"Sign in with company account").disabled).toBe(true);
   expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);expect(calls.filter(x=>x.init.method==="DELETE")).toHaveLength(0);
  });
 });

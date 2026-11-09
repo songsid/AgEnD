@@ -2,7 +2,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
-import { api, confirmedWrite, withdraw } from "./settings-confirm.js";
+import { api, confirmedWrite } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
@@ -12,7 +12,6 @@ register("companyJoinWait", {
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
     localWithdrawn: "Local confirmation was withdrawn. Hub sign-in did not start.",
     reviewConfirmation: "Review local confirmation",
-    withdraw: "Withdraw connection request",
     localExpired: "The local confirmation wait has ended without a verified connection result. Check this request before starting another connection.",
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
@@ -22,7 +21,6 @@ register("companyJoinWait", {
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
     localWithdrawn: "已撤回本機確認，尚未開始 Hub 登入。",
     reviewConfirmation: "開啟本機確認",
-    withdraw: "撤回連接請求",
     localExpired: "等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
     leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
   },
@@ -34,7 +32,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
   const notified = useRef(null);
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
   const [view, setView] = useState(undefined), [error, setError] = useState(null), [busy, setBusy] = useState(false), [pending, setPending] = useState(null), [identityChanged, setIdentityChanged] = useState(false);
-  const [bound, setBound] = useState(false), [timedOut, setTimedOut] = useState(false), [withdrawing, setWithdrawing] = useState(false), [notice, setNotice] = useState(null);
+  const [bound, setBound] = useState(false), [timedOut, setTimedOut] = useState(false), [notice, setNotice] = useState(null);
   const waitDeadline = useRef(Date.now() + LOCAL_WAIT_MS), reading = useRef(null);
   const [form, setForm] = useState(() => {
     let address = ""; try { const candidate = new URLSearchParams(location.hash.slice(1)).get("join"); if (candidate && candidate.length <= 8192) address = candidate; } catch {}
@@ -89,12 +87,6 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     const control = pending && card.querySelector("button, input, a");
     if (control) control.focus(); else { card.tabIndex = -1; card.focus(); }
   };
-  const cancelPending = async () => {
-    if (!pending || withdrawing) return;
-    const gen = token.current; setWithdrawing(true);
-    const ok = await withdraw(pending.id);
-    if (live.current && gen === token.current) { setWithdrawing(false); if (!ok) setError(hj("unknown")); }
-  };
   useEffect(() => { if (view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved]);
   const start = async e => {
     e.preventDefault(); if (busy) return;
@@ -144,7 +136,6 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
       <p class="note">${jw(timedOut ? "localExpired" : !pending && (view === undefined || error) ? "checking" : "pending")}</p>
       <p class="note">${jw("pendingNext")}</p>
       <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
-        ${pending ? html`<button type="button" class="btn btn-sm" disabled=${withdrawing} onClick=${cancelPending}>${jw("withdraw")}</button>` : null}
         ${timedOut ? html`<button type="button" class="btn btn-sm" onClick=${read}>${hj("retry")}</button>` : null}
         ${waiting ? html`<a class="btn btn-sm" href="/settings/hub">${hj("return")}</a>` : null}</div>
       ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}

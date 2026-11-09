@@ -50,7 +50,8 @@ try{
     const current=await(await ctx.request.get(fx.base+"/api/settings/pending/"+id)).json();check(tag+" local timeout does not decide server authorization",current.state==="pending");
     await shot(wait,tag+"-timeout");
    }
-   await p.locator(".s-company-join").getByRole("button",{name:zh?"撤回連接請求":"Withdraw connection request",exact:true}).click();
+   await p.locator(".s-company-join").getByRole("button",{name:zh?"開啟本機確認":"Review local confirmation",exact:true}).click();
+   await p.locator(".pending-card[data-pending='"+id+"']").getByRole("button",{name:zh?"撤回":"Withdraw",exact:true}).click();
    await p.getByText(zh?"已撤回本機確認，尚未開始 Hub 登入。":"Local confirmation was withdrawn. Hub sign-in did not start.",{exact:true}).waitFor();
    const final=await(await ctx.request.get(fx.base+"/api/settings/pending/"+id)).json();
    check(tag+" exact withdrawal known",final.state==="rejected"&&final.outcome?.reason_code==="withdrawn");
