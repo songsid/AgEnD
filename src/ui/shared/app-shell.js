@@ -6,7 +6,7 @@ import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
 import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
-import { t, lang, setLang, onLang } from "./app-i18n.js";
+import { t, lang, setLang, onLang, register } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
@@ -563,6 +563,17 @@ const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
  * corner, except in Settings itself, which shows the same cards in its column, right under the operation (`inline`),
  * so they never cover it (alpha.2 sweep).
  */
+// #3511: the immutable diff stays in the Fleet's locale; this known line is display-only in the page's locale.
+// Own dictionary also works when app-i18n.js was cached before the Hub connection flow shipped.
+register("pendingHub", {
+  en: { connect: "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate." },
+  "zh-TW": { connect: "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。" },
+});
+function pendingSummaryLine(line) {
+  if (typeof line !== "string") return line;
+  const known = /^(?:Connect this Fleet to Hub (.+) using your company account\. Agent sharing stays separate\.|以公司帳號將這個 Fleet 連接到 Hub (.+)。分享 Agent 需另外選擇。)$/.exec(line);
+  return known ? t("pendingHub.connect", known[1] ?? known[2]) : line;
+}
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
   const list = pendingChanges || [];
@@ -587,7 +598,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${pendingSummaryLine(line)}</li>`)}</ul>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
