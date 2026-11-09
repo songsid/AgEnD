@@ -52,6 +52,8 @@ function isClassicInstance(params: FleetInstructionsParams): boolean {
 
 // A returned result continues the channel human's request; ordinary peer traffic does not.
 const CLASSIC_DELEGATED_RESULT_RULE = "For a result answering work you delegated for a channel human, match the worker and correlation_id to your own task; summarize it with `reply` in your bound ClassicBot channel, mentioning the original requester. No new explicit request is needed. Peer chatter and FYI stay quiet.";
+// The compact MCP contract leaves recovery/compaction detail in the additive prompt.
+const CLASSIC_COMPACT_RESULT_RULE = "For work you delegated for a channel human, match worker and correlation_id; summarize with `reply` in your bound ClassicBot channel, mentioning the original requester. No new explicit request is needed. Peer chatter and FYI stay quiet.";
 const CLASSIC_OTHER_CHANNEL_RULE = "For other channel-facing work, use `reply` only when the request explicitly asks you to communicate with humans (ask, notify, follow up, or mention someone).";
 const CLASSIC_REPLY_REQUIRED_RULE = "When the header says `reply required →`, also report the outcome to the sender.";
 
@@ -59,7 +61,7 @@ function mcpCrossInstanceReplyRule(classic: boolean): string {
   if (!classic) {
     return "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`. `reply required →` in its header means a reply is owed: report_result with that id. Otherwise answer only if you have something to add.";
   }
-  return `- \`[from:instance-name]\` → answer the sender with \`send_to_instance\`/\`report_result\`. ${CLASSIC_DELEGATED_RESULT_RULE} For other channel-facing work, require an explicit peer request. ${CLASSIC_REPLY_REQUIRED_RULE}`;
+  return `- \`[from:instance-name]\` → answer the sender with \`send_to_instance\`/\`report_result\`. ${CLASSIC_COMPACT_RESULT_RULE} For other channel-facing work, require an explicit peer request. ${CLASSIC_REPLY_REQUIRED_RULE}`;
 }
 
 function fullCrossInstanceMessageRule(classic: boolean): string {
@@ -129,7 +131,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     ? ` Runtime: kind=${runtimeIdentity.kind}, backend=${runtimeIdentity.backend}, model=${runtimeIdentity.model}.`
     : "";
   const version = agendVersion ? ` (AgEnD ${agendVersion})` : "";
-  return [
+  const sections = [
     `You are **${instanceName}** in an AgEnD fleet${version}. Working directory: \`${workingDirectory}\`.${runtime}`,
     "",
     "## Reply contract",
@@ -146,7 +148,14 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "- You only have file access under your own working directory; everything cross-instance goes through fleet tools.",
     "",
     "Full fleet guidance (workflow, decisions, collaboration rules) is in your system instructions.",
-  ].join("\n");
+  ];
+  // Allocated CJK room names also occur in their workspace path; a long name,
+  // adapter suffix or parent path must not truncate the reply/delivery rules.
+  // Only the compact display defers identity to the unchanged additive prompt.
+  if (classic && Buffer.byteLength(sections.join("\n"), "utf8") >= 2048) {
+    sections[0] = "You are a ClassicBot instance. Your exact identity, workspace and runtime are in your full fleet instructions.";
+  }
+  return sections.join("\n");
 }
 
 export function buildFleetInstructions(params: FleetInstructionsParams): string {

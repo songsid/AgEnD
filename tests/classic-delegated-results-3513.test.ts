@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildFleetInstructions, buildMcpCoreInstructions } from "../src/instructions.js";
+import { classicInstanceName, sanitizeInstanceName } from "../src/instance-names.js";
 
 const base = { instanceName: "classic-room", workingDirectory: "/fixture/room", workflow: false as const };
 const cli = readFileSync(new URL("../src/agent-cli-instructions.md", import.meta.url), "utf8");
@@ -48,6 +49,29 @@ describe("ClassicBot completes the channel human's delegated request", () => {
     expect(buildMcpCoreInstructions(topic)).toContain("Never `reply`");
     expect(buildFleetInstructions(topic)).toContain("NOT the `reply` tool");
     expect(buildFleetInstructions(topic)).not.toContain("work you delegated for a channel human");
+  });
+
+  it.each([
+    ["reported room", "產品設計與人工智慧開發協作及測試問題討論專區", undefined, ""],
+    ["longer room / secondary adapter", "產品設計與人工智慧開發協作及測試問題討論專區跨平台協作與測試回報", "telegram-secondary", ""],
+    ["CJK adapter", "產品設計與人工智慧開發協作及測試問題討論專區".repeat(2), "台灣團隊第二機器人", ""],
+    ["deep workspace", "產品設計與人工智慧開發協作及測試問題討論專區", undefined, "project/".repeat(60)],
+  ] as const)("production allocator: %s stays within the MCP budget without dropping any contract lines", (_case, room, adapter, parents) => {
+    const instanceName = classicInstanceName(sanitizeInstanceName(room), "12345678901234716", adapter);
+    const workingDirectory = `/home/fixture/${parents}.agend/workspaces/${instanceName}`;
+    const allocated = {
+      ...params, instanceName, workingDirectory, agendVersion: "2.3.5-beta.2",
+      runtimeIdentity: { kind: "classic" as const, backend: "codex", model: "gpt-6.1-sol" },
+    };
+    const core = buildMcpCoreInstructions(allocated);
+    expect(Buffer.byteLength(instanceName)).toBeLessThan(256);
+    expect(Buffer.byteLength(core)).toBeLessThan(2048);
+    expect(core.split("\n").slice(1)).toEqual(buildMcpCoreInstructions(params).split("\n").slice(1));
+    // Compact identity display may refer to the additive prompt; it must not
+    // rename/truncate the real identity or workspace in that full prompt.
+    const full = buildFleetInstructions(allocated);
+    expect(full).toContain(`**${instanceName}**`);
+    expect(full).toContain(`\`${workingDirectory}\``);
   });
 
   it("fits the actual MCP instruction budget", () => {
