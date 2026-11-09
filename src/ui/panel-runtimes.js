@@ -37,7 +37,7 @@ register("machines", {
   en: {
     title:"Runtime", lead:"Connect computers to run agents with each computer's own CLIs, sign-ins and files.",
     connect:"Connect a computer", download:"Download Windows Runtime (ZIP)", downloadHint:"Download here, then transfer the ZIP to the Windows computer and extract it. Windows Node.js is required.", refresh:"Refresh machines", loading:"Loading machines…", empty:"No remote computers connected yet.",
-    disabled:"Other Windows PCs can connect once “Allow other Windows PCs to pair” is on.", local:"This computer", localHint:"WSL / Linux agents run on the AgEnD host. Native Windows diagnostics are below when enabled.",
+    disabled:"Other Windows PCs can connect once “Allow other Windows PCs to pair” is on. Turn it on under Runtime policies below.", openPolicy:"Open Runtime policies", local:"This computer", localHint:"WSL / Linux agents run on the AgEnD host. Native Windows diagnostics are below when enabled.",
     localWindows:"Local Windows CLI diagnostics", online:"Online", offline:"Offline", pending:"Awaiting approval", revoked:"Revoked", unknown:"Not reported",
     lastSeen:"Last seen: {0}", inventoryAt:"CLI inventory: {0}", noInventory:"CLI inventory has not been reported yet.", noClis:"No installed CLIs reported.",
     approve:"Approve computer", revoke:"Revoke connection", rename:"Rename", save:"Save name", cancel:"Cancel", name:"Computer name", probe:"Refresh CLI inventory",
@@ -64,7 +64,7 @@ register("machines", {
   "zh-TW": {
     title:"Runtime", lead:"連接電腦，讓 Agent 使用各台電腦上的 CLI、登入與檔案。",
     connect:"連接電腦", download:"下載 Windows Runtime（ZIP）", downloadHint:"下載後，將 ZIP 傳到要執行 CLI 的 Windows 電腦並解壓縮。需要 Windows Node.js。", refresh:"更新機器清單", loading:"正在載入機器…", empty:"尚未連接其他電腦。",
-    disabled:"開啟「允許其他 Windows 電腦配對」後，其他 Windows 電腦才能連接。", local:"這台電腦", localHint:"WSL / Linux Agent 在 AgEnD 主機上執行。啟用後可在下方查看本機 Windows 診斷。",
+    disabled:"開啟下方「Runtime 政策」中的「允許其他 Windows 電腦配對」後，其他 Windows 電腦才能連接。", openPolicy:"前往開啟", local:"這台電腦", localHint:"WSL / Linux Agent 在 AgEnD 主機上執行。啟用後可在下方查看本機 Windows 診斷。",
     localWindows:"本機 Windows CLI 診斷", online:"在線", offline:"離線", pending:"等待核准", revoked:"已撤銷", unknown:"尚未回報",
     lastSeen:"最近連線：{0}", inventoryAt:"CLI 清單更新：{0}", noInventory:"尚未回報 CLI 清單。", noClis:"尚未回報已安裝的 CLI。",
     approve:"核准電腦", revoke:"撤銷連線", rename:"重新命名", save:"儲存名稱", cancel:"取消", name:"電腦名稱", probe:"更新 CLI 清單",
@@ -121,8 +121,9 @@ register("machines", {
 });
 register("machines", {
   en: { installMethod:"Install method", tabWindows:"Windows (PowerShell)", tabZip:"Other install methods (ZIP)",
-    stepInstall:"Copy the one-time install command", stepInstallHint:"Paste this into PowerShell on any Windows computer, or hand it to an AI agent running there. It downloads install.ps1 from this AgEnD, checks it against the SHA-256 below and only then runs it. The installer verifies the Runtime's own checksum, installs it for that Windows user only (next to any version already there; nothing already installed is deleted; no administrator rights needed) and connects the computer straight away: no pairing code and no approval step. The Runtime then keeps running in the background (closing the window does not disconnect it, and it starts again when you sign in to Windows). Windows Node.js 22.14 or newer is required; if it is missing, the command only tells you how to get it.",
-    stepConnect:"Paste it on the other computer", stepConnectHint:"It can be any computer that can reach this AgEnD's address, not only this one. The window installs, checks this AgEnD's server fingerprint and connects, then ends: the Runtime keeps running in the background, so the window can be closed (an AI agent or script is not kept waiting). There is nothing to type and nothing to approve here. Manage it with agend-runtime status, stop and logs; after a restart it reconnects when you sign in. To reconnect by hand, double-click connect-agend.bat in the install folder (the installer prints where it is). A computer that is already connected to this AgEnD just reconnects, and the token stays unused.",
+    stepInstall:"Copy the one-time install command", stepInstallHint:"Paste this into PowerShell on any Windows computer, or hand it to an AI agent running there: it installs the Runtime and connects the computer straight away: no pairing code and no approval step. The Runtime keeps running in the background (closing the window does not disconnect it; requires Node.js 22.14+).",
+    stepConnect:"Paste it on the other computer", stepConnectHint:"It can be any computer that can reach this AgEnD's address. Once connected, the Runtime keeps running in the background and reconnects when you sign in (manage with agend-runtime status, stop and logs, or connect-agend.bat).",
+    verifyAndHelp:"Verification hashes & troubleshooting",
     manualCommands:"Manual options (pairing code, install only)", manualCommandsHint:"For a person at an interactive PowerShell window who prefers a pairing code: the first command only installs; the second asks for the one-time pairing code below, shows a pairing fingerprint and waits for your approval here.", installOnlyCommand:"Install only (does not connect)", manualCodeNote:"A pairing code cannot be put in a command or a variable: it is typed at an interactive terminal. For an AI agent or CI, use the one-time install command above instead.",
     installCommand:"Install command", connectCommand:"Connect command", copyCommand:"Copy command", commandCopied:"Copied",
     installerHash:"The command checks install.ps1 against this SHA-256 before it runs anything:", installerLoading:"Preparing the installer hash…",
@@ -132,8 +133,9 @@ register("machines", {
     needsReinstall:"This computer's Runtime is not compatible with this AgEnD, so it cannot connect or run work. Run the install command from Connect a computer on that computer again: it installs the matching Runtime next to the old one, and the pairing is kept.",
     zipTabHint:"Prefer not to run a command? Download the ZIP here, move it to the other computer and extract it." },
   "zh-TW": { installMethod:"安裝方式", tabWindows:"Windows（PowerShell）", tabZip:"其他安裝方式（ZIP）",
-    stepInstall:"複製一次性安裝指令", stepInstallHint:"在任何一台 Windows 電腦的 PowerShell 貼上這行指令，或交給在那台電腦上執行的 AI agent。它會從這台 AgEnD 下載 install.ps1，先用下方的 SHA-256 檢查，相符才執行。安裝程式會再驗證 Runtime 自己的校驗碼，並只為那個 Windows 使用者安裝，放在既有版本旁邊（不會刪除任何已安裝的東西，也不需要系統管理員權限），然後立刻連線那台電腦：不用配對碼，也不用另外核准。連上後 Runtime 會在背景持續執行（關掉視窗不會斷線，登入 Windows 時也會自動重新連線）。需要 Windows Node.js 22.14 以上；若沒有，指令只會告訴你怎麼取得。",
-    stepConnect:"在另一台電腦貼上並執行", stepConnectHint:"不限這台電腦，只要能連到這台 AgEnD 的位址都可以。視窗會安裝、比對這台 AgEnD 的伺服器指紋並連線，然後結束：Runtime 會在背景持續執行，所以可以關掉視窗（AI agent 或腳本也不用一直等）。不用輸入任何東西，也不用回來核准。可以用 agend-runtime status、stop、logs 管理；重新開機後登入時會自動重連。想手動重連時，請雙擊安裝資料夾裡的 connect-agend.bat（安裝程式會印出它的位置）。已經連到這台 AgEnD 的電腦只會重連，token 不會被用掉。",
+    stepInstall:"複製一次性安裝指令", stepInstallHint:"在 Windows 電腦的 PowerShell 貼上這行指令（或交給 AI agent），就會自動安裝，然後立刻連線那台電腦：不用配對碼，也不用另外核准。連上後會在背景持續執行（關掉視窗不會斷線；需 Node.js 22.14+）。",
+    stepConnect:"在另一台電腦貼上並執行", stepConnectHint:"不限這台電腦，只要能連到這台 AgEnD 的位址都可以。連上後會在背景持續執行，登入 Windows 時自動重連（可用 agend-runtime status、stop、logs 或 connect-agend.bat 管理）。",
+    verifyAndHelp:"校驗碼與疑難排解",
     manualCommands:"手動選項（配對碼、只安裝）", manualCommandsHint:"適合在互動式 PowerShell 視窗前、想用配對碼的人：第一行只安裝；第二行會要求輸入下方的一次性配對碼，顯示配對指紋，並等待你在這裡核准。", installOnlyCommand:"只安裝（不連線）", manualCodeNote:"配對碼不能放進指令或變數，只能在互動式終端機輸入。AI agent 或 CI 請改用上方的一次性安裝指令。",
     installCommand:"安裝指令", connectCommand:"連線指令", copyCommand:"複製指令", commandCopied:"已複製",
     installerHash:"指令會先用這個 SHA-256 檢查 install.ps1，相符才會執行任何東西：", installerLoading:"正在準備安裝程式雜湊…",
@@ -154,7 +156,7 @@ register("machines", {
     "enrollWait": "Waiting for a computer to run the command",
     "enrollNew": "New command",
     "enrollRevoke": "Revoke and close",
-    "enrollSecurity": "Treat this command like a password. Anyone who gets it before it expires or is used can connect their own computer to this AgEnD, and agent work (code, prompts) would then run there. It works once, for 15 minutes, on any computer. A new command or Revoke ends it. Do not paste it into chats, tickets or screenshots; PowerShell also keeps pasted commands in its history.",
+    "enrollSecurity": "Treat this command like a password (valid once for 15 minutes). Anyone with it can connect a computer to this AgEnD—do not share it in chats or screenshots.",
     "enrollJoinedStep": "{0} joined with this command.",
     "enrollFingerprint": "AgEnD server fingerprint (the Runtime checks it before it sends the token):",
     "showPairingCode": "Show a pairing code",
@@ -176,7 +178,7 @@ register("machines", {
     "enrollWait": "等待電腦執行這個指令",
     "enrollNew": "重新產生",
     "enrollRevoke": "撤銷並關閉",
-    "enrollSecurity": "請把這行指令當成密碼。在它到期或被使用之前，任何拿到的人都能把自己的電腦連到這台 AgEnD，之後 Agent 的工作（程式碼、提示詞）就會在那台電腦上執行。它只能用一次、15 分鐘內有效，在任何電腦都能用。重新產生或撤銷就會讓它失效。請不要貼到聊天、工單或截圖；PowerShell 也會把貼上的指令存進歷史紀錄。",
+    "enrollSecurity": "請把這行指令當成密碼（15 分鐘內有效、限用一次）。拿到的人都能把電腦連到這台 AgEnD，請勿貼到聊天或截圖。",
     "enrollJoinedStep": "{0} 已用這個指令加入。",
     "enrollFingerprint": "AgEnD 伺服器指紋（Runtime 會先比對它，才送出 token）：",
     "showPairingCode": "顯示配對碼",
@@ -540,7 +542,7 @@ export function RuntimesPanel({navKey}) {
         ${installer.status === "loading" || installer.status === "idle" ? html`<${Skeleton} lines=${3} label=${machineText("installerLoading")} />` : null}
         ${installer.status === "error" ? html`<p class="runtime-installer-error" role="alert">${machineText("installerUnavailable")} <button type="button" class="btn btn-ghost btn-sm" onClick=${() => void loadInstaller()}>${machineText("installerRetry")}</button></p>` : null}
         ${!enroll ? html`<button type="button" class="btn btn-primary btn-sm runtime-enroll-generate" disabled=${!!busy} onClick=${connect}>${machineText("enrollGenerate")}</button>` : null}
-        ${enrollCommand ? html`${commandCard("enroll",machineText("installCommand"),enrollCommand)}<p class="note runtime-installer-hash">${machineText("installerHash")} <code>${installer.sha}</code></p><p class="note runtime-installer-hash">${machineText("enrollFingerprint")} <code>${enroll.fingerprint}</code></p><p class="note">${machineText("tlsHelp")}</p><p class="note">${machineText("restrictedHelp")}</p>`
+        ${enrollCommand ? html`${commandCard("enroll",machineText("installCommand"),enrollCommand)}<details class="runtime-more-details"><summary>${machineText("verifyAndHelp")}</summary><p class="note runtime-installer-hash">${machineText("installerHash")} <code>${installer.sha}</code></p><p class="note runtime-installer-hash">${machineText("enrollFingerprint")} <code>${enroll.fingerprint}</code></p><p class="note">${machineText("tlsHelp")}</p><p class="note">${machineText("restrictedHelp")}</p></details>`
           : enroll && enrollStatus !== "unused" ? html`<p class="note runtime-enroll-ended" role="status">${machineText(enrollNote)}</p>` : null}
         ${windowsConnectCommand ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommands")}</summary><p class="note">${machineText("manualCommandsHint")}</p>${installOnlyCommand ? commandCard("install-only",machineText("installOnlyCommand"),installOnlyCommand) : null}${commandCard("connect",machineText("connectCommand"),windowsConnectCommand)}${pairing ? pairCodeBlock() : html`<button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${newPairingCode}>${machineText("showPairingCode")}</button>`}<p class="note">${machineText("manualCodeNote")}</p></details>` : null}`)}
       ${step(3,machineText("stepConnect"),html`<p class="note">${machineText("stepConnectHint")}</p>${joinedMachine ? html`<p class="note" role="status">${machineText("enrollJoinedStep",joinedMachine.name)}</p>` : null}`)}`;
@@ -570,7 +572,7 @@ export function RuntimesPanel({navKey}) {
 
   return html`<section class="runtime-settings">
     <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !open ? download(true) : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
-    ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
+    ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")} <button type="button" class="btn runtime-open-policy" onClick=${() => { if (typeof document === "undefined") return; const d = document.querySelector("details.runtime-policy"); if (d) d.open = true; const el = document.getElementById("runtimeRemoteRuntime") || d; el?.scrollIntoView?.({ block: "center", behavior: "smooth" }); el?.focus?.(); }}>${machineText("openPolicy")}</button></p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
     ${open ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><div class="runtime-install">${installTabs}<div id="runtime-install-panel" class="runtime-install-panel" role="tabpanel" aria-labelledby=${`runtime-install-tab-${tab}`} data-install-method=${tab}><ol class="runtime-steps">
       ${tab === "windows" ? windowsSteps : zipSteps}

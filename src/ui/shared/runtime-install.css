@@ -8,7 +8,9 @@
 .runtime-command-label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); }
 .runtime-command-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .runtime-command-row .btn { flex: none; }
-.runtime-command-text { flex: 1; min-width: 0; margin: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; overflow-x: auto; user-select: all; }
+.runtime-command-text { flex: 1; min-width: 0; max-height: 4.8em; margin: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; overflow-y: auto; user-select: all; }
+.runtime-more-details { margin: 4px 0 8px; }
+.runtime-more-details summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-xs); }
 .runtime-command-text code { font: inherit; }
 @media (max-width: 600px) { .runtime-command-row { flex-direction: column; align-items: stretch; } .runtime-command-row .btn { align-self: flex-start; } }
 .runtime-installer-hash code { overflow-wrap: anywhere; font-family: var(--font-mono); }
@@ -47,3 +49,4 @@
 .runtime-approve-fingerprint { margin: 0; padding: var(--s-3) 0; font-family: var(--font-mono); font-size: var(--fs-xl); line-height: var(--lh-xl); font-weight: var(--fw-semibold); letter-spacing: .08em; color: var(--text); overflow-wrap: anywhere; }
 .runtime-pending-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s-3); margin: 0 0 var(--s-4); padding: var(--s-2) 0 var(--s-2) var(--s-3); --lbar-color: var(--warn); --lbar-inset: 0; font-size: var(--fs-sm); color: var(--text); }
 .runtime-same-name { --lbar-color: var(--warn); --lbar-inset: 0; padding-left: var(--s-3); color: var(--text-2); }
+@media (max-width: 600px) { .runtime-open-policy { min-height: var(--tap); } }
