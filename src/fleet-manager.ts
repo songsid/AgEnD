@@ -21471,6 +21471,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Resolve only trusted config; the browser never supplies a home, provider URL or credentials. */
   private webModelBinding(backend: string, instance: string | null) {
+    // Some read-only integration harnesses construct the prototype without its class initializers.
+    this.webModelTargetIds ??= new WeakMap(); this.webModelTargetSequence ??= 0;
+    this.webModelCatalogs ??= new Map(); this.webModelRefreshes ??= new Map();
     if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return null;
     const instances = this.fleetConfig?.instances ?? {};
     const own = instance && Object.hasOwn(instances, instance) ? instances[instance] : null;
