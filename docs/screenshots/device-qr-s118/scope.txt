@@ -1,0 +1,1 @@
+Visual proposal only. Real main Settings/sign-in/Preact/Dialog shell; device states are mocked. No QR auth implemented or exercised. Sample QR contains DESIGN-ONLY, no credential.
