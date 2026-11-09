@@ -18660,10 +18660,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const had = store.isEnrolled(owner.who);
     // Asked again here, not only at the start: the switch may have been turned on since (see authenticatorStarts).
     const start = this.authenticatorStarts.get(owner.handle);
-    // A code proves the app that existed at the start and nothing that replaces it: an app replaced or removed since (a recovery on
-    // the computer, say) voids every earlier remote proof; the finish is refused and the newer app is kept.
-    if (start?.kind === "code" && start.enrollment !== store.enrollmentOf(owner.who)) { this.authenticatorStarts.delete(owner.handle); return "not_here"; }
-    if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && start?.kind !== "code") return "not_here";
+    // A set-up is finished only by the attempt that was started, and only while what its start proved still holds. No start on
+    // record (never made here, or already refused) and a start whose app is no longer the owner's (replaced or removed since —
+    // a recovery on the computer, say; for a start with no app, one has appeared) VOID the attempt for good: its secret is dropped
+    // from the store too, so repeating the same finish can never revive it. The only way on is a fresh begin.
+    if (!start || (start.kind !== "host" && start.enrollment !== store.enrollmentOf(owner.who))) {
+      this.authenticatorStarts.delete(owner.handle); store.cancelEnrollment(owner.handle);
+      return "not_here";
+    }
+    if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && start.kind !== "code") return "not_here";
     const r = store.confirmEnrollment(owner.handle, code, { physicalHost: owner.onHost });
     if (r === "ok") {
       this.authenticatorStarts.delete(owner.handle);

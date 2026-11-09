@@ -319,19 +319,45 @@ describe("setting up, replacing and removing the authenticator (M3, S1)", () => 
     expect(b).toMatchObject({ secret: expect.any(String) });
     const c = f.any.webOutsideBeginEnrollment(computer.req);                            // the owner recovers on the computer: asks nothing
     expect(f.any.webOutsideConfirmEnrollment(computer.req, secretOf(c))).toBe("ok");   // C is the app now
-    const keep = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY), notices = f.any.webNoticesFeed?.()?.list?.().length;
+    const noticeCount = () => f.any.webNoticesFeed().view().items.length;            // the real feed: WebNotices.view().items
+    const keep = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY), notices = noticeCount();
+    expect(notices, "the feed exists and holds the recovery's Notice").toBeGreaterThan(0);
     expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b))).toBe("not_here");   // never verified against C: refused …
     expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(keep);               // … and C is still the app
     expect(f.any.webRemoteAccess().verify(secretOf(c, 1), HOST_ADMIN_KEY).kind).toBe("ok");
     expect(f.any.webRemoteAccess().verify(secretOf(b, 2), HOST_ADMIN_KEY).kind).toBe("wrong");   // B never became the app
-    expect(f.any.webNoticesFeed?.()?.list?.().length).toBe(notices);                        // no "replaced" Notice for a refused finish
+    expect(noticeCount()).toBe(notices);                        // no "replaced" Notice for a refused finish
     expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b, 3))).toBe("not_here");     // and the voided start is not reusable
   });
-  it("removal voids it too: the app is removed after the remote proof, a later remote finish is refused (a fresh start would be needed)", () => {
+  it("removal voids it too, for good: the refused finish is not revivable by repeating it; only a fresh begin (no app: no code) sets up again", () => {
     const f = fleet({ enrolled: true, outside: false }), remote = f.session("code", "lan"), computer = f.session("host", "here");
     const b = f.any.webOutsideBeginEnrollment(remote.req, codeAt(Date.now()));
-    expect(f.any.webOutsideRemove(computer.req)).toBe("ok");
-    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b))).toBe("not_here");
+    expect(f.any.webOutsideRemove(computer.req)).toBe("ok");                          // the owner removes the app on the computer
+    for (let n = 0; n < 3; n++) {
+      expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b, n)), `finish #${n + 1} of the same attempt`).toBe("not_here");
+      expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(false);         // never bound to B (Prism: repeating the finish returned "ok")
+    }
+    expect(f.any.webRemoteAccess().confirmEnrollment("never-begun", secretOf(b)), "the store dropped the secret too").toBe("expired");
+    // The way on is a fresh begin, which asks nothing while there is no app; the old secret B stays dead.
+    const b2 = f.any.webOutsideBeginEnrollment(remote.req);
+    expect(b2).toMatchObject({ secret: expect.any(String) });
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b, 5)), "the old secret is not the new attempt's").toBe("wrong");
+    expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(false);
+    const b3 = f.any.webOutsideBeginEnrollment(remote.req);
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b3))).toBe("ok");
+    expect(f.any.webRemoteAccess().verify(secretOf(b3, 1), HOST_ADMIN_KEY).kind).toBe("ok");
+  });
+  it("an attempt with no start on record (never made here) is refused before the store, and a start that had no app is voided once one appears", () => {
+    const f = fleet({ enrolled: false, outside: false }), remote = f.session("code", "lan"), computer = f.session("host", "here");
+    const none = f.any.webOutsideBeginEnrollment(remote.req);                          // no app: no code asked, a "none" start
+    const c = f.any.webOutsideBeginEnrollment(computer.req);
+    expect(f.any.webOutsideConfirmEnrollment(computer.req, secretOf(c))).toBe("ok");   // an app appears on the computer
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(none, 0))).toBe("not_here");   // an app exists now: finish #1 refused, and the attempt voided
+    expect(f.any.webOutsideRemove(computer.req)).toBe("ok");                          // removed again: no code is asked once more …
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(none, 1))).toBe("not_here");   // … yet finish #2 of the voided attempt is still refused
+    expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(false);
+    const lost = f.any.webOutsideBeginEnrollment(remote.req); f.any.authenticatorStarts.clear();
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(lost))).toBe("not_here");
     expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(false);
   });
   it("controls: the app unchanged — a remote replacement with its code completes; the owner with no app recovers on the computer", () => {

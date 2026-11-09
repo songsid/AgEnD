@@ -297,6 +297,8 @@ export class WebRemoteAccess {
   hasRoom(who: string): boolean {
     return who === HOST_ADMIN_KEY || !!this.state.admins?.[who] || Object.keys(this.state.admins ?? {}).length < ADMIN_AUTHENTICATORS_MAX;
   }
+  /** Void the set-up the session `handle` began: its secret can never be finished (a fresh begin is the only way on). */
+  cancelEnrollment(handle: string): void { this.pending.delete(handle); }
   /**
    * A new secret for the session `handle` to set up, as `who` (it replaces nothing until confirmEnrollment). Returned once:
    * the caller shows it to that session and forgets it.
