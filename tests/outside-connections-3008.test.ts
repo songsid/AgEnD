@@ -311,8 +311,11 @@ describe("#3008 a real fleet: connections from outside", () => {
     const off = await h.local(s, "POST", "/ui/outside/strict", { on: false, code: hotp(key, totpStep(Date.now()) + 1) }, lan);
     expect([off.status, parse(off)]).toEqual([200, { ok: true }]);
     expect(say.mock.calls.at(-1)).toEqual([expect.stringContaining("turned off"), { throttle: false }]);
-    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan))).toMatchObject({ strict: false, codeNeeded: false, enrolled: true });
-    expect((await h.local(s, "POST", "/ui/outside/remove", {}, lan)).status).toBe(200);                 // switch off: no code, even off this computer
+    // The switch is off now, but an app that exists is still changed only by its owner: off this computer the code is asked whatever the switch says.
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan))).toMatchObject({ strict: false, codeNeeded: true, enrolled: true });
+    const noCode = await h.local(s, "POST", "/ui/outside/remove", {}, lan);
+    expect([noCode.status, parse(noCode).error]).toEqual([400, "code_required"]);
+    expect((await h.local(s, "POST", "/ui/outside/remove", {})).status).toBe(200);                      // this computer: the owner asks nothing of themselves
     expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ enrolled: false, strict: false });
     await h.enroll(s);
     expect((await h.local(s, "POST", "/ui/outside/strict", { on: true })).status).toBe(200);

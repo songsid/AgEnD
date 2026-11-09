@@ -302,17 +302,15 @@ describe("Notices for a remote link-opening or secret confirmation", () => {
 
 describe("setting up, replacing and removing the authenticator (M3, S1)", () => {
   const secretOf = (r: any, offset = 0) => appCode(r, offset);
-  it("a set-up begun while no code was asked cannot be finished by a session that the admin's own switch now restricts", () => {
-    const f = fleet({ enrolled: true, outside: false }), s = f.session("code", "lan"), mine = f.session("host", "here");
+  it("a set-up begun while no app existed (no code asked) cannot be finished once an app exists for that admin and a code is asked", () => {
+    const f = fleet({ enrolled: false, outside: false }), s = f.session("code", "lan"), mine = f.session("host", "here");
     const begun = f.any.webOutsideBeginEnrollment(s.req);
-    expect(begun).toMatchObject({ secret: expect.any(String) });              // the switch was off: no code asked
-    const enrolment = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY);
-    expect(f.any.webOutsideStrict(mine.req, true)).toBe("ok");               // switched on since (this computer asks nothing)
-    expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("not_here");
-    expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(enrolment);   // nothing was replaced
+    expect(begun).toMatchObject({ secret: expect.any(String) });              // no app: no code asked, first set-up
     const hostBegun = f.any.webOutsideBeginEnrollment(mine.req);
-    expect(f.any.webOutsideConfirmEnrollment(mine.req, secretOf(hostBegun))).toBe("ok");   // this computer is never asked
-    expect(f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)).toBe(true);                   // a replaced app keeps its switch
+    expect(f.any.webOutsideConfirmEnrollment(mine.req, secretOf(hostBegun))).toBe("ok");   // the host sets its own app up meanwhile
+    const enrolment = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY);
+    expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("not_here");    // an app exists now: finishing a replacement asks the code it never gave
+    expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(enrolment);          // nothing was replaced
   });
   it("a set-up begun on this computer is not finished by the same cookie from another device once the switch is on", () => {
     const f = fleet({ enrolled: true, strict: true, outside: false }), s = f.session("host", "here");
@@ -442,7 +440,7 @@ describe("every set-up, replacement, removal and switch change posts a Notice na
     expect(f.any.webOutsideStrict(s.req, true)).toBe("ok");               // switch on (never asks)
     app = set(asked(app));                                                // replacement (a code while the switch is on)
     expect(f.any.webOutsideStrict(s.req, false, asked(app))).toBe("ok"); // switch off
-    expect(f.any.webOutsideRemove(s.req)).toBe("ok");                     // removal
+    expect(f.any.webOutsideRemove(s.req, away ? appCode(app, 1) : undefined)).toBe("ok");   // removal (the owner's current code off the computer)
   }
   const KEYS = ["outside.enrolled_notice_by", "outside.strict_on_notice_by", "outside.reenrolled_notice_by", "outside.strict_off_notice_by", "outside.removed_notice_by"];
   it.each([
@@ -487,7 +485,7 @@ describe("every set-up, replacement, removal and switch change posts a Notice na
     expect(f.any.webOutsideStrict(a.req, true)).toBe("ok"); step(2, KEYS[1]!);               // strict on
     app = set(asked(app)); step(3, KEYS[2]!);                                                // a replacement
     expect(f.any.webOutsideStrict(a.req, false, asked(app))).toBe("ok"); step(4, KEYS[3]!);  // strict off
-    expect(f.any.webOutsideRemove(a.req)).toBe("ok"); step(5, KEYS[4]!);                     // a removal
+    expect(f.any.webOutsideRemove(a.req, appCode(app, 1))).toBe("ok"); step(5, KEYS[4]!);    // a removal (the owner's current code)
     // The notices are kept in the real store beside the fleet's files, readable again from a new read.
     expect(f.any.webNoticeStore().view().items.map((n: any) => n.text).reverse()).toEqual(KEYS.map(k => t(k, "Ada")));
   });
@@ -722,5 +720,43 @@ describe("the remote flag the page reads", () => {
       const f = fleet({ chat });
       expect(["here", "lan", "tailnetServe", "tailnetDirect"].map(w => f.any.settingsPageIsRemote(f.session("code", w as Where).req))).toEqual([false, true, true, true]);
     }
+  });
+});
+
+describe("changing an app that exists is its owner's: the current code off the computer, whatever the switch says (Prism round 2, #2)", () => {
+  const lan = (f: ReturnType<typeof fleet>) => f.session("account", "lan", { user: ADMIN });
+  it("an enrolled admin with the switch OFF, from the LAN: replacing and removing need their current code — no secret is given and nothing is removed without it; the right code works", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: {} } }), a = lan(f), mine = adminKey("a", ADMIN), access = f.any.webRemoteAccess();
+    expect(access.strictOf(mine)).toBe(false);
+    expect(f.any.webOutsideStatus(a.req)).toMatchObject({ enrolled: true, strict: false, codeNeeded: true });
+    expect(f.any.webOutsideBeginEnrollment(a.req)).toEqual({ error: "code_required" });                      // no secret
+    expect(f.any.webOutsideBeginEnrollment(a.req, "000000")).toEqual({ error: "wrong" });
+    expect(f.any.webOutsideRemove(a.req)).toEqual({ error: "code_required" });
+    expect(access.isEnrolled(mine)).toBe(true);
+    const begun = f.any.webOutsideBeginEnrollment(a.req, appCode(secretFor(ADMIN)));
+    expect(begun).toMatchObject({ secret: expect.any(String) });
+    expect(f.any.webOutsideConfirmEnrollment(a.req, appCode(begun, -1))).toBe("ok");
+    expect(f.any.webOutsideRemove(a.req, appCode(begun, 1))).toBe("ok");
+    expect(access.isEnrolled(mine)).toBe(false);
+  });
+  it("the same admin on the computer asks nothing; a first set-up (no app) asks nothing anywhere; strict on asks nothing, strict off asks the code", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: {} } }), here = f.session("account", "here", { user: ADMIN }), away = lan(f);
+    expect(f.any.webOutsideStatus(here.req)).toMatchObject({ codeNeeded: false });
+    const begun = f.any.webOutsideBeginEnrollment(here.req);
+    expect(begun).toMatchObject({ secret: expect.any(String) });
+    expect(f.any.webOutsideConfirmEnrollment(here.req, appCode(begun, -1))).toBe("ok");
+    expect(f.any.webOutsideStrict(away.req, true)).toBe("ok");
+    expect(f.any.webOutsideStrict(away.req, false)).toEqual({ error: "code_required" });
+    expect(f.any.webOutsideRemove(here.req)).toBe("ok");                                                     // the computer: no code
+    const b = f.session("account", "lan", { user: ADMIN_B });                                                // B has no app: a first set-up from the LAN needs nothing
+    expect(f.any.webOutsideStatus(b.req)).toMatchObject({ enrolled: false, codeNeeded: false });
+    const nb = f.any.webOutsideBeginEnrollment(b.req);
+    expect(f.any.webOutsideConfirmEnrollment(b.req, appCode(nb, -1))).toBe("ok");
+  });
+  it("same-owner host recovery: with no app the host begins and finishes without any code, while a remote Remove of nothing changes nothing", () => {
+    const f = fleet({ chat: true }), host = f.session("account", "here", { user: ADMIN }), away = lan(f);
+    const begun = f.any.webOutsideBeginEnrollment(host.req);
+    expect(f.any.webOutsideRemove(away.req)).toBe("not_here");
+    expect(f.any.webOutsideConfirmEnrollment(host.req, appCode(begun, -1))).toBe("ok");
   });
 });

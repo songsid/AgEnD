@@ -18597,12 +18597,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       current: () => { const now = this.settingsRole(req); return now.role.ok && now.handle === handle && adminKey(now.role.actor.adapter_id, now.role.actor.user_id) === who; } };
   }
   /**
-   * Replacing or removing the app, and turning the switch off, ask for its current code off the AgEnD computer when the admin's own
-   * switch is on, and — for the host operator on a web-only fleet whose connections from outside are on — whatever the switch says:
-   * there the app is the sign-in from outside, so a session must not be able to swap it for its own.
+   * Changing an app that exists — replacing it, removing it, turning its switch off — is the OWNER'S, proven by its current code off
+   * the AgEnD computer, whatever the "ask for my code on confirmations" switch says (that switch is about ordinary Settings
+   * confirmations; this is lifecycle ownership). With no app there is no old code to ask: a first set-up asks nothing, and the AgEnD
+   * computer's own browser is never asked — the recovery controls.
    */
   private authenticatorCodeAsked(owner: { onHost: boolean; who: string }, access: WebRemoteAccess): boolean {
-    return !owner.onHost && access.isEnrolled(owner.who) && (access.strictOf(owner.who) || (owner.who === HOST_ADMIN_KEY && this.outsideOn()));
+    return !owner.onHost && access.isEnrolled(owner.who);
   }
   /** What changing the app asks of this session: nothing, or the current code (of its own app). */
   private authenticatorStep(owner: { onHost: boolean; who: string }, access: WebRemoteAccess, code: string | undefined):
