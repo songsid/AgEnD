@@ -165,6 +165,10 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-antigravity" })); await settle(14);
     expect(rowOf("antigravity").textContent).toContain("Not installed");
     expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
+    // 2026-11-10 decision: the pin is the vendor's newest build, not an audited version — the page says so, in both languages, and only on the download row.
+    expect(rowOf("antigravity").textContent).toContain("Not yet verified by AgEnD");
+    expect(rowOf("claude-code").textContent).not.toContain("Not yet verified by AgEnD");
+    expect(rowOf("opencode").textContent).not.toContain("Not yet verified by AgEnD");
     expect(installButton("antigravity").disabled).toBe(false);
     installAnswer = { status: 202, body: { job: { cli: "antigravity", state: "installing", startedAt: 1 } } };
     fire(installButton("antigravity"), "click"); await settle(14);
@@ -184,7 +188,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
-    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
+    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0"); expect(rowOf("antigravity").textContent).toContain("尚未經 AgEnD 驗證");
     i18n.setLang("en", { store: false });
   });
 });
