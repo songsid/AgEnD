@@ -2,12 +2,18 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { hostFacts, hostIdsByRank, type HostCliWith } from "./cli-registry.js";
+import type { StructuredBackend } from "./structured-signin.js";
 
-export const ONBOARDING_BACKENDS = ["kiro-cli", "claude-code", "codex", "antigravity"] as const;
-export type OnboardingBackend = typeof ONBOARDING_BACKENDS[number];
+/** The CLIs the first-run page offers a sign-in for, in its order (cli-registry.ts: `host.firstRunSignIn`). */
+export type OnboardingBackend = HostCliWith<"firstRunSignIn">;
+export const ONBOARDING_BACKENDS: readonly OnboardingBackend[] = Object.freeze(hostIdsByRank("firstRunSignIn") as OnboardingBackend[]);
+/** Those it signs in with browser controls, and those it only names the console command for. */
+export const ONBOARDING_BROWSER_BACKENDS: readonly (OnboardingBackend & StructuredBackend)[] = Object.freeze(ONBOARDING_BACKENDS.filter(id => hostFacts(id, "firstRunSignIn")!.mode === "browser") as Array<OnboardingBackend & StructuredBackend>);
+export const ONBOARDING_CONSOLE_BACKENDS: readonly OnboardingBackend[] = Object.freeze(ONBOARDING_BACKENDS.filter(id => hostFacts(id, "firstRunSignIn")!.mode === "console"));
 export interface PendingBackendSignIns { version: 1; selected: OnboardingBackend[]; pending: OnboardingBackend[] }
 export function onboardingBackends(value: unknown): OnboardingBackend[] | null {
-  if (!Array.isArray(value) || value.length > 4 || value.some(v => typeof v !== "string"
+  if (!Array.isArray(value) || value.length > ONBOARDING_BACKENDS.length || value.some(v => typeof v !== "string"
     || !(ONBOARDING_BACKENDS as readonly string[]).includes(v))) return null;
   return [...new Set(value)] as OnboardingBackend[];
 }

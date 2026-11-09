@@ -21,6 +21,7 @@ import { CompactMeter } from "/assets/usage-meter.js";   // #3321: the Usage pan
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
+import { capsOf } from "./cli-caps.js";
 import { toast } from "/assets/ui-toast.js";
 import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
@@ -98,7 +99,8 @@ function linkAccountsCss(doc = typeof document !== "undefined" ? document : null
     doc.head.appendChild(link);
   } catch { /* the view still works without it */ }
 }
-const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };
+/** How a Move words what happens to the conversation: the registry says which of the three a CLI is (cli-caps.js: `carry`); these are this page's words for them. */
+const CARRY_WORDS = { carries: "carry_claude", keeps: "carry_codex", handover: "carry_kiro" };
 
 export const accountsStore = createStore({ loaded: false, failed: false, view: null });
 /**
@@ -390,7 +392,7 @@ function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
   return html`<${Dialog} title=${tx("moveTitle", label)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tx("cancel")}</button>
     <button type="button" class="btn btn-primary" disabled=${!chosen.size} onClick=${stage}>${tx("moveStage")}</button>`}>
     ${!others.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
-      <p class="note">${tx(CARRY[cli.backend] || "carry_claude")}</p>
+      <p class="note">${tx(CARRY_WORDS[capsOf(cli.backend)?.carry] || "carry_claude")}</p>
       <ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
         onChange=${(e) => setChosen((s) => { const n = new Set(s); if (e.target.checked) n.add(a.name); else n.delete(a.name); return n; })} />
         <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>`}

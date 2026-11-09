@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
+import { CLI_CAPS } from "./cli-caps.js";
 
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
@@ -28,8 +29,8 @@ const text = (key, ...values) => t(`runtimeInstall.${key}`, ...values);
 
 /** A command, not words: the same in every language. */
 export const SWITCH_COMMAND = "agend-runtime remote-setup install on --for 2h";
-/** The CLIs a Runtime can install, as AgEnD's own table names them; the Runtime enforces its own list. */
-export const INSTALL_CLIS = [{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }];
+/** The CLIs a Runtime can install, as AgEnD's own table names them (cli-caps.js: `runtimeInstall`); the Runtime enforces its own list. */
+export const INSTALL_CLIS = Object.keys(CLI_CAPS).filter((id) => CLI_CAPS[id].runtimeInstall).map((id) => ({ id, label: CLI_CAPS[id].runtimeName }));
 /** Vendor commands, for the computer's owner to run: AgEnD never sends them anywhere. */
 export const OFFICIAL_COMMANDS = [
   { id: "grok", label: "Grok", command: "irm https://x.ai/cli/install.ps1 | iex" },

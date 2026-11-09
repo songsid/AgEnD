@@ -29,6 +29,7 @@ import {
 } from "./settings-model.js";
 import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
 import { AccountSelect } from "./accounts-view.js";   // #3212: the Account field (a new module: never a stale named import)
+import { capsOf } from "./cli-caps.js";
 /** M-2446: Codex speed choices (backend_options.codex.speed); "" = unset. Local, not imported: a stale tab may keep an
  *  older settings-model.js, and a new named import would fail this module's load. */
 const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
@@ -334,7 +335,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
         <p class="note">${tn("codexSpeedHint")}</p></div>` : null}
-      ${inst.runtime !== "windows" && ["claude-code", "codex", "kiro-cli"].includes(acctBackend) ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
+      ${inst.runtime !== "windows" && capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}
