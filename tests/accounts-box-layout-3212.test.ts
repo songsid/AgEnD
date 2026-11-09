@@ -364,7 +364,7 @@ describe("the stylesheets: the theme's colours only, layers float, the box does 
       const c = code(sheet);
       expect(c.match(/#[0-9a-fA-F]{3,8}\b/g), `${name}: hex`).toBeNull();
       expect(c.match(/\b(?:rgba?|hsla?|oklch|lab|lch)\(/g), `${name}: colour functions`).toBeNull();
-      expect(c.match(/\b(?:white|black|gray|grey|red|green|blue|orange|yellow)\b/g), `${name}: named colours`).toBeNull();
+      expect(c.match(/\b(?:white|black|gray|grey|red|green|blue|orange|yellow)\b(?!-)/g), `${name}: named colours`).toBeNull();
       expect(c, `${name}: a private palette`).not.toMatch(/--ac-/);
       const used = [...c.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]);
       expect(used.length, name).toBeGreaterThan(5);

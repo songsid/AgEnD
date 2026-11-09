@@ -50,12 +50,15 @@ export function validMaskedEmail(value: unknown): value is string {
 }
 export function validPlan(value: unknown): value is Plan { return typeof value === "string" && (PLANS as readonly string[]).includes(value); }
 
-/** The address as the CLI reported it, or undefined when it does not fit the contract: never truncated, never partly kept. */
+/**
+ * The address as the CLI reported it, or undefined when it does not fit the contract: never truncated, never partly kept. The RAW value is checked
+ * first (its length, and that it holds only printable ASCII plus the ASCII white space `trim` removes), so padding can never make an over-long or
+ * non-ASCII value fit: `trim` only strips the ASCII white space around what the CLI printed, and the address that is left is checked again.
+ */
 function cleanEmail(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== "string" || !value || value.length > MAX_EMAIL || !/^[\t\n\v\f\r \x21-\x7e]+$/.test(value)) return undefined;
   const text = value.trim();
-  if (!text || text.length > MAX_EMAIL || !/^[\x21-\x7e]+$/.test(text)) return undefined;          // printable ASCII, no space: a non-ASCII address sends none
-  return validMaskedEmail(text) && !text.includes("*") ? text : undefined;
+  return text && validMaskedEmail(text) && !text.includes("*") ? text : undefined;
 }
 /**
  * `ab***@example.com` for any text that is not the Accounts page (a terminal line, a log, an error, an audit line, a notice, a chat reply):

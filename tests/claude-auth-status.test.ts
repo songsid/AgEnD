@@ -27,6 +27,16 @@ describe("the e-mail in `claude auth status`", () => {
       expect(masked(bad), JSON.stringify(bad)).toBeUndefined();
     }
   });
+  it("checks the raw value BEFORE any trimming: padding that would make an over-long or non-ASCII value fit does not hide it", () => {
+    const addr = "alice.fixture@example.com";
+    for (const bad of [`\u00a0${addr}`, `${addr}\u00a0`, `\u3000${addr}`, `${addr}\u2003`, `\u200b${addr}`, `\ufeff${addr}`, `${" ".repeat(260)}${addr}`, `${addr}${" ".repeat(260)}`, `${" ".repeat(130)}${addr}${" ".repeat(130)}`,
+      `${"\n".repeat(300)}${addr}`, `${addr}\n${"x".repeat(300)}`, `${" ".repeat(250)}${"a".repeat(250 - 12)}@example.com`]) {
+      expect(masked(bad), JSON.stringify(bad).slice(0, 40)).toBeUndefined();
+    }
+    for (const ok of [` ${addr}`, `${addr} `, `\n${addr}\n`, `\t${addr}\r\n`, `  ${addr}  `]) expect(masked(ok), JSON.stringify(ok)).toBe(addr);       // the CLI's own surrounding white space is still fine
+    const at254 = `${"a".repeat(254 - "@example.com".length)}@example.com`; expect(masked(at254)).toBe(at254);
+    expect(masked(`  ${at254}`)).toBeUndefined(); expect(masked(`${at254}\n`)).toBeUndefined();                                           // the raw value is over the limit, so it is refused whole: not trimmed back into range
+  });
   it("is dropped, not truncated, when it is over 254 characters; 254 exactly is kept whole", () => {
     const local = "a".repeat(64), domain = `${"d".repeat(60)}.${"e".repeat(60)}.${"f".repeat(50)}.com`;
     const at254 = `${"a".repeat(254 - domain.length - 1)}@${domain}`;
