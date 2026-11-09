@@ -1,0 +1,13 @@
+{
+  "case": "main-browser-r2",
+  "head": "170d0a60dbb256bf15dc5c76335ae147b1ac1e61",
+  "commandScript": "scripts/manual/subagent-row/accept.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 47,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/saqa-bdm53fz0",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794220271.7183123,
+  "ownedTempRemoved": true
+}

@@ -1,0 +1,222 @@
+[
+  {
+    "file": "README.md",
+    "sha256": "72a3cf9fae53251d188fa2ee24a93771b49485367dc7084cda78ef0abc8a53a4"
+  },
+  {
+    "file": "browser-receipt.json",
+    "sha256": "9d9ad396197f3211dda437c1508053bbfc9c0f6b4b079afbe817910c77264b6d"
+  },
+  {
+    "file": "cleanup.json",
+    "sha256": "5e88cc87434b39ef1ed448c862e7075a04dd2734b14e7fa4a3aea68390863f8c"
+  },
+  {
+    "file": "desk-dark-en-before.png",
+    "sha256": "af53f5db614a1441927b054699a82675ba4a44742b41434d1a0dfdab93dfe26c"
+  },
+  {
+    "file": "desk-dark-en-codex.png",
+    "sha256": "3694a7b602f3c0b9f0ba8661c556f07e1ba35faeac54ef39a76f81fe9cf2bf95"
+  },
+  {
+    "file": "desk-dark-en-collapsed.png",
+    "sha256": "de063c3f73fddeb2c9ad8a2eb8e7046fbc640a36357333ad2b3a634ea8c19d2b"
+  },
+  {
+    "file": "desk-dark-en-expanded-bottom.png",
+    "sha256": "869beb01735c011c05c5e8080b9188b13af71895ee2d30fba49a40c5b7cfa989"
+  },
+  {
+    "file": "desk-dark-en-expanded.png",
+    "sha256": "9b8723ef80f1a6f7783d05ff0b25b69f5bb59e2912e9b6c5371ab48a4880bc63"
+  },
+  {
+    "file": "desk-dark-en-unknown.png",
+    "sha256": "518d7c5a8a0ef9add7f238577d8e10bb8261e4282952667d845631c85d3cfbe7"
+  },
+  {
+    "file": "desk-dark-zh-TW-before.png",
+    "sha256": "068ee0f3d14b8f76e239066babdef97a8d560b0dd9f54f24235ab3fb64ced921"
+  },
+  {
+    "file": "desk-dark-zh-TW-codex.png",
+    "sha256": "9417bae1c360567c1d0afebd15760d5e99f7a74169e1c23d48d88e37e644d043"
+  },
+  {
+    "file": "desk-dark-zh-TW-collapsed.png",
+    "sha256": "b3e7f4a90f341b38032d17cb5a958ea8ec76fab741969b984e6073e823dd2a0b"
+  },
+  {
+    "file": "desk-dark-zh-TW-expanded-bottom.png",
+    "sha256": "787251624f5cb39392df4b691897393fc5f544058f2af29fe4ad45273f60dea8"
+  },
+  {
+    "file": "desk-dark-zh-TW-expanded.png",
+    "sha256": "4c18e5a3bd136d07b38d6c303ef975ecd399c0a4795a91f83fae7d37c70212e4"
+  },
+  {
+    "file": "desk-dark-zh-TW-unknown.png",
+    "sha256": "5d9129a7665e999ed979731d245d0e402a8c6330fa5ccc56709013f495247440"
+  },
+  {
+    "file": "desk-light-en-before.png",
+    "sha256": "6858d24c4fbbbfb4f3f34287b25f16de168197b3adfb5017992eeaecf2377b69"
+  },
+  {
+    "file": "desk-light-en-codex.png",
+    "sha256": "d5a68c93eb197592b6a5cace48b5920b3b645e4c6536957ab358d80585566a7d"
+  },
+  {
+    "file": "desk-light-en-collapsed.png",
+    "sha256": "5c172d5a2547b127c0692ea4cbd56f225a77780050de9ae223eb2447061c3d71"
+  },
+  {
+    "file": "desk-light-en-expanded-bottom.png",
+    "sha256": "d8b82f413b623f56b4e75849a3d8130f4914e98aa78ca1e5273a40c64b0ca80b"
+  },
+  {
+    "file": "desk-light-en-expanded.png",
+    "sha256": "a93aade5a4fcaf4c97660ceba9258b1c46d5576ea7322ed17720066837879499"
+  },
+  {
+    "file": "desk-light-en-unknown.png",
+    "sha256": "80bb49f0563e662ab5b21639b95bf86af4f2f07b131efae75c5f3ef35cba9d84"
+  },
+  {
+    "file": "desk-light-zh-TW-before.png",
+    "sha256": "b67c154b4412566806bbae695c91b64fb0c8d1ffd2a78fb85db1c5368d0b2324"
+  },
+  {
+    "file": "desk-light-zh-TW-codex.png",
+    "sha256": "a3598b9d28cbc8c73044fe4c71736822a0214fad337308fccc58235434c7aba7"
+  },
+  {
+    "file": "desk-light-zh-TW-collapsed.png",
+    "sha256": "f33891a25506e6e3392fa5f36303583b399900214baeddc4717605dc61f03f19"
+  },
+  {
+    "file": "desk-light-zh-TW-expanded-bottom.png",
+    "sha256": "65dc637e28e11fd01778a7539dc9ac6df4a951673bcddfe2d5c58b3fa1876a8f"
+  },
+  {
+    "file": "desk-light-zh-TW-expanded.png",
+    "sha256": "47840cd287f82013e7794bbdae7e8c68b1f910cbc31b0ab140eea04e79cd0501"
+  },
+  {
+    "file": "desk-light-zh-TW-unknown.png",
+    "sha256": "05370ac9539b4cb32b86818afed928150037e4e8e111eca987e2a640b3d73de7"
+  },
+  {
+    "file": "phone-dark-en-before.png",
+    "sha256": "946aa27c0633613dcc22b65a7c81223309e77c31774b07caca3234e0d491e7b5"
+  },
+  {
+    "file": "phone-dark-en-codex.png",
+    "sha256": "1413caf6ef671cb32aca9ac8966c8ba8ac44c686c1239041c95de2d1b9f2be9e"
+  },
+  {
+    "file": "phone-dark-en-collapsed.png",
+    "sha256": "abde9487d3cab1694f3b24d0ba45dda37a415838299a84292618a126c57c0abe"
+  },
+  {
+    "file": "phone-dark-en-expanded-bottom.png",
+    "sha256": "b51203ee08a16374eb2b8132039ac4ec2b02718f10c6e80c201534dc969c66c2"
+  },
+  {
+    "file": "phone-dark-en-expanded.png",
+    "sha256": "c2850139a90e85932fcca07b0fc0948016ed8b3105532eb51a30543735490f3f"
+  },
+  {
+    "file": "phone-dark-en-unknown.png",
+    "sha256": "6417c36bcbec2a001d7270f322d3799ac82cbd5960b0b9bd05b7b95a995eeaa0"
+  },
+  {
+    "file": "phone-dark-zh-TW-before.png",
+    "sha256": "a8d34ecddac4647703af6bd2ab16c048ba2c2a45048706b9b3bf4509f2ba863c"
+  },
+  {
+    "file": "phone-dark-zh-TW-codex.png",
+    "sha256": "c7c20b446a326f7b06f924241d917e726e686369888cf20223e6a10962b4ed39"
+  },
+  {
+    "file": "phone-dark-zh-TW-collapsed.png",
+    "sha256": "ee62c2d8f8b7080a989506d96101afd63200f1985491572c9ee8e7fe134cf5f8"
+  },
+  {
+    "file": "phone-dark-zh-TW-expanded-bottom.png",
+    "sha256": "e8742e86aea3c1fd2387f70f6423074a34eb768cf326739910a1d8e237bf6751"
+  },
+  {
+    "file": "phone-dark-zh-TW-expanded.png",
+    "sha256": "81508891dc0b91c6abc3e74ffa5e27c3ace54276dfe4201f101be4bda4b1fd6f"
+  },
+  {
+    "file": "phone-dark-zh-TW-unknown.png",
+    "sha256": "887ef9126e0e2d00b3663864f8aac4c9792e6a9019f1b9c6394f39f96ede9b64"
+  },
+  {
+    "file": "phone-light-en-before.png",
+    "sha256": "9bd1d799a0f910fb5d097638594fbacf3a35d5370f1ba4b536cf77da9dfd7527"
+  },
+  {
+    "file": "phone-light-en-codex.png",
+    "sha256": "68577a490ace0ce6c1d8039fd4864f22ced645cf6a9fc326b0b83bdd6af60d61"
+  },
+  {
+    "file": "phone-light-en-collapsed.png",
+    "sha256": "a8b72f9ac3c56573ef0421e391c2d6cbb0850f8c976f284e140167b3c8ed2129"
+  },
+  {
+    "file": "phone-light-en-expanded-bottom.png",
+    "sha256": "e18f18e9cd8b738961523bde844f708b15a7a4a3576166177bf152c677a98c27"
+  },
+  {
+    "file": "phone-light-en-expanded.png",
+    "sha256": "58223eb7ddd7dd0b3903b079e20c06cc9626a7f6a54b508ba8ab2f7df02d8c2f"
+  },
+  {
+    "file": "phone-light-en-unknown.png",
+    "sha256": "7a33e824c51d44d73d529cc68d8e08d37bcdf9a14a297b3dc862f585bc3dde21"
+  },
+  {
+    "file": "phone-light-zh-TW-before.png",
+    "sha256": "d7385301e6ca0e0512ee137c186a9ab2f47133b9b4ea6d8345cedb11eb90bb46"
+  },
+  {
+    "file": "phone-light-zh-TW-codex.png",
+    "sha256": "00df0927b31dded0aacdc5824d0d211b9ad0d101933e10e34738d68fc8d77621"
+  },
+  {
+    "file": "phone-light-zh-TW-collapsed.png",
+    "sha256": "e80ab6abe510f72ebf1302f9b85ca0e9d6aff51e6e1d1bef19bec46f8bab3966"
+  },
+  {
+    "file": "phone-light-zh-TW-expanded-bottom.png",
+    "sha256": "dacc3402d0c110d6b59b1589e923d8b832111c2a829316c9ae1747039014df76"
+  },
+  {
+    "file": "phone-light-zh-TW-expanded.png",
+    "sha256": "715ac784f8319c8fce03ff1245593ddc7728991e270959034d05fe4c27cfcfb3"
+  },
+  {
+    "file": "phone-light-zh-TW-unknown.png",
+    "sha256": "bca2c137f1b1bf99ad05e8f050ee468ff4f7627421c7b401a25ed6ab9caef804"
+  },
+  {
+    "file": "skew-missing-module.png",
+    "sha256": "a8d34ecddac4647703af6bd2ab16c048ba2c2a45048706b9b3bf4509f2ba863c"
+  },
+  {
+    "file": "skew-old-css.png",
+    "sha256": "3e55f9409f419937094f3750505de32dead392ed7de9dbd6916dc72120a47a90"
+  },
+  {
+    "file": "skew-old-panel.png",
+    "sha256": "a8d34ecddac4647703af6bd2ab16c048ba2c2a45048706b9b3bf4509f2ba863c"
+  },
+  {
+    "file": "skew-old-server.png",
+    "sha256": "2f2f771d6b6656e4bcc4c650e8fce0767c16b25a99e155a84b848de6ac997729"
+  }
+]

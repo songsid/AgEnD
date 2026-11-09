@@ -1,0 +1,16 @@
+# Child-Agent progress row: real-shell evidence
+
+2026-11-09 · M-2745. Product render, **not a DOM mockup**. `scripts/manual/subagent-row/accept.mts` boots the actual FleetManager web server with an inert lifecycle source, uses normal admin browser sign-in, reads private files containing saved audited mock-CLI structured records through SubagentService and GET /ui/subagents. No child response/API result is stubbed for positive cases. Timestamp shift exercises one open run; no CLI/model/vendor request or native Runtime was executed.
+
+The approved first slice deliberately lives in the **progress dock**, never under an unproven delivered reply. The explicit parent task is shown when the captured parent contains it. Codex's selected research export omits human input; the label uses only its proved parent work-turn time. Child reports are not the main Agent's final answer.
+
+Full 8-cell desktop1366×900/phone390×844 × light/dark × EN/zh-TW: `*-before` (no child source, hidden), `*-collapsed` (default), `*-expanded` (one Claude finished + one open), `*-expanded-bottom` (actual scroll to final child/footer), `*-unknown` (missing child files, no summaries/timers), `*-codex` (two exact-parent completed children). The receipt asserts progress outside the chat ledger, composer presence, no horizontal overflow, independent stylesheet, no child controls, last-child reachability, no page errors or CSP violations.
+
+| zh-TW | Before | Default | Expanded | Bottom |
+|---|---|---|---|---|
+| Desktop light | [before](desk-light-zh-TW-before.png) | [collapsed](desk-light-zh-TW-collapsed.png) | [expanded](desk-light-zh-TW-expanded.png) | [bottom](desk-light-zh-TW-expanded-bottom.png) |
+| Phone dark | [before](phone-dark-zh-TW-before.png) | [collapsed](phone-dark-zh-TW-collapsed.png) | [expanded](phone-dark-zh-TW-expanded.png) | [bottom](phone-dark-zh-TW-expanded-bottom.png) |
+
+SKEW: actual base170d0a60 panel/new shell; actual base app.css/new module; new panel/404 old endpoint; new panel/missing optional chunk. Old-byte/404 boundaries are browser routing fixtures **only for SKEW**, not server-read acceptance. All retain the composer without a page error. No new shared named export. Desktop/phone image review found no remaining visual blocker; the first pass prompted a scroll hint, expansion arrow and hidden empty-source row.
+
+[Browser receipt](browser-receipt.json) binds production source hashes. [Cleanup](cleanup.json): unprivileged user+network namespace with only loopback; private HOME and short TMPDIR; 47 observed owned process identities, zero live at completion; scratch removed. No real user screenshots, join link, account, live fleet or public service used. The fixture is an isolation of test data/network, not an OS filesystem sandbox.
