@@ -564,7 +564,7 @@ export interface WebApiContext {
   webOutsideStatus?(req: IncomingMessage): Record<string, unknown>;
   /** #3008: set up the authenticator (this computer's admin, here only): a new secret, shown once. Null: not them. */
   webOutsideBeginEnrollment?(req: IncomingMessage, code?: string): { secret: string; uri: string; expiresInMs: number } | { error: "code_required" | "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } | null;
-  webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
+  webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" | "full";
   webOutsideRemove?(req: IncomingMessage, code?: string): "ok" | "unsaved" | "not_here" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number };
   webOutsideStrict?(req: IncomingMessage, on: boolean, code?: string): "ok" | "not_enrolled" | "not_here" | "unsaved" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number };
   webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
@@ -2805,7 +2805,7 @@ export function handleWebRequest(
         const code = body && typeof body === "object" ? body.code : undefined;
         if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code required" }); return; }
         const r = ctx.webOutsideConfirmEnrollment?.(req, code) ?? "not_here";
-        json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 400, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+        json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : r === "full" ? 409 : 400, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
         return;
       }
       if (path === "/ui/outside/remove") {

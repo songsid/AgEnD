@@ -13,7 +13,11 @@
  *  - AGEND-122 (per admin): each admin has their own record and their own "ask for my code" switch (`strict`, kept in the record, so
  *    removed with the app and kept on replacement): two admins' records are independent, a verify for one never advances the other's
  *    step, a non-host enrolment does not reset the fleet-wide limiter (a host one does), `remove(who)` with no app does not clear a
- *    pending set-up, pending set-ups are per session handle, and the file round-trips with garbled admin entries ignored.
+ *    pending set-up, pending set-ups are per session handle, and the file round-trips with garbled admin entries ignored;
+ *  - Prism's second review (round 3): the fleet-wide wrong-code pause is reset by a host-operator enrolment ONLY when it is made on the
+ *    AgEnD computer (`physicalHost: true`; P5), and there is room for at most ADMIN_AUTHENTICATORS_MAX admin records — the one after
+ *    that is refused ("full") before anything is written, an existing record's replacement still works, and a file with that many
+ *    records reopens with every app and every switch (P4).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -389,6 +393,34 @@ describe("AGEND-122: each admin's own authenticator and switch", () => {
     writeFileSync(r.path, JSON.stringify({ ...saved, admins }));
     const o = r.open();
     expect([o.isEnrolled(adminKey("a", "u0")), o.isEnrolled(adminKey("a", `u${ADMIN_AUTHENTICATORS_MAX - 1}`)), o.isEnrolled(adminKey("a", `u${ADMIN_AUTHENTICATORS_MAX}`))]).toEqual([true, true, false]);
+  });
+  it("P4: with ADMIN_AUTHENTICATORS_MAX admin records the next NEW admin is refused (\"full\") before anything is written; an existing record's replacement still works; a reopen keeps every app and every switch", () => {
+    const r = rig(); r.enroll(); r.enroll(r.store, "ha", A);
+    const saved = JSON.parse(readFileSync(r.path, "utf8")), rec = saved.admins[A], admins: Record<string, unknown> = {};
+    const key = (n: number) => adminKey("a", `u${n}`);
+    for (let n = 0; n < ADMIN_AUTHENTICATORS_MAX; n++) admins[key(n)] = n % 2 ? { ...rec, strict: true } : rec;    // a mix of switches
+    writeFileSync(r.path, JSON.stringify({ ...saved, admins }));
+    const full = r.open(), file = () => readFileSync(r.path, "utf8");
+    expect([...Array(ADMIN_AUTHENTICATORS_MAX).keys()].every(n => full.isEnrolled(key(n)) && full.strictOf(key(n)) === (n % 2 === 1))).toBe(true);
+    const before = file(), NEW = adminKey("a", "newcomer");
+    // Room: the host always has it, an existing admin has it, a new one does not (and positive control: with 63 records they do).
+    expect([full.hasRoom(HOST_ADMIN_KEY), full.hasRoom(key(0)), full.hasRoom(NEW)]).toEqual([true, true, false]);
+    const { secret } = full.beginEnrollment("hn", "pc", NEW);
+    expect(full.confirmEnrollment("hn", hotp(base32Decode(secret)!, totpStep(r.clock.wall)))).toBe("full");
+    expect([full.isEnrolled(NEW), file()]).toEqual([false, before]);                       // nothing saved, nothing changed
+    const again = r.open();
+    expect([again.isEnrolled(NEW), ...[...Array(ADMIN_AUTHENTICATORS_MAX).keys()].map(n => again.isEnrolled(key(n)) && again.strictOf(key(n)) === (n % 2 === 1))]).toEqual([false, ...Array(ADMIN_AUTHENTICATORS_MAX).fill(true)]);
+    // An existing record's replacement still works at the cap, keeps its switch, and the count stays.
+    const old = full.enrollmentOf(key(1));
+    const rep = full.beginEnrollment("hr", "pc", key(1));
+    expect(full.confirmEnrollment("hr", hotp(base32Decode(rep.secret)!, totpStep(r.clock.wall)))).toBe("ok");
+    expect([full.enrollmentOf(key(1)) !== old, full.strictOf(key(1)), Object.keys(JSON.parse(file()).admins).length]).toEqual([true, true, ADMIN_AUTHENTICATORS_MAX]);
+    // The host operator's own set-up never counts against the cap, and removing one record makes room for the newcomer.
+    r.clock.wall += 30_000;
+    expect(full.remove(key(0))).toBe(true);
+    const retry = full.beginEnrollment("hn2", "pc", NEW);
+    expect(full.confirmEnrollment("hn2", hotp(base32Decode(retry.secret)!, totpStep(r.clock.wall)))).toBe("ok");
+    expect([full.isEnrolled(NEW), r.open().isEnrolled(NEW), Object.keys(JSON.parse(file()).admins).length]).toEqual([true, true, ADMIN_AUTHENTICATORS_MAX]);
   });
   it("an admin's change that cannot be saved is in force at once and written again (their switch and their app), like the host's", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });

@@ -38,7 +38,7 @@ import { webPeerOf } from "../src/web-api.js";
 import { authorizeSession, WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
 import { bindGatewayRequest, gatewayRequestContext } from "../src/web-request-context.js";
-import { base32Encode, base32Decode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Encode, base32Decode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { settingsRequestExecution } from "../src/settings-request-capability.js";
 import { settingsFingerprint } from "../src/settings-transaction.js";
 import { t } from "../src/locale.js";
@@ -794,5 +794,16 @@ describe("the security Notice reaches every connection's admins and survives a f
     f.enrol();
     expect(f.sent).toEqual(["general_a", "general_b"]);
     expect(f.any.webNoticesFeed()!.view().items.length).toBe(1);
+  });
+});
+
+describe("capacity and the shared limiter at fleet level (Prism round 2, #4 and #5)", () => {
+  it("#4: with 64 admins enrolled the 65th is refused before any secret is shown; an existing admin may still replace; nothing is dropped on reopen", () => {
+    const admins = Object.fromEntries(Array.from({ length: 64 }, (_, n) => [`u${n}`, {} as { strict?: boolean }]));
+    const f = fleet({ chat: true, admins }), a = f.session("account", "lan", { user: ADMIN });
+    expect(f.any.webOutsideBeginEnrollment(a.req)).toBeNull();                                           // no room: refused up front
+    expect(f.any.webRemoteAccess().isEnrolled(adminKey("a", ADMIN))).toBe(false);
+    const reopened = new WebRemoteAccess(join(f.any.dataDir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} });
+    expect(Array.from({ length: 64 }, (_, n) => reopened.isEnrolled(adminKey("a", `u${n}`))).every(Boolean)).toBe(true);
   });
 });

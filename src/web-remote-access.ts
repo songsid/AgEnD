@@ -293,6 +293,10 @@ export class WebRemoteAccess {
   }
   get outside(): boolean { return this.state.outside && !!this.state.totp; }
 
+  /** Whether `who` can have a record: they already do, or there is room (the host operator's is always allowed). */
+  hasRoom(who: string): boolean {
+    return who === HOST_ADMIN_KEY || !!this.state.admins?.[who] || Object.keys(this.state.admins ?? {}).length < ADMIN_AUTHENTICATORS_MAX;
+  }
   /**
    * A new secret for the session `handle` to set up, as `who` (it replaces nothing until confirmEnrollment). Returned once:
    * the caller shows it to that session and forgets it.
@@ -309,11 +313,14 @@ export class WebRemoteAccess {
   /**
    * The first code from the app being set up, by the session that began it. "ok": it is now `who`'s (a previous one is
    * replaced, their switch kept). The host operator's also starts the limiter afresh and ends what was authorized from
-   * outside; another admin's does neither — enrolling must not be a way to reset the fleet-wide wrong-code limit.
+   * outside; another admin's does neither — enrolling must not be a way to reset the fleet-wide wrong-code limit. "full": no room for another admin's record (a record is never accepted that a restart
+   * would drop).
    */
-  confirmEnrollment(handle: string, code: string): "ok" | "wrong" | "expired" | "unsaved" {
+  confirmEnrollment(handle: string, code: string): "ok" | "wrong" | "expired" | "unsaved" | "full" {
     const p = this.pending.get(handle);
     if (!p || this.monotonic() > p.until) { this.pending.delete(handle); return "expired"; }
+    // Capacity is enforced before a new record is acknowledged: one that would not survive a restart is never accepted.
+    if (!this.hasRoom(p.who)) return "full";
     const step = matchTotp(base32Decode(p.secret)!, code, this.now(), -1);
     if (step === null) return "wrong";
     const before = this.state, wasDirty = this.dirty, old = this.rec(p.who);

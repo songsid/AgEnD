@@ -18641,7 +18641,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (step.error === "not_here") return null;
       return { error: step.error, ...(step.retryAfterMs !== undefined ? { retryAfterMs: step.retryAfterMs } : {}) };
     }
-    if (!owner.current()) return null;
+    if (!owner.current() || !store.hasRoom(owner.who)) return null;
     const begun = store.beginEnrollment(owner.handle, hostname() || "fleet", owner.who);
     this.authenticatorStarts.set(owner.handle, owner.onHost ? "host" : step.verified ? "code" : "none");
     if (this.authenticatorStarts.size > 64) this.authenticatorStarts.delete(this.authenticatorStarts.keys().next().value!);
@@ -18649,7 +18649,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The new app's first code: on "ok" it is now yours (the host operator's replaces the old one, ending the sessions from outside). */
-  webOutsideConfirmEnrollment(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" {
+  webOutsideConfirmEnrollment(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" | "full" {
     const owner = this.authenticatorOwner(req), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
     const had = store.isEnrolled(owner.who);
