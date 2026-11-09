@@ -208,7 +208,7 @@ function paneVerificationTag(cli, text) {
   return key ? html`<span class="tag" title=${text(`${key}Hint`)}>${text(key)}</span>` : null;
 }
 export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
-function MachineCard({ machine, busy, action, openDiagnostics, probe, repairUpdate, lease, onChanged }) {
+function MachineCard({ machine, sameName, busy, action, openDiagnostics, probe, repairUpdate, lease, onChanged }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
   const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);
   const probing = machine.probing || detection.loading;
@@ -219,16 +219,18 @@ function MachineCard({ machine, busy, action, openDiagnostics, probe, repairUpda
     !local && status !== "revoked" && {key:"rename",label:machineText("rename"),icon:"edit",onSelect:()=>setEditing(true)},
     !local && status !== "revoked" && {key:"revoke",label:machineText("revoke"),icon:"close",danger:true,onSelect:()=>action(machine,"revoke")}];
   return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}${revoked ? " is-revoked" : ""}`} data-machine-id=${local ? "local" : machine.id}>
-    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : machine.enrolledVia ? "enrolledBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText((clis.length) === 1 ? "cliCountOne" : "cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
+    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : machine.enrolledVia ? "enrolledBadge" : "pairedBadge")}</span>`}${sameName ? html`<span class="tag runtime-same-name-tag">#${sameName.n}</span>` : null}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText((clis.length) === 1 ? "cliCountOne" : "cliCount",clis.length)}</p>${sameName ? html`<p class="runtime-same-name-when">${machineText(status === "pending" ? "requestedAt" : "pairedAt",machineTime(status === "pending" ? machine.createdAt : machine.approvedAt || machine.createdAt),String(machine.id).slice(0,8))}</p>` : null}</div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
+    ${sameName ? html`<p class="note lbar runtime-same-name">${machineText("sameName",machine.name)}</p>` : null}
     ${!local && !revoked && machine.runtimeCompatibility === "incompatible" ? html`<p class="runtime-reinstall" role="alert">${machineText("needsReinstall")}</p>` : null}
     ${!local && !revoked && status !== "pending" ? html`<${RuntimeUpdateNotice} machine=${machine} onRepair=${() => repairUpdate(machine)} />` : null}
     ${revoked ? null : html`<p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>`}
-    ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
+    ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note" role=${machine.pairingExpired ? "status" : undefined}>${machineText(machine.pairingExpired ? "pairingExpired" : "approvalHint")}</p></div>` : null}
     ${revoked ? html`<p class="note runtime-revoked-note" role="status">${machineText("revokedNote")}</p>` : clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span>${paneVerificationTag(cli,machineText)}</td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span>${cli.authenticated === true && identityText(cli.identity) ? html`<small class="runtime-account" data-account="default">${identityText(cli.identity)}</small>` : null}</td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
     ${!local && !revoked && status !== "pending" ? html`<${CredentialProfiles} machine=${machine} />` : null}
     ${offersCliInstall(machine) && lease ? html`<${CliInstall} machine=${machine} lease=${lease} onChanged=${onChanged} />` : null}
     <div class="runtime-machine-actions">${ready ? html`<button type="button" class="btn btn-sm runtime-inspect" onClick=${() => openDiagnostics(local ? "" : machine.id)}>${machineText("diagnosticTitle")}</button><button type="button" class="btn btn-sm runtime-probe" disabled=${busy || probing || !local && status !== "online"} onClick=${() => probe(local ? "" : machine.id)}><${Icon} name="restart" size=${14} cls=${probing ? "out-spin" : ""} />${machineText(probing ? "probeBusy" : "probeAgain")}</button>` : null}
-      ${status === "pending" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}
+      ${status === "pending" && !machine.pairingExpired ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}
+      ${status === "pending" && machine.pairingExpired ? html`<button type="button" class="btn btn-sm runtime-expired-reject" disabled=${busy} onClick=${() => action(machine,"reject")}>${machineText("askReject")}</button>` : null}
       <${Menu} cls="runtime-machine-menu" label=${machineText("machineActions",machine.name)} disabled=${busy} items=${menuItems} />
     </div>
     ${info ? html`<${Dialog} title=${`${machineText("machineInfo")} · ${machine.name}`} onClose=${()=>setInfo(false)}><dl class="runtime-machine-facts"><dt>${machineText("machineName")}</dt><dd>${machine.name}</dd><dt>${machineText("hostName")}</dt><dd>${machine.hostname || machine.inventory?.hostname || machineText("unknown")}</dd><dt>${machineText("platform")}</dt><dd>${machine.platform === "win32" ? "Windows" : machine.platform}</dd>${local ? html`<dt>${machineText("home")}</dt><dd>${machine.inventory?.home || machineText("unknown")}</dd>` : html`<dt>${machineText("version")}</dt><dd class="runtime-reported-version">${machine.runtimeInfo?.version || machineText(machine.runtimeInfo ? "versionUnreadable" : "versionNotReported")}</dd>${machine.runtimeInfo ? html`<dt>${machineText("buildId")}</dt><dd class="runtime-reported-build"><code>${machine.runtimeInfo?.buildId || machineText("buildUnavailable")}</code></dd><dt>${machineText("protocols")}</dt><dd>${machine.runtimeInfo?.protocolVersions?.map(v=>`v${v}`).join(", ") || machineText("protocolUnknown")}</dd>` : null}<dt>${machineText("compatibility")}</dt><dd class="runtime-compatibility">${machineText(["compatible","legacy","incompatible"].includes(machine.runtimeCompatibility) ? machine.runtimeCompatibility : "protocolUnknown")}</dd>${machine.runtimeInfo ? html`<dt>${machineText("capabilities")}</dt><dd>${machine.runtimeInfo?.capabilities?.map(capability=>["exec","mcp","panes"].includes(capability) ? machineText(`capability_${capability}`) : capability === "credential-profiles" ? machineText("capability_credentialProfiles") : capability).join(" · ") || machineText("unknown")}</dd>` : null}<dt>${machineText("lastSeenLabel")}</dt><dd>${machineTime(machine.lastSeenAt)}</dd><dt>${machineText("identity")}</dt><dd><code>${machine.id}</code></dd>`}</dl></${Dialog}>` : null}
@@ -409,7 +411,7 @@ export function RuntimesPanel({navKey}) {
   const post=async(path,body={}) => {
     const response=await lease.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const value=await response.json();
-    if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+    if (!response.ok) throw Object.assign(new Error(value.error || `HTTP ${response.status}`),{status:response.status,code:value.code});
     return value;
   };
   // Makes a one-time install-command token (and ends any earlier unused one). Same authorization as a pairing code.
@@ -435,23 +437,50 @@ export function RuntimesPanel({navKey}) {
   };
   const dismissJoined=id => setSeenJoined(seen => { const next=new Set(seen).add(id); writeSeenJoined(next); return next; });
   const action=async(machine,operation,body={}) => {
+    // "reject" drops a request that is still waiting: the button is the decision (no second question) and no "revoked" card stays. The server refuses it (409) for a computer that
+    // is no longer waiting, so it can never revoke one that was approved meanwhile (another tab, another administrator): the page says so and reads the list again.
+    const route=operation;
     if(operation === "revoke" && !await confirmDialog({message:machineText("revokeAsk"),confirmLabel:machineText("revoke"),danger:true}))return false;
     if(!lease.current())return false;
     setBusy(machine.id);setError("");
     try {
-      await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${operation}`,body);if(!lease.current())return false;
+      await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${route}`,body);if(!lease.current())return false;
       // Kept before the refresh, so the card is never dropped between the answer and the new list.
       if(operation === "revoke")setRevokedHere(seen=>new Map(seen).set(machine.id,{...machine,status:"revoked"}));
       await state.refresh();return lease.current();
     }
-    catch(e){if(lease.current())setError(operation === "refresh" ? `${machineText("cliFailed")} ${e.message}` : e.message);return false;}
+    catch(e){
+      if(!lease.current())return false;
+      if(operation === "reject" && e.status === 409){setError(machineText("alreadyHandled"));await state.refresh();return false;}
+      setError(operation === "refresh" ? `${machineText("cliFailed")} ${e.message}` : e.message);return false;
+    }
     finally{if(lease.current())setBusy("");}
   };
   const machines=state.data?.machines || [];
   const localMachine={id:"",isLocal:true,name:localInventory.data?.hostname || machineText("nativeWindows"),platform:"win32",status:windowsCli ? "online" : "offline",inventory:localInventory.data,inventoryUpdatedAt:localInventory.data?.probedAt,probing:localInventory.loading};
   const listed=machines.filter(machine=>machine.status !== "revoked" || revokedHere.has(machine.id));
   const gone=[...revokedHere.values()].filter(machine=>!machines.some(row=>row.id === machine.id));
-  const allMachines=[...(windowsCli ? [localMachine] : []),...[...listed,...gone].map(machine=>({...machine,...(revokedHere.has(machine.id) ? {status:"revoked"} : {}),probing:busy===machine.id}))];
+  const shown=[...listed,...gone].map(machine=>({...machine,...(revokedHere.has(machine.id) ? {status:"revoked"} : {}),probing:busy===machine.id}));
+  // Computers waiting for approval come first, in the order they asked, so a long card never pushes Approve out of sight. A request that has run out is not waiting: it stays where it is, says so, and can be dropped.
+  const waiting=pendingMachines(shown), allMachines=[...waiting,...(windowsCli ? [localMachine] : []),...shown.filter(machine=>!waiting.includes(machine))];
+  const waitingIds=waiting.map(machine=>machine.id).join(",");
+  const [ask,setAsk]=useState(null), announced=useRef(new Set()), machinesRef=useRef(null);
+  // A computer waiting that this page has not asked about yet opens the dialog, and only that one: a computer the person has already put off with Later does not come back by itself, not
+  // even when another one arrives (it stays on the bar and on its card). A new one while the dialog is open joins its list ("1 of 2"). Never over another dialog: it waits until that closes.
+  useEffect(() => {
+    const fresh=waiting.filter(machine=>!announced.current.has(machine.id));
+    if(!fresh.length || otherDialogOpen())return;
+    fresh.forEach(machine=>announced.current.add(machine.id));
+    setAsk(open=>({ids:[...(open ? open.ids : []),...fresh.map(machine=>machine.id).filter(id=>!open?.ids.includes(id))]}));
+  },[waitingIds,state.checkedAt]);
+  const asking=ask ? ask.ids.map(id=>waiting.find(machine=>machine.id === id)).filter(Boolean) : [];
+  useEffect(() => { if(ask && !asking.length)setAsk(null); },[ask,asking.length]);
+  const review=() => {
+    if(!waiting.length)return;
+    setAsk({ids:waiting.map(machine=>machine.id)});
+    const card=[...(machinesRef.current?.querySelectorAll?.("[data-machine-id]") || [])].find(item=>item.getAttribute("data-machine-id") === waiting[0].id);
+    card?.scrollIntoView?.({block:"start"});
+  };
   const target=diagnosticMachineId === "" ? localMachine : machines.find(machine=>machine.id===diagnosticMachineId);
   if(diagnosticMachineId !== null && !taskSessions.current.has(diagnosticMachineId)) taskSessions.current.set(diagnosticMachineId,{requestId:null,pending:false,error:""});
   const probeTarget=async(id="")=>{
@@ -471,7 +500,7 @@ export function RuntimesPanel({navKey}) {
   const copyCommand=async(key,text) => {
     try {await navigator.clipboard.writeText(text);if(!lease.current())return;setCopiedCommand(key);if(key === "install" || key === "enroll")setInstallCopied(true);lease.timeout(() => setCopiedCommand(""),2000);}catch { /* the command is on screen to copy by hand */ }
   };
-  const awaitingApproval=machines.some(machine => machine.status === "pending"), installed=tab === "windows" ? installCopied : !!downloadedFor, currentStep=tab === "windows" ? (enrollStatus === "used" ? 4 : installed || awaitingApproval ? 3 : 2) : awaitingApproval ? 4 : installed ? 3 : 2;
+  const awaitingApproval=machines.some(machine => machine.status === "pending" && !machine.pairingExpired), installed=tab === "windows" ? installCopied : !!downloadedFor, currentStep=tab === "windows" ? (enrollStatus === "used" ? 4 : installed || awaitingApproval ? 3 : 2) : awaitingApproval ? 4 : installed ? 3 : 2;
   const step=(n,title,body) => html`<li class=${`runtime-step${n < currentStep ? " is-done" : ""}`} aria-current=${n === currentStep ? "step" : undefined}><span class="runtime-step-n" aria-hidden="true">${n}</span><div><h4>${title}</h4>${body}</div></li>`;
   const downloadRuntime=async()=>{
     if(downloadClaim.current || !command)return;
@@ -525,8 +554,11 @@ export function RuntimesPanel({navKey}) {
   const joinedNotices=machines.filter(machine => machine.enrolledVia === "install-command" && machine.status !== "revoked" && !revokedHere.has(machine.id) && !seenJoined.has(machine.id) && Date.now()-(machine.approvedAt || 0) < JOINED_NOTICE_MS)
     .map(machine => html`<section key=${machine.id} class="runtime-joined" role="status" data-machine-id=${machine.id}><${Icon} name="info" size=${18} /><div class="runtime-joined-text"><h4>${machineText("joinedTitle")}</h4><p class="note">${machineText("joinedBody",machine.name,machineTime(machine.approvedAt))}</p></div><div class="runtime-joined-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${() => action(machine,"revoke")}>${machineText("joinedRevoke")}</button><button type="button" class="btn btn-ghost btn-sm" onClick=${() => dismissJoined(machine.id)}>${machineText("joinedDismiss")}</button></div></section>`);
   const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><div class="note">${state.data ? machineText((allMachines.length) === 1 ? "machineCountOne" : "machineCount",allMachines.length) : !state.error ? html`<${Skeleton} variant="inline" lines=${1} />` : "—"}</div></div>
+    ${waiting.length ? html`<div class="note lbar runtime-pending-banner" role="status"><span>${waiting.length === 1 ? machineText("awaitingOne") : machineText("awaitingMany",waiting.length)}</span><button type="button" class="btn btn-primary btn-sm runtime-pending-review" onClick=${review}>${machineText("awaitingReview")}</button></div>` : null}
     ${joinedNotices}
-    <section class="runtime-machines" aria-label=${machineText("machines")}>${!state.data && !state.error ? html`<${Skeleton} variant="cards" lines=${2} label=${machineText("loading")} />` : allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
+    <section class="runtime-machines" ref=${machinesRef} aria-label=${machineText("machines")}>${!state.data && !state.error ? html`<${Skeleton} variant="cards" lines=${2} label=${machineText("loading")} />` : allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} sameName=${sameNameInfo(allMachines,machine)} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
+    ${asking.length ? html`<${ApproveDialog} key=${asking[0].id} machine=${asking[0]} position=${ask.ids.indexOf(asking[0].id)+1} total=${ask.ids.length} sameName=${sameNameInfo(allMachines,asking[0])?.others.find(other=>other.status !== "pending")} busy=${!!busy} error=${error}
+      onApprove=${()=>action(asking[0],"approve",{fingerprint:asking[0].pairingFingerprint})} onReject=${()=>action(asking[0],"reject")} onLater=${()=>setAsk(null)} />` : null}
     ${repairMachine ? html`<${Dialog} title=${runtimeUpdateText("repairTitle")} onClose=${() => setRepairMachine(null)}>
       <p>${runtimeUpdateText("repairHint")}</p>
       ${installer.status === "idle" || installer.status === "loading" ? html`<${Skeleton} lines=${3} label=${machineText("installerLoading")} />` : null}
@@ -554,3 +586,58 @@ register("machines", {
   en: { cliCountOne: "{0} CLI", machineCountOne: "{0} computer" },
   "zh-TW": { cliCountOne: "{0} 個 CLI", machineCountOne: "{0} 台電腦" },
 });
+// a computer asking to pair opens a dialog (a shortcut to the card's own Approve), waiting computers come first,
+// and computers with the same name can be told apart.
+register("machines", {
+  en: { awaitingOne:"1 computer is waiting for approval", awaitingMany:"{0} computers are waiting for approval", awaitingReview:"Review and approve",
+    askTitle:"A computer wants to pair", askOf:"{0} of {1}", askRequested:"Requested", askApprove:"Approve", askReject:"Reject", askLater:"Later",
+    askSameName:"A computer with this name is already paired (paired {0}). It may be the same computer pairing again: check the fingerprint.",
+    sameName:"Another computer is also named “{0}”. Use ⋯ → Rename to tell them apart.", pairedAt:"Paired {0} · ID {1}", requestedAt:"Requested {0} · ID {1}",
+    alreadyHandled:"This computer was already approved or removed, probably in another tab. The list is up to date now.",
+    pairingExpired:"This request has expired. Run the connect command on that computer again; Reject clears this one." },
+  "zh-TW": { awaitingOne:"有 1 台電腦等待核准", awaitingMany:"有 {0} 台電腦等待核准", awaitingReview:"檢視並核准",
+    askTitle:"有電腦要求配對", askOf:"第 {0} 台，共 {1} 台", askRequested:"要求時間", askApprove:"核准", askReject:"拒絕", askLater:"稍後",
+    askSameName:"已有一台同名電腦（配對於 {0}）。可能是同一台重新配對，請看指紋。",
+    sameName:"另一台電腦也叫「{0}」。可從 ⋯ 選單 →「重新命名」改成容易分辨的名稱。", pairedAt:"配對於 {0} · 識別碼 {1}", requestedAt:"要求於 {0} · 識別碼 {1}",
+    alreadyHandled:"這台電腦已經被核准或移除了，可能是在另一個分頁。清單已經更新。",
+    pairingExpired:"這個要求已經過期。請在那台電腦重新執行連線指令；按「拒絕」可以清掉這一筆。" },
+});
+
+/** A computer's name as compared for "same name" — trimmed, any case. */
+const nameKey = machine => String(machine?.name || "").trim().toLowerCase();
+/** Paired computers in the order they asked to pair (then by id, so the order never changes between polls). */
+const byPairing = (a,b) => (Number(a.createdAt) || 0)-(Number(b.createdAt) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+/** `{ n, others }` for a paired computer whose name another not-revoked paired computer shares (n = its place, from 1, among them); else null. */
+export function sameNameInfo(machines, machine) {
+  if (!machine || machine.isLocal || machine.status === "revoked") return null;
+  const group = machines.filter(item => !item.isLocal && item.status !== "revoked" && nameKey(item) === nameKey(machine)).sort(byPairing);
+  return group.length > 1 ? { n:group.findIndex(item => item.id === machine.id)+1, others:group.filter(item => item.id !== machine.id) } : null;
+}
+/** The computers waiting for approval, in the order they asked. One whose request has run out (the server says so) can no longer be approved and is not among them. */
+export const pendingMachines = machines => machines.filter(machine => !machine.isLocal && machine.status === "pending" && !machine.pairingExpired).sort(byPairing);
+/** An unasked-for dialog must not land on top of one the person is already using (rename, diagnostics, a question). The approval dialog itself does not count: it is the one a new computer joins. */
+const otherDialogOpen = () => typeof document !== "undefined" && !!document.querySelector?.("dialog[open]:not(.runtime-approve-dialog)");
+/** How long the dialog's Approve stays off after it shows: it appears by itself, so a click already on its way must not land on it. */
+export const APPROVE_ARM_MS = 1000;
+
+/**
+ * The shortcut to approving: one waiting computer at a time, its pairing fingerprint large, to compare with the one in that
+ * computer's terminal. Later, Esc, the backdrop and × only close it; the card keeps its own Approve. Reject drops the request.
+ */
+function ApproveDialog({ machine, position, total, sameName, busy, error, onApprove, onReject, onLater }) {
+  const [armed,setArmed] = useState(false), lease = useLease(`runtime-approve:${machine.id}`);
+  useEffect(() => {
+    setArmed(false);
+    const timer = lease.timeout(() => setArmed(true),APPROVE_ARM_MS);
+    return () => lease.clear(timer);
+  },[lease,machine.id]);
+  const fingerprint = machine.pairingFingerprint;
+  return html`<${Dialog} title=${machineText("askTitle")} cls="runtime-approve-dialog" busy=${busy} onClose=${onLater}
+    actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onLater}>${machineText("askLater")}</button><span class="dlg-spacer"></span><button type="button" class="btn btn-danger runtime-ask-reject" disabled=${busy} onClick=${onReject}>${machineText("askReject")}</button><button type="button" class="btn btn-primary runtime-ask-approve" disabled=${busy || !armed || !fingerprint} onClick=${onApprove}>${machineText("askApprove")}</button>`}>
+    ${total > 1 ? html`<p class="note">${machineText("askOf",position,total)}</p>` : null}
+    <dl class="runtime-machine-facts"><dt>${machineText("machineName")}</dt><dd>${machine.name}</dd><dt>${machineText("hostName")}</dt><dd>${machine.hostname || machineText("unknown")}</dd><dt>${machineText("platform")}</dt><dd>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}</dd><dt>${machineText("askRequested")}</dt><dd>${machineTime(machine.createdAt)}</dd></dl>
+    <div><p class="note">${machineText("fingerprint")}</p><p class="runtime-approve-fingerprint">${fingerprint || machineText("unknown")}</p><p class="note">${machineText("approvalHint")}</p></div>
+    ${sameName ? html`<p class="note lbar runtime-same-name">${machineText("askSameName",machineTime(sameName.approvedAt || sameName.createdAt))}</p>` : null}
+    ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+  </${Dialog}>`;
+}

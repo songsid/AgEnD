@@ -40,6 +40,12 @@ beforeAll(async()=>{
     if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+pairingTtl});
     const renaming=/^\/ui\/runtimes\/machines\/([^/]+)\/rename$/.exec(path);
     if(renaming){machines=machines.map(item=>item.id===renaming[1]?{...item,name:body.name}:item);return response({ok:true});}
+    const rejecting=/^\/ui\/runtimes\/machines\/([^/]+)\/reject$/.exec(path);
+    if(rejecting){
+      const target=machines.find(item=>item.id===rejecting[1]);
+      if(!target || target.status!=="pending")return response({error:"This computer was already handled",code:"not-pending"},409);
+      machines=machines.map(item=>item.id===rejecting[1]?{...item,status:"revoked"}:item);return response({machine:{id:rejecting[1],status:"revoked"}});
+    }
     const revoking=/^\/ui\/runtimes\/machines\/([^/]+)\/revoke$/.exec(path);
     if(revoking){machines=machines.map(item=>item.id===revoking[1]?{...item,status:"revoked"}:item);return response({ok:true});}
     if(path===`/ui/runtimes/machines/${idB}/approve`){machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);return response({ok:true});}
@@ -57,6 +63,7 @@ beforeEach(()=>{requests.length=0;enabled=true;installerMode="ok";enrollments=[]
 afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();vi.restoreAllMocks();});
 afterAll(()=>{p.restore();globalThis.fetch=originalFetch;});
 
+const machineTimeOf=(value:number)=>new Date(value).toLocaleString();
 const diagnosticDialog=()=>p.root.querySelector(".runtime-diagnostics-dialog");
 const closeDiagnostics=async()=>{diagnosticDialog().querySelector(".dlg-x").click();await settle(8);};
 const openDiagnostics=async(id="")=>{
@@ -124,9 +131,11 @@ describe("remote machine UI",()=>{
     app.appStore.set({windowsCli:true});await p.mount(h(Panel,{navKey:"unified-machine-cards"}));await settle(12);
     const cards=p.root.querySelectorAll(".runtime-machine");expect(cards).toHaveLength(3);
     expect(cards.map((card:any)=>card.querySelector(".runtime-cli-table")!==null)).toEqual([true,true,true]);
-    expect(cards[0].querySelector("h3").textContent).toBe("WINDOWS-DESKThis PC");
-    expect(cards[1].querySelector("h3").textContent).toBe("DesktopPaired");
-    expect(cards[0].querySelector(".runtime-inspect").textContent).toBe(cards[1].querySelector(".runtime-inspect").textContent);
+    // the computer waiting for approval is first, then this PC, then the paired ones.
+    expect(cards[0].querySelector("h3").textContent).toBe("LaptopPaired");
+    expect(cards[1].querySelector("h3").textContent).toBe("WINDOWS-DESKThis PC");
+    expect(cards[2].querySelector("h3").textContent).toBe("DesktopPaired");
+    expect(cards[1].querySelector(".runtime-inspect").textContent).toBe(cards[2].querySelector(".runtime-inspect").textContent);
     expect(diagnosticDialog()).toBeNull();expect(p.root.querySelector(".runtime-local-diagnostics")).toBeNull();
     expect(requests.some(item=>item.path.endsWith("/tasks"))).toBe(false);expect(requests.some(item=>item.body?.force===true)).toBe(false);
   });
@@ -258,6 +267,204 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Download the Runtime");
     expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
     expect(p.root.querySelector(".runtime-pair-card .expires, .runtime-pair-card .note").textContent).toContain("Expires");
+  });
+  describe("waiting computers open an approval dialog, come first, and same-name computers can be told apart",()=>{
+    const idC="32345678-1234-4321-abcd-123456789012", idD="42345678-1234-4321-abcd-123456789012";
+    const asked=(id:string,name:string,createdAt:number,fingerprint:string)=>({...machine(id,name,"pending"),pairingFingerprint:fingerprint,hostname:`${name.toUpperCase()}-HOST`,createdAt});
+    const ask=()=>p.root.querySelector("dialog.runtime-approve-dialog");
+    const inAsk=(sel:string)=>ask()?.querySelector(sel);
+    const askButton=(text:string)=>ask()?.querySelectorAll("button").find((item:any)=>item.textContent.trim()===text);
+    const refresh=async()=>{button("Refresh machines").click();await settle(10);};
+    /** "1 of 2" (or the Chinese form): the first note in the dialog, only when more than one computer is in its list. */
+    const count=()=>{const first=ask()?.querySelector(".dlg-body > .note")?.textContent ?? "";return /^\d+ of \d+$|^第 \d+ 台，共 \d+ 台$/.test(first) ? first : null;};
+    const armed=()=>new Promise(done=>setTimeout(done,1100));
+    const mountPage=async(key:string)=>{await p.mount(h(Panel,{navKey:key}));await settle(10);};
+    it("opens by itself for a waiting computer, with its facts and the pairing fingerprint large, and keeps the card's own Approve",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1_700_000_000_000,"ABCD-1234-5678")];
+      await mountPage("ask-open");
+      expect(ask()?.open).toBe(true);expect(inAsk(".dlg-title").textContent).toBe("A computer wants to pair");
+      const facts=inAsk(".runtime-machine-facts").textContent;
+      for(const text of ["Laptop","LAPTOP-HOST","Windows"])expect(facts).toContain(text);
+      expect(inAsk(".runtime-approve-fingerprint").textContent).toBe("ABCD-1234-5678");
+      expect(ask()!.textContent).toContain("Compare this fingerprint with the one shown in the requesting Runtime before approving.");
+      expect(count()).toBeNull();   // one computer: no "1 of 1"
+      expect(askButton("Later")).toBeTruthy();expect(askButton("Reject")).toBeTruthy();expect(askButton("Approve")).toBeTruthy();
+      expect(button("Approve computer"),"the card keeps its own Approve").toBeTruthy();
+      expect(p.root.querySelector(`[data-machine-id="${idB}"] .runtime-pairing-fingerprint`).textContent).toBe("ABCD-1234-5678");
+      expect(requests.filter(r=>/\/(approve|reject|revoke)$/.test(r.path))).toEqual([]);   // nothing is decided by opening
+    });
+    it("keeps Approve off for a second after it shows, then approves with the fingerprint and closes",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-approve");
+      expect(askButton("Approve").disabled).toBe(true);   // a browser sends no click to a disabled button
+      expect(requests.filter(r=>r.path.endsWith("/approve"))).toEqual([]);
+      await armed();await settle(4);
+      expect(askButton("Approve").disabled).toBe(false);
+      askButton("Approve").click();await settle(10);
+      expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/approve`,body:{fingerprint:"ABCD-1234-5678"}});
+      expect(ask()).toBeNull();
+      expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).toContain("Online");
+    });
+    it("never offers Approve without a fingerprint",async()=>{
+      machines=[machine(idA,"Desktop"),{...asked(idB,"Laptop",1,"ABCD-1234-5678"),pairingFingerprint:undefined}];
+      await mountPage("ask-no-fingerprint");await armed();await settle(4);
+      expect(askButton("Approve").disabled).toBe(true);
+    });
+    it("Later, Esc and × only close it: no request, and the same computer does not open it again on the next poll",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-later");
+      askButton("Later").click();await settle(6);expect(ask()).toBeNull();
+      await refresh();expect(ask()).toBeNull();
+      expect(requests.filter(r=>/\/(approve|reject|revoke)$/.test(r.path))).toEqual([]);
+      expect(button("Approve computer"),"the card can still approve").toBeTruthy();
+      // The banner is the way back in.
+      button("Review and approve").click();await settle(6);expect(ask()?.open).toBe(true);
+      inAsk(".dlg-x").click();await settle(6);expect(ask()).toBeNull();
+      button("Review and approve").click();await settle(6);
+      fire(ask()!,"cancel");await settle(6);expect(ask()).toBeNull();
+    });
+    it("a computer that arrives while the dialog is open joins its list; Later is final for every computer in it, and only a computer never asked about opens it again",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-new");
+      expect(count()).toBeNull();
+      machines=[...machines,asked(idC,"Lab",2,"1111-2222-3333")];await refresh();
+      expect(ask()?.open,"the open dialog is not 'another dialog': the new computer joins it").toBe(true);
+      expect(count()).toBe("1 of 2");expect(inAsk(".runtime-machine-facts").textContent).toContain("Laptop");   // the oldest first
+      askButton("Later").click();await settle(6);expect(ask()).toBeNull();
+      // A poll later, with both still waiting: neither comes back, whatever the clock or the count.
+      await refresh();await refresh();expect(ask(),"Laptop and Lab were put off: nothing comes back by itself").toBeNull();
+      // A third arrives: only it opens the dialog, alone.
+      machines=[...machines,asked(idD,"Bench",3,"5555-6666-7777")];await refresh();
+      expect(ask()?.open).toBe(true);expect(count()).toBeNull();
+      expect(inAsk(".runtime-machine-facts").textContent).toContain("Bench");expect(inAsk(".runtime-approve-fingerprint").textContent).toBe("5555-6666-7777");
+      askButton("Later").click();await settle(6);await refresh();expect(ask()).toBeNull();
+      // They are all still one click away: the bar counts them, and its button opens the dialog over all that wait.
+      expect(p.root.querySelector(".runtime-pending-banner").textContent).toContain("3 computers are waiting for approval");
+      button("Review and approve").click();await settle(6);expect(count()).toBe("1 of 3");
+    });
+    it("goes from one waiting computer to the next after approving, each with its own fingerprint and its own armed delay",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678"),asked(idC,"Lab",2,"1111-2222-3333")];
+      await mountPage("ask-two");
+      expect(count()).toBe("1 of 2");expect(inAsk(".runtime-approve-fingerprint").textContent).toBe("ABCD-1234-5678");
+      await armed();await settle(4);askButton("Approve").click();await settle(10);
+      expect(ask()?.open).toBe(true);expect(inAsk(".runtime-approve-fingerprint").textContent).toBe("1111-2222-3333");
+      expect(count()).toBe("2 of 2");expect(askButton("Approve").disabled,"each computer re-arms Approve").toBe(true);
+    });
+    it("Reject takes the request back (the reject route, never revoke) with no second question and leaves no card behind",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-reject");
+      askButton("Reject").click();await settle(10);
+      expect(requests.filter(r=>/\/(reject|revoke)$/.test(r.path))).toEqual([{path:`/ui/runtimes/machines/${idB}/reject`,body:{}}]);
+      expect(ask()).toBeNull();expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).toBeNull();
+      expect(p.root.textContent).not.toContain("Revoked");expect(p.root.querySelector(".runtime-pending-banner")).toBeNull();
+    });
+    it("puts waiting computers first, oldest first, and counts them in a bar that opens the dialog",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idD,"Later-one",20,"4444-5555-6666"),asked(idB,"Laptop",10,"ABCD-1234-5678")];
+      app.appStore.set({windowsCli:true});
+      await mountPage("ask-order");
+      expect(p.root.querySelectorAll(".runtime-machine").map((card:any)=>card.getAttribute("data-machine-id"))).toEqual([idB,idD,"local",idA]);
+      expect(p.root.querySelector(".runtime-pending-banner").textContent).toContain("2 computers are waiting for approval");
+      askButton("Later").click();await settle(6);
+      button("Review and approve").click();await settle(6);
+      expect(ask()?.open).toBe(true);expect(count()).toBe("1 of 2");
+      askButton("Later").click();await settle(6);
+      machines=machines.filter(item=>item.id===idA||item.id===idB);await refresh();
+      expect(p.root.querySelector(".runtime-pending-banner").textContent).toContain("1 computer is waiting for approval");
+      machines=machines.map(item=>({...item,status:"online"}));await refresh();
+      expect(p.root.querySelector(".runtime-pending-banner")).toBeNull();
+    });
+    it("does not open over a dialog the person is using: it waits until that one closes",async()=>{
+      machines=[machine(idA,"Desktop")];
+      await mountPage("ask-blocked");
+      p.root.querySelector(`[data-machine-id="${idA}"] .runtime-machine-menu button`).click();await settle();button("Rename").click();await settle(6);
+      expect(p.root.querySelector("dialog .runtime-rename")).toBeTruthy();
+      machines=[...machines,asked(idB,"Laptop",1,"ABCD-1234-5678")];await refresh();
+      expect(ask()).toBeNull();
+      fire([...p.root.querySelectorAll("dialog .dlg-actions button")].find((b:any)=>b.textContent.trim()==="Cancel"),"click");await settle(6);
+      await refresh();expect(ask()?.open).toBe(true);
+    });
+    it("Reject on a computer that was approved meanwhile (another tab) revokes nothing: 409, \"already handled\", the list is read again",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-race");
+      machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);   // approved elsewhere; this page has not polled yet
+      askButton("Reject").click();await settle(10);
+      expect(requests.filter(r=>/\/(reject|revoke)$/.test(r.path))).toEqual([{path:`/ui/runtimes/machines/${idB}/reject`,body:{}}]);
+      expect(machines.find(item=>item.id===idB)!.status,"the approved computer is still approved").toBe("online");
+      expect(p.root.textContent).toContain("This computer was already approved or removed, probably in another tab. The list is up to date now.");
+      expect(ask()).toBeNull();expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).toContain("Online");
+      expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).not.toContain("Revoked");
+    });
+    it("does not open for a request that has expired: its card says so, cannot approve, and Reject clears it",async()=>{
+      machines=[machine(idA,"Desktop"),{...asked(idB,"Laptop",1,"ABCD-1234-5678"),pairingExpired:true}];
+      await mountPage("ask-expired");
+      expect(ask(),"nothing pops up for a request nobody can approve").toBeNull();expect(p.root.querySelector(".runtime-pending-banner")).toBeNull();
+      const card=p.root.querySelector(`[data-machine-id="${idB}"]`);
+      expect(card.textContent).toContain("This request has expired. Run the connect command on that computer again; Reject clears this one.");
+      expect(button("Approve computer"),"no Approve on an expired request").toBeUndefined();
+      expect(p.root.querySelector(".runtime-pairing-step, .runtime-step[aria-current]")).toBeNull();   // the connect panel is closed, and an expired request is not 'awaiting approval'
+      card.querySelector(".runtime-expired-reject").click();await settle(10);
+      expect(requests.filter(r=>/\/(reject|revoke)$/.test(r.path))).toEqual([{path:`/ui/runtimes/machines/${idB}/reject`,body:{}}]);
+      expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).toBeNull();
+    });
+    it("shows a computer's own words as text: no markup in a name or host name becomes an element",async()=>{
+      const evil='<img src=x onerror=alert(1)><b id="pwn">x</b>';
+      machines=[machine(idA,"Desktop"),{...asked(idB,evil,1,"ABCD-1234-5678"),hostname:evil}];
+      await mountPage("ask-inject");
+      expect(ask()!.querySelector("img, b, #pwn, script")).toBeNull();expect(p.root.querySelector("img[src='x'], #pwn")).toBeNull();
+      expect(inAsk(".runtime-machine-facts").textContent).toContain(evil);
+    });
+    it("with two waiting computers of one name, Reject sends the id of the one on screen and no other",async()=>{
+      machines=[machine(idA,"Desktop"),asked(idB,"Same",1,"ABCD-1234-5678"),asked(idC,"same",2,"1111-2222-3333")];
+      await mountPage("ask-same-reject");
+      expect(inAsk(".runtime-approve-fingerprint").textContent).toBe("ABCD-1234-5678");
+      askButton("Reject").click();await settle(10);
+      expect(requests.filter(r=>/\/(reject|revoke|approve)$/.test(r.path))).toEqual([{path:`/ui/runtimes/machines/${idB}/reject`,body:{}}]);
+      expect(machines.find(item=>item.id===idC)!.status).toBe("pending");
+      expect(inAsk(".runtime-approve-fingerprint").textContent,"the next one, with its own fingerprint").toBe("1111-2222-3333");
+    });
+    it("a computer that joined with an install command never asks: the dialog is for the one waiting, and the joined notice stays an inline notice beside the bar, never a second popup",async()=>{
+      const joined={...machine(idC,"Studio"),enrolledVia:"install-command",approvedAt:Date.now()-60_000,createdAt:5};
+      machines=[machine(idA,"Desktop"),joined,asked(idB,"Laptop",1,"ABCD-1234-5678")];
+      await mountPage("ask-joined");
+      expect(ask()?.open).toBe(true);expect(count()).toBeNull();expect(inAsk(".runtime-machine-facts").textContent).toContain("Laptop");
+      expect(p.root.querySelectorAll("dialog[open]"),"one dialog, for the waiting computer").toHaveLength(1);
+      expect(p.root.querySelector(".runtime-pending-banner").textContent).toContain("1 computer is waiting for approval");   // the joined computer is not counted: it never waited
+      const joinedNotice=p.root.querySelector(".runtime-joined");expect(joinedNotice).toBeTruthy();expect(joinedNotice.closest("dialog")).toBeNull();
+      expect(joinedNotice.textContent).toContain("Studio");
+      // Only the computer that waits is ever offered for approval; the joined one has no Approve and no pending state.
+      expect(p.root.querySelector(`[data-machine-id="${idC}"] .runtime-approval`)).toBeNull();
+    });
+    it("tells computers with the same name apart: #1 and #2 by when they asked, when and which, and how to rename",async()=>{
+      machines=[{...machine(idA,"Demo-notebook"),createdAt:1_700_000_000_000,approvedAt:1_700_000_100_000},asked(idB,"demo-notebook ",1_700_000_900_000,"ABCD-1234-5678"),machine(idC,"Lab")];
+      await mountPage("same-name");
+      const card=(id:string)=>p.root.querySelector(`[data-machine-id="${id}"]`);
+      expect(card(idA).querySelector(".runtime-same-name-tag").textContent).toBe("#1");
+      expect(card(idB).querySelector(".runtime-same-name-tag").textContent).toBe("#2");
+      expect(card(idA).querySelector(".runtime-same-name-when").textContent).toBe(`Paired ${machineTimeOf(1_700_000_100_000)} · ID ${idA.slice(0,8)}`);
+      expect(card(idB).querySelector(".runtime-same-name-when").textContent).toBe(`Requested ${machineTimeOf(1_700_000_900_000)} · ID ${idB.slice(0,8)}`);
+      expect(card(idA).querySelector(".runtime-same-name").textContent).toBe("Another computer is also named “Demo-notebook”. Use ⋯ → Rename to tell them apart.");
+      expect(card(idC).querySelector(".runtime-same-name-tag")).toBeNull();expect(card(idC).querySelector(".runtime-same-name")).toBeNull();
+      // The dialog says so too: this is how a computer pairing twice looks.
+      expect(inAsk(".runtime-same-name").textContent).toBe(`A computer with this name is already paired (paired ${machineTimeOf(1_700_000_100_000)}). It may be the same computer pairing again: check the fingerprint.`);
+    });
+    it("a revoked computer does not make its namesake look duplicated",async()=>{
+      machines=[machine(idA,"Laptop","revoked"),machine(idB,"Laptop")];
+      await mountPage("same-name-revoked");
+      expect(p.root.querySelector(".runtime-same-name-tag")).toBeNull();
+    });
+    it("reads naturally in Traditional Chinese, with the product terms kept",async()=>{
+      const i18n=await import("/assets/app-i18n.js");i18n.setLang("zh-TW",{store:false});
+      try {
+        machines=[{...machine(idA,"Notebook"),createdAt:1},asked(idB,"Notebook",2,"ABCD-1234-5678"),asked(idC,"Lab",3,"1111-2222-3333")];
+        await mountPage("ask-zh");
+        expect(inAsk(".dlg-title").textContent).toBe("有電腦要求配對");expect(count()).toBe("第 1 台，共 2 台");
+        expect(["稍後","拒絕","核准"].every(text=>askButton(text))).toBe(true);
+        expect(p.root.querySelector(".runtime-pending-banner").textContent).toContain("有 2 台電腦等待核准");
+        expect(p.root.querySelector(".runtime-pending-review").textContent).toBe("檢視並核准");
+        expect(p.root.querySelector(`[data-machine-id="${idA}"] .runtime-same-name`).textContent).toBe("另一台電腦也叫「Notebook」。可從 ⋯ 選單 →「重新命名」改成容易分辨的名稱。");
+        expect(inAsk(".runtime-same-name").textContent).toContain("已有一台同名電腦");
+      } finally {i18n.setLang("en",{store:false});}
+    });
   });
   describe("the install page's stylesheet follows the lazy page",()=>{
     const read=(file:string)=>readFileSync(file,"utf8");

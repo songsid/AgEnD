@@ -42,3 +42,8 @@
 .runtime-joined .note { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .runtime-joined-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); flex: none; }
 @media (max-width: 600px) { .runtime-joined { flex-wrap: wrap; } .runtime-joined-actions { width: 100%; } }
+/* the approval dialog's large pairing fingerprint, the "N computers are waiting" bar and the same-name hint. Tokens only; the bar and the
+   hint are the shared straight left bar (.lbar). */
+.runtime-approve-fingerprint { margin: 0; padding: var(--s-3) 0; font-family: var(--font-mono); font-size: var(--fs-xl); line-height: var(--lh-xl); font-weight: var(--fw-semibold); letter-spacing: .08em; color: var(--text); overflow-wrap: anywhere; }
+.runtime-pending-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s-3); margin: 0 0 var(--s-4); padding: var(--s-2) 0 var(--s-2) var(--s-3); --lbar-color: var(--warn); --lbar-inset: 0; font-size: var(--fs-sm); color: var(--text); }
+.runtime-same-name { --lbar-color: var(--warn); --lbar-inset: 0; padding-left: var(--s-3); color: var(--text-2); }
