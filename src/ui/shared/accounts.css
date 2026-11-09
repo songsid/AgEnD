@@ -83,5 +83,6 @@ button.s-account-used { display: inline-flex; align-items: center; gap: var(--s-
 .s-account-version > .s-account-why { margin: 0; flex: 1 1 18em; }
 .s-account-install-run { display: grid; gap: var(--s-2); margin-top: var(--s-2); }
 .s-account-install-run > .s-account-why { margin: 0; }
+.s-account-install-run > .signin-warn { color: var(--warn); font-weight: var(--fw-semibold); }
 .s-account-install-output { margin: 0; padding: var(--s-2) var(--s-3); max-height: 14em; overflow: auto; border-radius: var(--r-sm); background: var(--bg); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
 .s-account-install-run .s-actions { justify-content: flex-end; }

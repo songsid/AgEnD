@@ -58,8 +58,8 @@ register("hostinstall", {
     verNewer: "{0} is installed. That is newer than {1}, the newest version AgEnD has audited: not verified by AgEnD yet.",
     verUnknown: "The installed version could not be read. The newest version AgEnD has audited: {0}.",
     runningUpdate: "Updating {0} to {1} (started on {2}).",
-    updated: "{0} was updated from {1} to {2}.", updatedNoFrom: "{0} was updated to {1}.", updatedSame: "The {0} update finished, but it is still {1}. Read the installer's last lines below.",
-    updatedNoVersion: "The {0} update finished.",
+    updated: "{0} was updated from {1} to {2}.", updatedNoFrom: "{0} was updated to {1}.", updatedWarn: "Warning: the {0} installer finished (exit code 0), but the installed version is {1} and the audited version is {2}. It did not reach the audited version: read the installer's last lines below.",
+    updatedNoVersion: "The {0} installer finished (exit code 0), but the installed version could not be read afterwards, so it is not known whether it reached the audited version, {1}.",
     failedUpdate: "The {0} update did not finish.", failedUpdateCode: "The {0} update exited with code {1}.",
     cancelledUpdate: "The {0} update was cancelled.", timeoutUpdate: "The {0} update took too long and was stopped.",
     err_not_installed: "{0} is not installed on this host.", err_up_to_date: "{0} is already at the version AgEnD has audited (or newer): there is nothing to update.",
@@ -72,8 +72,8 @@ register("hostinstall", {
     verNewer: "已安裝 {0}，比 AgEnD 稽核過的最新版本 {1} 還新：尚未經 AgEnD 驗證。",
     verUnknown: "讀不到已安裝的版本。AgEnD 稽核過的最新版本：{0}。",
     runningUpdate: "正在把 {0} 更新到 {1}（從 {2} 啟動）。",
-    updated: "{0} 已從 {1} 更新到 {2}。", updatedNoFrom: "{0} 已更新到 {1}。", updatedSame: "{0} 的更新已結束，但版本仍是 {1}。請看下方安裝程式的最後幾行。",
-    updatedNoVersion: "{0} 的更新已結束。",
+    updated: "{0} 已從 {1} 更新到 {2}。", updatedNoFrom: "{0} 已更新到 {1}。", updatedWarn: "警告：{0} 的安裝程式已結束（結束碼 0），但已安裝的版本是 {1}，AgEnD 稽核過的版本是 {2}，沒有更新到稽核版本。請看下方安裝程式的最後幾行。",
+    updatedNoVersion: "{0} 的安裝程式已結束（結束碼 0），但之後讀不到已安裝的版本，不確定有沒有更新到稽核版本 {1}。",
     failedUpdate: "{0} 沒有更新完成。", failedUpdateCode: "{0} 的更新以結束碼 {1} 結束。",
     cancelledUpdate: "已取消 {0} 的更新。", timeoutUpdate: "{0} 的更新花太久，已停止。",
     err_not_installed: "這台主機沒有安裝 {0}。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
@@ -209,12 +209,13 @@ export function HostInstallRun({ backend, label }) {
   const update = run.mode === "update";
   if (run.phase === "running") text = update ? th("runningUpdate", label, run.targetVersion || "?", run.startedOn) : th("running", label, run.startedOn);
   else if (run.phase === "ok" && update) {
-    // An update says the version before and after (the binary probe's own readings); a version that did not move is said as such.
-    cls = run.verified ? "signin-ok" : "signin-message";
-    text = !run.verified ? th("okUnverified", label)
-      : !run.version ? th("updatedNoVersion", label)
-      : run.fromVersion && run.fromVersion === run.version ? (cls = "signin-message", th("updatedSame", label, run.version))
-      : run.fromVersion ? th("updated", label, run.fromVersion, run.version) : th("updatedNoFrom", label, run.version);
+    // An update says the version before and after (the binary probe's own readings). Exit code 0 is not enough: when the version read afterwards is not the audited release (`reached`
+    // false), or could not be read (null), it is a warning that names the installed and the audited version, not a success.
+    const target = run.targetVersion || "?";
+    if (!run.verified) { cls = "signin-message"; text = th("okUnverified", label); }
+    else if (run.reached === false) { cls = "signin-warn"; text = th("updatedWarn", label, run.version || "?", target); }
+    else if (run.reached === null || !run.version) { cls = "signin-warn"; text = th("updatedNoVersion", label, target); }
+    else { cls = "signin-ok"; text = run.fromVersion ? th("updated", label, run.fromVersion, run.version) : th("updatedNoFrom", label, run.version); }
   }
   else if (run.phase === "ok") { cls = run.verified ? "signin-ok" : "signin-message"; text = !run.verified ? th("okUnverified", label) : run.version ? th("okVersion", label, run.version) : th("ok", label); }
   else if (run.phase === "cancelled") text = th(update ? "cancelledUpdate" : "cancelled", label);

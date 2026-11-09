@@ -53,7 +53,7 @@ An installed CLI shows its version on its row (Settings → Agents → AI accoun
 
 The browser sends only the CLI's id (`POST /ui/host-update { backend }`; any other key is a 400). The server picks the command (`host.update`, `{version}` ← the audited release,
 checked against `^\d+\.\d+\.\d+$`) and runs it through the same install window as `/login` and the Install button (`openInstallWindow`): one window fleet-wide, cancellable, judged by the
-exit code; the page shows the version before and after (the binary probe) or the exit code and the last lines. Who may: the Install button's gate (a fleet admin on the local surface; never a guest,
+exit code; the page shows the version before and after (the binary probe) or the exit code and the last lines. An update that exits 0 is a success only if the version read afterwards equals the audited release (`reached`); if not (or if it cannot be read) the page shows a warning naming the installed and the audited version. Who may: the Install button's gate (a fleet admin on the local surface; never a guest,
 a read session, the CLI's header token or the public link). A Windows computer additionally needs its owner's `install` switch.
 
 What each CLI does (checked 2026-11-09: the vendors' docs, and the CLIs' own `--help` run in an isolated HOME — no real account, nothing of the host's touched):

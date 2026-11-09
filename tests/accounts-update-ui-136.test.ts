@@ -121,18 +121,30 @@ describe("pressing Update", () => {
     expect(post()).toEqual([{ method: "POST", url: "/ui/host-install/cancel", body: {} }]);
   });
   it("success: the version before and after (the binary probe's), with no Connect hand-off; Dismiss clears it", async () => {
-    run = RUN({ phase: "ok", endedAt: 2, verified: true, version: "1.0.77", signIn: false });
+    run = RUN({ phase: "ok", endedAt: 2, verified: true, version: "1.0.77", reached: true, signIn: false });
     await mount();
     expect(text(card("grok").querySelector(".s-account-install-run"))).toContain("Grok was updated from 1.0.70 to 1.0.77.");
     const dismiss = card("grok").querySelectorAll("button").find((x: any) => x.textContent.trim() === "Dismiss");
     fire(dismiss, "click"); await settle(6);
     expect(card("grok").querySelector(".s-account-install-run")).toBeNull();
   });
-  it("success that did not move the version is said as such, with the output", async () => {
-    run = RUN({ phase: "ok", endedAt: 2, verified: true, version: "1.0.70", lines: ["already latest"] });
+  it("exit code 0 but not at the audited version: a warning that names the installed and the audited version — not a success", async () => {
+    run = RUN({ phase: "ok", endedAt: 2, verified: true, version: "1.0.70", reached: false, lines: ["already latest"] });
     await mount();
-    expect(text(card("grok").querySelector(".s-account-install-run"))).toContain("still 1.0.70");
+    const box = card("grok").querySelector(".s-account-install-run");
+    expect(text(box)).toContain("Warning: the Grok installer finished (exit code 0), but the installed version is 1.0.70 and the audited version is 1.0.77");
+    expect(text(box)).not.toContain("was updated");
+    expect(box.querySelector(".signin-warn")).not.toBeNull();
+    expect(box.querySelector(".signin-ok")).toBeNull();
     expect(text(card("grok").querySelector(".s-account-install-output"))).toContain("already latest");
+  });
+  it("a version that could not be read afterwards is a warning too (not known whether it reached the audited version)", async () => {
+    run = RUN({ phase: "ok", endedAt: 2, verified: true, version: null, reached: null });
+    await mount();
+    const box = card("grok").querySelector(".s-account-install-run");
+    expect(text(box)).toContain("could not be read afterwards");
+    expect(text(box)).toContain("1.0.77");
+    expect(box.querySelector(".signin-warn")).not.toBeNull();
   });
   it("failure: the exit code and the last lines; cancelled and timed out are their own words", async () => {
     run = RUN({ phase: "failed", endedAt: 2, exitCode: 22, lines: ["curl: (22) The requested URL returned error: 404"] });
@@ -166,7 +178,7 @@ describe("who sees it, and in which words", () => {
   it("the words exist in both languages: no raw key", async () => {
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang, { store: false });
-      for (const key of ["update", "updating", "cancelUpdate", "verCurrent", "verBehind", "verSelf", "verNewer", "verUnknown", "runningUpdate", "updated", "updatedNoFrom", "updatedSame", "updatedNoVersion",
+      for (const key of ["update", "updating", "cancelUpdate", "verCurrent", "verBehind", "verSelf", "verNewer", "verUnknown", "runningUpdate", "updated", "updatedNoFrom", "updatedWarn", "updatedNoVersion",
         "failedUpdate", "failedUpdateCode", "cancelledUpdate", "timeoutUpdate", "err_not_installed", "err_up_to_date"]) {
         const s = HI.hostInstallText(key, "grok", "1.0.70", "1.0.77");
         expect(s, `${lang}:${key}`).not.toBe(`hostinstall.${key}`);

@@ -19,7 +19,7 @@
  *   No command, path or environment. An ended run is kept 10 minutes, then it is gone.
  */
 import { randomBytes } from "node:crypto";
-import { AUDITED_VERSION, auditedVersion } from "./cli-audited.js";
+import { AUDITED_VERSION, auditedVersion, versionOf } from "./cli-audited.js";
 import { hostFacts } from "./cli-registry.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { installerOutput } from "./install-stream.js";
@@ -95,6 +95,8 @@ export interface HostInstallView {
   version: string | null;
   /** A successful, verified install of a CLI the dashboard can sign in: the page offers Sign in next. */
   signIn: boolean;
+  /** An update that ended `ok`: did the version read afterwards equal the audited release it went to? false: the installer exited 0 but the CLI is not at it (the page warns); null: not an update, or the version could not be read. */
+  reached: boolean | null;
   /** The window could not be confirmed removed (the same warning `/login` gives). */
   cleanupFailed: boolean;
 }
@@ -115,6 +117,7 @@ interface Run {
   version: string | null;
   signIn: boolean;
   cleanupFailed: boolean;
+  reached: boolean | null;
 }
 
 /**
@@ -157,34 +160,36 @@ export class WebHostInstalls {
     if (!(mode === "update" ? this.deps.updatable?.(backend) === true : this.deps.installable(backend))) return { error: "unsupported" };
     const run: Run = {
       id: randomBytes(16).toString("hex"), backend, mode, fromVersion: null, targetVersion: null, label: who.label, startedAt: this.now(), phase: "running", endedAt: null,
-      lines: [], exitCode: null, verified: null, version: null, signIn: false, cleanupFailed: false,
+      lines: [], exitCode: null, verified: null, version: null, signIn: false, cleanupFailed: false, reached: null,
     };
-    // Published before the window opens, so a fast installer's `done` has a run to land on; withdrawn when the start is refused.
-    const previous = this.run;
-    this.run = run;
+    // Published only once the start is accepted (a refused start leaves what was shown before exactly as it was). A fast installer's `done` may land before that: it
+    // settles `run`, and the publication below then shows it already over.
+    let published = false;
     const reporter: HostInstallReporter = {
       update: (from, target) => { run.fromVersion = from; run.targetVersion = target; },
-      progress: pane => { if (this.run === run && run.phase === "running") run.lines = installLines(pane); },
+      progress: pane => { if (run.phase === "running") run.lines = installLines(pane); },
       done: result => {
         if (run.phase !== "running") return;
         run.endedAt = this.now();
         run.cleanupFailed = result.cleanupFailed === true;
-        if (result.ok) { run.phase = "ok"; run.verified = result.verified; run.version = result.version; run.signIn = run.mode === "install" && result.verified && result.signIn; }
+        if (result.ok) {
+          run.phase = "ok"; run.verified = result.verified; run.version = result.version; run.signIn = run.mode === "install" && result.verified && result.signIn;
+          // An update that exited 0 is not a success until the binary probe says it reached the audited release: true/false once the version after is read, null when it was not.
+          if (run.mode === "update") run.reached = result.verified && run.targetVersion !== null && versionOf(result.version) !== null ? versionOf(result.version) === run.targetVersion : null;
+        }
         else {
           run.phase = result.detail === "cancelled" ? "cancelled" : result.detail === "timeout" ? "timeout" : "failed";
           run.exitCode = exitCodeOf(result.detail);
         }
-        if (this.run === run) this.changed("ended");
+        if (published && this.run === run) this.changed("ended");
       },
     };
     let started: HostInstallStart;
     try { started = await this.deps.start(backend, reporter, mode); }
     catch (err) { started = { refused: "failed", message: (err as Error)?.message ?? String(err) }; }
-    if (!("started" in started)) {
-      if (this.run === run) this.run = previous;
-      return { error: started.refused, ...(started.message ? { message: started.message } : {}) };
-    }
-    if (run.phase === "running") this.changed("running");
+    if (!("started" in started)) return { error: started.refused, ...(started.message ? { message: started.message } : {}) };
+    this.run = run; published = true;
+    this.changed(run.phase === "running" ? "running" : "ended");
     return { install: this.viewOf(run) };
   }
 
@@ -202,7 +207,7 @@ export class WebHostInstalls {
   private viewOf(run: Run): HostInstallView {
     return {
       id: run.id, backend: run.backend, mode: run.mode, fromVersion: run.fromVersion, targetVersion: run.targetVersion, phase: run.phase, startedOn: run.label, startedAt: run.startedAt, endedAt: run.endedAt,
-      lines: [...run.lines], exitCode: run.exitCode, verified: run.verified, version: run.version, signIn: run.signIn, cleanupFailed: run.cleanupFailed,
+      lines: [...run.lines], exitCode: run.exitCode, verified: run.verified, version: run.version, signIn: run.signIn, cleanupFailed: run.cleanupFailed, reached: run.reached,
     };
   }
 

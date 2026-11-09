@@ -63,6 +63,30 @@ describe("start and refusals", () => {
     expect(await t.installs.begin(WHO, "grok")).toEqual({ error: code, ...(code === "failed" ? { message: "tmux: no server" } : {}) });
     expect(t.installs.view()).toEqual(before);
   });
+  it("AGEND-136: the run is published only once the start is accepted — while the start is pending nothing is shown, and a refusal never replaces what was shown", async () => {
+    let release!: () => void; const gate = new Promise<void>(r => { release = r; });
+    const t = make({ start: async (_b, r) => { await gate; return { started: true }; } });
+    const pending = t.installs.begin(WHO, "codex");
+    await Promise.resolve();
+    expect(t.installs.view()).toBeNull();               // not yet: the fleet has not said it started
+    expect(t.changed).not.toHaveBeenCalled();
+    release();
+    expect(await pending).toMatchObject({ install: { backend: "codex", phase: "running" } });
+    expect(t.installs.view()).toMatchObject({ backend: "codex", phase: "running" });
+    expect(t.changed).toHaveBeenCalledWith("running");
+    // A refused start meanwhile (or after) leaves this run exactly as it was.
+    t.start.mockImplementationOnce(async () => { expect(t.installs.view()).toMatchObject({ backend: "codex" }); return { refused: "busy" } as const; });
+    const before = t.installs.view();
+    expect(await t.installs.begin(WHO, "grok")).toEqual({ error: "busy" });
+    expect(t.installs.view()).toEqual(before);
+  });
+  it("AGEND-136: an installer that ends before the start answered is published already over, and the pages are told it ended", async () => {
+    const t = make({ start: async (_b, r) => { r.done({ ok: true, detail: "clean exit", verified: true, version: "1.2.3", signIn: false }); return { started: true }; } });
+    expect(await t.installs.begin(WHO, "codex")).toMatchObject({ install: { phase: "ok", version: "1.2.3" } });
+    expect(t.installs.view()).toMatchObject({ phase: "ok" });
+    expect(t.changed).toHaveBeenCalledWith("ended");
+    expect(t.changed).not.toHaveBeenCalledWith("running");
+  });
   it("a start that throws is a failed start, not a crash", async () => {
     const t = make({ start: async () => { throw new Error("boom"); } });
     expect(await t.installs.begin(WHO, "codex")).toEqual({ error: "failed", message: "boom" });
