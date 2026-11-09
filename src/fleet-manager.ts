@@ -1307,34 +1307,72 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
   /**
-   * A message the owner must get (a computer joined with an install-command token, so nobody approved it) that could not be delivered because there is no place for it yet
-   * (a chat-connected fleet with no General and no primary notice target, or adapters that are not up). It is kept in `pending-owner-notices.json` (bounded, private), survives a
-   * restart, and is tried again every minute until `notifyFleetError` takes it. A web-only fleet never gets here: its Notices take the message at once.
+   * A message the owner must get (a computer joined with an install-command token, so nobody approved it). It is written to `pending-owner-notices.json` FIRST and removed only
+   * when a delivery is acknowledged: the platform took the message (the send's promise resolved) or the dashboard's Notices recorded it. So none of these loses it: no place to
+   * send it yet (a chat-connected fleet with no General and no primary notice target, adapters not up), a send the platform refuses after it was dispatched, a retry that is
+   * refused again, a restart. Each kept notice is tried again every minute until it is acknowledged. The file is private. Capacity is explicit, never silent: past
+   * OWNER_NOTICE_CAP undelivered notices the oldest are folded into ONE notice that says how many computers joined without a delivered notice and tells the owner to review
+   * Settings → Runtime, so the fact is never dropped. Delivery is at least once: a crash between the send and its acknowledgement can send a notice twice.
    */
   private ownerNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly ownerNoticeInFlight = new Map<string, number>();
   private pendingOwnerNoticesFile(): string | null { return this.dataDir ? join(this.dataDir, "pending-owner-notices.json") : null; }
-  private readPendingOwnerNotices(): string[] {
+  private readPendingOwnerNotices(): Array<{ id: string; text: string; folded?: number }> {
     const file = this.pendingOwnerNoticesFile();
-    try { const value: unknown = file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : []; return Array.isArray(value) ? value.filter((row): row is string => typeof row === "string" && row.length > 0 && row.length <= 4000).slice(-50) : []; }
-    catch { return []; }
+    try {
+      const value: unknown = file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+      if (!Array.isArray(value)) return [];
+      const rows: Array<{ id: string; text: string; folded?: number }> = [];
+      for (const row of value) {
+        if (typeof row === "string" && row.length > 0 && row.length <= 4000) rows.push({ id: `legacy-${createHash("sha256").update(row).digest("hex").slice(0, 16)}`, text: row });
+        else if (row && typeof row === "object" && typeof (row as { id?: unknown }).id === "string" && typeof (row as { text?: unknown }).text === "string" && (row as { text: string }).text.length > 0 && (row as { text: string }).text.length <= 4000) {
+          const folded = (row as { folded?: unknown }).folded;
+          rows.push({ id: (row as { id: string }).id, text: (row as { text: string }).text, ...(Number.isSafeInteger(folded) && (folded as number) > 0 ? { folded: folded as number } : {}) });
+        }
+      }
+      return rows;
+    } catch { return []; }
   }
-  private writePendingOwnerNotices(rows: string[]): void {
+  private writePendingOwnerNotices(rows: Array<{ id: string; text: string; folded?: number }>): void {
     const file = this.pendingOwnerNoticesFile(); if (!file) return;
-    try { if (rows.length) atomicWriteFileSync(file, JSON.stringify(rows.slice(-50)), { mode: 0o600 }); else rmSync(file, { force: true }); }
+    try { if (rows.length) atomicWriteFileSync(file, JSON.stringify(rows), { mode: 0o600 }); else rmSync(file, { force: true }); }
     catch (error) { this.logger.warn({ err: error }, "Could not keep a pending owner notice"); }
   }
-  holdOwnerNotice(text: string): void {
-    this.writePendingOwnerNotices([...this.readPendingOwnerNotices(), text]);
-    this.logger.warn("A notice for the owner has no place to go yet; it is kept and will be delivered when a chat destination exists");
+  static readonly OWNER_NOTICE_CAP = 100;
+  /** Past the cap, the oldest are folded into one notice (a count, and where to look); it never silently disappears. */
+  private foldOwnerNotices(rows: Array<{ id: string; text: string; folded?: number }>): Array<{ id: string; text: string; folded?: number }> {
+    const cap = FleetManager.OWNER_NOTICE_CAP;
+    if (rows.length <= cap) return rows;
+    const old = rows.slice(0, rows.length - (cap - 1)), keep = rows.slice(rows.length - (cap - 1));
+    const folded = old.reduce((sum, row) => sum + (row.folded ?? 1), 0);
+    this.logger.warn({ folded }, "Too many undelivered owner notices: the oldest were folded into one summary notice");
+    for (const row of old) this.ownerNoticeInFlight.delete(row.id);
+    return [{ id: randomUUID(), text: t("runtime.enroll_folded", String(folded)), folded }, ...keep];
+  }
+  /** Keeps the notice, then tries to deliver it; it stays on disk until a delivery is acknowledged. */
+  deliverOwnerNotice(text: string): void {
+    const entry = { id: randomUUID(), text };
+    this.writePendingOwnerNotices(this.foldOwnerNotices([...this.readPendingOwnerNotices(), entry]));
+    this.attemptOwnerNotice(entry.id, text);
     this.scheduleOwnerNoticeFlush();
   }
-  /** Delivers what was kept, oldest first, and stops at the first one that still has nowhere to go. Returns how many are left. */
+  private attemptOwnerNotice(id: string, text: string): void {
+    const startedAt = this.ownerNoticeInFlight.get(id);
+    if (startedAt !== undefined && Date.now() - startedAt < 120_000) return;                    // an attempt is still waiting for its answer
+    this.ownerNoticeInFlight.set(id, Date.now());
+    let settled = false;
+    const finish = (delivered: boolean): void => {
+      if (settled) return; settled = true; this.ownerNoticeInFlight.delete(id);
+      if (delivered) this.writePendingOwnerNotices(this.readPendingOwnerNotices().filter(row => row.id !== id));
+    };
+    let dispatched = false;
+    try { dispatched = this.notifyFleetError(text, { throttle: false, ack: finish }); } catch { dispatched = false; }
+    if (!dispatched) finish(false);
+  }
+  /** Tries every kept notice that has no attempt in flight (oldest first); returns how many are kept. */
   flushOwnerNotices(): number {
-    const rows = this.readPendingOwnerNotices();
-    let sent = 0;
-    for (const text of rows) { let ok = false; try { ok = this.notifyFleetError(text, { throttle: false }); } catch { ok = false; } if (!ok) break; sent++; }
-    const left = rows.slice(sent); if (sent) this.writePendingOwnerNotices(left);
-    return left.length;
+    for (const row of this.readPendingOwnerNotices()) this.attemptOwnerNotice(row.id, row.text);
+    return this.readPendingOwnerNotices().length;
   }
   private scheduleOwnerNoticeFlush(delayMs = 60_000): void {
     if (this.ownerNoticeTimer || !this.pendingOwnerNoticesFile()) return;
@@ -1365,8 +1403,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // A computer that joined with a token was approved by the token alone: tell the owner out of band (never lets a failure here change the join).
         if(entry.event==="used")try{
           const text=enrolledRuntimeNotice(entry,entry.machineId ? this.runtimeHub?.machine(entry.machineId) ?? null : null);
-          // No chat destination yet (no General, no primary channel, adapters not up) and not a web-only fleet: keep the notice and deliver it when one exists.
-          if(text && !this.notifyFleetError(text,{throttle:false}))this.holdOwnerNotice(text);
+          // Kept first, removed only when a delivery is acknowledged (see deliverOwnerNotice): no destination yet, a refused send and a restart do not lose it.
+          if(text)this.deliverOwnerNotice(text);
         }catch(error){this.logger.warn({err:error},"Could not announce a computer that joined with an install-command token");}
       },
       changed:event=>{
@@ -16966,7 +17004,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the shared 10-minute text throttle would otherwise swallow the next
    * streak's notice, and it is neither consulted nor recorded.
    */
-  notifyFleetError(text: string, opts: { throttle?: boolean } = {}): boolean {
+  notifyFleetError(text: string, opts: { throttle?: boolean; ack?: (delivered: boolean) => void } = {}): boolean {
     const throttled = opts.throttle !== false;
     const now = Date.now();
     const key = text.slice(0, 200);
@@ -16992,7 +17030,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // is the pre-existing semantic and not something this change alters.
     let dispatched = false;
     if (general) {
-      dispatched = this.notifyInstanceTopic(general, body);
+      dispatched = this.notifyInstanceTopic(general, body, undefined, opts.ack);
     } else {
       // No General instance — fall back to the primary channel's own notice
       // target. Posting to the bare group id looked right but is a guild id on
@@ -17001,14 +17039,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.adapter && target) {
         const out = this.renderPlaces(this.getPrimaryAdapterId(), body, target.opts);
         this.adapter.sendText(target.chatId, out.text, out.opts)
-          .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
+          .then(() => opts.ack?.(true), err => { this.logger.warn({ err }, "Failed to send fleet error notification"); opts.ack?.(false); });
         dispatched = true;
       }
     }
 
     // #2910 D2: a web-only fleet has no General: the notice goes to the dashboard's Notices instead (and spends the
     // throttle window like a post would).
-    if (!dispatched && this.recordWebNotice("fleet", body)) dispatched = true;
+    if (!dispatched && this.recordWebNotice("fleet", body)) { dispatched = true; opts.ack?.(true); }
     if (!dispatched) {
       // Do NOT record the throttle key. It used to be claimed before delivery
       // was attempted, so a message nobody could receive — every fleet error
@@ -17080,15 +17118,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * rejection surfaces only as a warn in its .catch. True delivery confirmation
    * would have to make this async and change every caller.
    */
-  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
+  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts, ack?: (delivered: boolean) => void): boolean {
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
-      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return true;
+      this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});ack?.(true);return true;
     }
     // #2910 D2: a web-only fleet has no topics: what the agent's topic would have been told is a Notice about it.
-    if (this.webOnlyPromptPlace()) return this.recordWebNotice("instance", text, instanceName);
+    if (this.webOnlyPromptPlace()) { const recorded = this.recordWebNotice("instance", text, instanceName); if (recorded) ack?.(true); return recorded; }
     const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
     if (!send) return false;
-    send.sent.catch(e => this.logger.warn({ err: e, instanceName }, send.failure));
+    // `ack` (a caller that must not lose the message) is told when the platform took it or refused it; everyone else only gets the log line.
+    send.sent.then(() => ack?.(true), e => { this.logger.warn({ err: e, instanceName }, send.failure); ack?.(false); });
     return true;
   }
 

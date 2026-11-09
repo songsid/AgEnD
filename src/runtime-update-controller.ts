@@ -35,6 +35,8 @@ export interface RuntimeUpdateControllerOptions {
   makeClient?(options: RuntimeClientOptions): RuntimeClient;
   spawn?: typeof spawn;
   pollMs?: number;
+  /** Hands over this Runtime's own stop attempt (it settles when the attempt did, confirmed or not), so a stop request from `agend-runtime stop` joins the same one-at-a-time, retryable shutdown a signal uses. */
+  onStopAttempt?(attempt: () => Promise<void>): void;
 }
 interface Layout { root: string; folder: string; program?: RuntimeInstalledProgram; installId: string }
 function journalAt(store: RuntimeClientStore, binding: RuntimeUpdateBinding): RuntimeUpdateJournal {
@@ -439,11 +441,31 @@ export class RuntimeUpdateController {
   }
 }
 
+/**
+ * The shutdown of a managed Runtime: one attempt at a time (a signal or a stop request that arrives during an attempt joins it), and retryable. `controller.close()` rejects
+ * when an account process is not confirmed ended; the Runtime then stays up holding its ownership, so the next Ctrl+C or `agend-runtime stop` must be able to try again:
+ * the signal handlers are put back and the attempt is open to the next caller.
+ */
+export function stopAttempts(controller: () => RuntimeUpdateController | undefined, cancel: () => void): { attempt: () => Promise<void>; stop: () => void } {
+  let attempting: Promise<void> | undefined;
+  const attempt = (): Promise<void> => attempting ??= (async () => {
+    cancel();
+    try { await controller()?.close(); }
+    catch (error) {
+      process.exitCode = 1; process.stderr.write(`${error instanceof Error ? error.message : "Runtime stop was not completed"}. Press Ctrl+C to try again.\n`);
+      process.once("SIGINT", stop); process.once("SIGTERM", stop);
+    } finally { attempting = undefined; }
+  })();
+  const stop = (): void => { void attempt(); };
+  return { attempt, stop };
+}
+
 /** Public run/connect use this only after resolving the existing local pairing/profile normally. */
 export async function runRuntimeWithUpdates(options: RuntimeUpdateControllerOptions): Promise<boolean> {
   let controller: RuntimeUpdateController | undefined, cancelled = false;
-  const stop = () => { cancelled = true; void controller?.close().catch(() => { process.exitCode = 1; }); };
+  const { attempt, stop } = stopAttempts(() => controller, () => { cancelled = true; });
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
+  options.onStopAttempt?.(attempt);
   try {
     controller = await RuntimeUpdateController.open(options); if (!controller) return false;
     if (!cancelled) { await controller.start(); await controller.wait(); }
@@ -460,7 +482,7 @@ export async function runtimeUpdateInternalMain(): Promise<void> {
     on: (event, listener) => process.on(event, listener), off: (event, listener) => process.off(event, listener),
     send: (message, callback) => process.send!(message, callback) });
   let controller: RuntimeUpdateController | undefined, cancelled = false;
-  const stop = () => { cancelled = true; void controller?.close().catch(() => { process.exitCode = 1; }); };
+  const { attempt, stop } = stopAttempts(() => controller, () => { cancelled = true; });
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
   let background: { restore: () => void; unwatch: () => void; directory: string } | undefined;
   try {
@@ -478,7 +500,7 @@ export async function runtimeUpdateInternalMain(): Promise<void> {
       // Taken over only now: the earlier Runtime has exited and this one holds the install ownership. A stop request that arrived during the hand-over
       // is asked again by `agend-runtime stop` itself, so clearing is safe.
       clearStopRequest(background.directory); writeInstanceMarker(background.directory, process.pid, Date.now(), readRuntimeInfo().version);
-      background.unwatch = watchStopRequest(background.directory, stop);
+      background.unwatch = watchStopRequest(background.directory, attempt);
     }
     if (init.role === "helper") await controller.startTrial(init.id); else await controller.start();
     await controller.wait();

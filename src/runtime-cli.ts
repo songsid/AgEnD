@@ -360,7 +360,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     return;
   }
   const runHere = async (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }): Promise<void> => {
-    if (await runRuntimeWithUpdates({ store, report })) return;
+    if (await runRuntimeWithUpdates({ store, report, ...(control ? { onStopAttempt: control.onStopAttempt } : {}) })) return;
     const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report });
     // One attempt at a time: a signal or a stop request that arrives while one is in flight joins it. An account process that was not confirmed ended leaves the Runtime up
     // holding its lock, so the next Ctrl+C or `agend-runtime stop` tries again.
