@@ -74,11 +74,11 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
   // builds (they share os/cpu): the AVX2 one and the `-baseline` one for CPUs without AVX2; all three are pinned. The `-baseline` build is the one that runs: it works on every x64
   // CPU (OpenCode's own postinstall picks by AVX2, which a `--ignore-scripts` install does not run). Both binaries carry the same Authenticode signature (measured 2026-11-09).
   opencode: {
-    id: "opencode", spec: "opencode-ai", version: "1.19.5",
+    id: "opencode", spec: "opencode-ai", version: "1.18.34",
     integrity: {
-      "node_modules/opencode-ai": "sha512-tEqMvQahfhdDj8vceYpXtoIrvjPXm5XRfetWnPN5YISueU7adNx9JcUA3zZ+2GKuDVgDpGdQe1ZLtCZDjqodvA==",
-      "node_modules/opencode-windows-x64": "sha512-xCVbrA8A/qQTAdBIKyhK5tx3/mcq18yF82Mi8phry0MJb2631nnnpxF9m6FFfWAVHyer4qFGrO7hbWXesHQ1Gg==",
-      "node_modules/opencode-windows-x64-baseline": "sha512-yRHN+TsfLjfLmdQVAVWqTGfGP1yq8YtUFy9Jw33XhlPIp77slBdCJrj2PC4amuEl6BJtaIQDhDFbpJ8+a5z7Qw==",
+      "node_modules/opencode-ai": "sha512-9WUS2T0t4HHDVzXvuwTHF0nvhXvZ9mQ0r+ozCvKdJu0LVoQpOzqAW4qWTC3ygNc5Oedcc7j+Oct24JYlQYnySA==",
+      "node_modules/opencode-windows-x64": "sha512-Nbw1JUHcMd+6Zab97tvhiR/wzMBrtFbHMog3w+HssBqt0068BLdpPadLmo72+vPtBu+ZxXIZzqNB9R3qtca7qg==",
+      "node_modules/opencode-windows-x64-baseline": "sha512-Ng4R5BDWS/xHmHyjBC2hQpakIrvu3vYvO7U2oF820xjih1VJl4zON52VGtT4Zh1o6kbf8f6s7yLPMzzblGSXuw==",
     },
     native: { path: "node_modules/opencode-windows-x64-baseline/bin/opencode.exe", signer: { cn: "Anomaly Innovations, Inc https://anoma.ly/", o: "Anomaly Innovations, Inc https://anoma.ly/" } },
   },

@@ -13,7 +13,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }, { id: "opencode", version: "1.19.5" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }, { id: "opencode", version: "1.18.34" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -140,7 +140,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("AGEND-133: OpenCode is listed and installed like the others (its pin comes from the computer's catalog)", async () => {
     await p.mount(h(Panel, { navKey: "install-opencode" })); await settle(14);
     expect(rowOf("opencode").textContent).toContain("Not installed");
-    expect(installButton("opencode").textContent).toBe("Install 1.19.5");
+    expect(installButton("opencode").textContent).toBe("Install 1.18.34");
     expect(installButton("opencode").disabled).toBe(false);
     expect(card().querySelector(".runtime-cli-install-others").textContent).not.toContain("OpenCode");
   });

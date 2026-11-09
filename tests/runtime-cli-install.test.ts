@@ -49,7 +49,7 @@ describe("managed CLI install (#3190 3b)", () => {
     expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.316" });
   });
   // AGEND-133 (#3521): OpenCode — an unscoped package, three pinned packages (both Windows x64 builds land), the baseline build is the one that runs, and its own signer.
-  it("OpenCode: pinned opencode-ai@1.19.5 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
+  it("OpenCode: pinned opencode-ai@1.18.34 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
     const cli = INSTALLABLE_CLIS.opencode;
     expect(cli.spec).toBe("opencode-ai");
     expect(Object.keys(cli.integrity)).toEqual(["node_modules/opencode-ai", "node_modules/opencode-windows-x64", "node_modules/opencode-windows-x64-baseline"]);
@@ -60,9 +60,9 @@ describe("managed CLI install (#3190 3b)", () => {
     const { run, calls } = fakeRun("opencode"), steps: string[] = [], root = join(home, "cli");
     const result = await installManagedCli("opencode", { root, nodePath: node, run, signerOf: async () => ({ status: "Valid", subject }), report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(3, 7)).toEqual(["opencode-ai@1.19.5", "--save-exact", "--ignore-scripts", "--no-audit"]);
-    expect(result.version).toBe("1.19.5");
-    expect(managedCliExecutable(root, "opencode")).toMatchObject({ command: result.command, version: "1.19.5" });
+    expect(calls[0].slice(3, 7)).toEqual(["opencode-ai@1.18.34", "--save-exact", "--ignore-scripts", "--no-audit"]);
+    expect(result.version).toBe("1.18.34");
+    expect(managedCliExecutable(root, "opencode")).toMatchObject({ command: result.command, version: "1.18.34" });
     expect(result.command.endsWith(join("node_modules", "opencode-windows-x64-baseline", "bin", "opencode.exe"))).toBe(true);
   });
   it("OpenCode: a registry hash that is not the pinned one, or a binary signed by someone else, installs nothing", async () => {
