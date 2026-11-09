@@ -87,6 +87,12 @@ try {
     if (!before) {
       if ((await hp.locator(".hub-chat-head").innerText()).includes(en ? "Can ask" : "可提問")) throw Error("optimistic header after refusal");
       if (!(await hp.locator("#sendBtn").isDisabled())) throw Error("send not held");
+      const target = await hp.locator(".hub-banner button").evaluate((button: HTMLElement) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height, tap: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")) };
+      });
+      if (c.device === "phone" && (!Number.isFinite(target.tap) || target.width < target.tap || target.height < target.tap))
+        throw Error(`phone recovery target is too small: ${JSON.stringify(target)}`);
     }
     if (rig.sent.filter(x => x.frame.type === "question").length !== delivered) throw Error("denied question delivered");
     await shot(hp, tag + "-refused");

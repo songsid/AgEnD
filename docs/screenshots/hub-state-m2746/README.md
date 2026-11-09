@@ -28,10 +28,12 @@ Confirmation detail is captured separately while the actual completed card is vi
 
 ## Checks
 
-- Fail-first regressions per issue, EN/zh-TW; 179 tests in 9 related suites pass, zero skips.
+- Fail-first regressions per issue, EN/zh-TW; 181 tests in 9 related suites pass, zero skips.
 - Both source and test typechecks; 299 changelog fragments validate.
 - Ten assertion reversals caught: publication retirement, exact pending-message identity, neutral switch label, localized confirmation after polling, attached-before-write confirmation, denied access projection, pre-refusal read race, older Hub without a room projection, header status, access-card wording.
-- Real Chromium: 20 before, 20 current and 20 cached-shell PNG checkpoints. Questions refused by the Hub produce no member input; drafts survive rechecking. No horizontal overflow or page errors.
+- R1 adds two caught guard reversals: missing presentation publication after a discovered completion, and removal of the completed-request fence. The delayed original 202 updates localized display copy while the applied state, deadline, server view and digest remain unchanged.
+- Real Chromium: 20 before, 20 current and 20 cached-shell PNG checkpoints. The R1 rerun repeats all 20 current and 20 cached-shell checkpoints; refreshed refusal/access images are committed here. Questions refused by the Hub produce no member input; drafts survive rechecking. No horizontal overflow or page errors.
+- The denied-room browser check also measures Check access against the shared `--tap` token. It failed first at 98×30 px on the phone, then passes with at least 44 px in both dimensions, including cached CSS. The shared Settings style gate alone does not cover this room action.
 - The shared Settings style gate passes 14 scoped Hub checks, including desktop, phone and middle width. It covers frame, alignment, controls and overflow. Existing shared classes are reused: `.tag.warn`, `.hub-banner`, `.btn.btn-sm`, `.note`, `.err`, `PendingChanges`.
 
 Run `scripts/manual/smoke/smoke-hub-state-m2746.mts` with the shared fixture's `REPO`, `OUT`, `PW_DIR`, `CHROME` and `FONTCONFIG_FILE` variables. Set `BEFORE=1` or `SKEW=1` for those legs; `OLD_REF` defaults to `v2.3.5-alpha.9`. `FLEET_PORT` and `HUB_PORT` choose isolated loopback ports; occupied ports fail rather than replacing anything. The candidate snapshot needs src/, tests/helpers/hub-s3b-rig.ts, launcher/, package.json and its dependencies.

@@ -11,6 +11,30 @@ describe("#3457 Hub stop copy", () => {
     expect(pg.root.querySelector("label")?.textContent).toBe(language === "en" ? " Run this Hub" : " 執行這個 Hub");
     expect((pg.root.querySelector("input") as any).checked).toBe(false);
   });
+  it.each(["en", "zh-TW"])("a late original 202 publishes its description without reopening a discovered completed request (%s)", async language => {
+    pg = page(); const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
+    confirm = await import("/ui/js/settings-confirm.js"); confirm.resetConfirmations();
+    const { appStore } = await import("/assets/app-store.js");
+    vi.useFakeTimers(); let release!: (value: unknown) => void;
+    const original = { id: "b".repeat(32), state: "pending", summary: ["Stop this fleet's Hub."], remaining_ms: 60000,
+      section: "access", confirm_digest: "d".repeat(64), confirmation: { kind: "web" }, outcome: null };
+    const completed = { ...original, state: "applied", remaining_ms: 0, outcome: { state: "applied", result: { ok: true, enabled: false } } };
+    vi.stubGlobal("fetch", async () => await new Promise(resolve => { release = resolve; }));
+    const description = language === "en" ? "Stop the Hub; keep its records." : "停止 Hub，並保留紀錄。";
+    const saved = confirm.confirmedWrite("/api/settings/hub/run", { method: "PUT", body: { enabled: false }, displaySummary: () => [description] });
+    const discovered = confirm.track(original);
+    await confirm.track(completed); await discovered;
+    const priorDeadline = appStore.get().pendingChanges[0].deadline;
+    await vi.advanceTimersByTimeAsync(100);
+    release({ ok: true, status: 202, json: async () => ({ result: "pending_confirmation", pending_change: original }) });
+    const result = await saved;
+    const displayed = appStore.get().pendingChanges[0];
+    expect(displayed.state).toBe("applied");
+    expect(displayed.deadline).toBe(priorDeadline);
+    expect(displayed.confirm_digest).toBe(completed.confirm_digest);
+    expect(result.confirmed).toEqual(completed);
+    expect(displayed.summary).toEqual([description]);
+  });
   it.each(["en", "zh-TW"])("the confirmation keeps the page's description after server polling (%s)", async language => {
     pg = page(); const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
     confirm = await import("/ui/js/settings-confirm.js"); confirm.resetConfirmations();

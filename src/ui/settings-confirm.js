@@ -155,7 +155,12 @@ export function track(view, label, retry, displaySummary) {
   let e = tracked.get(view.id);
   if (!e) { e = { view, at: now(), label, displaySummary, retry: again, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
   else { if (label && !e.label) e.label = label; if (again && !e.retry) e.retry = again; }
-  if (typeof displaySummary === "function") e.displaySummary = displaySummary;
+  if (typeof displaySummary === "function") {
+    e.displaySummary = displaySummary;
+    // Discovery may have settled this request before its original response arrives. Publish only its new copy;
+    // update() still rejects the older pending view, without changing the decided state, digest or deadline.
+    if (e.done) publish();
+  }
   const settled = e.done ? Promise.resolve(e.view) : new Promise((resolve) => e.waiters.push(resolve));
   update(view, ticket(e));
   schedule();

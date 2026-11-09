@@ -627,7 +627,7 @@ function HubRoomView({ room: given }) {
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
-        ${denied && !closed ? html`<p class="hub-banner warn" role="status">${ha("refused")} <button type="button" class="btn btn-sm" onClick=${() => store.refresh()}>${ha("check")}</button></p>` : null}
+        ${denied && !closed ? html`<p class="hub-banner warn" role="status">${ha("refused")} <button type="button" class="btn btn-sm" style="min-height:var(--tap);min-width:var(--tap)" onClick=${() => store.refresh()}>${ha("check")}</button></p>` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
         ${!closed && !frozen && !denied && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
