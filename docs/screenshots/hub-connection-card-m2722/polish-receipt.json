@@ -1,0 +1,120 @@
+{
+  "scope": "Static DOM/CSSOM token-only mockups inside actual Fleet Settings shell; zero production behavior or API writes",
+  "cases": [
+    {
+      "device": "desk",
+      "state": "unconnected",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "使用配對碼連線（進階）",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "24px",
+      "overflow": false
+    },
+    {
+      "device": "desk",
+      "state": "manual",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "使用配對碼連線（進階）",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "24px",
+      "overflow": false
+    },
+    {
+      "device": "desk",
+      "state": "connected",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "連線設定",
+      "buttonRadii": [
+        "999px",
+        "999px",
+        "999px"
+      ],
+      "standardGap": "24px",
+      "overflow": false
+    },
+    {
+      "device": "desk",
+      "state": "paused",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "連線設定",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "24px",
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "state": "unconnected",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "使用配對碼連線（進階）",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "20px",
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "state": "manual",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "使用配對碼連線（進階）",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "20px",
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "state": "connected",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "連線設定",
+      "buttonRadii": [
+        "999px",
+        "999px",
+        "999px"
+      ],
+      "standardGap": "20px",
+      "overflow": false
+    },
+    {
+      "device": "phone",
+      "state": "paused",
+      "bannerOutside": true,
+      "readonlyInputs": 0,
+      "oneCard": 1,
+      "disclosure": "連線設定",
+      "buttonRadii": [
+        "999px",
+        "999px"
+      ],
+      "standardGap": "20px",
+      "overflow": false
+    }
+  ],
+  "visualReview": "All nine inspected; five final phone captures rechecked after scroll correction. No unresolved clipping; unconnected primary/disclosure above bottom tabs, manual overview/detail show full form."
+}
