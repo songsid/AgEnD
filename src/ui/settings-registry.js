@@ -12,6 +12,7 @@ import { GUESTS_SETTINGS } from "./settings-guests.js";
 const L = (en, zh) => ({ en, "zh-TW": zh });
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
+  ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
   ["prefs.theme", "preferences", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],

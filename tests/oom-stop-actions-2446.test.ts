@@ -38,7 +38,7 @@ it.each([0, 1])("offers evidence and admin-only exactly-once Resume/Fresh (%i)",
   await h.click(choices[action].id, "stranger"); expect(restart).not.toHaveBeenCalled();
   await h.click(choices[action].id); await h.click(choices[action].id);
   expect(restart).toHaveBeenCalledTimes(1);
-  expect(restart).toHaveBeenCalledWith("worker", { explicit: true, freshStart: action === 1, sessionOomRetry: captureSessionOomRetry(h.dir) });
+  expect(restart).toHaveBeenCalledWith("worker", { explicit: true, ownerCurrent: expect.any(Function), freshStart: action === 1, sessionOomRetry: captureSessionOomRetry(h.dir) });
 });
 it("carries the offered revision through async retirement, refusing a newer stop before invalidation", async () => {
   const h = setup(); await fm.notifySessionOomStop("worker");

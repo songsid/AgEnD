@@ -17,7 +17,7 @@ import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
-import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
+import { crossInstanceVisibility, hideInternalMessageIds, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
@@ -664,7 +664,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // #2293: indexed for the dashboard's search as the outbox keeps it (a retried call the outbox admitted before: not again).
   if (!durableReceipt?.duplicate) ctx.indexCrossInstance?.({ messageId: ipcMeta.message_id, from: senderLabel, to: targetName, kind: ipcMeta.request_kind,
     correlationId: ipcMeta.correlation_id, taskSummary: ipcMeta.task_summary, content: message ?? "", ts: ipcMeta.ts });
-  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(hideInternalMessageIds(message ?? ""), 500)}`);
   const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
@@ -1346,7 +1346,7 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
     const text = markFaintRuns(tail.text);
     if (text !== tail.text) notes.push(FAINT_NOTE);
     if (startsInsideFaint(tail.text)) notes.push(FAINT_START_NOTE);
-    if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
+    if (capped) notes.push(t("logs.capped_tail", MAX_INSTANCE_LOG_LINES));
     if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
     if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
@@ -1956,7 +1956,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   })));
   const bDisplay = (name: string) =>
     bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
-  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(hideInternalMessageIds(message), 500)}`);
   respond({
     sent_to: sentTo,
     failed,
@@ -2095,11 +2095,13 @@ const updateTeam: Handler = (ctx, rawArgs, respond) => {
 
 // ── Fleet Templates ────────────────────────────────────────────────────
 
-const deployTemplate: Handler = async (ctx, rawArgs, respond) => {
+const deployTemplate: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(DeployTemplateArgs, rawArgs, "deploy_template");
   if (!v.ok) { respond(null, v.error); return; }
   const { template: templateName, directory: rawDirectory, name: deploymentNameArg, branch } = v.data;
   const deploymentName = deploymentNameArg || templateName;
+  // Its topics are made in the caller's world and the instances bound to it, as create_instance does.
+  const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
 
   // Reject relative paths; require absolute or ~-prefixed. Resolve and normalize (collapses `..`).
   const expanded = rawDirectory.replace(/^~/, process.env.HOME || "~");
@@ -2182,7 +2184,7 @@ const deployTemplate: Handler = async (ctx, rawArgs, respond) => {
             const r = res as { name: string; status?: string };
             resolve({ success: true, name: r.name, status: r.status });
           }
-        });
+        }, callerAdapterId);
       });
 
       if (!result.success) {

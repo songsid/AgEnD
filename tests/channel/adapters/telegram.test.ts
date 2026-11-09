@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -453,27 +453,28 @@ describe("TelegramAdapter", () => {
     ]);
   });
 
-  // ── Pairing delegation ────────────────────────────────────────────────────
-
-  it("handlePairing delegates to AccessManager.generateCode", async () => {
-    const spy = vi.spyOn(am, "generateCode").mockReturnValue("AABBCC");
-    const code = await adapter.handlePairing("100", "999");
-    expect(spy).toHaveBeenCalledWith("999");
-    expect(code).toBe("AABBCC");
+  it.each((["locked", "pairing"] as const).flatMap(mode => ["/pair", "/pair@fixture_bot", "/pairing"].map(text => [mode, text] as const)))("never issues access codes in %s mode for %s", async (mode, text) => {
+    am.setMode(mode);
+    const saved = readFileSync(join(tmpDir, "access.json"), "utf8");
+    adapter.setChatId("100");
+    const inbound = vi.fn(), reply = vi.fn(); adapter.on("message", inbound);
+    await fireEvent("message", { message: makeTelegramMessage({ text, from: { id: 999, username: "stranger" } }), reply });
+    expect(reply).not.toHaveBeenCalled();
+    expect(inbound).not.toHaveBeenCalled();
+    expect(am.isAllowed(999)).toBe(false);
+    expect(readFileSync(join(tmpDir, "access.json"), "utf8")).toBe(saved);
   });
-
-  it("confirmPairing delegates to AccessManager.confirmCode with callerUserId", async () => {
-    const spy = vi.spyOn(am, "confirmCode").mockReturnValue(true);
-    const result = await adapter.confirmPairing("AABBCC", "999");
-    expect(spy).toHaveBeenCalledWith("AABBCC", "999");
-    expect(result).toBe(true);
-  });
-
-  it("confirmPairing forwards undefined callerUserId when omitted", async () => {
-    const spy = vi.spyOn(am, "confirmCode").mockReturnValue(true);
-    const result = await adapter.confirmPairing("AABBCC");
-    expect(spy).toHaveBeenCalledWith("AABBCC", undefined);
-    expect(result).toBe(true);
+  it("keeps ordinary allowed and Classic-routed text on their existing routes", async () => {
+    adapter.setChatId("100");
+    const inbound = vi.fn(), reply = vi.fn(); adapter.on("message", inbound);
+    await fireEvent("message", { message: makeTelegramMessage({ text: "/pair" }), reply });
+    expect(inbound).toHaveBeenCalledWith(expect.objectContaining({ text: "/pair", userId: "42" }));
+    inbound.mockClear();
+    await fireEvent("message", { message: makeTelegramMessage({ text: "/pair", chat: { id: 200, type: "private" }, from: { id: 999 } }), reply });
+    expect(inbound).toHaveBeenCalledWith(expect.objectContaining({ text: "/pair", userId: "999", chatId: "200" }));
+    expect(reply).not.toHaveBeenCalled();
+    expect(am.isAllowed(999)).toBe(false);
+    expect(existsSync(join(tmpDir, "access.json"))).toBe(false);
   });
 
   // ── sendApproval ──────────────────────────────────────────────────────────

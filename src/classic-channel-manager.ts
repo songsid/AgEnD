@@ -85,6 +85,7 @@ export interface ClassicChannel {
   contextLines?: number;
   toolProgress?: InstanceConfig["tool_progress"];
   replyCompletionGuard?: boolean;
+  quotaNotice?: InstanceConfig["quota_notice"];
   /**
    * Echo owner web-chat messages into this channel (#1320 part B). #2054: unset (`undefined`) means on, following the
    * fleet-wide `web.echo_to_channel` (classicWebEchoOn); an explicit `false` keeps the room off, an explicit `true` on.
@@ -132,6 +133,7 @@ interface ClassicBotYaml {
     context_lines?: number;
     tool_progress?: InstanceConfig["tool_progress"];
     reply_completion_guard?: boolean;
+    quota_notice?: InstanceConfig["quota_notice"];
     reply_triggers?: boolean;
     backend_options?: unknown;
     web_echo?: unknown;
@@ -359,6 +361,7 @@ export class ClassicChannelManager {
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
               replyCompletionGuard: val.reply_completion_guard,
+              quotaNotice: val.quota_notice,
               webEcho: val.web_echo === undefined ? undefined : val.web_echo === true,
               backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
@@ -468,7 +471,7 @@ export class ClassicChannelManager {
         createdBy: ch.createdBy,
         createdAt: ch.createdAt,
       };
-      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "reply_triggers", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
+      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "quota_notice", "reply_triggers", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
@@ -477,6 +480,7 @@ export class ClassicChannelManager {
       if (ch.autoPauseAfter !== undefined) entry.auto_pause_after = ch.autoPauseAfter;
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
+      if (ch.quotaNotice !== undefined) entry.quota_notice = ch.quotaNotice;
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
       if (ch.webEcho !== undefined) entry.web_echo = ch.webEcho;            // #2054: an explicit off survives a save
       if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
@@ -911,6 +915,8 @@ export class ClassicChannelManager {
   /** Exact per-bot check. adapterId omitted matches only a legacy entry. */
   isClassicChannel(channelId: string, adapterId?: string): boolean { return !!this.find(channelId, adapterId); }
   get(channelId: string, adapterId?: string): ClassicChannel | undefined { return this.find(channelId, adapterId); }
+  getQuotaNoticeByInstance(name: string): InstanceConfig["quota_notice"] { return this.getAll().find(ch => ch.instanceName === name)?.quotaNotice; }
+
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }
 
   register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string, backend?: string): ClassicChannel {

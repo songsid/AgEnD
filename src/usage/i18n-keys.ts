@@ -31,6 +31,9 @@ export const USAGE_I18N_KEYS = [
   "usage.error.agy_no_refresh", "usage.error.agy_token_expired", "usage.error.agy_login_expired",
   "usage.error.agy_refresh_empty", "usage.error.grok_auth_readonly", "usage.error.grok_no_refresh",
   "usage.error.grok_refresh_unreachable", "usage.error.grok_invalid_refresh", "usage.error.grok_persist",
+  // #3066 §1: a weekly quota's measured 100%.
+  "usage.capacity.line", "usage.capacity.line_tokens", "usage.capacity.not_enough", "usage.capacity.only_agend", "usage.capacity.mixed",
+  "usage.capacity.best_fit_api", "usage.capacity.best_fit_output", "usage.capacity.best_fit_all",
 ] as const;
 
 export type UsageI18nKey = typeof USAGE_I18N_KEYS[number];

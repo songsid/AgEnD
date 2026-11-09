@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleAgentRequest } from "../src/agent-endpoint.js";
 import { agentTokenHeader } from "../src/agent-token-header.js";
+import { AgentCredentials, agentCredentialPolicy } from "../src/agent-credentials.js";
 
 const TOKEN = "t".repeat(64);
 const MiB = 1024 * 1024;
@@ -26,7 +27,10 @@ async function serve(ctxExtra: Record<string, unknown> = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "agend-ep-socket-"));
   mkdirSync(join(dataDir, "instances", "dev"), { recursive: true });
   writeFileSync(join(dataDir, "instances", "dev", "agent.token"), TOKEN, { mode: 0o600 });
-  const ctx = { dataDir, fleetConfig: { defaults: {}, instances: { dev: {} } }, logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }, ...ctxExtra } as never;
+  const fleetConfig = { defaults: {}, instances: { dev: {} } };
+  const agentCredentials = new AgentCredentials(name => agentCredentialPolicy(fleetConfig as any, name), () => null);
+  agentCredentials.issue("dev", TOKEN);
+  const ctx = { dataDir, fleetConfig, agentCredentials, logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }, ...ctxExtra } as never;
   /** Bytes each connection's socket has taken off the wire so far (live). */
   const socketRead: number[] = [];
   const server: Server = createServer((req, res) => handleAgentRequest(req, res, ctx));

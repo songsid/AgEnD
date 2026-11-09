@@ -84,6 +84,19 @@ LIVE means the screen was captured on both versions, read identically by the pro
 | terminal-setup offer | BIN | did not appear in any onboarding run here (tmux, `TERM=xterm-256color`, no `TERM_PROGRAM`) on either version, so the trigger was not provoked; literal unchanged |
 | corrupt `claude.json` modal | BIN | not provoked; literal unchanged |
 
+## Every new version: Claude history in the View
+
+The web View draws a Claude agent's earlier conversation from its transcript in Claude's own Ctrl+O style, with the
+colours and glyphs sampled from the live screen (`src/ui/shared/view-history.js`; defaults: 2.1.318's own). On each new
+version, re-check the history layout:
+- capture a settled screen with a prompt, a reply, an edit (its diff) and a tool result on it
+  (`t capture-pane -p -e -t <pane> > cap.ansi`), then run
+  `npx tsx scripts/manual/claude-version-audit/view-history-sample.mts cap.ansi`; every value should read `sampled`. A
+  `NOT FOUND` means the version draws it differently (a new prompt glyph, a box, another bullet): update the sampler and
+  its fixture (`tests/fixtures/view-history-claude-*.ansi`, held by `tests/view-history-claude-ui.test.ts`);
+- compare Claude's Ctrl+O view with the View's history for the same turn (the tool words, `⎿` results, the fold), and
+  check the transcript still parses into the same steps (`tests/log-steps-1218.test.ts`; `tool_use` / `tool_result`).
+
 ## 2.1.294 → 2.1.295
 
 The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (then `extra.sh` and `extra2.sh`).
@@ -218,3 +231,32 @@ The audit was run as `AUDIT_DIR=… OLD=314 NEW=316 PORT=18316 TMUX_TMPDIR=<shor
   - The auto-deny countdown keeps 2.1.314's wording ("block … holding up an unattended session").
   - Every cold-resume literal has the same count.
 - **The other new string**, "continue the last turn of the session it was copied from…", is the `--help` text of a hidden print-mode flag, `--session-began-as-copy`. It is not a screen.
+
+## 2.1.317 → 2.1.318
+
+The binaries were 2.1.317 (sha256 `eb224419e344575faa4a1f39b290b649425a10cd5ee2ef1d003480cd9ae57eb0`) and 2.1.318 (sha256 `708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd`, byte-identical to the host's `~/.local/share/claude/versions/2.1.318`), from the daily upstream watch (2026-11-04, MAJOR hard=4). The host had already self-updated to 2.1.318.
+
+The audit was run as `AUDIT_DIR=… OLD=317 NEW=318 PORT=18318 bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.318-*.pane.txt` (the 33 screens of the 2.1.316 set, each from the same capture, `danger-enter-swallowed` from 2.1.318's own capture 132), plus `code-mode-agent-teams`. They are held by `tests/claude-2.1.318-surfaces.test.ts`. The live tmux server kept its one session throughout.
+
+- **Classification:** all 62 captures and the error frames classify identically under the production predicates, except `132-danger-fast` (the timing race; 2.1.318 kept the menu on `No`, which the runtime table confirms with Enter on its next poll).
+  - At AgEnD's own cadence (Down, 200 ms, Enter) the dangerous-command menu was declined on both versions at every delay (0–4 s), despite the changelog's "permission prompts being answered by keys typed just after sending a message, or before a slow prompt appeared" fix.
+  - The other diffs are cosmetic: spinner verbs, the mock's reply counter, session ids, and on 2.1.318 a `◐ medium · /effort` row above the composer and `· ← for agents` in the footer.
+- **The four hard findings are not screens AgEnD meets.**
+  - "Press Enter to try again, or ^C to stop." / "… press Enter to check again, or ^C to stop." are the readline loop of `claude mcp add --web` (server flag `tengu_twinkling_aurora`). It only loops with a TTY on stdin and stdout; otherwise it prints a link and returns. AgEnD never runs it, and an agent's Bash tool has stdin from /dev/null. Offline the flag is off: "--web isn't available yet".
+  - "… turn it on again to resume the session. Where …" is not the cold-resume prompt (every cold-resume literal keeps its count). It is the opt-in dialog of the experimental Code Mode: `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` plus server flag `tengu_rustling_blossom`. Its focus is "No, start without it" (`cancelFirst`) and it arms after a delay. AgEnD launches every claude with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, which Code Mode refuses before its flag or provider checks: run with the production env plus the opt-in, the real 2.1.318 printed one passive line, "⚠ Code Mode (experimental) isn't available: it can't be used together with agent teams yet. Starting with the ordinary tools.", and started normally.
+  - The `rate_limits` string is network-settings documentation. The gone "Press 2 to try again." was the "You should know" toast (now "try again").
+- **Literals** (`predlits.py`, 310 checked, 87 in the binaries): 7 counts moved, all in bare substrings. Every exact dialog form AgEnD matches has the same count, except `Please run /login` (+2: the new "Login reached its time limit · Please run /login", read as an auth error like "Login expired").
+
+## 2.1.318 → 2.1.319: the cold-resume prompt, captured live
+
+The binaries were 2.1.318 (sha256 `708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd`) and 2.1.319 (sha256 `dabafec82ca1319fa43d8be36a10fc61b1d11821cb98ad5df04ad95e199b8eed`, byte-identical to the host's `~/.local/share/claude/versions/2.1.319`), from the daily upstream watch (2026-11-07, MAJOR hard=8). The host had already self-updated to 2.1.319.
+
+- **Passes:** `OLD=318 NEW=319 PORT=18319`, pass1 and extra–extra6. All 62 captures classify identically except `132-danger-fast` (the known instant Down+Enter race; 2.1.319 keeps the menu on `No`). The rest of the diffs are spinner verbs, session ids, the countdown, and `◐ medium · /effort` / `· ← for agents` on the production first launch. Transcript record types are the same set.
+- **Literals** (`predlits.py`, 310 checked, 87 in the binaries): 19 counts moved, all bare substrings in changelog, SDK-schema or gateway prose, except the cold-resume ones below. "Enter to confirm" +1 is the embedded changelog ("Fixed /feedback showing …"); "resume the session that started it … from this folder" is a model-facing MCP-task note; "usage limit on" / "one million re-sent tokens" are the SDK's `coldResumeQuota` schema text.
+- **The cold-resume prompt, live for the first time.** It is server-gated (subscription tier, `tengu_amber_tally`), so earlier audits built its fixtures from the binary. Public builds ignore `CLAUDE_INTERNAL_FC_OVERRIDES` (`getEnvironmentOverrides()` returns null) and drop a seeded `cachedGrowthBookFeatures`; serving the remote eval (`POST /api/eval/<key>`) through an explicit HTTPS proxy with a scratch CA reaches it. `cold-resume/rig.sh up 319` builds the loopback-only namespace, a claude.ai-shaped home with fake tokens and a backdated 180k-token session; `cold-resume/live.mts` then drives AgEnD's real startup scan (`Daemon.dismissDialogsUntilReady`) against the real binary launched by the production `buildCommand` with `--continue`, case by case (`RIG` short: the tmux socket path must fit 108 bytes).
+  - Each option's description is painted BESIDE its label, after two or more spaces, and wraps inside that column — never on a row of its own as the 2.1.295/2.1.304 fixtures assumed. With the server's look-up offered ("Claude can look this one up if you refer to it later"), 2.1.318 and 2.1.319 were held for a person instead of answered.
+  - 2.1.319 adds a third option, "Resume from summary" ("Claude writes a summary now, and you continue from it"), behind `tengu_eager_brooks`, on the launch trigger only (`offersSummary`). Escape still means `onCancel` → "dismiss": live at 0, 0.3 and 1.5 s the prompt went, the same session stayed, nothing was compacted.
+  - The fix (`coldResumeOptionsExact`) reads label + description per option and answers only the known options with their exact texts; anything else stays hold-only. `live.mts` on unfixed main: 1/7 (only the no-look-up shape); fixed: 7/7. Fixtures `tests/fixtures/claude-2.1.31[89]-cold-resume-live-*.pane.txt`, held by `tests/claude-cold-resume-2.1.319.test.ts`.
+  - The idle trigger (`tengu_drifting_nova`) needs a real cache expiry (up to an hour on Max) and was not captured; its component is the same apart from `offersSummary`, which only the launch trigger sets.
+- **View history:** `EDITDEMO <file>` (mockapi.py) leaves a prompt, a reply, an edit diff and a tool result on screen; `view-history-sample.mts` read every value `sampled, same`.
+- **Changelog:** auto mode, `permissions.denyInsteadOfPrompting` (opt-in) and the Monitor ask rules do not touch AgEnD's `--dangerously-skip-permissions` launch (still "bypass permissions on"). MCP tasks move to the background only for a server that runs a tool call as a task; AgEnD's MCP server declares no task support.

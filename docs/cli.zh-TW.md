@@ -259,11 +259,10 @@ agend topic unbind <name>       # 解除實例的主題綁定
 agend access list <name>        # 列出允許的使用者
 agend access remove <name> <uid> # 移除使用者
 agend access lock <name>        # 鎖定實例存取（僅限白名單）
-agend access unlock <name>      # 解鎖實例存取（開啟配對模式）
-agend access pair <name> <uid>  # 產生配對碼
+agend access unlock <name>      # 使用持久化允許名單（舊 pairing 模式）
 ```
 
-`access pair` 只產生碼，不會核准。CLI 沒有確認配對碼的指令，也沒有 `access add`；主人可透過設定的使用者名單授權。保存狀態與 YAML 名單會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
+不再產生或確認存取碼。請到「設定 → 聊天與連線 → 該 bot → 允許使用者（主 bot）」新增名單，再透過原有確認流程套用。`unlock` 保留舊的 `pairing` 模式名稱，但仍只允許有效名單中的使用者，不會開放給所有人。持久化與 YAML 授權會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
 
 ## 設定與安裝 (Setup & Installation)
 
@@ -276,6 +275,8 @@ agend install --no-activate     # 只寫入/更新 service 檔案
 agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
 agend export --full [path]      # 匯出配置＋所有實例資料
+                                # （2.3.4）檔案只有自己能讀（0600）；預設檔名含時間，
+                                # 指定的路徑已存在時拒絕，不會覆蓋
 agend import <file>             # 從匯出檔案匯入配置
 agend shortcuts                 # WSL：建立或更新 Windows 桌面捷徑
 ```

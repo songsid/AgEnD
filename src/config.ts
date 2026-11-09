@@ -140,6 +140,8 @@ export function getEffectiveInstanceDefaults(
   const {
     // Already stripped in the original code:
     tips: _tips,
+    // Evaluated per account by the fleet; an agent keeps only its explicit override.
+    quota_notice: _quotaNotice,
     max_cross_instance_message_bytes: _maxCrossInstanceMessageBytes,
     // #1302: read by the fleet when it posts a notice, so changing the default never touches a daemon's config.
     cross_instance_visibility: _crossInstanceVisibility,

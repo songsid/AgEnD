@@ -7,6 +7,11 @@ import {
   copyFileSync,
   readdirSync,
   readFileSync,
+  openSync,
+  closeSync,
+  fsyncSync,
+  unlinkSync,
+  constants as fsConstants,
 } from "node:fs";
 import { join, basename, resolve, sep as pathSep } from "node:path";
 import { homedir } from "node:os";
@@ -21,6 +26,40 @@ const RUNTIME_EXCLUDES = [
   "node_modules",
 ];
 
+/**
+ * The archive file, private from its first byte: created here, exclusively, 0600 (the umask can only narrow it), and
+ * never through a link. The archive holds the fleet's secrets (.env), so it must never exist readable by others, not
+ * even for the moment a chmod afterwards would leave. An existing destination — a file, a directory or a symlink — is
+ * refused, never replaced or followed.
+ */
+export function openPrivateArchive(path: string): number {
+  // O_CREAT | O_EXCL fails on any existing path — a symlink included, which it never follows (POSIX open(2)).
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL;
+  try {
+    return openSync(path, flags, 0o600);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      console.error(`${path} already exists. Choose another output path, or move that file away first.`);
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+/** tar into the private archive (its stdout is the archive's fd); on failure the partial archive is removed. */
+function tarInto(outFile: string, args: string[]): void {
+  const fd = openPrivateArchive(outFile);
+  try {
+    execFileSync("tar", ["czf", "-", ...args], { stdio: ["ignore", fd, "pipe"] });
+    fsyncSync(fd);
+  } catch (err) {
+    closeSync(fd);
+    try { unlinkSync(outFile); } catch { /* already gone */ }
+    throw err;
+  }
+  closeSync(fd);
+}
+
 // Reject tarballs above this size to blunt zip-bomb style exhaustion.
 const MAX_IMPORT_BYTES = 500 * 1024 * 1024;
 
@@ -34,15 +73,14 @@ export async function exportConfig(
     process.exit(1);
   }
 
-  const date = new Date().toISOString().slice(0, 10);
-  const outFile = resolve(outputPath ?? `agend-export-${date}.tar.gz`);
+  // The default name carries the time to the second (UTC), so a second export on the same day gets its own file
+  // instead of meeting an existing one (which openPrivateArchive refuses). An explicit path is used as given.
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+  const outFile = resolve(outputPath ?? `agend-export-${stamp}.tar.gz`);
 
   if (full) {
     const excludeArgs = RUNTIME_EXCLUDES.flatMap((p) => ["--exclude", p]);
-    execFileSync("tar", [
-      "czf", outFile, ...excludeArgs,
-      "-C", join(dataDir, ".."), basename(dataDir),
-    ], { stdio: "pipe" });
+    tarInto(outFile, [...excludeArgs, "-C", join(dataDir, ".."), basename(dataDir)]);
   } else {
     // Minimal: only config files that exist
     const existing = MINIMAL_FILES.filter((f) => existsSync(join(dataDir, f)));
@@ -51,9 +89,7 @@ export async function exportConfig(
       process.exit(1);
     }
     const fileArgs = existing.map((f) => `${basename(dataDir)}/${f}`);
-    execFileSync("tar", [
-      "czf", outFile, "-C", join(dataDir, ".."), ...fileArgs,
-    ], { stdio: "pipe" });
+    tarInto(outFile, ["-C", join(dataDir, ".."), ...fileArgs]);
   }
 
   const size = statSync(outFile).size;

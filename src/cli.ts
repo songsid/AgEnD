@@ -1168,16 +1168,14 @@ topic
   .argument("<topic-id>", "Topic ID")
   .action(async (instance: string, topicId: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    config.instances[instance].topic_id = topicId;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], value: topicId }]);
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
   });
 
@@ -1187,16 +1185,14 @@ topic
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    delete config.instances[instance].topic_id;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], remove: true }]);
     console.log(`Unbound ${instance} from topic`);
   });
 
@@ -1232,7 +1228,7 @@ access
 
 access
   .command("unlock")
-  .description("Unlock instance access")
+  .description("Use the saved allowlist (legacy pairing mode)")
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { AccessManager } = await import("./channel/access-manager.js");
@@ -1287,25 +1283,6 @@ access
     const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
     am.removeUser(userId);
     console.log(`${instance}: removed user ${userId}`);
-  });
-
-access
-  .command("pair")
-  .description("Generate a pairing code for a user")
-  .argument("<instance>", "Instance name")
-  .argument("<user-id>", "Telegram user ID requesting pairing")
-  .action(async (instance: string, userId: string) => {
-    const { AccessManager } = await import("./channel/access-manager.js");
-    const instanceDir = join(DATA_DIR, "instances", instance);
-    if (!existsSync(instanceDir)) {
-      console.error(`Instance "${instance}" not found`);
-      process.exit(1);
-    }
-    const statePath = await resolveAccessPath(instance);
-    const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
-    const code = am.generateCode(userId);
-    console.log(`${instance}: pairing code = ${code}`);
-    console.log("Share this code with the user. It expires in 10 minutes.");
   });
 
 // === Update + Reload ===
@@ -3116,7 +3093,9 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
 
 async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
-    const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
+    const config = (yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) ?? {}) as import("./types.js").FleetConfig;
+    // A fleet.yaml without an `instances:` section is an empty fleet (as `agend doctor` and the fleet read it), not a crash.
+    if (!config.instances || typeof config.instances !== "object") config.instances = {};
     const names = Object.keys(config.instances);
 
     // --names-only feeds shell completion, so it must return before any tmux or
@@ -3173,6 +3152,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
 
     if (allNames.length === 0) {
       console.log("No instances configured.");
+      // The same hint `agend doctor` gives for this file.
+      console.log("Hint: no general_topic instance — there is no general dispatcher to receive un-topic'd messages. Run `agend doctor`.");
       await printResources();
       return;
     }
@@ -3202,6 +3183,12 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       ? (channelTypes.has("telegram") ? "TG" : channelTypes.has("discord") ? "DC" : "—")
       : null;
 
+    // A fleet instance's source is the adapter the fleet routes it by: its channel_id, else the first connection
+    // (FleetManager.getInstanceAdapterId) — never guessed from its topic id, so `ls` and routing cannot disagree.
+    const channelList = config.channels?.length ? config.channels : config.channel ? [config.channel] : [];
+    const typeByAdapter = new Map(channelList.map((ch) => [ch.id ?? ch.type, ch.type] as const));
+    const firstAdapter = channelList[0] ? (channelList[0].id ?? channelList[0].type) : undefined;
+    const sourceOfType = (type: string | undefined): string => (type === "telegram" ? "TG" : type === "discord" ? "DC" : "—");
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
       if (singleSource) return singleSource;
       if (classicNames.has(name)) {
@@ -3209,10 +3196,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
         const matchedChId = classicChannelIdByName.get(name) ?? "";
         return matchedChId.startsWith("-") || matchedChId.length < 17 ? "TG" : "DC";
       }
-      const topicId = String(inst?.topic_id ?? "");
-      if (topicId.length >= 17) return "DC";
-      if (topicId.length > 0 && topicId.length < 17) return "TG";
-      return "—";
+      const bound = typeof inst?.channel_id === "string" && inst.channel_id ? inst.channel_id : firstAdapter;
+      return sourceOfType(bound === undefined ? undefined : typeByAdapter.get(bound));
     };
 
     // Row collection runs concurrently (see ls-rows.ts): the per-instance

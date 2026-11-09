@@ -30,7 +30,7 @@ function fixture(log: string, response = { status: 503, contentType: "text/html"
   const spawn = vi.fn(() => child);
   const output = `${log}\n${PRIVATE} ${TOKEN} ${OTHER} Bearer ${OTHER}`;
   const p = new CloudflaredProvider({ binaryName: binary, named: { hostname: "agend.example.com", token: TOKEN }, spawnProcess: spawn as never,
-    probe: () => ({ kind: "gone" }), deadlineMs: options.deadlineMs ?? 5, graceMs: 1,
+    probe: () => ({ kind: "gone" }), access: async () => {}, deadlineMs: options.deadlineMs ?? 5, graceMs: 1,
     fetchPage: async () => {
       if (lateExit) {
         child.emit("exit", 1, null);

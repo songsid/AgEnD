@@ -77,7 +77,7 @@ import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
-import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openMarkdown, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
@@ -438,7 +438,8 @@ function threadEntry(name, doc) {
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
-    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
+    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
+      openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
     openImage: openLightbox,                                               // an image, full size, in the page
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
@@ -797,6 +798,8 @@ function DeleteDialog({ name, onClose }) {
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
     toast(t("chat.instanceDeleted", name));
+    // The agent's own topic went too, or stayed with the reason (the server's own words: no new string here).
+    if (r.topic_note) toast(r.topic_note, r.topic_deleted !== false);
     if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();

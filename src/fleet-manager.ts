@@ -1,8 +1,12 @@
+import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
+import { quotaNoticeRule } from "./quota-notice-config.js";
+import { onUsageSnapshot } from "./usage/usage-api.js";
 import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
+import { maskSecrets } from "./log-steps.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -27,7 +31,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { unattendedInstallCommand } from "./unattended-install.js";
+import { installExitMarker, unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -77,6 +81,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
+import { startStallReporter, type StallReporter } from "./stall-reporter.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
@@ -103,7 +108,8 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { deletePlannedTopic, planInstanceTopicDelete, topicDestination, topicMustStay, type InstanceTopicPlan, type TopicDeleteOutcome, type TopicOwnership } from "./instance-topic-delete.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -118,7 +124,8 @@ import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
 import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
-import { TelegramAdapter } from "./channel/adapters/telegram.js";
+import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
+import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
@@ -187,6 +194,18 @@ export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked", "revi
  * " \t " and [" ", "\t"] both normalize to undefined (not treated as explicit
  * filters). The same result drives the live-only default and the cap decision.
  */
+/**
+ * #3195: the saved value of each plain-update field the call named (assignee, priority, result), read back from the
+ * task — so the answer shows what was persisted, not what was asked. Status is always in the ack already.
+ */
+export function savedFields(t: Task, named: Record<string, unknown>): Partial<Pick<Task, "assignee" | "priority" | "result">> {
+  const out: Partial<Pick<Task, "assignee" | "priority" | "result">> = {};
+  if (named.assignee !== undefined) out.assignee = t.assignee;
+  if (named.priority !== undefined) out.priority = t.priority;
+  if (named.result !== undefined) out.result = t.result;
+  return out;
+}
+
 export function normalizeStatusFilter(v: unknown): string | string[] | undefined {
   if (typeof v === "string") {
     const s = v.trim();
@@ -221,6 +240,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
+import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
@@ -242,6 +262,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
@@ -255,7 +276,7 @@ import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
-import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
@@ -286,6 +307,8 @@ import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteC
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
+import { AgentCredentials, agentCredentialPolicy } from "./agent-credentials.js";
+import { writeSecretFile } from "./secret-file.js";
 import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
 import type { ConfigSource } from "./config-history.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
@@ -321,7 +344,7 @@ import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
-import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
+import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardOffIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -406,7 +429,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -441,6 +464,12 @@ import {
 
 import { getTmuxSession } from "./config.js";
 import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
+import { PROFILE_TIMELINE_FILE, PROFILE_UNRECORDED, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { readQuotaHistory, type QuotaReading } from "./usage/quota-history.js";
+import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./usage/capacity.js";
+import { covered, hourSources } from "./usage-rollup.js";
+import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
+import { ratesFor } from "./cache-prices.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -557,6 +586,11 @@ export interface RestartOpts {
   sessionOomRetry?: SessionOomRetry;
   /** Internal pre-invalidation owner fence for an unclear-OOM action. */
   recoveryCurrent?: () => boolean;
+  /**
+   * #1490 row 27: the lifecycle the caller acts for (lifecyclePin), asked before anything is invalidated. A button or
+   * menu offered for one instance never restarts a later one of the same name, or one restarted since.
+   */
+  ownerCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -623,6 +657,8 @@ const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
  * while anything real shows signs of life well before the old two minutes.
  */
 const PROGRESS_MIN_ELAPSED_MS = 30_000;
+/** M-2391: the threshold tick fires this long after it, never a millisecond before (timers can fire early). */
+const PROGRESS_THRESHOLD_MARGIN_MS = 50;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
@@ -732,6 +768,11 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  /**
+   * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
+   * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
+   */
+  lifecycleCurrent?: () => boolean;
   pendingChangeId?: string;
   sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
@@ -1071,7 +1112,17 @@ export type GuestAuditEntry =
   | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
+/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
+export class RestartSupersededError extends Error {
+  /** `shown`: the instance as the chat list names it (shownInstanceName). */
+  constructor(shown: string) {
+    super(t("restart.superseded", shown));
+    this.name = "RestartSupersededError";
+  }
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
+  private decisionSnapshot: readonly ActiveDecisionRow[] = [];
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
 
@@ -1326,6 +1377,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Unsupported-CLI refusals waiting to go out, grouped by reason (#1109). */
   private unsupportedCliNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
+  private kiroCompatibilityHolds = new Map<string, { message: string; since: number }>();
   private kiroIncompatNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
   static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
@@ -1343,8 +1395,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
-  private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
+  private pendingEffortSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** #1806: in-flight /backend steps, keyed by nonce (see handleBackendSelection). */
   private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
@@ -1355,6 +1407,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
   private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
   private loadedFleetSource: ConfigSource | null = null;
@@ -1474,11 +1527,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private discordPresenceEagerPending = false;
   private discordPresenceInFlight: Promise<void> | null = null;
   private static readonly DISCORD_PRESENCE_REFRESH_MS = 15 * 60_000;
+  /** #3066 §1d: how often a fleet with no Discord bot reads the quota for its history (the user's choice: 30 min). */
+  static readonly QUOTA_BACKGROUND_READ_MS = 30 * 60_000;
+  private quotaReadTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
+  private stallReporter: StallReporter | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -1524,6 +1581,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly webChatRemovals = new Map<string, { below: number; daemon?: unknown }>();
   /** #1774: a removal under way — its replies' fate waits for its outcome (success: theirs no more; failure: theirs). */
   private readonly webChatRemovalsPending = new Map<string, { below: number; daemon?: unknown; done: Promise<void> }>();
+  /**
+   * #1490 row 27: "still the same lifecycle of `name`" — its lifecycle epoch, moved on synchronously by every stop,
+   * restart and removal (the map is never pruned, so a same-name replacement has a later one). Taken when a button
+   * or menu is claimed or offered, asked after every await before acting by name.
+   */
+  /** #1490 row 27: an instance as the chat list names it — its display name where it has one, else its name. */
+  private shownInstanceName(name: string): string {
+    try {
+      const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === name) ?? null;
+      return resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic, profile: profileIdentities(this.dataDir).get(name) }).display_name || name;
+    } catch { return name; }
+  }
+
+  private lifecyclePin(name: string): () => boolean {
+    // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
+    let epoch: number | undefined;
+    try { epoch = this.lifecycle?.epochOf(name); } catch { return () => false; }
+    return () => { try { return !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch; } catch { return false; } };
+  }
+
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1774: who an instance's reply is from, taken when it is sent: the name's generation and its daemon then. */
   private webChatIdentity(name: string): WebChatIdentity { return { generation: this.webChatGeneration(name), daemon: this.daemons.get(name) }; }
@@ -2415,6 +2492,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetSignatureMismatch: string[] | null = null;
   private healthServerListening = false;
 
+  private agentCredentialsCache?: AgentCredentials;
+  get agentCredentials(): AgentCredentials {
+    return this.agentCredentialsCache ??= new AgentCredentials(
+      name => agentCredentialPolicy(this.fleetConfig, name, this.isClassicInstance(name)),
+      name => {
+        try {
+          const token = randomBytes(32).toString("hex");
+          const result = writeSecretFile(join(this.getInstanceDir(name), "agent.token"), token);
+          if (!result.ok) this.logger.error({ name, mode: result.mode, reason: result.reason }, "Agent token file is not owner-only");
+          return token;
+        } catch {
+          this.logger.error({ name }, "Agent credential renewal failed; prior generation remains retired");
+          return null;
+        }
+      },
+    );
+  }
+
   constructor(public dataDir: string) {
     FleetManager.signalTarget = this;
     if (!FleetManager.sighupHandlerInstalled) {
@@ -2437,6 +2532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+    this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
   }
 
   /** #1266: a reply's buttons — the store (reply-buttons.db) and what a click does. Created on first use. */
@@ -2785,6 +2881,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
     if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
+    // #3066 §1d: a Codex launch records the credential profile it runs under, so its usage is told by account.
+    if (daemon?.bootId === daemonBootId && this.backendNameOf(name) === "codex") {
+      void recordProfileLaunch(join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE), this.credentialProfileOf(name, "codex") ?? "default");
+    }
     // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
     // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
     this.scheduleDeliveryOutboxPump();
@@ -3622,6 +3722,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
     // Classic's persisted adapter is authoritative. Legacy adapter-less rows
@@ -3795,7 +3896,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend);
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
@@ -4296,6 +4397,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
+  }
+
+  /**
+   * Claude history in the View: an instance's earlier conversation for its View, from the transcript the Log reads —
+   * the View's route applied its own access rules first (view-api.ts); the Log's switch plays no part.
+   */
+  viewHistory(name: string, q: ViewHistoryQuery): Promise<ViewHistoryAnswer | null> {
+    return viewHistory((n, rq) => this.log.readBack(n, rq), name, q);
   }
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
@@ -5629,6 +5738,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private classicBehaviorUpdate(instanceName: string): Record<string, unknown> {
     return {
+      quota_notice: this.classicChannels?.getQuotaNoticeByInstance?.(instanceName) ?? null,
       reply_triggers: this.classicChannels?.getReplyTriggersByInstance(instanceName, this.fleetConfig?.defaults?.reply_triggers) ?? DEFAULT_REPLY_TRIGGERS,
       tool_progress: this.classicChannels?.getToolProgressByInstance(
         instanceName,
@@ -5836,6 +5946,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      // #1490 row 67: off-loop resolve before skill/instruction publication
+      // constructs a backend (resolveKnowledgeWorkDir). Capture stop/lifecycle
+      // ownership first: a Stop during this wait finishes and bumps the epoch,
+      // and the inner lifecycle check would otherwise capture the new epoch and
+      // accept the stale start. Lifecycle start looks up again before its own
+      // createBackend; the probe cache makes that cheap.
+      const epoch = this.lifecycle.epochOf(name);
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      const resolved = await resolveBackendBinary(backend);
+      execution?.assert();
+      if (this.lifecycle.epochOf(name) !== epoch
+        || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        throw new SupersededStartError(name);
+      }
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       if (config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
       } else if (kind === "fleet-topic") {
@@ -6228,6 +6354,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Stopped/paused ClassicBot entries count too; their workspace is exactly
    * the one startClassicInstance builds, not this FleetManager's dataDir.
    */
+  /** Take the startup snapshot of every active decision (text cut to 200 characters); see activeDecisions. */
+  snapshotActiveDecisions(): void {
+    try {
+      const decisions = this.scheduler?.db.listAllActiveDecisions() ?? [];
+      this.decisionSnapshot = decisions.map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
+      if (decisions.length > 0) this.logger.info({ count: decisions.length }, "Active decisions snapshotted for instance instructions");
+    } catch (err) {
+      this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
+    }
+  }
+
+  /** The startup snapshot of active decisions, for a daemon's Active Decisions (it selects and caps its own). */
+  activeDecisions(): readonly ActiveDecisionRow[] {
+    return this.decisionSnapshot;
+  }
+
   kiroPeerWorkingDirectories(name: string): string[] {
     if (!this.fleetConfig || !this.classicChannels) throw new Error("Kiro peer configuration is not loaded");
     const peers: string[] = [];
@@ -6285,6 +6427,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.queueUnsupportedCliNotice(name, err.message);
     this.queueKiroIncompatNotice(name, err.message);
     return true;
+  }
+
+  /** No pane is needed for a compatibility refusal to remain in Needs you. */
+  setKiroCompatibilityHold(name: string, message: string | null): void {
+    const holds = this.kiroCompatibilityHolds ??= new Map();
+    if ((message === null && !holds.has(name)) || (message !== null && holds.get(name)?.message === message)) return;
+    if (message === null) holds.delete(name);
+    else holds.set(name, { message, since: Date.now() });
+    this.needsYou?.poke();
   }
 
   /**
@@ -6476,6 +6627,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(this.shownInstanceName(name));
     const migration = this.kiroMigrationRuns?.get(name);
     if (migration && migration.token !== opts?.kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
@@ -7637,7 +7789,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // removed it, and nothing it asks for may then go out.
     if (!this.returningDevices!.current(device, tokenEpoch(token))) return { kind: "refused" };
     if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
-    const paused = this.webLoginCodes!.pausedForMs();
+    const paused = this.webLoginCodes!.pausedForMs(input.exposureId ?? "local");
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
     const admitted = this.codeRequestLimiter.admit(device.idHash);
     if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
@@ -8099,6 +8251,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
+    this.stallReporter?.stop();
+    this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
@@ -8110,6 +8265,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.watchdogTimer = null;
           this.eventLoopWatch?.stop();
           this.eventLoopWatch = null;
+          this.stallReporter?.stop();
+          this.stallReporter = null;
         }
       }
     }
@@ -8167,8 +8324,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    const { getTmuxSocketName: getSocket } = await import("./paths.js");
+    const { getTmuxSocketName: getSocket, isDefaultAgendHome } = await import("./paths.js");
     TmuxManager.setSocketName(getSocket());
+
+    // M-2457 §7: after a raw downgrade from 2.4, its own tmux server may still run the agents — start none beside it.
+    // main / the 2.3 line ONLY: on the 2.4 line (release/2.3.5-alpha) AgEnD's own server IS the one on `agend` — a
+    // main → alpha sync must keep alpha's side of this block, never both.
+    {
+      const { newerTmuxServer, realGuardDeps, guardMessage } = await import("./bundled-tmux-guard.js");
+      const hit = await newerTmuxServer(realGuardDeps(getAgendHome(), isDefaultAgendHome(), getSocket()));
+      if (hit) {
+        const message = guardMessage(hit);
+        this.logger.error({ socket: hit.socket, confirmed: hit.confirmed }, message);
+        throw new Error(message);
+      }
+    }
 
     await TmuxManager.ensureSession(getTmuxSession());
     this.tmuxSessionEnsured = true;
@@ -8398,6 +8568,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
+      const resolved = await resolveBackendBinary(backendName);
+      const binary = BACKEND_INSTALLATION_INFO[backendName]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
@@ -8436,19 +8609,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
       this.dailyTipScheduler.start();
 
-      // Inject active decisions as env var for MCP instructions.
-      // Snapshotted at startup — new decisions via post_decision are available
-      // through list_decisions tool but not auto-injected until restart.
-      try {
-        const decisions = this.scheduler.db.listAllActiveDecisions();
-        if (decisions.length > 0) {
-          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root }));
-          process.env.AGEND_DECISIONS = JSON.stringify(capped);
-          this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
-        }
-      } catch (err) {
-        this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
-      }
+      // Active decisions for each instance's instructions, snapshotted at startup — new decisions via post_decision are
+      // available through list_decisions but not auto-injected until restart. The whole active set is kept here (each
+      // entry's text cut to 200 characters) and handed to each daemon at spawn (activeDecisions): the daemon selects
+      // its own — fleet, its teams, its directory — and only then applies its caps, so other teams' or directories'
+      // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
+      this.snapshotActiveDecisions();
     }
 
     // Phase 1: Start general instances first and wait for them
@@ -8572,6 +8738,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (others.length > 0 || classicAtBoot.length > 0) {
       await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady(), classicAtBoot);
     }
+
+    // #3066 §1d (Fable r1): on every fleet — a web-only one (#2910) has no chat connection at all, and is the clearest
+    // case with no Discord bot reading. Each tick decides for itself whether to read (backgroundQuotaRead).
+    this.startQuotaBackgroundReads();
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       await adapterStartup;
@@ -8749,6 +8919,185 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
     }
+  }
+
+  /**
+   * #3066 §1d (the user: yes, every 30 min): the quota history (usage/quota-history.ts) records only the readings AgEnD
+   * makes. A Discord bot's presence refresh reads every 15 min; without one, nothing reads while nobody looks. So, with no
+   * Discord bot and while some account has a running agent, read every 30 min — the same cached read (its 5-minute TTL
+   * still bounds the vendor calls), recorded like any other.
+   */
+  private quotaNotices: QuotaNotices | null = null;
+  private stopQuotaObserver: (() => void) | null = null;
+
+  private quotaNoticePolicy(): QuotaNoticePolicy {
+    const defaults = this.fleetConfig?.defaults.quota_notice;
+    const wanted = defaults?.target ?? "general";
+    const instances = this.fleetConfig?.instances ?? {};
+    const target = wanted === "general"
+      ? Object.entries(instances).find(([name, c]) => c.general_topic === true || name === "general")?.[0]
+      : Object.hasOwn(instances, wanted) ? wanted : undefined;
+    const webOnly = !!this.webOnlyPromptPlace();
+    const config = target ? instances[target] : undefined;
+    const adapterId = target ? this.getInstanceAdapterId(target) : undefined;
+    const groupId = target ? this.getChannelConfig(adapterId)?.group_id : undefined;
+    const ready = !!target && (webOnly || (config?.topic_id != null && !!groupId && !!(this.getAdapterForInstance(target) ?? this.adapter)));
+    return {
+      target: this.shuttingDown ? "" : ready ? target! : !target && wanted === "general" && webOnly ? "/notices" : "",
+      destinationBinding: JSON.stringify([webOnly, adapterId, groupId, config?.topic_id]),
+      locale: this.fleetConfig?.defaults.locale ?? getLocale(),
+      subscriptions: this.shuttingDown ? [] : this.activeBackendBindings().flatMap(([name, backend, profile]) => {
+        const provider = usageProviderIdForBackend(backend);
+        if (!provider) return [];
+        const providerId = profile ? `${provider}:${profile}` : provider;
+        return [{ account: `${backend}:host:${profile ?? ""}`, providerId,
+          rule: quotaNoticeRule(defaults, backend, instances[name]?.quota_notice ?? this.classicChannels?.getQuotaNoticeByInstance?.(name)) }];
+      }),
+    };
+  }
+
+  private startQuotaBackgroundReads(): void {
+    if (!this.quotaNotices) {
+      this.quotaNotices = new QuotaNotices({
+        file: join(this.dataDir, "quota-notices.json"), policy: () => this.quotaNoticePolicy(),
+        send: (target, text) => target === "/notices" ? this.recordWebNotice("fleet", text) : this.notifyInstanceTopic(target, text),
+        warn: err => this.logger.warn({ err }, "Optional quota reminders held: could not retain dispatch state"),
+      });
+      this.stopQuotaObserver = onUsageSnapshot(payload => { void this.quotaNotices?.observe(payload); });
+    }
+    if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
+    this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
+    this.quotaReadTimer.unref?.();
+    // #3066 §1: the measured capacity, published for the usage reads (get_usage, the page) — refreshed every 10 min.
+    setCapacityLookup((provider, metric) => this.capacityEstimates.get(`${provider}\u0000${metric}`) ?? null);
+    if (this.capacityTimer) clearInterval(this.capacityTimer);
+    void this.refreshCapacity();
+    this.capacityTimer = setInterval(() => { void this.refreshCapacity(); }, FleetManager.CAPACITY_REFRESH_MS);
+    this.capacityTimer.unref?.();
+  }
+
+  /** #3066 §1: the latest estimates, by `provider\0metric` (what usage-api's lookup reads, synchronously). */
+  private capacityEstimates = new Map<string, CapacityEstimate>();
+  private capacityTimer: ReturnType<typeof setInterval> | null = null;
+  static readonly CAPACITY_REFRESH_MS = 10 * 60_000;
+
+  /**
+   * #3066 §1: estimate each account's weekly 100% from the quota history (§1d) and the usage ledger's hours — both read
+   * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
+   * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
+   * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
+   *
+   * Prism #3073: no estimate rather than a wrong one —
+   * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
+   *   instance of the account's backend, and every instance whose hours count for it; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" (configured, on disk, or in the quota history) makes
+   *   those hours ambiguous: neither the host
+   *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
+   * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
+   *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
+   */
+  async refreshCapacity(): Promise<number> {
+    try {
+      const readings = await readQuotaHistory();
+      const groups = new Map<string, QuotaReading[]>();
+      for (const r of readings) { const k = `${r.provider}\u0000${r.metric}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
+      if (!groups.size) { this.capacityEstimates = new Map(); return 0; }
+      const data = await this.cacheServiceFor().usageData();
+      const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
+      const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
+      // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      // Any trace of such a profile counts (Prism #3073 r2), not only today's config — a binding removed or switched
+      // leaves its hours in the ledger: configured now, its directory on this host, or its account in the quota history.
+      const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const historyProviders = new Set(readings.map((r) => r.provider));
+      const reservedNamed = new Map<string, Set<string>>();
+      const reservedFor = (backend: string): Set<string> => {
+        const known = reservedNamed.get(backend);
+        if (known) return known;
+        const found = new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)));
+        const base = usageProviderIdForBackend(backend);
+        for (const n of RESERVED) {
+          if (base && historyProviders.has(`${base}:${n}`)) found.add(n);
+          if (credentialHomeSpec(backend) && existsSync(credentialProfileHome(this.dataDir, backend, n))) found.add(n);
+        }
+        return reservedNamed.set(backend, found).get(backend)!;
+      };
+      // Every instance of a backend may have used any of its accounts (bindings change): an account is measured only
+      // where all of them were scanned (Prism #3073 r2) — one still waiting for its first scan has no hours yet, not none.
+      const daysOfBase = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        const base = usageProviderIdForBackend(inst.inst.backend);
+        if (base) (daysOfBase.get(base) ?? daysOfBase.set(base, []).get(base)!).push(inst.days);
+      }
+      // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
+      const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
+      const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        for (const [hk, hour] of Object.entries(inst.ledger.hours)) {
+          for (const src of hourSources(hour)) {
+            const base = usageProviderIdForBackend(src.backend);
+            if (!base) continue;
+            // Ambiguous (a named profile with the tag's name), or no account's: counted for no one, so an account whose
+            // hours these may be has none — and gets no estimate, never a low one.
+            if (reservedFor(src.backend).has(src.profile) || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
+            const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
+            if (!list.includes(inst.days)) list.push(inst.days);
+            const hours = byProvider.get(provider) ?? byProvider.set(provider, new Map()).get(provider)!;
+            const into = hours.get(Number(hk)) ?? hours.set(Number(hk), Object.create(null) as Record<string, HourTotals>).get(Number(hk))!;
+            for (const [mk, tot] of Object.entries(src.m)) {
+              const cur = into[mk] ??= [0, 0, 0, 0, 0, 0, 0];
+              for (let i = 0; i < 7; i++) cur[i] = (cur[i] ?? 0) + (tot[i] ?? 0);
+            }
+          }
+        }
+      }
+      const next = new Map<string, CapacityEstimate>();
+      for (const [key, list] of groups) {
+        const [provider, metric] = key.split("\u0000") as [string, string];
+        // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
+        // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
+        const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        const perModel = list.some((r) => r.scope === "model");
+        if (named && !perModel) continue;
+        const hours: CapacityHour[] = [];
+        for (const [hour, models] of byProvider.get(provider) ?? []) {
+          let api: number | null = 0, output = 0, all = 0;
+          for (const [mk, tot] of Object.entries(models)) {
+            const bar = mk.lastIndexOf("|"), model = mk.slice(0, bar), long = mk.slice(bar + 1) === "1";
+            if (named && !model.toLowerCase().includes(named)) continue;
+            const [, uncached, read, w5, w1h, w, out] = tot;
+            const r = ratesFor(model, long ? Number.MAX_SAFE_INTEGER : 0);
+            api = api === null || !r ? null : api + (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / 1_000_000;
+            output += out; all += uncached + read + w5 + w1h + w + out;
+          }
+          if (all > 0) hours.push({ hour, api, output, all });
+        }
+        const base = provider.split(":")[0]!;
+        const scanned = [...new Set([...(daysOf.get(provider) ?? []), ...(daysOfBase.get(base) ?? [])])];
+        const available = (from: number, to: number): boolean => {
+          if (from < keptFrom || !scanned.length) return false;
+          for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;
+          return true;
+        };
+        const est = estimateCapacity(list, hours, available);
+        if (est) next.set(key, est);
+      }
+      this.capacityEstimates = next;
+      return next.size;
+    } catch (err) {
+      this.logger.debug({ err }, "capacity estimate refresh failed");
+      return -1;
+    }
+  }
+
+  /** One background quota read, when nothing else reads (no Discord bot) and an account has a running agent. */
+  async backgroundQuotaRead(): Promise<boolean> {
+    if (this.shuttingDown) return false;
+    if ([...this.adapters.values()].some(a => a.type === "discord" && typeof a.setActivity === "function")) return false;
+    const active = this.getActiveUsageProviderIds();
+    if (active.size === 0) return false;
+    try { await getUsageSnapshot(false, active); return true; } catch { return false; }
   }
 
   /** Keep Discord profile activity aligned with the same cached usage source as /usage. */
@@ -9206,6 +9555,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, "adapter.callback_query"));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
 
@@ -9356,6 +9709,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, `adapter[${adapterId}].callback_query`));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, `adapter[${adapterId}].topic_closed`);
 
@@ -10044,6 +10401,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;
     }
     return true;
+  }
+
+  /** File a Telegram update that was too old to inject; Needs you lists it until Acknowledge. */
+  private recordMissedOffline(ev: MissedOfflineInbound): void {
+    if (!this.missedOfflineStore) this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
+    const stub: InboundMessage = {
+      source: "telegram", adapterId: ev.adapterId, chatId: ev.chatId, threadId: ev.threadId,
+      messageId: ev.messageId, userId: ev.userId, username: ev.username, text: ev.preview,
+      timestamp: ev.timestamp, isBotMessage: false,
+    };
+    const threadId = this.inboundRouteThreadId(stub);
+    const target = threadId ? this.resolveInboundTarget(stub, threadId) : undefined;
+    let instance = target?.name ?? "";
+    if (!instance) {
+      instance = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+        cfg.general_topic && this.getInstanceAdapterId(name) === ev.adapterId)?.[0] ?? "";
+    }
+    const place = [ev.chatTitle, ev.threadId ? `#${ev.threadId}` : ""].filter(Boolean).join(" · ") || ev.chatId;
+    this.missedOfflineStore.add({
+      id: `missed:${ev.adapterId}:${ev.updateId}`,
+      adapterId: ev.adapterId,
+      instance,
+      username: ev.username,
+      place,
+      preview: ev.preview,
+      since: ev.timestamp.getTime(),
+    });
+    this.logger.info({ adapterId: ev.adapterId, updateId: ev.updateId, instance, chatId: ev.chatId, threadId: ev.threadId },
+      "Telegram message missed while AgEnD was offline — filed for Needs you");
+    this.needsYou?.poke();
   }
 
   /**
@@ -11652,17 +12039,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const scoped = this.decisionScopeFor(instanceName, payload.scope, payload.team);
+          if ("error" in scoped) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: scoped.error }); return; }
+          const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
+          if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
             project_root: projectRoot,
-            scope: (payload.scope as "project" | "fleet" | undefined),
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title: payload.title as string,
             content: payload.content as string,
             tags: payload.tags as string[] | undefined,
             ttl_days: payload.ttl_days as number | undefined,
             created_by: instanceName,
-            supersedes: payload.supersedes as string | undefined,
+            supersedes: supersedes.id,
           });
           break;
         }
@@ -11672,10 +12065,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result = decisionListAnswer(db.listDecisions(projectRoot, {
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
+            teams: instanceTeams(this.fleetConfig?.teams, instanceName),
           }), { id: payload.id, full: payload.full });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
+          const hidden = this.decisionHiddenFrom(instanceName, id);
+          if (hidden) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: hidden }); return; }
           if (payload.archive) {
             db.archiveDecision(id);
             result = { archived: true, id };
@@ -11855,41 +12251,126 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * `post_decision` with `supersedes` changes a decision someone else may have recorded (it stops being active): the
+   * same permission as `update_decision`, asked through the same live check (tool set + dashboard switches), on both
+   * create paths. An empty or absent value supersedes nothing and needs nothing; anything else must be an id.
+   */
+  private decisionSupersedes(sink: ToolSink, instanceName: string, value: unknown): { id: string | undefined } | { error: string } {
+    if (value === undefined || value === null || value === "") return { id: undefined };
+    if (typeof value !== "string") return { error: "supersedes must be a decision id" };
+    const permitted = this.checkToolPermission(sink, instanceName, "update_decision");
+    if (!permitted.allowed) return { error: `Superseding a decision needs update_decision. ${permitted.message}` };
+    return { id: value };
+  }
+
+  /**
+   * The scope (and team) a new decision gets. Team membership is read from fleet.yaml now. Omitted scope: the poster's
+   * team when they are in exactly one, project (this exact directory) when they are in none; in several, they choose.
+   * A team decision goes only to a team the poster is in.
+   */
+  decisionScopeFor(instance: string, scope: unknown, team: unknown): { scope: "project" | "team" | "fleet"; team?: string; teams: string[] } | { error: string } {
+    const teams = instanceTeams(this.fleetConfig?.teams, instance);
+    const named = typeof team === "string" && team.trim() ? team.trim() : undefined;
+    if (scope !== undefined && scope !== null && scope !== "project" && scope !== "team" && scope !== "fleet") {
+      return { error: `scope must be "project", "team" or "fleet"` };
+    }
+    if (scope === "project" || scope === "fleet") {
+      return named ? { error: `team goes with scope "team", not "${scope}"` } : { scope, teams };
+    }
+    if (named) {
+      if (!teams.includes(named)) {
+        return { error: teams.length ? `You are not in team "${named}". Your teams: ${teams.join(", ")}` : `You are not in team "${named}" (you are in no team)` };
+      }
+      return { scope: "team", team: named, teams };
+    }
+    if (teams.length === 1) return { scope: "team", team: teams[0], teams };
+    if (teams.length > 1) return { error: `You are in several teams (${teams.join(", ")}): name one with team, or use scope "project" or "fleet"` };
+    if (scope === "team") return { error: `You are in no team: use scope "project" (this directory) or "fleet"` };
+    return { scope: "project", teams };
+  }
+
+  /**
+   * #3421 review: a team decision is only for its team's current members — reading it back through an update (even an
+   * empty one) or archiving it is refused to anyone else, exactly as list/get and supersede are. The refusal names it
+   * "not found", as for an id that does not exist, and changes nothing. Project and fleet decisions: as before.
+   */
+  decisionHiddenFrom(instance: string, id: unknown): string | null {
+    if (typeof id !== "string" || !this.scheduler) return null;
+    const d = this.scheduler.db.getDecision(id);
+    if (!d || d.scope !== "team") return null;
+    return d.team && instanceTeams(this.fleetConfig?.teams, instance).includes(d.team) ? null : `Decision "${id}" not found`;
+  }
+
+  /** A ClassicBot agent's own folder — where startClassicInstance launches it, and its project for decisions (#3454). */
+  classicWorkspaceDir(instanceName: string): string {
+    return join(getAgendHome(), "workspaces", instanceName);
+  }
+
+  /**
+   * #3454: the project root of an agent calling the agent endpoint (CLI mode), as the MCP path has it from the daemon's
+   * own working directory. A fleet instance: its fleet.yaml working_directory, as before. A ClassicBot agent (not in
+   * fleet.yaml): its own workspace — it used to fall back to "", one project shared by every CLI-mode ClassicBot room.
+   * Anything else: null, and the caller refuses rather than guess.
+   */
+  decisionProjectRootFor(instance: string): string | null {
+    const fleet = this.fleetConfig?.instances;
+    if (fleet && Object.hasOwn(fleet, instance)) return fleet[instance]?.working_directory ?? "";
+    if (this.classicChannels?.getAll().some(ch => ch.instanceName === instance)) return this.classicWorkspaceDir(instance);
+    return null;
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
-    const projectRoot = this.fleetConfig?.instances[instance]?.working_directory ?? "";
+    const root = this.decisionProjectRootFor(instance);
+    const unknownRoot = { error: `Decisions are unavailable for "${instance}": it is neither a fleet instance nor a ClassicBot agent, so its working directory is unknown` };
+    const projectRoot = root ?? "";
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asNum = (v: unknown): number | undefined => typeof v === "number" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
       Array.isArray(v) && v.every(x => typeof x === "string") ? v as string[] : undefined;
     switch (op) {
       case "post": {
+        if (root === null) return unknownRoot;
         const title = asStr(args.title);
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
-        const scope = args.scope === "fleet" ? "fleet" : "project";
-        return db.createDecision({
-          project_root: projectRoot,
-          scope,
-          title,
-          content,
-          tags: asStrArr(args.tags),
-          ttl_days: asNum(args.ttl_days),
-          supersedes: asStr(args.supersedes),
-          created_by: instance,
-        });
+        const scoped = this.decisionScopeFor(instance, args.scope, args.team);
+        if ("error" in scoped) return { error: scoped.error };
+        const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
+        if ("error" in supersedes) return { error: supersedes.error };
+        try {
+          return db.createDecision({
+            project_root: projectRoot,
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
+            title,
+            content,
+            tags: asStrArr(args.tags),
+            ttl_days: asNum(args.ttl_days),
+            supersedes: supersedes.id,
+            created_by: instance,
+          });
+        } catch (err) {
+          return { error: (err as Error).message };                   // a refused predecessor: nothing was inserted
+        }
       }
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
       case "list": case "get": if (op === "get" && !asStr(args.id)?.trim()) return { error: "id is required" };
+        if (root === null) return unknownRoot;
         return decisionListAnswer(db.listDecisions(projectRoot, {
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
+        teams: instanceTeams(this.fleetConfig?.teams, instance),
       }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
+        const hidden = this.decisionHiddenFrom(instance, id);
+        if (hidden) return { error: hidden };
         return db.updateDecision(id, {
           content: asStr(args.content),
           tags: asStrArr(args.tags),
@@ -11918,6 +12399,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asStatusFilter = normalizeStatusFilter;
     // #1336: small write ack — identifying fields only.
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    // #3195: an update's ack also carries what was SAVED for each field it named, read back from the task.
+    const updatedAck = (t: Task, named: Record<string, unknown>) => ({ ...ack(t), ...savedFields(t, named) });
     // The board's notes for the write (a send-back reason, a comment the assignee had not seen): with the ack when any.
     const noted = <T extends object>(a: T): T | (T & { notes: string[] }) => { const notes = db.board.takeNotes(); return notes.length ? { ...a, notes } : a; };
     try {
@@ -11969,12 +12452,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         case "update": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return noted(ack(db.updateTask(db.getTaskByPrefix(id).id, {
+          return noted(updatedAck(db.updateTask(db.getTaskByPrefix(id).id, {
             status: asStatus(args.status),
             assignee: asStr(args.assignee),
             result: asStr(args.result),
             priority: asPriority(args.priority),
-          }, { kind: "instance", name: instance })));
+          }, { kind: "instance", name: instance }), args));
         }
         default: return { error: `Unknown task action: ${action}` };
       }
@@ -12128,7 +12611,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             result: payload.result as string | undefined,
             priority: payload.priority as string | undefined,
           } as Record<string, unknown>, { kind: "instance", name: meta.instance_name || instanceName });
-          result = noted(ack(logTask));
+          // #3195: with what was SAVED for each field the update named, read back from the task.
+          result = noted({ ...ack(logTask), ...savedFields(logTask, payload) });
           break;
         default:
           throw new Error(`Unknown task action: ${action}`);
@@ -12159,14 +12643,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
-    try {
-      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
-      if (!adapter?.deleteTopic) return;
-      await adapter.deleteTopic(topicId);
-    } catch (err) {
-      this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
-    }
+  /**
+   * Delete an agent and, unless asked not to, its own chat topic (user decision: by default). The topic is planned
+   * before the removal (its id and bot go with the fleet.yaml entry) and deleted through the agent's OWN bot after it;
+   * the outcome is the platform's answer (instance-topic-delete.ts). A topic that cannot go never fails the removal.
+   */
+  async removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval,
+    opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome> {
+    const plan = opts.deleteTopic ? this.planInstanceTopicDelete(name) : null;
+    if (opts.execution) await this.removeInstance(name, authorization, opts.execution);
+    else await this.removeInstance(name, authorization);
+    // #3055 review (Prism P1): asked again right before the platform call — the fleet as it is NOW, not as planned
+    // before the removal was awaited (a new owner of the topic, or the bot rebuilt).
+    return deletePlannedTopic(plan, this.logger, (p) => {
+      if (this.instanceTopicAdapter(p.adapterId) !== p.adapter) return "the agent's bot changed while it was being deleted, so its topic was left";
+      return topicMustStay(p.destination, this.topicOwnership(), null);       // the original is gone: every owner now counts
+    }, { begin: (d) => this.topicDeletionsInFlight.add(d), end: (d) => this.topicDeletionsInFlight.delete(d) });
+  }
+
+  /** #3055: destinations whose platform deletion is running now; a binding to one waits until it is over. */
+  private readonly topicDeletionsInFlight = new Set<string>();
+  /** True while a topic with this id is being deleted on any connection (a new binding of it is refused meanwhile). */
+  isTopicDeletionInFlight(topicId: number | string): boolean {
+    const tail = `:${topicId}`;
+    return [...this.topicDeletionsInFlight].some(d => d.endsWith(tail));
+  }
+
+  /**
+   * #3055 review r2 (Prism P1-3): would this instance config bind a topic whose deletion is running now? Compared by
+   * physical destination, so the same thread number in another Telegram group is not held. Settings asks it at commit.
+   */
+  topicBindingInFlight(inst: { channel_id?: unknown; topic_id?: unknown }): boolean {
+    if (this.topicDeletionsInFlight.size === 0 || inst.topic_id == null || inst.topic_id === "") return false;
+    const adapterId = typeof inst.channel_id === "string" && inst.channel_id ? inst.channel_id : this.getPrimaryAdapterId();
+    return this.topicDeletionsInFlight.has(this.destinationFor(adapterId, inst.topic_id as number | string));
+  }
+
+  /** Any topic deletion running now (a connection's group or General may not be re-pointed meanwhile). */
+  topicDeletionPending(): boolean { return this.topicDeletionsInFlight.size > 0; }
+
+  /** The physical destination of `topicId` on the bot `adapterId`. */
+  private destinationFor(adapterId: string | undefined, topicId: number | string): string {
+    const world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const platform = world?.adapter?.type ?? this.getChannelConfig(adapterId)?.type;
+    const groupId = world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
+    return topicDestination(platform, groupId, adapterId, topicId);
+  }
+
+  /** The adapter of the bot `adapterId` names — never a substitute for a bot that is not there. */
+  private instanceTopicAdapter(adapterId: string | undefined): ChannelAdapter | undefined {
+    return (adapterId ? this.worlds.get(adapterId)?.adapter : this.worlds.size === 0 ? this.adapter ?? undefined : undefined) ?? undefined;
+  }
+
+  /**
+   * Topic ownership by physical destination (#3055 review, Prism P1): an instance's topic is where its bot's platform
+   * puts it (a Telegram group + thread, a Discord channel), so two bots in one group, or two instances on one
+   * channel, are seen to share it; and every connection's own General is protected, with or without a General agent.
+   */
+  private topicOwnership(): TopicOwnership {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const destinationOf = (n: string): string | null => {
+      const cfg = this.fleetConfig?.instances?.[n];
+      if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
+      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
+    };
+    const generalDestinations = (): Set<string> => {
+      const out = new Set<string>();
+      for (const ch of channels) {
+        const id = ch.id ?? ch.type;
+        const groupId = this.worlds.get(id)?.groupId ?? (ch.group_id != null ? String(ch.group_id) : undefined);
+        if (ch.type === "telegram") out.add(topicDestination("telegram", groupId, id, 1));
+        if (ch.type === "discord") {
+          const gcid = discordGeneralChannelId(ch as unknown as Record<string, unknown>);
+          if (gcid) out.add(topicDestination("discord", groupId, id, gcid));
+        }
+      }
+      return out;
+    };
+    return { instances: this.fleetConfig?.instances, destinationOf, generalDestinations };
+  }
+
+  /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
+  private planInstanceTopicDelete(name: string): InstanceTopicPlan {
+    const adapterId = this.getInstanceAdapterId(name);
+    return planInstanceTopicDelete({ name, adapterId, adapter: this.instanceTopicAdapter(adapterId), ...this.topicOwnership() });
   }
 
   getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
@@ -12594,6 +13154,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
       { path: this.configPath, strippedDefaults: redundantPaths.length },
@@ -12862,6 +13423,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
       else await this.lifecycle.remove(name, authorization);
+      // #1490 row 27: its hang/exit offers were for the instance now gone (stopInstance clears them; removal stops
+      // through the lifecycle directly). The offers' own lifecycle pins refuse them too.
+      this.clearNoncePromptsForInstance(name);
       // #1774: removed — its replies still copying their files are no one's to show, replaced or not (a failed removal
       // throws above: its replies stay its own).
       this.webChatRemovals.set(name, { below: removedBelow, ...(removedDaemon !== undefined ? { daemon: removedDaemon } : {}) });
@@ -14477,6 +15041,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: opts.threadId,
       expiredText: opts.expiredText,
       createdAt: Date.now(),
+      lifecycleCurrent: this.lifecyclePin(opts.instanceName),
       ...opts.extra,
     };
     entry.timer = setTimeout(() => {
@@ -14827,6 +15392,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
       name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(name), profile: this.usageProfileOf(name, this.backendNameOf(name)),
+      ...(this.backendNameOf(name) === "codex" ? { profileTimelinePath: join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE) } : {}),
       kiroDbPath: this.kiroDbPathOf(name, this.backendNameOf(name)),
     }));
     const taken = new Set(fleet.map(i => i.name));
@@ -14838,6 +15404,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
       profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
       kiroDbPath: this.kiroDbPathOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      // #3066 §1d (Fable r1 #2): a ClassicBot Codex room records its launches too (onDaemonReady) — read them the same way.
+      ...((this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend) === "codex"
+        ? { profileTimelinePath: join(this.getInstanceDir(ch.instanceName), PROFILE_TIMELINE_FILE) } : {}),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
@@ -14985,7 +15554,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
-        interactionSummary: p.interaction_summary ?? null,
+        interactionSummary: p.interaction?.kind === "kiro_choice" ? t("kiro3.running") : p.interaction_summary ?? null,
+        kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
@@ -15059,6 +15629,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
+      missedOffline: () => (this.missedOfflineStore?.list(Date.now()) ?? []).map(m => ({
+        id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
+      })),
+      acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
@@ -15818,8 +16392,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
       signOut: (handle) => {
-        this.webSessions?.revokeByHandle(handle);
-        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+        const session = this.webSessions?.revokeByHandle(handle) ?? { found: false, durable: true };
+        const authorization = this.sessionAuthorizationStore()?.prune(a => a.handle !== handle) ?? { dropped: 0, durable: true };
+        return { durable: session.durable, authorizationDurable: authorization.durable };
       },
       event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
       text: {
@@ -15829,6 +16404,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        notSaved: (c) => t("web_auth.card_not_saved", c.label),
         ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
@@ -16235,6 +16811,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, oom ? "session_oom_action" : "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
@@ -16246,13 +16824,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
         ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
@@ -16266,7 +16848,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("exit.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("exit.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show normal-exit restart error"));
@@ -16810,7 +17392,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const publication = this.beginCancelButtonPublication(instanceName, correlationId);
-    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
+    // M-2391: a re-post below a reply (preserveProgress) continues the same turn — its elapsed time continues from
+    // the live bubble's start, as its tool list does. Restarting it at 0 meant an agent replying more often than the
+    // threshold never showed elapsed time at all. A fresh turn (no preserve) starts at 0 as before.
+    const carriedStart = preserveProgress ? this.liveButtonStart(instanceName) : undefined;
+    const carriedMs = carriedStart !== undefined ? Math.max(0, Date.now() - carriedStart) : 0;
+    const initialProgressText = carriedStart !== undefined && carriedMs >= this.progressMinElapsedMs()
+      ? FleetManager.progressText(carriedMs, null, this.progressMinElapsedMs(), this.progressPrefixFor(instanceName, carriedMs))
+      : FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
@@ -16836,7 +17425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Elapsed time is measured from when this button was posted — i.e. from
         // when the work was handed over — not from the pane's working transition,
         // which resets if the CLI blips idle mid-turn.
-        startedAt: Date.now(),
+        startedAt: carriedStart ?? Date.now(),
         // Matches the text notifyAlert just posted, so the first 60s tick does
         // not re-edit identical text — which put a "(edited)" mark on Discord
         // with nothing visibly changed.
@@ -16967,13 +17556,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Make a tool summary safe to paste into a channel message.
    *
    * The text is agent-controlled (it is built from tool inputs — file paths,
-   * shell commands), so it gets flattened to one line, capped, and stripped of
-   * the two Discord mass-mention triggers. Neither channel renders it with a
-   * parse mode, so no markup escaping is needed beyond that.
+   * shell commands), so it gets flattened to one line, secrets masked, capped,
+   * and stripped of the two Discord mass-mention triggers. Masking comes BEFORE
+   * the cap: a cap can cut a mask's context but must never be what hides (or
+   * fails to hide) a secret. Neither channel renders it with a parse mode, so no
+   * markup escaping is needed beyond that.
    */
   private static sanitizeActivity(activity?: string | null): string | null {
     if (!activity) return null;
-    const flat = activity.replace(/\s+/g, " ").replace(/@(everyone|here)/g, "@​$1").trim();
+    const flat = maskSecrets(activity.replace(/\s+/g, " ")).replace(/@(everyone|here)/g, "@​$1").trim();
     if (!flat) return null;
     return flat.length > PROGRESS_ACTIVITY_MAX_CHARS
       ? `${flat.slice(0, PROGRESS_ACTIVITY_MAX_CHARS - 1)}…`
@@ -17106,6 +17697,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return PROGRESS_MIN_ELAPSED_MS;
   }
 
+  /** M-2391: when the instance's live (not retiring) bubble started — the current turn's start — or undefined. */
+  private liveButtonStart(instanceName: string): number | undefined {
+    const starts = [...this.cancelButtons.values()].filter((e) => e.instanceName === instanceName && !e.retiring && typeof e.startedAt === "number")
+      .map((e) => e.startedAt as number);
+    return starts.length ? Math.min(...starts) : undefined;
+  }
+
   private startProgressTicker(entry: CancelButtonEntry): void {
     const tick = () => this.refreshBubble(entry);
     entry.progressTimer = setInterval(tick, PROGRESS_UPDATE_INTERVAL_MS);
@@ -17115,7 +17713,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // one additional edit per turn that lives past the threshold.
     const firstAt = this.progressMinElapsedMs() - (Date.now() - (entry.startedAt ?? Date.now()));
     if (firstAt > 0 && firstAt < PROGRESS_UPDATE_INTERVAL_MS) {
-      const firstTick = setTimeout(tick, firstAt);
+      // M-2391: a little past the threshold — a timer can fire a millisecond before Date.now() reaches it, which
+      // rendered the unchanged "處理中…" text and skipped the edit until the next 60 s interval.
+      const firstTick = setTimeout(tick, firstAt + PROGRESS_THRESHOLD_MARGIN_MS);
       firstTick.unref?.();
     }
   }
@@ -17450,7 +18050,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.browserBackendSignInsInstance ??= new BrowserBackendSignIns({
       dataDir: this.dataDir, lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
-      installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
+      installed: async () => {
+        const found = await Promise.all(ONBOARDING_BACKENDS.map(async backend =>
+          (await this.isCliInstalledOffLoop(backend)) ? backend : null));
+        return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
+      },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: () => createStructuredSignInTransport(),
@@ -17548,12 +18152,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: `/login` for a dashboard requester. The same controller and checks; a CLI that is not installed is refused
    * with its install command (chat's install-first runs a terminal of its own, which the dashboard does not offer).
    */
-  private startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
+  private async startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    if (isRemovedBackend(wanted)) return Promise.resolve(removedBackendMessage(wanted));
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     const info = BACKEND_INSTALLATION_INFO[wanted];
-    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !this.isCliInstalled(wanted)) {
-      return Promise.resolve(t("login.web_dashboard_not_installed", wanted, info.install));
+    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !(await this.isCliInstalledOffLoop(wanted))) {
+      return t("login.web_dashboard_not_installed", wanted, info.install);
     }
     if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
     return this.webLogin.start(backendArg, chat, opts);
@@ -18094,9 +18698,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // session only judges that verdict; it does not read the output for URLs or prompts.
     // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim)) {
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
+    }
+    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
+    const exitMarker = installExitMarker();
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install),
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
+      exitMarker,
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };
@@ -18139,7 +18751,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!handoff || handoff.cancelled || this.installHandoff !== handoff) return;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
+        // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
+        // then the installer's own directories through backend-availability's check (a killable child tests each one).
+        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -18237,33 +18851,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
     try {
-      const result = await runOnLoginShell(`command -v ${binary}`);
+      // #3009: the executable-file check runs inside the same login shell (a killable child), never as accessSync/statSync
+      // on the fleet's thread — a path on a filesystem that stopped answering held the whole fleet there.
+      const result = await runOnLoginShell(`p=$(command -v ${binary}) && [ -f "$p" ] && [ -x "$p" ] && printf '%s\n' "$p"`);
       if (result.status !== 0) return null;
       const path = result.stdout.trim().split("\n").pop()?.trim() ?? "";
-      if (!isAbsolute(path)) return null;
-      accessSync(path, fsConstants.X_OK);
-      return statSync(path).isFile() ? path : null;
+      return isAbsolute(path) ? path : null;
     } catch {
       return null;
     }
   }
 
   /**
-   * #1092: the binary in one of the directories its own installer installs to,
-   * when no login shell can see it (the installer recorded its PATH in an
-   * interactive-only rc file). The same executable-file check as the login
-   * shell lookup; a symlink to an executable counts, as codex's launcher is one.
+   * #1092: the binary in one of the directories its own installer installs to, when no login shell can see it (the
+   * installer recorded its PATH in an interactive-only rc file) — only those directories (#1092). #3009: through
+   * backend-availability's install-directory check (the one resolveBackendBinary uses): one killable child, never
+   * accessSync/statSync on the fleet's thread. An executable file counts, a symlink to one too (codex's launcher is one).
    */
-  private locateInInstallerBinDirs(info: BackendInstallationInfo): string | null {
-    for (const dir of info.binDirs?.(process.env, homedir()) ?? []) {
-      if (!isAbsolute(dir)) continue;
-      const path = join(dir, info.binary);
-      try {
-        accessSync(path, fsConstants.X_OK);
-        if (statSync(path).isFile()) return path;
-      } catch { /* not there */ }
-    }
-    return null;
+  private async locateInstalledBackend(backend: string): Promise<string | null> {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return info ? (await findExecutableIn(info.binary, info.binDirs?.(process.env, homedir()) ?? [])) ?? null : null;
   }
 
   /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
@@ -18440,9 +19047,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.taskBoardWaker?.stop();
     // #2303: each instance's cards at once, read at every claim (a fleet.yaml edit applies to the next one).
     db.board.setCardLimit((name) => boardCardLimit(this.fleetConfig, name));
+    // An instance with the task board switched off is handed no cards and sent no notices (read at each write and wake).
+    db.board.setBoardOff((name) => taskBoardOffIn(this.fleetConfig, name));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
       // #2785 (c), #2801: the maker's own message already told it; the board's line would repeat it.
       messagedAbout: (from, to, codes, sinceMs) => {
         const outbox = this.deliveryOutbox;
@@ -18572,6 +19182,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, "hang_action", { action, userId: data.userId });
     if (action === "wait") {
@@ -18583,13 +19195,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("hang.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true });
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -18602,7 +19218,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("hang.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("hang.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show hang restart error"));
@@ -18684,6 +19300,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Backend resolution may create/normalize the real cwd. Instructions and
     // skills must land where the CLI actually runs, not an assumed path.
+    // Caller pins resolveBackendBinary first so createBackend does not `which`.
     try {
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);
@@ -19181,7 +19798,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      if (!strippedText && !msg.attachments?.length) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY that carries the mention: then the
+      // replied-to message is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape
+      // ("/chat @bot (you)"). Only with the mention in the text: an empty reply to one of our own messages (addressed through #2551, a
+      // sticker or embed only) stays dropped, never an empty turn quoting our own answer (Fable #3342 F1).
+      if (!strippedText && !msg.attachments?.length && !(msg.replyToText && mentionTag && addressText.includes(mentionTag))) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 
@@ -20007,7 +20628,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }));
     const timer = setTimeout(() => this.pendingEffortSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
+    this.pendingEffortSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
     try {
       await data.respondChoices(t("effort.menu", this.effortMenuHeader(name)), choices);
     } catch (err) {
@@ -20050,7 +20671,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingEffortSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
     try {
       const menuMessageId = await adapter.promptUser(
         chatId, t("effort.menu", this.effortMenuHeader(instanceName)), choices, { threadId },
@@ -20073,6 +20694,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingEffortSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingEffortSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -20114,13 +20743,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyEffort(pending.instanceName, level)) : t("menu.click_stale");
+            }, () => this.applyEffort(pending.instanceName, level, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -20166,7 +20796,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const choices = this.modelMenuChoices(name, nonce, options, currentModel);
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
+    this.pendingModelSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
     try {
       await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
@@ -20214,7 +20844,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingModelSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
       const menuMessageId = await adapter.promptUser(
@@ -20246,7 +20876,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Replace a consumed "/model" menu with the full account catalog tier. */
   private async expandClaudeModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -20314,7 +20944,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * menu, because a picker with no rows cannot even offer another refresh.
    */
   private async refreshModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -20408,6 +21038,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingModelSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingModelSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -20473,13 +21111,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyModel(pending.instanceName, model)) : t("menu.click_stale");
+            }, () => this.applyModel(pending.instanceName, model, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
@@ -20566,7 +21205,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * restart backends only read it at launch, so it is persisted and the
    * instance respawns.
    */
-  async applyEffort(instanceName: string, requested: string): Promise<string> {
+  async applyEffort(instanceName: string, requested: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
@@ -20602,11 +21243,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
 
-  async applyModel(instanceName: string, model: string): Promise<string> {
+  async applyModel(instanceName: string, model: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first, after the runtime switch's
+    // await, and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     // Reject model names with newlines or control characters: they would be
     // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
     if (/[\x00-\x1f\x7f]/.test(model)) {
@@ -20633,6 +21277,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
       if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);
@@ -20652,7 +21297,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return `${warn}${t("model.runtime_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
     }
 
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
   }
 
@@ -21319,7 +21964,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   ): Promise<void> {
     execution?.assert();
     if (this.daemons.has(instanceName)) return;
-    const workDir = join(getAgendHome(), "workspaces", instanceName);
+    const workDir = this.classicWorkspaceDir(instanceName);
     ensureWorkspaceGit(workDir);
     const classicIdentity = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
     const toolProgress = classicIdentity
@@ -21341,6 +21986,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
+      quota_notice: classicIdentity?.quotaNotice,
       tool_progress: toolProgress ?? "off",
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),
@@ -21497,6 +22143,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
+    const quotaNoticesStopped = this.quotaNotices?.stop();
+    // Stop receive admission before the first await or any instance shutdown; outbound
+    // adapters remain available below to retire notices and pending prompts.
+    for (const state of this.adapterState.values()) {
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
+    }
+    const inboundStopped = Promise.all([...this.adapters.values()].map(async adapter => {
+      try { await adapter.stopReceiving?.(); }
+      catch (err) { this.logger.warn({ adapterId: adapter.id, err }, "Adapter receive stop failed; inbound remains fenced"); }
+    }));
     this.workingRecovery?.reset();
     if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
     this.workingRecoveryTimer = null;
@@ -21541,23 +22198,24 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = null;
+    this.stallReporter?.stop();
+    this.stallReporter = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await inboundStopped;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;
     await needsStopped;
     await settingsControlStopped;
     await cacheStopped;
+    await quotaNoticesStopped;
+    this.quotaNotices = null;
     await webChatStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
-    // Cancel adapter retry timers
-    for (const state of this.adapterState.values()) {
-      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
-    }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
@@ -21573,6 +22231,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
+    if (this.quotaReadTimer) { clearInterval(this.quotaReadTimer); this.quotaReadTimer = null; }
+    if (this.capacityTimer) { clearInterval(this.capacityTimer); this.capacityTimer = null; }
+    setCapacityLookup(null);
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
     this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not
@@ -21876,6 +22537,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
@@ -22227,7 +22889,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return {
           ok: false,
           status: 503,
-          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+          error: this.isWebOnlyFleet()
+            ? "the restart rate-limit file cannot be read"
+            : "the restart rate-limit file cannot be read — send /restart in General",
         };
       }
       return {
@@ -22259,7 +22923,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         ok: false,
         status: 409,
-        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+        error: "no chat channel is available to announce the restart",
       };
     }
 
@@ -22766,6 +23430,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
     try {
+      // #3055 review r2: a connection is not re-pointed while one of its topics is being deleted (nothing is changed).
+      if (this.topicDeletionPending()) throw new Error("a topic deletion is running; try again in a moment");
       await this.rebuildAdapterForBinding(job.connectionId, binding, execution);
       job.result = "applied";
     } catch (err) {

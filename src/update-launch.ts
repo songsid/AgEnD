@@ -197,8 +197,8 @@ export type UpdateLaunch = { ok: true; command: string; args: string[]; scope?: 
   | { ok: false; reason: string };
 
 /** Same UID, no privileged or remote manager, no credentials in argv. No unsafe detached fallback. */
-export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps = defaultUpdateLaunchDeps): Promise<UpdateLaunch> {
-  const plain = updateCommand(agend);
+export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps = defaultUpdateLaunchDeps, npmDir?: string): Promise<UpdateLaunch> {
+  const plain = updateCommand(agend, npmDir);
   if (deps.platform !== "linux") return { ok: true, ...plain };
   let before: string;
   try { before = await deps.cgroup(); }

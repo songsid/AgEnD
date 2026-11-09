@@ -41,7 +41,8 @@ function scripted(child: FakeChild, over: Record<string, unknown> = {}) {
   const bin = join(tempDir(), "cloudflared");
   writeFileSync(bin, "#!/bin/sh\n", { mode: 0o755 });
   return new CloudflaredProvider({ binaryName: bin, env: { PATH: "/nonexistent" }, spawnProcess: (() => child) as never,
-    deadlineMs: 60_000, graceMs: 10, probe: () => ({ kind: "gone" }), ...over });
+    // #3009: preflight's check is asynchronous; answered at once here so the scripted child's timing is unchanged.
+    deadlineMs: 60_000, graceMs: 10, probe: () => ({ kind: "gone" }), access: async () => {}, ...over });
 }
 const ctx = (over: Partial<TunnelStartContext> = {}): TunnelStartContext => ({ sid: "s".repeat(32), origin: new URL("http://127.0.0.1:45678"),
   pagePath: "/signin", readinessMarker: "m", expiresAt: Date.now() + 600_000, signal: new AbortController().signal, ...over });

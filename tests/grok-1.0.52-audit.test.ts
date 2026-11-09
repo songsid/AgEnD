@@ -36,6 +36,7 @@ const LOGO = "Grok intro logo[Enter]";
 const WEEKLY = "Grok Build weekly limit (Grok 週限)[]";
 // #2872: at runtime AgEnD dismisses it with Shift+x (typed); at startup it stays a hold.
 const WEEKLY_RT = "Grok Build weekly limit (Grok 週限)[X]";
+const WEEKLY_SB = "Grok Build weekly limit scrollback (Grok 週限)[ ]";
 /** The verdict each step gets — the same on 1.0.50 and 1.0.52, at both widths. */
 const STEPS: Record<string, ReturnType<typeof verdict>> = {
   "01-trust": { ...idle, startup: [LOGO, "Grok workspace trust[y]"], runtime: [LOGO] },
@@ -46,7 +47,7 @@ const STEPS: Record<string, ReturnType<typeof verdict>> = {
   "06-after-cancel": idle,
   "07-err-401": idle, // grok's own 401 text has no status code; pinned unmatched, see "grok auth" below
   "07-err-402": { ...idle, startup: [WEEKLY], runtime: [WEEKLY_RT] },
-  "07-err-402-esc": { ...idle, startup: [WEEKLY], runtime: [WEEKLY_RT] },   // #2872: Esc only moved focus to the scrollback
+  "07-err-402-esc": { ...idle, startup: [WEEKLY], runtime: [WEEKLY_SB] },   // Esc:scrollback; 1.0.77 unbinds X, Space restores the picker
   "07-err-403": idle,
   "07-err-426": { ...idle, errors: ["outdated_cli"] },
   "07-err-429": { ...idle, errors: ["rate_limit"] },

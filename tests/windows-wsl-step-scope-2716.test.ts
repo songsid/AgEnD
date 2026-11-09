@@ -5,59 +5,64 @@
  * though it passes when the functions are global. A live run hit exactly that in Invoke-WslStep's line capture, right
  * after "正在設定 WSL 環境防護" (stage 1).
  *
- * These run the real Invoke-WslStep and Invoke-Watched under `pwsh -File`, with the installer's functions loaded at the
- * file's script scope as in production, and a fake wsl.exe on PATH that prints a line holding a secret.
+ * These run the real Invoke-WslStep and Invoke-Watched through `& case.ps1` in one worker. Functions live in that
+ * case's script scope. A stub process writes private output files; the real tail readers and callbacks consume them
+ * using an injected clock, without a native WSL process or physical polling sleeps.
  */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
+import { withInstallerClock } from "./support/installer-pwsh-fixture.js";
+import { InstallerC3Batch, hasPwsh } from "./support/installer-pwsh-c3.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
-let hasPwsh = false;
-beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { stdio: "ignore" }); hasPwsh = true; } catch { hasPwsh = false; } });
+const source = readFileSync(INSTALLER,'utf8');
+const names = ['Invoke-WslStep','Invoke-Watched','Protect-LogText','Write-InstallLog','Write-Warn','Write-Err',
+  'Join-ProcessArguments','Format-Elapsed','New-OutputTail','Read-OutputTail','Get-LastSegment','Split-ToolOutput','Restore-StepConsole'];
+const batch = new InstallerC3Batch({ installer: withInstallerClock(names.map(n => extractPsFunction(source,n)).join('\n')) });
 const dirs: string[] = [];
 /** A secret-shaped value built at run time, so no secret-like literal sits in the source (gitleaks). */
 const SECRET = "c".repeat(24);
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function runAsScriptFile(body: string): { status: number | null; out: string } {
+async function runAsScriptFile(body: string): Promise<{ out: string }> {
   const dir = mkdtempSync(join(tmpdir(), "agend-wslstep-")); dirs.push(dir);
-  const bin = join(dir, "bin"); mkdirSync(bin);
-  const wsl = join(bin, "wsl.exe");
-  writeFileSync(wsl, `#!/bin/sh\necho 'linux says hello'\necho 'token=${SECRET}'\nexit 0\n`);
-  chmodSync(wsl, 0o755);
-  const script = join(dir, "t.ps1");
-  writeFileSync(script, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-$env:LOCALAPPDATA = Join-Path '${dir}' 'lad'; $env:ProgramData = Join-Path '${dir}' 'pd'
-$script:InstallLog = $null; $script:InstallLogShown = $false; $script:InstallLogFull = $false
+  // The batch invokes this file with &, retaining the script-scope boundary that -File alone can hide.
+  const out = await batch.run('installer', `$env:ProgramData = Join-Path $env:TMPDIR 'pd'
+$script:InstallLogShown = $false; $script:InstallLogFull = $false
 $script:InstallStage = 'start'; $script:InstallFailure = $null; $script:InstallRunId = ''; $ProgressFile = $null
 $UBUNTU_DISTRO = 'AgEnD-Ubuntu-24.04'; $AGEND_USER = 'agend'
-# The WSL plumbing around the step (paths inside Linux, its owner wrapper) is not what is tested here.
-function New-WslScriptFile([string]$Script, [string]$Distro) { $f = Join-Path '${dir}' ('s-' + [Guid]::NewGuid().ToString('N') + '.sh'); [IO.File]::WriteAllText($f, $Script); return @($f, $f) }
+# The owned-script and cancellation plumbing is outside this scope/callback proof.
+function New-WslScriptFile([string]$Script, [string]$Distro) { $f = Join-Path $env:TMPDIR ('s-' + [Guid]::NewGuid().ToString('N') + '.sh'); [IO.File]::WriteAllText($f, $Script); return @($f, $f) }
 function Get-OwnedWslStepScript([string]$ScriptPath, [string]$CancellationPath, [int]$Seconds) { return 'true' }
 function Assert-NoPendingWslCancellation { }
-${body}`);
-  // `& '<file>'` from a command: the file's functions in its own script scope, which a GetNewClosure block cannot see
-  // (the live failure; `pwsh -File` alone happens to hide it).
-  const r = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`], {
-    encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir },
-  });
-  return { status: r.status, out: `${r.stdout}${r.stderr}` };
+function Test-LiveConsole { return $false }
+function Start-Process {
+ param($FilePath,$ArgumentList,[switch]$NoNewWindow,[switch]$PassThru,$RedirectStandardOutput,$RedirectStandardError,$RedirectStandardInput)
+ if($FilePath -ne 'wsl.exe'){throw 'Unexpected process'}
+ [IO.File]::WriteAllText($RedirectStandardOutput,"linux says hello"+[char]10+"token=${SECRET}"+[char]10)
+ [IO.File]::WriteAllText($RedirectStandardError,'')
+ $script:FixtureProcess = [pscustomobject]@{HasExited=$false;Handle=1;ExitCode=0}
+ $script:FixtureProcess | Add-Member ScriptMethod WaitForExit {param([int]$Milliseconds) if($Milliseconds){return $true}}
+ return $script:FixtureProcess
+}
+$script:FixtureTick = { $script:FixtureProcess.HasExited=$true }
+${body}
+Write-Output ('CLOCK=' + $script:FixtureMilliseconds)
+Write-Output 'CASE-OK'`, dir);
+  return { out };
 }
 
-describe("Invoke-WslStep under pwsh -File (the installer's functions in script scope, as in production)", () => {
-  it("captures the step's output, redacted, and returns its exit code — no 'is not recognized' from the line callback", () => {
-    if (!hasPwsh) return;
-    const r = runAsScriptFile(`$code = Invoke-WslStep -Label 'guard' -Usually 'x' -Script 'echo hi'
+describe("Invoke-WslStep in its own script scope, as in production", () => {
+  it.skipIf(!hasPwsh)("captures the step's output, redacted, and returns its exit code — no 'is not recognized' from the line callback", async () => {
+    const r = await runAsScriptFile(`$code = Invoke-WslStep -Label 'guard' -Usually 'x' -Script 'echo hi'
 Write-Output ('CODE=' + $code)
 Write-Output ('TEXT=' + ($script:LastWslStepResult.Text -replace "\`n", '|'))`);
     expect(r.out).not.toMatch(/is not recognized/);
-    expect(r.status).toBe(0);
+    expect(r.out).toContain("CASE-OK");
+    expect(r.out).toContain("CLOCK=250");
     expect(r.out).toContain("CODE=0");
     expect(r.out).toContain("linux says hello");
     expect(r.out).toContain("token=[hidden]");
@@ -66,9 +71,8 @@ Write-Output ('TEXT=' + ($script:LastWslStepResult.Text -replace "\`n", '|'))`);
     expect(text).not.toContain(SECRET);
   });
 
-  it("a caller's OnLine hook still sees every raw line (the browser sign-in reads its URL this way)", () => {
-    if (!hasPwsh) return;
-    const r = runAsScriptFile(`$seen = New-Object System.Collections.ArrayList
+  it.skipIf(!hasPwsh)("a caller's OnLine hook still sees every raw line (the browser sign-in reads its URL this way)", async () => {
+    const r = await runAsScriptFile(`$seen = New-Object System.Collections.ArrayList
 $hook = { param($line) [void]$seen.Add([string]$line) }
 $code = Invoke-WslStep -Label 'setup' -Usually 'x' -Script 'echo hi' -OnLine $hook
 Write-Output ('CODE=' + $code)

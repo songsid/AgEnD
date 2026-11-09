@@ -35,8 +35,6 @@ function mockAdapter() {
       react: vi.fn(),
       sendApproval: vi.fn(),
       downloadAttachment: vi.fn(),
-      handlePairing: vi.fn(),
-      confirmPairing: vi.fn(),
       setChatId: vi.fn(),
       getChatId: () => "-100",
       promptUser: vi.fn(),

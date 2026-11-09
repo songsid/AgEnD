@@ -233,6 +233,15 @@ describe("when there is nothing to read", () => {
 });
 
 describe("a full-screen CLI's earlier output: the Log tab (option 2, the leader's safe default)", () => {
+  // Claude history in the View: Claude Code's View shows its earlier conversation itself (view-history-claude-ui.test.ts).
+  // An older server answers the history read with the pane's text: then it is as before — no scrollback, the Log link.
+  const olderServer = async () => {
+    expect(p.root.querySelector("button.v-term-earlier")).not.toBeNull();
+    fire(term(), "wheel", { deltaY: -120 });
+    // The history's renderer is a module of its own, loaded on this first use.
+    for (let i = 0; i < 100 && !p.root.querySelector(".v-term-history-note:not(:empty)")?.textContent?.includes("redraws"); i++) await settle(5);
+    expect(reads.filter(u => u.includes("?transcript=1")).length).toBe(1);
+  };
   const as = async (backend: string, opts: { logTab?: boolean; viewOnly?: boolean } = {}) => {
     ROSTER[0]!.backend = backend;
     p.document.body.setAttribute("data-log-tab", opts.logTab === false ? "0" : "1");
@@ -241,24 +250,26 @@ describe("a full-screen CLI's earlier output: the Log tab (option 2, the leader'
     await mount();
   };
   afterEach(async () => { ROSTER[0]!.backend = "codex"; p.document.body.removeAttribute("data-log-tab"); const { appStore } = await import("/assets/app-store.js") as any; appStore.set({ viewOnly: false }); });
-  it("Claude Code, signed in, the Log tab on: the top control is the link to its Log; nothing is read, nothing offered", async () => {
+  it("Claude Code on an older server, signed in, the Log tab on: the top control is the link to its Log; nothing is read again, nothing offered", async () => {
     await as("claude-code");
+    await olderServer();
     const link = p.root.querySelector("a.v-term-log")!;
     expect([link.textContent, link.getAttribute("href")]).toEqual(["Earlier output is in the Log tab", "/ui/log/alpha"]);
     expect(p.root.querySelector("button.v-term-earlier")).toBeNull();
     fire(term(), "wheel", { deltaY: -120 }); await settle(10);
-    expect(historyReads()).toBe(0);                                             // known full screen: no read at all
+    expect([historyReads(), reads.filter(u => u.includes("?transcript=1")).length]).toEqual([0, 1]);   // known now: no read again
     expect(p.root.querySelector(".v-term-history-note")!.textContent).toContain("redraws its whole screen");
   });
   it("the Log tab off: says so, and links to where it is turned on (Settings → Web dashboard)", async () => {
     await as("claude-code", { logTab: false });
+    await olderServer();
     const link = p.root.querySelector("a.v-term-log")!;
     expect([link.textContent, link.getAttribute("href")]).toEqual(["Earlier output: the Log tab is off. Turn it on in Settings", "/settings/web-dashboard"]);
   });
   it("a reader who cannot open the Log (View-only) gets the plain words only, no link", async () => {
     await as("claude-code", { viewOnly: true });
+    await olderServer();
     expect([p.root.querySelector("a.v-term-log"), p.root.querySelector("button.v-term-earlier")]).toEqual([null, null]);
-    fire(term(), "wheel", { deltaY: -120 }); await settle(10);
     expect(p.root.querySelector(".v-term-history-note")!.textContent).toContain("redraws its whole screen");
   });
   it("a full-screen CLI the Log does not read (Grok, OpenCode): no link — the Log would not have it either", async () => {
@@ -275,6 +286,7 @@ describe("a full-screen CLI's earlier output: the Log tab (option 2, the leader'
   it("zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await as("claude-code");
+    await olderServer();
     expect(p.root.querySelector("a.v-term-log")!.textContent).toBe("較早的輸出在「紀錄」分頁");
   });
 });

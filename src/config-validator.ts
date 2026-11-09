@@ -1,5 +1,9 @@
+import { t } from "./locale.js";
+import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
+import { adaptersWithoutGeneral, type ChannelLike } from "./platform-general.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
+import { CODEX_SPEEDS, isCodexSpeed } from "./backend/codex-speed.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
@@ -138,6 +142,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
+    if (value.quota_notice !== undefined) { const problem = quotaNoticeProblem(value.quota_notice, path === "defaults"); if (problem) err(`${path}.quota_notice`, problem); }
     if (value.resume_interrupted_work !== undefined && typeof value.resume_interrupted_work !== "boolean") err(`${path}.resume_interrupted_work`, "must be a boolean");
     // `v3` is refused rather than merely undocumented. Measured on kiro-cli
     // 2.23.0: `--v3` stops at two dialogs AgEnD does not answer — a config
@@ -198,6 +203,10 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
           // #2010: opt-in Claude prompt-cache TTL ("1h" | "5m"); unset leaves the CLI's own choice.
           if (backendName === "claude-code" && settings.prompt_cache_ttl !== undefined && !PROMPT_CACHE_TTLS.includes(settings.prompt_cache_ttl as never)) {
             err(`${optionPath}.prompt_cache_ttl`, `must be one of: ${PROMPT_CACHE_TTLS.join(", ")}`);
+          }
+          // M-2446: Codex speed, allow-listed (codex itself silently drops an unknown tier).
+          if (backendName === "codex" && settings.speed !== undefined && !isCodexSpeed(settings.speed)) {
+            err(`${optionPath}.speed`, `must be one of: ${CODEX_SPEEDS.join(", ")}`);
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {
@@ -636,6 +645,17 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
   }
   if (generalCount === 0) {
     warn("instances", "no general_topic instance — there is no general dispatcher to receive un-topic'd messages");
+  } else if (isObj(config.instances)) {
+    // A fleet with more than one connection: each connection with its own group needs its own General (the fleet makes
+    // one by itself only for the first). A persona bot in an earlier connection's guild shares that General.
+    const chans = (Array.isArray(config.channels) ? config.channels : isObj(config.channel) ? [config.channel] : [])
+      .filter((ch): ch is Record<string, unknown> => isObj(ch) && typeof ch.type === "string");
+    if (chans.length > 1) {
+      const defaults = isObj(config.defaults) ? config.defaults : undefined;
+      for (const id of adaptersWithoutGeneral(config.instances as Parameters<typeof adaptersWithoutGeneral>[0], chans as unknown as ChannelLike[], defaults)) {
+        warn("instances", t("config.general_missing", id));
+      }
+    }
   }
 
   return { valid: errors.length === 0, errors, warnings };
@@ -689,6 +709,7 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
       if (backendIssue) err(`channels.${key}.backend`, backendIssue);
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
+      if (channel.quota_notice !== undefined) { const problem = quotaNoticeProblem(channel.quota_notice); if (problem) err(`channels.${key}.quota_notice`, problem); }
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
         err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");
       }

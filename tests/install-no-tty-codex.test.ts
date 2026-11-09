@@ -20,6 +20,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
+import { InstallerC3Batch, hasPwsh } from "./support/installer-pwsh-c3.js";
 import { BACKEND_INSTALLATION_INFO } from "../src/instance-lifecycle.js";
 
 const PS1 = readFileSync(join(import.meta.dirname, "..", "website", "public", "install-agend.ps1"), "utf8");
@@ -57,17 +59,16 @@ function underPty(script: string, timeoutMs = 8000): { status: number | null; ou
   return { status: r.status, out: r.stdout };
 }
 // Generate the actual outer private-session wrapper; UNATTENDED_INSTALL no longer detaches a second time.
-const hasPwsh = spawnSync('pwsh',['-NoProfile','-Command','1']).status === 0;
-function ownedWrapper(script: string): string {
+const batch = new InstallerC3Batch({ installer: extractPsFunction(PS1,'Get-OwnedWslStepScript') });
+async function ownedWrapper(script: string): Promise<string> {
   const path = join(dir, `owned-${Math.random().toString(36).slice(2)}.sh`);
   writeFileSync(path, script);
-  const installer=join(import.meta.dirname,'..','website','public','install-agend.ps1');
-  const command=`$t=$null;$e=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile('${installer}',[ref]$t,[ref]$e);$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-OwnedWslStepScript'},$true);. ([scriptblock]::Create($f.Extent.Text));Get-OwnedWslStepScript '${path}' '${path}.cancel' 5`;
-  const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-Command',command],{encoding:'utf8',timeout:15000});
-  if(result.status!==0)throw Error(result.stderr);
-  return result.stdout;
+  return batch.run('installer', `Get-OwnedWslStepScript '${path}' '${path}.cancel' 5`, dir);
 }
-const hasPython = spawnSync("python3", ["-c", "import pty"]).status === 0;
+// A missing Python skips explicitly; a broken runtime or timeout is a failure, never a silent green.
+const python = process.platform === 'win32' ? null : spawnSync("python3", ["-c", "import pty"], { timeout: 10000, encoding:'utf8' });
+if (python && (python.error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT' && (python.error || python.signal || python.status !== 0)) throw Error(`Python PTY unavailable: ${python.error ?? python.stderr}`);
+const hasPython = !!python && !python.error;
 
 describe("install-agend.ps1: a backend's install never waits on /dev/tty", () => {
   it("the installer has the wrapper, and every backend's install goes through it", () => {
@@ -89,8 +90,8 @@ describe("install-agend.ps1: a backend's install never waits on /dev/tty", () =>
     expect(underPty(`bash ${fake}\n`, 3000)).toBeNull();
   });
 
-  it.skipIf(!hasPython || !hasPwsh)("through the wrapper, the same installer under the same terminal finishes at once", () => {
-    const r = underPty(ownedWrapper(template!.replace("__AGEND_INSTALL__", `bash ${fake}`)));
+  it.skipIf(!hasPython || !hasPwsh)("through the wrapper, the same installer under the same terminal finishes at once", async () => {
+    const r = underPty(await ownedWrapper(template!.replace("__AGEND_INSTALL__", `bash ${fake}`)));
     expect(r).not.toBeNull();
     expect(r!.status).toBe(0);
     expect(r!.out).toContain("installed");
@@ -103,8 +104,8 @@ describe("install-agend.ps1: a backend's install never waits on /dev/tty", () =>
     expect(r!.out).toContain("installed");
   });
 
-  it.skipIf(!hasPython || !hasPwsh)("the wrapper keeps the install's exit code, so a failed install still reads as failed", () => {
-    const r = underPty(ownedWrapper(template!.replace("__AGEND_INSTALL__", "echo partial; exit 3")));
+  it.skipIf(!hasPython || !hasPwsh)("the wrapper keeps the install's exit code, so a failed install still reads as failed", async () => {
+    const r = underPty(await ownedWrapper(template!.replace("__AGEND_INSTALL__", "echo partial; exit 3")));
     expect(r).toEqual({ status: 3, out: expect.stringContaining("partial") });
   });
 });

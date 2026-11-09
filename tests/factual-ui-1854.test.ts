@@ -89,7 +89,7 @@ describe("#1854 rank 9: Needs you, empty, with and without a chat connection", (
     [2, "When an agent waits for you, it shows here — and in your chat app's General.", "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。"],
   ] as const) {
     it(`connections: ${connections} → ${connections ? "points at General" : "only here"}, never "Discord"`, async () => {
-      app.appStore.set({ needs: [], instances: [], connections });
+      app.appStore.set({ ready: true, needsLoaded: true, needs: [], instances: [], connections });
       await mount();
       const en = hint();
       await p.unmount(); i18n.setLang("zh-TW"); await mount();     // a standalone panel reads the language when it renders

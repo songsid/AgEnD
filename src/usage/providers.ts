@@ -29,7 +29,6 @@ import {
   CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
   credentialProfileHome,
-  credentialProfileLoginCommand,
   credentialProfileStoreHome,
   instanceCredentialProfile,
   isCredentialProfileName,
@@ -48,13 +47,16 @@ import {
 import type { UsageI18nKey } from "./i18n-keys.js";
 
 export interface UsageMetric {
+  /** Per-window local observation; null means legacy/unknown, never fresh evidence. */
+  observedAt?: string | null;
+  quotaPeriod?: import("../quota-notice-config.js").QuotaPeriod;
   label: string;
   /** Locale-neutral semantic text. Renderers translate this and keep `label` as a fallback. */
   labelI18n?: UsageI18nRef;
   /** Vendor-reported per-model quota, rather than an account's primary window. */
   scope?: "model";
   type: "percent" | "dollars" | "count" | "text";
-  used?: number;          // percent (0-100) or dollars
+  used?: number;          // percent (including vendor overage) or dollars
   limit?: number;         // dollars, when capped
   value?: number | string; // count / text
   valueI18n?: UsageI18nRef;
@@ -90,6 +92,8 @@ export interface UsageMetric {
 export type UsageStaleCause = "expired" | "transient" | "error";
 
 export interface ProviderUsage {
+  /** Real observation time for local CLI/relay readings (not the time the API served them). */
+  observedAt?: string;
   id: string;
   name: string;
   /** #2014: the credential profile this row reads (its `name` ends in ` (<profile>)`); the page shows it on its own line. */
@@ -319,6 +323,7 @@ export function statuslineUsage(
   return {
     status: "ok",
     plan,
+    observedAt: new Date(reading.observedAtMs).toISOString(),
     // Say what is missing as well as where it came from: someone comparing this
     // against claude.ai should not have to guess why per-model rows vanished.
     hint: `from ${reading.instance}'s statusline, ${age} — no API call; plan and per-model limits need a CLI login`,
@@ -448,7 +453,7 @@ export async function getClaudeOAuthToken(storeHome?: string): Promise<string | 
  * login is cannot be proven from config files (a stale `.claude.json`, an env token), and a hidden quota in use is
  * worse than two rows of one subscription (Prism, #2237 review).
  */
-export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean }
+export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean; hasChat?: boolean }
 
 /**
  * Exported for tests — the statusline/API preference order is the subject.
@@ -483,15 +488,14 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // #2236: a profile on the host that no instance uses, signed out: not set up here — no row.
     if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
-      // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback: from chat
-      // (`/login claude-code <profile>`, #1699 part 2), or the exact line on the host — the same words as the auth alert.
-      const host = (scope.profile && credentialProfileLoginCommand(getAgendHome(), "claude-code", scope.profile))
-        || `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome)} claude auth login`;
-      if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
+      // On screen (`ok`, as kiro's signed-out row): Settings is always on the
+      // dashboard. Chat `/login` only when this fleet has a chat channel — CHAT_PROFILE_LOGIN_BACKENDS is a backend
+      // capability, not this fleet's chat availability.
+      if (scope.profile && scope.hasChat && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
-        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\` (or run \`${host}\` on the host).`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat, host), metrics: [] };
+        return { status: "ok", hint: `Not logged in — sign in from Settings → Agents → Sign-ins, or with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
-      return { status: "ok", hint: `Not logged in — sign in with: ${host}`, hintI18n: i18n("usage.hint.claude_profile_signed_out", host), metrics: [] };
+      return { status: "ok", hint: "Not logged in — sign in from Settings → Agents → Sign-ins.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
@@ -1621,6 +1625,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
     if (used !== null && limit !== null && limit > 0) {
       metrics.push({
         label: `${displayName || "Usage"} (monthly)`,
+        quotaPeriod: "monthly",
         labelI18n: displayName
           ? i18n("usage.metric.named_monthly", displayName)
           : i18n("usage.metric.usage_monthly"),
@@ -1716,12 +1721,14 @@ export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name
   if (!snapshot) {
     return { status: "ok", plan: "Subscription", hint: "Muse usage unavailable — no response frame observed.", metrics: [] };
   }
-  const metric = (label: string, window: { usedPercent: number; resetsAt: number; windowMs?: number } | undefined, windowMs: number): UsageMetric | null => {
+  const metric = (label: string, window: { usedPercent: number; resetsAt: number; windowMs?: number; observedAt?: number } | undefined, windowMs: number): UsageMetric | null => {
     if (!window) return null;
     return {
       label,
       type: "percent",
       used: window.usedPercent,
+      observedAt: typeof window.observedAt === "number" && Number.isFinite(window.observedAt)
+        ? new Date(window.observedAt).toISOString() : null,
       resetsAt: new Date(window.resetsAt * 1000).toISOString(),
       windowMs: window.windowMs ?? windowMs,
     };
@@ -1739,6 +1746,7 @@ export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name
   return {
     status: "ok",
     plan: snapshot.plan || "Subscription",
+    observedAt: new Date(snapshot.observedAt).toISOString(),
     hint: metrics.length
       ? (stale ? `cached ${ageMin}m ago — idle, no new response frame` : undefined)
       : "Muse usage unavailable — no response frame observed.",
@@ -1803,18 +1811,24 @@ export function providersForConfig(
  * The shared row is "Claude (default)" beside profiles (shown whenever that login exists); a profile no instance uses
  * shows only when signed in. isHostLoginUsageProvider keeps these rows through the snapshot's running-instances filter.
  */
+function fleetHasChat(config: UsageFleetConfig | null | undefined): boolean {
+  const channels = (config as { channels?: unknown } | null | undefined)?.channels;
+  return Array.isArray(channels) && channels.length > 0;
+}
+
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
   const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
+  const hasChat = fleetHasChat(config);
   return [
     { id: provider.id, name: `${provider.name} (default)`, defaultLogin: true, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
     ...profiles.map((profile, i) => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       profile,
-      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile } : { profile, hostOnly: true }),
+      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile, hasChat } : { profile, hostOnly: true, hasChat }),
     })),
   ];
 }

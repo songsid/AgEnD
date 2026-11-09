@@ -26,7 +26,7 @@
  *   bounded children) — never a CLI.
  */
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { binaryProbe, spawnProbeCommand, PROBE_DEADLINE_MS, type ProbeChild } from "./binary-probe.js";
 import { BACKEND_INSTALLATION_INFO } from "./instance-lifecycle.js";
@@ -203,16 +203,24 @@ async function fallbackDirs(backend: string): Promise<string[]> {
   return [...new Set(dirs)];
 }
 
+/**
+ * The first `dir/binary` that is an executable file (a symlink to one counts), or null; undefined when there was no
+ * answer in time. One child tests every candidate: an fs check on a dead mount could hang a pool thread forever, and a
+ * child can be killed — never a synchronous check on the fleet's thread (#3009). Relative directories are skipped.
+ */
+export async function findExecutableIn(binary: string, dirs: readonly string[]): Promise<string | null | undefined> {
+  const candidates = dirs.filter(d => isAbsolute(d)).map(d => join(d, binary));
+  if (!candidates.length) return null;
+  return answer(spawnProbeCommand("sh", ["-c", 'for p; do [ -f "$p" ] && [ -x "$p" ] && { echo "$p"; exit 0; }; done; exit 1', "sh", ...candidates]));
+}
+
 /** Found the way the launch finds it (resolveBinary): on PATH, else in a known install directory. */
 export async function resolveBackendBinary(backend: string): Promise<string | null | undefined> {
   const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
   if (!binary) return null;
   const onPath = await binaryProbe.probe(binary);
   if (onPath.known && onPath.path) return onPath.path;
-  const dirs = await fallbackDirs(backend);
-  // One child tests every candidate (an fs check on a dead mount could hang a pool thread forever; a child can be killed).
-  const found = await answer(spawnProbeCommand("sh", ["-c", 'for p; do [ -f "$p" ] && [ -x "$p" ] && { echo "$p"; exit 0; }; done; exit 1', "sh",
-    ...dirs.map(d => join(d, binary))]));
+  const found = await findExecutableIn(binary, await fallbackDirs(backend));
   if (found) return found;
   // Not on PATH (a definite answer) and in no install directory: not installed. No answer from either: unknown.
   return onPath.known && found === null ? null : undefined;

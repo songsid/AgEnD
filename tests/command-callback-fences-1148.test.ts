@@ -114,7 +114,7 @@ describe("#1148: selectors bind the channel to their target within the same adap
         const timer = setTimeout(() => {}, 60_000); timers.push(timer);
         const nonce = "aabbcc";
         r.any[kind === "model" ? "pendingModelSelects" : "pendingEffortSelects"].set(nonce, {
-          instanceName: "worker", userId: "admin", channelId: "10", adapterId: r.a.id, timer,
+          instanceName: "worker", instanceCurrent: () => true, userId: "admin", channelId: "10", adapterId: r.a.id, timer,
           respond: vi.fn(async () => {}), adapter: r.a, adapterChatId: GROUP, adapterThreadId: "10", menuMessageId: "menu",
         });
         const move = () => { r.fm.fleetConfig!.instances.worker.topic_id = 11; r.fm.routing.rebuild(r.fm.fleetConfig!); };
@@ -137,7 +137,7 @@ function seedMenu(r: ReturnType<typeof rig>, kind: "model" | "effort", target: s
   const nonce = "ccbbdd";
   const apply = vi.spyOn(r.any, kind === "model" ? "applyModel" : "applyEffort").mockResolvedValue("APPLIED");
   r.any[kind === "model" ? "pendingModelSelects" : "pendingEffortSelects"].set(nonce, {
-    instanceName: target, userId: "admin", channelId, adapterId: r.a.id, timer,
+    instanceName: target, instanceCurrent: () => true, userId: "admin", channelId, adapterId: r.a.id, timer,
     respond: vi.fn(async () => {}), adapter: r.a, adapterChatId: GROUP, adapterThreadId: threadId, menuMessageId: "menu",
   });
   const click = () => r.any[kind === "model" ? "handleModelSelection" : "handleEffortSelection"]({
@@ -160,7 +160,7 @@ describe("#1148 selector address controls", () => {
         if (source === "Discord") (r.a as any).type = "discord";
         const { apply, click } = seedMenu(r, kind, name, channel, thread);
         await click(); await Promise.resolve(); await Promise.resolve();
-        expect(apply).toHaveBeenCalledExactlyOnceWith(name, kind === "model" ? "gpt-5.5" : "high");
+        expect(apply).toHaveBeenCalledExactlyOnceWith(name, kind === "model" ? "gpt-5.5" : "high", { current: expect.any(Function) });
       });
     }
     it(`${kind}: the old topic reassigned to another target does not authorize the old menu`, async () => {

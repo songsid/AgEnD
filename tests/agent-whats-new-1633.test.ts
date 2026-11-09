@@ -413,3 +413,27 @@ describe("#2800: once per release, only relevant tools", () => {
     expect(on.d["pendingWhatsNew"]?.notice).toContain("`office_pack_check` checks a pack without storing it");
   });
 });
+
+describe("#3420: team-scoped decisions are told once, on the release that has them", () => {
+  const ID = "2.3.5-decision-team-scope";
+  const entry = AGENT_WHATS_NEW.find(e => e.id === ID)!;
+  const others = AGENT_WHATS_NEW.filter(e => e.id !== ID).map(e => e.id);
+  it("is the newest entry, for every instance that has post_decision, with the exact parameter names", async () => {
+    expect(AGENT_WHATS_NEW.at(-1)?.id).toBe(ID);
+    expect(entry.since).toBe("2.3.5-beta.2");                       // 2.3.5-beta.1 is published without it
+    expect([entry.tools, entry.audience]).toEqual([["post_decision"], undefined]);
+    const { PostDecisionArgs } = await import("../src/outbound-schemas.js");
+    expect((PostDecisionArgs as any).shape.scope.unwrap().options).toEqual(["project", "team", "fleet"]);
+    expect(Object.keys((PostDecisionArgs as any).shape)).toContain("team");
+    for (const s of ["`post_decision` takes `scope: \"team\"` and `team: \"<name>\"`", "`list_decisions` now lists your teams' decisions",
+      "default when you are in one team", "the default stays `project`", "`fleet` only for rules every team follows", "team:<name>"]) expect(entry.text, s).toContain(s);
+  });
+  it("an agent upgraded from 2.3.5-beta.1 is told it once; beta.1 itself and an instance without post_decision are not", () => {
+    const told = planWhatsNew({ record: { announced: others }, fresh: false, version: "2.3.5-beta.2" });
+    expect(told && "ids" in told ? [told.ids, told.notice.includes("`scope: \"team\"`")] : told).toEqual([[ID], true]);
+    expect(planWhatsNew({ record: { announced: others }, fresh: false, version: "2.3.5-beta.1" })).toBeNull();
+    expect(planWhatsNew({ record: { announced: [...others, ID] }, fresh: false, version: "2.3.5" })).toBeNull();
+    const without = planWhatsNew({ record: { announced: others }, fresh: false, version: "2.3.5-beta.2", tools: new Set(["reply"]) });
+    expect(without).toEqual({ silent: [ID], version: "2.3.5-beta.2" });
+  });
+});

@@ -11,11 +11,20 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const REPO = join(import.meta.dirname, "..");
 const installer = createRequire(import.meta.url)("../launcher/agend-install.cjs") as { main(argv: string[], deps: Record<string, unknown>): number };
+const cjsFs = createRequire(import.meta.url)("node:fs") as typeof import("node:fs");
 const lockReaders = createRequire(import.meta.url)("../launcher/install-admission.cjs") as Record<string, unknown>;
+const serviceOwner = createRequire(import.meta.url)("../launcher/fleet-service-owner.cjs") as {
+  updateRefusal(home: string, options: Record<string, unknown>): string | null;
+};
+// This rig models service state and PIDs, not /proc ownership. In particular, its fake PID 9191 may belong to an
+// unrelated runner process. Keep admission at the same inert boundary as the fake manager; the actual ownership
+// proof and its fail-closed refusals are covered by fleet-service-owner-2823.test.ts.
+beforeEach(() => { vi.spyOn(serviceOwner, "updateRefusal").mockReturnValue(null); });
+afterEach(() => { vi.mocked(serviceOwner.updateRefusal).mockRestore(); });
 const NEW = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version;
 const OLD = "2.3.0-beta.1";
 const roots: string[] = [];
@@ -179,6 +188,36 @@ const shimRestart = (args: string[], m: Manager) => {
 const failure = (r: ReturnType<typeof rig>) => r.log.filter(l => l.startsWith("  ✗")).join("\n");
 const manager = (r: ReturnType<typeof rig>) => r.calls.filter(c => c.startsWith("systemctl") || c.startsWith("launchctl"));
 const OLD_LINKS = { agend: "../lib/node_modules/@songsid/agend/launcher/agend", "agend-agent": "../lib/node_modules/@songsid/agend/launcher/agend-agent" };
+
+describe("#2420 fake-manager admission is independent of host PIDs", () => {
+  it.each([false, true])("an unrelated host process at fake PID 9191 (present=%s) cannot change rollback", present => {
+    const kill = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal: unknown) => {
+      if (present && pid === 9191 && signal === 0) return true;
+      throw Object.assign(new Error("fixture: no such process"), { code: "ESRCH" });
+    }) as typeof process.kill);
+    try {
+      const r = rig({ kind: "user", running: true, agend: shimRestart });
+      expect(r.main()).toBe(1);
+      expect(r.version()).toBe(OLD);
+      expect(r.m).toMatchObject({ state: "active", pid: 7000 });
+      expect(failure(r)).toContain("the previous service is running (pid 7000)");
+      expect(serviceOwner.updateRefusal).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(serviceOwner.updateRefusal).mock.calls.every(([home]) => home === r.home)).toBe(true);
+      expect(kill).not.toHaveBeenCalled();
+    } finally { kill.mockRestore(); }
+  });
+
+  it("an ownership refusal still prevents the update before any package or service change", () => {
+    vi.mocked(serviceOwner.updateRefusal).mockReturnValue("fixture: ownership is unknown");
+    const r = rig({ kind: "user", running: true, agend: shimRestart });
+    expect(r.main()).toBe(1);
+    expect(r.calls).toEqual([]);
+    expect(r.version()).toBe(OLD);
+    expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);
+    expect(failure(r)).toContain("fixture: ownership is unknown");
+    expect(serviceOwner.updateRefusal).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("#2420 a new service that does not come up: the previous package, unit and service come back", () => {
   it.each([["user", "--user ", "com.agend.fleet"], ["system", "", "agend"]] as const)("systemd %s unit, Fable's shim (restart → stop + exit 1): stopped, restored, reloaded, the previous service started", (kind, scope, unit) => {
@@ -431,6 +470,59 @@ describe("#2420 follow-up (Fable): copies an installer that died left behind are
     expect(r.main()).toBe(75);
     expect(r.rollbackDir()).toEqual([dead]);
   });
+  it("#1490 row 40: the copy cannot be renamed back in — the installed tree is moved back, never an empty install path", () => {
+    const r = rig({ kind: "user", running: true, agend: shimRestart });
+    const run = r.deps.run as (cmd: string, args: string[]) => unknown;
+    (r.deps as { run: unknown }).run = (cmd: string, args: string[]) => {
+      const out = run(cmd, args);
+      // The copy taken before npm ran is lost before the rollback renames it back.
+      if (cmd === "npm" && args[0] === "install") for (const d of r.rollbackDir()) rmSync(join(r.prefix, ".agend-rollback", d, "agend"), { recursive: true, force: true });
+      return out;
+    };
+    expect(r.main()).toBe(1);
+    expect(existsSync(join(r.pkgDir, "package.json"))).toBe(true);
+    expect(r.version()).toBe(NEW);
+    expect(failure(r)).toContain("the installed package was left in place");
+    const [kept] = r.rollbackDir();
+    expect(existsSync(join(r.prefix, ".agend-rollback", kept, "replaced"))).toBe(false);
+  });
+
+  it("#1490 row 40: nothing installed to move aside — a stray `replaced` tree in the copy is never moved into the install path", () => {
+    let r!: ReturnType<typeof rig>;
+    r = rig({ kind: "user", running: true, agend: (args, m) => {
+      if (args[0] !== "restart") return 0;
+      // The installed tree is gone by the rollback, the copy cannot be renamed in, and a tree not of this run sits aside.
+      rmSync(r.pkgDir, { recursive: true, force: true });
+      for (const d of r.rollbackDir()) {
+        rmSync(join(r.prefix, ".agend-rollback", d, "agend"), { recursive: true, force: true });
+        mkdirSync(join(r.prefix, ".agend-rollback", d, "replaced"), { recursive: true });
+        writeFileSync(join(r.prefix, ".agend-rollback", d, "replaced", "stray"), "not ours\n");
+      }
+      return shimRestart(args, m);
+    } });
+    expect(r.main()).toBe(1);
+    expect(existsSync(r.pkgDir)).toBe(false);
+    expect(failure(r)).toContain("could not be put back from");
+    expect(failure(r)).not.toContain("left in place");
+  });
+
+  it("#1490 row 40: something took the install path before the move back — never replaced", () => {
+    const r = rig({ kind: "user", running: true, agend: shimRestart });
+    const realRename = cjsFs.renameSync;
+    const spy = vi.spyOn(cjsFs, "renameSync").mockImplementation((from, to) => {
+      if (String(to) === r.pkgDir && String(from).endsWith(join("", "agend")) && String(from).includes(".agend-rollback")) {
+        cjsFs.mkdirSync(r.pkgDir);   // empty: the one thing a rename would silently replace
+        throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      }
+      return realRename(from, to);
+    });
+    try { expect(r.main()).toBe(1); } finally { spy.mockRestore(); }
+    expect(readdirSync(r.pkgDir)).toEqual([]);
+    expect(failure(r)).not.toContain("left in place");
+    const [kept] = r.rollbackDir();
+    expect(existsSync(join(r.prefix, ".agend-rollback", kept, "replaced", "package.json"))).toBe(true);
+  });
+
   it("a rollback that could not finish keeps its copy marked, so the next installer leaves it", () => {
     const r = rig({ kind: "user", running: true, agend: shimRestart, unreadable: true });
     expect(r.main()).toBe(1);

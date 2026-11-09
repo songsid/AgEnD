@@ -84,6 +84,8 @@ export interface ChannelAdapter extends EventEmitter {
   mentionNames?(query: { u: string[]; r: string[]; c: string[] }): { u?: Record<string, string>; r?: Record<string, string>; c?: Record<string, string> };
 
   start(): Promise<void>;
+  /** Fence inbound polling synchronously; retain outbound transport for shutdown notices. */
+  stopReceiving?(): Promise<void>;
   stop(): Promise<void>;
   /** Hot-rebuild an adapter transport without discarding its outbound queue. */
   reconnectGateway?(reason: string): Promise<void>;
@@ -201,9 +203,6 @@ export interface ChannelAdapter extends EventEmitter {
    * that fails is an error, never silently dropped.
    */
   sendStickers?(chatId: string, stickers: string[], opts?: SendOpts & { text?: string }): Promise<SentMessage>;
-
-  handlePairing(chatId: string, userId: string): Promise<string>;
-  confirmPairing(code: string, callerUserId?: string): Promise<boolean>;
 
   readonly topology: "topics" | "channels" | "flat";
 

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSessionStore, tokenEpoch, csrfTokenFor } from "../src/web-session.js";
-import { WebLoginCodes } from "../src/web-login.js";
+import { GuestLoginCodes, LOGIN_BREAKER_THRESHOLD, WebLoginCodes } from "../src/web-login.js";
 import { decideWebGate } from "../src/web-auth.js";
 import { handleAuthRequest } from "../src/auth-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
@@ -23,6 +23,12 @@ function request(path: string, method = "GET", headers: Record<string, string> =
   return { req, res, out, status: () => status, body: () => body, json: () => JSON.parse(body), feed: (value: unknown) => { req.emit("data", Buffer.from(JSON.stringify(value))); req.emit("end"); } };
 }
 function bind(req: object, current = () => true, exposureId = id) { bindGatewayRequest(req, { surface: "gateway", exposureId, expectedOrigin: origin, isCurrent: current }); }
+function trip(codes: WebLoginCodes, audience = "local") {
+  for (let n = 0; n < LOGIN_BREAKER_THRESHOLD; n++) {
+    if (!codes.hasOutstandingCode) codes.issue({ epoch: tokenEpoch(token), audience });
+    codes.redeem("ZZZZZZZZ", tokenEpoch(token), audience);
+  }
+}
 async function flush() { for (let n = 0; n < 20; n++) await Promise.resolve(); }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("public credential scopes, real auth handlers", () => {
@@ -173,6 +179,29 @@ describe("public credential scopes, real auth handlers", () => {
     const store = new WebSessionStore(); const local = store.create({ tier: "admin", surface: "local", label: "local", tokenEpoch: tokenEpoch(token) });
     const pub = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "public", tokenEpoch: tokenEpoch(token) });
     expect(store.revokeExposure(id).count).toBe(1); expect(store.authenticate(local.sessionId, tokenEpoch(token))).not.toBeNull(); expect(store.authenticate(pub.sessionId, tokenEpoch(token), { surface: "gateway", exposureId: id })).toBeNull();
+  });
+  it("a local breaker does not pause a public guest login; an exposure breaker does not pause a local login", async () => {
+    const codes = new WebLoginCodes(), guests = new GuestLoginCodes(), store = new WebSessionStore();
+    const confirmGuest = vi.fn(async () => {}), confirmAdmin = vi.fn(async () => {});
+    trip(codes);
+    expect(codes.pausedForMs()).toBeGreaterThan(0); expect(codes.pausedForMs(id)).toBe(0);
+    const guest = guests.issue({ epoch: tokenEpoch(token), recipient: { adapterId: "owner", userId: "alice" }, audiences: ["local", id] })!;
+    const pub = request("/auth/login", "POST", { origin, "content-type": "application/json" }); bind(pub.req);
+    handleAuthRequest(pub.req as never, pub.res as never, new URL(pub.req.url, origin), { webToken: token, webSessions: store, webLoginCodes: codes, webGuestLoginCodes: guests,
+      guestSignInAllowed: () => true, logger: logger as never, confirmPublicWebLogin: confirmAdmin, confirmGuestPublicWebLogin: confirmGuest });
+    pub.feed({ code: guest.display }); await flush();
+    expect(pub.status()).toBe(200); expect(confirmGuest).toHaveBeenCalled(); expect(confirmAdmin).not.toHaveBeenCalled();
+    expect(store.list()).toEqual([expect.objectContaining({ tier: "guest", surface: "gateway" })]);
+
+    const other = new WebLoginCodes(), localStore = new WebSessionStore();
+    trip(other, id);
+    expect(other.pausedForMs(id)).toBeGreaterThan(0); expect(other.pausedForMs()).toBe(0);
+    const issued = other.issue({ epoch: tokenEpoch(token) });
+    const localOrigin = "http://127.0.0.1:19280";
+    const loc = request("/auth/login", "POST", { host: "127.0.0.1:19280", origin: localOrigin, "content-type": "application/json" });
+    handleAuthRequest(loc.req as never, loc.res as never, new URL(loc.req.url, localOrigin), { webToken: token, webSessions: localStore, webLoginCodes: other, logger: logger as never });
+    loc.feed({ code: issued.display }); await flush();
+    expect(loc.status()).toBe(200); expect(localStore.list()).toEqual([expect.objectContaining({ tier: "admin", surface: "local" })]);
   });
 });
 describe("dedicated gateway manifest and sockets", () => {

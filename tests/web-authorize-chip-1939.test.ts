@@ -104,7 +104,7 @@ describe("this browser's authorization line", () => {
   it.each([
     ["disabled", "Not verified: Web authority is turned off.", true],
     ["loopback_only", "Not verified: Only this computer can authorize, and this browser is not on it.", true],
-    ["no_account", "Not verified: This browser was not signed in as an account (agend web): sign in with /web to authorize.", false],
+    ["no_account", "Not verified: This browser has no chat-account identity. Open General in Telegram or Discord and send /web to sign in as your account.", false],
     ["not_admin", "Not verified: Your account is not a fleet admin here.", false],
     ["token_rotated", "Not verified: The dashboard's token changed: sign in again.", false],
     ["something_new", "Not verified: This browser can't be authorized here.", false],

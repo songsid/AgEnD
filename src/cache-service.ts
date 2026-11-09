@@ -19,14 +19,17 @@
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
-import { addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
+import { addSpeed, addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, carryPruned, foldHours, pruneDays, readDays, readLifetime, writeDays, type UsageDays, type UsageLifetime } from "./usage-rollup.js";
 import { officeLevels, type OfficeLevel } from "./office-levels.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
+import type { KiroHistoryInput, KiroHistoryOutput } from "./kiro-history-scan.js";
+import { applyHistoryDays, applyHistoryLifetime, historyBefore, historyBinding, mergeHistoryRows, readHistoryJob, writeHistoryJob, type KiroHistoryJob } from "./kiro-history.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
 import { antigravityUsageSupported, type AntigravityScanInput, type AntigravityScanOutput } from "./antigravity-usage-scan.js";
+import { profileAt, readProfileTimeline } from "./usage/profile-timeline.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -38,6 +41,11 @@ export interface CacheInstance {
    * without one); "unrecorded" for codex (a rollout does not say which login wrote it).
    */
   profile?: string;
+  /**
+   * #3066 §1d: a Codex instance's launch timeline (usage/profile-timeline.ts): each turn is tagged with the credential
+   * profile it ran under, by its time — instead of `profile` ("unrecorded") for every turn.
+   */
+  profileTimelinePath?: string;
   /** #2122: a Kiro instance's classic store — its credential profile's `data.sqlite3`; absent = `kiroDbPath()`. */
   kiroDbPath?: string;
 }
@@ -87,6 +95,8 @@ export interface CacheServiceOptions {
   kiroHome?(): string;
   /** One bounded Kiro scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
   kiroScan?(input: KiroScanInput): Promise<KiroScanOutput>;
+  /** #3450: one historical page (default: worker thread), serialized with the recent scans. */
+  kiroHistoryScan?(input: KiroHistoryInput): Promise<KiroHistoryOutput>;
 }
 
 export type CacheWindow = "24h" | "7d" | "30d";
@@ -360,6 +370,9 @@ export class CacheService {
       // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
       // until it is readable again — bounded by its own files.
       const listed = new Set(files.map((f) => f.path));
+      // #3066 §1d: a Codex turn's profile is the one its run was launched under (read once a pass, off the thread).
+      const spans = kind === "codex" && inst.profileTimelinePath ? await readProfileTimeline(inst.profileTimelinePath) : null;
+      const profileOf = spans && spans.length ? (t: number) => profileAt(spans, t) : inst.profile;
       if (!this.unread.has(inst.name)) for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
       for (const f of files) {
         let cur = ledger.files[f.path];
@@ -369,7 +382,7 @@ export class CacheService {
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
         if (cur.stalled === f.size) continue;
         if (budget <= 0) { behindBytes += f.size - cur.offset; behindFiles++; continue; }
-        const done = await this.read(ledger, cur, f.path, budget, cutoff, inst.profile);
+        const done = await this.read(ledger, cur, f.path, budget, cutoff, profileOf);
         if (done.failed) this.unread.add(inst.name);
         this.dirty.add(inst.name);
         budget -= done.read;
@@ -377,6 +390,11 @@ export class CacheService {
       }
       // #2122: fold, then prune — the ledger never drops an hour the rollup does not durably hold.
       pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff));
+    }
+    // Recent sources always get their pass first. At most one historical page per pass across the fleet; catchUp's
+    // existing pause yields between pages. Shutdown drains this page, never the entire historical backlog.
+    if (!this.closing && !this.stopped && await this.kiroHistoryPass(insts.filter(i => kindOf(i.backend) === "kiro" && !shared.has(i.name)), cutoff)) {
+      behindBytes++; behindFiles++;
     }
     this.pending = { bytes: behindBytes, files: behindFiles };
     // A ledger read something new (or lost a file): a published report is out of date (Fable #2030 P2 — a pass that
@@ -400,6 +418,84 @@ export class CacheService {
 
   /** TUI session file → its signature and cwd, as the last Kiro scan saw them (kiro-usage-scan.ts). */
   private kiroTuiIndex: KiroScanInput["tuiIndex"] = Object.create(null);
+  private readonly kiroHistory = new Map<string, KiroHistoryJob>();
+  private kiroHistoryNext = 0;
+  private async kiroHistoryPass(insts: CacheInstance[], cutoff: number): Promise<boolean> {
+    const dbPath = this.o.kiroDbPath?.(), home = this.o.kiroHome?.();
+    if (!dbPath || !home) return false;
+    const at = this.kiroHistoryNext++ % Math.max(1, insts.length);
+    for (const inst of [...insts.slice(at), ...insts.slice(0, at)]) {
+      try {
+        const path = join(dirname(inst.ledgerPath), "kiro-history-v1.json");
+        const configured = (i: CacheInstance) => historyBinding([i.ledgerPath, i.workingDirectory, i.profile ?? "default", i.kiroDbPath ?? dbPath, home]);
+        const config = configured(inst), cwds = await cwdKeys(inst.workingDirectory);
+        const identity = async (path: string) => stat(path).then(s => `${s.dev}:${s.ino}`).catch(e => { if (gone(e)) return "-"; throw e; });
+        const source = await identity(inst.kiroDbPath ?? dbPath), tuiSource = await identity(home);
+        const binding = historyBinding([config, cwds, source, tuiSource]);
+        const current = () => !this.closing && !this.stopped && this.o.kiroDbPath?.() === dbPath && this.o.kiroHome?.() === home &&
+          this.o.instances().some(i => i.name === inst.name && i.backend === inst.backend &&
+            configured(i) === config);
+        const currentBinding = async (expected: string): Promise<boolean> => {
+          const nowCwds = await cwdKeys(inst.workingDirectory), nowHome = await identity(home);
+          const sharedNow = await this.shared(this.o.instances());
+          const nowSource = await identity(inst.kiroDbPath ?? dbPath);
+          return current() && !sharedNow.has(inst.name) && historyBinding([config, nowCwds, nowSource, nowHome]) === expected;
+        };
+        let job = this.kiroHistory.get(inst.name) ?? await readHistoryJob(path);
+        if (job?.phase === "done") { this.kiroHistory.set(inst.name, job); continue; }
+        const life = await this.lifetimeFor(inst);
+        if (!job || (job.binding !== binding && !life.kiroBackfill)) {
+          job = { v: 1, binding, before: historyBefore(cutoff, this.zone(), await this.rollupFor(inst), life, await this.ledgerFor(inst)),
+            zone: this.zone(), profile: inst.profile ?? "default", phase: "scanning", cursor: { phase: "classic", key: "", id: "" }, rows: [] };
+        }
+        // A completed lifetime write must finish its rollup from the ready journal, even after a source rebind.
+        // Otherwise never publish a page captured under an old cwd/profile/source binding.
+        if (job.phase === "scanning") {
+          const scan = this.o.kiroHistoryScan ?? (async (i: KiroHistoryInput) => (await import("./kiro-usage-run.js")).runKiroHistoryScan(i));
+          const out = await scan({ dbPath: inst.kiroDbPath ?? dbPath, kiroHome: home, cwds,
+            profile: job.profile, zone: job.zone, before: job.before, cursor: job.cursor });
+          if (!await currentBinding(binding)) return false;
+          const next = structuredClone(job);
+          mergeHistoryRows(next.rows, out.rows); next.cursor = out.cursor;
+          if (out.done) {
+            // Recheck the boundary against durable/live data that may have predated this new scan. The job rows are
+            // then immutable through all write retries, including a crash after its lifetime receipt.
+            const before = historyBefore(cutoff, job.zone, await this.rollupFor(inst), await this.lifetimeFor(inst), await this.ledgerFor(inst));
+            next.rows = next.rows.filter(r => r.date < before); next.phase = "ready";
+          }
+          if (!current()) return false;
+          if (!await writeHistoryJob(path, next)) throw new Error("Kiro history progress could not be saved");
+          this.kiroHistory.set(inst.name, next); job = next;
+          if (!out.done) return true;
+        }
+        if (!current()) return false;
+        const nextLife = structuredClone(await this.lifetimeFor(inst));
+        // Saving a ready journal awaited filesystem work. It is not authority to import an old source: obtain the
+        // complete binding again before the first receipt. A matching durable receipt instead authorizes only
+        // finishing that immutable journal's rollup, even when the original source has since been replaced.
+        if (nextLife.kiroBackfill !== job.binding && !await currentBinding(job.binding)) return false;
+        if (!current()) return false;
+        applyHistoryLifetime(nextLife, job);
+        if (!await writeDays(this.lifetimePath(inst), nextLife)) throw new Error("Kiro history lifetime could not be saved");
+        this.lifetimes.set(inst.name, nextLife);
+        const nextDays = structuredClone(await this.rollupFor(inst));
+        applyHistoryDays(nextDays, job);
+        pruneDays(nextDays, this.now(), job.zone, nextLife.through);
+        if (!await writeDays(this.daysPath(inst), nextDays)) throw new Error("Kiro history rollup could not be saved");
+        this.rollups.set(inst.name, nextDays); this.changes++;
+        const done: KiroHistoryJob = { ...job, phase: "done", rows: [] };
+        if (!await writeHistoryJob(path, done)) throw new Error("Kiro history completion could not be saved");
+        this.kiroHistory.set(inst.name, done);
+        return insts.some(i => i.name !== inst.name && this.kiroHistory.get(i.name)?.phase !== "done");
+      } catch (err) {
+        // No completion on corrupt/unreadable/oversized sources or failed writes. Retry on the next ordinary scan,
+        // not a tight catch-up loop. Recent usage and the daemon remain available.
+        this.o.log?.("warn", "usage: Kiro history backfill remains pending", { instance: inst.name, err: String(err) });
+        return false;
+      }
+    }
+    return false;
+  }
   /**
    * #2122 §10: one bounded scan of Kiro's stores for these instances (on a worker thread), its estimated turns added to
    * their ledgers. A scan that fails or times out reads nothing and covers no one; the next pass tries again from the
@@ -537,12 +633,16 @@ export class CacheService {
     return ledger.files[path] = next;
   }
 
-  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number; failed?: true }> {
+  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string | ((t: number) => string)): Promise<{ read: number; behind: number; failed?: true }> {
+    const pf = (t: number): string | undefined => (typeof profile === "function" ? profile(t) : profile);
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
-        if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, profile); return; }
+        if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, pf(t.t)); return; }
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line, cur) : codexLine(line, cur);
-        if (turn) addTurn(ledger, cur, turn, cutoff, profile);
+        if (turn) addTurn(ledger, cur, turn, cutoff, pf(turn.t));
+        // #3066 §2: responses timed by these lines (their last block seen) — counted into their hour, under the profile in
+        // effect at their time (§1d), then dropped.
+        if (cur.speeds?.length) { for (const s of cur.speeds) addSpeed(ledger, cur, s, cutoff, pf(s.t)); delete cur.speeds; }
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
       cur.offset = res.offset;

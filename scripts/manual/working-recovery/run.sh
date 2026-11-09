@@ -26,9 +26,13 @@ trap cleanup EXIT
 (cd "$repo" && npm pack --ignore-scripts --json --pack-destination "$output") > "$output/pack.json"
 package=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["filename"])' "$output/pack.json")
 sha256sum "$output/$package" > "$output/package.sha256"
-docker run -d --privileged --cgroupns=private --memory=1536m --memory-swap=1536m --cpus=2 \
-  --network=none --tmpfs /run --tmpfs /run/lock --label "agend.working-recovery=$nonce" \
-  --name "$container" "${WORKING_RECOVERY_IMAGE:-agend-rh-b16-bus}" > "$output/container-id"
+# Never in privileged mode: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+. "$repo/scripts/manual/lib/systemd-container.sh"
+image=$(systemd_container_image "${WORKING_RECOVERY_IMAGE:-agend-rh-b16-bus}")
+systemd_container_guard "$image"
+docker run -d "${SYSTEMD_CONTAINER_FLAGS[@]}" --memory=1536m --memory-swap=1536m --cpus=2 \
+  --network=none --label "agend.working-recovery=$nonce" \
+  --name "$container" "$image" > "$output/container-id"
 docker exec "$container" mkdir -p /opt/rehearsal/pkg
 docker cp "$output/$package" "$container:/opt/rehearsal/candidate.tgz"
 docker exec "$container" tar -xzf /opt/rehearsal/candidate.tgz --strip-components=1 -C /opt/rehearsal/pkg

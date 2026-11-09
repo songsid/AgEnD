@@ -25,6 +25,7 @@ capability (cheap/fast vs deep reasoning), or the backend needs one to behave
 | codex | account default | |
 | grok | account default | |
 | antigravity | account default | |
+| muse | account default | `list_models` reads the provider catalog muse caches on disk (no models subcommand) |
 | opencode | provider default | ids are **`provider/model`**, as `opencode models` prints them |
 
 ## Discover real names
@@ -53,6 +54,7 @@ Underlying commands, if you need them by hand:
 | antigravity | `agy models` |
 | codex | `codex debug models` (with its CODEX_HOME set) — refreshes `models_cache.json` when it is older than a few minutes |
 | claude-code | fixed alias set (no command) |
+| muse | none (no models subcommand) — use `list_models`; it reads muse's on-disk `model-catalog/<provider>__<profile>.json` |
 
 ## Setting one on create_instance
 

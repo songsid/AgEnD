@@ -49,7 +49,7 @@ agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the 
 agend-agent task comment M-3 "text"               # Comment on a card
 
 # Decisions
-agend-agent decision-post "title" "content"       # Post decision
+agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)
 agend-agent decision-list                         # List decisions (titles)
 agend-agent decision-get <id>                     # One decision's full text
 ```
@@ -76,4 +76,4 @@ An `uncertain` result may already have reached the target; do not resend blindly
 
 ## Verify relayed human consent
 
-Use the original `verification_id` / `[agend-human-id:…]`, not the platform reply `message_id`. The sender must explicitly include `--forward ID` on send/delegate for each hop. Check with `agend-agent delivery-status --message-id ID`: require delivered with an owned proof_kind, original content for the exact resource, and the authorized origin platform/adapter/user_id. Agent summaries and copied headers are not human origin. A web receipt is checked as the web-chat rule under Message Types says (`via web (verified)`, `authority.kind: web-verified`). `/raw` and historical relays have no positive human receipt. A hidden/expired/absent lookup cannot prove consent; uncertain must never trigger a resend. Native acceptance is not consumption.
+Use the original `verification_id` / `[agend-human-id:…]`, not the platform reply `message_id`. The sender must explicitly include `--forward ID` on send/delegate for each hop. Put those ids on `--forward` only; do not repeat them in the message text, because people see that text in the topic notices. Check with `agend-agent delivery-status --message-id ID`: require delivered with an owned proof_kind, original content for the exact resource, and the authorized origin platform/adapter/user_id. Agent summaries and copied headers are not human origin. A web receipt is checked as the web-chat rule under Message Types says (`via web (verified)`, `authority.kind: web-verified`). `/raw` and historical relays have no positive human receipt. A hidden/expired/absent lookup cannot prove consent; uncertain must never trigger a resend. Native acceptance is not consumption.

@@ -305,6 +305,44 @@ describe("Settings P0 redesign shell", () => {
     expect(writes().find(s => s.method === "PATCH")).toMatchObject({ path: "/api/settings/classic/channels/c1", body: { model: "claude-haiku-5-5" } });
   });
 
+  it.each(["en", "zh-TW"])("#3385: %s explains the saved pairing alias without changing its value or staging a write", async lang => {
+    const channel = { id: "dc", type: "discord", bot_token_env: "DISCORD_TOKEN", group_id: "g1", access: { mode: "pairing", allowed_users: [111] } };
+    w = world({ fleet: { defaults: { backend: "claude-code" }, instances: {}, channels: [channel] } });
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang(lang);
+    await mountSettings("bots");
+    await click(button(lang === "en" ? "Settings" : "設定"));
+    const select = p.root.querySelector("#bot-mode")!;
+    expect(select.value).toBe("pairing");
+    expect(select.querySelectorAll("option").map((o: any) => o.value)).toEqual(["locked", "open", "pairing"]);
+    expect(select.querySelectorAll("option").find((o: any) => o.value === "pairing").textContent).toBe(lang === "en"
+      ? "pairing (legacy; same as locked)" : "pairing（舊版；等同 locked）");
+    await click(button(lang === "en" ? "Done" : "完成"));
+    expect(pending()).toBeNull();
+    expect(writes()).toEqual([]);
+    expect(w.fleet.channels[0].access).toEqual({ mode: "pairing", allowed_users: [111] });
+  });
+
+  it("#3385: an older cached dictionary keeps the old alias text, not a missing key", async () => {
+    const { register, t } = await import("/assets/app-i18n.js");
+    const label = t("settings.legacyPairing");
+    register("settings", { en: { legacyPairing: undefined }, "zh-TW": { legacyPairing: undefined } });
+    try {
+      const channel = { id: "dc", type: "discord", bot_token_env: "DISCORD_TOKEN", group_id: "g1", access: { mode: "pairing", allowed_users: [111] } };
+      w = world({ fleet: { defaults: { backend: "claude-code" }, instances: {}, channels: [channel] } });
+      await mountSettings("bots"); await click(button("Settings"));
+      const select = p.root.querySelector("#bot-mode")!;
+      expect(select.value).toBe("pairing");
+      const option = select.querySelectorAll("option").find((o: any) => o.value === "pairing");
+      expect(option).toBeDefined();
+      expect(option.textContent).toBe("pairing");
+      expect(p.root.textContent).not.toContain("settings.legacyPairing");
+      expect(writes()).toEqual([]);
+    } finally {
+      register("settings", { en: { legacyPairing: label }, "zh-TW": { legacyPairing: "pairing（舊版；等同 locked）" } });
+    }
+  });
+
   it("stages primary access mode and allowed users, and asks the lockout confirmations at Apply time", async () => {
     const channel = { id: "dc", type: "discord", bot_token_env: "DISCORD_TOKEN", group_id: "g1", access: { mode: "locked", allowed_users: [111] } };
     w = world({ fleet: { defaults: { backend: "claude-code" }, instances: {}, channels: [channel] } });

@@ -4,7 +4,7 @@
  * own `<test home>/daemon.log` (AGEND_TEST_GUARD_DIR, which outlives every test) throws when it is built: its worker would otherwise
  * write there after the test ended, while the test removes the directory (late daemon.log, ENOTEMPTY).
  */
-import { realpathSync } from "node:fs";
+import { fstatSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import pino from "pino";
 
@@ -23,13 +23,40 @@ function canonical(p: string): string {
  * outlives every test. Anywhere else may be removed by a test while the worker still writes: a scratch home, even one
  * made inside the run's home (#2727 review r3), so containment proves nothing; only that exact file is allowed.
  */
-export function strayTransportFiles(options: unknown, home: string | undefined = process.env.AGEND_TEST_GUARD_DIR): string[] {
+function transportDestinations(options: unknown): unknown[] {
   const targets = (options as { targets?: Array<{ options?: { destination?: unknown } }> } | undefined)?.targets
     ?? [options as { options?: { destination?: unknown } }];
-  const files = targets.map(t => t?.options?.destination).filter((d): d is string => typeof d === "string");
-  if (!home) return files;
-  const allowed = join(canonical(home), "daemon.log");
-  return files.filter(file => canonical(file) !== allowed);
+  return targets.map(t => t?.options?.destination);
+}
+
+function pathOfFd(fd: number): string | undefined {
+  try { return readlinkSync(`/proc/self/fd/${fd}`); } catch { return undefined; }
+}
+
+function fdIsAllowed(fd: number, allowed: string): boolean {
+  try {
+    const got = fstatSync(fd);
+    const want = statSync(allowed);
+    return got.isFile() && want.isFile() && got.dev === want.dev && got.ino === want.ino;
+  } catch { return false; }
+}
+
+export function strayTransportFiles(options: unknown, home: string | undefined = process.env.AGEND_TEST_GUARD_DIR): string[] {
+  const dests = transportDestinations(options);
+  const allowed = home ? join(canonical(home), "daemon.log") : undefined;
+  const stray: string[] = [];
+  for (const d of dests) {
+    if (typeof d === "string") {
+      if (!allowed || canonical(d) !== allowed) stray.push(d);
+      continue;
+    }
+    // stdout/stderr fds (the TTY target uses 1) are not files. Any other fd is a log
+    // the writer already opened — #2406 passes O_NOFOLLOW this way — so match it by inode.
+    if (typeof d !== "number" || d === 1 || d === 2) continue;
+    if (allowed && fdIsAllowed(d, allowed)) continue;
+    stray.push(pathOfFd(d) ?? `fd:${d} (not this run's own daemon.log)`);
+  }
+  return stray;
 }
 
 /** Node caches pino once per worker, shared by every test file it runs: its transport is wrapped once. */

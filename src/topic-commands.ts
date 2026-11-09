@@ -1771,7 +1771,7 @@ export class TopicCommands {
     const { spawn } = await import("./child-process.js");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend);
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
@@ -1869,6 +1869,9 @@ export class TopicCommands {
   /** Create instance config, save fleet.yaml, start daemon, connect IPC. */
   async bindAndStart(dirPath: string, topicId: number | string): Promise<string> {
     if (!this.ctx.fleetConfig) throw new Error("Fleet config not loaded");
+    // #3055 review (Prism P1): the topic of an agent being deleted is going away on the platform right now — a new
+    // agent bound to it would lose it. The deletion re-checked ownership just before; this keeps that check true.
+    if (this.ctx.isTopicDeletionInFlight?.(topicId)) throw new Error("This topic is being deleted with its agent; try again in a moment.");
 
     // Short unique suffix (#1301), same rule as create_instance. Reuse of a
     // taken name requires proof it belongs to this same topic (#1305 P1):

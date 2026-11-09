@@ -28,10 +28,12 @@ describe("private AGEND_HOME (#2435)", () => {
     expect(mode(dir)).toBe(0o700); expect(log).toHaveBeenCalledExactlyOnceWith("AgEnD: tightened owned AGEND_HOME permissions to 0700.");
     expect(fs.readFileSync(join(dir, "keep"), "utf8")).toBe("unchanged"); expect(mode(join(dir, "keep"))).toBe(0o640);
   });
-  it("operator admission itself repairs an existing writable root, but keeps an existing 0755 root unchanged", async () => {
+  it("operator admission itself repairs an existing writable root, and a legacy readable 0755 or 0750 root too", async () => {
     const dir = scratch(); fs.chmodSync(dir, 0o777); const log = vi.spyOn(console, "warn").mockImplementation(() => {});
     await assertOperatorRoot(dir, "Test control"); expect(mode(dir)).toBe(0o700); expect(log).toHaveBeenCalledOnce();
-    fs.chmodSync(dir, 0o755); await assertOperatorRoot(dir, "Test control"); expect(mode(dir)).toBe(0o755);
+    fs.chmodSync(dir, 0o755); await assertOperatorRoot(dir, "Test control"); expect(mode(dir)).toBe(0o700); expect(log).toHaveBeenCalledTimes(2);
+    fs.chmodSync(dir, 0o750); await assertOperatorRoot(dir, "Test control"); expect(mode(dir)).toBe(0o700); expect(log).toHaveBeenCalledTimes(3);
+    await assertOperatorRoot(dir, "Test control"); expect(log).toHaveBeenCalledTimes(3);                 // already private: no change, no line
   });
   it("refuses foreign ownership without any chmod (including the descriptor recheck)", () => {
     const dir = scratch(); fs.chmodSync(dir, 0o775); const change = vi.fn();
@@ -88,6 +90,7 @@ describe("live one-liner bootstrap, independent of the installed npm release", (
     const fresh = runBootstrap(script, dir); expect(fresh.status, fresh.stderr).toBe(0); expect(mode(dir)).toBe(0o700);
     fs.chmodSync(dir, 0o775); const repaired = runBootstrap(script, dir); expect(repaired.status, repaired.stderr).toBe(0); expect(mode(dir)).toBe(0o700);
     expect(repaired.stderr).toContain("tightened owned AGEND_HOME");
+    fs.chmodSync(dir, 0o755); const legacy = runBootstrap(script, dir); expect(legacy.status, legacy.stderr).toBe(0); expect(mode(dir)).toBe(0o700);
   });
   it.each(["shell", "WSL"])("%s rejects a symlink without repairing its target", kind => {
     const root = scratch(), target = join(root, "target"), link = join(root, "link"); fs.mkdirSync(target); fs.chmodSync(target, 0o775); fs.symlinkSync(target, link);

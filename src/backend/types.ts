@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "suspected_terminal_input";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;
@@ -64,6 +64,9 @@ export class UnsupportedCliError extends Error {
   }
 }
 
+/** Kiro's retired Classic launch must remain visible even though no pane was started. */
+export class KiroCompatibilityError extends UnsupportedCliError {}
+
 /** A retained conversation cannot be selected safely. Stop without retry; this is not a CLI/engine incompatibility. */
 export class ResumeBlockedError extends UnsupportedCliError {
   constructor(message: string, readonly remedy: string) { super(message); this.name = "ResumeBlockedError"; }
@@ -116,6 +119,8 @@ export interface CliBackendConfig {
   kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
   skipResume?: boolean;
+  /** Daemon-owned same-session CLI repair only; never a new conversation fallback. */
+  resumeSessionId?: string;
   /** Fleet instructions content to inject into the CLI's additive system prompt mechanism. */
   instructions?: string;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint). */
@@ -153,6 +158,8 @@ export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "bac
 export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error" | "outdated_cli";
 
 export interface ErrorPattern {
+  /** Optional low-usage reminder; delivered once per account by the usage evaluator instead. */
+  quotaAdvisory?: true;
   pattern: RegExp;
   type: ErrorType;
   action: ErrorActionType;
@@ -799,6 +806,11 @@ export interface CliBackend {
    */
   launchMayShowInputTransient?(): boolean;
 
+  /** Positive pre-launch quota history, read only from the exact conversation being resumed. */
+  quotaReplayHistory?(): { messages: readonly string[]; current(): boolean } | null;
+  /** Grok wake: the command explicitly resumes the preserved window's conversation. */
+  resumesPreservedQuotaHistory?(): boolean;
+
   /** Write all config files the CLI needs before launch. */
   writeConfig(config: CliBackendConfig): void;
 
@@ -893,6 +905,8 @@ export interface CliBackend {
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
   prepareLaunch?(config?: CliBackendConfig): Promise<void>;
+  /** Read-only admission, before any launch preparation or configuration writes. Throws to refuse. */
+  assertLaunchSupported?(config: CliBackendConfig): void;
 
   /**
    * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the
@@ -1031,6 +1045,9 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
+  /** A fresh installed launcher, used by the one same-session model-version repair. */
+  refreshLaunchBinary?(path: string): void;
+
   probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[]; binary?: CliBinaryIdentity }>;
 
   /**

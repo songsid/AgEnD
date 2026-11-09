@@ -25,10 +25,16 @@ import {
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
+import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
+/** M-2446: Codex speed choices (backend_options.codex.speed); "" = unset. Local, not imported: a stale tab may keep an
+ *  older settings-model.js, and a new named import would fail this module's load. */
+const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
 /** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
 const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+// A cached older dictionary keeps the old alias label until reload, never a missing translation key.
+const legacyPairingLabel = () => { const label = tn("legacyPairing"); return label === "settings.legacyPairing" ? "pairing" : label; };
 export const impactText = (kind) => tn(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
 /** Ask in the app's own dialog (#1408 step 5): resolves true for the confirm button, false otherwise. */
 export const ask = (message, opts = {}) => confirmDialog({ message, ...opts });
@@ -298,6 +304,10 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
         ${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null}</div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
         backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+      ${(f.backend || defaults.backend || "claude-code") === "codex" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
+        <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
+          options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
+        <p class="note">${tn("codexSpeedHint")}</p></div>` : null}
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}
@@ -508,7 +518,7 @@ export function BotDialog({ id, ctx, onClose }) {
   if (!ch) return null;
   return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${pendingImpacts()} schema=${schema}>
     <div class="grid2">
-      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES} />
+      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES.map((value) => value === "pairing" ? { value, label: legacyPairingLabel() } : value)} />
         <${Feedback} warning=${accessWarn} /></div>
       <div class="field">${L(tn("allowedUsers"), "fleet.channel.access.allowed_users")}<${ChipList} items=${users} onChange=${setUsers} placeholder=${tn("userIdPlaceholder")} label=${tn("allowedUsers")} /></div>
     </div>

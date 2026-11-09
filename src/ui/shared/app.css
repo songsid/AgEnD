@@ -288,6 +288,18 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 /* #2015: the largest processes, after the host memory chip's text. */
 .host-mem-top { margin-left: var(--s-2); opacity: 0.8; overflow-wrap: anywhere; }
+/* M-2556: bound Fleet's warning independently of tab placement. Cached panels without a tooltip keep wrapping. */
+.p-fleet .panel-sub:has(.host-mem) { flex: 0 1 16rem; width: 16rem; min-width: 0; max-width: 100%; white-space: normal; }
+.p-fleet .host-mem { --fleet-memory-header: 1; display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 2px 6px; min-width: 0; max-width: 100%; white-space: normal; }
+.p-fleet .host-mem > .dot { margin-top: 6px; }
+.p-fleet .host-mem-top { grid-column: 2; min-width: 0; max-width: 100%; margin-left: 0; }
+.p-fleet .host-mem-top[title] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 899px) {
+  .p-fleet .panel-head:has(.host-mem) { flex-wrap: wrap; }
+  .p-fleet .panel-title:has(.host-mem) { display: contents; }
+  .p-fleet .panel-title:has(.host-mem) > h1 { flex: 1; }
+  .p-fleet .panel-sub:has(.host-mem) { order: 1; flex: 1 0 100%; width: 100%; }
+}
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }
@@ -343,6 +355,11 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    its row (a phone puts them on a row of their own, under it). */
 .panel-head .btn-sm { min-height: 36px; }
 @media (min-width: 900px) { .panel-head .inst-switch .seg-item { min-height: 36px; } }
+/* M-2542: Fleet's tabs on its title row — the title, then the tabs (scrolling sideways if they do not fit), then the
+   header's tools; under 900 px a row of their own under the header, as the instance tabs. Never wider than the page. */
+.p-fleet .panel-head .panel-title:has(+ .fleet-tabs) { flex: 0 1 auto; }   /* M-2542: only when everything fits (panel-fleet) */
+.fleet-tabs { display: flex; gap: var(--s-1); flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+.panel-head .fleet-tabs .seg-item { min-height: 36px; flex-shrink: 0; }
 @media (max-width: 899px) {
   .panel-head:has(.inst-switch) { flex-wrap: wrap; }
   .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 0 var(--s-1); }
@@ -816,6 +833,10 @@ img.amb-p { object-fit: contain; }
 .pv-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--s-3) var(--s-3); }
 .pv-panel-body .pv-holder { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; }
 .pv-panel-body.show-code .pv-holder { display: none; }
+/* M-2448: a Markdown file in the panel — the chat's Markdown look, scrolling inside the panel (never the page). */
+.pv-code.pv-md { font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.6; white-space: normal; padding: var(--s-3) var(--s-4); }
+.pv-md .md { max-width: 860px; overflow-wrap: anywhere; }
+.pv-md .tc-pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--fs-xs); }
 .preview-frame.fill { flex: 1; height: 100%; min-height: 0; }
 .pv-code { flex: 1; min-height: 0; margin: 0; overflow: auto; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5;
   background: var(--surface); border-radius: var(--r-sm); padding: var(--s-3); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
@@ -1392,6 +1413,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-stale { font-weight: var(--fw-semibold); }
 .u-stale-detail { color: var(--text-3); font-size: var(--fs-xs); }
 .u-sub { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* #3066 §1: a weekly quota's measured 100% under its bar, and its notes (the fleet-only limit always). */
+.u-cap { margin-top: 4px; font-size: var(--fs-xs); }
+.u-cap-line { color: var(--text-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.u-cap-wait .u-cap-line { color: var(--text-3); }
+.u-cap-note { color: var(--text-3); overflow-wrap: anywhere; }
 .u-err { color: var(--warn); font-size: var(--fs-sm); }
 .u-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
@@ -2111,6 +2137,16 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .us-meta { display: block; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .us-est { display: block; font-size: var(--fs-xs); font-weight: var(--fw-regular); color: var(--text-3); }
 .us-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* #3066 §3: a row's numbers carry small marks (◐ partly priced, † the CLI's amount, ≈ estimated) and "—" with a reason,
+   each said in its tooltip; the key under the table names only the marks that appear. */
+.us-mark { margin-left: 2px; color: var(--text-3); font-size: var(--fs-xs); cursor: help; }
+.us-mark.us-approx { margin-left: 0; margin-right: 1px; }
+.us-none { cursor: help; }
+.us-key { margin-top: 6px; }
+/* #3066 §2: each model's speed after the first token. */
+.us-speed { margin-top: 12px; }
+.us-speed .row-item { gap: 8px; flex-wrap: wrap; }
+.us-speed .num { font-variant-numeric: tabular-nums; }
 .us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .us-scroll { overflow-x: auto; max-width: 100%; }
@@ -2673,3 +2709,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .os-none { margin: 0; }
 .os-form .os-err { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--danger); border-radius: var(--r-sm); }
 @media (max-width: 480px) { .os-form { grid-template-columns: 1fr; } }
+
+/* Quota preferences obey the panel CSP: no inline styles. */
+.p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }

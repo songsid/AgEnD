@@ -298,7 +298,7 @@ export function cwdRolloutsProvenAbsent(sessionsDir: string, workingDirectory: s
 }
 
 /** The first line of a rollout, when it is the session_meta the thread was created with. */
-function rolloutSessionMeta(path: string): { id: string; cwd: string; source: unknown } | null {
+export function rolloutSessionMeta(path: string): { id: string; cwd: string; source: unknown } | null {
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");

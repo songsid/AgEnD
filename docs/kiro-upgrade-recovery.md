@@ -1,5 +1,23 @@
 # Kiro conversation adoption after an upgrade
 
+## Before upgrading the Kiro CLI to 3.x
+
+Kiro 3.0 removes Classic. This is separate from the old AgEnD identity-adoption recovery below.
+
+1. Ask General for `kiro_engine_status`. Its `kiro3_readiness` reports every Kiro Agent, including General and
+   ClassicBot rooms. The fleet count remains complete even if the result is filtered to one name. Readiness
+   here means leaving Classic; it does not certify all future 3.x releases.
+2. Keep a supported Kiro 2.x installed. For each Classic fleet Agent, ask General to request
+   `migrate_kiro_instance`, then confirm that exact move as the administrator. Follow the
+   [existing migration instructions](../src/general-knowledge/skills/kiro-engine-migration/SKILL.md).
+   Both verification starts must retain the same conversation and model. Do not edit `kiro_ui` to bypass this.
+3. ClassicBot rooms cannot use that migration tool. In Classic settings, change the room to another backend,
+   or continue using Kiro 2.x. They are included in the remaining-Classic count.
+4. Check readiness again: all remaining Kiro Agents must be TUI or already V3, with `still_classic: 0`.
+   General is included. Only then upgrade Kiro yourself; AgEnD does not install the CLI or choose a V3 menu.
+5. If startup shows an engine-choice menu or cannot verify the saved conversation, inspect Needs-you.
+   Keep the pin/history and migration receipts. Do not start fresh or return to a frozen Classic copy.
+
 The launch ledger was introduced in 2.1.11 (#1171). An upgrade from 2.1.10 or earlier, or an instance that has not
 launched since then, can have a conversation but no ledger entry. #1624 permits a one-time adoption when:
 

@@ -10,7 +10,7 @@ An admitted user can ask an agent to read files, change code or run commands, su
 
 - Use an explicit `access.mode: locked` and a small `allowed_users` list to restrict fleet chat access. **Omitting the entire `access` block falls back to open.**
 - Persisted access mode overrides YAML; persisted and YAML user lists are unioned. Removing a user from YAML alone may not revoke access. See [configuration](configuration.md#channelaccess).
-- Fleet administration requires an explicit entry in the target instance’s owning adapter's YAML `allowed_users` (the invoking adapter when there is no target). Open access or pairing approval alone does not grant that role. ClassicBot has its own admin and chat allowlists; see [permissions](permissions.md).
+- Fleet administration requires an explicit entry in the target instance’s owning adapter's YAML `allowed_users` (the invoking adapter when there is no target). Open access or a saved chat grant alone does not grant that role. ClassicBot has its own admin and chat allowlists; see [permissions](permissions.md).
 - Enable account 2FA and protect bot tokens. `tool_set` is enforced on AgEnD operations at the server; it does not restrict the backend's own shell, filesystem or network tools.
 
 ## Permission bypass (`skipPermissions`)

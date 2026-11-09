@@ -47,6 +47,17 @@ never used, the host's installed muse (1.4.13) was never touched, and no live Ag
 The 1.4.13 HUP variant (`orphan-tool-hup-resumed`, which needs an `--init` container) was not repeated: SIGKILL already
 covers the resume path, and the HUP case only showed a container artifact.
 
+## Live idle placeholder (2026-11-05)
+
+`live-idle-placeholder.pane.txt` is a read-only `tmux capture-pane -p` of a parked fleet Muse 1.4.14-R7309.1 pane
+(`muse-bin-1.4.14-R7309.1`, sha256 `0809aac7cb58d18f5022b6d05e02aa1974683c0ec430e5f04d25b60ed17de2da`). No keys were
+sent. The outage-check transcript and `[agend-delivery-id:…]` rows were stripped; the workspace path
+`~/Projects/AgEnD-agend-dev-muse` is unchanged. The composer is the 1.4.14 catalog hint `Ask to monitor a running
+build or log and get pinged on changes`. The matching `-e` frame paints that hint in truecolor gray
+`38;2;103;108;116` (not SGR 2); production `-p` has no SGR, so the catalog string is the idle proof. The second
+1.4.14 hint (`Ask to 'use a workflow' to fan out parallel agents on big tasks`) is in the binary at offset 11216047
+and is injected by the audit tests.
+
 ## Comparison with the committed 1.4.13 set
 
 After normalizing session ids, the version, timestamps, the elapsed-seconds counter, `~/work` → `/home/u/work` and the

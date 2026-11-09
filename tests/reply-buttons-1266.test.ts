@@ -128,7 +128,7 @@ describe("the store: one choice per set, atomically, and it outlives a restart",
     const store = new ReplyButtonStore(join(scratch(), "rb.db"));
     const set = store.create({ id: "d".repeat(32), instance: "w", adapterId: "dc", chatId: "g", threadId: "", buttons: [{ label: "A", value: "A" }] }, 0);
     store.bind(set.id, "m1");
-    expect(store.nextExpiry(1)).toBe(REPLY_BUTTON_TTL_MS);
+    expect(store.nextExpiry()).toBe(REPLY_BUTTON_TTL_MS);
     expect(store.consume(set.id, 0, "x", REPLY_BUTTON_TTL_MS)).toMatchObject({ ok: false, reason: "expired" });
     expect(store.unsettled(REPLY_BUTTON_TTL_MS).map(s => s.id)).toEqual([set.id]);
     store.markSettled(set.id, REPLY_BUTTON_TTL_MS);

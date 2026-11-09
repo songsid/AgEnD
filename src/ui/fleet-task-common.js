@@ -42,6 +42,7 @@ register("tasks", {
     definitionHint: "One per line: conditions anyone can check", acceptanceHint: "One per line",
     context: "Context", contextHint: "Paths, related cards, decisions already made (pointers only)",
     assignee: "Assignee", assigneeHint: "Which instance", project: "Project", size: "Size", priority: "Priority",
+    boardOff: "{0} (task board off)", boardOffHint: "Instances with the task board switched off cannot be handed cards: they have no task tool to read them with.",
     reviewBox: "Stop at review for my confirmation", created: "Opened {0}", titleRequired: "A title is required",
     search: "Search cards", searchHint: "Search titles, fields, checklists and comments", searchEmpty: "No cards match", inField: "in {0}",
     fieldgoal: "goal", fieldscope: "scope", fieldcontext: "context", fieldstate: "state", fieldresult: "result", fieldblockedReason: "blocked reason",
@@ -71,6 +72,7 @@ register("tasks", {
     "err.dep_own_main": "A sub task cannot depend on its own main task {0}", "err.dep_own_sub": "A main task cannot depend on its own sub task {0}",
     "err.dep_cycle": "These dependencies would wait on each other forever: {0}", "err.conflict": "{0} was changed meanwhile (last by {1})",
     "err.signed_in_only": "The task board takes changes from a signed-in dashboard", "err.unavailable": "The task board is not available right now", "err.not_over_public_link": "The public link can only read the board",
+    "err.assignee_board_off": "{0} has the task board switched off: it cannot read or move cards. Switch it on for {0} (Settings → the agent → Dashboard access), or hand it the work in the chat",
     "note.review_waiting": "{0} “{1}”: every sub task is done — it waits for your confirmation",
     "note.back_to": "{0} has unfinished sub tasks again: it is back to {1}", "note.deps_done": "{0}'s dependencies are all done: it can start",
     "note.deps_unmet": "Note: {0} not done yet",
@@ -115,6 +117,7 @@ register("tasks", {
     definitionHint: "一行一項：能客觀判斷是否達成的條件", acceptanceHint: "一行一項",
     context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定（只放指引）",
     assignee: "負責人", assigneeHint: "交給哪個 instance", project: "專案", size: "大小", priority: "優先度",
+    boardOff: "{0}（看板已關閉）", boardOffHint: "關閉任務看板的 instance 不能被派卡：它沒有 task 工具，讀不到卡片。",
     reviewBox: "做完要停在待確認，等我確認", created: "已開 {0}", titleRequired: "標題必填",
     search: "搜尋卡片", searchHint: "搜尋標題、各欄位、驗收條件和留言", searchEmpty: "沒有符合的卡片", inField: "在{0}",
     fieldgoal: "目標", fieldscope: "範圍", fieldcontext: "背景", fieldstate: "目前狀態", fieldresult: "產出", fieldblockedReason: "卡住原因",
@@ -144,6 +147,7 @@ register("tasks", {
     "err.dep_own_main": "子任務不能相依自己的主任務 {0}", "err.dep_own_sub": "主任務不能相依自己的子任務 {0}",
     "err.dep_cycle": "相依會形成循環，大家會互相等待：{0}", "err.conflict": "{0} 已經被改過（最後由 {1} 修改）",
     "err.signed_in_only": "看板只接受已登入網頁的修改", "err.unavailable": "看板目前無法使用", "err.not_over_public_link": "公開連結只能看看板，不能修改",
+    "err.assignee_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片。請先替 {0} 開啟（Settings → 該 agent → Dashboard access），或改在聊天中交辦",
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
     "note.back_to": "{0} 又有沒完成的子任務，已回到{1}", "note.deps_done": "{0} 的相依都完成了，可以開始",
     "note.deps_unmet": "提醒：{0} 還沒完成",
@@ -320,6 +324,12 @@ function word(key, arg, i) {
   if ((key === "too_long") && i === 0) { const w = t(`tasks.field${arg}`); return w === `tasks.field${arg}` ? arg : w; }
   if (["open", "claimed", "blocked", "review", "done", "cancelled"].includes(arg) && ["already", "cannot_block", "back_to"].includes(key)) return t(`tasks.${arg}`);
   return arg;
+}
+
+/** An assignee picker's choice: an instance with the task board switched off is shown, greyed out — the board refuses it. */
+export function AssigneeOption({ name, boardOff = [] }) {
+  const off = boardOff.includes(name);
+  return html`<option value=${name} disabled=${off} title=${off ? t("tasks.boardOffHint") : undefined}>${off ? t("tasks.boardOff", name) : name}</option>`;
 }
 
 /** A refusal in the page's language when the board named it (tasks.err.<key>), else the board's own sentence. */

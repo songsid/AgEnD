@@ -1,0 +1,55 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 30 literals)
+  old: /tmp/claude-1000/-home-han-Projects-AgEnD/49347c54-abf7-4d58-a5ab-928deaf3af33/scratchpad/cliwatch-1106/grok/1.0.70 — 1 file(s), 195.7 MB
+  new: /tmp/claude-1000/-home-han-Projects-AgEnD/49347c54-abf7-4d58-a5ab-928deaf3af33/scratchpad/cliwatch-1106/grok/1.0.77 — 1 file(s), 201.7 MB
+
+literals in the old artifact: 18 of 30 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 3
+  [idle-busy] 83 -> 81  "Grok Build"   (src/backend/grok.ts:276 GrokBackend.getReadyPattern)
+  [error] 75 -> 73  "rate_limit"   (src/backend/grok.ts:356 GrokBackend.getErrorPatterns.type)
+  [onboarding] 74 -> 75  "grok login"   (src/login-flows.ts:207 LOGIN_FLOWS.grok.command)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 6
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstRegistryUna"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firststatusNotif"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called first}false{all"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit for your plan.Rate limitedThe model hit its output limit.Response truncatedCheck"   near "rate limit"   hint: the old release has "rate limit for your plan."… (only a neighbouring string changed?)
+  [onboarding] "usage limit (needs Grok"   near "grok login"
+  [onboarding] "usage limit as JSONSpanContextspan_idtrace_flagsis_remotetrace_stateExportArgsoutputclipboar"   near "grok login"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 10
+  "No, and tell Grok what to do differently ProtectedEditPermission ser"
+  "Press h to show all.No tasks or agents.▲▼ActiveInterruptedBudget Li"   hint: the old release has "Press h to show all."… (only a neighbouring string changed?)
+  "Resume the paused goal<objective> | status | pause | resumeUsage: /loop [interval] <prompt>"   hint: the old release has "Resume the paused goal<objective> | stat"… (only a neighbouring string changed?)
+  "Yes, allow all edits during this sessionYes, and don"
+  "Yes, proceedNever allow:YesYes, allow onceYes, send onceYes, save drafta"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  "press Enter to insert a newline., sandbox.tomlBGrok is using the user profi"   hint: the old release has "press Enter to insert a newline."… (only a neighbouring string changed?)
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.C"   hint: the old release has "press Enter to retry."… (only a neighbouring string changed?)
+  "press ctrl+u to restart"
+  "resume the session, has none. Neither do a workflow"
+  "usage limit from the shell, which is how to read it on the daemon route, run"
+
+POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 10
+  "No, and tell Grok what to do differentlyallow-edits-sessionYes, allo"
+  "Press h to show all.No tasks or agents.▲▼│─╭╮╰╯/btw Ans"
+  "Resume the paused goal<objective> | status | pause | resumeassertion failed: signal >= 0Edi"
+  "press Enter to insert a newline.sandbox.tomlBGrok is using the user profile"
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.A"
+  "press Enter to view)"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called first struct St"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called first }false{fe"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstDeadlineExp"
+  "rate limit for your plan.Rate limitedThe service is busy. Wait a minute and send again.Serv"
+
+REASON: 6 new prompt-like string(s) on a known surface: [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit for your plan.Rate limitedThe model hit its outpu"; [onboarding] "usage limit (needs Grok"
+REASON: 3 literal count(s) changed
+REASON: 10 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 2, hinted new prompts 4
+BASIS: hard=2; hinted=4
+PRECHECK: MAJOR

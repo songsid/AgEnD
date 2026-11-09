@@ -67,6 +67,7 @@ import {
 } from "./connection-secrets.js";
 import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
   builtinStatusEmojis, customEmojiValue, emojiProxyUrl, previewStatusEmojis,
@@ -128,6 +129,12 @@ export interface SettingsApiContext extends AppShellContext {
   /** Delete an agent the way delete_instance and the chat's Delete do (FleetManager.removeInstance): stopped, its schedules
    *  and team places dropped, its fleet.yaml entry removed. Absent in unit contexts that only exercise CRUD. */
   removeInstance?(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
+  /** #3055: this instance config would bind a topic being deleted right now (by physical destination). */
+  topicBindingInFlight?(inst: { channel_id?: unknown; topic_id?: unknown }): boolean;
+  /** #3055: a topic deletion is running now (connections may not be re-pointed meanwhile). */
+  topicDeletionPending?(): boolean;
+  /** delete_instance's removal: the agent, then its own topic (by default), with the platform's answer. */
+  removeInstanceAndTopic?(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
@@ -1170,6 +1177,7 @@ export function handleSettingsRequest(
         "tool_progress",
         "reply_completion_guard",
         "web_echo",
+        "quota_notice",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -1214,6 +1222,7 @@ export function handleSettingsRequest(
       if (body.tool_progress === null) delete merged.tool_progress;
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       if (body.reply_triggers === null) delete merged.reply_triggers;
+      if (body.quota_notice === null) delete merged.quota_notice;
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
@@ -1379,6 +1388,14 @@ export function handleSettingsRequest(
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
           changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
         }
+      } else if (key === "backend_options" && value && typeof value === "object" && !Array.isArray(value)) {
+        // M-2446: per backend namespace and key, as normalizeSettingsInstancePatch merges it; null removes the key.
+        for (const [backend, options] of Object.entries(value as Record<string, unknown>)) {
+          if (!options || typeof options !== "object" || Array.isArray(options)) continue;
+          for (const [optionKey, optionValue] of Object.entries(options as Record<string, unknown>)) {
+            changes.push({ path: ["instances", name, key, backend, optionKey], value: optionValue, remove: optionValue === null });
+          }
+        }
       } else {
         changes.push({ path: ["instances", name, key], value, remove: removesInstanceOverride(key, value) });
       }
@@ -1398,6 +1415,9 @@ export function handleSettingsRequest(
     const before = validateFleet(cfg!);
     const after = validateFleet({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
+    // #3055 review r2: a topic whose agent is being deleted is going away on the platform now — binding it here would
+    // lose it. Asked at commit, by physical destination; try again once the deletion is over.
+    if (ctx.topicBindingInFlight?.(mergedInst)) { json(res, 409, { error: "topic_deletion_in_flight" }); return; }
     settingsWrite(req, () => {
       Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
       if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
@@ -1436,8 +1456,12 @@ export function handleSettingsRequest(
         // Settings → Agents → Delete, confirmed: the same removal as delete_instance — the agent stops, nothing of it is
         // left behind (schedules, team places), and its fleet.yaml entry goes.
         const execution = settingsRequestExecution(req), authorization = authorizeExplicitInstanceRemoval("dashboard-confirmed");
-        (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(
-          () => json(res, 200, { ok: true, deleted: name, warnings: validateFleet(cfg).warnings }),
+        // …and its own topic (the user's default), as delete_instance does; the answer says whether the platform took it.
+        const removal: Promise<TopicDeleteOutcome | null> = ctx.removeInstanceAndTopic
+          ? ctx.removeInstanceAndTopic(name, authorization, { deleteTopic: true, ...(execution ? { execution } : {}) })
+          : (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(() => null);
+        removal.then(
+          (topic) => json(res, 200, { ok: true, deleted: name, ...topicFields(name, topic), warnings: validateFleet(cfg).warnings }),
           (err: unknown) => json(res, 500, { error: (err as Error).message }));
         return true;
       }

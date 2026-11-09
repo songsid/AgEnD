@@ -5,9 +5,11 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { displayWidth } from "../ls-rows.js";
 import { quotaLine, quotaPausedLine } from "../quota-notice.js";
+import { clearGrokWeeklyReset, grokWeeklyResetDue, markGrokWeeklyTryAgainConsumed, noteGrokWeeklyLimitSeen, readGrokWeeklyReset } from "./grok-weekly-reset.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
@@ -24,10 +26,15 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
  *   ┃  ↑/↓ navigate · y copy                                                Enter:submit
  *   Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
  *
- * AgEnD presses Shift+x (the key `X`): captured offline on 1.0.70 against the audit rig's 402 (#2872 PR), it closes
- * the modal with nothing selected and no request, and grok is back at its composer — also after Esc moved focus to the
- * scrollback (its legend then reads "Tab/Space:question │ …"). Never Enter, never a digit, never `y`. The modal leaves
- * no error row behind, so the quota pause comes from the dismissal itself (dismissIncident), once.
+ * Before the recorded reset: Shift+x (`X`) closes it with nothing selected (1.0.70 audit; 1.0.77 after Esc needs Space
+ * first). Never Enter, never a digit, never `y` — digit 3 does not move grok's highlight, and Enter on the default
+ * (option 1, Upgrade) is a paid action. The modal leaves no error row, so the quota pause comes from dismissIncident.
+ *
+ * After the recorded reset: two Downs then Enter lands on Try Again. The list does not wrap (1.0.77 offline:
+ * Down on option 3 stays on 3; Down×2 from option 2 is 2→3→3), so Down×2 from any start ends on option 3.
+ * Daemon `capture-pane -p` has no reverse-video, so the cursor cannot be re-read; the sequence is the verified
+ * start-independent path (fixtures `tests/fixtures/grok-1.0.77-weekly-reset/`). A failed Enter while still limited
+ * re-shows the picker on option 1; the next scan Shift+x-pauses again.
  */
 const GROK_LEGEND_QUESTION = /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/;
 const GROK_LEGEND_SCROLLBACK = /^Tab\/Space:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
@@ -41,7 +48,51 @@ function grokOption(n: number, label: string, description: string) {
     return d === undefined || d === description || (d.endsWith("…") && description.startsWith(d.slice(0, -1)));
   };
 }
-function grokWeeklyLimitDialog(): RuntimeDialog {
+function grokWeeklyLimitActive(pane: string, legend: "question" | "scrollback" | "either", opts?: { tryAgain?: boolean }): boolean {
+  const pattern = /You hit your weekly limit\./;
+  pattern.lastIndex = 0;
+  if (!pattern.test(pane)) return false;
+  const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
+  let end = lines.length - 1;
+  while (end >= 0 && !lines[end].trim()) end--;
+  if (end < 0) return false;
+  const footer = lines[end].trim();
+  const wantQuestion = legend === "question" || legend === "either";
+  const wantScrollback = legend === "scrollback" || legend === "either";
+  if (!((wantQuestion && GROK_LEGEND_QUESTION.test(footer)) || (wantScrollback && GROK_LEGEND_SCROLLBACK.test(footer)))) return false;
+
+  const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
+  const first = Math.max(0, end - 14);
+  const current = lines.slice(first, end + 1);
+  const find = (predicate: (line: string) => boolean, from = 0) => {
+    for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
+    return -1;
+  };
+  const title = find(line => line === "You hit your weekly limit.");
+  const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
+  if (title < 0 || submit < 0) return false;
+  // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
+  // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
+  const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
+  const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
+    grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
+    grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
+  if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
+  if (opts?.tryAgain && options.length !== 3) return false;
+  const upgrade = options[0].i, credits = options[1].i;
+  if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
+  // The Grok keyboard legend must immediately follow the choice footer;
+  // another composer or screen below the modal makes the old text stale.
+  const between = current.slice(submit + 1).map(text).filter(Boolean);
+  if (between.length !== 1) return false;
+  if (legend === "question") return GROK_LEGEND_QUESTION.test(between[0]!);
+  if (legend === "scrollback") return GROK_LEGEND_SCROLLBACK.test(between[0]!);
+  return GROK_LEGEND_QUESTION.test(between[0]!) || GROK_LEGEND_SCROLLBACK.test(between[0]!);
+}
+
+type GrokTryAgainGate = { value: boolean; claimFailed: boolean };
+
+function grokWeeklyLimitDialog(instanceDir: string, pending: GrokTryAgainGate): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
@@ -55,40 +106,97 @@ function grokWeeklyLimitDialog(): RuntimeDialog {
     answeredByAgend: true,
     // The user's wording (hmsg-0687db4d): one line, no name, no action suffix.
     dismissIncident: { type: "quota", action: "pause", message: "Grok weekly limit used up — paused", notice: quotaPausedLine("Grok", "weekly") },
-    isActive(pane) {
-      pattern.lastIndex = 0;
-      if (!pattern.test(pane)) return false;
-      const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
-      let end = lines.length - 1;
-      while (end >= 0 && !lines[end].trim()) end--;
-      if (end < 0) return false;
-      const legend = lines[end].trim();
-      if (!GROK_LEGEND_QUESTION.test(legend) && !GROK_LEGEND_SCROLLBACK.test(legend)) return false;
-
-      const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
-      const first = Math.max(0, end - 14);
-      const current = lines.slice(first, end + 1);
-      const find = (predicate: (line: string) => boolean, from = 0) => {
-        for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
-        return -1;
-      };
-      const title = find(line => line === "You hit your weekly limit.");
-      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
-      if (title < 0 || submit < 0) return false;
-      // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
-      // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
-      const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
-      const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
-        grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
-        grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
-      if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
-      const upgrade = options[0].i, credits = options[1].i;
-      if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
-      // The Grok keyboard legend must immediately follow the choice footer;
-      // another composer or screen below the modal makes the old text stale.
-      const between = current.slice(submit + 1).map(text).filter(Boolean);
-      return between.length === 1 && (GROK_LEGEND_QUESTION.test(between[0]) || GROK_LEGEND_SCROLLBACK.test(between[0]));
+    isActive: pane => grokWeeklyLimitActive(pane, "question"),
+    answerDetail: () => {
+      // The daemon has one autoResolvedDialogKey: this X claim replaces Try Again's. Drop the
+      // in-flight pending flag so a later poll cannot send Down×2+Enter again on this episode.
+      pending.value = false;
+      noteGrokWeeklyLimitSeen(instanceDir);
+      return null;
     },
+  };
+}
+
+/**
+ * After the recorded reset: Down×2 then Enter on Try Again.
+ * Unique autoResolutionKey so a still-limited re-show falls through to Shift+x on the next scan.
+ *
+ * The list does not wrap (1.0.77 offline: Down on option 3 stays on 3, `down3.esc.txt`; Down×2 from option 2 is
+ * 2→3→3, `from2-downx2.esc.txt`). Down×2 from any start therefore ends on Try Again (1→3, 2→3 clamped, 3→3), so
+ * the sequence is start-independent. Daemon `capture-pane -p` has no SGR 7. A non-default start is reachable
+ * (View/terminal arrows before the reset; a mid-sequence abort after one Down; a later auto-resolved dialog
+ * overwriting the one-slot runtime claim so Try Again can run again in that spawn).
+ *
+ * Try Again is consumed on the reset file (`tryAgainConsumed`) independently of that one-slot claim, so an
+ * ignored Shift+x cannot re-arm Enter against the same still-limited screen. Re-arm only for a new pause
+ * episode (Shift+x after a consumed Try Again rewrites the clock). If that durable write fails, fail closed:
+ * do not send Enter (claimFailed); Shift+x still matches.
+ *
+ * isActive has a side effect: when the modal is gone and pending is set it clears the reset file. The daemon
+ * calls isActive from every probe and scan. A future "pure matcher" refactor must keep that clear — alpha
+ * re-reads the pane before each key, so the clock cannot be dropped in answerDetail.
+ */
+function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: GrokTryAgainGate): RuntimeDialog {
+  const pattern = /You hit your weekly limit\./;
+  // Same array the daemon iterates after answerDetail. Main does not rematch before the first
+  // key; emptying it on a failed durable claim is the fail-closed gate before Enter.
+  const keys = ["Down", "Down", "Enter"];
+  return {
+    pattern,
+    keys,
+    description: "Grok Build weekly-limit reset (Grok 週限) — Try Again after the recorded reset",
+    blocksDelivery: true,
+    inputBlocked: true,
+    verifyAfterKeys: true,
+    autoResolutionKey: "grok-weekly-limit-try-again",
+    answeredByAgend: true,
+    // Stay matched through the Down×2+Enter sequence: answerDetail runs before the keys, and alpha re-reads the
+    // pane before each key. Clearing the clock there made isActive false and sent nothing. Drop the clock once
+    // the modal is gone (success, or the next Shift+x will write a fresh one). After the sequence, consumed
+    // on the reset file keeps isActive false even if pending was cleared by the X fallback.
+    isActive: pane => {
+      const modal = grokWeeklyLimitActive(pane, "question", { tryAgain: true });
+      if (!modal) {
+        if (pending.value) {
+          pending.value = false;
+          clearGrokWeeklyReset(instanceDir);
+        }
+        pending.claimFailed = false;
+        return false;
+      }
+      if (pending.value) return true;
+      if (pending.claimFailed) return false;
+      const rec = readGrokWeeklyReset(instanceDir);
+      return rec !== null && Date.now() >= rec.resetAt && rec.tryAgainConsumed !== true;
+    },
+    answerDetail: () => {
+      if (!markGrokWeeklyTryAgainConsumed(instanceDir)) {
+        pending.claimFailed = true;
+        pending.value = false;
+        keys.length = 0;
+        return { tryAgainConsumed: false };
+      }
+      pending.value = true;
+      pending.claimFailed = false;
+      return { tryAgainConsumed: true };
+    },
+  };
+}
+
+/** 1.0.77: Esc:scrollback unbinds Shift+x; Space (the legend's Tab/Space:question) restores the picker. */
+function grokWeeklyLimitScrollbackDialog(): RuntimeDialog {
+  const pattern = /You hit your weekly limit\./;
+  return {
+    pattern,
+    keys: [" "],
+    literalKeys: true,
+    description: "Grok Build weekly limit scrollback (Grok 週限) — Space returns to the picker so Shift+x can dismiss",
+    blocksDelivery: true,
+    inputBlocked: true,
+    verifyAfterKeys: true,
+    autoResolutionKey: "grok-weekly-limit-scrollback",
+    answeredByAgend: true,
+    isActive: pane => grokWeeklyLimitActive(pane, "scrollback"),
   };
 }
 
@@ -117,6 +225,111 @@ export function parseGrokModelsOutput(output: string): import("./types.js").Mode
   return models;
 }
 
+/** Rows Grok paints under the live box: the keyboard legend, a version/login line. */
+const GROK_BOX_FOOTER_MAX_ROWS = 4;
+/** Rows a box may hold before the reader stops believing it is one. */
+const GROK_BOX_MAX_ROWS = 40;
+
+/**
+ * #3199: Grok Build's live input box, read as a region — the same kind of evidence
+ * Claude Code's `readClaudeInputBox` (#1200) gives the daemon.
+ *
+ * The live box is a bottom-anchored `╭─…╮` / `│ ❯ … │` / `╰─…╯` triple whose
+ * corners line up. Transcript echoes (`     ❯ <text>  <time>` above the box) are
+ * never input. Trust, weekly-limit and approval cards use `┃` or no frame, so
+ * they return null: `finishHumanReceipt` still refuses output-edge / unverified
+ * proof, and forwards still require `delivered`.
+ *
+ * Captured from grok 1.0.52–1.0.70 audit panes (`tests/fixtures/grok-1.0.*-audit`)
+ * and the watcher fixtures. A live draft is `06-after-cancel` (`│ ❯ stall forever b`).
+ *
+ * Borders are located by terminal column (`displayWidth`: CJK 2, combining `\p{M}` 0,
+ * box-drawing 1). UTF-16 indexes are not columns: a CJK inner shifts the closer
+ * left in the string, and a combining inner can put an extra `│` at the top `╮`'s
+ * UTF-16 offset while the real closer (and an unsent id) sit further right.
+ */
+export function readGrokInputBox(pane: string): InputBox | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let bottom = -1;
+  for (let i = rows.length - 1, footer = 0; i >= 0; i--) {
+    const row = rows[i]!;
+    const left = row.indexOf("╰");
+    const right = row.lastIndexOf("╯");
+    if (left >= 0 && right > left) { bottom = i; break; }
+    if (row.trim() !== "" && ++footer > GROK_BOX_FOOTER_MAX_ROWS) return null;
+  }
+  if (bottom < 1) return null;
+  const leftIdx = rows[bottom]!.indexOf("╰");
+  if (leftIdx < 0) return null;
+  const leftCol = displayWidth(rows[bottom]!.slice(0, leftIdx));
+
+  let top = -1;
+  for (let i = bottom - 1; i >= 0 && bottom - i <= GROK_BOX_MAX_ROWS + 1; i--) {
+    const row = rows[i]!;
+    const atLeft = indexAtDisplayCol(row, leftCol);
+    if (atLeft >= 0 && row[atLeft] === "╭" && row.lastIndexOf("╮") > atLeft) { top = i; break; }
+    if (atLeft < 0 || row[atLeft] !== "│") return null;
+  }
+  if (top < 0 || bottom - top < 2) return null;
+  // Inner `│` and the top `╮` line up in terminal columns. The bottom `╯` may sit
+  // further right: a long model label (`Grok 4.5 (high) · always-approve`) grows
+  // that row past the top rule (tests/fixtures/grok-watcher-idle.pane.txt).
+  const rightIdx = rows[top]!.lastIndexOf("╮");
+  const rightCol = displayWidth(rows[top]!.slice(0, rightIdx));
+  const bottomRightCol = displayWidth(rows[bottom]!.slice(0, rows[bottom]!.lastIndexOf("╯")));
+  if (rightCol <= leftCol || bottomRightCol < rightCol) return null;
+  if (!frameAt(rows[top]!, leftCol, rightCol, "╭", "╮")) return null;
+
+  const lines: string[] = [];
+  for (let i = top + 1; i < bottom; i++) {
+    const sides = frameAt(rows[i]!, leftCol, rightCol, "│", "│");
+    if (!sides) return null;
+    const content = rows[i]!.slice(sides.left + 1, sides.right);
+    if (lines.length === 0) {
+      const prompt = /^ ❯ ?(.*)$/.exec(content);
+      if (!prompt) return null;
+      lines.push(prompt[1]!.trimEnd());
+    } else {
+      if (!content.startsWith(" ")) return null;
+      lines.push(content.slice(1).trimEnd());
+    }
+  }
+  if (lines.length === 0) return null;
+  return { text: lines.join("\n").trimEnd(), collapsedPastes: 0 };
+}
+
+/** UTF-16 index of the first positive-width character whose display column starts at `col`. */
+function indexAtDisplayCol(s: string, col: number): number {
+  let display = 0;
+  let i = 0;
+  for (const ch of s) {
+    const w = displayWidth(ch);
+    if (w > 0) {
+      if (display === col) return i;
+      if (display > col) return -1;
+      display += w;
+    }
+    i += ch.length;
+  }
+  return -1;
+}
+
+/** Cell-aligned `leftCh`/`rightCh` at `leftCol`/`rightCol`; leftover outside the frame is not a box. */
+function frameAt(
+  row: string,
+  leftCol: number,
+  rightCol: number,
+  leftCh: string,
+  rightCh: string,
+): { left: number; right: number } | null {
+  const left = indexAtDisplayCol(row, leftCol);
+  const right = indexAtDisplayCol(row, rightCol);
+  if (left < 0 || right <= left) return null;
+  if (row[left] !== leftCh || row[right] !== rightCh) return null;
+  if (row.slice(0, left).trim() !== "" || row.slice(right + 1).trim() !== "") return null;
+  return { left, right };
+}
+
 /**
  * Grok Build (xAI) — https://docs.x.ai/build/cli
  *
@@ -141,6 +354,8 @@ export class GrokBackend implements CliBackend {
   // Cached from buildCommand/writeConfig so getSessionId() (which takes no args)
   // can scope to grok's per-cwd session directory.
   private workingDirectory?: string;
+  /** Try-again keys are in flight: keep matching until the modal leaves (see grokWeeklyLimitTryAgainDialog). */
+  private readonly grokWeeklyTryAgainPending: GrokTryAgainGate = { value: false, claimFailed: false };
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("grok");
@@ -150,7 +365,11 @@ export class GrokBackend implements CliBackend {
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
+  private launchResumes = false;
+  resumesPreservedQuotaHistory(): boolean { return this.launchResumes; }
+
   buildCommand(config: CliBackendConfig): string {
+    this.launchResumes = false;
     this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
@@ -164,7 +383,7 @@ export class GrokBackend implements CliBackend {
     // from getSessionId(); skip on crash recovery (skipResume) for a clean start.
     if (!config.skipResume) {
       const sid = this.storedSessionId();
-      if (sid) cmd += ` --resume ${sid}`;
+      if (sid) { cmd += ` --resume ${sid}`; this.launchResumes = true; }
     }
     if (config.model) {
       const model = validateModel(config.model);
@@ -313,6 +532,15 @@ export class GrokBackend implements CliBackend {
     return /^[ \t]*[\u2800-\u28FF]\s+\S[^\n]*…[^\n]*\[stop\]/mu;
   }
 
+  /**
+   * #3199: the live input box, read structurally (`readGrokInputBox`). Same role as
+   * Claude Code's `readInputRow` (#1200): a unique-id echo is only a human-receipt
+   * proof when this reader can still see the boxed `❯`. Dialogs have no box.
+   */
+  readInputRow(pane: string): InputBox | null {
+    return readGrokInputBox(pane);
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
     // error — none of the patterns below match it, and none should be added that do.
@@ -384,13 +612,17 @@ export class GrokBackend implements CliBackend {
   }
 
   getStartupDialogs(): StartupDialog[] {
+    const dir = this.instanceDir;
     return [
-      // Grok Build's weekly-limit picker is a paid-action modal. Keep it ahead
-      // of broad startup prompts and hold it for an operator: never choose a
-      // tier, buy credits, or submit the menu automatically.
-      // #2872: hold-only here: the startup scan does not verify a dismissal, so it could not raise the pause; the
-      // runtime scanner (which does) answers it once the scan is over.
-      { ...grokWeeklyLimitDialog(), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined },
+      // After the recorded reset: Try Again (question) or Space (scrollback) first so the ready pattern cannot
+      // mistake "Grok Build" in the credits row for a composer. Hold is the fallback (before the reset, and if
+      // Try Again is already claimed this launch). Never a paid option from startup.
+      grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
+      { ...grokWeeklyLimitScrollbackDialog(),
+        isActive: pane => grokWeeklyLimitActive(pane, "scrollback") && grokWeeklyResetDue(dir) },
+      { ...grokWeeklyLimitDialog(dir, this.grokWeeklyTryAgainPending), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined,
+        isActive: pane => grokWeeklyLimitActive(pane, "either"),
+        heldReason: () => { noteGrokWeeklyLimitSeen(dir); return null; } },
       // Animated intro logo (spinning braille X). It redraws continuously, so
       // AgEnD's idle detector (2s of silence) never fires and messages queue
       // forever. User-confirmed fix: one Enter skips to the ready prompt.
@@ -457,6 +689,7 @@ export class GrokBackend implements CliBackend {
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
+    const dir = this.instanceDir;
     return [
       // Same intro-logo skip as startup: if a respawn/crash leaves the pane on the
       // spinning splash, the 5s error-monitor cycle dismisses it without waiting
@@ -466,9 +699,11 @@ export class GrokBackend implements CliBackend {
         keys: ["Enter"],
         description: "Grok intro logo — skip to prompt",
       },
-      // This is a modal rather than a quota log line. Hold delivery until an
-      // operator resolves it; all available choices can incur paid usage.
-      grokWeeklyLimitDialog(),
+      // After the recorded reset, Try Again first (unique autoResolutionKey). Shift+x still matches so a
+      // still-limited re-show pauses again. Before the reset, only Shift+x — never a paid option.
+      grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
+      grokWeeklyLimitDialog(dir, this.grokWeeklyTryAgainPending),
+      grokWeeklyLimitScrollbackDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
       // --always-approve at launch; this is the net if that flag is absent/ignored.

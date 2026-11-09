@@ -115,6 +115,8 @@ export interface EnsureCloudflaredOptions {
   dataDir: string;
   /** Public web refuses arbitrary PATH executables; existing callers retain their policy. */
   pinnedOnly?: boolean;
+  /** Test seam (#3009): how long the PATH lookup may take (PATH_LOOKUP_MS). */
+  pathLookupMs?: number;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   arch?: string;
@@ -163,10 +165,26 @@ export interface EnsureCloudflaredResult {
 
 const inFlight = new Map<string, Promise<EnsureCloudflaredResult>>();
 
+/** #3009: how long the PATH lookup for the user's own cloudflared may take before AgEnD's own copy is used instead. */
+export const PATH_LOOKUP_MS = 10_000;
+function lookupWithin(lookup: Promise<string | null>, ms: number, signal?: AbortSignal): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  return Promise.race([
+    lookup,
+    new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), ms); }),
+    new Promise<null>(resolve => { onAbort = () => resolve(null); if (signal?.aborted) onAbort(); else signal?.addEventListener("abort", onAbort, { once: true }); }),
+  ]).finally(() => { clearTimeout(timer); if (onAbort) signal?.removeEventListener("abort", onAbort); });
+}
+
 /** A cloudflared to run: the user's own on PATH, else AgEnD's verified copy (downloaded when needed). */
 export async function ensureCloudflared(opts: EnsureCloudflaredOptions): Promise<EnsureCloudflaredResult> {
   throwIfCancelled(opts.signal);
-  const onPath = opts.pinnedOnly ? null : resolveBinary("cloudflared", opts.env ?? process.env);
+  // #3009: the PATH lookup is asynchronous; a PATH entry on a filesystem that never answers (a stalled network or
+  // automount) gets PATH_LOOKUP_MS, then the user's copy is skipped and AgEnD's own verified copy is used.
+  const onPath = opts.pinnedOnly ? null : await lookupWithin(resolveBinary("cloudflared", opts.env ?? process.env), opts.pathLookupMs ?? PATH_LOOKUP_MS, opts.signal);
+  // #3017 review (Prism P2): a cancel that landed during the lookup is not carried past it.
+  throwIfCancelled(opts.signal);
   if (onPath) return { path: onPath, source: "path" };
   const dir = join(opts.dataDir, "bin");
   const running = inFlight.get(dir);

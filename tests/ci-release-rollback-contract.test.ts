@@ -1,7 +1,7 @@
 /**
- * CI contract regression for node20-rollback-smoke (#1442 / #1441-A).
+ * CI contract regression for release-rollback-smoke (#1442 / #1441-A).
  *
- * P2 (Prism r2): node20-rollback-smoke declared `needs: setup` but referenced
+ * P2 (Prism r2): release-rollback-smoke declared `needs: setup` but referenced
  * `needs.detect-changes.outputs.packaging`. GitHub only populates `needs`
  * context from direct dependencies; detect-changes was absent, so the value
  * was always empty and heavy steps always ran.
@@ -18,7 +18,7 @@ import yaml from "js-yaml";
 const ROOT = join(import.meta.dirname ?? import.meta.url.replace(/\/[^/]+$/, ""), "..");
 const ci = yaml.load(readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf-8")) as {
   jobs: {
-    "node20-rollback-smoke": {
+    "release-rollback-smoke": {
       needs: string[];
       steps: Array<{ if?: string; name?: string }>;
     };
@@ -26,9 +26,9 @@ const ci = yaml.load(readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf-8
   };
 };
 
-const smoke = ci.jobs["node20-rollback-smoke"];
+const smoke = ci.jobs["release-rollback-smoke"];
 
-describe("node20-rollback-smoke CI contract", () => {
+describe("release-rollback-smoke CI contract", () => {
   it("has detect-changes as a direct dependency (not just setup)", () => {
     // GitHub's needs context only populates from direct deps.
     // If detect-changes is absent, needs.detect-changes.outputs.packaging
@@ -39,7 +39,7 @@ describe("node20-rollback-smoke CI contract", () => {
 
   it("every heavy step references needs.detect-changes.outputs.packaging", () => {
     const heavySteps = smoke.steps.filter(s =>
-      s.name && /pack|rollback proof/i.test(s.name),
+      s.name && /pack|previous release/i.test(s.name),
     );
     expect(heavySteps.length, "expected at least 2 heavy named steps").toBeGreaterThanOrEqual(2);
     for (const step of heavySteps) {

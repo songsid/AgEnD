@@ -131,21 +131,21 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 `access` is optional. **Omitting the entire block uses an `open` runtime fallback**, not `locked`; an existing persisted mode can still override it. To restrict chat access, explicitly set `mode: locked` and `allowed_users`.
 
-The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode`, an `allowed_users` array and, for pairing, the pairing limits explicitly.
+The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode` and an `allowed_users` array explicitly. Manage the bot’s allowed users in **Settings → Chat & connections → the bot → Allowed users (primary bot)**.
 
 | Field | Type | Whole-block fallback | Description |
 |-------|------|----------------------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`/`pairing` admit the effective allowlist; `pairing` also accepts `/pair` requests. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` and the legacy `pairing` alias admit the effective allowlist; access codes are no longer issued. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | Unioned with the persisted list; IDs compare as strings |
-| `max_pending_codes` | number | `0` | Max distinct users with pending pairing codes; set a positive limit for pairing |
-| `code_expiry_minutes` | number | `0` | Pairing code TTL in minutes; set a positive duration for pairing |
+| `max_pending_codes` | number | `0` | Legacy compatibility field; unused |
+| `code_expiry_minutes` | number | `0` | Legacy compatibility field; unused |
 
 **Persisted state and administration:**
 
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
-- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; approved pairing adds to the saved list.
+- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; existing saved grants are retained. Old pending codes are inert and cannot grant access.
 - Under `locked`/`pairing`, revocation must remove the grant from both lists; changing only one can leave access enabled. `open` does not restrict users in the first place.
-- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
+- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or a saved chat grant alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
 
 #### channel.options (Discord)
 
@@ -253,10 +253,10 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `resume_interrupted_work` | boolean | inherited | Override automatic task-work continuation for this instance. `false` leaves interrupted work deferred and keeps journal observations. Takes effect without restarting the instance. |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode. `"mcp"` is the default for every backend, Antigravity included; `"cli"` opts into `agend-agent` HTTP commands |
-| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (30), `"minimal"` (9). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
+| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (30), `"minimal"` (9). Not user-settable: `"general"` (administrator/dispatcher profile — includes the full orchestration tool set) is assigned internally to General instances only — setting it by hand fails validation. |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | How much of a bot-to-bot (cross-instance) message is posted in this instance's topic and web chat, on whichever side it is: `full` the whole message (as before), `summary` one line, `hidden` nothing. Set under `defaults` for the fleet (also with `/visibility`), here to override it for one instance; Settings has both. Applies at once, without a restart. Delivery and the Mirror Topic are never affected — see [features](features.md#bot-to-bot-message-visibility). |
-| `dashboard` | object | all allowed | Which dashboard features this instance may use, on top of `tool_set`: `appearance` (its own look — theme, pictures, widgets, ambient, effects, mod proposals), `task_board` (the `task` tool), `web_settings` (Settings → Look for the person) (Office is configured separately with `office_access`). `false` switches one off: its tools are refused with the reason at each call (no restart) and leave the agent's tool list at once (its MCP server follows fleet.yaml); without the task board, an agent's instructions no longer tell it to use the board, and switching it back on sends the agent a notice. **A new fleet** (`agend init`, `agend quickstart`, the setup page) is written with `defaults.dashboard.task_board: false`: the task board is off until you set it to `true` (or remove the line), or tick it in Settings. An existing fleet.yaml is never rewritten. `defaults.dashboard` sets it for every instance; an instance's own merges key by key (`dashboard: { task_board: false }`). In Settings: an agent's dialog → Advanced → Dashboard access, and Agent defaults. Switching off applies at once; switching on is confirmed. |
+| `dashboard` | object | all allowed | Which dashboard features this instance may use, on top of `tool_set`: `appearance` (its own look — theme, pictures, widgets, ambient, effects, mod proposals), `task_board` (the `task` tool), `web_settings` (Settings → Look for the person) (Office is configured separately with `office_access`). `false` switches one off: its tools are refused with the reason at each call (no restart) and leave the agent's tool list at once (its MCP server follows fleet.yaml); without the task board, an agent's instructions no longer tell it to use the board, and switching it back on sends the agent a notice. An agent with the task board off is handed no cards: the board refuses it as a card's (or a `task`-tool task's) new assignee, from the dashboard and from other agents, and the dashboard's assignee pickers grey it out; it gets no task board notices. Cards it already had stay assigned to it. **A new fleet** (`agend init`, `agend quickstart`, the setup page) is written with `defaults.dashboard.task_board: false`: the task board is off until you set it to `true` (or remove the line), or tick it in Settings. An existing fleet.yaml is never rewritten. `defaults.dashboard` sets it for every instance; an instance's own merges key by key (`dashboard: { task_board: false }`). In Settings: an agent's dialog → Advanced → Dashboard access, and Agent defaults. Switching off applies at once; switching on is confirmed. |
 | `office_access` | boolean | `false` | Allow this agent to use `office_view` / `office_set`. Inherits `defaults.office_access`; off unless true. Shown with Dashboard access in Settings. Turning on requires confirmation; turning off immediately refuses calls and removes tools. Changing the default immediately refreshes inheriting agents; explicit instance overrides remain in force. Stored outside `dashboard` so 2.3.1 and 2.2.6 accept the YAML and ignore Office. Existing `dashboard.office` is migrated on startup/accepted reload with a `.bak` backup; managed saves write only this field. |
 | `office_pack_access` | boolean | `false` | Allow this agent to change the Office view's skin packs, which everyone on the fleet sees: `office_pack_check`, `office_pack_upload`, `office_pack_delete`, `office_pack_restore`, `office_pack_list`, `office_set_style` (#2692; see [Let an agent manage skin packs](office.md#let-an-agent-manage-skin-packs)). Its own switch, separate from `office_access`; inherits `defaults.office_pack_access`; off unless true. Shown with Dashboard access in Settings (**Office skin packs**). Turning on requires confirmation; turning off immediately refuses calls and removes tools. Stored outside `dashboard`, as `office_access`, so 2.3.1 and 2.2.6 accept the YAML and ignore it; a transitional `dashboard.office_packs` is moved here. The approval mode for agents' pack changes (at once, or a fleet admin's yes first — the default) is chosen on the Office page and kept beside the packs (`web-office-skins/.agent-changes.json`), not in fleet.yaml; limits: 20 batches and 200 MiB an hour per agent, 640 MiB of packs on disk with their previous versions. |
 | `board_cards_at_once` | number | `1` | How many task board cards handed to this instance it may have in progress at once; claiming another at the limit is refused. A whole number of at least 1. Cards the instance opened for itself never count. Raise it for a role that works on several handed-out cards (a reviewer). Read at each claim, so it applies at once. See [features](features.md#on-the-dashboard-fleet--tasks). |
@@ -590,6 +590,8 @@ handover or return those fields.
 CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
 ```
 
+A Codex agent can also set `backend_options.codex.speed: fast | standard` (2.3.4): see **Codex speed** in [features](features.md).
+
 A Codex profile changes **only the source of `auth.json`**. The instance keeps its
 own CODEX_HOME and private `config.toml`; conversation and thread/state/memory
 stores remain shared. A profile switch does not deliberately force a fresh
@@ -720,11 +722,12 @@ Ambient effects (falling petals, click stars and other data-only presets, `set_w
 ## Data directory permissions
 
 AgEnD creates its home (`~/.agend`, or `AGEND_HOME`) with mode `0700`, including on hosts with umask `0002`.
-If an existing real directory belongs to the current user and permits group/other writes, AgEnD tightens that
-root to `0700` and logs one line. Existing files and non-writable roots are left unchanged. A foreign-owned home
+If an existing real directory belongs to the current user and gives the group or others any access (for example
+`0755` or `0750`), AgEnD tightens that root to `0700` and logs one line. Files inside are not changed recursively. A foreign-owned home
 or a path containing a symlink is refused; use a real directory owned by the account running AgEnD. The local
 operator directory and sockets retain their separate private-permission checks. The live shell/WSL installer
-prepares this boundary before running older releases' setup code too.
+prepares this boundary before running older releases' setup code too. From 2.3.4 (#3083) `daemon.log` and its
+rotated files are written `0600`, and an existing home is tightened on the first start after the update.
 
 ### Browser backend sign-in during first setup
 
@@ -737,3 +740,33 @@ Sign-in controls require the current setup cookie on this computer; they are ref
 `agend setup --backend-signin-capabilities` prints installer capability JSON without opening setup or clearing its completion marker. The Windows installer requires version-1 setup, dashboard and installer capability flags before using the new flow. It installs AgEnD first, then opens the backend checklist in the setup page. Older packages keep the console fallback. A resumed, already-configured install opens the same checklist on the dashboard with `agend web --code --backend-signins kiro-cli,claude-code,codex`; this navigation alone never starts a login. Existing installer progress IDs stay compatible. The final status uses fresh authentication checks, so a skipped login is never reported as signed in. Antigravity remains an explicit console fallback; its passive device-auth bridge has not been enabled.
 
 On the directly reached dashboard, only a current local admin session can use browser sign-in. Agents' header tokens, read sessions, guests and public links cannot read hints or send answers. Default Kiro/Claude/Codex accounts use the named controls; credential profiles retain their existing flow. **Use console fallback** is an explicit choice for an unsupported screen. The shell banner reopens an active attempt. A successful login invokes the existing recovery for that backend's default-account agents; merely reusing already-valid credentials does not restart running agents. Login, install and legacy/profile flows share one writer reservation.
+
+### Quota reminders
+
+Settings → Notifications edits `defaults.quota_notice` without restarting agents:
+
+```yaml
+defaults:
+  quota_notice:
+    enabled: true
+    thresholds: [10]       # percent remaining, not percent used
+    periods: [weekly]     # session, hourly, daily, weekly, monthly
+    target: general       # General or a configured fleet instance's topic
+    backends:
+      kiro-cli:
+        periods: [monthly]
+instances:
+  worker:
+    quota_notice:
+      enabled: false      # this agent contributes no reminder rules
+```
+
+These are the built-in defaults even when omitted. Rules inherit fleet → backend → agent; arrays replace. Thresholds are up to eight distinct finite percentages from 1 to 99. Empty thresholds or periods disable that rule. Fleet agents and ClassicBot rooms can override enabled, thresholds and periods; the destination is fleet-wide. Enabled agents sharing a backend and credential profile contribute the union of their rules. Turning one agent off does not mute the others.
+
+Only fresh measured percentages with a known quota period and future reset qualify. Session and hourly are distinct. Stale, unlimited, expiry-only and unsupported readings produce no reminder. CLI statusline/relay observations must also be fresh. Muse freshness is checked per quota window; plan-only and other-window updates do not refresh retained readings. Legacy Muse windows need a new measured frame before reminders resume. Vendor overage counts as 0% remaining. No additional provider polling is introduced. Account identity is the backend plus the credential source/profile on this execution host; aliases are not merged by email or display name. Remote-machine credentials require remote usage telemetry and cannot use the fleet host's reading.
+
+A private `quota-notices.json` reserves account/window/threshold dispatches before posting. It survives restarts and destination changes; a failed or unknown external delivery is not automatically resent. Invalid or unwritable state holds optional reminders. Keep this file when backing up the fleet. A real new quota window permits new reminders; small reset drift does not. This is at-most-once dispatch, not confirmed delivery. Notices go to the selected existing topic (or Notices on a web-only fleet); a missing target does not silently select another agent.
+
+Reminders need a readable fresh usage row and a ready General/Notices or selected topic target. The old CLI running-low line is not a fallback when those are unavailable. If dispatch state is corrupt or unreadable, restore a valid backup and restart AgEnD; do not delete it to retry a possibly submitted reminder. The warning is logged and reminders remain held until recovery.
+
+Only low-quota reminders are configurable. Hard exhausted/blocked CLI messages, per-agent pause and auto-continue state, and the existing quota verification/history fences remain active.

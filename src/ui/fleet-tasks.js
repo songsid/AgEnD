@@ -15,7 +15,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, AssigneeOption, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
 
@@ -107,6 +107,8 @@ export function TaskBoardTab({ lease }) {
   const projects = Array.isArray(state.data.projects) ? state.data.projects : [];
   // #2355 review: the names a project's lead may be, as the server accepts them (the fleet's instances).
   const leads = Array.isArray(state.data.leads) ? state.data.leads : [];
+  // The instances with the task board switched off: the board hands them no cards, so the pickers do not offer them.
+  const boardOff = Array.isArray(state.data.boardOff) ? state.data.boardOff : [];
   // The server's numbers cover every card (finished ones are not all on the board); computed here only without them.
   const stats = (key) => (state.data.stats && state.data.stats[String(key)]) || projectStats(key, cards);
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
@@ -117,9 +119,9 @@ export function TaskBoardTab({ lease }) {
   return html`<div class="tb">
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
     ${body}
-    ${openId ? html`<${CardDialog} key=${openId} id=${openId} tick=${tick} projects=${projects} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
+    ${openId ? html`<${CardDialog} key=${openId} id=${openId} tick=${tick} projects=${projects} boardOff=${boardOff} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
       onClose=${closeCard} onOpen=${openCard} reloadBoard=${reload} />` : null}
-    ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} onClose=${() => setDialog(null)}
+    ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} boardOff=${boardOff} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} leads=${leads} onClose=${() => setDialog(null)}
@@ -471,7 +473,7 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
 
 // ── Dialogs: a new main task, a project ───────────────────
 
-function CreateMainDialog({ projects, project, onClose, onCreated }) {
+function CreateMainDialog({ projects, project, boardOff = [], onClose, onCreated }) {
   const { instances } = useStore(appStore);
   const active = projects.filter((p) => !p.archived);
   const [f, setF] = useState({ project: project === null || project === undefined ? "" : String(project), title: "", goal: "", scope: "", acceptance: "", context: "", size: "", priority: "normal", assignee: "", needsReview: true });
@@ -502,7 +504,7 @@ function CreateMainDialog({ projects, project, onClose, onCreated }) {
       ${field(t("tasks.definition"), html`<textarea rows="3" placeholder=${t("tasks.definitionHint")} value=${f.acceptance} onInput=${set("acceptance")}></textarea>`)}
       ${field(t("tasks.context"), html`<textarea rows="2" maxlength="1000" placeholder=${t("tasks.contextHint")} value=${f.context} onInput=${set("context")}></textarea>`)}
       <div class="tb-form-row">
-        ${field(t("tasks.assignee"), html`<select value=${f.assignee} onChange=${set("assignee")}><option value="">${t("tasks.nobody")}</option>${instances.map((i) => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select>`)}
+        ${field(t("tasks.assignee"), html`<select value=${f.assignee} onChange=${set("assignee")}><option value="">${t("tasks.nobody")}</option>${instances.map((i) => html`<${AssigneeOption} key=${i.name} name=${i.name} boardOff=${boardOff} />`)}</select>`)}
         ${field(t("tasks.size"), html`<select value=${f.size} onChange=${set("size")}><option value="">${t("tasks.sizeNone")}</option><option value="S">${t("tasks.sizeS")}</option><option value="M">${t("tasks.sizeM")}</option><option value="L">${t("tasks.sizeL")}</option></select>`)}
         ${field(t("tasks.priority"), html`<select value=${f.priority} onChange=${set("priority")}>${["urgent", "high", "normal", "low"].map((p) => html`<option key=${p} value=${p}>${t(`tasks.${p}`)}</option>`)}</select>`)}
       </div>

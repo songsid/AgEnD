@@ -70,6 +70,8 @@ import { resolveTz } from "./tz-utils.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
+import { taskBoardOffNames } from "./dashboard-permissions.js";
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -516,6 +518,8 @@ export interface WebApiContext {
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
+  /** delete_instance's removal: the agent, then its own topic (by default), with the platform's answer. */
+  removeInstanceAndTopic?(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
   readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void, adapterId?: string, execution?: SettingsExecution): Promise<void> };
@@ -2551,10 +2555,14 @@ export function handleWebRequest(
           return;
         }
         const execution = settingsRequestExecution(req);
-        if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
+        // The same removal as delete_instance: the agent, then its own topic (the user's default), said truthfully.
+        let topic: TopicDeleteOutcome | null = null;
+        if (ctx.removeInstanceAndTopic) {
+          topic = await ctx.removeInstanceAndTopic(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), { deleteTopic: true, ...(execution ? { execution } : {}) });
+        } else if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
         else await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
         ctx.emitSseEvent("status", ctx.getUiStatus());
-        json(res, 200, { deleted: name });
+        json(res, 200, { deleted: name, ...topicFields(name, topic) });
       } catch (err) {
         json(res, 500, { error: (err as Error).message });
       }
@@ -2773,7 +2781,10 @@ export function handleWebRequest(
         // board for a revision, so it is built once per (revision, done=all, minute) — the minute for the 14-day
         // window. The public link's reads are filtered per request (hidden instances) and are built each time.
         // #2757 review: and by the dispatchers gone (a deleted one makes its cards the person's, the revision unchanged).
-        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}`;
+        // The instances with the task board switched off: no card is handed to them (the pickers mark them), and a
+        // fleet.yaml edit changes them with the revision unchanged.
+        const boardOff = taskBoardOffNames(ctx.fleetConfig).filter((n) => !hiddenName(n));
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
@@ -2782,7 +2793,7 @@ export function handleWebRequest(
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, stats: board.projectStats(ctx.dispatcherGone) });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;

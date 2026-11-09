@@ -85,17 +85,27 @@ describe("general tool profile", () => {
     }
   });
 
-  it("omits destructive / project-local verbs a dispatcher shouldn't carry", () => {
+  it("gives General every orchestration tool as AgEnD's administrator (decision 9e3bea6c, #3043)", () => {
     for (const t of ["delete_instance", "replace_instance", "stop_instance",
-      "checkout_repo", "deploy_template", "update_fleet_defaults"]) {
+      "pause_instance", "deploy_template", "teardown_deployment",
+      "create_team", "delete_team", "update_team",
+      "update_instance_config", "update_fleet_defaults",
+      "migrate_kiro_instance", "reconcile_kiro_instance", "update_decision"]) {
+      expect(TOOL_SETS.general).toContain(t);
+    }
+  });
+
+  it("still omits project-local repo and raw-config worker verbs", () => {
+    for (const t of ["checkout_repo", "release_repo", "get_fleet_config",
+      "get_instance_logs", "list_deployments", "validate_config"]) {
       expect(TOOL_SETS.general).not.toContain(t);
     }
   });
 
-  it("only references real tools and is materially smaller than full", () => {
+  it("only references real tools and is smaller than full", () => {
     const names = new Set(TOOLS.map(t => t.name));
     for (const t of TOOL_SETS.general) expect(names.has(t)).toBe(true);
-    expect(TOOL_SETS.general.length).toBeLessThanOrEqual(TOOL_SETS.worker.length);
+    expect(TOOL_SETS.general.length).toBeLessThan(TOOLS.length);
   });
 });
 

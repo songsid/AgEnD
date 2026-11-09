@@ -100,6 +100,8 @@ export interface FleetContext {
   saveFleetConfig(): void;
   getInstanceDir(name: string): string;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
+  /** #3055: a topic with this id is being deleted right now (its agent was deleted); binding it waits until it is over. */
+  isTopicDeletionInFlight?(topicId: number | string): boolean;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   /** Quarantine a provider-confirmed missing topic without deleting user data. */
   quarantineMissingTopic(

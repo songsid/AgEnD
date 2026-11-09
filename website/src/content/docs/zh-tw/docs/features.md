@@ -204,7 +204,7 @@ teams:
 |---|---|
 | Claude Code | 整合最完整 |
 | OpenAI Codex | 有原生輸入佇列；支援 session resume |
-| Kiro CLI | `kiro_ui` 可選 legacy 或 tui；v3 尚未支援 |
+| Kiro CLI | `kiro_ui` 可選 legacy 或 tui。kiro-cli 3.x 只跑 tui 的 agent：classic 的會放進「等你處理」並說明如何遷移（在 2.x 上用 `migrate_kiro_instance`） |
 | Antigravity CLI | 預設 MCP；設 `agent_mode: cli` 可改用 agend-agent 指令 |
 | Grok Build | 需要 Grok CLI 1.0.13 以上（`grok update`） |
 | Meta Muse Code | Escape 是取消；Ctrl+C 是離開 |
@@ -223,4 +223,4 @@ teams:
 
 - 只支援 macOS 和 Linux。Windows 請用 WSL — [Windows 安裝程式](/AgEnD/zh-tw/install-windows/)會幫你裝好
 - 全域 `enabledPlugins` 裡有官方 Telegram 外掛會造成 409 polling 衝突
-- Agent 預設跳過權限確認在跑，除非你替 instance 設 `skipPermissions: false` — Antigravity 例外，它一律以 `--dangerously-skip-permissions` 啟動。把它指向你在乎的東西之前，先讀安全性說明
+- Agent 預設跳過權限確認在跑，除非你替 instance 設 `skipPermissions: false`。把它指向你在乎的東西之前，先讀安全性說明

@@ -10,10 +10,12 @@
  * The real shortcuts are the user's Windows checklist; here the script runs in pwsh with COM and wsl.exe faked.
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { createServer, type ServerResponse } from "node:http";
+import { once } from "node:events";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
 import {
   SHORTCUTS_HINT_MARKER, SHORTCUTS_MARKER, buildShortcutsScript, detectWsl, encodePowershell, findPowershell, interopState,
   powershellArgs, runShortcuts, sharedShortcutsPs, shortcutsHintOnce, type RunResult, type ShortcutsHost,
@@ -211,12 +213,9 @@ describe("the hint after agend update", () => {
   });
 });
 
-const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
-describe.skipIf(!pwsh)("with pwsh: the encoded script itself", { timeout: 90_000 }, () => {
-  const dirs: string[] = [];
-  afterAll(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
-  // WScript.Shell is Windows-only: a function named New-Object comes before the cmdlet and fakes just the COM object.
-  const fakeCom = `function New-Object {
+const pwsh = hasPwsh;
+// WScript.Shell is Windows-only: a function named New-Object comes before the cmdlet and fakes just the COM object.
+const fakeCom = `function New-Object {
 param([Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][object[]]$ArgumentList, [string]$ComObject)
 if ($ComObject) {
   $shell = [pscustomobject]@{}
@@ -230,93 +229,203 @@ if ($PSBoundParameters.ContainsKey('ArgumentList')) { return Microsoft.PowerShel
 return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName
 }
 `;
-  /** A scratch Windows: a fake native wsl.exe that logs its calls, LOCALAPPDATA, a Desktop; runs an encoded script there. */
-  function scratchWindows() {
-    const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
-    const bin = join(dir, "bin"); mkdirSync(bin);
-    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
-    chmodSync(join(bin, "wsl.exe"), 0o755);
-    const local = join(dir, "local");
-    mkdirSync(join(dir, "Desktop"));
-    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, LOCALAPPDATA: local, HOME: dir, SystemRoot: join(dir, "Windows") };
-    const run = (script: string) => spawnSync("pwsh", powershellArgs(fakeCom + script), { encoding: "utf8", timeout: 60_000, env });
-    return { dir, bin, local, env, run };
-  }
-  it.each(["han", "o'neil"])("decodes, defines the shared code, writes both scripts and the record, and asks WSL for the marker as this user (%s)", (user) => {
-    const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
-    const bin = join(dir, "bin"); mkdirSync(bin);
-    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
-    chmodSync(join(bin, "wsl.exe"), 0o755);
-    const args = powershellArgs(fakeCom + buildShortcutsScript(shared, "Ubuntu-22.04", user));
-    const local = join(dir, "local");
-    mkdirSync(join(dir, "Desktop"));                                                // .NET on Linux names no Desktop until it exists
-    const r = spawnSync("pwsh", args, { encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, LOCALAPPDATA: local, HOME: dir, SystemRoot: join(dir, "Windows") } });
-    expect(r.stderr).toBe("");
-    expect(r.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
-    const restart = readFileSync(join(local, "AgEnD", "restart-agend.ps1"));
-    expect([...restart.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);                // UTF-8 with BOM, for 5.1's Chinese
-    // #2260 review: each saved script, parsed as PowerShell, has no error and calls with this user exactly.
-    const q = user.replace(/'/g, "''");
-    expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
-    expect(readFileSync(join(local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
-    for (const [file, call] of [["restart-agend.ps1", "Invoke-RestartAgend"], ["open-dashboard.ps1", "Invoke-OpenDashboard"]]) {
-      const check = spawnSync("pwsh", ["-NoProfile", "-Command", `$t = $null; $e = $null; $a = [System.Management.Automation.Language.Parser]::ParseFile('${join(local, "AgEnD", file)}', [ref]$t, [ref]$e)
-$c = @($a.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq '${call}' }, $true))[-1]
-Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[2].Value)`], { encoding: "utf8" });
-      expect(check.stdout, file).toContain("ERRORS=0");
-      expect(check.stdout, file).toContain(`USER=${user}\n`);
+
+function scratchWindows() {
+  const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-"));
+  const bin = join(dir, "bin"); mkdirSync(bin);
+  writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
+  chmodSync(join(bin, "wsl.exe"), 0o755);
+  const local = join(dir, "local");
+  mkdirSync(join(dir, "Desktop"));                                                // .NET on Linux names no Desktop until it exists
+  return { dir, bin, local };
+}
+
+/** The CLI script after the shared template. Production EncodedCommand still `exit 0`s; a batch dotsources, so that becomes `return`. */
+function writeTail(w: { dir: string }, distro: string, user: string, confirmedOver?: { distro: string; user: string }, name = "tail.ps1") {
+  const full = buildShortcutsScript(shared, distro, user, confirmedOver);
+  const i = full.lastIndexOf(shared);
+  if (i < 0) throw new Error("buildShortcutsScript lost the shared template");
+  writeFileSync(join(w.dir, name), full.slice(i + shared.length).replace(/\bexit 0\b/g, "return"));
+}
+
+async function pwshFile(script: string, env: Record<string, string> = {}, input = "") {
+  return shortcutBatch.run("shortcuts", "$script:OnWindows = $true; Remove-Item Function:wsl.exe\n" + script, { env, input });
+}
+
+const INVOKE_TAIL = `
+$script:OrigPath = $env:PATH
+function Invoke-Tail([string]$Root, [string]$TailFile) {
+  $env:PATH = (Join-Path $Root 'bin') + [IO.Path]::PathSeparator + $script:OrigPath
+  $env:LOCALAPPDATA = Join-Path $Root 'local'
+  $env:HOME = $Root
+  $env:USERPROFILE = $Root
+  $env:SystemRoot = Join-Path $Root 'Windows'
+  $env:TMPDIR = $Root
+  New-Item -ItemType Directory -Force -Path (Join-Path $Root 'Desktop') | Out-Null
+  $global:LASTEXITCODE = 0
+  . $TailFile
+}
+`;
+
+// GrokCore's #3128/#3129 already batches the cases. Keep that template, but charge
+// startup/compile only once to fixture setup, not to a monolithic behavior test.
+const shortcutBatch = new InstallerPsBatch({ shortcuts: fakeCom + "\n" + shared + "\n" + INVOKE_TAIL });
+
+describe.skipIf(!pwsh)("with pwsh: the encoded script itself", () => {
+  beforeAll(async () => {
+    expect(await shortcutBatch.run("shortcuts", "Write-Output 'WORKER_READY'")).toContain("WORKER_READY");
+  });
+  it("the CLI payload is the shared template, not ParseFile of the installer", () => {
+    expect(shared).toContain("function Install-AgendShortcuts");
+    expect(shared).toContain("function Test-InstallRecordAsSeen");
+    expect(shared).not.toContain("Parser]::ParseFile");
+    expect(shared).not.toContain("exit 0");
+    const full = buildShortcutsScript(shared, "Ubuntu-22.04", "han");
+    expect(full.startsWith("$ErrorActionPreference = 'Stop'")).toBe(true);
+    expect(full).toContain(shared);
+    expect(full).toContain("exit 0");
+    expect(powershellArgs(full)[0]).toBe("-NoProfile");
+  });
+
+  // Each behavior owns one batch completion signal and the unchanged 10 s case
+  // budget. Previously all eight shared one deadline, including five native children.
+  it.each([
+    { name: "fresh target", distro: "Ubuntu-22.04", user: "han", made: true },
+    { name: "quoted user", distro: "Ubuntu-22.04", user: "o'neil", made: true },
+    { name: "another Linux", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-24.04", user: "root" }, made: false },
+    { name: "same target", distro: "AgEnD", user: "root", record: { distro: "AgEnD", user: "root" }, made: true },
+    { name: "record changed after confirmation", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-B", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: false },
+    { name: "exact confirmed replacement", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-24.04", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: true },
+    { name: "user case differs", distro: "agend", user: "han", record: { distro: "AgEnD", user: "Han" }, made: false },
+    { name: "distro case differs, exact user", distro: "agend", user: "Han", record: { distro: "AgEnD", user: "Han" }, made: true },
+  ])("writes scripts/record only for the accepted target: $name", async ({ distro, user, record, seen, made }) => {
+    const w = scratchWindows();
+    try {
+      if (record) {
+        mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+        writeFileSync(join(w.local, "AgEnD", "install.json"), JSON.stringify(seen ?? record));
+      }
+      writeTail(w, distro, user, seen);
+      if (seen && record) writeFileSync(join(w.local, "AgEnD", "install.json"), JSON.stringify(record));
+      const out = await pwshFile(`
+$text = (Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')) | Out-String
+Write-Output ('CASE=complete MADE=' + [bool]($text -match '(?m)^AGEND_SHORTCUTS_MADE=2$'))
+Write-Output $text
+`, { CASE_ROOT: w.dir });
+      expect(out.split("\n")).toContain(`CASE=complete MADE=${made ? "True" : "False"}`);
+      for (const file of ["restart-agend.ps1", "open-dashboard.ps1"]) {
+        expect(existsSync(join(w.local, "AgEnD", file))).toBe(made);
+      }
+      expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual(made ? { distro, user } : record);
+      if (!made) {
+        expect(out.split("\n")).toContain(`AGEND_RECORD_OTHER=${record!.distro}|${record!.user}`);
+        expect(existsSync(join(w.dir, "wsl-calls.txt"))).toBe(false);
+        return;
+      }
+      expect(out.split("\n")).toContain("AGEND_SHORTCUTS_MADE=2");
+      expect(readFileSync(join(w.dir, "wsl-calls.txt"), "utf8")).toBe(`-d ${distro} -u ${user} --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+      const restart = readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"));
+      expect([...restart.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+      const q = user.replace(/'/g, "''");
+      expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend '${distro}' '${q}' -Wait | Out-Null`);
+      expect(readFileSync(join(w.local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard '${distro}' '${q}' -Wait | Out-Null`);
+      const lnk = readFileSync(join(w.local, "lnk.txt"), "utf8");
+      expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
+      expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+
+  it("reports batch completion only after the owned native marker child closes", async () => {
+    const w = scratchWindows();
+    let release: ServerResponse | undefined;
+    let entered!: () => void;
+    const childEntered = new Promise<void>(resolve => { entered = resolve; });
+    const server = createServer((_req, res) => { release = res; entered(); });
+    let running: Promise<string> | undefined;
+    try {
+      server.listen(0, "127.0.0.1"); await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Expected private loopback address");
+      // The real Process/pipe path stays in use. Its scratch executable signals
+      // entry, then waits for our response; no sleep or guessed observation window.
+      writeFileSync(join(w.bin, "wsl.exe"), `#!${process.execPath}\nconst fs = require('node:fs');\nfs.appendFileSync(${JSON.stringify(join(w.dir, "wsl-calls.txt"))}, process.argv.slice(2).join(' ')+'\\n');\nrequire('node:http').get(process.env.SHORTCUT_CHILD_GATE, r => { r.resume(); r.on('end', () => process.stdout.write('CHILD_COMPLETED\\n')); }).on('error', e => { console.error(e); process.exitCode=1; });\n`);
+      writeTail(w, "AgEnD", "root");
+      let settled = false;
+      running = pwshFile(`Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')\nWrite-Output 'CASE=child-closed'`, {
+        CASE_ROOT: w.dir, SHORTCUT_CHILD_GATE: `http://127.0.0.1:${address.port}/`,
+      }).then(out => { settled = true; return out; });
+      await Promise.race([childEntered, running.then(() => { throw new Error("Batch completed before its child entered"); })]);
+      expect(settled).toBe(false);
+      expect(readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n")).toHaveLength(1);
+      release!.end("release");
+      expect(await running).toMatch(/^CASE=child-closed$/m);
+      expect(settled).toBe(true);
+    } finally {
+      if (release && !release.writableEnded) release.end("cleanup");
+      if (running) await running.catch(() => {});
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+      rmSync(w.dir, { recursive: true, force: true });
     }
-    expect(JSON.parse(readFileSync(join(local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-22.04", user });
-    const lnk = readFileSync(join(local, "lnk.txt"), "utf8");
-    expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
-    expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
-    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
   });
-  it("an install.json for another Linux: the unconfirmed script changes nothing and says which; confirmed, it repoints", () => {
-    const w = scratchWindows();
-    mkdirSync(join(w.local, "AgEnD"), { recursive: true });
-    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
-    const first = w.run(buildShortcutsScript(shared, "AgEnD", "root"));
-    expect(first.stdout).toMatch(/^AGEND_RECORD_OTHER=Ubuntu-24\.04\|root$/m);
-    expect(first.stdout).not.toMatch(/AGEND_SHORTCUTS_MADE/);
-    expect(existsSync(join(w.local, "AgEnD", "restart-agend.ps1"))).toBe(false);
-    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-24.04", user: "root" });
-    const same = scratchWindows();                                                   // the same Linux and user: no question at all
-    mkdirSync(join(same.local, "AgEnD"), { recursive: true });
-    writeFileSync(join(same.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"root"}');
-    expect(same.run(buildShortcutsScript(shared, "AgEnD", "root")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
-    // #2279 review: a yes to replacing Ubuntu-24.04 does not replace a record changed meanwhile to Ubuntu-B.
-    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-B","user":"root"}');
-    const raced = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
-    expect(raced.stdout).toMatch(/^AGEND_RECORD_OTHER=Ubuntu-B\|root$/m);
-    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-B", user: "root" });
-    expect(existsSync(join(w.local, "AgEnD", "restart-agend.ps1"))).toBe(false);
-    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
-    const second = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
-    expect(second.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
-    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "AgEnD", user: "root" });
+  it("the saved restart/dashboard scripts invoke WSL for their recorded target", async () => {
+    const saved = scratchWindows();
+    try {
+      writeTail(saved, "AgEnD", "root");
+      const out = await pwshFile(`
+$made = (Invoke-Tail $env:SAVED_ROOT (Join-Path $env:SAVED_ROOT 'tail.ps1')) | Out-String
+Write-Output ('CASE=saved-make MADE=' + [bool]($made -match '(?m)^AGEND_SHORTCUTS_MADE=2$'))
+Remove-Item -LiteralPath (Join-Path $env:SAVED_ROOT 'wsl-calls.txt') -ErrorAction SilentlyContinue
+$env:PATH = (Join-Path $env:SAVED_ROOT 'bin') + [IO.Path]::PathSeparator + $script:OrigPath
+$env:LOCALAPPDATA = $env:SAVED_LOCAL
+$env:HOME = $env:SAVED_ROOT
+$env:USERPROFILE = $env:SAVED_ROOT
+$env:SystemRoot = Join-Path $env:SAVED_ROOT 'Windows'
+. (Join-Path $env:SAVED_LOCAL 'AgEnD/restart-agend.ps1')
+. (Join-Path $env:SAVED_LOCAL 'AgEnD/open-dashboard.ps1')
+Write-Output 'CASE=saved-ran'
+`, { SAVED_ROOT: saved.dir, SAVED_LOCAL: saved.local }, "y\n\n\n");
+      expect(out).toMatch(/^CASE=saved-make MADE=True$/m);
+      expect(out).toMatch(/^CASE=saved-ran$/m);
+      expect(out).toContain("AgEnD（Linux：AgEnD，使用者：root）");
+      const calls = readFileSync(join(saved.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
+      expect(calls.length).toBeGreaterThanOrEqual(3);
+      for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
+    } finally { rmSync(saved.dir, { recursive: true, force: true }); }
   });
-  it("#2279 review: the Linux name compares without case, the user name with it (Han and han are two people)", () => {
-    const w = scratchWindows();
-    mkdirSync(join(w.local, "AgEnD"), { recursive: true });
-    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"Han"}');
-    expect(w.run(buildShortcutsScript(shared, "agend", "han")).stdout).toMatch(/^AGEND_RECORD_OTHER=AgEnD\|Han$/m);
-    expect(w.run(buildShortcutsScript(shared, "agend", "Han")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+
+  it("saved invoke lines parse exact quoted users, and encoded Chinese executes unchanged", async () => {
+    const han = scratchWindows(), oneil = scratchWindows();
+    try {
+      writeTail(han, "Ubuntu-22.04", "han");
+      writeTail(oneil, "Ubuntu-22.04", "o'neil");
+      const b64 = encodePowershell("Write-Output '重新啟動 OK'");
+      const out = await pwshFile(`
+$null = Invoke-Tail $env:HAN_ROOT (Join-Path $env:HAN_ROOT 'tail.ps1')
+$null = Invoke-Tail $env:ONEIL_ROOT (Join-Path $env:ONEIL_ROOT 'tail.ps1')
+$t = $null; $e = $null
+foreach ($pair in @(
+  @($env:HAN_LOCAL, 'restart-agend.ps1', 'Invoke-RestartAgend', 'han'),
+  @($env:HAN_LOCAL, 'open-dashboard.ps1', 'Invoke-OpenDashboard', 'han'),
+  @($env:ONEIL_LOCAL, 'restart-agend.ps1', 'Invoke-RestartAgend', "o'neil"),
+  @($env:ONEIL_LOCAL, 'open-dashboard.ps1', 'Invoke-OpenDashboard', "o'neil")
+)) {
+  $path = Join-Path $pair[0] (Join-Path 'AgEnD' $pair[1])
+  $text = Get-Content -Raw -LiteralPath $path
+  $line = ($text -split [char]10 | ForEach-Object { $_.Trim([char]13) } | Where-Object { $_ -match [regex]::Escape($pair[2]) } | Select-Object -Last 1)
+  $a = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$t, [ref]$e)
+  $c = @($a.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $pair[2] }, $true))[-1]
+  Write-Output ("CASE=parse FILE=" + $pair[1] + " USER=" + $pair[3] + " ERRORS=" + $e.Count + " ASTUSER=" + $c.CommandElements[2].Value)
+}
+$bytes = [Convert]::FromBase64String('${b64}')
+$decoded = [Text.Encoding]::Unicode.GetString($bytes)
+Write-Output ("CASE=encoded " + (Invoke-Expression $decoded))
+`, { HAN_ROOT: han.dir, HAN_LOCAL: han.local, ONEIL_ROOT: oneil.dir, ONEIL_LOCAL: oneil.local });
+      for (const user of ["han", "o'neil"]) for (const file of ["restart-agend.ps1", "open-dashboard.ps1"]) {
+        expect(out.split("\n")).toContain(`CASE=parse FILE=${file} USER=${user} ERRORS=0 ASTUSER=${user}`);
+      }
+      expect(out).toMatch(/^CASE=encoded 重新啟動 OK$/m);
+    } finally { for (const w of [han, oneil]) rmSync(w.dir, { recursive: true, force: true }); }
   });
-  it("both saved scripts say first which Linux and user they open, then run wsl -d <that> -u <that>", () => {
-    const w = scratchWindows();
-    expect(w.run(buildShortcutsScript(shared, "AgEnD", "root")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
-    rmSync(join(w.dir, "wsl-calls.txt"), { force: true });
-    for (const [file, input] of [["restart-agend.ps1", "y\n\n"], ["open-dashboard.ps1", "\n"]] as const) {
-      const r = spawnSync("pwsh", ["-NoProfile", "-File", join(w.local, "AgEnD", file)], { encoding: "utf8", timeout: 60_000, input, env: w.env });
-      expect(r.stdout.split("\n").find(l => l.trim())!.trim(), file).toBe("AgEnD（Linux：AgEnD，使用者：root）");
-    }
-    const calls = readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
-    expect(calls.length).toBeGreaterThanOrEqual(3);                                  // restart, status, the dashboard's sign-in
-    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
-  });
-  it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
-    const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });
-    expect(r.stdout.trim()).toBe("重新啟動 OK");
-  });
+
 });

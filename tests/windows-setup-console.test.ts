@@ -1,70 +1,59 @@
-/**
- * Stage 5 in a narrow console (the user's, about 95 columns; 2026-10-26): the setup-code box broke apart, long Chinese
- * lines wrapped to column 0, and the once-a-tick status line redrew all the time — the screen flickered and the code could
- * not be selected (it was mistyped). Now: every line fits the real width (CJK counted as two cells), an ASCII box only when
- * it fits, the clipboard said right under the code, and no status redraw while the page is open.
- */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+/** Narrow-console rendering and quiet watching: real sliced installer functions, virtual process/clock, one pwsh. */
+import { afterAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
+import { installerPwshBatch, withInstallerClock, type InstallerPwshCase } from "./support/installer-pwsh-fixture.js";
 
-const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
-let hasPwsh = false;
-beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { stdio: "ignore" }); hasPwsh = true; } catch { hasPwsh = false; } });
-const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
-
-function run(body: string) {
-  const dir = mkdtempSync(join(tmpdir(), "agend-console-")); dirs.push(dir);
-  const script = join(dir, "t.ps1");
-  writeFileSync(script, `$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-$script:InstallLog = $null
-${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`], { encoding: "utf8", timeout: 60_000 });
-  return `${r.stdout}${r.stderr}`;
-}
-/** Display width as a console shows it: CJK and full-width forms two cells. */
-const cells = (s: string) => [...s].reduce((n, ch) => n + (/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1), 0);
-
-describe("stage 5's setup code in a narrow console", () => {
-  for (const cols of [80, 100]) {
-    it(`${cols} columns: every line fits, the code is on its own line in a box, and the clipboard is said right under it`, () => {
-      if (!hasPwsh) return;
-      const out = run(`function Get-StatusWidth { ${cols - 1} }
-Show-SetupCode 'GR7K-2QXM' $true $true 'http://127.0.0.1:19282/s/abcdef0123456789/'`);
-      const lines = out.split("\n").map(l => l.replace(/\r$/, "")).filter(l => !l.startsWith("  設定頁網址："));   // the URL is not wrapped: it is copied whole
-      for (const l of lines) expect(cells(l), l).toBeLessThanOrEqual(cols - 1);
-      const code = lines.findIndex(l => l.includes("G R 7 K - 2 Q X M"));
-      expect(code).toBeGreaterThan(0);
-      expect(lines[code - 1]).toMatch(/^  \+-+\+$/); expect(lines[code + 1]).toMatch(/^  \+-+\+$/);
-      expect(lines[code + 2]).toContain("已複製到剪貼簿");
-      expect(out).not.toMatch(/[┌┐└┘│─]/);                                   // no ambiguous-width box drawing
-    });
-  }
-
-  it("too narrow for the box: the code alone on its line, still whole", () => {
-    if (!hasPwsh) return;
-    const out = run(`function Get-StatusWidth { 29 }
-Show-SetupCode 'GR7K-2QXM' $false $true 'http://127.0.0.1:19280/s/x/'`);
-    expect(out).toMatch(/^  設定碼：  G R 7 K - 2 Q X M$/m);
-    expect(out).not.toContain("+---");
-  });
-
-  it("while the page is open the status line is not redrawn (no flicker); otherwise it is", () => {
-    if (!hasPwsh) return;
-    const count = (quiet: boolean) => run(`$script:draws = 0
+const source = readFileSync(join(import.meta.dirname, "..", "website/public/install-agend.ps1"), "utf8");
+const prelude = withInstallerClock([
+  "Get-DisplayWidth", "Split-DisplayLines", "Write-Wrapped", "Show-SetupCode", "Write-Ok", "Write-Warn", "Write-Info",
+  "Write-InstallLog", "Protect-LogText", "Format-Elapsed", "Join-ProcessArguments", "New-OutputTail", "Read-OutputTail", "Split-ToolOutput", "Get-LastSegment", "Invoke-Watched",
+].map(name => extractPsFunction(source, name)).join("\n"));
+const watch = (quiet: boolean) => `
+$script:draws = 0
+$script:process = [pscustomobject]@{ HasExited = $false; Handle = 1; ExitCode = 0 }
+$script:process | Add-Member ScriptMethod WaitForExit { }
 function Test-LiveConsole { $true }
 function Enter-StepConsole { $null }
+function Restore-StepConsole { param($Saved) }
+function Get-StatusWidth { 79 }
 function Write-StatusLine { $script:draws++; return 0 }
 function New-StatusConsole { @{ Top = { 0 }; Move = { param($r) }; Write = { param($t) }; Height = { 50 } } }
+function Start-Process { param($FilePath, $ArgumentList, [switch]$NoNewWindow, [switch]$PassThru, $RedirectStandardOutput, $RedirectStandardError)
+  if ($FilePath -ne 'inert-child') { throw 'Unexpected process' }
+  [IO.File]::WriteAllText($RedirectStandardOutput, ''); [IO.File]::WriteAllText($RedirectStandardError, '')
+  return $script:process
+}
+$script:FixtureTick = { if ($script:FixtureMilliseconds -ge 2000) { $script:process.HasExited = $true } }
 $script:WatchQuiet = $${quiet}
-$null = Invoke-Watched -Label 'wait' -Usually 'x' -File 'sh' -Arguments @('-c', 'sleep 2')
-Write-Output ('DRAWS=' + $script:draws)`);
-    expect(count(true)).toContain("DRAWS=0");
-    expect(count(false)).toMatch(/DRAWS=([4-9]|\d\d)/);
-  }, 30_000);                                                                // two pwsh starts; slow on a capped CPU
+$exitCode = Invoke-Watched -Label 'wait' -Usually 'x' -File 'inert-child'
+Write-Output ('DRAWS=' + $script:draws + ' EXIT=' + $exitCode + ' ELAPSED=' + $script:FixtureMilliseconds)
+`;
+const cases: Record<string, InstallerPwshCase> = {
+  ...Object.fromEntries([80, 100].map(cols => [`width-${cols}`, { prelude: "installer", body: `function Get-StatusWidth { ${cols - 1} }\nShow-SetupCode 'GR7K-2QXM' $true $true 'http://127.0.0.1:19282/s/abcdef0123456789/'` }])),
+  narrow: { prelude: "installer", body: "function Get-StatusWidth { 29 }\nShow-SetupCode 'GR7K-2QXM' $false $true 'http://127.0.0.1:19280/s/x/'" },
+  quiet: { prelude: "installer", body: watch(true) }, active: { prelude: "installer", body: watch(false) },
+};
+const batch = installerPwshBatch({ installer: prelude }, cases);
+afterAll(batch.cleanup);
+const output = (name: string) => { expect(batch.results[name]?.error).toBeNull(); return batch.results[name]!.out; };
+const cells = (s: string) => [...s].reduce((n, ch) => n + (/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1), 0);
+
+describe.skipIf(!batch.available)("stage 5's setup code in a narrow console", () => {
+  it.each([80, 100])("%i columns: every line fits, the ASCII code box and clipboard guidance stay together", cols => {
+    const out = output(`width-${cols}`);
+    const lines = out.split("\n").map(l => l.replace(/\r$/, "")).filter(l => !l.startsWith("  設定頁網址："));
+    for (const line of lines) expect(cells(line), line).toBeLessThanOrEqual(cols - 1);
+    const code = lines.findIndex(l => l.includes("G R 7 K - 2 Q X M")); expect(code).toBeGreaterThan(0);
+    expect(lines[code - 1]).toMatch(/^  \+-+\+$/); expect(lines[code + 1]).toMatch(/^  \+-+\+$/);
+    expect(lines[code + 2]).toContain("已複製到剪貼簿"); expect(out).not.toMatch(/[┌┐└┘│─]/);
+  });
+  it("too narrow for the box: the code remains whole on its own line", () => {
+    expect(output("narrow")).toMatch(/^  設定碼：  G R 7 K - 2 Q X M$/m); expect(output("narrow")).not.toContain("+---");
+  });
+  it("while the page is open no status redraw occurs; the same eight virtual ticks redraw otherwise", () => {
+    expect(output("quiet")).toContain("DRAWS=0 EXIT=0 ELAPSED=2000");
+    expect(output("active")).toContain("DRAWS=8 EXIT=0 ELAPSED=2000");
+  });
 });

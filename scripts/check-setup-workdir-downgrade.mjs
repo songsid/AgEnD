@@ -1,5 +1,5 @@
 // #2726: what the setup page writes for an agent given no working directory — its own workspace, written as the absolute
-// path <AGEND_HOME>/workspaces/<name> — loads unchanged on the published rollback loaders (2.3.1, 2.2.6): the same shape
+// path <AGEND_HOME>/workspaces/<name> — loads unchanged on the published rollback loaders (2.3.3): the same shape
 // every release writes. Web only and with a bot. Pure: no fleet, CLI, account or process use.
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
@@ -31,7 +31,7 @@ let checked = 0;
 try {
   for (const root of roots) {
     const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-    assert.ok(['2.3.1', '2.2.6'].includes(version), `unexpected rollback version ${version}`);
+    assert.ok(version === '2.3.3', `unexpected rollback version ${version}`);
     const { validateFleetConfig } = await import(pathToFileURL(join(resolve(root), 'dist/config-validator.js')).href);
     const { loadFleetConfig } = await import(pathToFileURL(join(resolve(root), 'dist/config.js')).href);
     for (const { kind, text } of written) {

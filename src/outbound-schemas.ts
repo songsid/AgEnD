@@ -167,14 +167,16 @@ export const TaskBoardArgs = z.object({
 export const PostDecisionArgs = z.object({
   title: NonEmptyString.describe("Short title for the decision"),
   content: NonEmptyString.describe("Full decision description"),
-  scope: z.enum(["project", "fleet"]).optional()
-    .describe("'project' (default) = same working directory. 'fleet' = all instances."),
+  scope: z.enum(["project", "team", "fleet"]).optional()
+    .describe("'team' = every member of a team, wherever they work (the default when you are in a team). 'project' = this exact working directory (the default when you are in no team). 'fleet' = every instance on the fleet: only for rules every team follows."),
+  team: z.string().optional()
+    .describe("The team for scope 'team' (one you are in). Default: your team, when you are in exactly one."),
   tags: z.array(z.string()).optional()
     .describe("Optional tags for categorization"),
   ttl_days: z.number().optional()
     .describe("Days until auto-archive. Default: permanent. Set e.g. 7 for temporary decisions."),
   supersedes: z.string().optional()
-    .describe("Decision ID to supersede (marks old one as superseded)"),
+    .describe("Decision ID to supersede (marks the old one superseded). Needs update_decision; the old one must be active and visible to you."),
 });
 
 export const ListDecisionsArgs = z.object({
@@ -522,7 +524,10 @@ export const UpdateFleetDefaultsArgs = z.object({
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
-    .describe("Whether to also delete the Telegram topic. Defaults to false."),
+    .describe("Also delete the agent's own chat topic, through its own bot. Defaults to true; false keeps the topic. "
+      + "On Discord the topic is a text channel: deleting it deletes its message history. The General topic and a "
+      + "topic another agent uses are never deleted. The result's topic_deleted is true only when the platform "
+      + "confirmed it; otherwise topic_reason says why the topic stayed (the agent is deleted either way)."),
 });
 
 export const ReplaceInstanceArgs = z.object({

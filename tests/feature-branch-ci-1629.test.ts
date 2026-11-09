@@ -16,7 +16,7 @@ describe("PR admission: main, release/** and feat/** feature branches (#2347); p
   it.each([
     ["ci.yml", ["main", "release/**", "feat/**"], { branches: ["main", "release/**"], tags: ["v*"] }],
     ["gitleaks.yml", ["main", "release/**", "feat/**"], { branches: ["main", "release/**"] }],
-    ["data-downgrade.yml", ["main"], { branches: ["main"] }],
+    ["data-downgrade.yml", ["main"], { branches: ["main"], tags: ["v*"] }],
   ])("%s: pull_request admission; push unchanged", (file, prBranches, push) => {
     const triggers = on(file);
     expect(triggers.pull_request?.branches).toEqual(prBranches);

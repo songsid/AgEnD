@@ -54,6 +54,11 @@ export interface LoginFlow {
   backend: string;
   /** Shell command started inside the dedicated login window. */
   command: string;
+  /**
+   * The verdict line's marker (unattended-install.ts installExitMarker), when the command prints one: the exit code is
+   * read from `<marker><code>` when tmux has none (its SIGCHLD missed), and the line is never shown.
+   */
+  exitMarker?: string;
   /** Pre-check run before starting a session; valid auth asks for confirmation. */
   authCheck?: AuthCheck;
   /**
@@ -175,10 +180,17 @@ const STANDALONE_DEVICE_CODE = /^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/m;
 export const KIRO_EXPIRED_LOGIN_SCREEN =
   /(?:^|\n)[^\n]*, let's get you signed in![ \t]*\n(?:[^\n]*\n){0,8}?[ \t]*Press enter to continue to the browser or esc to cancel[ \t]*(?![\s\S]*\S)/;
 
-/** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
-const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}`);
+/** 3.0's pre-chat login choice, captured offline; the two options must own the screen tail. */
+export const KIRO_LOGIN_REQUIRED_SCREEN = /(?:^|\n)[ \t]*You are not logged in\. Login now\?[ \t]*\n[ \t]*(?:[❯›] )?Yes[ \t]*\n[ \t]*(?:[❯›] )?No[ \t]*(?![\s\S]*\S)/;
 
-export const LOGIN_FLOWS: Record<string, LoginFlow> = {
+/** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
+const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}|${KIRO_LOGIN_REQUIRED_SCREEN.source}`);
+
+/**
+ * #3474 (M-2716, #3471 review): both maps are looked up with words a person types (`/login <backend>`), so they have no
+ * prototype — `__proto__`, `constructor` or `toString` must read as "no such backend", never an inherited property.
+ */
+export const LOGIN_FLOWS: Record<string, LoginFlow> = Object.assign(Object.create(null) as Record<string, LoginFlow>, {
   "codex": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
@@ -229,7 +241,8 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // mention one of them does not read as a live sign-in screen.
     loginScreenPattern: KIRO_LOGIN_SCREEN,
     codePattern: /Code:\s*([A-Z0-9][A-Z0-9-]{3,})/,
-    successPattern: /Logged in successfully|Logged in with /,
+    // 3.0 removed the first (2.x) literal; its social/IdP messages retain the second.
+    successPattern: /Logged in successfully|Logged in with |Authenticated with API key/,
     timeoutMs: LOGIN_TIMEOUT_MS,
     // kiro-cli 2.21.1 (live-verified): any stored token record — even an
     // expired one with a refresh token — makes `login` exit 1 with "Already
@@ -287,10 +300,10 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     successPattern: /\? for shortcuts|^>\s*$/m,
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
-};
+});
 
 /** Chat-command aliases accepted by `/login <backend>`. */
-export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
+export const LOGIN_BACKEND_ALIASES: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, {
   "claude": "claude-code",
   "claude-code": "claude-code",
   "codex": "codex",
@@ -301,7 +314,7 @@ export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
   "antigravity": "antigravity",
   // opencode can be installed by `/login`, but has no sign-in flow.
   "opencode": "opencode",
-};
+});
 
 /**
  * Extract the authorization URL and one-time code from joined pane text.

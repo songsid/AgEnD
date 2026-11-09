@@ -8,7 +8,7 @@
  *    and nothing lands in the scratch home. A real transport into the run's own test home is still allowed.
  *  - Both vitest configs load the setup.
  */
-import { mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -19,6 +19,12 @@ let dir: string | undefined;
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); if (dir) rmSync(dir, { recursive: true, force: true }); dir = undefined; });
 const tree = (d: string): string[] => readdirSync(d, { recursive: true }).map(String).sort();
 const settle = () => new Promise(r => setTimeout(r, 300));
+/** The log createLogger prepares before its writer opens it (#3083): empty and 0600, so no worker ever wrote to it. */
+function expectPreparedEmptyLog(home: string): void {
+  const log = statSync(join(home, "daemon.log"));
+  expect(log.size, "a late writer reached the scratch home").toBe(0);
+  if (process.platform !== "win32") expect(log.mode & 0o777).toBe(0o600);
+}
 /** A scratch AGEND_HOME, as the flaky tests stub it before the fleet's modules load. */
 function scratchHome(): string {
   dir = mkdtempSync(join(tmpdir(), "agend-2725-"));
@@ -61,8 +67,10 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
       const before = tree(home);
       expect(() => createLogger("silent")).toThrow(/#2725: a test built a real logger transport writing .*daemon\.log/);
       await settle();
-      expect(tree(home)).toEqual(before);
-      expect(tree(home)).not.toContain("daemon.log");
+      // The one thing there: the empty 0600 log createLogger prepares synchronously before the writer opens it. No worker
+      // was built, so nothing is written to it, now or later.
+      expect(tree(home)).toEqual([...before, "daemon.log"].sort());
+      expectPreparedEmptyLog(home);
     });
   }
 
@@ -73,7 +81,7 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
     const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
     expect(() => createLogger("silent")).toThrow(/#2725: a test built a real logger transport writing .*scratch-.*daemon\.log/);
     await settle();
-    expect(tree(dir)).not.toContain("daemon.log");
+    expectPreparedEmptyLog(dir);
   });
 
   it("the real transport into this run's own test home is still built (the opt-in logger-shared-transport uses it)", async () => {
@@ -99,7 +107,33 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
       expect(strayTransportFiles(t(join(home, "..", "x", "daemon.log")), home)).toHaveLength(1);
       expect(strayTransportFiles(t(join(home, "link", "daemon.log")), home), "a symlink out of the home is out").toHaveLength(1);
       expect(strayTransportFiles({ target: "pino-pretty", options: { destination: join(outside, "d.log") } }, home)).toHaveLength(1);
+      writeFileSync(join(home, "daemon.log"), "");
+      writeFileSync(join(outside, "daemon.log"), "");
+      const allowedFd = openSync(join(home, "daemon.log"), "r");
+      const strayFd = openSync(join(outside, "daemon.log"), "r");
+      try {
+        expect(strayTransportFiles({ targets: [{ options: { destination: allowedFd } }] }, home)).toEqual([]);
+        const named = strayTransportFiles({ targets: [{ options: { destination: strayFd } }] }, home);
+        expect(named).toHaveLength(1);
+        expect(named[0]).toMatch(/daemon\.log/);
+      } finally { closeSync(allowedFd); closeSync(strayFd); }
     } finally { rmSync(home, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform === "win32")("a refused transport closes the destination fd", async () => {
+    const home = scratchHome();
+    const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
+    const count = () => {
+      try {
+        return readdirSync("/proc/self/fd").filter(n => {
+          try { return readlinkSync(join("/proc/self/fd", n)).includes("daemon.log"); } catch { return false; }
+        }).length;
+      } catch { return -1; }
+    };
+    const before = count();
+    if (before < 0) return;
+    for (let i = 0; i < 12; i++) expect(() => createLogger("silent")).toThrow(/#2725/);
+    expect(count(), home).toBe(before);
   });
 
   it("the wrapper is pino's own transport function, wrapped once per worker", () => {

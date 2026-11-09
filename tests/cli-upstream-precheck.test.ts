@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, SURFACES, buildManifest, declarationNames, literalsOf, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
+import { MANIFEST_PATH, SURFACES, buildManifest, dedupeLiterals, declarationNames, literalsOf, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
 
 const DIR = join(process.cwd(), "scripts/manual/cli-upstream-precheck");
 const PRECHECK = join(DIR, "precheck.py");
@@ -21,6 +21,11 @@ const committed = (): Manifest => JSON.parse(readFileSync(MANIFEST_PATH, "utf8")
 describe("manifest.json is the detectors' source (drift)", () => {
   it("matches what the source produces now — rebuild with build-manifest.ts when this fails", () => {
     expect(manifestKeys(committed())).toEqual(manifestKeys(buildManifest()));
+  });
+  it("a manifest that lost a retired mark is stale too (the mark changes what precheck reports)", () => {
+    const stripped = structuredClone(committed());
+    for (const l of stripped.backends["kiro-cli"]!.literals) delete (l as { retiredAfter?: string }).retiredAfter;
+    expect(manifestKeys(stripped)).not.toEqual(manifestKeys(buildManifest()));
   });
   it("a detector literal the source has and the manifest lacks is caught", () => {
     const m = committed();
@@ -168,6 +173,32 @@ describe("precheck.py's verdict", () => {
     expect(r.out).toMatch(/REASON: 1 detector literal\(s\) missing: \[error\] "Rate limited, retrying soon"/);
     expect(r.out.trim().split("\n").at(-2)).toMatch(/^BASIS: hard=[1-9]\d*; hinted=0$/);
     expect(r.out).toContain("BASIS-DETAIL: missing 1,");
+  });
+  it("a literal sources.json marks retired upstream is expected to go: listed, not a finding (NONE when nothing else changed)", () => {
+    const d = scratch(), m = join(d, "manifest.json");
+    writeFileSync(m, JSON.stringify({ format: 1, source: "test", backends: { fake: { literals: LITS.map(l => l.symbol === "getErrorPatterns" ? { ...l, retiredAfter: "1.2.3" } : l) } } }));
+    writeFileSync(join(d, "old.bin"), OLD); writeFileSync(join(d, "new.bin"), OLD.replace("Rate limited, retrying soon", pad(27)));
+    const r = run(join(d, "old.bin"), join(d, "new.bin"), m);
+    expect(r.out).toContain("MISSING (in old, not in new): 0");
+    expect(r.out).toMatch(/RETIRED UPSTREAM \(expected[^)]*\): 1\n  \[error\] 1 -> 0  "Rate limited, retrying soon" .*last in 1\.2\.3\)/);
+    expect(r.out.trim().split("\n").at(-2)).toBe("BASIS: hard=0; hinted=0");
+    expect(r.verdict).toBe("PRECHECK: NONE");
+  });
+  it("the manifest carries sources.json's retired marks (kiro's V2→V3 ease-in, gone after 3.0.0)", () => {
+    const kiro = (JSON.parse(readFileSync(join(process.cwd(), "scripts/manual/cli-upstream-precheck/manifest.json"), "utf8")) as { backends: Record<string, { literals: { symbol: string; retiredAfter?: string }[] }> }).backends["kiro-cli"]!.literals;
+    const retired = kiro.filter(l => l.retiredAfter);
+    expect(retired.length).toBeGreaterThan(0);
+    expect(retired.every(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol) && l.retiredAfter === "3.0.0")).toBe(true);
+    // Text the Classic nudge still shows is not retired with the ease-in (Prism on #3245).
+    expect(kiro.find(l => (l as { text?: string }).text === "Remind me later")?.retiredAfter).toBeUndefined();
+  });
+  it("shared text is retired only when every declaration that has it is (either order); then up to the newest release named", () => {
+    const lit = (text: string, symbol: string, retiredAfter?: string) => ({ text, kind: "string" as const, surface: "onboarding" as const, file: "src/k.ts", line: symbol.length, symbol, ...(retiredAfter ? { retiredAfter } : {}) });
+    const of = (list: ReturnType<typeof lit>[]) => dedupeLiterals(list).map(l => [l.text, l.symbol, l.retiredAfter ?? null]);
+    expect(of([lit("Remind me later", "EASE_IN", "3.0.0"), lit("Remind me later", "NUDGE")])).toEqual([["Remind me later", "EASE_IN", null]]);
+    expect(of([lit("Remind me later", "NUDGE"), lit("Remind me later", "EASE_IN", "3.0.0")])).toEqual([["Remind me later", "NUDGE", null]]);
+    expect(of([lit("Gone", "A", "2.9.1"), lit("Gone", "BB", "3.0.0"), lit("Gone", "C", "2.10.0")])).toEqual([["Gone", "A", "3.0.0"]]);
+    expect(of([lit("Alone", "A", "3.0.0")])).toEqual([["Alone", "A", "3.0.0"]]);
   });
   it("only a count changed: MINOR", () => {
     expect(pair(OLD.replace("tail", `esc to interrupt now${pad(4)}tail`)).verdict).toBe("PRECHECK: MINOR");

@@ -15,6 +15,7 @@ import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
+import { Dialog } from "./ui-dialog.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
@@ -83,12 +84,18 @@ export function searchOffered(admin) {
   return (guestPage() ? guestTrusted() : !!admin) && !offLink;
 }
 let searchModule = null;
+let searchOpen = 0;
+function SearchLoading({ onClose }) {
+  return html`<${Dialog} title=${t("app.search")} onClose=${onClose} wide=${true}><${Skeleton} variant="rows" lines=${4} /></${Dialog}>`;
+}
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
 export function openSearch(preset = {}) {
   closeDrawer();
+  const mine = ++searchOpen;
+  showDialog(SearchLoading, { onClose: () => { searchOpen++; closeDialog(); } });
   (searchModule ??= import("/ui/js/search-dialog.js")).then(
-    (m) => showDialog(m.SearchDialog, { preset }),
-    () => { searchModule = null; toast(t("app.loadFailed"), false); });
+    (m) => { if (mine === searchOpen && shellStore.get().dialog?.Component === SearchLoading) showDialog(m.SearchDialog, { preset }); },
+    () => { searchModule = null; if (mine === searchOpen && shellStore.get().dialog?.Component === SearchLoading) { closeDialog(); toast(t("app.loadFailed"), false); } });
 }
 /**
  * Ctrl+K (⌘K) anywhere opens search; Ctrl+F (⌘F) in an agent's chat opens it narrowed to that agent — elsewhere the
@@ -657,10 +664,12 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ * offers nothing. Restart now is a separate button when a Settings job exists. This muted hint is the no-job case
+ * only (a hand edit of fleet.yaml): chat fleets send /restart in General; web-only fleets are told to restart AgEnD,
+ * with no command. web-claude will add a button for that case separately.
  */
 function RestartLine() {
-  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
   const [later, setLater] = useState(null);
   const [busy, setBusy] = useState(false);
   const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
@@ -670,6 +679,9 @@ function RestartLine() {
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
   const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  const hint = !pending.jobId
+    ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost")
+    : null;
   const restart = async () => {
     if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
@@ -685,7 +697,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${hint ? html`<span class="muted">${hint}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }
@@ -847,4 +859,3 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${Toasts} />
   </div>`;
 }
-

@@ -1,0 +1,45 @@
+› Q-IDLE-d702cfa6
+ 
+ 
+• A-IDLE-d702cfa6
+ 
+  Worked for <1s • 6:57 PM                                                                                              
+ 
+ 
+› Q-SETUP-d702cfa6
+ 
+› Q-BUSY-d702cfa6
+ 
+ 
+• A-BUSY-d702cfa6
+ 
+  Worked for 1s • 6:57 PM                                                                                               
+ 
+/status
+ 
+  >_ OpenAI Codex (v0.165.0)
+ 
+  Model:               mock-model (reasoning none, summaries auto)
+  Model provider:      mock
+  Directory:           ~\scratch\work
+  Permissions:         Read Only (Ask for approval)
+  Agents.md:           <none>
+  Collaboration mode:  Default
+  Session:             01a1b081-a1d7-7a20-bf13-4458139ea3c2
+ 
+  Token usage:         36 total  (30 input + 6 output)
+  Context window:      100% left (12 used / 258K)
+  Limits:              data not available yet
+ 
+ 
+› Q-NEW-LIMIT-d702cfa6
+ 
+ 
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/
+usage to purchase more credits or try again at 7:57 PM.
+                                                                ⚠ 5h limit: only <1% left · resets at 7:57 PM · /status
+ 
+› Ask Codex to do anything
+ 
+  Context 100% left
+  ? for shortcuts                                                                             ⚠ 3 warnings · f2 to view

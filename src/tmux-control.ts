@@ -449,14 +449,15 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * Wait until a window's pane is idle. Used by message delivery to queue behind a
    * busy CLI and deliver the moment it frees up, rather than force-pasting.
    *
-   * Resolves `true` on idle (or if the control client stops), `false` if
-   * `timeoutMs` elapsed first. This used to have NO timeout at all, so a wedged
+   * Resolves `true` on idle, `false` if the control client stops, `abandoned`
+   * signals, or `timeoutMs` elapsed first. This used to have NO timeout at all, so a wedged
    * pane held the pasteLock forever and every message behind it queued silently
    * with no ❌ and no log — the caller believed delivery was merely slow. A very
    * long default keeps the "a busy CLI is not a lost message" behaviour while
    * putting a floor under how long a wedge can absorb the queue unnoticed.
    */
   waitUntilIdle(windowId: string, timeoutMs = 30 * 60_000, abandoned?: () => boolean): Promise<boolean> {
+    if (this.stopped || abandoned?.()) return Promise.resolve(false);
     if (this.isIdle(windowId)) return Promise.resolve(true);
     return new Promise((resolve) => {
       const check = setInterval(() => {

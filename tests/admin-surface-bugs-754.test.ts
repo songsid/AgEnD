@@ -195,7 +195,7 @@ describe("the /model and /effort menus re-check the clicker and the adapter when
     const r = rig("open");
     const m = await modelMenu(r);
     await m.click(ADMIN_A);
-    expect(m.applyModel).toHaveBeenCalledWith("alpha", "m2");
+    expect(m.applyModel).toHaveBeenCalledWith("alpha", "m2", { current: expect.any(Function) });
   });
 
   it("the same admin after losing admin while the menu was open: not applied", async () => {

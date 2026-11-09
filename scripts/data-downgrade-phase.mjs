@@ -9,12 +9,12 @@ const [phase, packageRoot, scratch] = process.argv.slice(2);
 assert.ok(['create', 'old', 'return'].includes(phase));
 assert.equal(resolve(scratch), process.env.AGEND_HOME);
 assert.match(scratch, /[/\\]agend-downgrade-[^/\\]+$/);
-// The published baseline the 'old' phase runs (scripts/check-data-downgrade.mjs): 2.1.12 on Node 20, or 2.2.6 — the
-// version #2483's Mac recovery and #2481's auto-restore go back to — on its own bundled Node 22.
+// The previous release on the current release line, running its private Node.
 const baseline = phase === 'old' ? JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version : null;
-if (phase === 'old') assert.ok(['2.1.12', '2.2.6'].includes(baseline), `unknown baseline ${baseline}`);
-if (baseline === '2.1.12') assert.match(process.versions.node, /^20\./);
-if (baseline === '2.2.6') assert.match(process.versions.node, /^22\./);
+if (phase === 'old') {
+  assert.equal(baseline, '2.3.3');
+  assert.match(process.versions.node, /^22\./);
+}
 // Fail before native execution, even if a future leaf-module import starts a
 // probe. Both ESM and CJS imports see the guard. No inspector, adapters or tmux.
 for (const api of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
@@ -269,18 +269,18 @@ if (phase === 'create') {
     scheduler.update(state.keepSchedule, { message: 'edited on old', enabled: false });
     scheduler.delete(state.removeSchedule);
     assert.equal(scheduler.getDecision(state.decision).content, 'retained');
-    scheduler.claimTask(state.task, 'scratch-old'); scheduler.completeTask(state.task, 'old completion');
+    scheduler.claimTask(state.task, 'scratch-old', {kind:'instance',name:'scratch-old'}); scheduler.completeTask(state.task, 'old completion', {kind:'instance',name:'scratch-old'});
     state.oldSchedule = schedule('created-on-old').id;
   });
-  // docs/downgrade-compatibility.md: the old prune knows no projects — raise retention before rolling back.
+  // The previous release understands projects and retains finished cards in an active project.
   assert.ok(scheduler.listTasks({ verbose: true }).some(t => t.id === state.board.main && t.title === 'board main'));
   assert.equal(await scheduler.pruneOldTasks(36500), 0);
   assert.ok(scheduler.getTask(state.board.aged));
-  assert.equal(await scheduler.pruneOldTasks(30), 1);
-  assert.equal(scheduler.getTask(state.board.aged), null);
-  scheduler.claimTask(state.board.sub, 'scratch-old');
+  assert.equal(await scheduler.pruneOldTasks(30), 0);
+  assert.ok(scheduler.getTask(state.board.aged));
+  scheduler.claimTask(state.board.sub, 'scratch-old', {kind:'person',name:'scratch-person'});
   state.oldTask = scheduler.createTask({ title: 'created on old', created_by: 'scratch-old' }).id;
-  checks.push('old reads board cards as tasks; its prune keeps a finished card at 36500 days, deletes it at 30');
+  checks.push('previous release reads board cards and preserves active-project history at both retention windows');
   checked('old event/reaction read-write', () => {
     assert.deepEqual(events.query({ type: 'new-event' })[0].payload, { sentinel: 42 });
     assert.ok(events.listActivity().some(row => row.event === 'new-activity'));
@@ -304,37 +304,15 @@ if (phase === 'create') {
   checked('raw YAML retained; old normalized rewrite loses new top-level fields', () => {
     const configPath = join(scratch, 'fleet.yaml'); const text = readFileSync(configPath, 'utf8');
     const config = loadFleetConfig(configPath); const raw = loadRawFleetConfig(configPath);
-    // 2.2.6 already knows needs_you (2.1.12 drops it); neither knows the sentinel.
-    if (baseline === '2.1.12') assert.equal(config.needs_you, undefined); else assert.deepEqual(config.needs_you, { live_message: true, dm: false });
+    // The previous release knows needs_you but not the sentinel.
+    assert.deepEqual(config.needs_you, { live_message: true, dm: false });
     assert.ok(raw.needs_you);
     assert.deepEqual(config.web, state.web); assert.deepEqual(config.channels.map(c => c.id), state.channelIds);
     const rewritten = yaml.load(yaml.dump(config));
-    if (baseline === '2.1.12') assert.equal(rewritten.needs_you, undefined); else assert.deepEqual(rewritten.needs_you, config.needs_you);
+    assert.deepEqual(rewritten.needs_you, config.needs_you);
     assert.equal(rewritten.extension_sentinel, undefined);
     assert.equal(readFileSync(configPath, 'utf8'), text); // Do not replace the original fixture.
   });
-  // 2.1.12 only: its shared Kiro writers had no ownership (they replace another fleet's entries). 2.2.6 writes through
-  // its own launch plan and owns what it writes; the return phase checks the new agent artifacts are byte-preserved.
-  if (baseline === '2.1.12') {
-    // Invoke only the file-writing prototype methods, never its binary-probing constructor.
-    const { KiroBackend } = await load('backend/kiro.js');
-    const workingDirectory = state.spec.workingDirectory;
-    const shared = join(workingDirectory, '.kiro', 'settings'); mkdirSync(shared, { recursive: true });
-    const steering = join(workingDirectory, '.kiro', 'steering'); mkdirSync(steering, { recursive: true });
-    const foreignWrapper = join(scratch, 'foreign-wrapper'); writeFileSync(foreignWrapper, 'inert');
-    writeFileSync(join(shared, 'mcp.json'), JSON.stringify({ mcpServers: { 'agend-worker': { command: foreignWrapper, args: [] } } }));
-    writeFileSync(join(steering, 'agend-worker.md'), 'foreign fleet steering');
-    const backend = { instanceDir: state.spec.instanceDir };
-    const cfg = { workingDirectory, instanceName: 'worker', instructions: 'old replacement',
-      mcpServers: { agend: { command: 'inert-not-executed', args: [], env: {} } } };
-    KiroBackend.prototype.writeConfig.call(backend, cfg);
-    assert.notEqual(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'].command, foreignWrapper);
-    assert.equal(readFileSync(join(steering, 'agend-worker.md'), 'utf8'), 'old replacement');
-    KiroBackend.prototype.cleanup.call(backend, cfg);
-    assert.equal(existsSync(join(steering, 'agend-worker.md')), false);
-    assert.equal(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'], undefined);
-    checks.push('old shared Kiro writers lack ownership; new agent artifacts untouched');
-  }
   writeFileSync(statePath, JSON.stringify(state));
 } else {
   const { loginNoticeMode, tipNoticeMode } = await load('notice-delivery.js');
@@ -392,9 +370,10 @@ if (phase === 'create') {
     assert.match(board.getCard(state.oldTask).code, /^M-\d+$/);
   });
   assert.ok(boardLeftovers(state.board.aged) > 0);
-  await scheduler.pruneOldTasks(30);
-  assert.equal(boardLeftovers(state.board.aged), 0);
-  checks.push('the next prune clears the comments and history the old prune left behind');
+  assert.equal(await scheduler.pruneOldTasks(30), 0);
+  assert.ok(scheduler.getTask(state.board.aged));
+  assert.ok(boardLeftovers(state.board.aged) > 0);
+  checks.push('both versions preserve active-project cards, comments and history');
   checked('new event reads old write; consumed reaction stays consumed', () => {
     assert.deepEqual(events.query({ type: 'old-event' })[0].payload, { sentinel: 43 });
     assert.equal(events.pendingReactions('scratch'), null);
@@ -420,6 +399,6 @@ for (const [label, path] of [['outbox', outboxPath], ['scheduler', schedulerPath
   });
   versions[label] = db.pragma('user_version', { simple: true }); db.close();
 }
-// 2.1.12's outbox is schema 4 (it leaves 5's columns alone); 2.2.6 already writes 5.
-assert.equal(versions.outbox, baseline === '2.1.12' ? 4 : 5);
+// The current release line shares outbox schema 5.
+assert.equal(versions.outbox, 5);
 console.log(JSON.stringify({ phase, node: process.versions.node, sqlitePackage, userVersion: versions, checks }));

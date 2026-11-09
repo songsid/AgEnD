@@ -14,6 +14,8 @@ import {
   MUSE_USAGE_STALE_MS,
   writeMuseUsageSnapshot,
 } from "../src/muse-usage-relay.js";
+import { QuotaNotices } from "../src/usage/quota-notices.js";
+import { quotaNoticeRule } from "../src/quota-notice-config.js";
 import { fetchMuseUsage } from "../src/usage/providers.js";
 import { formatDiscordUsageActivity } from "../src/usage/usage-api.js";
 
@@ -361,6 +363,50 @@ describe("Muse usage relay protocol", () => {
     first.destroy();
     await relay.stop();
     await new Promise<void>(resolve => upstream.close(() => resolve()));
+  });
+
+  it.each([
+    { retained: "Weekly", field: "weekly", other: "plan", seconds: 7 * 86400 },
+    { retained: "Weekly", field: "weekly", other: "window", seconds: 7 * 86400 },
+    { retained: "Session", field: "window", other: "plan", seconds: 18000 },
+    { retained: "Session", field: "window", other: "weekly", seconds: 18000 },
+  ])("does not rejuvenate old $retained usage on a $other-only frame", async ({ retained, field, other, seconds }) => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-window-age-")); dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    let now = Date.parse("2026-11-07T00:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const relay = new MuseUsageRelay({ instanceDir: join(home, "instances", "muse-one") });
+    const record = (frame: object) => (relay as any).record(parseMuseSubscriptionUsage(JSON.stringify({ type: "response.subscription_usage", subscription: frame })));
+    const send = vi.fn(() => true), warn = vi.fn();
+    const notices = new QuotaNotices({ file: join(home, "quota.json"), now: () => now, send, warn,
+      policy: () => ({ target: "general", locale: "en", subscriptions: [{ account: "muse:host:", providerId: "muse", rule: quotaNoticeRule(undefined, "muse", { periods: ["session", "weekly"] }) }] }) });
+    const observe = async () => notices.observe({ fetchedAt: new Date(now).toISOString(), providers: [{ id: "muse", name: "Muse", ...await fetchMuseUsage() }] });
+    try {
+      const window = { used_percent: 92, resets_at: now / 1000 + seconds };
+      record({ [field]: window });
+      now += 3600000;
+      record(other === "plan" ? { tier: "pro" } : { [other]: { used_percent: 12, resets_at: now / 1000 + 18000 } });
+      await observe(); expect(send).not.toHaveBeenCalled();
+      record({ [field]: window }); await observe();
+      expect(send).toHaveBeenCalledExactlyOnceWith("general", expect.stringContaining(`${retained}: 8% remaining`));
+      expect(warn).not.toHaveBeenCalled();
+    } finally { await notices.stop(); clock.mockRestore(); await relay.stop(); }
+  });
+
+  it.each([99, 105])("notifies on a genuinely fresh Muse %s percent reading", async used => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-overage-")); dirs.push(home); process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const now = Date.now(), send = vi.fn(() => true), relay = new MuseUsageRelay({ instanceDir: join(home, "instances", "muse-one") });
+    const record = (used: number) => (relay as any).record(parseMuseSubscriptionUsage(JSON.stringify({ type: "response.subscription_usage", subscription: { weekly: { used_percent: used, resets_at: now / 1000 + 7 * 86400 } } })));
+    const notices = new QuotaNotices({ file: join(home, "quota.json"), send, warn: error => { throw error; },
+      policy: () => ({ target: "general", locale: "en", subscriptions: [{ account: "muse:host:", providerId: "muse", rule: quotaNoticeRule(undefined, "muse") }] }) });
+    const observe = async () => notices.observe({ fetchedAt: new Date().toISOString(), providers: [{ id: "muse", name: "Muse", ...await fetchMuseUsage() }] });
+    try {
+      record(80); await observe(); expect(send).not.toHaveBeenCalled();
+      record(used); await observe();
+      expect(send).toHaveBeenCalledExactlyOnceWith("general", expect.stringContaining(`Weekly: ${Math.max(0, 100 - used)}% remaining`));
+    } finally { await notices.stop(); await relay.stop(); }
   });
 
   it("projects the exact Muse subscription payload into Session and Weekly usage", async () => {

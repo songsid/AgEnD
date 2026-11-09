@@ -171,13 +171,13 @@ describe("watchUpdateLaunch: the fix goes into the failure message", () => {
     const [gone] = run("  Updating AgEnD v2.2.0-beta.10 → v2.2.0-beta.11...\nnpm error code E500\n", agend, () => unlinkSync(agend));
     expect(gone).toContain(`Fix: ${INSTALLER("2.2.0-beta.11")}`);
     const [never] = run("npm error code E500\n", join(dir, "never-there"));
-    expect(never).toContain("Run `agend update` from a host shell.");
+    expect(never).toContain("AgEnD could not finish the update automatically. Manual repair is not available here.");
     expect(never).not.toContain("Fix:");
   });
 
   it("an unknown failure keeps the generic advice", () => {
     const [message] = run("npm error code EACCES\nnpm error syscall mkdir\n");
-    expect(message).toContain("Run `agend update` from a host shell.");
+    expect(message).toContain("AgEnD could not finish the update automatically. Manual repair is not available here.");
     expect(message).not.toContain("Fix:");
   });
 });

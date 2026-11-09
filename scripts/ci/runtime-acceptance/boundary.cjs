@@ -1,6 +1,6 @@
 "use strict";
 // #1450 runtime acceptance: the hop's fail-fast process boundary. Preloaded (NODE_OPTIONS=--require) into every Node
-// process of a hop leg — the old 2.1.12 updater, the new release's launcher and CLI, anything they spawn. A hop must
+// process of a hop leg — the previous-release updater, the new release's launcher and CLI, anything they spawn. A hop must
 // install, verify and refresh, but never start a fleet or drive a real service manager. Any attempt fails AT ONCE and
 // is appended to $AGEND_BOUNDARY_LOG, which the job gates on:
 //   - a fleet start in any form: argv `fleet start` (a node entry, `agend`, the launcher), or `fleet start` in a shell
@@ -160,6 +160,8 @@ function envViolation(env) {
   if (env.NODE_OPTIONS !== undefined && env.NODE_OPTIONS !== "" && env.NODE_OPTIONS !== TRUSTED.nodeOptions) return "a NODE_OPTIONS the hop did not start with (" + env.NODE_OPTIONS + ")";
   var keys = Object.keys(env);
   for (var i = 0; i < keys.length; i++) {
+    // Imported shell functions can replace the fixed probe's command/exec/node meanings.
+    if (/^BASH_FUNC_/.test(keys[i])) return "an imported Bash function in the environment (" + keys[i] + ")";
     if (/^(LD_|DYLD_)/.test(keys[i]) && env[keys[i]] !== TRUSTED.loader[keys[i]]) return "a loader variable the hop did not start with (" + keys[i] + ")";
   }
   return null;
@@ -184,6 +186,8 @@ function judgeWords(words, env, cwd, shell, depth, text) {
     var name = path.basename(word.text);
     var spec = !word.dyn && Object.prototype.hasOwnProperty.call(WRAPPERS, name) ? WRAPPERS[name] : null;
     if (!spec) break;
+    // Refuse imported functions anywhere in env's argv, including assignments after --.
+    if (spec.assignments && words.slice(i + 1).some(function (a) { return /^BASH_FUNC_[^=]*=/.test(a.text); })) return name + " setting an imported Bash function (BASH_FUNC_)";
     i++;
     var positional = spec.positional || 0;
     while (i < words.length) {
@@ -243,6 +247,10 @@ function shellViolation(text, env, depth, cwd) {
   env = env || process.env;
   cwd = path.resolve(cwd || process.cwd());
   if (/(\$\(|`|<\(|>\()/.test(text)) return "a command or process substitution: " + text;
+  // The published previous release's read-only system-Node probe. Match exact bytes only;
+  // appended commands, altered expressions/redirections and environment changes still fail closed.
+  // violation() checks the effective environment before reaching this fixed shell program.
+  if (text === "command -v node >/dev/null 2>&1 || exit 127; exec node -p \"process.versions.node + ' ' + process.execPath\"") return null;
   var parsed = shellCommands(text);
   if (parsed === null) return "an unterminated quote: " + text;
   if (parsed.redirect) return "a redirection: " + text;

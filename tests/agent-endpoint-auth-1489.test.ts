@@ -14,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { EventEmitter } from "node:events";
 import { handleAgentRequest } from "../src/agent-endpoint.js";
 import { agentTokenHeader } from "../src/agent-token-header.js";
+import { AgentCredentials, agentCredentialPolicy } from "../src/agent-credentials.js";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -21,11 +22,14 @@ function makeCtx(dataDir: string, instanceName: string, token: string) {
   const instanceDir = join(dataDir, "instances", instanceName);
   mkdirSync(instanceDir, { recursive: true });
   writeFileSync(join(instanceDir, "agent.token"), token, { mode: 0o600 });
-  return {
+  const ctx = {
     dataDir,
     fleetConfig: { defaults: {}, instances: { [instanceName]: {} } },
     logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
   } as any;
+  ctx.agentCredentials = new AgentCredentials(name => agentCredentialPolicy(ctx.fleetConfig, name), () => null);
+  ctx.agentCredentials.issue(instanceName, token);
+  return ctx;
 }
 
 /**

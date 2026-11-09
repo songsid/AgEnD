@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { PWSH_CI_SUITES } from "./tests/support/pwsh-ci-suites.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ process.once("exit", () => {
   rmSync(testAgendHome, { recursive: true, force: true });
 });
 
-export default defineConfig({
+const baseConfig = defineConfig({
   // #1408: the web app's modules import each other by the URLs the server serves them at — /assets/<name> is
   // src/ui/shared/<name> (the fixed asset map, flat names), /ui/js/<name> is src/ui/<name>. Tests resolve them the same.
   resolve: {
@@ -88,3 +89,15 @@ export default defineConfig({
     },
   },
 });
+
+/** CI isolates resource-heavy pwsh suites; local npm test keeps all unit coverage. */
+export function unitTestConfig(partition = process.env.AGEND_CI_TEST_PARTITION) {
+  return defineConfig({
+    ...baseConfig,
+    test: {
+      ...baseConfig.test,
+      exclude: [...(baseConfig.test?.exclude ?? []), ...(partition === "unit" ? PWSH_CI_SUITES : [])],
+    },
+  });
+}
+export default unitTestConfig();

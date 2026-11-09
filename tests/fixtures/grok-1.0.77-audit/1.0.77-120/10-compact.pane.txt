@@ -1,0 +1,40 @@
+
+  master /t/a/work-1.0.77-120/repo                                                           1.5K / 256K │ [Dashboard]
+
+
+     ❯ please stall a                                                                                        9:36 PM
+
+
+     mock reply r1                                                                                           9:36 PM
+
+     Worked for 8.1s
+
+     Compacting conversation…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ⠹ Compacting…                                                                                   2.0s ⇣1.46k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

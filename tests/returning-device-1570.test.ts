@@ -398,6 +398,28 @@ describe("⑥ the public link: only the open, current exposure; the sign-in stil
     expect(h.adapter.sendText.mock.calls.some(c => c[0] === "G" && /web sign-in/i.test(String(c[1])))).toBe(true);
   });
 
+  it("a local breaker does not limit a public returning-device code request; that exposure's breaker does", async () => {
+    const h = rig();
+    const { exposure, cookie } = await publicDevice(h);
+    h.adapter.sendDirect.mockClear();
+    for (let n = 0; n < LOGIN_BREAKER_THRESHOLD; n++) {
+      if (!h.s.webLoginCodes.hasOutstandingCode) h.fm.issueDashboardLogin();
+      await h.call("/auth/login", "POST", { body: { code: "ZZZZ-ZZZZ" } });
+    }
+    expect(h.s.webLoginCodes.pausedForMs()).toBeGreaterThan(0);
+    expect(h.s.webLoginCodes.pausedForMs(exposure)).toBe(0);
+    expect((await h.call("/auth/request-code", "POST", { cookie, gateway: exposure })).status).toBe(202);
+    for (let n = 0; n < LOGIN_BREAKER_THRESHOLD; n++) {
+      if (!h.s.webLoginCodes.hasOutstandingCode) h.s.webLoginCodes.issue({ epoch: tokenEpoch(h.s.webToken), audience: exposure });
+      h.s.webLoginCodes.redeem("ZZZZZZZZ", tokenEpoch(h.s.webToken), exposure);
+    }
+    expect(h.s.webLoginCodes.pausedForMs(exposure)).toBeGreaterThan(0);
+    h.adapter.sendDirect.mockClear();
+    mono += CODE_REQUEST_LIMITS.deviceGapMs;
+    expect((await h.call("/auth/request-code", "POST", { cookie, gateway: exposure })).status).toBe(429);
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
+  });
+
   it("a request for another exposure, a link that is not open, or a request that is no longer current gets nothing", async () => {
     const h = rig();
     const { exposure, cookie } = await publicDevice(h);

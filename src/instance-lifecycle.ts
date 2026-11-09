@@ -1,4 +1,6 @@
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
+import { instanceTeams } from "./team-membership.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
@@ -10,10 +12,11 @@ import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
+import type { TopicDeleteOutcome } from "./instance-topic-delete.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
-import { isModelCompatible } from "./backend/types.js";
+import { isModelCompatible, noteResolvedBinary } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -189,6 +192,7 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  readonly agentCredentials?: Pick<import("./agent-credentials.js").AgentCredentials, "issue" | "invalidate">;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -224,8 +228,8 @@ export interface LifecycleContext {
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   /** #2910: no Discord or Telegram connection at all — a new agent gets no topic (it is reached from the dashboard). */
   isWebOnlyFleet?(): boolean;
-  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
-  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /** delete_instance: the removal, then (unless `deleteTopic` is false) the agent's own topic, through its own bot. */
+  removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean }): Promise<TopicDeleteOutcome>;
   /**
    * A bound delete for the world `adapterId` selects, captured by the caller
    * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
@@ -266,6 +270,8 @@ export interface LifecycleContext {
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
+  /** A pre-launch refusal is still a visible wait when no daemon was published. */
+  setKiroCompatibilityHold?(name: string, message: string | null): void;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -274,6 +280,8 @@ export interface LifecycleContext {
    * instances. Absent means the complete roster cannot be proven (#1624).
    */
   kiroPeerWorkingDirectories?(name: string): string[];
+  /** The fleet's startup snapshot of active decisions; each daemon selects its own Active Decisions from it. */
+  activeDecisions?(): readonly ActiveDecisionRow[];
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
   /** Suppress only incident kinds caused by the active tmux server storm. */
@@ -357,6 +365,8 @@ export interface IncidentEventSource {
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
+  /** #3186 review: a usage-pause notice the second opinion dropped was not told — its repeats must reach it again. */
+  clearUsagePauseNotice?(): void;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** #2648: kiro only — what a model error on its current launch should do (restart once, say once, or nothing). */
@@ -941,6 +951,21 @@ export class InstanceLifecycle {
       }
       this.ctx.notifyInstanceTopic(name, t("delivery.cancelled_unsent", messages.length, name));
     }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
+    // #3030: messages handed to the busy CLI's own queue that it never took (it went idle without them), or that a
+    // restart left unverifiable (its transcript could not be read, so they were not sent again). Each is marked ❌ and
+    // the person is told once — never a silent ✅.
+    daemon.on("human_handoffs_unsettled", safeHandler((data: { reason: "not-taken" | "unverifiable"; messages: Array<{ chatId: string; messageId: string; threadId?: string }> }) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      if (!messages.length) return;
+      const reason = data.reason === "unverifiable" ? "unverifiable" : "not-taken";
+      this.ctx.eventLog?.insert(name, "handoffs_unsettled", { reason, count: messages.length });
+      this.ctx.logger.warn({ name, reason, count: messages.length }, "Queued messages not taken by the CLI — telling the person");
+      for (const m of messages) {
+        if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+        else this.ctx.reactMessageStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+      }
+      this.ctx.notifyInstanceTopic(name, t(reason === "unverifiable" ? "delivery.handoff_unverified_after_restart" : "delivery.handoff_not_taken", messages.length, name));
+    }, this.ctx.logger, `daemon.human_handoffs_unsettled[${name}]`));
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
@@ -1348,6 +1373,7 @@ export class InstanceLifecycle {
       message: string;
       fleetWide?: boolean;
       verifyQuota?: boolean;
+      quotaAdvisory?: true;
       skipUsageVerify?: boolean;
       /** #2872: the person's whole one-line notice, localised (posted instead of inst.notification); `message` stays for logs and webhooks. */
       notice?: string;
@@ -1411,6 +1437,9 @@ export class InstanceLifecycle {
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "claude-code" },
             "quota pattern ignored — live usage has capacity (stale pane history)");
+          // Not told: the daemon's one-notice-per-pause mark must not hold back the next repeat (the usage API can lag
+          // the CLI right as the limit hits; the next "reached again" is verified again).
+          if (data.verifyQuota) daemon.clearUsagePauseNotice?.();
           return;
         }
         if (verdict === "unknown") {
@@ -1471,7 +1500,7 @@ export class InstanceLifecycle {
         this.noteBackendOutage(name, data.message, notificationTarget);
       } else if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
-      } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
+      } else if (notificationTarget && !data.quotaAdvisory && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
         // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
@@ -1696,6 +1725,7 @@ export class InstanceLifecycle {
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
   invalidate(name: string): void {
+    this.ctx.agentCredentials?.invalidate(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
 
@@ -1811,13 +1841,21 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning
+    // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
+    // hint so createBackend's resolveBinary does not run synchronous `which`
+    // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
-      this.ctx.logger.error(
-        { binary: installation.binary, backend: backendName, instance: name },
-        `Backend binary "${installation.binary}" not found in PATH`,
-      );
+    if (installation) {
+      const { resolveBackendBinary } = await import("./backend-availability.js");
+      const path = await resolveBackendBinary(backendName);
+      noteResolvedBinary(installation.binary, path ?? installation.binary);
+      check();
+      if (!path) {
+        this.ctx.logger.error(
+          { binary: installation.binary, backend: backendName, instance: name },
+          `Backend binary "${installation.binary}" not found in PATH`,
+        );
+      }
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
@@ -1847,9 +1885,22 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
+    daemon.on("kiro_compatibility_hold", (message: string | null) => {
+      const owner = this.daemons.get(name);
+      if (owner ? owner !== daemon : this.epochOf(name) !== epoch) return;
+      this.ctx.setKiroCompatibilityHold?.(name, message);
+    });
+    daemon.setAgentCredentialIssuer?.(token => {
+      if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+      this.ctx.agentCredentials?.issue(name, token);
+    });
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
+    // Read at each spawn, like the peers below: joining or leaving a team changes the next launch's Active Decisions.
+    daemon.setDecisionTeams(() => instanceTeams(this.ctx.fleetConfig?.teams, name));
+    daemon.setDecisionSource(this.ctx.activeDecisions ? () => this.ctx.activeDecisions!() : undefined);
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(backendName === "kiro-cli"
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined
@@ -1959,6 +2010,7 @@ export class InstanceLifecycle {
       this.ctx.touchActivity(name);
     });
 
+    this.ctx.setKiroCompatibilityHold?.(name, null);
     this.attachIncidentHandlers(name, daemon);
     // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
     this.ctx.resolveParkedNotice?.(name);
@@ -2338,6 +2390,18 @@ export class InstanceLifecycle {
     this.ctx.logger.info({ name }, "Instance removed");
   }
 
+  /**
+   * Whether a new instance made in `adapterId`'s world records it as channel_id: in a fleet with more than one
+   * connection, or when that world is not the first one (where a missing channel_id would route). A single-connection
+   * fleet's fleet.yaml stays as it was.
+   */
+  private bindsAdapter(adapterId: string): boolean {
+    const fleet = this.ctx.fleetConfig;
+    const channels = fleet?.channels ?? (fleet?.channel ? [fleet.channel] : []);
+    const first = channels[0] ? (channels[0].id ?? channels[0].type) : undefined;
+    return channels.length > 1 || adapterId !== first;
+  }
+
   /** Handle create_instance tool call from a daemon. */
   async handleCreate(
     args: LifecycleCreateArgs,
@@ -2592,6 +2656,9 @@ export class InstanceLifecycle {
         ...getEffectiveInstanceDefaults(this.ctx.fleetConfig!.defaults ?? {}),
         working_directory: workDir,
         ...(createdTopicId != null ? { topic_id: createdTopicId } : {}),
+        // The topic was made in the caller's world (a Discord General in a fleet that lists Telegram first, or the
+        // inverse): the instance is bound to that adapter, so routing and replies use it — not the fleet's first one.
+        ...(createdTopicId != null && adapterId && this.bindsAdapter(adapterId) ? { channel_id: adapterId } : {}),
         ...(description ? { description } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(args.model ? { model: args.model } : {}),
@@ -2678,7 +2745,8 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
     const instanceName = args.name;
-    const deleteTopic = args.delete_topic ?? false;
+    // The user's decision (beta.9): deleting an agent deletes its topic, unless `delete_topic: false` keeps it.
+    const deleteTopic = args.delete_topic ?? true;
 
     const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
     if (!instanceConfig) {
@@ -2691,12 +2759,9 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (deleteTopic && instanceConfig.topic_id) {
-      await this.ctx.deleteForumTopic(instanceConfig.topic_id);
-    }
-
-    await this.ctx.removeInstance(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"));
-    respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
+    // topic_deleted is the platform's answer, never the request; when the topic stays, topic_reason says why.
+    const topic = await this.ctx.removeInstanceAndTopic(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"), { deleteTopic });
+    respond({ success: true, name: instanceName, topic_deleted: topic.deleted, ...(topic.deleted ? {} : { topic_reason: topic.reason }) });
   }
 
   has(name: string): boolean {

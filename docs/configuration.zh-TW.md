@@ -135,21 +135,21 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 
 `access` 可省略。**省略整個區塊時，執行時使用 `open` fallback**，不是 `locked`；既有持久化模式仍可能覆蓋它。若要限制聊天存取，請明確設定 `mode: locked` 與 `allowed_users`。
 
-下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode`、`allowed_users` 陣列，以及使用 pairing 時的配對限制。
+下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode` 與 `allowed_users` 陣列。要新增允許的使用者，請開啟「設定 → 聊天與連線 → 該 bot → 允許使用者（主 bot）」。
 
 | 欄位 | 型別 | 整段省略時的 fallback | 說明 |
 |------|------|----------------------|------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`／`pairing` 僅允許有效名單中的使用者；`pairing` 另可用 `/pair` 申請。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` 與舊設定的 `pairing` 別名都只允許有效名單中的使用者；不再發放存取碼。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | 與持久化名單取聯集；ID 以字串比較 |
-| `max_pending_codes` | number | `0` | 同時持有配對碼的不同使用者數量上限；pairing 請設定正數 |
-| `code_expiry_minutes` | number | `0` | 配對碼有效分鐘數；pairing 請設定正數 |
+| `max_pending_codes` | number | `0` | 舊設定的相容欄位；已不使用 |
+| `code_expiry_minutes` | number | `0` | 舊設定的相容欄位；已不使用 |
 
 **持久化狀態與管理權限：**
 
 - 主 adapter 使用 `<dataDir>/access/access.json`；額外 adapter 使用 `access/access-<adapterId>.json`。`dataDir` 預設為 `~/.agend`，可由 `AGEND_HOME` 指定。
-- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；配對核准會加入持久化名單。
+- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；既有持久化授權會保留。舊的待核准存取碼已無作用，不會授予存取權。
 - `locked`／`pairing` 下，撤銷使用者必須讓持久化與 YAML 兩份名單都不再授權；只改其中一份可能仍允許存取。`open` 本來就不限制使用者。
-- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
+- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或持久化聊天授權本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
 
 ---
 
@@ -312,7 +312,7 @@ templates:
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
 | `resume_interrupted_work` | boolean | 繼承 | 覆寫此 instance 的自動任務接續。`false` 會保留中斷工作、繼續等待，觀察日誌不受影響；修改後不需重啟 instance。 |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | 所有 backend（含 Antigravity）的預設通訊模式為 MCP；`"cli"` 改用 `agend-agent` HTTP 指令，不啟動 MCP server |
-| `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（30 個）、`minimal`（9 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
+| `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（30 個）、`minimal`（9 個）。`general`（管理／調度專用工具組，包含完整 fleet 編排工具）不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | 頻道進度泡泡中的工具活動：`standard` 只列語意標籤、不含 shell 參數；`verbose` 加上截短的命令預覽。預設關閉，啟用後會向頻道顯示活動 |
 | `effort` | string | — | 預設推理強度（`low`／`medium`／`high`／`xhigh`／`max`，依 backend 限制）。每次啟動（包括接續對話的啟動）都會在 CLI 接受時傳入：`--effort`（claude-code、kiro-cli、antigravity）、`--reasoning-effort`（grok、muse）、`-c model_reasoning_effort`（codex）。claude-code、grok 和 antigravity 需由已安裝版本的 `--help` 列出這個參數；kiro-cli 依版本判斷，codex 則要求模型目錄列出的等級。各 backend 只接受支援的等級；否則 instance 用 CLI 自己的設定啟動，並在紀錄分頁說明原因。antigravity 的模型清單是每個等級各一個模型，所以推理強度會選那個等級的模型（`gemini-3.8-flash-medium` 加 `high` 會以 `gemini-3.8-flash-high` 啟動），`--effort` 不會和 `--model` 一起傳；模型沒有的等級就用設定的模型啟動、不帶推理強度。執行中可用 `/effort` 覆寫 |
 | `backend_options` | object | — | 以 backend 名稱為鍵的選項，如 `{ codex: { provider: "glm" } }`；`credential_profile` 見下方帳號隔離章節，`claude-code.prompt_cache_ttl` 見「Claude 提示快取 TTL」 |
@@ -327,7 +327,7 @@ templates:
 | `workflow` | string \| false | `"builtin"` | 工作流程：`"builtin"`、`"file:path"`、內嵌內容或 `false`。可放在 instance 或 `defaults`，不可放在 fleet.yaml 頂層 |
 | `skipPermissions` | boolean | 未設 `false` 時視為 `true` | 依 backend 使用不同 bypass flag，見[安全邊界](SECURITY.zh-TW.md)。OpenCode：其 `--help` 有列 `--auto` 時以 `--auto` 啟動（明確的 `deny` 規則仍然有效）；舊版沒有啟動開關，prompt 由執行期回答「Allow once」 |
 | `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | Agent 之間（跨 instance）的訊息在此 instance 主題與 web chat 中顯示多少，不論它是發送方還是接收方：`full` 完整訊息（與以往相同）、`summary` 一行、`hidden` 不顯示。在 `defaults` 設定整個 fleet（也可用 `/visibility`），在這裡為單一 instance 覆寫；Settings 兩者都有。立即生效，不需重啟。訊息送達與 Mirror Topic 一律不受影響 —— 見 [features](features.zh-TW.md#agent-之間的訊息顯示-bot-to-bot-message-visibility)。 |
-| `dashboard` | object | 全部允許 | 在 `tool_set` 之外，這個 instance 能在 dashboard 上用哪些功能：`appearance`（自己的外觀：主題、圖片、小工具、背景效果、特效、mod 提案）、`task_board`（`task` 工具）、`web_settings`（替人改設定 → 外觀）；Office 改用獨立的 `office_access` 設定。設成 `false` 就關掉：每次呼叫都會被拒絕並說明原因（不用重啟），agent 的工具清單也會立刻拿掉（它的 MCP server 會跟著 fleet.yaml）；沒有任務看板的 agent，啟動說明也不再叫它用看板；重新打開時會通知那個 agent。**新的 fleet**（`agend init`、`agend quickstart`、設定頁）寫入時會帶 `defaults.dashboard.task_board: false`：任務看板維持關閉，直到你把它設為 `true`（或刪掉這一行），或在設定頁勾選。既有的 fleet.yaml 不會被改寫。`defaults.dashboard` 套用到所有 instance；instance 自己的設定會逐項合併（例如 `dashboard: { task_board: false }`）。設定頁：agent 對話框 → 進階 → Dashboard 權限，以及 Agent 預設值。關閉立即生效；打開要先確認。 |
+| `dashboard` | object | 全部允許 | 在 `tool_set` 之外，這個 instance 能在 dashboard 上用哪些功能：`appearance`（自己的外觀：主題、圖片、小工具、背景效果、特效、mod 提案）、`task_board`（`task` 工具）、`web_settings`（替人改設定 → 外觀）；Office 改用獨立的 `office_access` 設定。設成 `false` 就關掉：每次呼叫都會被拒絕並說明原因（不用重啟），agent 的工具清單也會立刻拿掉（它的 MCP server 會跟著 fleet.yaml）；沒有任務看板的 agent，啟動說明也不再叫它用看板；重新打開時會通知那個 agent。關閉任務看板的 agent 不能被派卡：不論從 dashboard 還是由其他 agent 指派，看板都不接受它成為卡片（或 `task` 工具任務）的新負責人，dashboard 的負責人選單也會把它反灰；它也收不到任務看板通知。它原本就有的卡片仍保留在它名下。**新的 fleet**（`agend init`、`agend quickstart`、設定頁）寫入時會帶 `defaults.dashboard.task_board: false`：任務看板維持關閉，直到你把它設為 `true`（或刪掉這一行），或在設定頁勾選。既有的 fleet.yaml 不會被改寫。`defaults.dashboard` 套用到所有 instance；instance 自己的設定會逐項合併（例如 `dashboard: { task_board: false }`）。設定頁：agent 對話框 → 進階 → Dashboard 權限，以及 Agent 預設值。關閉立即生效；打開要先確認。 |
 | `office_access` | boolean | `false` | 允許這個 agent 使用 `office_view`、`office_set`。繼承 `defaults.office_access`，只有 `true` 才開啟。設定頁仍放在 Dashboard 權限；開啟須確認，關閉立即拒絕呼叫並移除工具。修改預設值會立即更新繼承該設定的 agent；個別設定仍優先。獨立存放，讓 2.3.1、2.2.6 能驗證此設定檔並忽略 Office。既有 `dashboard.office` 會在啟動或接受重新載入時保留 `.bak` 備份後轉換；設定頁只寫入新欄位。 |
 | `office_pack_access` | boolean | `false` | 允許這個 agent 修改辦公室畫面的外觀包（全 fleet 都看得到）：`office_pack_check`、`office_pack_upload`、`office_pack_delete`、`office_pack_restore`、`office_pack_list`、`office_set_style`（#2692；見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)）。和 `office_access` 分開的獨立開關；繼承 `defaults.office_pack_access`；沒設成 true 就是關閉。在設定的 Dashboard 權限中顯示（**辦公室外觀包**）。打開需要確認；關閉會立即拒絕呼叫並移除工具。和 `office_access` 一樣存在 `dashboard` 之外，讓 2.3.1 與 2.2.6 接受這份 YAML 並忽略它；過渡用的 `dashboard.office_packs` 會被搬到這裡。agent 外觀包變更的核准模式（直接套用，或先要 fleet 管理者核准——預設）在辦公室頁面選擇，存在外觀包旁邊（`web-office-skins/.agent-changes.json`），不在 fleet.yaml；上限：每個 agent 每小時 20 批、200 MiB，外觀包連同上一版在磁碟上共 640 MiB。 |
 | `board_cards_at_once` | number | `1` | 別人交辦給這個 instance 的看板卡，最多能同時有幾張在進行中；到上限時再認領會被擋下。必須是至少 1 的整數。instance 開給自己的卡不算。需要同時做好幾張交辦卡的角色（例如 reviewer）可以調高。每次認領時讀取，立即生效。見 [features](features.zh-TW.md#在網頁上fleet--tasks)。 |
@@ -596,6 +596,8 @@ buffer 的近期訊息／活動交接，不搬移 CLI 對話庫。重啟成功�
 CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
 ```
 
+Codex agent 也可以設定 `backend_options.codex.speed: fast | standard`（2.3.4）：見[功能說明](features.zh-TW.md)的 **Codex 速度**。
+
 Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 CODEX_HOME 與
 私有 `config.toml`；對話與 thread/state/memory 資料庫仍共用，因此切換不刻意開新對話，
 兩個帳號可見相同歷史。這與 Kiro 的檔案布局不同。
@@ -686,10 +688,10 @@ profile 不顯示。兩個登入若是同一個帳號，會顯示成兩列（AgE
 ## 資料目錄
 
 AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME` 指定），包含 umask 為 `0002` 的主機。
-若既有目錄是目前使用者擁有的真實目錄，卻允許群組或其他人寫入，AgEnD 會將主目錄收緊為 `0700`，並記錄一行訊息；
-不會遞迴修改檔案，也不會改動本來就不允許群組或其他人寫入的主目錄。非目前使用者擁有的目錄，或路徑包含符號連結時，
+若既有目錄是目前使用者擁有的真實目錄，卻讓群組或其他人有任何權限（例如 `0755` 或 `0750`），AgEnD 會將主目錄收緊為
+`0700`，並記錄一行訊息；不會遞迴修改裡面的檔案。非目前使用者擁有的目錄，或路徑包含符號連結時，
 仍會拒絕：請使用執行 AgEnD 的帳號所擁有的真實目錄。本機操作端的目錄和 socket 仍各自檢查私有權限。
-網站的 shell／WSL 安裝指令也會先準備這個權限邊界，再執行舊版套件的設定流程。
+網站的 shell／WSL 安裝指令也會先準備這個權限邊界，再執行舊版套件的設定流程。從 2.3.4 起（#3083），`daemon.log` 與輪替檔以 `0600` 寫入，既有的主目錄會在更新後第一次啟動時收緊。
 
 `~/.agend/`：
 
@@ -741,3 +743,33 @@ Canvas Worker 特效（上傳後在隔離 Worker 中執行的特效，#2275）�
 `agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。Windows 安裝程式只有在版本 1 的 setup、dashboard、installer 能力旗標都成立時才使用新流程：先安裝 AgEnD，再於 setup 頁面登入後端。舊版套件保留主控台備援。已有設定的安裝會用 `agend web --code --backend-signins kiro-cli,claude-code,codex` 開啟儀表板清單，單純導覽不會啟動登入。安裝進度 ID 維持相容；最後狀態會重新檢查登入，略過的後端不會被說成已登入。Antigravity 仍為明確的主控台備援，尚未啟用被動裝置驗證橋接。
 
 直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。
+
+### 用量提醒
+
+「設定 → 通知」可即時編輯 `defaults.quota_notice`，不需重新啟動 Agent：
+
+```yaml
+defaults:
+  quota_notice:
+    enabled: true
+    thresholds: [10]       # 剩餘百分比，不是已用百分比
+    periods: [weekly]     # session、hourly、daily、weekly、monthly
+    target: general       # General 或已設定的 Fleet Agent topic
+    backends:
+      kiro-cli:
+        periods: [monthly]
+instances:
+  worker:
+    quota_notice:
+      enabled: false      # 這個 Agent 不提供提醒規則
+```
+
+省略時也採用上述內建預設。規則依全隊、後端、Agent 的順序繼承；陣列整組取代。百分比最多 8 個，須為 1–99 的相異有限數值。空的 thresholds 或 periods 表示不提醒。Fleet Agent 與 ClassicBot 房間可覆寫 enabled、thresholds、periods；傳送對象由全隊共用。同一後端與登入設定的啟用 Agent 合併規則；關閉其中一個，不會關掉其他 Agent 的提醒。
+
+只採用已知週期、有未來重設時間的最新實測百分比。session 與 hourly 分開計算。過期、無上限、到期而非重設，或不支援的資料不會產生提醒。CLI 狀態列與轉送資料也須為最新觀測值。Muse 分別檢查各額度週期的觀測時間；方案或其他週期更新不會刷新保留的舊讀值。舊格式的 Muse 讀值須等到新的實測資料才會恢復提醒。供應商回報的超額用量以剩餘 0% 計算。不增加供應商輪詢。帳號依後端與執行主機上的憑證來源／登入設定辨識，不靠電子郵件或顯示名稱合併。遠端主機必須提供自己的用量資料，不能套用 Fleet 主機的讀值。
+
+私有的 `quota-notices.json` 會在送出前保留帳號、週期與門檻的傳送紀錄，跨重啟與改換目的地仍有效。失敗或結果不明的傳送不自動重送；狀態檔損壞或無法寫入時暫停選用提醒。備份 Fleet 時請保留此檔。真正的新週期會重新允許提醒，小幅重設時間漂移則不會。這是「最多提交一次」，不是平台已送達的保證。提醒送往指定的現有 topic，純網頁 Fleet 則使用 Notices；目的地不存在時不會自行改送其他 Agent。
+
+提醒需要可讀取的最新用量資料，以及可用的 General／Notices 或指定 topic。資料或目的地不可用時，不會退回原本的 CLI 用量不足提示。傳送狀態檔損壞或無法讀取時，請還原有效備份後重啟 AgEnD；不要刪檔來重試可能已提交的提醒。系統會記錄警告，修復前持續暫停選用提醒。
+
+只有用量不足提醒可設定。CLI 顯示已耗盡或受阻的訊息、各 Agent 的暫停與自動繼續狀態，以及既有的額度驗證、歷史文字防重播機制，一律保留。

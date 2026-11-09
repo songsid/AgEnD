@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getStdoutPrettyOptions, rotateLogIfNeeded } from "../src/logger.js";
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -91,6 +91,17 @@ describe("rotateLogIfNeeded", () => {
     rotateLogIfNeeded(log, 10, 3);
     expect(statSync(log).size).toBe(0);
     expect(existsSync(`${log}.1`)).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a failed copy does not truncate the live log", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-rotate-fail-"));
+    const log = join(dir, "output.log");
+    writeFileSync(log, "x".repeat(50));
+    mkdirSync(`${log}.1`);
+    rotateLogIfNeeded(log, 10, 3);
+    expect(statSync(log).size).toBe(50);
+    expect(statSync(`${log}.1`).isDirectory()).toBe(true);
     rmSync(dir, { recursive: true, force: true });
   });
 

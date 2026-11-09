@@ -10,6 +10,7 @@
  */
 import type { Logger } from "./logger.js";
 import type { LoginFlow } from "./login-flows.js";
+import { exitCodeFromMarker, withoutExitMarker } from "./unattended-install.js";
 
 /** The slice of TmuxManager a login session drives (injectable for tests). */
 export interface LoginTmux {
@@ -105,7 +106,9 @@ export class LoginSession {
 
   private async poll(): Promise<void> {
     if (this.finished) return;
-    const pane = await this.tmux.capturePaneJoined(200).catch(() => "");
+    const marker = this.flow.exitMarker;
+    const raw = await this.tmux.capturePaneJoined(200).catch(() => "");
+    const pane = marker ? withoutExitMarker(raw, marker) : raw;
     if (this.finished) return;
     try { this.events.onProgress?.(pane); } catch (err) { this.logger.debug({ err: (err as Error).message }, "login progress consumer failed"); }
 
@@ -118,13 +121,24 @@ export class LoginSession {
 
     const status = await this.tmux.getPaneStatus().catch(() => null);
     if (status && !status.alive) {
+      // tmux 3.4 can miss the pane's SIGCHLD: dead (its pty closed: all output read) but no exit code, ever. The
+      // command's own verdict line says it — read from a capture taken now, after the pane was seen dead.
+      let exitCode = status.exitCode, final = pane;
+      if (exitCode === undefined && marker) {
+        const after = await this.tmux.capturePaneJoined(200).catch(() => "");
+        if (this.finished) return;
+        exitCode = exitCodeFromMarker(after, marker);
+        final = withoutExitMarker(after, marker);
+        // The live view's last frame is this one (the earlier capture may predate the install's last lines).
+        if (final !== pane) try { this.events.onProgress?.(final); } catch (err) { this.logger.debug({ err: (err as Error).message }, "login progress consumer failed"); }
+      }
       // Exit code 0 without the success line still counts as success (some
       // CLIs clear the screen on exit); non-zero is a failure with evidence.
       // The last lines the CLI printed — not the blank rows and tmux's own "Pane is dead (…)" line below them.
-      const tail = pane.split("\n").map(l => l.trim()).filter(l => l && !/^Pane is dead\b/.test(l)).slice(-3).join(" / ").slice(0, 300);
-      await this.finish(status.exitCode === 0, status.exitCode === 0
+      const tail = final.split("\n").map(l => l.trim()).filter(l => l && !/^Pane is dead\b/.test(l)).slice(-3).join(" / ").slice(0, 300);
+      await this.finish(exitCode === 0, exitCode === 0
         ? "clean exit"
-        : `CLI exited with code ${status.exitCode}${tail ? ` — ${tail}` : ""}`);
+        : `CLI exited with code ${exitCode}${tail ? ` — ${tail}` : ""}`);
       return;
     }
 

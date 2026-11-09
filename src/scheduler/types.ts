@@ -93,12 +93,14 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 // ── Shared Decisions ──────────────────────────────────────────
 
 export type DecisionStatus = "active" | "superseded" | "archived";
-export type DecisionScope = "project" | "fleet";
+export type DecisionScope = "project" | "team" | "fleet";
 
 export interface Decision {
   id: string;
   project_root: string;
   scope: DecisionScope;
+  /** The team a `scope: "team"` decision belongs to (its members see it, wherever they work); null otherwise. */
+  team: string | null;
   title: string;
   content: string;
   tags: string[];
@@ -112,7 +114,10 @@ export interface Decision {
 
 export interface CreateDecisionParams {
   project_root: string;
-  scope?: DecisionScope; // "project" (default) or "fleet" (visible to all instances)
+  scope?: DecisionScope; // "project" (default: this exact working directory), "team" (that team's members) or "fleet"
+  team?: string; // required with scope "team"
+  /** The poster's teams: a team decision of one of them may be superseded (besides fleet and own-project ones). */
+  poster_teams?: string[];
   title: string;
   content: string;
   tags?: string[];

@@ -148,7 +148,8 @@ function tools(opts: { agentEdit?: boolean } = {}) {
   const dir = tmp();
   let now = 1_000_000;
   const clock = () => now;
-  const store = new ThemeStore(dir);
+  // Placement `at` uses opts.now; the limiter already uses `clock`. Same clock so tick moves `at`.
+  const store = new ThemeStore(dir, { now: clock });
   let changed = 0;
   const web = { themes: { agent_edit: opts.agentEdit ?? true } };
   const app = new WebAppearance(store, () => web, () => { changed++; }, new AppearanceLimiter(clock), clock);
@@ -209,6 +210,8 @@ describe("set_web_widget / remove_web_widget", () => {
   });
   it("a new spec keeps the values that still fit; the same spec again keeps its first placement", () => {
     const t = tools();
+    // Same-millisecond wall clock (CI 9f85227a). Product identity is widgetId(spec); `at` follows tick.
+    vi.spyOn(Date, "now").mockReturnValue(1_793_844_035_880);
     t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: DETAILS, data: { prs: 4, done: ["a"] } });
     const at = t.store.get("alpha").placements.widgets.details!.at;
     t.tick(31_000);

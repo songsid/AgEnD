@@ -1,3 +1,6 @@
+import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
+import { quotaNoticeProblem } from "./quota-notice-config.js";
+import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
@@ -38,7 +41,7 @@ import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
-import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { ProgressAccumulator, isSearchProgram, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
 import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -46,7 +49,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
-import { shellQuote, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
+import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -72,12 +75,13 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT_PAUSE } from "./backend/claude-transcript-errors.js";
 import { t } from "./locale.js";
-import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
+import { claudeResetInstant, claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
-import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
+import { markerConsumed, scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
+import { QUEUED_HANDOFF_MAX_REDELIVERIES, QueuedHandoffStore, type QueuedHandoff } from "./queued-handoffs.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
@@ -187,6 +191,8 @@ export const HANDOFF_RECHECK_MS = 1_000;
 export const WAIT_STOP_POLL_MS = 250;
 /** #2770: human messages a cancel dropped are told in one notice, this long after the last of them. */
 export const CANCELLED_HUMANS_NOTICE_MS = 1_000;
+/** #3030: a queued hand-off's watch outlives a long turn (the record outlives the watch in any case). */
+export const QUEUED_HANDOFF_WATCH_LIFETIME_MS = 12 * 60 * 60_000;
 /**
  * An instance publishing more than this many execution-state edges inside the
  * window is flapping; its edges stop being logged one by one (#1116). One
@@ -235,13 +241,33 @@ export function sameProjectFamily(a: string, b: string): boolean {
  * `isDispatcher` (a general) opts out of that narrowing on purpose: it routes
  * work across all projects, so cross-project rules ("X 文件操作由 Y 負責") are
  * precisely what it must know. Narrowing a general would cause misrouting.
+ *
+ * `scope: "team"` reaches exactly the members of that team (`teams`, this instance's), wherever they work — a
+ * general included only when it is a member: a team's conventions are not routing rules.
  */
-export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; title: string }>(
+/** One active decision as the fleet hands it to a daemon (text already cut to 200 characters). */
+export interface ActiveDecisionRow { title: string; content: string; scope?: string; project_root?: string; team?: string | null }
+
+/** At most this many fleet decisions, and this many team + directory ones, in one instance's Active Decisions. */
+export const ACTIVE_DECISION_CAPS = { fleet: 20, scoped: 20 } as const;
+
+/**
+ * Bound an instance's already-selected decisions (newest first, as the store orders them): fleet ones and its own team
+ * and directory ones are capped apart, AFTER selection, so nobody else's rows take an instance's places.
+ */
+export function capActiveDecisions<T extends { scope?: string }>(selected: readonly T[]): T[] {
+  let fleet = 0, scoped = 0;
+  return selected.filter(d => d.scope === "fleet" ? fleet++ < ACTIVE_DECISION_CAPS.fleet : scoped++ < ACTIVE_DECISION_CAPS.scoped);
+}
+
+export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; team?: string | null; title: string }>(
   all: T[],
   workDir: string,
   isDispatcher = false,
+  teams: readonly string[] = [],
 ): T[] {
   return all.filter(d => {
+    if (d.scope === "team") return !!d.team && teams.includes(d.team);
     if (d.project_root === workDir) return true;   // own project, any scope
     if (d.scope !== "fleet") return false;         // project-scoped, elsewhere
     if (!d.project_root) return true;              // truly global
@@ -388,7 +414,8 @@ export function shellCommandLabel(command: string): string {
   if (!program) return "";
 
   const isBareWord = (t: string | undefined): boolean => !!t && /^[A-Za-z][A-Za-z0-9_-]*$/.test(t);
-  const label = isBareWord(tokens[1]) ? `${program} ${tokens[1]}` : program;
+  // A search program's next word is what it searches for, not a subcommand: `grep <token>` keeps only `grep`.
+  const label = isBareWord(tokens[1]) && !isSearchProgram(program) ? `${program} ${tokens[1]}` : program;
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
@@ -612,6 +639,10 @@ type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
  * a redraw swallowed.
  */
 interface PaneEvidence {
+  /** Metadata from this pre-input picture; committed only after a successful, still-owned input submission. */
+  quotaHistory?: { spawn: number; fence: number; attempt: number; tmux: TmuxManager | null; window: string | undefined;
+    counts: Array<{ key: string; count: number }>; marker: string; occurrences: number };
+
   /** Rows carrying the backend's queued-input marker. */
   queued: number;
   /** Occurrences of this message's identifying signature. */
@@ -842,6 +873,13 @@ type DeliveryVerdict = {
   transcriptProof?: TranscriptMarkerKind;
   /** Strict human evidence; independent of weaker legacy transport outcomes. */
   humanReceipt?: HumanReceiptAttempt;
+  /**
+   * #3030: the caller (pushChannelMessage) keeps a hand-off into a busy CLI's own queue on record until a turn takes it:
+   * what a redelivery needs, and the record's id and redelivery count when this write IS a redelivery.
+   */
+  trackHandoff?: { content: string; meta: Record<string, string>; id?: string; redeliveries?: number };
+  /** #3030: the record written ahead of this hand-off's paste (cleared when the write did not end as a hand-off). */
+  handoff?: QueuedHandoff;
 };
 
 /**
@@ -1793,6 +1831,12 @@ export class Daemon extends EventEmitter {
    * when a startup scan reaches a real ready prompt, or on wake().
    */
   private fatalStartupBlocked = false;
+  /** #3441: one repair budget survives every automatic spawn on this daemon. */
+  private modelMinimumRepairUsed = false;
+  private modelMinimumFlight: Promise<void> | null = null;
+  private modelMinimumBlocked = false;
+  private modelMinimumUpdateNotified = false;
+  private cliRepairSessionId: string | undefined;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
   /** Optional per-instance localhost relay used to observe Muse usage events. */
@@ -1835,6 +1879,12 @@ export class Daemon extends EventEmitter {
   private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
   private pasteQueueDepth = 0;
   /** #2770: a person's messages a cancel dropped before they reached the CLI, told together (noteCancelledHuman). */
+  /** #3030: people's messages a CLI never took (or that a restart left unverifiable), told once per batch. */
+  private unsettledHandoffs: { "not-taken": Array<{ chatId: string; messageId: string; threadId?: string }>; unverifiable: Array<{ chatId: string; messageId: string; threadId?: string }> } = { "not-taken": [], unverifiable: [] };
+  private unsettledHandoffsTimer: ReturnType<typeof setTimeout> | null = null;
+  /** #3030: since when (monotonic) the CLI has been idle without a break; null while it is not. */
+  private instanceIdleSinceMono: number | null = null;
+  private queuedHandoffStore: QueuedHandoffStore | null = null;
   private cancelledHumans: Array<{ chatId: string; messageId: string; threadId?: string }> = [];
   private cancelledHumansTimer: ReturnType<typeof setTimeout> | null = null;
   private firstDeliveryDelay = new FirstDeliveryDelay();
@@ -2038,6 +2088,71 @@ export class Daemon extends EventEmitter {
   // still booting. Its new tmux window starts empty before resume restores the
   // old transcript, so pre-ready scans must not lower this seeded baseline.
   private seededErrorCountBaselines = new Map<string, number>();
+  private quotaReplay: { spawn: number; fence: number; attempt: number; messages: readonly string[]; current(): boolean } | null = null;
+
+  private paneQuotaPatterns(): ErrorPattern[] {
+    if (!["codex", "grok"].includes(this.backend?.binaryName ?? "")) return [];
+    const patterns = this.backend?.getErrorPatterns?.() ?? [];
+    return this.backend?.binaryName === "codex" ? patterns.filter(ep => Daemon.isCodexUsageLimitPause(ep)) : patterns.filter(ep => ep.type === "quota");
+  }
+
+  private async prepareQuotaReplayHistory(reuseWindow: boolean): Promise<void> {
+    this.quotaReplay = null;
+    const backend = this.backend, owner = this.tmux, window = owner?.getWindowId?.();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, attempt = this.launchAttempt;
+    const current = () => backend === this.backend && owner === this.tmux && window === owner?.getWindowId?.()
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && attempt === this.launchAttempt;
+    const replay = backend?.quotaReplayHistory?.();
+    if (replay) this.quotaReplay = { ...replay, spawn, fence, attempt };
+    // A Grok wake keeps its exited pane. The replacement's first ready pane is not history proof.
+    if (reuseWindow && backend?.resumesPreservedQuotaHistory?.()) {
+      let oldPane: string;
+      try { oldPane = await owner!.capturePane(); } catch { return; }
+      this.startupAdmission?.();
+      if (!current()) return;
+      const patterns = this.paneQuotaPatterns();
+      const messages = oldPane.split(/\r?\n/).filter(row => patterns.some(ep => ep.pattern.test(row)));
+      this.quotaReplay = { messages, current: () => true, spawn, fence, attempt };
+    }
+  }
+
+  /** Before admission, this launch may absorb ONLY rows positively known before its resume. */
+  private takeQuotaReplayBaseline(pane: string): void {
+    const history = this.quotaReplay;
+    if (!history) return;
+    this.quotaReplay = null;
+    if (history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt || !history.current()) return;
+    for (const ep of this.paneQuotaPatterns()) {
+      const count = Math.min(Daemon.countOccurrences(ep.pattern, pane), quotaHistoryCount(pane, ep.pattern, history.messages));
+      if (!count) continue;
+      const key = Daemon.errorPatternKey(ep);
+      this.lastErrorCount.set(key, Math.max(this.lastErrorCount.get(key) ?? 0, count));
+      this.logger.debug({ backend: this.backend?.binaryName, count, evidence: "before-resume" }, "Quota rows restored from history — not a new incident");
+    }
+  }
+
+  // Submission makes captured rows history even when no monitor reported them yet. Keep this acknowledged input's
+  // marker as well: a new error can replace an old row in the viewport without increasing the total match count.
+  private quotaInput: { history: NonNullable<PaneEvidence["quotaHistory"]>; reported: Map<string, number> } | null = null;
+  private commitPreInputQuotaHistory(evidence: PaneEvidence | null): void {
+    const history = evidence?.quotaHistory;
+    if (!history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt
+      || history.tmux !== this.tmux || history.window !== this.tmux?.getWindowId?.() || this.deliveryWritesStopping) return;
+    for (const row of history.counts) this.lastErrorCount.set(row.key, row.count);
+    this.quotaInput = history.marker && history.occurrences === 0 ? { history, reported: new Map() } : null;
+  }
+
+  private quotaOccurrencesAfterInput(pane: string, ep: ErrorPattern): { input: NonNullable<Daemon["quotaInput"]>; count: number } | null {
+    if (!(this.backend?.binaryName === "codex" && Daemon.isCodexUsageLimitPause(ep)
+      || this.backend?.binaryName === "grok" && ep.type === "quota")) return null;
+    const input = this.quotaInput, history = input?.history;
+    if (!input || !history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch
+      || history.attempt !== this.launchAttempt || history.tmux !== this.tmux || history.window !== this.tmux?.getWindowId?.()
+      || this.deliveryWritesStopping) return null;
+    const suffix = quotaAfterInput(pane, history.marker);
+    return suffix === null ? null : { input, count: Daemon.countOccurrences(ep.pattern, suffix) };
+  }
+
   private lastDetectedErrorType: string | null = null;
   /**
    * #2822: Claude's per-model usage limit (`You've reached your <model> limit.`), known only from Claude's own record of
@@ -2062,11 +2177,44 @@ export class Daemon extends EventEmitter {
   /** #2834 (#816): Claude's usage-limit auto-continue note, as it records it (`system` / `informational`). */
   static readonly USAGE_LIMIT_PAUSE = CLAUDE_USAGE_LIMIT_PAUSE;
 
-  /** #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. */
-  private noteClaudeInformational(text: string): void {
-    const match = Daemon.USAGE_LIMIT_PAUSE.exec(text.trim());
+  /** Claude's note that its usage window opened again ("Usage limit reset · continuing automatically"). */
+  static readonly USAGE_LIMIT_RESET = /^Usage limit reset\b/i;
+  /** Repeats of one usage pause ("reached again" every few minutes) collapse into the first notice for this long. */
+  static readonly USAGE_PAUSE_NOTICE_WINDOW_MS = 30 * 60_000;
+  /** The usage-pause notice told last: when (monotonic), Claude's words for the reset, and that reset (wall clock). */
+  private usagePauseNotice: { at: number; when: string; resetAt: number | null } | null = null;
+
+  /**
+   * #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. `at`: when
+   * Claude wrote it (its record's timestamp). One notice per pause: a reset time already past is not this pause (an old
+   * note), and its repeats ("reached again") within the window — or naming the same reset, until it comes — say nothing
+   * more. Claude's own "Usage limit reset" ends it.
+   */
+  /** #3186 review: the lifecycle's second opinion dropped the notice (usage has capacity): nothing was told. */
+  clearUsagePauseNotice(): void { this.usagePauseNotice = null; }
+
+  private noteClaudeInformational(text: string, at: number | null = null): void {
+    const line = text.trim();
+    if (Daemon.USAGE_LIMIT_RESET.test(line)) { this.usagePauseNotice = null; return; }
+    const match = Daemon.USAGE_LIMIT_PAUSE.exec(line);
     if (!match) return;
     const when = match[1]!.trim();
+    const wallNow = Date.now(), now = performance.now();
+    const resetAt = claudeResetInstant(when, at ?? wallNow);
+    if (resetAt !== null && resetAt <= wallNow) {
+      this.logger.debug({ when, writtenAt: at }, "Claude usage-limit note names a reset already past — an old note, not told");
+      return;
+    }
+    // A pause told earlier is this one while its own reset has not come (unknown: within the window): its repeats —
+    // "reached again", or a relative time drifting ("in 3h", "in 2h 55m") — within the window, or naming the same reset.
+    // Once its reset has passed, a later note is a new pause even without Claude's "Usage limit reset" (#3186 review).
+    const told = this.usagePauseNotice;
+    const toldOpen = !!told && (told.resetAt === null || wallNow < told.resetAt);
+    if (told && toldOpen && (now - told.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS || (told.when === when && told.resetAt !== null))) {
+      this.logger.debug({ when }, "Claude usage-limit note repeats a pause already told — collapsed");
+      return;
+    }
+    this.usagePauseNotice = { at: now, when, resetAt };
     this.emit("pty_error", { name: this.name, type: "quota", action: "notify", verifyQuota: true, skipCooldown: true, skipRecoveryWait: true,
       message: `Claude Code usage limit reached — paused; continuing automatically ${when}`,
       notice: quotaPausedLine("Claude", "usage", claudeResetTime(when)) });
@@ -2259,6 +2407,10 @@ export class Daemon extends EventEmitter {
     };
   }
 
+  /** Register each issued HTTP credential with the same-process lifecycle owner. */
+  private agentCredentialIssuer?: (token: string) => void;
+  setAgentCredentialIssuer(issue: (token: string) => void): void { this.agentCredentialIssuer = issue; }
+
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
   setDeliveryOutboxPort(port: DaemonDeliveryPort | undefined): void {
     this.deliveryOutbox = port;
@@ -2266,6 +2418,12 @@ export class Daemon extends EventEmitter {
 
   /** The fleet's other same-backend instances' working directories, read at spawn (#984). */
   private peerWorkingDirectories: (() => string[]) | undefined;
+  /** This instance's teams (fleet.yaml), read at each spawn: their team decisions join its Active Decisions. */
+  private decisionTeams: (() => string[]) | undefined;
+  setDecisionTeams(teams: (() => string[]) | undefined): void { this.decisionTeams = teams; }
+  /** The fleet's active decisions (startup snapshot), read at each spawn; absent: the AGEND_DECISIONS env (tests). */
+  private decisionSource: (() => readonly ActiveDecisionRow[]) | undefined;
+  setDecisionSource(source: (() => readonly ActiveDecisionRow[]) | undefined): void { this.decisionSource = source; }
 
   setPeerWorkingDirectories(peers: (() => string[]) | undefined): void {
     this.peerWorkingDirectories = peers;
@@ -2399,6 +2557,200 @@ export class Daemon extends EventEmitter {
       },
       logger: this.logger,
     });
+  }
+
+  private handoffStore(): QueuedHandoffStore {
+    return this.queuedHandoffStore ??= new QueuedHandoffStore(this.instanceDir);
+  }
+
+  /** #3030: the CLI that holds a queued hand-off; a record is settled only by a later one. */
+  private handoffHolder(): string { return `${this.bootId}:${this.spawnGeneration}`; }
+
+  /**
+   * #3030: before the paste. A hand-off into a busy Claude Code / Codex queue gets its record — the transcript
+   * checkpoint before the paste, the unique leading marker and what a redelivery needs — or, for a redelivery written
+   * as an ordinary idle submission, its record moves its checkpoint here, so a crash right after this paste is still
+   * judged from the transcript that will show it. A write that did not keep a record runs as before.
+   */
+  private async recordQueuedHandoff(
+    formatted: string,
+    handingOff: boolean,
+    verdict: DeliveryVerdict,
+    durableAttempt: DurableDeliveryAttempt | undefined,
+    humanVerificationId: string | undefined,
+  ): Promise<void> {
+    const track = verdict.trackHandoff;
+    if (!track) return;
+    if (!handingOff && !track.id) {
+      // An earlier attempt of this delivery was a hand-off; this one is an idle submission.
+      if (verdict.handoff) this.dropQueuedHandoff(verdict);
+      return;
+    }
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "";
+    if (!["claude-code", "codex"].includes(backend)) return;
+    const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
+      : humanVerificationId ? `[agend-human-id:${humanVerificationId}]` : null;
+    if (!marker || !formatted.startsWith(marker)) return;
+    let checkpoint: { path: string; offset: number } | null = verdict.transcriptCheckpoint ?? null;
+    if (!checkpoint) {
+      try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
+      catch (err) { this.logger.debug({ err }, "Could not checkpoint the transcript before a queued hand-off"); }
+    }
+    if (!checkpoint) return; // nothing could judge it later: it runs as before (✅ at the hand-off)
+    const entry: QueuedHandoff = {
+      id: track.id ?? randomUUID(), marker, backend, path: checkpoint.path, offset: checkpoint.offset,
+      content: track.content, meta: track.meta, holder: this.handoffHolder(), createdAt: Date.now(),
+      redeliveries: track.redeliveries ?? 0,
+    };
+    try {
+      const dropped = this.handoffStore().put(entry);
+      if (handingOff) verdict.handoff = entry;
+      for (const old of dropped) this.logger.warn({ handoff: old.id, createdAt: old.createdAt }, "Queued hand-off record dropped: too many on record");
+    } catch (err) {
+      this.logger.warn({ err }, "Could not record a queued hand-off; it runs as before (✅ at the hand-off)");
+    }
+  }
+
+  /**
+   * #3030: after pushChannelMessage's write. A hand-off on record whose paste went out is watched (✅ when a turn
+   * takes it); one that was never written goes. A redelivery that ended as an ordinary submission is done; one that a
+   * cancel dropped goes too (a cancel is the person's); one stopped before its write stays for the next CLI.
+   */
+  private afterTrackedWrite(meta: Record<string, string>, verdict: DeliveryVerdict, sent: boolean, deliveryEpoch: number): void {
+    try {
+      // A stale epoch with writes still allowed is a cancel (the person's); a stop fences writes too, and keeps records.
+      const cancelled = !this.isDeliveryEpochCurrent(deliveryEpoch) && !this.deliveryWritesStopping;
+      if (verdict.handoff) {
+        if (sent || verdict.paneWriteStarted) this.watchQueuedHandoff(verdict.handoff);
+        else if (!verdict.trackHandoff?.id || cancelled) this.dropQueuedHandoff(verdict);
+        return;
+      }
+      const id = meta.handoff_redelivery;
+      if (!id) return;
+      if (sent || verdict.paneWriteStarted || cancelled) {
+        this.handoffStore().remove(id);
+        this.logger.info({ handoff: id, sent, proof: verdict.proof ?? null }, "Queued hand-off redelivered as an ordinary submission");
+      }
+    } catch (err) {
+      this.logger.warn({ err }, "Could not update the queued hand-off record after its write");
+    }
+  }
+
+  private redeliveryStillOurs(meta: Record<string, string>): boolean {
+    const holder = this.handoffHolder();
+    if (meta.handoff_holder !== holder) return false;
+    try { return this.handoffStore().get(meta.handoff_redelivery)?.holder === holder; } catch { return false; }
+  }
+
+  private dropQueuedHandoff(verdict: DeliveryVerdict): void {
+    const entry = verdict.handoff;
+    verdict.handoff = undefined;
+    if (!entry) return;
+    try { this.handoffStore().remove(entry.id); } catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not remove a queued hand-off record"); }
+  }
+
+  /**
+   * #3030: the hand-off's CLI is the current one: watch its transcript for the turn that takes it (✅ then), and for an
+   * idle CLI that never did (reported). A stop ends the watch; the record stays for the next CLI to settle.
+   */
+  private watchQueuedHandoff(entry: QueuedHandoff): void {
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
+    const started = consumedWatches.start({
+      deliveryId: `handoff:${entry.id}`,
+      attemptNo: entry.redeliveries,
+      backend: entry.backend,
+      path: entry.path,
+      offset: entry.offset,
+      marker: entry.marker,
+      // A cancel or stop moves the epoch: the watch ends quietly (a cancel cleared the record, a stop leaves it).
+      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch
+        && epoch === this.deliveryEpoch,
+      consumed: (via) => this.settleQueuedHandoff(entry, "taken", `transcript:${via}`),
+      idleForMs: () => this.instanceIdleSinceMono === null ? null : performance.now() - this.instanceIdleSinceMono,
+      notTaken: () => this.settleQueuedHandoff(entry, "not-taken", "transcript:absent-while-idle"),
+      // A queued message waits for the running turn, however long that is.
+      lifetimeMs: QUEUED_HANDOFF_WATCH_LIFETIME_MS,
+      logger: this.logger,
+    });
+    if (!started) {
+      // No watch (the fleet's cap): ✅ as before; the record still lets a restart judge it.
+      const status = channelStatus(entry.meta);
+      if (status) this.emit("message_confirmed", status);
+    }
+  }
+
+  /** #3030: a record's end — taken (✅), or never taken / not judgeable (❌, told once per batch). */
+  private settleQueuedHandoff(entry: QueuedHandoff, outcome: "taken" | "not-taken" | "unverifiable", proof: string): void {
+    try { this.handoffStore().remove(entry.id); }
+    catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not remove a settled queued hand-off record"); }
+    const meta = entry.meta;
+    const status = channelStatus(meta);
+    if (outcome === "taken") {
+      this.logger.info({ handoff: entry.id, proof, redeliveries: entry.redeliveries }, "Queued hand-off taken by the CLI");
+      if (status) this.emit("message_confirmed", status);
+      return;
+    }
+    this.logger.warn({ handoff: entry.id, outcome, proof, redeliveries: entry.redeliveries }, "Queued hand-off was not taken by the CLI");
+    if (meta.from_instance) {
+      this.reportCrossInstanceDeliveryFailure(meta, { reached: true, phase: "handoff-not-consumed", proof: outcome === "not-taken" ? "not-taken" : "unverifiable" });
+      return;
+    }
+    if (!status) return;
+    this.unsettledHandoffs[outcome].push({ chatId: status.chatId, messageId: status.messageId, ...(status.threadId ? { threadId: status.threadId } : {}) });
+    if (this.unsettledHandoffsTimer) clearTimeout(this.unsettledHandoffsTimer);
+    this.unsettledHandoffsTimer = setTimeout(() => {
+      this.unsettledHandoffsTimer = null;
+      for (const reason of ["not-taken", "unverifiable"] as const) {
+        const messages = this.unsettledHandoffs[reason].splice(0);
+        if (messages.length) this.emit("human_handoffs_unsettled", { reason, messages });
+      }
+    }, CANCELLED_HUMANS_NOTICE_MS);
+    this.unsettledHandoffsTimer.unref?.();
+  }
+
+  /**
+   * #3030: right after a CLI came up — the records left by CLIs that are gone. Their queue went with them, so each is
+   * judged by its own transcript from its checkpoint: taken there (✅, nothing pasted); proven not taken (the whole
+   * delta read, the marker absent or only enqueued) → redelivered once, with the same marker, through the ordinary
+   * queue; anything that cannot be judged → never pasted, reported. Ownership is evidence: never pasted twice.
+   */
+  private async reconcileQueuedHandoffs(): Promise<void> {
+    let entries: QueuedHandoff[];
+    try { entries = this.handoffStore().list().filter(e => e.holder !== this.handoffHolder()); }
+    catch (err) { this.logger.warn({ err }, "Could not read the queued hand-off records"); return; }
+    if (!entries.length) return;
+    // Captured before any await: a reconciliation that outlives its CLI can never claim the next CLI's holder.
+    const holder = this.handoffHolder();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
+    const fresh = () => spawn === this.spawnGeneration && fence === this.launchFenceEpoch && epoch === this.deliveryEpoch
+      && !this.deliveryWritesStopping;
+    let redelivered = 0, taken = 0, unverifiable = 0;
+    for (const entry of entries) {
+      const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker });
+      // This CLI is gone already, or a cancel came: the next CLI settles them (a cancel cleared them).
+      if (!fresh()) return;
+      // …and the record is still the one that was read (another reconciliation or a cancel did not change it meanwhile).
+      let current: QueuedHandoff | undefined;
+      try { current = this.handoffStore().get(entry.id); } catch { current = undefined; }
+      if (!current || current.holder !== entry.holder || current.redeliveries !== entry.redeliveries) continue;
+      if (markerConsumed(kind as TranscriptMarkerKind)) { taken++; this.settleQueuedHandoff(entry, "taken", `restart-transcript:${kind}`); continue; }
+      if (kind === "unavailable" || entry.redeliveries >= QUEUED_HANDOFF_MAX_REDELIVERIES) {
+        unverifiable++;
+        this.settleQueuedHandoff(entry, "unverifiable", kind === "unavailable" ? "restart-transcript:unavailable" : "redelivery-limit");
+        continue;
+      }
+      // Proven not taken: the CLI that queued it is gone and its transcript, read to the end, never took it.
+      const next: QueuedHandoff = { ...entry, holder, redeliveries: entry.redeliveries + 1 };
+      try { this.handoffStore().put(next); }
+      catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not update a queued hand-off record; not redelivered now"); continue; }
+      redelivered++;
+      // The person's receipt was settled by the first write: the redelivery carries its marker, not its receipt binding.
+      const { human_receipt_id: _r, human_owner_key: _o, human_daemon_owner: _d, human_wire_sha256: _w, ...meta } = entry.meta;
+      this.pushChannelMessage(entry.content, { ...meta, handoff_redelivery: entry.id,
+        handoff_redeliveries: String(next.redeliveries), handoff_holder: next.holder }, undefined, epoch);
+    }
+    this.logger.info({ instance: this.name, redelivered, taken, unverifiable, proof: "transcript" },
+      "Queued hand-offs left by the previous CLI settled");
   }
 
   private finishDurableSubmission(
@@ -2849,7 +3201,7 @@ export class Daemon extends EventEmitter {
       });
       this.transcriptMonitor.on("api_error", (text: string, status: number | null, _at: number | null, errorKind: string | null) =>
         this.noteClaudeApiError(text, status, errorKind));
-      this.transcriptMonitor.on("system_informational", (text: string) => this.noteClaudeInformational(text));
+      this.transcriptMonitor.on("system_informational", (text: string, at: number | null) => this.noteClaudeInformational(text, at));
       this.transcriptMonitor.on("user_prompt", () => this.noteClaudePrompt());
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.noteClaudeOutput();
@@ -2900,6 +3252,8 @@ export class Daemon extends EventEmitter {
       this.startErrorMonitor();
     }
     this.startInstanceStateMonitor();
+    // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+    void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
 
     this.logger.info(`${this.name} ready`);
   }
@@ -3365,9 +3719,6 @@ export class Daemon extends EventEmitter {
             scheduleNext();
             return;
           }
-          // The CLI owns the MCP server process, so the daemon can only observe it.
-          measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
-
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
           const healthTmux = this.tmux;
@@ -3387,6 +3738,9 @@ export class Daemon extends EventEmitter {
           // began just before pause must not classify that exit as a crash.
           if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
+            // A CLI shutdown also closes its MCP children. Revive tools only for
+            // a positively live pane, never while its exit is being classified.
+            measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
             // Capture only a known primary while it lives. No extra tmux call: PID comes
             // from this same status read. Fast/unobserved deaths remain ordinary crashes.
             const key = this.oomSessionKey();
@@ -3424,6 +3778,26 @@ export class Daemon extends EventEmitter {
             if (discardStaleHealth()) return;
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+              this.windowQueryFailureTicks = 0;
+              this.stormWindow?.noteWindowAlive(this.name);
+              scheduleNext();
+              return;
+            }
+          }
+
+          // tmux marks the PTY dead when its fd closes, before SIGCHLD can fill
+          // pane_dead_status. Claude /exit (and any other CLI) can hit this gap.
+          // Give the status four bounded re-probes; missing is never exit zero.
+          if (paneStatus && !paneStatus.alive && paneStatus.exitCode === undefined) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+              if (discardStaleHealth()) return;
+              const observed = await healthTmux.getPaneStatus();
+              if (discardStaleHealth()) return;
+              if (observed) paneStatus = observed;
+              if (paneStatus.alive || paneStatus.exitCode !== undefined) break;
+            }
+            if (paneStatus.alive) {
               this.windowQueryFailureTicks = 0;
               this.stormWindow?.noteWindowAlive(this.name);
               scheduleNext();
@@ -3602,6 +3976,8 @@ export class Daemon extends EventEmitter {
               try {
                 await this.spawnClaudeWindow();
                 this.setProcessStatus("running");
+                // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+                void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
                 this.logger.info("Recovered from background session conflict");
                 this.emit("crash_respawn", this.name);
               } catch (err) {
@@ -3761,6 +4137,8 @@ export class Daemon extends EventEmitter {
               try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
             }
             this.setProcessStatus("running");
+            // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+            void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
             this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
             this.emit("crash_respawn", this.name);
             // Emit the per-instance audit event while the storm is still active
@@ -4253,7 +4631,12 @@ export class Daemon extends EventEmitter {
     for (const ep of patterns) {
       const key = Daemon.errorPatternKey(ep);
       const count = countMatches(ep.pattern);
-      const seen = this.lastErrorCount.get(key) ?? 0;
+      let seen = this.lastErrorCount.get(key) ?? 0;
+      const afterInput = this.quotaOccurrencesAfterInput(pane, ep);
+      // Only a new echo of our acknowledged input can re-arm a same-count replacement. Old rows before that echo,
+      // an ambiguous/missing marker or a superseded input owner retain the ordinary count-based decision.
+      const newQuotaAfterInput = !!afterInput && afterInput.count > (afterInput.input.reported.get(key) ?? 0);
+      if (newQuotaAfterInput) seen = Math.min(seen, count - 1);
 
       // #2282: a resumed exhausted429 row is history, not even a new
       // notification/failover incident; so is a resumed codex workspace-limit row
@@ -4276,7 +4659,7 @@ export class Daemon extends EventEmitter {
       // the lifecycle, whose usage probe decides (available / reserve / exhausted).
       if (Daemon.isCodexUsageLimitPause(ep)) {
         const ack = this.codexReserveAck;
-        if (ack && ack.generation === this.spawnGeneration && count <= ack.count) {
+        if (ack && ack.generation === this.spawnGeneration && count <= ack.count && !newQuotaAfterInput) {
           // The handled incident's lines can scroll out of the capture buffer as
           // the reserve session talks on. Lower the proof (and the occurrence
           // baseline) with them: otherwise `count <= ack.count` would keep
@@ -4321,6 +4704,7 @@ export class Daemon extends EventEmitter {
       }
 
       this.lastErrorCount.set(key, count);
+      if (afterInput) afterInput.input.reported.set(key, Math.max(afterInput.input.reported.get(key) ?? 0, afterInput.count));
 
       // Kiro's `auto` model picks a concrete model per turn and reroutes around
       // a temporarily unavailable one on its own — telling the user to run
@@ -4357,6 +4741,14 @@ export class Daemon extends EventEmitter {
 
   /** Arm the recovery gates and emit one detected error pattern. */
   private emitErrorPattern(ep: ErrorPattern, key: string, pane: string, now: number): void {
+    const minimum = this.backend?.binaryName === "claude" && ep.type === "outdated_cli" ? claudeMinimumError(pane) : null;
+    if (minimum) {
+      this.lastErrorNotifiedAt.set(key, now);
+      void this.handleClaudeModelMinimum(minimum).catch(err => {
+        this.logger.warn({ reason: String(err) }, "CLI launch repair failed");
+      });
+      return;
+    }
     // #2795: auth text on the pane proves nothing about the credentials (22 of 22 such matches on the main host were
     // conversation text). It arms nothing here; it only asks the lifecycle's token-free check, and a failing check
     // arms the auth state through confirmAuthFailure().
@@ -4443,6 +4835,10 @@ export class Daemon extends EventEmitter {
     // (Completion paths clear via the guard's onComplete; a cancel with no
     // later idle edge would otherwise leave the marker behind.)
     clearInFlightTurnMarker(this.instanceDir);
+    // #3030: what the person cancelled is not kept for a redelivery (nor reported as not taken).
+    try {
+      for (const entry of this.handoffStore().list()) this.handoffStore().remove(entry.id);
+    } catch (err) { this.logger.warn({ err }, "Could not clear queued hand-off records on cancel"); }
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
@@ -5655,6 +6051,8 @@ export class Daemon extends EventEmitter {
     }
     if (snapshot.state === "working" && this.recoveryBootSettled
       && this.workingRecoveryInputOwner !== JSON.stringify(this.interactionOwner())) this.recoveryNativeWork = true;
+    if (snapshot.state !== "idle") this.instanceIdleSinceMono = null;
+    else if (this.instanceState !== "idle" || this.instanceIdleSinceMono === null) this.instanceIdleSinceMono = performance.now();
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
     // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.
@@ -5770,7 +6168,7 @@ export class Daemon extends EventEmitter {
    * message can arrive mid-turn and sit queued, and marking at arrival would let
    * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
    */
-  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch): void {
+  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch, queuedHandoff = false): void {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -5817,7 +6215,9 @@ export class Daemon extends EventEmitter {
     // during the continuation boots clean instead of chaining resumes.
     // #2544: a reply that settled before this arm already answered the person —
     // writing a marker would re-inject a continuation for a finished turn.
-    if (!meta.resumedContinuationOf && !armed.completionDelivered) {
+    // #3030: a message only queued in the busy CLI has not started a turn: the interrupted turn is still the running one,
+    // and a queued message lost to a restart is the hand-off record's to redeliver, not a continuation's.
+    if (!meta.resumedContinuationOf && !armed.completionDelivered && !queuedHandoff) {
       const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
       const resumeCwd = this.config.working_directory ?? "";
       writeInFlightTurnMarker(this.instanceDir, {
@@ -7080,6 +7480,8 @@ export class Daemon extends EventEmitter {
     } else if (update.reply_completion_guard === null) {
       delete this.config.reply_completion_guard;
     }
+    if (update.quota_notice === null) delete this.config.quota_notice;
+    else if (update.quota_notice !== undefined && !quotaNoticeProblem(update.quota_notice)) this.config.quota_notice = structuredClone(update.quota_notice) as import("./quota-notice-config.js").QuotaNoticeRule;
     if (typeof update.mcp_proxy_reply === "boolean") this.config.mcp_proxy_reply = update.mcp_proxy_reply;
     else if (update.mcp_proxy_reply === null) delete this.config.mcp_proxy_reply;
     if (typeof update.warm_cap === "number" && Number.isInteger(update.warm_cap) && update.warm_cap >= 0) this.config.warm_cap = update.warm_cap;
@@ -7207,8 +7609,10 @@ export class Daemon extends EventEmitter {
     if (name === "Write") return `Write ${inp.file_path ?? ""}`;
     // Command name only — never the arguments. See shellCommandLabel.
     if (name === "Bash") return `$ ${shellCommandLabel(String(inp.command ?? ""))}`;
-    if (name === "Glob") return `Glob ${inp.pattern ?? ""}`;
-    if (name === "Grep") return `Grep ${inp.pattern ?? ""}`;
+    // The tool name only — never the search pattern: it can be a literal secret someone is looking for, and this label
+    // reaches the channel's progress line.
+    if (name === "Glob") return "Glob";
+    if (name === "Grep") return "Grep";
     if (name === "Agent") return "Agent (subagent)";
     if (name.startsWith("mcp__agend__")) return ""; // skip channel tools
     return name;
@@ -7560,6 +7964,8 @@ export class Daemon extends EventEmitter {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           this.logger.info("Pending channel delivery dropped by user cancel");
           this.deferDurableDelivery(meta, "delivery epoch changed while queued");
+          // #3030: a cancel is the person's — a queued redelivery it dropped is not redelivered later.
+          if (meta.handoff_redelivery && !this.deliveryWritesStopping) { try { this.handoffStore().remove(meta.handoff_redelivery); } catch { /* the next CLI judges it */ } }
           return;
         }
         if (this.config.pre_task_command) {
@@ -7569,13 +7975,26 @@ export class Daemon extends EventEmitter {
         // #2800: with this real message, in the same paste — never a paste or turn of its own: after its delivery marker
         // (transcript proof anchors on it), before the message. A person's message with a verified receipt is pasted
         // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
-        const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id ? this.currentWhatsNew(this.pendingWhatsNew) : null;
+        const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id && !meta.handoff_redelivery
+          ? this.currentWhatsNew(this.pendingWhatsNew) : null;
         const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
         verdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
+        // #3030: a hand-off into the CLI's own queue stays on record until a turn takes it (redeliveries included).
+        if (!content.startsWith("/raw ") || meta.from_instance) {
+          const { handoff_redelivery: redeliveryOf, handoff_redeliveries: redeliveries, handoff_holder: _holder, ...kept } = meta;
+          verdict.trackHandoff = { content, meta: kept,
+            ...(redeliveryOf ? { id: redeliveryOf, redeliveries: Number(redeliveries) || 0 } : {}) };
+        }
+        // #3030: a redelivery is written only by the CLI it was issued for, and only while its record still says so —
+        // one queued for a CLI that was replaced meanwhile is that next CLI's reconciliation's to judge again.
+        if (meta.handoff_redelivery && !this.redeliveryStillOurs(meta)) {
+          this.logger.info({ handoff: meta.handoff_redelivery }, "Queued hand-off redelivery dropped: its CLI was replaced before the write");
+          return;
+        }
         const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
@@ -7596,10 +8015,11 @@ export class Daemon extends EventEmitter {
           // a later step of the write threw; a paste that never reached the pane keeps it for the next message.
           if (whatsNew && (sent || verdict.paneWriteStarted)) this.recordWhatsNewSent(whatsNew);
         }
+        this.afterTrackedWrite(meta, verdict, !!sent, deliveryEpoch);
         if (sent) {
           delivered = true;
           this.finishDurableSubmission(durable, verdict);
-          this.markTurnStarted(meta, formatted, deliveryEpoch);
+          this.markTurnStarted(meta, formatted, deliveryEpoch, !!verdict.handoff);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -9440,8 +9860,8 @@ export class Daemon extends EventEmitter {
    * moment the flag clears.
    */
   private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
-    if (!this.fatalStartupBlocked) return false;
-    this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
+    if (!this.fatalStartupBlocked && !this.modelMinimumBlocked) return false;
+    this.logger.error("Delivery refused — CLI startup or model-version repair is held");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
     return true;
   }
@@ -9786,6 +10206,16 @@ export class Daemon extends EventEmitter {
           }
         }
       }
+      // #3030: a hand-off into a busy CLI's own queue is on record before its paste (write-ahead): that queue lives only
+      // in the CLI process, and a stop before a turn takes it would lose it without a trace.
+      if (verdict.trackHandoff && !rawPaste) {
+        await this.recordQueuedHandoff(formatted, handingOffToNativeQueue, verdict, durableAttempt, humanVerificationId);
+        if (stillCurrent && !stillCurrent()) {
+          if (!verdict.trackHandoff.id) this.dropQueuedHandoff(verdict);
+          verdict.fenced = !verdict.durableBeginCommitted;
+          return false;
+        }
+      }
       if (lookBeforePaste) {
         await lookBeforePaste();
         // The look awaited: this attempt is still this write's — the same fence, tmux and launch — or nothing is written.
@@ -9928,6 +10358,7 @@ export class Daemon extends EventEmitter {
         if (steerComposerProof && performance.now() > steerEnterDeadline) return this.failDelivery(verdict, status, "submit-enter", "pre-enter-deadline");
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
+      this.commitPreInputQuotaHistory(pasteBaseline);
       // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
       const steerProofDeadline = performance.now() + NATIVE_QUEUE_PASTE_VERIFY_MS + POST_ENTER_PROOF_WINDOW_MS;
 
@@ -10007,7 +10438,8 @@ export class Daemon extends EventEmitter {
         }
         const proof = await this.confirmSubmitted(signature, pasteBaseline);
         if (proof === "submitted") {
-          if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
+          // ✅ native queue accepted — unless it is on record (#3030): then ✅ waits for the turn that takes it.
+          if (status && !verdict.handoff) this.emit("message_confirmed", status);
           return true;
         }
         if (proof === "unverifiable") {
@@ -10039,7 +10471,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Paste reached the pane but could not be verified as submitted — accepting without proof");
           verdict.phase = "best-effort-submission";
           verdict.proof = "unverified";
-          if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
+          if (status && !verdict.handoff) this.emit("message_confirmed", status); // ✅ (best-effort; on record: when taken, #3030)
           return true;
         }
 
@@ -10056,8 +10488,13 @@ export class Daemon extends EventEmitter {
         // confirmation ladder. "stranded" is the case that used to be a silent
         // ✅ — the text was visible, so the old check called it delivered.
         this.logger.warn({ proof }, "Native-queue paste not confirmed as submitted — retrying via idle-gated delivery");
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        // #3030: what follows is an idle submission (or a failure the caller reports): no longer a queued hand-off.
+        if (verdict.handoff && !verdict.trackHandoff?.id) this.dropQueuedHandoff(verdict);
+        verdict.handoff = undefined;
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its
@@ -10623,12 +11060,17 @@ export class Daemon extends EventEmitter {
    */
   private async capturePaneEvidence(signature: SubmissionSignature): Promise<PaneEvidence | null> {
     if (!this.tmux) return null;
+    const owner = this.tmux, window = owner.getWindowId?.(), spawn = this.spawnGeneration, fence = this.launchFenceEpoch, launch = this.launchAttempt;
     // Bounded re-probe: a capture that fails here costs the delivery its only
     // "before" picture, and a momentary failure should not decide anything.
     for (let attempt = 1; attempt <= BASELINE_CAPTURE_ATTEMPTS; attempt++) {
       try {
-        const pane = await this.tmux.capturePane();
+        const pane = await this.tmux!.capturePane();
         const evidence = this.paneEvidence(pane, signature);
+        if (owner === this.tmux && window === owner.getWindowId?.() && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && launch === this.launchAttempt) {
+          const counts = this.paneQuotaPatterns().map(ep => ({ key: Daemon.errorPatternKey(ep), count: Daemon.countOccurrences(ep.pattern, pane) }));
+          if (counts.length) evidence.quotaHistory = { spawn, fence, attempt: launch, tmux: owner, window, counts, marker: signature.value, occurrences: evidence.payload };
+        }
         const input = this.inputRegion(pane);
         if (input && agendMessageInInput(input.text)) {
           // Whatever we paste now lands after it, and one Enter submits both as
@@ -10752,6 +11194,7 @@ export class Daemon extends EventEmitter {
     this.rememberPaste(text, pasteGeneration);
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
     if (!(await this.sendDeliveryEnter(label, current))) return false;
+    this.commitPreInputQuotaHistory(baseline);
 
     let proof = await this.confirmSubmitted(signature, baseline);
     if (current && !current()) return false;
@@ -11345,9 +11788,10 @@ export class Daemon extends EventEmitter {
     const resolvedCustomPrompt = this.config.systemPrompt ? assembleSystemPrompt(this.config.systemPrompt, promptFiles) : undefined;
 
     let decisions: { title: string; content: string }[] | undefined;
-    if (process.env.AGEND_DECISIONS) {
+    const source = this.decisionSource;
+    if (source || process.env.AGEND_DECISIONS) {
       try {
-        const all: { title: string; content: string; scope?: string; project_root?: string }[] = JSON.parse(process.env.AGEND_DECISIONS);
+        const all: readonly ActiveDecisionRow[] = source ? source() : JSON.parse(process.env.AGEND_DECISIONS!);
         const workDir = this.config.working_directory;
         // `scope: "fleet"` used to bypass the project check entirely, so a
         // single-project worker inherited every other project's playbook (8 of
@@ -11356,7 +11800,9 @@ export class Daemon extends EventEmitter {
         // same project, or the same project family (worktrees/checkouts of one
         // repo). A general is exempt: it dispatches across all projects, so
         // cross-project routing rules are exactly what it needs.
-        decisions = selectRelevantDecisions(all, workDir, this.config.general_topic === true);
+        let teams: string[] = [];
+        try { teams = this.decisionTeams?.() ?? []; } catch { /* no team list: fleet and project decisions only */ }
+        decisions = capActiveDecisions(selectRelevantDecisions([...all], workDir, this.config.general_topic === true, teams));
         // Stable ordering so identical decision sets always build byte-identical
         // instructions — otherwise source ordering jitter flips the warmup hash.
         decisions.sort((a, b) => a.title.localeCompare(b.title));
@@ -11469,6 +11915,7 @@ export class Daemon extends EventEmitter {
       effort: (this.config as InstanceConfig & { effort?: string }).effort,
       kiroUi: this.config.kiro_ui,
       skipResume: this.skipResume,
+      ...(this.cliRepairSessionId ? { resumeSessionId: this.cliRepairSessionId } : {}),
       instructions,
       agentMode: isCliMode ? "cli" : "mcp",
       agentPort: isCliMode ? agentPort : undefined,
@@ -11535,6 +11982,8 @@ export class Daemon extends EventEmitter {
     if (this.parkedNoticeOut) { this.parkedNoticeOut = null; this.dialogParkedReported = false; this.emit("dialog_unparked", { name: this.name }); }
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
+    this.quotaReplay = null;
+    this.quotaInput = null;
     this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
@@ -12273,14 +12722,18 @@ export class Daemon extends EventEmitter {
    * Handles confirmation dialogs (trust folder, bypass permissions).
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
-  private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+  private async trySpawn(reuseWindow = false, startupTimeoutMs?: number, repairAdmission?: (attempt: number) => boolean): Promise<boolean> {
     const recoveryOwner = this.collateralOomRecovery ? this.interactionOwner() : null;
     const enter = () => {
       if (recoveryOwner && (!sameInteractionOwner(recoveryOwner, this.interactionOwner())
         || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
         throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
       }
-      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs, repairAdmission).catch(err => {
+        // Includes an in-place binary replacement during asynchronous launch preparation.
+        if (err instanceof KiroCompatibilityError) this.emit("kiro_compatibility_hold", err.message);
+        throw err;
+      });
     };
     const ready = !this.spawnGate ? await enter() : await this.spawnGate.run({
       instanceName: this.name,
@@ -12297,6 +12750,98 @@ export class Daemon extends EventEmitter {
     if (ready) await this.ensureKiroSessionProof();
     this.startupAdmission?.();
     return ready;
+  }
+
+  /** Resolve the installed launcher; never run Claude to discover its version. */
+  private async resolveClaudeInstallPath(): Promise<string | null> {
+    const { binaryProbe } = await import("./binary-probe.js");
+    const { resolveBackendBinary } = await import("./backend-availability.js");
+    binaryProbe.invalidate("claude");
+    return await resolveBackendBinary("claude-code") ?? null;
+  }
+
+  private async installedClaudeVersion(path: string): Promise<string | null> {
+    const { staticBackendVersion } = await import("./backend-availability.js");
+    return staticBackendVersion("claude-code", path);
+  }
+
+  /** #3441: only the CLI's own refusal can request this one, non-renewable repair. */
+  private handleClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
+    if (this.modelMinimumRepairUsed || this.modelMinimumBlocked || this.spawning || this.healthCheckPaused
+      || this.pauseWakeState !== "active" || this.backend?.binaryName !== "claude"
+      || !this.backend.refreshLaunchBinary) return Promise.resolve();
+    if (this.modelMinimumFlight) return this.modelMinimumFlight;
+    const flight = this.repairClaudeModelMinimum(minimum).finally(() => {
+      if (this.modelMinimumFlight === flight) this.modelMinimumFlight = null;
+    });
+    this.modelMinimumFlight = flight;
+    return flight;
+  }
+
+  private async repairClaudeModelMinimum(minimum: { running: string; required: string }): Promise<void> {
+    const tmux = this.tmux, backend = this.backend, window = tmux?.getWindowId();
+    let spawn = this.spawnGeneration, claimed = false;
+    const fence = this.launchFenceEpoch, attempt = this.launchAttempt, phase = this.pauseWakeState;
+    const baseCurrent = () => this.tmux === tmux && this.backend === backend && tmux?.getWindowId() === window
+      && this.spawnGeneration === spawn && this.launchFenceEpoch === fence && this.pauseWakeState === phase
+      && !this.startupAborted && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen && !this.healthCheckPaused;
+    const current = () => baseCurrent() && this.launchAttempt === attempt;
+    const failed = () => new Error(t("inst.cli_repair_failed"));
+    try {
+      // Read the newly resolved install, not a cached old prefix or the running image.
+      const path = await this.resolveClaudeInstallPath(); if (!current()) return;
+      const version = path ? await this.installedClaudeVersion(path) : null; if (!current()) return;
+      if (!version || cliVersionBelow(version, minimum.required)) {
+        if (!this.modelMinimumUpdateNotified) {
+          this.modelMinimumUpdateNotified = true;
+          this.logger.warn({ required: minimum.required, installed: version }, "Claude Code needs an update for this model");
+          this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_update_needed", minimum.required) });
+        }
+        return;
+      }
+      await this.paneWriteLock.run(async () => {
+        if (!current()) return;
+        if (!await this.isPaneAuthoritativelyIdle()) throw failed();
+        if (!current()) return;
+        // Claim before yielding the write lock; queued delivery remains held until readiness settles.
+        this.modelMinimumRepairUsed = true;
+        this.beginSpawn(); claimed = true; spawn = this.spawnGeneration;
+      });
+      if (!claimed || !current()) return;
+      await this.checkpointSessionId(); if (!current()) return;
+      let session: string | undefined;
+      if (!this.skipResume) {
+        try {
+          const value = readFileSync(join(this.instanceDir, "session-id"), "utf8").trim();
+          if (/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) session = value;
+        } catch { /* Unknown is not permission to select another conversation. */ }
+      }
+      if (!session) throw failed();
+      // Recheck disk evidence after checkpointing; an update may have changed it while we waited.
+      const finalVersion = await this.installedClaudeVersion(path!); if (!current()) return;
+      if (!finalVersion || cliVersionBelow(finalVersion, minimum.required)) throw failed();
+      if (!await this.isPaneAuthoritativelyIdle()) throw failed();
+      if (!current()) return;
+      this.logger.warn({ running: minimum.running, required: minimum.required, installed: finalVersion },
+        "Claude model-version refusal — attempting one same-session restart");
+      backend!.refreshLaunchBinary!(path!);
+      this.cliRepairSessionId = session;
+      const ready = await this.trySpawn(true, this.startupBudgetFor(true), next => baseCurrent() && this.launchAttempt === next && next >= attempt && next <= attempt + 1);
+      this.cliRepairSessionId = undefined;
+      if (!baseCurrent() || this.launchAttempt !== attempt + 1) return;
+      if (!ready) throw failed();
+      this.logger.info("Claude model-version restart completed; session retained");
+      this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repaired") });
+    } catch (error) {
+      if (!baseCurrent() || this.launchAttempt > attempt + 1) return;
+      this.modelMinimumBlocked = true;
+      this.healthCheckPaused = true;
+      this.logger.error({ reason: error instanceof Error ? error.message : String(error) }, "Claude model-version repair held; no automatic retry");
+      this.emit("backend_launch_warning", { name: this.name, message: t("inst.cli_repair_failed") });
+    } finally {
+      this.cliRepairSessionId = undefined;
+      if (claimed) this.endSpawn();
+    }
   }
 
   /**
@@ -12475,11 +13020,19 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+  private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number, repairAdmission?: (attempt: number) => boolean): Promise<boolean> {
+    let expectedAttempt = this.launchAttempt;
+    const admit = () => { this.startupAdmission?.(); if (repairAdmission && !repairAdmission(expectedAttempt)) throw new Error("CLI repair superseded by another launch, pause or stop"); };
     this.assertSessionOomAdmission();
-    this.startupAdmission?.();
+    admit();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
+
+    // A compatibility refusal is not a failed resume: no configuration, pin, history or pane may change.
+    if (this.backend?.assertLaunchSupported) {
+      this.backend.assertLaunchSupported(backendConfig);
+      this.emit("kiro_compatibility_hold", null);
+    }
 
     // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
     this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));
@@ -12494,7 +13047,7 @@ export class Daemon extends EventEmitter {
     try { await this.backend!.prepareLaunch?.(backendConfig); } catch { /* unknown capability → the backend's conservative form */ }
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
-    this.startupAdmission?.();
+    admit();
     this.assertSessionOomAdmission();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
@@ -12514,6 +13067,7 @@ export class Daemon extends EventEmitter {
     const agentTokenPath = join(this.instanceDir, "agent.token");
     const agentToken = randomBytes(32).toString("hex");
     const tokenWrite = writeSecretFile(agentTokenPath, agentToken);
+    this.agentCredentialIssuer?.(agentToken);
     if (!tokenWrite.ok) {
       // Do not fail the spawn over it — an instance that cannot start is worse
       // than one whose token is readable. But say so, loudly: the whole point of
@@ -12557,11 +13111,13 @@ export class Daemon extends EventEmitter {
     // The CLI's own shell sets a zero coredump_filter first (#1113): this pane
     // may belong to a tmux server the fleet did not start, which would hand
     // the CLI its own (full) filter instead of the fleet's.
-    this.startupAdmission?.();
+    admit();
     const cmd = coredumpFilterLaunchPrefix() + `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
-    this.launchAttempt++;
+    expectedAttempt = ++this.launchAttempt;
+    admit();
+    await this.prepareQuotaReplayHistory(reuseWindow); admit();
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
     // A launch that cannot paint a passive transient (Codex: a fresh start
@@ -12585,12 +13141,12 @@ export class Daemon extends EventEmitter {
     if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
-    this.startupAdmission?.();
+    admit();
     let windowId: string;
     this.assertSessionOomAdmission();
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
-      await this.tmux!.respawnWindow(cmd, resolvedCwd);
+      await this.tmux!.respawnWindow(cmd, resolvedCwd, repairAdmission ? admit : undefined);
       windowId = this.tmux!.getWindowId();
     } else {
       // A crash respawn makes a brand new window. The dead one stays registered
@@ -12599,7 +13155,7 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
-    this.startupAdmission?.();
+    admit();
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
@@ -12634,6 +13190,7 @@ export class Daemon extends EventEmitter {
       await new Promise(r => setTimeout(r, 10_000));
     }
 
+    admit();
     // Dismiss confirmation dialogs and verify CLI reached prompt.
     // With remain-on-exit, isWindowAlive() returns true even for dead panes,
     // but a startup crash would already be caught by waitForOutput/waitForIdle above.
@@ -12716,6 +13273,7 @@ export class Daemon extends EventEmitter {
     let lastDialog: StartupDialog | null = null;
     let lastTransient: InputUnavailableTransient | null = null;
     let captureFailures = 0;
+    let lastPane: string | null = null;
     let attempts = 0;
     // A safety-critical startup choice is one-shot. If the CLI has not
     // repainted after Enter, let the following hold-only entry report it
@@ -12738,10 +13296,12 @@ export class Daemon extends EventEmitter {
       let pane: string;
       try {
         pane = await this.tmux!.capturePane(); this.startupAdmission?.();
+        lastPane = pane;
       } catch (err) {
         this.startupAdmission?.();
         // Transient tmux trouble is not evidence about the CLI. Returning false
         // here would clear the session; retry within the budget instead.
+        lastPane = null;
         captureFailures++;
         this.logger.debug({ err, captureFailures }, "capture-pane failed during the startup dialog scan — retrying");
         // Only a POSITIVE dead pane ends the scan; an unanswerable liveness
@@ -12900,6 +13460,7 @@ export class Daemon extends EventEmitter {
             // matched above, before this check) means the fatal screen is gone,
             // e.g. the user fixed the config and the instance respawned.
             this.fatalStartupBlocked = false;
+            if (owned()) this.takeQuotaReplayBaseline(pane);
             return true;
           }
           await sleep();
@@ -12937,6 +13498,7 @@ export class Daemon extends EventEmitter {
         "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
     }
     this.startupAdmission?.();
+    if (owned() && lastPane !== null && !lastDialog && !lastTransient) this.takeQuotaReplayBaseline(lastPane);
     return true;
   }
 

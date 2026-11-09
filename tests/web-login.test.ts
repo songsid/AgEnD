@@ -246,3 +246,44 @@ describe("a code dies with the token it was issued under (web-token rotate withd
     expect(login.redeem("ABCDEFGH", "new")).toEqual({ kind: "ok", tier: "admin" });
   });
 });
+
+describe("a foreign audience does not consume the outstanding local code", () => {
+  const publicAudience = "a".repeat(32);
+
+  it("five public wrong guesses leave the local code redeemable", () => {
+    const { login } = harness();
+    login.issue({ epoch: E });
+
+    for (let i = 0; i < MAX_LOGIN_CODE_ATTEMPTS; i++) {
+      expect(login.redeem(wrong(i), E, publicAudience)).toEqual({ kind: "invalid" });
+    }
+    expect(login.hasOutstandingCode).toBe(true);
+    expect(login.redeem("ABCDEFGH", E)).toEqual({ kind: "ok", tier: "admin" });
+  });
+
+  it("twenty public failures pause public redemption and leave the local code usable", () => {
+    const { login, events } = harness();
+    login.issue({ epoch: E });
+
+    for (let i = 0; i < LOGIN_BREAKER_THRESHOLD; i++) {
+      expect(login.redeem(wrong(i), E, publicAudience)).toEqual({ kind: "invalid" });
+    }
+    expect(events).toContain("breaker-open");
+    expect(login.pausedForMs(publicAudience)).toBeGreaterThan(0);
+    expect(login.pausedForMs()).toBe(0);
+    expect(login.redeem(wrong(99), E, publicAudience).kind).toBe("paused");
+    expect(login.redeem("ABCDEFGH", E)).toEqual({ kind: "ok", tier: "admin" });
+  });
+
+  it("matching-audience wrong guesses still burn that code", () => {
+    const { login, events } = harness();
+    login.issue({ epoch: E, audience: publicAudience });
+
+    for (let i = 0; i < MAX_LOGIN_CODE_ATTEMPTS; i++) {
+      expect(login.redeem(wrong(i), E, publicAudience)).toEqual({ kind: "invalid" });
+    }
+    expect(events).toContain("burned");
+    expect(login.hasOutstandingCode).toBe(false);
+    expect(login.redeem("ABCDEFGH", E, publicAudience)).toEqual({ kind: "invalid" });
+  });
+});

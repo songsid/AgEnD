@@ -8,7 +8,7 @@
  *   "systemd does not know …";
  * - the Windows shortcuts and installer: "Fleet not running", "Setup page:", "Setup code:", "Setup complete",
  *   "Setup has already been completed";
- * - the rehearsal scripts: "Installed: v…".
+ * - the existing CLI installation receipt stays byte-stable; rehearsals verify installed identity directly.
  * And two English lines no other test held to the byte (Fable on #2402): bugreport.next_link and cli.service_redirect.
  */
 import { spawnSync } from "node:child_process";
@@ -64,9 +64,7 @@ describe("#2390 follow-up: lines another program reads stay English", () => {
     { printed: "Setup code: ${formatSetupCode(started.code)}", where: "src/cli.ts", reader: "website/public/install-agend.ps1", pattern: "'Setup code:\\s*([A-Z2-7]{4}-[A-Z2-7]{4})'" },
     { printed: 'this.log("Setup complete — starting AgEnD.")', where: "src/setup-host.ts", reader: "website/public/install-agend.ps1", pattern: "'Setup complete'" },
     { printed: "Setup has already been completed.", where: "src/cli.ts", reader: "website/public/install-agend.ps1", pattern: "'Setup has already been completed'" },
-    { printed: "✓ Installed: v${newVersion}", where: "src/cli.ts", reader: "scripts/ci/runtime-acceptance/hop.sh", pattern: "Installed: " },
-    // Fable on #2404: the Mac rehearsal leg (a UTC+8 host) reads the same line, and the restart refusal's variable name.
-    { printed: "✓ Installed: v${newVersion}", where: "src/cli.ts", reader: "scripts/ci/runtime-acceptance/gui-rehearsal.sh", pattern: 'grep -q "Installed: $CAND"' },
+    // The Mac rehearsal still reads the restart refusal's variable name.
     { printed: '"AGEND_NODE"]', where: "src/service-activation.ts", reader: "scripts/ci/runtime-acceptance/gui-rehearsal.sh", pattern: 'grep -q "AGEND_NODE"' },
     // npm's install refusals, read back by update-launch for /update's cause (plain .cjs, no locale — pinned all the same).
     { printed: "AgEnD cannot be installed here: ", where: "launcher/postinstall.cjs", reader: "src/update-launch.ts", pattern: "AgEnD cannot be installed here: .+|AgEnD 2\\.2 needs Node .+" },
@@ -76,6 +74,18 @@ describe("#2390 follow-up: lines another program reads stay English", () => {
   it.each(MACHINE)("$where prints `$printed` as it is, and $reader still reads it", ({ printed, where, reader, pattern }) => {
     expect(read(where)).toContain(printed);
     expect(read(reader)).toContain(pattern);
+  });
+
+  it('the existing CLI installation receipt stays English and byte-stable', () => {
+    expect(cli).toContain('✓ Installed: v${newVersion}');
+    expect(enValues.some(v => v.includes('Installed: v'))).toBe(false);
+  });
+  it.each(['hop.sh', 'gui-rehearsal.sh'])('%s verifies installed identity without parsing updater wording', file => {
+    expect(read('scripts/ci/runtime-acceptance/'+file)).toContain('check_installed');
+    expect(read('scripts/ci/runtime-acceptance/'+file)).not.toContain('grep -q "Installed:');
+    const checks = read('scripts/ci/runtime-acceptance/checks.sh');
+    expect(checks).toContain('v="$("$bin" --version)"');
+    expect(checks).toContain('[ "$v" = "$CAND" ] || fail');
   });
 
   it("none of them is a locale string (a key's English would turn into zh-TW on a Taipei host)", () => {

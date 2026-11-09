@@ -56,7 +56,7 @@ describe("kiro auth failure is not a rate limit (#440)", () => {
     const match = classify(NO_TOKEN_PANE);
     expect(match).toMatchObject({ type: "auth_error", action: "pause" });
     // The whole point: pause is what stops the instance burning turns.
-    expect(match?.message).toMatch(/kiro-cli login/);
+    expect(match?.message).toMatch(/Settings → Agents → Sign-ins|\/login/);
   });
 
   it("does not report it as a rate limit", () => {
@@ -72,6 +72,33 @@ describe("kiro auth failure is not a rate limit (#440)", () => {
       "Access denied: The bearer token included in the request is invalid.",
     ]) {
       expect(classify(line)).toMatchObject({ type: "auth_error", action: "pause" });
+    }
+  });
+
+  /**
+   * Classic 2.x `kiro-cli-chat` (static strings, no run). Removing either
+   * alternative from the auth trigger must fail (#3093).
+   */
+  const CLASSIC_EXPIRED = [
+    "Authentication expired - please log in again",
+    "Your login session has expired. Please log in again using:",
+  ] as const;
+
+  it.each(CLASSIC_EXPIRED)("Classic 2.x expiry line %s is login-required, not an ordinary error", line => {
+    expect(classify(line)).toMatchObject({ type: "auth_error", action: "pause" });
+    expect(classify(line)?.type).not.toBe("rate_limit");
+  });
+
+  it("ordinary output that only contains 'expired' is not an auth trigger", () => {
+    for (const line of [
+      "The JWT in this unit test expired yesterday",
+      "certificate has expired",
+      "Authentication Error",
+      "Your session may have expired",
+      "the request is expired",
+      "Authentication expired",
+    ]) {
+      expect(classify(line)?.type, line).not.toBe("auth_error");
     }
   });
 

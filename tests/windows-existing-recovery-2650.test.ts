@@ -4,39 +4,43 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { extractInstallerPrelude, extractPsFunction } from './support/installer-ps-extract.js';
 const installer = resolve('website/public/install-agend.ps1');
 const source = readFileSync(installer, 'utf8');
+const prelude = extractInstallerPrelude(source);
 const available = spawnSync('pwsh', ['-NoProfile', '-Command', '1'], { timeout: 60000 }).status === 0;
 function run(body: string) {
   const root = mkdtempSync(join(tmpdir(), 'existing-recovery-2650-'));
   try {
     const script = join(root, 'test.ps1');
-    writeFileSync(script, `$ErrorActionPreference='Stop'
-$t=$null;$e=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile('${installer}',[ref]$t,[ref]$e)
-if($e.Count){throw ($e|Out-String)}
-foreach($f in $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)){. ([scriptblock]::Create($f.Extent.Text))}
-$a=$ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$WSL_COMMAND_FN'},$false)
-. ([scriptblock]::Create($a.Extent.Text));. ([scriptblock]::Create($WSL_COMMAND_FN))
-$UBUNTU_DISTRO='Original';$AGEND_USER='original-user';$AGEND_ENV='original-prefix; '
-$script:calls=@();$script:ready=@($false,$true);$script:setup=$true;$script:version='2.3.1'
-function wsl {throw 'Native WSL forbidden'}
-function Start-Process {throw 'Opening a window forbidden'}
-function Invoke-BoundedWsl {throw 'Native probe forbidden'}
-function Invoke-WslStep {param($Label,$Usually,$Script,$UpperMinutes);$script:calls+=('service:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$Script);return 0}
-function Get-VerifiedAgendVersion {$script:calls+=('version:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER);return $script:version}
-function Test-InstallerReady {$script:calls+=('health:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV);$v=$script:ready[0];$script:ready=@($script:ready|Select-Object -Skip 1);return $v}
-function Invoke-SetupAndService {$script:calls+=('setup:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV);return $script:setup}
-function Set-InstallFailure($kind) {$script:calls+=('failure:'+ $kind)}
-function Read-Host {throw 'Unexpected terminal input'}
-${body}
-Write-Output ('CALLS='+($script:calls -join '~'))
-Write-Output ('PARENT='+$UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV)
-`);
-    const r = spawnSync('pwsh', ['-NoProfile','-NonInteractive','-File',script], { encoding:'utf8', timeout:30000, env:{...process.env,HOME:root,USERPROFILE:root,TMPDIR:root} });
+    writeFileSync(script, [
+      "$ErrorActionPreference='Stop'\n",
+      prelude,
+      "\n$UBUNTU_DISTRO='Original';$AGEND_USER='original-user';$AGEND_ENV='original-prefix; '\n",
+      "$script:calls=@();$script:ready=@($false,$true);$script:setup=$true;$script:version='2.3.1'\n",
+      "function wsl {throw 'Native WSL forbidden'}\n",
+      "function Start-Process {throw 'Opening a window forbidden'}\n",
+      "function Invoke-BoundedWsl {throw 'Native probe forbidden'}\n",
+      "function Invoke-WslStep {param($Label,$Usually,$Script,$UpperMinutes);$script:calls+=('service:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$Script);return 0}\n",
+      "function Get-VerifiedAgendVersion {$script:calls+=('version:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER);return $script:version}\n",
+      "function Test-InstallerReady {$script:calls+=('health:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV);$v=$script:ready[0];$script:ready=@($script:ready|Select-Object -Skip 1);return $v}\n",
+      "function Invoke-SetupAndService {$script:calls+=('setup:'+ $UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV);return $script:setup}\n",
+      "function Set-InstallFailure($kind) {$script:calls+=('failure:'+ $kind)}\n",
+      "function Read-Host {throw 'Unexpected terminal input'}\n",
+      body,
+      "\nWrite-Output ('CALLS='+($script:calls -join '~'))\n",
+      "Write-Output ('PARENT='+$UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$AGEND_ENV)\n",
+    ].join(''));
+    const r = spawnSync('pwsh', ['-NoProfile','-NonInteractive','-File',script], { encoding:'utf8', timeout:10000, env:{...process.env,HOME:root,USERPROFILE:root,TMPDIR:root} });
     if (r.status !== 0) throw Error(r.stdout+r.stderr);
     return r.stdout+r.stderr;
   } finally { rmSync(root,{recursive:true,force:true}); }
 }
+it('installer functions are sliced in Node without ParseFile', () => {
+  expect(prelude).toContain('function Invoke-ExistingAgendRecovery');
+  expect(prelude).toContain('$WSL_COMMAND_FN =');
+  expect(prelude).not.toContain('Parser]::ParseFile');
+});
 describe.skipIf(!available)('existing installer recovery (#2650 item 6)', () => {
   it.each(['2.3.1','2.3.2-beta.15'])('a runnable %s with a stopped service is repaired only in the discovered account', version => {
     const out=run(`$script:version='${version}';Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen-Linux' 'alice'))`);
@@ -56,16 +60,14 @@ Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' 'alice'))`);
     if(mode==='cancelled setup')expect(out.match(/health:Chosen/g)).toHaveLength(1);
   });
   it('real setup/service wiring keeps plain setup and its human confirmation, with no reset or new-version flags', () => {
-    const out=run(`$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-SetupAndService'},$true)
-. ([scriptblock]::Create($f.Extent.Text))
+    const out=run(extractPsFunction(source, 'Invoke-SetupAndService') + `
 function Invoke-BrowserSetup($Run){$null=& $Run {param($line)};return @{Done=$false;Already=$true}}
 Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' 'alice'))`);
     expect(out).toContain('OK=True');expect(out).toContain('service:Chosen|alice|export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend setup');
     expect(out).toContain('else agend install; fi');expect(out).not.toMatch(/--reset|--yes|--backend-signins|\/root\//);
   });
   it.each(['alice','root'])('real expired-setup console fallback stays in the selected account %s', user => {
-    const out=run(`$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-SetupAndService'},$true)
-. ([scriptblock]::Create($f.Extent.Text))
+    const out=run(extractPsFunction(source, 'Invoke-SetupAndService') + `
 function Invoke-BrowserSetup {return @{Done=$false;Already=$false;Shown=$true;Stopped='ttl'}}
 function Read-Host {return 'c'}
 function Start-Process {param($FilePath,$ArgumentList,[switch]$NoNewWindow,[switch]$Wait,[switch]$PassThru);$script:calls+=('WINDOW='+$FilePath+'|'+($ArgumentList -join ' ')+'|interactive='+[bool]$NoNewWindow);return @{ExitCode=0}}
@@ -76,8 +78,7 @@ Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' '${user}'))`);
   });
   it.each(['alice','root'])('real browser confirmation and printed fallback stay in the selected account %s', user => {
     const id='0123456789abcdef0123456789abcdef';
-    const out=run(`foreach($name in @('Invoke-SetupAndService','Invoke-BrowserSetup')){
-$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true);. ([scriptblock]::Create($f.Extent.Text))}
+    const out=run(extractPsFunction(source, 'Invoke-SetupAndService') + '\n' + extractPsFunction(source, 'Invoke-BrowserSetup') + `
 function Wait-SetupPageReachable {return $true}
 function Open-InBrowser {return $true}
 function Set-SetupClipboard {return $true}

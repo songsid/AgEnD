@@ -5,7 +5,7 @@ description: The fleet as a small pixel office on the web dashboard — styles a
 
 **Fleet → Org chart → Office** on the [web dashboard](/AgEnD/docs/web-guide/) draws your fleet as a small pixel office. Each agent is a little person whose pose is its state, and the messages, delegations and reports between agents travel across the room. This page is the short version; the full guide, with the skin-pack format and every limit, is [The Office view](https://github.com/songsid/AgEnD/blob/main/docs/office.md) in the repository.
 
-The Office came in 2.3.0 with the Desks and Studio styles. Skin packs, Cozy, Edit layout, All offices, share links and levels came in 2.3.2.
+The Office came in 2.3.0 with the Desks and Studio styles. Skin packs, Cozy, Edit layout, All offices, share links and levels came in 2.3.2; Guild and School, and the legend, in 2.3.4.
 
 ## Look around
 
@@ -26,6 +26,7 @@ The Office came in 2.3.0 with the Desks and Studio styles. Skin packs, Cozy, Edi
 - **Desks:** a room per team, a desk per agent.
 - **Studio:** one scene with four areas (Work, Lounge, Help desk, Nap corner); each agent walks to the area for its state.
 - **Cozy:** the same kind of scene in a warm pixel-art room that ships with AgEnD. It's the default for a new office and a browser that hasn't picked a style.
+- **Guild** and **School** (2.3.4): two more pictures on Cozy's arrangement — an adventurers' guild hall and a classroom, each with work, lounge, nap and alert areas.
 - **A skin pack** is an artist's pictures: a `manifest.json` and PNG files. A fleet admin uploads one in **Edit offices → Skin packs**; the host checks it and keeps it unchanged. Kept packs appear in every Style picker. Making one is described in [Make a skin pack](https://github.com/songsid/AgEnD/blob/main/docs/office.md#make-a-skin-pack).
 
 A fleet admin's style for **Whole fleet** is what every device and share link shows. Anyone else may pick a style for their own browser.
@@ -36,7 +37,7 @@ A fleet admin, on the dashboard reached directly, uses **Edit offices** in the O
 
 1. **Add office** and name it.
 2. **Who is in it:** **Everyone**, **Picked** (whole teams or single agents), or **Nobody (NPCs only)** for a room with only its style's characters.
-3. **Style:** Desks, Studio, Cozy or a kept skin pack.
+3. **Style:** Desks, Studio, Cozy, Guild, School or a kept skin pack.
 4. **Save.**
 
 Everyone on the fleet sees the same offices. The host keeps them in `web-offices.json` in the AgEnD home, never in fleet.yaml, so a change restarts nothing.

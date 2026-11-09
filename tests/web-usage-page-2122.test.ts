@@ -67,6 +67,12 @@ const mount = async () => { await p.mount(h(fleet.FleetPanel, { route: { panel: 
 const rows = () => p.root.querySelectorAll(".us-row");
 const cell = (row: any, label: string) => row.querySelectorAll("td").find((td: any) => td.getAttribute("data-label") === label)?.textContent;
 const name = (row: any) => row.querySelector(".us-name .mono").textContent;
+/** The words behind a cell's mark or "—" (title, the same as its aria-label). */
+const tip = (row: any, label: string) => {
+  const el = row.querySelectorAll("td").find((td: any) => td.getAttribute("data-label") === label)?.querySelector(".us-none, .us-mark");
+  expect(el.getAttribute("aria-label")).toBe(el.getAttribute("title"));
+  return el.getAttribute("title");
+};
 const btn = (text: string) => p.root.querySelectorAll(".us-bar-top .btn").find((b: any) => b.textContent.trim() === text);
 
 describe("the route: a Fleet tab, never a guest's, the public link's shell", () => {
@@ -98,18 +104,58 @@ describe("it reads once per opening and per choice; never on a timer", () => {
   });
 });
 
+describe("#3066 §3: a clean table — marks only where a number reads differently, columns only where they say something", () => {
+  it("all-Claude rows: no Reasoning column (it would be — everywhere); no legend without a mark", async () => {
+    answer = { status: 200, body: report({ instances: [inst("billing", "claude-code", ledger([[at(1), "claude-opus-4-5"]]))] }) };
+    await mount();
+    expect(p.root.querySelectorAll(".us-table thead th").map((t: any) => t.textContent)).toEqual(["Agent", "API-equivalent", "Input", "Output", "Cache read", "Cache write", "Total tokens", "Requests", "Messages"]);
+    expect(rows()[0].querySelectorAll("td").map((td: any) => td.getAttribute("data-label"))).not.toContain("Reasoning");
+    expect(p.root.querySelector(".us-key")).toBeNull();
+  });
+  it("grouped by model: no Messages column (messages are per agent, — in every row)", async () => {
+    answer = { status: 200, body: report({ group: "model" }) };
+    await mount();
+    expect(p.root.querySelectorAll(".us-table thead th").map((t: any) => t.textContent)).not.toContain("Messages");
+    expect(rows()[0].querySelectorAll("td").map((td: any) => td.getAttribute("data-label"))).not.toContain("Messages");
+  });
+  it("◐ partly priced and † the CLI's own amount: a mark after the amount, said in its tooltip, and named in the legend", async () => {
+    const body: any = report({ instances: [inst("billing", "claude-code", ledger([[at(1), "claude-opus-4-5"]]))] });
+    body.rows[0] = { ...body.rows[0], priced: "partial", flags: ["cost_reported"] };
+    answer = { status: 200, body };
+    await mount();
+    const r = rows()[0];
+    expect(cell(r, "API-equivalent")).toMatch(/^\$\d+\.\d\d◐†$/);
+    expect(r.querySelectorAll(".us-mark").map((m: any) => m.getAttribute("title"))).toEqual(["Part of this row's models have no price", "Amount as the CLI reported it"]);
+    expect(p.root.querySelector(".us-key").textContent).toBe("◐ partly priced · † amount from the CLI");
+  });
+  it("Codex hours without a recorded profile read \"profile not recorded\", never the raw \"unrecorded\"", async () => {
+    answer = { status: 200, body: report({ group: "backend" }) };
+    await mount();
+    const codex = rows().find((r: any) => name(r) === "codex");
+    expect(codex.querySelector(".us-meta").textContent).toContain("profile not recorded");
+    expect(codex.querySelector(".us-meta").textContent).not.toContain("unrecorded");
+    answer = { status: 200, body: report({ group: "profile" }) };
+    await p.unmount(); await mount();
+    expect(rows().map(name)).toContain("profile not recorded");
+  });
+});
+
 describe("what it shows", () => {
   it("rows ranked by the API-equivalent, its basis in words, each row's numbers and marks", async () => {
     await mount();
-    expect(p.root.querySelector(".us-basis").textContent).toBe(`API-equivalent at list price (checked ${(answer.body as any).pricesChecked}) — not money spent. Subscriptions are not billed per token.`);
+    // #3066 §3: the basis shortened; the subscription sentence is its tooltip.
+    expect(p.root.querySelector(".us-basis").textContent).toBe(`API-equivalent at list price (${(answer.body as any).pricesChecked}) — not money spent.`);
+    expect(p.root.querySelector(".us-basis").getAttribute("title")).toBe("Subscriptions are not billed per token.");
     expect(rows().map(name)).toEqual(["billing", "indexer", "lab"]);
     const [billing, indexer, lab] = rows();
     expect(cell(billing, "API-equivalent")).toMatch(/^\$\d+\.\d\d$/);
     expect([cell(billing, "Requests"), cell(billing, "Messages"), cell(billing, "Input")]).toEqual(["3", "4", "3k"]);
     expect(cell(indexer, "Cache write")).toBe("—");                                    // not reported, not 0
-    expect(indexer.querySelector(".us-flags").textContent).toBe("cache writes not reported (Codex, Muse) — an estimate");
-    expect(cell(lab, "API-equivalent")).toBe("not priced");
-    expect(lab.querySelector(".us-flags").textContent).toBe("not priced: made-up-model-9");
+    // #3066 §3: no pill per row — the "—" says why in its tooltip (and to a reader).
+    expect(p.root.querySelectorAll(".us-flags, .us-row .ch-tag").length).toBe(0);
+    expect(tip(indexer, "Cache write")).toBe("Codex/Muse don't report cache writes");
+    expect(cell(lab, "API-equivalent")).toBe("—");
+    expect(tip(lab, "API-equivalent")).toBe("Not priced: made-up-model-9");
     expect(p.root.querySelectorAll(".us-totals dt").map((e: any) => e.textContent)).toEqual(["API-equivalent", "Total tokens", "Requests", "Messages"]);
     expect(p.root.querySelectorAll(".us-totals dd")[0].textContent).toMatch(/^\$\d+\.\d\d \(partial\)$/);
   });
@@ -139,7 +185,8 @@ describe("what it shows", () => {
     answer = { status: 200, body: report({ instances: [inst("old", "claude-code", legacy)], messages: [{ instance: "talker", hour: at(1), count: 2 }] }) };
     await mount();
     const old = rows().find((r: any) => name(r) === "old");
-    expect(old.querySelector(".us-flags").textContent).toBe("read before backend and profile were recorded");
+    expect(old.querySelector(".us-flags")).toBeNull();                                // one footnote under the table instead
+    expect(p.root.querySelector(".us-key").textContent).toBe("Some hours were read before AgEnD recorded their backend and profile.");
     expect(cell(rows().find((r: any) => name(r) === "talker"), "Messages")).toBe("2");
   });
   it("reasoning (#2122 §10.3): a Codex row shows it; a CLI that reports none reads —, never a measured 0", async () => {
@@ -159,8 +206,11 @@ describe("what it shows", () => {
     ] }) };
     await mount();
     const kiro = rows().find((r: any) => name(r) === "coordinator");
-    expect(kiro.querySelector(".us-flags").textContent).toBe("estimated from text size — Kiro records no token counts");
-    expect(rows().find((r: any) => name(r) === "billing").querySelector(".us-flags")).toBeNull();
+    // #3066 §3: every number of the row is marked ≈, its reason in the tooltip; the other row carries none; the legend says ≈.
+    expect(["Input", "Output", "Total tokens"].map((l) => cell(kiro, l)!.startsWith("≈"))).toEqual([true, true, true]);
+    expect(tip(kiro, "Input")).toBe("Estimated from text size (Kiro records no token counts)");
+    expect(rows().find((r: any) => name(r) === "billing").querySelectorAll(".us-mark").length).toBe(0);
+    expect(p.root.querySelector(".us-key").textContent).toBe("≈ estimated");
     const est = (answer.body as any).totals.amountEstimated;
     expect(est).toBeGreaterThan(0);
     expect(p.root.querySelector(".us-totals .us-est").textContent).toBe(`of which estimated: ${U.money ? U.money(est) : (await import("/ui/js/fleet-cache.js")).money(est)}`);

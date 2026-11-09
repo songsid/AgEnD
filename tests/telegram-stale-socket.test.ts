@@ -215,7 +215,8 @@ describe("Telegram stale HTTP socket recovery", () => {
     const send = vi.spyOn(adapter.getBot().api, "sendMessage");
 
     await expect(adapter.probeTopicPresence(1)).resolves.toEqual({ status: "present" });
-    await expect(adapter.deleteTopic(1)).resolves.toBeUndefined();
+    // Refused out loud (delete_instance reports what happened), and still nothing is sent to Telegram.
+    await expect(adapter.deleteTopic(1)).rejects.toThrow("the General topic is never deleted");
 
     expect(send).not.toHaveBeenCalled();
     (adapter as any).httpAgent.destroy();

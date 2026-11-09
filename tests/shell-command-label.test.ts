@@ -111,6 +111,10 @@ describe("summarizeTool", () => {
   it("leaves the file tools alone — a path is not a secret and the name is the point", () => {
     expect(summarize("Read", { file_path: "src/fleet-manager.ts" })).toBe("Read src/fleet-manager.ts");
     expect(summarize("Write", { file_path: "src/daemon.ts" })).toBe("Write src/daemon.ts");
-    expect(summarize("Grep", { pattern: "getBusyPattern" })).toBe("Grep getBusyPattern");
+  });
+
+  it("a search names the tool, never its pattern (a search can be for a literal secret)", () => {
+    expect(summarize("Grep", { pattern: "getBusyPattern" })).toBe("Grep");
+    expect(summarize("Glob", { pattern: "**/*.env" })).toBe("Glob");
   });
 });

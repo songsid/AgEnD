@@ -71,7 +71,8 @@ describe("real synchronous caller paths remain unchanged and gain attribution", 
     expect(await fm.locateBinaryOnLoginShell("grok")).toBeNull();
     io.lookup.mockImplementation(async () => ({ status: null, stdout: "", timedOut: true }));
     expect(await fm.locateBinaryOnLoginShell("grok")).toBeNull();
-    expect(io.lookup).toHaveBeenCalledWith("command -v grok");
+    // #3009: the executable-file check runs inside the same login shell (never accessSync/statSync on the fleet's thread).
+    expect(io.lookup).toHaveBeenCalledWith(`p=$(command -v grok) && [ -f "$p" ] && [ -x "$p" ] && printf '%s\n' "$p"`);
     expect(io.shell, "no spawnSync left on this path").not.toHaveBeenCalled();
     expect(tags()).not.toEqual(expect.arrayContaining(["fleet.installLoginShell"]));
     expect(tags()).not.toEqual(expect.arrayContaining(["fleet.installLookup"]));

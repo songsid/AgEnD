@@ -1,0 +1,40 @@
+
+   master /t/a/work-1.0.77-80/repo
+
+
+
+
+                                 ⠀⠀⠀⠀⠀⠀⣀⣀⡀⠀⠀⠀⢀⠄
+                                 ⠀⠀⠀⣠⣾⠿⠛⠛⠛⠛⢀⡴⠁⠀
+                                 ⠀⠀⣼⡟⠁⠀⠀⠀⢀⡴⠻⣿⡀⠀
+                                 ⠀⠀⣿⡇⠀⠀⠀⠔⠁⠀⠀⣿⡇⠀
+                                 ⠀⠀⢹⣷⠀⠀⠀⠀⠀⢀⣴⡿⠀⠀
+                                 ⠀⢀⠞⠁⠠⢶⣶⣶⣶⠿⠋⠀⠀⠀
+                                 ⠐⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+               Resume session                               ctrl+r
+               New worktree                                 ctrl+w
+               Changelog
+               Quit                                         ctrl+q
+
+               Changelog
+
+               • Quote copy now preserves & in links and double-c…
+               • MCP server connections no longer restart unneces…
+               • Ctrl+L now works on more screens and copy hints …
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+                                 Logged in with API key  │  Grok Build  1.0.77
+

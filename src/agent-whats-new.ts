@@ -102,6 +102,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // `since` is the next stable: 2.3.2 is published without it, and a 2.3.2-beta.N sorts below 2.3.2.
   { id: "2.3.3-reply-required-marker", since: "2.3.3",
     text: "A message from another agent no longer ends with a reply line. When an answer is owed, its header line ends with `reply required → report_result <correlation_id>` (CLI mode: the `agend-agent report` command) — answer with that. Without the marker, answer only if you have something to add, with `send_to_instance`; `request_kind` is no longer shown." },
+  // #3420: team-scoped decisions. `since` is the first release that has it: the next beta on main (2.3.5-beta.1 is
+  // published without it). The alpha line names its own next alpha; the id is shared, so nobody is told twice.
+  { id: "2.3.5-decision-team-scope", since: "2.3.5-beta.2", tools: ["post_decision"],
+    text: "Decisions have a team scope: `post_decision` takes `scope: \"team\"` and `team: \"<name>\"` (a team you are in) — every member of that team sees it, wherever they work; other teams don't. It is the default when you are in one team (in several, name `team`; in none, the default stays `project`, this exact directory). `list_decisions` now lists your teams' decisions too (scope `team`, with `team`). Use `fleet` only for rules every team follows. CLI: `agend-agent decision-post <title> <content> team:<name>`." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

@@ -92,6 +92,7 @@ function makeDaemon() {
  * whoever widens the hot set has to say what a hot update of it looks like.
  */
 const HOT_KEY_PROBES: Record<string, unknown> = {
+  quota_notice: { enabled: false, thresholds: [5], periods: ["weekly"] },
   resume_interrupted_work: false,
   tool_progress: "verbose",
   reply_completion_guard: false,

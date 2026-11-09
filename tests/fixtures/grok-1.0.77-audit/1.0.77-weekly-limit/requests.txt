@@ -1,0 +1,4 @@
+requests after modal: 5
+requests after Shift+x: 5
+requests after next turn: 9
+requests at end: 10

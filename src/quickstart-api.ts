@@ -593,7 +593,7 @@ function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: Quickstar
     delete cfg.instances[body.instance_name];
     let cleanupFailed = false;
     try { if (rollback.config && !rollback.config()) cleanupFailed = true; } catch { cleanupFailed = true; }
-    if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
+    if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; some saved changes may not have been undone. This page cannot repair the incomplete rollback" });
     return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
   }
   prepareDefaultWorkspace(asked, body);
@@ -756,7 +756,7 @@ export function handleQuickstartRequest(
         let cleanupFailed = false;
         try { if (rollback.config && !rollback.config()) cleanupFailed = true; } catch { cleanupFailed = true; }
         try { if (stored && secretBefore) store!.restoreIfCurrent(secretBefore); } catch { cleanupFailed = true; }
-        if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
+        if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; some saved changes may not have been undone. This page cannot repair the incomplete rollback" });
         return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
       } finally { lease.release(); }
       if (agent && !body.existing_agent) prepareDefaultWorkspace(asked, body);

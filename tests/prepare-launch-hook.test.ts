@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -29,6 +29,20 @@ function launch(prepareLaunch?: () => Promise<void>) {
 }
 
 describe("Daemon.trySpawnInsideGate and the backend's prepareLaunch", () => {
+  it("registers each written credential before the launch command is built", async () => {
+    const { daemon } = launch();
+    let issued = 0;
+    const issue = vi.fn((token: string): void => {
+      expect(readFileSync(join(dir, "instance", "agent.token"), "utf8")).toBe(token);
+      expect(daemon.backend.buildCommand).toHaveBeenCalledTimes(issued++);
+    });
+    daemon.setAgentCredentialIssuer(issue);
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    expect(issue).toHaveBeenCalledTimes(2);
+    expect(issue.mock.calls[0][0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(issue.mock.calls[1][0]).not.toBe(issue.mock.calls[0][0]);
+  });
   it("awaits it — asynchronously, to completion — before it builds the launch command", async () => {
     const { daemon, order } = launch(() => new Promise(resolve => setTimeout(resolve, 30)));
     await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);

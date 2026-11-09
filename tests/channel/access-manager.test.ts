@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { AccessManager } from "../../src/channel/access-manager.js";
 import { join } from "node:path";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 describe("AccessManager", () => {
@@ -27,33 +27,20 @@ describe("AccessManager", () => {
     expect(am.isAllowed(999)).toBe(false);
   });
 
-  it("generates 8-char hex pairing code", () => {
-    const code = am.generateCode(999);
-    expect(code).toMatch(/^[0-9A-F]{8}$/);
-  });
-
-  it("confirms valid pairing code and adds to allowlist", () => {
-    const code = am.generateCode(999);
-    expect(am.confirmCode(code)).toBe(true);
-    expect(am.isAllowed(999)).toBe(true);
-  });
-
-  it("rejects invalid pairing code", () => {
-    expect(am.confirmCode("ZZZZZZ")).toBe(false);
-  });
-
-  it("limits pairing attempts per user to 2", () => {
-    am.generateCode(999);
-    am.generateCode(999);
-    expect(am.hasPairingQuota(999)).toBe(false);
-    expect(() => am.generateCode(999)).toThrow();
-  });
-
-  it("limits total pending codes to max_pending_codes unique users", () => {
-    am.generateCode(100);
-    am.generateCode(200);
-    am.generateCode(300);
-    expect(() => am.generateCode(400)).toThrow(/max pending/i);
+  it("loads legacy state without granting a pending-code user or rewriting its state", () => {
+    const path = join(tmpDir, "legacy.json"), saved = JSON.stringify({ mode: "pairing", allowed_users: [222],
+      pending_codes: [{ code: "ABCD1234", userId: 999, createdAt: Date.now(), attempts: 0 }] });
+    writeFileSync(path, saved);
+    const legacy = new AccessManager({ mode: "open", allowed_users: [111], max_pending_codes: 3, code_expiry_minutes: 60 }, path);
+    expect(legacy.getMode()).toBe("pairing");
+    expect(legacy.isAllowed(111)).toBe(true);
+    expect(legacy.isAllowed(222)).toBe(true);
+    expect(legacy.isAllowed(999)).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe(saved);
+    // A normal administrative write retains granted users and discards obsolete pending codes.
+    legacy.setMode("locked");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ mode: "locked", allowed_users: ["222", "111"] });
+    expect(new AccessManager({ mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 }, path).getAllowedUsers()).toEqual(["222", "111"]);
   });
 
   it("persists mode across instances", () => {
@@ -66,8 +53,7 @@ describe("AccessManager", () => {
   });
 
   it("persists allowlist across instances", () => {
-    const code = am.generateCode(999);
-    am.confirmCode(code);
+    writeFileSync(join(tmpDir, "access.json"), JSON.stringify({ mode: "pairing", allowed_users: [999], pending_codes: [] }));
     const am2 = new AccessManager(
       { mode: "pairing", allowed_users: [111], max_pending_codes: 3, code_expiry_minutes: 60 },
       join(tmpDir, "access.json"),
@@ -176,7 +162,7 @@ describe("AccessManager state vs fleet.yaml", () => {
   });
 
   it("keeps the persisted mode in effect — the report does not change behaviour", () => {
-    // State winning is deliberate: a pairing done at runtime must survive a
+    // State winning is deliberate: a saved access grant must survive a
     // restart. This test exists so a future "fix" that flips the precedence
     // has to change it on purpose.
     writeFileSync(statePath, JSON.stringify({ mode: "open", allowed_users: [], pending_codes: [] }));

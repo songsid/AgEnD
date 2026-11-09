@@ -169,7 +169,7 @@ instances:
 | `systemPrompt` | string | — | Extra instructions, inline or `file:path` (relative to `working_directory`) |
 | `workflow` | string \| false | `builtin` | `builtin`, `file:path`, inline text, or `false` |
 | `pre_task_command` | string | — | Pasted before every user message |
-| `skipPermissions` | boolean | `true` unless `false` | Skip the CLI's own permission prompts, with each backend's flag. Antigravity always launches with `--dangerously-skip-permissions`, even with `false` |
+| `skipPermissions` | boolean | `true` unless `false` | Skip the CLI's own permission prompts, with each backend's flag |
 | `startup_timeout_ms` | number | `25000` | How long the CLI gets to come up |
 | `log_level` | string | `info` | `trace`, `debug`, `info`, `warn`, `error` |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |

@@ -291,7 +291,9 @@ export class StructuredSignIn {
           if (action.kind === "start_url" && !validStartUrl(value)) return "invalid";
           if (action.kind === "region" && !/^[a-z]{2}(?:-[a-z]+){1,3}-\d$/.test(value)) return "invalid";
           if (action.kind === "code" && !/^[A-Za-z0-9._~+/#=-]+$/.test(value)) return "invalid";
-          text = "\x15" + value + "\r"; // replace a prefilled prompt; literal bytes only
+          // Claude Code reads authorization codes raw; Ctrl+U becomes part of the code.
+          // Only Kiro's start URL and region prompts need their prefilled value cleared.
+          text = (action.kind === "code" ? "" : "\x15") + value + "\r";
         }
         if (text === null) return "invalid";
         this.answered.add(prompt.phase); // before the async write; redraws never re-arm an answered phase

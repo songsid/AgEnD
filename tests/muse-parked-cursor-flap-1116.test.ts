@@ -26,6 +26,7 @@ import { MuseBackend } from "../src/backend/muse.js";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const IDLE = fixture("muse-idle-parked-cursor-1116.pane.txt");
+const IDLE_1414 = fixture("muse-1.4.14/live-idle-placeholder.pane.txt");
 const WORKING = fixture("muse-thinking-over-a-minute.pane.txt");
 /** Muse's parked-cursor repaint cadence in the real log (~18/s). */
 const REPAINT_EVERY_MS = 55;
@@ -40,7 +41,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function harness() {
+function harness(idlePane = IDLE) {
   const dir = mkdtempSync(join(tmpdir(), "agend-1116-"));
   writeFileSync(join(dir, "window-id"), "@7");
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger };
@@ -53,7 +54,7 @@ function harness() {
     log_level: "silent",
   } as any, dir, false, backend, undefined, logger as any) as any;
   const control = new EventEmitter();
-  const state = { pane: IDLE, lastOutputAt: 0, overtaken: 0, captures: 0 };
+  const state = { pane: idlePane, lastOutputAt: 0, overtaken: 0, captures: 0 };
   daemon.controlClient = control;
   daemon.tmux = {
     getWindowId: () => "@7",
@@ -102,6 +103,16 @@ describe("an idle muse repainting its parked cursor does not flap (#1116)", () =
     expect(h.daemon.instanceState).toBe("idle");
     await h.repaint(120_000);
     // The probes really were overtaken — the branch under test ran many times.
+    expect(h.state.overtaken).toBeGreaterThan(20);
+    expect(h.edges).toEqual([]);
+    expect(h.daemon.instanceState).toBe("idle");
+  });
+
+  it("a 1.4.14 parked pane whose composer shows a catalog hint publishes 0 edges (#3090)", async () => {
+    const h = harness(IDLE_1414);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.daemon.instanceState).toBe("idle");
+    await h.repaint(120_000);
     expect(h.state.overtaken).toBeGreaterThan(20);
     expect(h.edges).toEqual([]);
     expect(h.daemon.instanceState).toBe("idle");

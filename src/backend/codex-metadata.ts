@@ -135,6 +135,49 @@ function readCodexModelEffortLevelsSync(homes: {
   }
 }
 
+/**
+ * The service tiers the model's catalog entry advertises (`service_tiers[].id`, e.g. "priority" = Fast), and which model
+ * that was — `tiers: null` when there is no model, no readable cache or no entry for it. Same cache file and rules as
+ * the effort levels: codex itself omits a configured tier its model does not advertise (0.165: "not advertised as
+ * supported for model … and will be omitted from requests"), so AgEnD passes Fast only where the catalog lists it.
+ */
+export function readCodexModelServiceTiers(homes: {
+  isolatedHome: string;
+  sharedHome: string;
+  model?: string | null;
+}): { model: string | null; tiers: string[] | null } {
+  return measureSyncWork("codex.effortMetadata", () => {
+    const model = homes.model ?? readCodexModelEffortLevelsSync(homes).model;
+    if (!model) return { model, tiers: null };
+    try {
+      const isolatedCache = join(homes.isolatedHome, "models_cache.json");
+      const cachePath = existsSync(isolatedCache) ? isolatedCache : join(homes.sharedHome, "models_cache.json");
+      const stat = statSync(cachePath, { bigint: true });
+      if (stat.size > BigInt(CODEX_MODELS_CACHE_MAX_BYTES)) return { model, tiers: null };
+      const bySlug = stamped("models-tiers", cachePath, stat, () => {
+        const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
+        if (!Array.isArray(parsed.models)) return null;
+        const out = new Map<string, string[]>();
+        for (const m of parsed.models) {
+          if (!m || typeof m !== "object") continue;
+          const slug = (m as Record<string, unknown>).slug;
+          if (typeof slug !== "string" || out.has(slug)) continue;
+          const tiers = (m as Record<string, unknown>).service_tiers;
+          out.set(slug, Array.isArray(tiers)
+            ? tiers.map(x => (x && typeof x === "object" ? (x as { id?: unknown }).id : undefined)).filter((id): id is string => typeof id === "string")
+            : []);
+        }
+        return out;
+      });
+      if (!bySlug) return { model, tiers: null };
+      const tiers = bySlug.get(model);
+      return { model, tiers: tiers ? [...tiers] : null };
+    } catch {
+      return { model, tiers: null };
+    }
+  });
+}
+
 type TomlTable = Record<string, unknown>;
 const isTable = (v: unknown): v is TomlTable => !!v && typeof v === "object" && !Array.isArray(v);
 

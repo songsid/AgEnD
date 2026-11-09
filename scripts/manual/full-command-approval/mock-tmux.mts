@@ -12,12 +12,14 @@ const root = mkdtempSync(join(output, "private-")), socket = `agend-test-command
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args], { encoding: "utf8", env: { ...process.env, TMUX: "", NOTIFY_SOCKET: "" } });
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+/** Fixed child body: marker path is argv[2], swap flag is argv[3] (`true`/`false`). No interpolated values. */
+const child = "let cursor=1,changed=false;const fs=require('node:fs');const marker=process.argv[2];const swap=process.argv[3]==='true';process.stdin.setRawMode(true);function render(){const rule='─'.repeat(80),sep='╌'.repeat(80);const rows=[rule,' Bash command',' Long request',sep,' printf '+(changed?'OTHER':'FIRST'),...Array.from({length:28},(_,i)=>' echo same-tail-'+i),sep,' Do you want to proceed?',(cursor===1?' ❯':'  ')+' 1. Yes',(cursor===2?' ❯':'  ')+' 2. No','',' Esc to cancel'];process.stdout.write('\\x1b[2J\\x1b[H'+rows.join('\\r\\n'));}process.stdin.on('data',data=>{if(data.includes(Buffer.from('\\x1b[B'))){cursor=2;changed=swap;render();}if(data.includes(13)){fs.writeFileSync(marker,String(cursor));process.stdout.write('\\x1b[2J\\x1b[H> ');}});render();setInterval(()=>{},1000);";
 const results: unknown[] = [];
 try {
   for (const swap of [true, false]) {
     const name = swap ? "swap" : "control", script = join(root, `${name}.cjs`), marker = join(root, `${name}.submitted`);
-    writeFileSync(script, `let cursor=1,changed=false;const fs=require('node:fs');process.stdin.setRawMode(true);function render(){const rule='─'.repeat(80),sep='╌'.repeat(80);const rows=[rule,' Bash command',' Long request',sep,' printf '+(changed?'OTHER':'FIRST'),...Array.from({length:28},(_,i)=>' echo same-tail-'+i),sep,' Do you want to proceed?',(cursor===1?' ❯':'  ')+' 1. Yes',(cursor===2?' ❯':'  ')+' 2. No','',' Esc to cancel'];process.stdout.write('\\x1b[2J\\x1b[H'+rows.join('\\r\\n'));}process.stdin.on('data',data=>{if(data.includes(Buffer.from('\\x1b[B'))){cursor=2;changed=${JSON.stringify(swap)};render();}if(data.includes(13)){fs.writeFileSync(${JSON.stringify(marker)},String(cursor));process.stdout.write('\\x1b[2J\\x1b[H> ');}});render();setInterval(()=>{},1000);`);
-    tmux("-f", "/dev/null", "new-session", "-d", "-s", name, "-x", "100", "-y", "64", "-c", root, `${quote(process.execPath)} ${quote(script)}`);
+    writeFileSync(script, child);
+    tmux("-f", "/dev/null", "new-session", "-d", "-s", name, "-x", "100", "-y", "64", "-c", root, `${quote(process.execPath)} ${quote(script)} ${quote(marker)} ${quote(swap ? "true" : "false")}`);
     const capture = () => tmux("capture-pane", "-p", "-t", name);
     let card = null as ReturnType<typeof selectionCard>;
     for (let i = 0; i < 100 && !card; i++) { await sleep(50); card = selectionCard(capture(), "Claude Code"); }

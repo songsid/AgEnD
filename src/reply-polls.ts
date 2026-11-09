@@ -143,15 +143,15 @@ export function pollVoteNotice(labels: readonly string[], options: readonly numb
 
 /**
  * The results, as the one inbound message the agent gets. Per option: its count and voters, each with a stable id and
- * the ms from the poll opening to their ballot's last change. `closedAt` later than the deadline (AgEnD was not running
- * then) is said, so the agent does not read the lateness as slow voters.
+ * the ms from the poll opening to their ballot's last change. A late `closedAt` is reported without guessing its
+ * cause, so the agent does not read the lateness as slow voters.
  */
 export function pollResultsText(
   set: { id: string; buttons: readonly ReplyButton[]; createdAt: number; expiresAt: number },
   poll: PollConfig, ballots: readonly PollBallot[], closedAt: number,
 ): string {
   const counts = pollCounts(set.buttons.length, ballots);
-  const late = closedAt - set.expiresAt > 5_000 ? ` · closed ${Math.round((closedAt - set.expiresAt) / 1000)} s late (AgEnD was not running at the deadline)`
+  const late = closedAt - set.expiresAt > 5_000 ? ` · closed ${Math.round((closedAt - set.expiresAt) / 1000)} s late`
     : set.expiresAt - closedAt > 1_000 ? ` · closed early by close_poll after ${Math.round((closedAt - set.createdAt) / 1000)} s` : " · closed on time";
   const head = `[poll results] poll ${set.id.slice(0, 8)} · ${poll.multi ? "multiple choice" : "single choice"} · ${poll.seconds} s · ${ballots.length} voted${late}`;
   const lines = [head];

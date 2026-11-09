@@ -98,10 +98,17 @@ const SUBMITTED = [
  * steer test uses it: on codex `supportsQueuedInput || opts.steer` is already
  * true without the steer, so codex cannot tell whether the steer fast path is
  * still wired up.
+ *
+ * #3199: a busy Grok pane still has the boxed `❯` (audit 03-busy-a / watcher
+ * busy). The box is required for a hand-off: `hasPositiveDeliveryInput(true)`
+ * refuses a reader that returns null. A bare `❯` is transcript chrome, not input.
  */
 const GROK_BUSY = [
-  "⠋ Thinking… 4.2s",
-  "❯",
+  "    ⠋ Thinking… 4.2s                              4.2s ⇣1k [stop]",
+  "",
+  "  ╭────────────────────────────────────────╮",
+  "  │ ❯                                      │",
+  "  ╰──────────── grok-mock · always-approve ─╯",
 ].join("\n");
 
 const dirs: string[] = [];

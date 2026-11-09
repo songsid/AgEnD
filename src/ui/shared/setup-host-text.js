@@ -50,7 +50,7 @@ export const HOST_MESSAGES = [
   ["unknown probe", "不支援的檢查"],
   ["fleet not loaded", "設定尚未載入"],
   ["another secret operation is still running", "另一個寫入 token 的操作還在進行中"],
-  ["setup cleanup failed; inspect configuration on the host", "設定的復原失敗；請在主機上檢查設定"],
+  ["setup cleanup failed; some saved changes may not have been undone. This page cannot repair the incomplete rollback", "設定的復原失敗；部分已儲存的變更可能未能撤銷。這個頁面無法修復未完成的復原"],
   ["setup was not committed", "設定沒有寫入"],
   ["Token verification is not permitted over a public link", "公開連結不能驗證 token"],
   ["This bot token is already being polled by the running fleet. Enter the group id by hand, or stop AgEnD first.", "執行中的 fleet 正在使用這個 bot token。請手動輸入群組 id，或先停止 AgEnD。"],
@@ -64,6 +64,8 @@ export const HOST_MESSAGES = [
 /** What the host answers with a code instead of words (the confirmation gate, settings-effect.ts; the finish step). */
 export const HOST_CODES = {
   en: {
+    // Cached servers may still return this older message; its recovery copy follows the current page.
+    "setup cleanup failed; inspect configuration on the host": "setup cleanup failed; some saved changes may not have been undone. This page cannot repair the incomplete rollback",
     invalid_quickstart: "This setup is not valid. Review it and try again.",
     connection_exists: "That connection already exists — a new connection never replaces one.",
     agent_conflict: "That agent name is taken, or that agent does not exist.",
@@ -76,6 +78,7 @@ export const HOST_CODES = {
     signin_cleanup_failed: "The login process could not be confirmed closed. Close it on the host and restart setup before retrying.",
   },
   "zh-TW": {
+    "setup cleanup failed; inspect configuration on the host": "設定的復原失敗；部分已儲存的變更可能未能撤銷。這個頁面無法修復未完成的復原",
     invalid_quickstart: "這份設定無效。請檢查後再試一次。",
     connection_exists: "這個連線已存在 —— 新的連線不會取代既有的連線。",
     agent_conflict: "這個 agent 名稱已被使用，或那個 agent 不存在。",

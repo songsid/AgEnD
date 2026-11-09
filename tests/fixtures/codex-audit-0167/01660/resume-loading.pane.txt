@@ -1,0 +1,6 @@
+
+  >_ OpenAI Codex (v0.166.0)
+     /tmp/codex-audit/work
+  Resuming session…
+
+› Ask Codex to do anything
