@@ -37,16 +37,16 @@ describe("managed CLI install (#3190 3b)", () => {
   });
   it("installs with a fixed argv and no shell, checks integrity, signatures and publisher, then points current.json at it", async () => {
     const { run, calls } = fakeRun("claude-code"), steps: string[] = [];
-    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.316.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
+    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.318.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
     // Private configuration and local mode, on the command line as well as in the environment: no user or global `.npmrc` is read, and nothing is installed globally.
     const local = ["--userconfig", user, "--globalconfig", global, "--global=false", "--prefix", staging, "--registry", "https://registry.npmjs.org/"];
     const result = await installManagedCli("claude-code", { root, nodePath: node, run, signerOf: signed, report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.316", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
+    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.318", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
     expect(calls[1].slice(2)).toEqual(["audit", "signatures", ...local]);
-    expect(result.version).toBe("2.1.316");
-    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.316" });
-    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.316" });
+    expect(result.version).toBe("2.1.318");
+    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.318" });
+    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.318" });
   });
   it("refuses everything that is not in the table: an unknown id, a package name, a version or a path", async () => {
     const deps = { root: join(home, "cli"), nodePath: node, run: fakeRun("codex").run };
@@ -59,7 +59,7 @@ describe("managed CLI install (#3190 3b)", () => {
     await expect(installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex", { integrity: wrong }).run, signerOf: signed })).rejects.toMatchObject({ reason: "integrity-mismatch" });
     expect(managedCliExecutable(root, "codex")).toBeNull();
     expect(existsSync(join(root, "codex", "current.json"))).toBe(false);
-    expect(existsSync(join(root, "codex", "0.165.0.staging"))).toBe(false);
+    expect(existsSync(join(root, "codex", "0.166.0.staging"))).toBe(false);
   });
   it("fails closed on signatures, publisher, npm errors, a timeout and a missing npm", async () => {
     const root = join(home, "cli");
@@ -84,10 +84,10 @@ describe("managed CLI install (#3190 3b)", () => {
     mkdirSync(root, { recursive: true }); mkdirSync(elsewhere);
     symlinkSync(elsewhere, join(root, "codex"), "dir");
     await expect(installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex").run, signerOf: signed })).rejects.toMatchObject({ reason: "install-failed", message: expect.stringMatching(/is a link/) });
-    expect(existsSync(join(elsewhere, "0.165.0.staging"))).toBe(false);
+    expect(existsSync(join(elsewhere, "0.166.0.staging"))).toBe(false);
     rmSync(join(root, "codex"));
     await installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex").run, signerOf: async () => ({ status: "Valid", subject: 'CN="OpenAI OpCo, LLC", O="OpenAI OpCo, LLC"' }) });
-    const real = join(root, "codex", "0.165.0"), moved = join(home, "moved");
+    const real = join(root, "codex", "0.166.0"), moved = join(home, "moved");
     mkdirSync(moved); rmSync(real, { recursive: true }); symlinkSync(moved, real, "dir");
     expect(managedCliExecutable(root, "codex")).toBeNull();
   });
@@ -104,9 +104,9 @@ describe("managed CLI install (#3190 3b)", () => {
     const first = install("codex");
     expect(running()).toBe(true);
     await expect(install("claude-code")).rejects.toMatchObject({ reason: "busy" });
-    release(); await expect(first).resolves.toEqual({ version: "0.165.0" }); expect(running()).toBe(false);
+    release(); await expect(first).resolves.toEqual({ version: "0.166.0" }); expect(running()).toBe(false);
     await expect(install("grok")).rejects.toMatchObject({ reason: "install-failed" });
-    await expect(install("codex")).resolves.toEqual({ version: "0.165.0" });
+    await expect(install("codex")).resolves.toEqual({ version: "0.166.0" });
   });
   it("reads Windows' answer about the signer, and passes the file path in the environment, never in the command text", async () => {
     const seen: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
@@ -161,7 +161,7 @@ describe("N3: the signer is compared exactly, as CN and O (#3190 3b)", () => {
   });
   it("installs when the subject is exactly right", async () => {
     const root = join(home, "cli");
-    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.316" });
+    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.318" });
   });
 });
 
@@ -170,8 +170,8 @@ describe("N1: an install that is already there is left alone; a replacement is a
   /** A finished install whose program is then deleted, so that `current.json` stays but the install is no longer usable. */
   async function broken(root: string): Promise<void> {
     await install(root);
-    writeFileSync(join(root, "codex", "0.165.0", "stale.txt"), "the old install");
-    rmSync(join(root, "codex", "0.165.0", INSTALLABLE_CLIS.codex.native.path));
+    writeFileSync(join(root, "codex", "0.166.0", "stale.txt"), "the old install");
+    rmSync(join(root, "codex", "0.166.0", INSTALLABLE_CLIS.codex.native.path));
     expect(managedCliExecutable(root, "codex")).toBeNull();
   }
   it("installing the version that is already installed and valid does nothing: no npm, no staging, nothing moved", async () => {
@@ -181,16 +181,16 @@ describe("N1: an install that is already there is left alone; a replacement is a
       report: s => steps.push(s), rename: (from, to) => { moves.push(`${from} -> ${to}`); } });
     expect(again).toEqual(first); expect(moves).toEqual([]); expect(steps).toEqual(["ready"]);
     expect(readFileSync(pointer, "utf8")).toBe(before);
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);
   });
   it("replaces a broken install by moving it aside first (<version>.old), putting the new one in place, then deleting the old", async () => {
     const root = join(home, "cli"); await broken(root);
     const moves: string[] = [], seenOld: boolean[] = [];
-    await install(root, { rename: (from, to) => { moves.push(`${basename(from)}>${basename(to)}`); renameSync(from, to); seenOld.push(existsSync(join(root, "codex", "0.165.0.old"))); } });
-    expect(moves).toEqual(["0.165.0>0.165.0.old", "0.165.0.staging>0.165.0", "current.json.tmp>current.json"]);
+    await install(root, { rename: (from, to) => { moves.push(`${basename(from)}>${basename(to)}`); renameSync(from, to); seenOld.push(existsSync(join(root, "codex", "0.166.0.old"))); } });
+    expect(moves).toEqual(["0.166.0>0.166.0.old", "0.166.0.staging>0.166.0", "current.json.tmp>current.json"]);
     expect(seenOld).toEqual([true, true, true]);                           // the old folder was there the whole time, until the new one and the pointer were in
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);
-    expect(existsSync(join(root, "codex", "0.165.0", "stale.txt"))).toBe(false);
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);
+    expect(existsSync(join(root, "codex", "0.166.0", "stale.txt"))).toBe(false);
     expect(managedCliExecutable(root, "codex")).not.toBeNull();
   });
   it("when the swap fails half way, the old folder is moved back and current.json is untouched", async () => {
@@ -199,22 +199,22 @@ describe("N1: an install that is already there is left alone; a replacement is a
     let calls = 0;
     const error = await install(root, { rename: (from, to) => { if (++calls === 2) throw new Error(`EPERM: C:\\Users\\secret\\${basename(from)}`); renameSync(from, to); } }).catch(e => e);
     expect(error).toBeInstanceOf(CliInstallError); expect(error.reason).toBe("install-failed"); expect(error.message).not.toMatch(/secret|EPERM/);
-    expect(readFileSync(join(root, "codex", "0.165.0", "stale.txt"), "utf8")).toBe("the old install");   // the old folder is back as it was
+    expect(readFileSync(join(root, "codex", "0.166.0", "stale.txt"), "utf8")).toBe("the old install");   // the old folder is back as it was
     expect(readFileSync(pointer, "utf8")).toBe(before);
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);                 // no .old, no .staging left
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);                 // no .old, no .staging left
   });
   it("when the pointer cannot be written, the new folder is removed and the old one is put back", async () => {
     const root = join(home, "cli"); await broken(root);
     let calls = 0;
     await expect(install(root, { rename: (from, to) => { if (++calls === 3) throw new Error("EPERM"); renameSync(from, to); } })).rejects.toMatchObject({ reason: "install-failed" });
-    expect(readFileSync(join(root, "codex", "0.165.0", "stale.txt"), "utf8")).toBe("the old install");
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);
+    expect(readFileSync(join(root, "codex", "0.166.0", "stale.txt"), "utf8")).toBe("the old install");
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);
   });
   it("clears an .old left by an earlier install at the next install", async () => {
     const root = join(home, "cli"); await broken(root);
-    mkdirSync(join(root, "codex", "0.165.0.old")); writeFileSync(join(root, "codex", "0.165.0.old", "leftover.txt"), "x");
+    mkdirSync(join(root, "codex", "0.166.0.old")); writeFileSync(join(root, "codex", "0.166.0.old", "leftover.txt"), "x");
     await install(root);
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);
   });
 });
 
@@ -248,14 +248,14 @@ describe("N2: one overall deadline; the Runtime stopping is a different end", ()
   it("the Runtime stopping is `cancelled`, not `timed-out`; staging goes, the old install and current.json stay as they were", async () => {
     const root = join(home, "cli"), stop = new AbortController();
     await installManagedCli("codex", { ...spec(), run: fakeRun("codex").run });
-    writeFileSync(join(root, "codex", "0.165.0", "stale.txt"), "the old install"); rmSync(join(root, "codex", "0.165.0", INSTALLABLE_CLIS.codex.native.path));
+    writeFileSync(join(root, "codex", "0.166.0", "stale.txt"), "the old install"); rmSync(join(root, "codex", "0.166.0", INSTALLABLE_CLIS.codex.native.path));
     const pointer = join(root, "codex", "current.json"), before = readFileSync(pointer, "utf8");
     const hanging: NonNullable<InstallDeps["run"]> = async (_file, _args, options) => { setTimeout(() => stop.abort(), 20); await sleepUnless(5000, options.signal); return { code: null, stdout: "" }; };
     const error = await installManagedCli("codex", { ...spec(), run: hanging, signal: stop.signal }).catch(e => e);
     expect(error).toMatchObject({ reason: "cancelled" });
     expect(readFileSync(pointer, "utf8")).toBe(before);
-    expect(readFileSync(join(root, "codex", "0.165.0", "stale.txt"), "utf8")).toBe("the old install");
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json"]);   // no staging
+    expect(readFileSync(join(root, "codex", "0.166.0", "stale.txt"), "utf8")).toBe("the old install");
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json"]);   // no staging
   });
   it("a stop that comes while the installer is being asked to install ends it as cancelled (the Runtime's own signal, through managedInstaller)", async () => {
     const stop = new AbortController(), root = join(home, "cli");
@@ -317,7 +317,7 @@ describe("N7: after a switch, other versions and the npm cache are cleared on a 
     mkdirSync(join(root, "codex", "notes"), { recursive: true }); mkdirSync(join(root, "claude-code", "2.1.0"), { recursive: true });
     mkdirSync(join(root, ".npm-cache", "_cacache"), { recursive: true }); writeFileSync(join(root, ".npm-cache", "_cacache", "x"), "x");
     await installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex").run, signerOf: async () => ({ status: "Valid", subject: OPENAI }) });
-    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.165.0", "current.json", "notes"]);
+    expect(readdirSync(join(root, "codex")).sort()).toEqual(["0.166.0", "current.json", "notes"]);
     expect(existsSync(join(root, "claude-code", "2.1.0"))).toBe(true);
     expect(existsSync(join(root, ".npm-cache"))).toBe(false);
   });
@@ -325,7 +325,7 @@ describe("N7: after a switch, other versions and the npm cache are cleared on a 
     const root = join(home, "cli"), locked = join(root, "codex", "0.150.0", "inner");
     mkdirSync(locked, { recursive: true }); writeFileSync(join(locked, "x"), "x"); chmodSync(locked, 0o500);
     try {
-      await expect(installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex").run, signerOf: async () => ({ status: "Valid", subject: OPENAI }) })).resolves.toMatchObject({ version: "0.165.0" });
+      await expect(installManagedCli("codex", { root, nodePath: node, run: fakeRun("codex").run, signerOf: async () => ({ status: "Valid", subject: OPENAI }) })).resolves.toMatchObject({ version: "0.166.0" });
       expect(managedCliExecutable(root, "codex")).not.toBeNull();
     } finally { chmodSync(locked, 0o700); }
   });

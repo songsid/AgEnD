@@ -5,6 +5,7 @@ export const OPENCODE_SPEC = {
   id: "opencode",
   host: {
     install: yes({ binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash" }),
+    update: yes({ binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash -s -- --version {version}" }),
     // `/login opencode` installs it; there is no sign-in flow behind it (login-flows.ts).
     chatLogin: yes({ aliases: [], mode: "install-only" }),
     dashboardSignIn: notApplicable("There is no sign-in flow to run from the dashboard."),
@@ -27,6 +28,7 @@ export const OPENCODE_SPEC = {
       promptTransport: "stdin-text", modelProbe: ["models"], rank: 5,
     }),
     install: byDesign("OpenCode is not in the Runtime's pinned installer table (runtime-cli-install.ts)."),
+    update: notYetBuilt("#3521", "The Runtime has no pinned OpenCode install yet (runtime.install), and an update is that install over an older copy; it follows the install."),
     signIn: notApplicable("AgEnD has no sign-in flow for OpenCode."),
     namedAccounts: toVerify("Whether `opencode` on Windows can keep more than one set of credentials side by side has not been checked."),
     accountRows: none("OpenCode has no card on Settings → Accounts."),

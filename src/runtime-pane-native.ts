@@ -2,6 +2,7 @@
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneConfig } from "./runtime-pane-config.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
+import { AUDITED_CLI_VERSIONS } from "./cli-audited.js";
 import { nativeUpdateGuard, nativeClaudeFilePolicyArgs } from "./windows-cli-providers.js";
 export type NativePaneCli = "codex" | "claude-code";
 /** Releases AgEnD has audited for this CLI: the same ledger as the Linux upstream watch (ffb8104e) — when a version is
@@ -9,10 +10,9 @@ export type NativePaneCli = "codex" | "claude-code";
  * (decision cc3ce4fe): an unlisted version still runs, shown as "Not yet verified"; every readiness, dialog and
  * delivery fence still applies to it, and an unknown screen keeps failing closed. */
 export const NATIVE_CLI_AUDITED: Readonly<Record<NativePaneCli, readonly string[]>> = Object.freeze({
-  // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit.
-  codex: Object.freeze(["0.165.0", "0.166.0"]),
-  // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048).
-  "claude-code": Object.freeze(["2.1.316", "2.1.318"]),
+  // The ledger itself is cli-audited.ts (AGEND-136: the dashboard's Update button reads the same list).
+  codex: AUDITED_CLI_VERSIONS.codex,
+  "claude-code": AUDITED_CLI_VERSIONS["claude-code"],
 });
 /** Releases known NOT to work in a persistent pane, refused with their reason. Only with evidence (an issue or an
  * audit that reproduced the break); a version is never listed for being new. Empty today. */

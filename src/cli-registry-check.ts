@@ -17,11 +17,14 @@ const words = (min: number): Check => v => Array.isArray(v) && v.length >= min &
 const oneOf = (...allowed: string[]): Check => v => typeof v === "string" && allowed.includes(v) ? null : `one of ${allowed.join(", ")}`;
 const envName: Check = v => typeof v === "string" && /^[A-Z][A-Z0-9_]*$/.test(v) ? null : "an environment variable name";
 const orNull = (inner: Check): Check => v => v === null ? null : inner(v);
+/** An update command carries exactly one `{version}`: the server fills it with the audited release, so a command that has none could not be pinned. */
+const updateCommand: Check = v => typeof v === "string" && v.split("{version}").length === 2 ? null : "a command with exactly one {version}";
 const supportsShape: Check = v => isRecord(v) && ["execution", "resume", "model"].every(k => typeof v[k] === "boolean") && (v.mcp === undefined || typeof v.mcp === "boolean") && Object.keys(v).every(k => ["execution", "resume", "model", "mcp"].includes(k)) ? null : "{ execution, resume, model, mcp? } booleans";
 
 /** What a `yes` must carry, per capability: each field and how it is checked. `?`: may be absent. */
 const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> = {
   "host.install": { binary: text, command: text, "unattended?": text },
+  "host.update": { binary: text, command: updateCommand },
   "host.chatLogin": { aliases: words(0), mode: oneOf("device-code", "paste-code", "menu", "declined", "install-only") },
   "host.dashboardSignIn": { named: bool },
   "host.structuredSignIn": { argv: words(1), rank: int, named: bool },
@@ -38,6 +41,7 @@ const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> =
     permissionNote: text, promptTransport: oneOf("stdin-text", "stdin-json", "file"), modelProbe: orNull(words(1)), "reason?": text, rank: int,
   },
   "runtime.install": { kind: oneOf("npm") },
+  "runtime.update": { kind: oneOf("pinned") },
   "runtime.signIn": { argv: words(1), profile: oneOf("named") },
   "runtime.namedAccounts": { env: envName },
   "runtime.accountRows": {},
@@ -146,6 +150,8 @@ function checkDependencies(specs: Record<string, unknown>, ids: readonly string[
     if (has(id, path) && !has(id, needs)) problems.push(`${id}: ${path} is "yes" but ${needs} is not (${why})`);
   };
   for (const id of ids) {
+    need(id, "host.update", "host.install", "an update is the vendor's installer or updater taken to a release; what has no install has nothing to update");
+    need(id, "runtime.update", "runtime.install", "an update is the pinned install over an older copy");
     need(id, "host.structuredSignIn", "host.authCheck", "the sign-in is confirmed by the CLI's own status probe");
     need(id, "host.identity", "host.authCheck", "the account is read from the same status answer");
     need(id, "host.keepAlive", "host.namedAccounts", "it reads and renews a credential home");

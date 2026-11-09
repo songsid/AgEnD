@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WEB_INSTALL_KEEP_ENDED_MS, WebHostInstalls, exitCodeOf, installLines, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 
 const WHO = { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux" };
-function make(over: { start?: (backend: string, r: HostInstallReporter) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
+function make(over: { start?: (backend: string, r: HostInstallReporter, mode?: string) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
   let clock = 1_000;
   const reporters: HostInstallReporter[] = [];
   const changed = vi.fn();
@@ -39,8 +39,10 @@ describe("who and what", () => {
     const t = make();
     await t.installs.begin(WHO, "codex");
     expect(t.start).toHaveBeenCalledTimes(1);
-    expect(t.start.mock.calls[0]!.length).toBe(2);
+    // The id, the reporter and the mode (AGEND-136: "install" here); nothing the browser could have sent.
+    expect(t.start.mock.calls[0]!.length).toBe(3);
     expect(t.start.mock.calls[0]![0]).toBe("codex");
+    expect(t.start.mock.calls[0]![2]).toBe("install");
   });
 });
 

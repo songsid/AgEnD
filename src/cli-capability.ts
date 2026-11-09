@@ -82,6 +82,12 @@ export interface NativeProviderFacts {
 export interface HostCapabilities {
   /** The binary and the command a person (or the install window) runs to get the CLI. */
   readonly install: Cap<{ binary: string; command: string; unattended?: string }>;
+  /**
+   * AGEND-136: the dashboard's Update button — the command that takes an installed CLI to AgEnD's AUDITED release (cli-audited.ts), never to "latest". `command` has one
+   * `{version}`, filled on the server with the newest audited release (a plain x.y.z from the ledger, never anything the browser sent) and run through the same
+   * unattended window as an install. A CLI that updates itself in the background, or has no official way to reach a chosen version, is a `no` that says which.
+   */
+  readonly update: Cap<{ binary: string; command: string }>;
   /** `/login <name>` in chat: the names it accepts besides the id, and what it does. */
   readonly chatLogin: Cap<{ aliases: readonly string[]; mode: ChatLoginMode }>;
   /** The dashboard can sign this CLI in (the browser-terminal flow, `dashboardSignInSupported`); `named`: a named account too. */
@@ -112,6 +118,11 @@ export interface RuntimeCapabilities {
   readonly provider: Cap<NativeProviderFacts>;
   /** The dashboard installs it, from a pinned npm package. (The pins stay in runtime-cli-install.ts.) */
   readonly install: Cap<{ kind: "npm" }>;
+  /**
+   * AGEND-136: the dashboard's Update button for that computer. `pinned`: the same closed installer as `install`, whose pinned release is the audited one
+   * (runtime-cli-install.ts), so an update is that install over an older copy with every check of #3190 Part 3b; nothing the vendor's own updater would fetch runs.
+   */
+  readonly update: Cap<{ kind: "pinned" }>;
   /** The dashboard signs it in on that computer: the exact command, and whether it is a named account's sign-in. */
   readonly signIn: Cap<{ argv: readonly string[]; profile: "named" }>;
   /** Named accounts on that computer: the variable that points the CLI at the profile's folder. */
@@ -133,8 +144,8 @@ export interface CliSpec {
 }
 
 /** `host.install`, `runtime.signIn`, …: every capability's address, in the order the specs and the gap report list them. */
-export const HOST_CAPABILITIES = Object.freeze(["install", "chatLogin", "dashboardSignIn", "structuredSignIn", "firstRunSignIn", "authCheck", "identity", "namedAccounts", "signOut", "keepAlive", "accountCard", "usage"] as const satisfies readonly (keyof HostCapabilities)[]);
-export const RUNTIME_CAPABILITIES = Object.freeze(["provider", "install", "signIn", "namedAccounts", "accountRows", "authStatus", "identity", "usage"] as const satisfies readonly (keyof RuntimeCapabilities)[]);
+export const HOST_CAPABILITIES = Object.freeze(["install", "update", "chatLogin", "dashboardSignIn", "structuredSignIn", "firstRunSignIn", "authCheck", "identity", "namedAccounts", "signOut", "keepAlive", "accountCard", "usage"] as const satisfies readonly (keyof HostCapabilities)[]);
+export const RUNTIME_CAPABILITIES = Object.freeze(["provider", "install", "update", "signIn", "namedAccounts", "accountRows", "authStatus", "identity", "usage"] as const satisfies readonly (keyof RuntimeCapabilities)[]);
 // Compile-time: the two lists above name every field of the interfaces (a capability added to an interface and not here fails the build).
 const _hostListed: [Exclude<keyof HostCapabilities, typeof HOST_CAPABILITIES[number]>] extends [never] ? true : never = true;
 const _runtimeListed: [Exclude<keyof RuntimeCapabilities, typeof RUNTIME_CAPABILITIES[number]>] extends [never] ? true : never = true;

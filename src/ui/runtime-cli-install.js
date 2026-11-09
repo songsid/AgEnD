@@ -45,6 +45,27 @@ export const OFFICIAL_COMMANDS = [
 export const versionNumber = printed => typeof printed === "string" ? /(?<![\d.])\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?![\d.])/.exec(printed)?.[0] ?? null : null;
 export const offersCliInstall = machine => !!machine && !machine.isLocal && machine.runtimeInfo?.capabilities?.includes("cli-install") === true && ["online", "offline"].includes(machine.status);
 
+/** -1, 0 or 1: two x.y.z compared number by number (never as text). A prerelease suffix is ignored. Null when either is not a version. */
+export function compareVersions(a, b) {
+  const x = /^(\d+)\.(\d+)\.(\d+)/.exec(a || ""), y = /^(\d+)\.(\d+)\.(\d+)/.exec(b || "");
+  if (!x || !y) return null;
+  for (let i = 1; i <= 3; i++) { const d = Number(x[i]) - Number(y[i]); if (d !== 0) return d < 0 ? -1 : 1; }
+  return 0;
+}
+
+// AGEND-136 (#3521): Update on a computer. The version the Runtime installs is the newest one AgEnD has AUDITED (the pinned table is kept equal to it), so an update is the
+// same pinned, verified install over an older copy — the vendor's own updater never runs there. The page sends the CLI's id, as for an install, and nothing else.
+register("runtimeInstall", {
+  en: { update: "Update to {0}", behind: "Installed {0}. AgEnD has audited {1}: Update installs exactly that, with the same checks as an install.",
+    current: "Installed {0} — up to date. The newest version AgEnD has audited: {1}.", newer: "Installed {0}, which is newer than {1}, the newest version AgEnD has audited: not verified by AgEnD yet.",
+    askUpdate: "Update {0} on {2} from {3} to {1}? That is the version AgEnD has audited. It comes from the official npm registry, is checked against AgEnD's pinned hashes, the registry signatures and the publisher's Windows signature, and is kept in this Runtime's folder on that computer. The update is recorded there.",
+  },
+  "zh-TW": { update: "更新到 {0}", behind: "已安裝 {0}。AgEnD 稽核過的版本是 {1}：按「更新」會裝這個版本，檢查和安裝完全一樣。",
+    current: "已安裝 {0}，是最新的。AgEnD 稽核過的最新版本：{1}。", newer: "已安裝 {0}，比 AgEnD 稽核過的最新版本 {1} 還新：尚未經 AgEnD 驗證。",
+    askUpdate: "要在 {2} 把 {0} 從 {3} 更新到 {1} 嗎？這是 AgEnD 稽核過的版本。它來自官方 npm registry，會比對 AgEnD 內建的雜湊、registry 簽章與發行者的 Windows 數位簽章，並放在那台電腦上 Runtime 自己的資料夾。那台電腦會留下更新紀錄。",
+  },
+});
+
 // Ridge #3321 S06 / S09: the words of the loading state and the copyable commands.
 register("runtimeInstall", {
   en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer" },
@@ -97,11 +118,14 @@ export function CliInstall({ machine, lease, onChanged }) {
     const entry = (machine.inventory?.clis || []).find(item => item.id === cli.id && item.path);
     const pinned = view?.catalog?.find(item => item.id === cli.id)?.version || "";
     // What the CLI printed is compared by its version number, whole; the path says nothing (the owner's own copy of the same version is just as installed).
-    const found = entry ? versionNumber(entry.version) : null, upToDate = !!entry && !!pinned && found === pinned;
-    const state = !entry ? text("notInstalled") : upToDate ? text("installed", found) : text("installedOther", entry.version || "?");
+    const found = entry ? versionNumber(entry.version) : null, order = found && pinned ? compareVersions(found, pinned) : null;
+    // AGEND-136: at the pinned (= audited) version: up to date. Older: an Update to it. Newer than it: not verified by AgEnD yet, and nothing to install (an install would only put an older copy beside it).
+    const upToDate = !!entry && !!pinned && order === 0, behind = !!entry && !!pinned && order === -1, newer = !!entry && !!pinned && order === 1;
+    const state = !entry ? text("notInstalled") : upToDate ? text("current", found, pinned) : behind ? text("behind", found, pinned) : newer ? text("newer", found, pinned) : text("installedOther", entry.version || "?");
     const start = async () => {
       if (busy || !pinned) return;
-      if (!await confirmDialog({ message: text("ask", cli.label, pinned, machine.name), confirmLabel: text("confirm") })) return;
+      const message = behind ? text("askUpdate", cli.label, pinned, machine.name, found) : text("ask", cli.label, pinned, machine.name);
+      if (!await confirmDialog({ message, confirmLabel: text(behind ? "update" : "confirm", pinned) })) return;
       if (!lease.current()) return;
       setBusy(true); setError(""); setNote("");
       try {
@@ -114,7 +138,7 @@ export function CliInstall({ machine, lease, onChanged }) {
       finally { if (lease.current()) setBusy(false); }
     };
     return html`<li key=${cli.id} data-cli=${cli.id}><strong>${cli.label}</strong><span class="note">${state}</span>
-      ${upToDate ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
+      ${upToDate || newer ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${behind ? text("update", pinned) : entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
   };
   return html`<div class="runtime-cli-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>
     ${!online ? html`<p class="note" role="status">${text("offline")}</p>`

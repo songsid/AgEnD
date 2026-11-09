@@ -106,6 +106,23 @@ describe("host lists, as they were", () => {
     });
   });
 
+  // AGEND-136: the commands the dashboard's Update button runs, literally. `{version}` is filled with the newest AUDITED release (src/cli-audited.ts), never "latest".
+  it("host.update: the update commands, each with the audited release in it", () => {
+    expect(Object.fromEntries(hostIds("update").map(id => [id, hostFacts(id, "update")]))).toEqual({
+      "claude-code": { support: "yes", binary: "claude", command: "curl -fsSL https://claude.ai/install.sh | bash -s {version}" },
+      "codex": { support: "yes", binary: "codex", command: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release {version}" },
+      "kiro-cli": { support: "yes", binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash -s -- --version {version} --force" },
+      "grok": { support: "yes", binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash -s {version}" },
+      "opencode": { support: "yes", binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash -s -- --version {version}" },
+    });
+    // The CLIs that update themselves in the background have no button.
+    expect(CLI_IDS.filter(id => !hostIds("update").includes(id))).toEqual(["antigravity", "muse"]);
+  });
+  it("runtime.update: only the CLIs the Runtime installs from its pinned table; the update is that same install", () => {
+    expect(runtimeIds("update")).toEqual(["claude-code", "codex"]);
+    expect(runtimeIds("update").every(id => runtimeIds("install").includes(id))).toBe(true);
+  });
+
   it("the usage panel's provider ids, names and order, and which have a row per named account", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, usageProviderIdForBackend(id)]))).toEqual({
       "claude-code": "claude", "codex": "codex", "kiro-cli": "kiro", "antigravity": "antigravity", "grok": "grok", "muse": "muse", "opencode": null,

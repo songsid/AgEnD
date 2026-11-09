@@ -14,6 +14,7 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | Capability | `yes` means | Behaviour that backs it |
 |---|---|---|
 | `host.install` | a binary and the command a person (or the install window) runs | `BIN_DIRS` in `instance-lifecycle.ts` |
+| `host.update` | the dashboard's Update: the command that takes the installed CLI to the **audited** release (`{version}` is filled on the server from `cli-audited.ts`) | `hostUpdatePlan` in `web-host-install.ts` |
 | `host.chatLogin` | `/login <name>` recognises it (`aliases`), and what it does (`mode`) | `LOGIN_FLOWS` in `login-flows.ts` |
 | `host.dashboardSignIn` | the browser-terminal flow signs it in; `named`: a named account too | `LOGIN_FLOWS[id].noShellEscape`, `dashboardSignInSupported` |
 | `host.structuredSignIn` | Sign in → open the page → paste the code; the exact command | `structured-signin.ts` |
@@ -27,6 +28,7 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | `host.usage` | a row in the usage panel (provider id, name, place) | `USAGE_FETCHERS` in `usage/providers.ts` |
 | `runtime.provider` | a Windows Runtime lists it and (if `supports.execution`) runs it | `windows-cli-worker.ts` |
 | `runtime.install` | the dashboard installs it from a pinned package | pins and signer in `runtime-cli-install.ts` |
+| `runtime.update` | the dashboard's Update on that computer: the pinned install over an older copy (the pin is the audited release) | `INSTALLABLE_CLIS` in `runtime-cli-install.ts`; `tests/cli-audited-136.test.ts` |
 | `runtime.signIn` | the dashboard signs it in on that computer | `runtime-signin.ts` |
 | `runtime.namedAccounts` | named accounts on that computer | `runtime-credential-profiles.ts` |
 | `runtime.accountRows` | Accounts shows that computer's accounts of it | `machine-accounts.ts` |
@@ -35,6 +37,46 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 
 A `no` says why: `cli_has_none` (the tool has no such thing), `not_applicable` (it needs a capability this CLI lacks), `by_design` (decided against; the note says where),
 `needs_verification` (nobody has run the tool to find out; the note says what to check), or `not_yet_built` (it can be done; `tracking` is `#<n>` or `undecided`).
+
+## Updating a CLI from the dashboard (AGEND-136, upstream #3521)
+
+An installed CLI shows its version on its row (Settings → Agents → AI accounts, and Settings → Runtime for a paired computer) against the newest version **AgEnD has audited**
+(`src/cli-audited.ts`: the shipped mirror of the daily upstream watch's ledger, decision ffb8104e — the same list the Windows pane gate reads). The button never goes to "latest".
+
+| Installed version | The page shows | Button |
+|---|---|---|
+| older than the audited release, and the registry has an update | both versions | **Update to \<audited\>** |
+| older, and the CLI updates itself (no `host.update`) | both versions, and that it updates itself | none |
+| the audited release | "up to date" and the audited version | none |
+| newer than anything audited | "not verified by AgEnD yet" | none |
+| not readable | the audited version | none |
+
+The browser sends only the CLI's id (`POST /ui/host-update { backend }`; any other key is a 400). The server picks the command (`host.update`, `{version}` ← the audited release,
+checked against `^\d+\.\d+\.\d+$`) and runs it through the same install window as `/login` and the Install button (`openInstallWindow`): one window fleet-wide, cancellable, judged by the
+exit code; the page shows the version before and after (the binary probe) or the exit code and the last lines. Who may: the Install button's gate (a fleet admin on the local surface; never a guest,
+a read session, the CLI's header token or the public link). A Windows computer additionally needs its owner's `install` switch.
+
+What each CLI does (checked 2026-11-09: the vendors' docs, and the CLIs' own `--help` run in an isolated HOME — no real account, nothing of the host's touched):
+
+| CLI | Host | Why |
+|---|---|---|
+| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash -s <audited>` | `claude update` always goes to the release channel's newest (`autoUpdatesChannel`: latest or stable), and the native build also updates itself in the background. The installer's version argument is the documented way to a chosen release ([Install a specific version](https://code.claude.com/docs/en/setup)). |
+| Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| CODEX_NON_INTERACTIVE=1 sh -s -- --release <audited>` | `codex update` (0.167.0's `--help`: "Update Codex to the latest version") has no version argument; the installer's `--release VERSION` is in its own `--help`. |
+| OpenCode | `curl -fsSL https://opencode.ai/install \| bash -s -- --version <audited>` | `opencode upgrade [target]` can take a version, but it needs `opencode` on the window's PATH; the installer (`--version`) is where the host's copy came from. |
+| Grok | `curl -fsSL https://x.ai/cli/install.sh \| bash -s <audited>` | `grok update --version <V>` exists (grok 1.0.77's `--help`, docs.x.ai CLI reference); the installer takes the same version as its argument and does not need `grok` on PATH. |
+| Kiro | `curl -fsSL https://cli.kiro.dev/install \| bash -s -- --version <audited> --force` | `kiro-cli update` (3.1.0's `--help`: `--check`, `--force`) has no version argument. The installer has `--version`, and `--force` so that "replace it?" never waits on a terminal nobody has. |
+| Antigravity | none | Updates itself in the background (`agy update` exists but cannot choose a release). The page shows installed and audited versions, and "not verified" when it is ahead. |
+| Muse | none | The launcher updates itself every hour (`MUSE_UPDATE_INTERVAL_SECONDS`; the launcher script has no update subcommand). Versions only. |
+
+**On a paired Windows computer** the three CLIs with a pinned npm install (Claude Code, Codex; OpenCode when its pinned install lands) are updated by **the same pinned install over the older
+copy**, not by the vendor's own updater. The vendor updater (`claude update`, `codex update`) would fetch whatever the channel serves at that moment and run it unverified on a computer nobody is watching,
+which is exactly what #3190 Part 3b rules out. The pins in `runtime-cli-install.ts` are therefore kept equal to the newest audited release (`tests/cli-audited-136.test.ts` fails when they are not),
+and every check of Part 3b still applies: exact version, the registry's sha512 of each package, `npm audit signatures`, and the publisher's Authenticode signature. The page shows "Update to <audited>"
+when the computer's copy is older, "up to date" at it, and "not verified by AgEnD yet" (no button) when it is newer. Grok, Antigravity, Kiro and Muse have no pinned install and so no remote update:
+the registry says why (`runtime.update`).
+
+**Adding a release to the ledger:** when the upstream watch marks a version audited, add it to `AUDITED_CLI_VERSIONS` (the same change carries the audit's tests and fixtures). For Claude Code or Codex that
+is also a new pin in `runtime-cli-install.ts` (its sha512 of each package, taken from the registry, and the Authenticode signer checked on the real `.exe`).
 
 ## Adding a CLI
 

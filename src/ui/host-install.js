@@ -47,6 +47,38 @@ register("hostinstall", {
     err_failed: "安裝無法開始。", err_other: "沒有成功。",
   },
 });
+// AGEND-136 (#3521): the Update button beside Install. The page names the CLI and nothing else (POST /ui/host-update { backend }); the server picks the command and the
+// AUDITED release it goes to (cli-audited.ts), so the button always says which version it installs. A CLI that updates itself shows the versions and no button.
+register("hostinstall", {
+  en: {
+    update: "Update to {0}", updating: "Updating…", cancelUpdate: "Cancel update",
+    verCurrent: "{0} is installed — up to date. The newest version AgEnD has audited: {1}.",
+    verBehind: "{0} is installed. The newest version AgEnD has audited is {1}: Update installs exactly that, not the newest release.",
+    verSelf: "{0} is installed. The newest version AgEnD has audited is {1}. This CLI updates itself in the background, so there is no Update button.",
+    verNewer: "{0} is installed. That is newer than {1}, the newest version AgEnD has audited: not verified by AgEnD yet.",
+    verUnknown: "The installed version could not be read. The newest version AgEnD has audited: {0}.",
+    runningUpdate: "Updating {0} to {1} (started on {2}).",
+    updated: "{0} was updated from {1} to {2}.", updatedNoFrom: "{0} was updated to {1}.", updatedSame: "The {0} update finished, but it is still {1}. Read the installer's last lines below.",
+    updatedNoVersion: "The {0} update finished.",
+    failedUpdate: "The {0} update did not finish.", failedUpdateCode: "The {0} update exited with code {1}.",
+    cancelledUpdate: "The {0} update was cancelled.", timeoutUpdate: "The {0} update took too long and was stopped.",
+    err_not_installed: "{0} is not installed on this host.", err_up_to_date: "{0} is already at the version AgEnD has audited (or newer): there is nothing to update.",
+  },
+  "zh-TW": {
+    update: "更新到 {0}", updating: "更新中…", cancelUpdate: "取消更新",
+    verCurrent: "已安裝 {0}，是最新的。AgEnD 稽核過的最新版本：{1}。",
+    verBehind: "已安裝 {0}。AgEnD 稽核過的最新版本是 {1}：按「更新」會裝這個版本，不是最新釋出版。",
+    verSelf: "已安裝 {0}。AgEnD 稽核過的最新版本是 {1}。這個 CLI 會在背景自己更新，所以這裡沒有「更新」按鈕。",
+    verNewer: "已安裝 {0}，比 AgEnD 稽核過的最新版本 {1} 還新：尚未經 AgEnD 驗證。",
+    verUnknown: "讀不到已安裝的版本。AgEnD 稽核過的最新版本：{0}。",
+    runningUpdate: "正在把 {0} 更新到 {1}（從 {2} 啟動）。",
+    updated: "{0} 已從 {1} 更新到 {2}。", updatedNoFrom: "{0} 已更新到 {1}。", updatedSame: "{0} 的更新已結束，但版本仍是 {1}。請看下方安裝程式的最後幾行。",
+    updatedNoVersion: "{0} 的更新已結束。",
+    failedUpdate: "{0} 沒有更新完成。", failedUpdateCode: "{0} 的更新以結束碼 {1} 結束。",
+    cancelledUpdate: "已取消 {0} 的更新。", timeoutUpdate: "{0} 的更新花太久，已停止。",
+    err_not_installed: "這台主機沒有安裝 {0}。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
+  },
+});
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
 
 /** What this page knows: the current (or last) install as the server shows it, and the ones the person has dismissed. */
@@ -89,6 +121,21 @@ export async function startHostInstall(backend) {
   return false;
 }
 
+/**
+ * Update `backend` on the host to the audited release (AGEND-136). Resolves true when the server started it. The page sends the CLI's id and nothing else; which release
+ * and which command are the server's.
+ */
+export async function startHostUpdate(backend) {
+  if (hostInstallStore.get().starting) return false;
+  hostInstallStore.set({ starting: backend });
+  const r = await post("/ui/host-update", { backend });
+  hostInstallStore.set({ starting: null });
+  if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
+  toast(errorText(r.body && r.body.error, backend));
+  void refreshHostInstall();
+  return false;
+}
+
 export async function cancelHostInstall() {
   const r = await post("/ui/host-install/cancel", {});
   if (!r.ok) toast(errorText(r.body && r.body.error));
@@ -122,6 +169,28 @@ export function InstallButton({ backend, blocked = false }) {
   return html`<button type="button" class="btn btn-sm btn-primary s-account-install" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostInstall(backend); }}>${th("install")}</button>`;
 }
 
+/**
+ * The version line of an installed CLI and its Update button (AGEND-136). `row.cliUpdate` is the server's reading: the audited release, where the installed version stands
+ * against it (`current`, `behind`, `newer`, `unknown`), whether the dashboard offers an update (`button`) and who updates it (`via`: "dashboard" or "self").
+ */
+export function VersionLine({ row, label, blocked = false }) {
+  const state = useStore(hostInstallStore);
+  const u = row.cliUpdate;
+  if (!u || !hostInstallOffered()) return null;
+  const installed = u.installed || row.version || "?";
+  const text = u.state === "current" ? th("verCurrent", installed, u.audited)
+    : u.state === "newer" ? th("verNewer", installed, u.audited)
+    : u.state === "unknown" ? th("verUnknown", u.audited)
+    : u.via === "self" ? th("verSelf", installed, u.audited)
+    : th("verBehind", installed, u.audited);
+  const run = runFor(state, row.backend);
+  const updating = !!run && run.phase === "running" && run.mode === "update";
+  return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via}>
+    <p class="note s-account-why">${text}</p>
+    ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${th("update", u.audited)}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend); }}>${updating ? th("updating") : th("update", u.audited)}</button></span>` : null}
+  </div>`;
+}
+
 /** The progress and the verdict of this CLI's install, under its row; nothing when there is none (or it was dismissed). */
 export function HostInstallRun({ backend, label }) {
   const state = useStore(hostInstallStore);
@@ -137,11 +206,20 @@ export function HostInstallRun({ backend, label }) {
   if (!run) return null;
   const lines = Array.isArray(run.lines) ? run.lines : [];
   let text, cls = "";
-  if (run.phase === "running") text = th("running", label, run.startedOn);
+  const update = run.mode === "update";
+  if (run.phase === "running") text = update ? th("runningUpdate", label, run.targetVersion || "?", run.startedOn) : th("running", label, run.startedOn);
+  else if (run.phase === "ok" && update) {
+    // An update says the version before and after (the binary probe's own readings); a version that did not move is said as such.
+    cls = run.verified ? "signin-ok" : "signin-message";
+    text = !run.verified ? th("okUnverified", label)
+      : !run.version ? th("updatedNoVersion", label)
+      : run.fromVersion && run.fromVersion === run.version ? (cls = "signin-message", th("updatedSame", label, run.version))
+      : run.fromVersion ? th("updated", label, run.fromVersion, run.version) : th("updatedNoFrom", label, run.version);
+  }
   else if (run.phase === "ok") { cls = run.verified ? "signin-ok" : "signin-message"; text = !run.verified ? th("okUnverified", label) : run.version ? th("okVersion", label, run.version) : th("ok", label); }
-  else if (run.phase === "cancelled") text = th("cancelled", label);
-  else if (run.phase === "timeout") text = th("timeout", label);
-  else text = run.exitCode !== null && run.exitCode !== undefined ? th("failedCode", label, run.exitCode) : th("failed", label);
+  else if (run.phase === "cancelled") text = th(update ? "cancelledUpdate" : "cancelled", label);
+  else if (run.phase === "timeout") text = th(update ? "timeoutUpdate" : "timeout", label);
+  else text = run.exitCode !== null && run.exitCode !== undefined ? th(update ? "failedUpdateCode" : "failedCode", label, run.exitCode) : th(update ? "failedUpdate" : "failed", label);
   const cancel = async () => { setBusy(true); await cancelHostInstall(); setBusy(false); };
   return html`<div class="s-account-install-run" data-phase=${run.phase} role="status">
     <p class=${`s-account-why ${cls}`}>${text}</p>
@@ -149,7 +227,7 @@ export function HostInstallRun({ backend, label }) {
       : run.phase === "running" ? html`<small class="note">${th("runningNoOutput")}</small>` : null}
     ${run.cleanupFailed ? html`<p class="note">${th("cleanup")}</p>` : null}
     <div class="s-actions">${run.phase === "running"
-      ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${cancel}>${th("cancel")}</button>`
+      ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${cancel}>${th(update ? "cancelUpdate" : "cancel")}</button>`
       : html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => dismissHostInstall(run.id)}>${th("dismiss")}</button>`}</div>
   </div>`;
 }

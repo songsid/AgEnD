@@ -13,7 +13,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.318" }, { id: "codex", version: "0.166.0" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -49,24 +49,30 @@ describe("F1: what the CLI printed is compared by its version number", () => {
     machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, id: cliId, version }] } })];
     await p.mount(h(Panel, { navKey })); await settle(14);
   };
-  it.each([["codex", "codex-cli 0.165.0", "0.165.0"], ["claude-code", "2.1.316 (Claude Code)", "2.1.316"]])("%s printing %j is installed at %s: it says so and has no install button", async (cli, printed, number) => {
+  it.each([["codex", "codex-cli 0.166.0", "0.166.0"], ["claude-code", "2.1.318 (Claude Code)", "2.1.318"]])("%s printing %j is installed at %s: it says so and has no install button", async (cli, printed, number) => {
     await withVersion(cli, printed, `f1-${cli}`);
-    expect(rowOf(cli).textContent).toContain(`Installed ${number}`); expect(rowOf(cli).textContent).not.toContain("not the version");
+    expect(rowOf(cli).textContent).toContain(`Installed ${number}`); expect(rowOf(cli).textContent).toContain("up to date"); expect(rowOf(cli).textContent).not.toContain("not the version");
     expect(installButton(cli)).toBeNull();
   });
-  it("another version is `installed other` and is offered the audited one", async () => {
+  it("an older version is behind the audited one: AgEnD says which it has audited and offers Update to it (AGEND-136)", async () => {
     await withVersion("codex", "codex-cli 0.161.0", "f1-other");
-    expect(rowOf("codex").textContent).toContain("Installed codex-cli 0.161.0 (not the version AgEnD installs)");
-    expect(installButton("codex").textContent).toBe("Install pinned 0.165.0");
+    expect(rowOf("codex").textContent).toContain("Installed 0.161.0. AgEnD has audited 0.166.0: Update installs exactly that");
+    expect(installButton("codex").textContent).toBe("Update to 0.166.0");
   });
-  it.each(["codex-cli 0.165.01", "10.165.0", "codex-cli 0.165.0.1", "codex-cli 0.165", "codex-cli 20.165.0", "unknown", ""])("%j is not the pinned version (digits or dots around it, or no version at all)", async printed => {
+  it.each(["codex-cli 0.167.0", "10.165.0", "codex-cli 20.165.0"])("%j is newer than the audited version: 'not verified by AgEnD yet', and no button (AGEND-136)", async printed => {
+    await withVersion("codex", printed, `f1-newer-${printed}`);
+    expect(rowOf("codex").textContent).toContain("not verified by AgEnD yet");
+    expect(installButton("codex")).toBeNull();
+  });
+  it.each(["codex-cli 0.166.0.1", "codex-cli 0.166", "unknown", ""])("%j is not a version at all: shown as another version, and offered the pinned one", async printed => {
     await withVersion("codex", printed, `f1-bad-${printed}`);
     expect(rowOf("codex").textContent).toContain("not the version AgEnD installs");
     expect(installButton("codex")).not.toBeNull();
   });
-  it("a prerelease is a different version from the pin", async () => {
+  it("a prerelease of an older version is behind; the number decides", async () => {
     await withVersion("codex", "codex-cli 0.165.0-alpha.1", "f1-pre");
-    expect(rowOf("codex").textContent).toContain("not the version AgEnD installs");
+    expect(rowOf("codex").textContent).toContain("Update installs exactly that");
+    expect(installButton("codex").textContent).toBe("Update to 0.166.0");
   });
   it("a missing version is shown as `?`, not as installed", async () => {
     await withVersion("codex", undefined, "f1-none");
@@ -74,25 +80,24 @@ describe("F1: what the CLI printed is compared by its version number", () => {
   });
   it("versionNumber takes the first x.y.z, not one that is glued to other digits or dots", async () => {
     const { versionNumber } = await import("/ui/js/runtime-cli-install.js");
-    expect(versionNumber("codex-cli 0.165.0")).toBe("0.165.0"); expect(versionNumber("2.1.316 (Claude Code)")).toBe("2.1.316");
+    expect(versionNumber("codex-cli 0.166.0")).toBe("0.166.0"); expect(versionNumber("2.1.318 (Claude Code)")).toBe("2.1.318");
     expect(versionNumber("v1.2.3-rc.1 extra 4.5.6")).toBe("1.2.3-rc.1");
     for (const bad of ["10.165.0.1", "1.2", "", "abc", 7, undefined, null]) expect(versionNumber(bad as string), String(bad)).toBeNull();
   });
 });
 
 describe("Settings → Runtime: install a CLI on a paired computer", () => {
-  it("lists Claude Code and Codex with their state; a CLI at another version is offered the audited one", async () => {
+  it("lists Claude Code and Codex with their state; one at the audited version has no button, one that is not installed has Install", async () => {
     await p.mount(h(Panel, { navKey: "install-list" })); await settle(14);
-    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.318 (not the version AgEnD installs)");
-    expect(installButton("claude-code").textContent).toBe("Install pinned 2.1.316");
-    expect(rowOf("codex").textContent).toContain("Not installed"); expect(installButton("codex").textContent).toBe("Install 0.165.0");
+    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.318 — up to date"); expect(installButton("claude-code")).toBeNull();
+    expect(rowOf("codex").textContent).toContain("Not installed"); expect(installButton("codex").textContent).toBe("Install 0.166.0");
     expect(installButton("codex").disabled).toBe(false);
     expect(card().querySelector(".runtime-cli-install-off")).toBeNull();
   });
   it("a CLI that is already the audited version has no install button", async () => {
-    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.316" }] } })];
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.318" }] } })];
     await p.mount(h(Panel, { navKey: "install-current" })); await settle(14);
-    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.316"); expect(installButton("claude-code")).toBeNull();
+    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.318"); expect(installButton("claude-code")).toBeNull();
   });
   it("while the computer's owner has not turned it on: the buttons are off and the command to run on that computer is shown", async () => {
     setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };
@@ -106,6 +111,27 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     fire(installButton("codex"), "click"); await settle(14);
     expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "codex" } }]);
     setup = { ...setup, job: { cli: "codex", state: "installing", startedAt: 1 } }; await settle(4);
+  });
+  it("AGEND-136: Update on a computer behind the audited version sends only the CLI id (the pinned install over the older copy), through the usual confirmation", async () => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.316 (Claude Code)" }] } })];
+    await p.mount(h(Panel, { navKey: "update-run" })); await settle(14);
+    expect(installButton("claude-code").textContent).toBe("Update to 2.1.318");
+    fire(installButton("claude-code"), "click"); await settle(14);
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "claude-code" } }]);
+    expect(JSON.stringify(posts)).not.toMatch(/2\.1\.3|update/);
+  });
+  it("AGEND-136: the Update button on a computer waits for the owner's switch like Install", async () => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.316" }] } })];
+    setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };
+    await p.mount(h(Panel, { navKey: "update-off" })); await settle(14);
+    expect(installButton("claude-code").textContent).toBe("Update to 2.1.318"); expect(installButton("claude-code").disabled).toBe(true);
+  });
+  it("AGEND-136: in zh-TW the update words exist", async () => {
+    i18n.setLang("zh-TW", { store: false });
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.316" }] } })];
+    await p.mount(h(Panel, { navKey: "update-zh" })); await settle(14);
+    expect(installButton("claude-code").textContent).toBe("更新到 2.1.318"); expect(rowOf("claude-code").textContent).toContain("稽核過");
+    i18n.setLang("en", { store: false });
   });
   it("shows the end of a finished install, and the sentence the computer gave for a failed one", async () => {
     setup = { ...setup, job: { cli: "codex", state: "installing", startedAt: 1 } };
@@ -140,7 +166,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
-    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
+    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.166.0");
     i18n.setLang("en", { store: false });
   });
 });

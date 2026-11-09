@@ -4,8 +4,9 @@
  *
  * The dashboard sends only a CLI id. Everything that runs is written here: the npm package and its EXACT version, the registry address, the argv,
  * and the registry's own sha512 of every package that may land. The version and its hashes are one entry of one table, so they can only change
- * together. The version is deliberately NOT tied to the persistent-pane version list (runtime-pane-native.ts): the install pin exists for integrity,
- * not for pane acceptance. Nothing from the server becomes a command, an address or a path.
+ * together. AGEND-136: the pinned version is the newest AUDITED release of that CLI (cli-audited.ts; tests/cli-audited-136.test.ts pins it), so the dashboard's
+ * Update on a computer is this same install over an older copy — never the vendor's own updater, never "latest". The pin exists for integrity; the audit decides which
+ * release it is. Nothing from the server becomes a command, an address or a path.
  *
  * Why npm, and why this shape (measured on Windows 11, node 22.21):
  *   - per user, no administrator: it only writes under `<pairing folder>\cli\...`, which this Runtime owns (not %APPDATA%\npm, not PATH);
@@ -55,18 +56,18 @@ export interface InstallableCli {
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>> = Object.freeze({
   "claude-code": {
-    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.316",
+    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.318",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-i3BpzyDkcCPnsa0CSkWgxGPs7WMsyqDkxkqT0SDxyEC5XMIxEmcUmluWRHG9VSeBY8Vyv+l9X34JvJ/Bj54nBQ==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-qs/GOpsQmgWECHVTpqUfTg33BaWoaH7CNOZQlOSqXbBOYst6YL1OqdutE12JsXg096NqGaE7vb5eFa6ZynOIKw==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-OTJgLxcvWefv8IdTsq5n90Z2IxEhLwKqHUBhwZYE4odXzKA/Tb6p2Zb5Iy9Vq7JIVcNZzn9cPxW5sb42wLF95Q==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-g/fa2hqcU/+Qd3NMaY/8i+AoX6HQt3zBcj+V/Ot9icr5TN4PmOmuy6YhVNFLHb2IniLIrBA+gZFqonUe0aYLxg==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", spec: "@openai/codex", version: "0.165.0",
+    id: "codex", spec: "@openai/codex", version: "0.166.0",
     integrity: {
-      "node_modules/@openai/codex": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
-      "node_modules/@openai/codex-win32-x64": "sha512-f5LMyugPSnAovnTnR1N+SNHSTfWZ+ym5A4H3zZHz/zhuMGMGZD8IxUdlSUlEbiENYyPXrJ8G3Jh+CLyzTfQB6Q==",
+      "node_modules/@openai/codex": "sha512-2Szlp1l1cz5TX1ccpX4Zok3DZrot9xeZe0km+6/1v8JmqxADwyJxKBJah4dBymkwtS25j/u6dipJusTOI97Z8Q==",
+      "node_modules/@openai/codex-win32-x64": "sha512-NS8Ps5oG5r19pCrMCUXwUqOui6odnUIoBlQkrjCJ+h1k6KiwCzC/+mI9d3nSZCqFoVONPBTmqyq8NYq3YaFGyA==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },

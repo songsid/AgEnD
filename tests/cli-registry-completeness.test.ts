@@ -70,12 +70,14 @@ codex runtime.usage not_yet_built undecided
 kiro-cli host.identity needs_verification
 kiro-cli host.keepAlive needs_verification
 kiro-cli runtime.install by_design
+kiro-cli runtime.update by_design
 kiro-cli runtime.signIn not_yet_built undecided
 kiro-cli runtime.namedAccounts not_yet_built undecided
 kiro-cli runtime.accountRows not_yet_built undecided
 kiro-cli runtime.authStatus not_yet_built undecided
 kiro-cli runtime.identity not_applicable
 kiro-cli runtime.usage not_yet_built undecided
+antigravity host.update by_design
 antigravity host.dashboardSignIn by_design
 antigravity host.structuredSignIn not_yet_built undecided
 antigravity host.identity not_yet_built undecided
@@ -83,6 +85,7 @@ antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
 antigravity runtime.install by_design
+antigravity runtime.update by_design
 antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
 antigravity runtime.accountRows not_yet_built undecided
@@ -96,12 +99,14 @@ grok host.namedAccounts needs_verification
 grok host.signOut needs_verification
 grok host.keepAlive needs_verification
 grok runtime.install by_design
+grok runtime.update by_design
 grok runtime.signIn not_yet_built undecided
 grok runtime.namedAccounts needs_verification
 grok runtime.accountRows not_yet_built undecided
 grok runtime.authStatus not_yet_built undecided
 grok runtime.identity not_applicable
 grok runtime.usage not_yet_built undecided
+muse host.update cli_has_none
 muse host.chatLogin cli_has_none
 muse host.dashboardSignIn not_applicable
 muse host.structuredSignIn not_applicable
@@ -112,6 +117,7 @@ muse host.namedAccounts needs_verification
 muse host.signOut needs_verification
 muse host.keepAlive needs_verification
 muse runtime.install by_design
+muse runtime.update cli_has_none
 muse runtime.signIn not_applicable
 muse runtime.namedAccounts needs_verification
 muse runtime.accountRows not_yet_built undecided
@@ -128,6 +134,7 @@ opencode host.keepAlive needs_verification
 opencode host.accountCard cli_has_none
 opencode host.usage cli_has_none
 opencode runtime.install by_design
+opencode runtime.update not_yet_built #3521
 opencode runtime.signIn not_applicable
 opencode runtime.namedAccounts needs_verification
 opencode runtime.accountRows cli_has_none

@@ -64,7 +64,7 @@ describe("buildAccountsView", () => {
     expect(kiro.rows).toHaveLength(1);
     expect(kiro.rows[0]).toMatchObject({ scope: { kind: "host" }, profile: null, state: "not_installed", signIn: false, install: "curl … | bash" });
   });
-  it("a CLI with no account card (OpenCode) is listed for its install alone: not installed → a card with no sign-in rows; installed → gone, unless its install is being shown", () => {
+  it("a CLI with no account card (OpenCode) is listed for its install alone: not installed → a card with no sign-in rows; installed → a card only for its version and Update (AGEND-136)", () => {
     const missing = { ...base, targets: [...base.targets, { backend: "opencode", state: "not_installed" as const, signIn: false, install: "curl … | bash" }] };
     const v = buildAccountsView(missing);
     const oc = v.clis.find((c) => c.backend === "opencode")!;
@@ -73,7 +73,11 @@ describe("buildAccountsView", () => {
     expect(v.clis.filter((c) => c.installOnly).map((c) => c.backend)).toEqual(["opencode"]);
     expect(v.clis.at(-1)!.backend).toBe("opencode");                                      // after the account-card CLIs
     const installed = { ...base, targets: [...base.targets, { backend: "opencode", state: "usable" as const, signIn: false }] };
-    expect(buildAccountsView(installed).clis.some((c) => c.backend === "opencode")).toBe(false);
+    // AGEND-136: an installed one is listed for the version it has against the audited release (and Update when it is behind), with no sign-in row.
+    const listed = buildAccountsView({ ...installed, versions: new Map([["opencode", "1.17.20"]]) }).clis.find((c) => c.backend === "opencode")!;
+    expect(listed).toMatchObject({ installOnly: true, installed: true });
+    expect(listed.rows).toHaveLength(1);
+    expect(listed.rows[0]).toMatchObject({ version: "1.17.20", cliUpdate: { state: "behind", audited: "1.18.34", installed: "1.17.20", button: true, via: "dashboard" } });
     expect(buildAccountsView({ ...installed, installShown: "opencode" }).clis.find((c) => c.backend === "opencode")).toMatchObject({ installOnly: true, installed: true });
   });
   it("an installed CLI keeps its card while its install is shown (the verdict stays beside it)", () => {

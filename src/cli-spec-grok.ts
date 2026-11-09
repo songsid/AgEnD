@@ -5,6 +5,7 @@ export const GROK_SPEC = {
   id: "grok",
   host: {
     install: yes({ binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash" }),
+    update: yes({ binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash -s {version}" }),
     chatLogin: yes({ aliases: [], mode: "device-code" }),
     dashboardSignIn: yes({ named: false }),
     structuredSignIn: notYetBuilt("undecided", "Grok signs in through the device-code page of the older dashboard flow; it has not been moved to the structured sign-in."),
@@ -25,6 +26,7 @@ export const GROK_SPEC = {
       promptTransport: "file", modelProbe: ["models"], rank: 3,
     }),
     install: byDesign("Grok installs with a vendor script, not an npm package (runtime-cli-install.ts); the dashboard shows the official command for the computer's owner."),
+    update: byDesign("Grok is not in the Runtime's pinned installer table, so there is no audited, verifiable release for the Runtime to install; its owner can run `grok update --version <audited release>` on that computer."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: toVerify("Whether `grok` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),

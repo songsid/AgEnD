@@ -14,8 +14,9 @@
  */
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { hostIds, hostIdsByRank, runtimeIds } from "./cli-registry.js";
+import { hostFacts, hostIds, hostIdsByRank, runtimeIds } from "./cli-registry.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
+import { cliUpdateView, versionOf, type CliUpdateView } from "./cli-audited.js";
 import type { SignInTarget } from "./web-backend-login.js";
 
 /** The CLIs the Accounts view shows, in its order (cli-registry.ts: `host.accountCard`). */
@@ -52,6 +53,10 @@ export interface AccountRow {
   hostCommand?: string;
   install?: string;
   update?: string;
+  /** AGEND-136: the version the binary probe read for an installed host CLI (a host default row only). */
+  version?: string;
+  /** AGEND-136: where that version stands against AgEnD's audited release (cli-audited.ts), and whether the dashboard can update it (`button`). `via`: "dashboard", or "self" for a CLI that updates itself. */
+  cliUpdate?: CliUpdateInfo;
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   /** The week's usage (the window closest to a week; see `weeklyUsage`). */
   usage?: AccountUsage;
@@ -62,6 +67,7 @@ export interface AccountRow {
 }
 /** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
 export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
+export interface CliUpdateInfo extends CliUpdateView { via: "dashboard" | "self" }
 export interface AccountsCli {
   backend: string; profiles: boolean; installed: boolean;
   /** AGEND-133: a CLI with no account card of its own (OpenCode) is listed only to be installed (or while its install is shown); it has no sign-in rows. */
@@ -111,6 +117,8 @@ export interface AccountsInput {
   keepAlive?: ReadonlyMap<string, AccountKeepAlive>;
   /** AGEND-133: the CLI whose dashboard install the page is showing (running, or ended within its keep time): its card stays even once it is installed, so the result stays beside it. */
   installShown?: string | null;
+  /** AGEND-136: what the binary probe printed for each installed host CLI's `--version`, by backend (the availability snapshot's own reading). */
+  versions?: ReadonlyMap<string, string | null>;
 }
 
 const key = (backend: string, profile: string | null) => `${backend}\0${profile ?? ""}`;
@@ -159,7 +167,12 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
     const installed = !!def && def.state !== "not_installed";
     const installable = !!def && def.state === "not_installed" && !!def.install;
     const machines = !installOnly && MACHINE_ACCOUNT_CLIS.has(backend) ? input.machines ?? [] : [];
-    const hostRelevant = installOnly ? installable || (input.installShown === backend && !!def) : installed || installable || agents.length > 0 || classic.length > 0 || input.installShown === backend;
+    // AGEND-136: what the installed CLI's version is, and where it stands against the audited release (and whether an Update is offered).
+    const printed = installed ? input.versions?.get(backend) ?? null : null;
+    const canUpdate = hostFacts(backend, "update") !== null;
+    const updateView = installed ? cliUpdateView(backend, printed, canUpdate) : null;
+    const cliUpdate: CliUpdateInfo | null = updateView ? { ...updateView, via: canUpdate ? "dashboard" : "self" } : null;
+    const hostRelevant = installOnly ? installable || (installed && !!cliUpdate) || (input.installShown === backend && !!def) : installed || installable || agents.length > 0 || classic.length > 0 || input.installShown === backend;
     if (!hostRelevant && !machines.length) continue;
     const rows: AccountRow[] = [];
     const usedBy = (profile: string | null) => ({
@@ -175,6 +188,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
+      ...(installed && versionOf(printed) ? { version: versionOf(printed)! } : {}), ...(cliUpdate ? { cliUpdate } : {}),
       usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...(shortOf(null) ? { shortUsage: shortOf(null) } : {}), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {

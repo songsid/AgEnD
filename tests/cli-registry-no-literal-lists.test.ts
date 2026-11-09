@@ -38,6 +38,7 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/ui/structured-signin.js": 1, "src/ui/runtime-cli-install.js": 1,
   } },
   { why: "model rediscovery: Claude/Codex have explicit scoped credential protocols; other CLIs must have their own registered listing contract", files: { "src/backend/cli-env-probe.ts": 1, "src/runtime-remote-accounts.ts": 1 } },
+  { why: "the audited releases of each CLI (AGEND-136): a ledger of facts per CLI id that the Windows pane gate and the Update button read, kept as one table keyed by id (a Record<CliId, …> the compiler completes)", files: { "src/cli-audited.ts": 1 } },
   { why: "code for Kiro that compares its id with the default backend's", files: { "src/kiro-engine-status.ts": 1, "src/kiro-migrate.ts": 2 } },
   { why: "quota notices (which backends have one)", files: { "src/quota-notice-config.ts": 1, "src/ui/settings-quota-notice.js": 1 } },
   { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },

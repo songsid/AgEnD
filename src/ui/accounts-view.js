@@ -27,7 +27,7 @@ import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
 import { machineSignInStore, openMachineSignIn } from "./machine-signin.js";   // #3190 Part 3c
 import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
-import { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } from "./host-install.js";   // AGEND-133 (#3521)
+import { HostInstallRun, InstallButton, VersionLine, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } from "./host-install.js";   // AGEND-133 (#3521)
 
 register("accounts", {
   en: {
@@ -325,10 +325,11 @@ function InstallOnlyRow({ row, running }) {
   const canInstall = row.state === "not_installed" && !!row.install;
   return html`<div class="s-row s-account-row" data-account="default">
     <div class="s-account-title-bar">
-      <div class="s-account-title-left"><span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText("installing") : tx(`state_${row.state || "unknown"}`)}</span></div>
+      <div class="s-account-title-left"><span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(run.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span></div>
       <span class="s-actions">${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}</span>
     </div>
     ${canInstall && !run ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
+    <${VersionLine} row=${row} label=${cliLabel(row.backend)} blocked=${running} />
     <${HostInstallRun} backend=${row.backend} label=${cliLabel(row.backend)} />
   </div>`;
 }
@@ -382,7 +383,7 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
-        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText("installing") : tx(`state_${row.state || "unknown"}`)}</span>
+        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span>
         ${row.usedBy.fleetDefault && cli.profiles ? html`<span class="tag s-account-default-tag">${machine ? tx("machineDefaultTag") : tx("fleetDefaultTag")}</span>` : null}</div>
       ${readOnly ? null : html`<span class="s-actions">
         ${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}
@@ -404,6 +405,7 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
     </div>` : null}
     ${why ? html`<p class="note s-account-why">${why}</p>` : null}
     ${canInstall && !installRun ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
+    ${!machine && !row.profile && !readOnly ? html`<${VersionLine} row=${row} label=${cliLabel(row.backend)} blocked=${running} />` : null}
     ${!machine && !row.profile ? html`<${HostInstallRun} backend=${row.backend} label=${cliLabel(row.backend)} />` : null}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${machine ? tx("machineCommand") : tx("hostCommand")}</summary><p class="note">${machine ? tx("machineCommandHint", machine.name) : tx("hostCommandHint")}</p>${machine ? html`<p class="s-host-cli-command"><code>${row.hostCommand}</code></p>` : null}</details>` : null}
     ${!readOnly && row.keepAlive && row.state !== "not_installed" && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}

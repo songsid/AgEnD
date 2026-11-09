@@ -5,6 +5,7 @@ export const KIRO_CLI_SPEC = {
   id: "kiro-cli",
   host: {
     install: yes({ binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash" }),
+    update: yes({ binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash -s -- --version {version} --force" }),
     chatLogin: yes({ aliases: ["kiro"], mode: "menu" }),
     dashboardSignIn: yes({ named: true }),
     structuredSignIn: yes({ argv: ["kiro-cli", "login"], rank: 0, named: false }),
@@ -26,6 +27,7 @@ export const KIRO_CLI_SPEC = {
       reason: "Windows headless execution exists, but this adapter has not verified its terminal JSON event schema yet.", rank: 4,
     }),
     install: byDesign("Kiro installs from an MSI into Program Files, which the Runtime does not run (runtime-cli-install.ts); the dashboard shows the official command for the computer's owner."),
+    update: byDesign("Kiro's Windows build is an MSI into Program Files and needs an administrator (the same reason as runtime.install); the dashboard does not update it."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: notYetBuilt("undecided", "The Runtime's profile folders are Claude Code's only."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),
