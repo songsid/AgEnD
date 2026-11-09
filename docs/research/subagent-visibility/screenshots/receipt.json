@@ -10,7 +10,31 @@
         "width": 1366,
         "height": 900
       },
-      "expanded": true
+      "expanded": true,
+      "displayName": "研究助理",
+      "layout": {
+        "banner": {
+          "left": 276,
+          "right": 16,
+          "width": 1074
+        },
+        "card": {
+          "left": 449,
+          "right": 189,
+          "width": 728
+        },
+        "composer": {
+          "left": 429,
+          "right": 169,
+          "width": 768
+        },
+        "heading": "研究助理",
+        "headingClipped": false,
+        "footerVisible": true,
+        "bannerParent": "main",
+        "locationCard": false,
+        "overflow": false
+      }
     },
     {
       "backend": "claude",
@@ -20,7 +44,31 @@
         "width": 390,
         "height": 844
       },
-      "expanded": true
+      "expanded": true,
+      "displayName": "研究助理",
+      "layout": {
+        "banner": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "card": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "composer": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "heading": "研究助理",
+        "headingClipped": false,
+        "footerVisible": true,
+        "bannerParent": "main",
+        "locationCard": false,
+        "overflow": false
+      }
     },
     {
       "backend": "codex",
@@ -30,7 +78,31 @@
         "width": 1366,
         "height": 900
       },
-      "expanded": true
+      "expanded": true,
+      "displayName": "程式助理",
+      "layout": {
+        "banner": {
+          "left": 276,
+          "right": 16,
+          "width": 1074
+        },
+        "card": {
+          "left": 449,
+          "right": 189,
+          "width": 728
+        },
+        "composer": {
+          "left": 429,
+          "right": 169,
+          "width": 768
+        },
+        "heading": "程式助理",
+        "headingClipped": false,
+        "footerVisible": true,
+        "bannerParent": "main",
+        "locationCard": false,
+        "overflow": false
+      }
     },
     {
       "backend": "codex",
@@ -40,7 +112,31 @@
         "width": 390,
         "height": 844
       },
-      "expanded": true
+      "expanded": true,
+      "displayName": "程式助理",
+      "layout": {
+        "banner": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "card": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "composer": {
+          "left": 16,
+          "right": 16,
+          "width": 358
+        },
+        "heading": "程式助理",
+        "headingClipped": false,
+        "footerVisible": true,
+        "bannerParent": "main",
+        "locationCard": false,
+        "overflow": false
+      }
     }
   ]
 }
