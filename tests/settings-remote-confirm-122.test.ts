@@ -622,6 +622,42 @@ describe("the ordinary New Agent shortcut follows the same policy (Prism P2-1), 
     await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("stale"));
     expect(g.created.length).toBe(0);
   });
+  it("(f) a refused role is not permission: a chat account no longer in its connection's admin list, and a chat fleet's owner-less session that is not the host's, create nothing — on this computer too", async () => {
+    const f = fleet({ chat: true }), g = creationGate(f);
+    const ada = f.session("account", "lan", { user: ADMIN }), adaHere = f.session("account", "here", { user: ADMIN }), bare = f.session("code", "here");
+    expect((await g.create(ada)).status).toBe(202);                                // control: a current admin creates at once
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+    (f.fm.fleetConfig as any).channels[0].access.allowed_users = [ADMIN_B];         // the account is removed from the admin list; its cookie is still a valid admin-tier session
+    expect(f.any.settingsRole(ada.req).role).toMatchObject({ ok: false, reason: "not_admin" });
+    for (const s of [ada, adaHere]) {
+      const r = await g.create(s);
+      expect(r.body.pending_change.state, "waits as a held change").toBe("pending");
+      await g.settle();
+      expect(g.stateOf(r, s)).toBe("pending");
+    }
+    const noAccount = await g.create(bare);                                         // owner-less, not the host's: no account at all
+    expect(f.any.settingsRole(bare.req).role).toMatchObject({ ok: false, reason: "no_account" });
+    expect(noAccount.body.pending_change.state).toBe("pending");
+    await g.settle();
+    expect(g.created.length).toBe(1);                                              // only the control
+  });
+  it("(g) an admin revoked after admission and before execution: the policy is asked again, stale, nothing created", async () => {
+    const f = fleet({ chat: true }), g = creationGate(f), s = f.session("account", "lan", { user: ADMIN });
+    const release = g.holdExecution();
+    const r = await g.create(s);
+    expect(r.status).toBe(202);
+    (f.fm.fleetConfig as any).channels[0].access.allowed_users = [ADMIN_B];
+    release();
+    await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("stale"));
+    expect(g.created.length).toBe(0);
+  });
+  it("(h) the one legacy exception, kept apart from admin eligibility: with the web authorization switch off a local admin still creates", async () => {
+    const f = fleet({ enrolled: true, va: { enabled: false } }), g = creationGate(f), s = f.session("code", "lan");
+    expect(f.any.settingsRole(s.req).role).toMatchObject({ ok: false, reason: "disabled" });
+    const r = await g.create(s);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+    expect(r.status).toBe(202);
+  });
 });
 
 describe("who can never confirm (agents, paired Windows PCs)", () => {

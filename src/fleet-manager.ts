@@ -3397,7 +3397,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private settingsDirectCreationAllowed(req: IncomingMessage): boolean {
     const { role } = this.settingsRole(req);
-    if (!role.ok) return role.reason !== "loopback_only";
+    // A refused role is not permission: an admin who is no longer one (a chat account removed from its connection's list, an
+    // owner-less session that is not the host's on a chat fleet), a rotated token, "Only this computer can authorize" — none of
+    // them may create. The one legacy exception, kept apart from admin eligibility: the web authorization switch being off, which
+    // governs what a web message carries to an agent and never stopped a local admin creating one.
+    if (!role.ok) return role.reason === "disabled";
     return role.onHost || !this.strictFor(role.actor);
   }
   /** AGEND-122: this request's role over a held change — its cookie session asked afresh each time (settings-role.ts). */
