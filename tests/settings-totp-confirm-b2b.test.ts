@@ -1,20 +1,23 @@
 /**
- * AGEND-122 (upstream #3486): the authenticator code (#3355, alpha.6 #2c) is now the owner's STRICT mode. By default any role-ok
- * fleet admin on a web cookie session presses Apply now from anywhere (settingsSelfConfirmation, settings-role.ts). Only while
- * `web.verified_authority.remote_confirm_code` is true is a role-ok session that is NOT on this computer (a direct loopback peer)
- * asked for the code instead — on a web-only fleet and on a chat fleet alike. The real FleetManager authority (sessions, the
- * authenticator store, the confirmation store), in a scratch dir:
- *   - who is asked: web-only admin sessions (a sign-in code, the host's own session carried off this computer, the owner signed in
- *     from outside over a link) and, on a chat fleet, a chat account that is still an admin of every connection the change touches
- *     (and the host's own session) — "ready" with an app, "not_set_up" without (fails closed, no Apply now either); never a guest,
- *     a header token, the web authorization switch off, a chat account that stopped being an admin, a link whose option is off;
- *   - who is not: strict mode off (Apply now exists, no code), a page on this computer (nothing asked, whatever the change class),
- *     "Only this computer can authorize" (`host_only`: no code, no Apply now), and a change that opens a link is never code-confirmed
- *     over a link (`on_host` / `not_here`, even with a correct code, and the code is not spent);
- *   - a correct code confirms that one change (audited under its own label), bound to its digest, one use per time step, the
- *     fleet-wide wrong-code limit pauses it; and it is asked again at execution (`current()`): the same session, role and chat
- *     admin, and the same authenticator enrolment — a session signed out, an account demoted, "Only this computer" turned on, an
- *     app replaced or removed and set up again while the change waits leaves it unapplied (stale).
+ * AGEND-122 (upstream #3486, per admin): the authenticator code (#3355, alpha.6 #2c) is each admin's OWN strict mode. By default any
+ * role-ok fleet admin on a web cookie session presses Apply now from anywhere (settingsSelfConfirmation, settings-role.ts). Only an
+ * admin whose OWN switch is on ("ask for my code to confirm from other devices": `strict` inside their record in
+ * web-remote-access.json — `totp` for the host operator, an `admins` entry for a chat account; never fleet.yaml, never without the
+ * app) is, from a page that is NOT on this computer (a direct loopback peer), asked for their code instead. Another admin on the
+ * same fleet whose switch is off still has Apply now. The real FleetManager authority (sessions, the authenticator store, the
+ * confirmation store), in a scratch dir:
+ *   - who is asked: an admin whose own switch is on — web-only admin sessions (a sign-in code, the host's own session carried off
+ *     this computer, the owner signed in from outside over a link) and, on a chat fleet, a chat account that is still an admin of every
+ *     connection the change touches (and the host's own session) — never a guest, a header token, the web authorization switch off,
+ *     a chat account that stopped being an admin, a link whose option is off; the code checked is THEIR app's, never another admin's;
+ *   - who is not: switch off or no app (the switch cannot exist without one: Apply now, no code), a page on this computer (nothing
+ *     asked, whatever the change class), "Only this computer can authorize" (`host_only`: no code, no Apply now), and a change that
+ *     opens a link is never code-confirmed over a link (`on_host` / `not_here`, even with a correct code, the code not spent);
+ *   - a correct code confirms that one change (audited under its own label), bound to its digest, one use per time step of that app,
+ *     the fleet-wide wrong-code limit pauses it for everyone; and it is asked again at execution (`current()`): the same session, role
+ *     and chat admin, and the same enrolment of the confirming admin's own app — a session signed out, an account demoted, "Only this
+ *     computer" turned on, THEIR app replaced or removed and set up again while the change waits leaves it unapplied (stale); another
+ *     admin's app changing does not.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,12 +29,24 @@ import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
-import { base32Encode, base32Decode, hotp, totpStep, TOTP_WRONG_LIMIT, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { adminKey, base32Encode, base32Decode, hotp, totpStep, TOTP_WRONG_LIMIT, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 
 const TOKEN = "c".repeat(48);   // a valid web token (hex)
-const SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));
-const codeAt = (ms: number) => hotp(base32Decode(SECRET)!, totpStep(ms));
+const SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));        // the host operator's app
+const SECRET_A = base32Encode(Buffer.from("ABCDEFGHIJKLMNOPQRST"));      // ADMIN's own app
+const SECRET_B = base32Encode(Buffer.from("zyxwvutsrqponmlkjihg"));      // ADMIN2's own app
+const codeAt = (ms: number, secret = SECRET) => hotp(base32Decode(secret)!, totpStep(ms));
 const ADMIN = "100";            // a chat account that is an admin of the connection "a" (chat fleets)
+const ADMIN2 = "200";           // another admin of "a": its own app and its own switch
+const SECRETS: Record<string, string> = { host: SECRET, [ADMIN]: SECRET_A, [ADMIN2]: SECRET_B };
+/** The file's record of one admin's app: `strict` is that admin's own switch. */
+const record = (secret: string, strict: boolean) => ({ secret, enrolledAt: 1, lastStep: 0, ...(strict ? { strict: true } : {}) });
+/** web-remote-access.json as a fleet is seeded: the host operator's record under `totp`, a chat account's under `admins`. */
+const seededFile = (apps: Record<string, { strict: boolean } | null>) => {
+  const admins: Record<string, unknown> = {};
+  for (const [who, app] of Object.entries(apps)) if (who !== "host" && app) admins[adminKey("a", who)] = record(SECRETS[who]!, app.strict);
+  return JSON.stringify({ v: 1, ...(apps.host ? { totp: record(SECRET, apps.host.strict) } : {}), ...(Object.keys(admins).length ? { admins } : {}), outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] });
+};
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [], fleets: any[] = [];
 afterEach(() => {
   for (const s of stores.splice(0)) s.close();
@@ -40,14 +55,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** `strict: false` leaves the option off; `va` adds to `web.verified_authority` (loopback_only, enabled, named_link…); `chat` is a Telegram connection "a" whose admin is ADMIN. */
-function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: Record<string, unknown> } = {}) {
+/**
+ * Strict is each admin's own switch, seeded in web-remote-access.json. By default the host operator (the owner-less sessions) and, on a chat
+ * fleet, ADMIN each have an app with their own switch ON; `strict: false` leaves those switches off (the apps stay), `enrolled: false` sets up
+ * no app at all. `apps` overrides one admin — "host" or an account: `{ strict }` seeds the app with that switch, `null` no app. `va` adds to
+ * `web.verified_authority` (loopback_only, enabled, named_link…); `chat` is a Telegram connection "a" whose admins are ADMIN and ADMIN2.
+ */
+function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: Record<string, unknown>; apps?: Record<string, { strict: boolean } | null> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-b2b-")); roots.push(dir);
-  if (o.enrolled !== false) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+  const base = o.enrolled === false ? null : { strict: o.strict !== false };
+  const apps: Record<string, { strict: boolean } | null> = { host: base, ...(o.chat ? { [ADMIN]: base } : {}), ...o.apps };
+  if (Object.values(apps).some(Boolean)) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), seededFile(apps), { mode: 0o600 });
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
-    ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN] } }] } : {}),
-    web: { verified_authority: { ...(o.strict === false ? {} : { remote_confirm_code: true }), ...o.va } },
+    ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN, ADMIN2] } }] } : {}),
+    web: { verified_authority: { ...o.va } },
     instances: { general: { working_directory: dir, general_topic: true } } } as any;
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   any.outsideLink = () => ({ exposureId: "outside" });   // a web-only fleet whose "connections from outside" opened a link: the owner who signed in over it (remote: "totp") is the fleet's admin there
@@ -69,7 +91,9 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: R
     const req: any = { method: "POST", socket: { remoteAddress: local ? "127.0.0.1" : "192.168.1.20" },
       headers: { host, origin: `http://${host}`, "sec-fetch-site": "same-origin", cookie: `${link ? "__Host-agend_session" : "agend_session"}=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
     if (link) bindGatewayRequest(req, { surface: "gateway", exposureId: "outside", expectedOrigin: `http://${host}`, isCurrent: () => true, named: opts.link === "named" } as any);
-    return { req, record: c.record, sessionId: c.sessionId };
+    // The code of the app of the admin this session is (the host operator's unless a chat account): what that admin's phone shows now.
+    const code = (): string => codeAt(Date.now(), SECRETS[opts.account ?? "host"]);
+    return { req, record: c.record, sessionId: c.sessionId, code };
   };
   let holdUnchanged = false;
   const propose = (path = "/api/settings/hub/membership", body: unknown = { enabled: true }, extra: Record<string, unknown> = { hubMembership: () => ({ enabled: false }) }, authority?: { connections: string[]; primaryGeneral: boolean; unknown: boolean }) => {
@@ -87,19 +111,24 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: R
   const hubConnect = (code = "ABCD-EFGH") => propose("/api/hub/member/pairing/connect", { address: "https://hub.example.test", code }, { hubPairing: () => ({ summary: ["Connect to the Hub at https://hub.example.test"] }) });
   /** What this request is told for that change: the code's state, and Apply now's label (null: none). */
   const asked = (s: { req: any }, id: string) => [any.settingsTotpState(store, s.req, id), any.settingsSelfConfirmation(store, s.req, id)?.label ?? null];
-  const confirm = (s: { req: any }, id: string, code = codeAt(Date.now())) => any.settingsTotpConfirm(store, s.req, id, code, store.confirmDigest(id));
+  const confirm = (s: { req: any; code?: () => string }, id: string, code = s.code ? s.code() : codeAt(Date.now())) => any.settingsTotpConfirm(store, s.req, id, code, store.confirmDigest(id));
   return { fm, any, store, audit, session, propose, linkOn, hubConnect, asked, confirm, hold: () => { holdUnchanged = true; } };
 }
 
-describe("who is asked for the code (remote_confirm_code on, a page that is not on this computer)", () => {
+describe("who is asked for the code (their own switch on, a page that is not on this computer)", () => {
   it("a web-only fleet's admin session (a sign-in code) from the LAN, app set up: the code, no Apply now", () => {
     const f = fleet(), s = f.session(), p = f.propose();
     expect(f.asked(s, p.view.id)).toEqual(["ready", null]);
   });
-  it("no app set up: not_set_up — no Apply now either, and a code cannot be checked (fails closed, never open)", () => {
+  it("no app set up: the switch cannot exist without one — Apply now, no code, and a code cannot be checked (fails closed, never open)", () => {
     const f = fleet({ enrolled: false }), s = f.session(), p = f.propose();
-    expect(f.asked(s, p.view.id)).toEqual(["not_set_up", null]);
-    expect(f.confirm(s, p.view.id)).toEqual({ error: "not_here" });
+    expect(f.asked(s, p.view.id)).toEqual([null, "This fleet's admin"]);
+    expect(f.confirm(s, p.view.id, codeAt(Date.now()))).toEqual({ error: "not_here" });
+    // A hand-written `strict: true` beside an app that cannot be read is no app and no switch (the app is what the switch lives in).
+    const g = fleet({ enrolled: false }), file = join(g.fm.dataDir, WEB_REMOTE_ACCESS_FILE);
+    writeFileSync(file, JSON.stringify({ v: 1, totp: { secret: "short", enrolledAt: 1, lastStep: 0, strict: true }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+    g.any.webRemoteAccessState = null;
+    expect(g.asked(g.session(), g.propose().view.id)).toEqual([null, "This fleet's admin"]);
   });
   it("the host's own session carried to another device: the code too (it is not on this computer any more)", () => {
     const f = fleet(), s = f.session({ host: true }), p = f.propose();
@@ -150,7 +179,7 @@ describe("who is NOT asked for it", () => {
   it("strict mode off (the default): no code is offered, Apply now exists for the same LAN admin — and a code is refused", () => {
     const f = fleet({ strict: false }), s = f.session(), p = f.propose();
     expect(f.asked(s, p.view.id)).toEqual([null, "This fleet's admin"]);
-    expect(f.confirm(s, p.view.id)).toEqual({ error: "not_here" });
+    expect(f.confirm(s, p.view.id)).toEqual({ error: "not_here" });   // the app is set up, its switch is off: its code confirms nothing
   });
   it("strict mode off, a chat account: Apply now (its own label), no code", () => {
     const f = fleet({ chat: true, strict: false }), s = f.session({ account: ADMIN }), p = f.propose();
@@ -349,7 +378,99 @@ describe("#3352 security review: binding, shared budget, and the link rule", () 
     expect([f.asked(s, p.view.id), f.confirm(s, p.view.id)]).toMatchObject([["ready", null], { label: "Authenticator code" }]);
   });
 });
-
+describe("each admin's own switch and own app (AGEND-122, per admin)", () => {
+  const chatFleet = (apps: Record<string, { strict: boolean } | null>, va?: Record<string, unknown>) => fleet({ chat: true, apps: { host: null, [ADMIN]: null, [ADMIN2]: null, ...apps }, ...(va ? { va } : {}) });
+  const setUp = (f: ReturnType<typeof fleet>, who: string, handle: string) => {
+    const access = f.any.webRemoteAccess(), { secret } = access.beginEnrollment(handle, "acct", who);
+    expect(access.confirmEnrollment(handle, hotp(base32Decode(secret)!, totpStep(Date.now())))).toBe("ok");
+  };
+  it("another admin on the same chat fleet whose switch is OFF still has Apply now, while the admin whose switch is ON is asked for a code", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: false } }), on = f.session({ account: ADMIN }), off = f.session({ account: ADMIN2 }), p = f.propose();
+    const [state, label] = f.asked(off, p.view.id);
+    expect([f.asked(on, p.view.id), state, String(label).endsWith("(web-verified)")]).toEqual([["ready", null], null, true]);
+    // The one with the switch off has an app, but it is not what confirms for them; the one with it on is not offered Apply now.
+    expect(f.confirm(off, p.view.id)).toEqual({ error: "not_here" });
+    expect(f.any.settingsSelfConfirmation(f.store, on.req, p.view.id)).toBeNull();
+    expect(f.confirm(on, p.view.id)).toMatchObject({ label: "Authenticator code" });
+  });
+  it("a switch is no one else's: an admin with no app is never asked because another's switch is on, and the host operator's switch is the host operator's", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true } }), p = f.propose();
+    expect([f.asked(f.session({ account: ADMIN }), p.view.id), f.asked(f.session({ account: ADMIN2 }), p.view.id)[0], f.asked(f.session({ host: true }), p.view.id)[0]]).toEqual([["ready", null], null, null]);
+    const h = chatFleet({ host: { strict: true } }), q = h.propose();
+    expect([h.asked(h.session({ host: true }), q.view.id), h.asked(h.session({ account: ADMIN }), q.view.id)[0], h.asked(h.session({ account: ADMIN2 }), q.view.id)[0]]).toEqual([["ready", null], null, null]);
+  });
+  it("the switch is asked off this computer only, and per admin: the same two admins on this computer's own browser both have Apply now", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: false } }), p = f.propose();
+    for (const account of [ADMIN, ADMIN2]) expect(f.asked(f.session({ account, where: "here" }), p.view.id)[0]).toBeNull();
+    expect(f.any.settingsSelfConfirmation(f.store, f.session({ account: ADMIN, where: "here" }).req, p.view.id)).not.toBeNull();
+  });
+  it("a code of admin A never confirms for admin B: each session's code is checked against its own app (and not the other way round)", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: true } }), a = f.session({ account: ADMIN }), b = f.session({ account: ADMIN2 }), p = f.propose();
+    expect([f.asked(a, p.view.id), f.asked(b, p.view.id)]).toEqual([["ready", null], ["ready", null]]);
+    expect(f.confirm(b, p.view.id, a.code())).toEqual({ error: "wrong" });
+    expect(f.confirm(a, p.view.id, b.code())).toEqual({ error: "wrong" });
+    // The host operator's code is not theirs either.
+    expect(f.confirm(a, p.view.id, codeAt(Date.now(), SECRET))).toEqual({ error: "wrong" });
+    // …and the refusals spent none of the right codes: each admin's own still confirms.
+    expect(f.confirm(a, p.view.id)).toMatchObject({ label: "Authenticator code" });
+    expect(f.confirm(b, p.view.id)).toMatchObject({ label: "Authenticator code" });
+  });
+  it("one use per time step is per app: A's code spent for one change does not spend B's code of the same step", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: true } }), a = f.session({ account: ADMIN }), b = f.session({ account: ADMIN2 });
+    const one = f.propose(), two = f.propose("/api/settings/hub/retention", { contentDays: 14, eventDays: 60, revision: 1 }, {});
+    const codeA = a.code();
+    expect("label" in f.confirm(a, one.view.id, codeA)).toBe(true);
+    expect(f.confirm(a, two.view.id, codeA)).toEqual({ error: "wrong" });          // A's own step is used
+    expect("label" in f.confirm(b, two.view.id)).toBe(true);                        // B's is not
+  });
+  it("the wrong-code limit stays fleet-wide: wrong codes of two admins add up, and then the pause holds for every admin's app", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: true } }), a = f.session({ account: ADMIN }), b = f.session({ account: ADMIN2 }), p = f.propose();
+    for (let i = 1; i < TOTP_WRONG_LIMIT; i++) expect(f.confirm(i % 2 ? a : b, p.view.id, "000000")).toEqual({ error: "wrong" });
+    expect(f.confirm(a, p.view.id, "000000")).toMatchObject({ error: "paused" });
+    expect(f.confirm(b, p.view.id)).toMatchObject({ error: "paused" });             // B's right code waits too
+    expect(f.store.get(p.view.id, "browser")!.state).toBe("pending");
+  });
+  it("asked again at execution, per admin: THEIR app replaced while the change waits leaves it unapplied; another admin's app replaced does not", async () => {
+    const run = async (replaced: string) => {
+      const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: true } }); f.hold();
+      const a = f.session({ account: ADMIN }), p = f.propose();
+      const decided = f.store.decide(p.view.id, "confirm", { ...f.confirm(a, p.view.id), via: "web" });
+      setUp(f, adminKey("a", replaced), "b".repeat(16));
+      p.release(); await decided;
+      return [p.apply.mock.calls.length, f.store.get(p.view.id, "browser")!.state];
+    };
+    expect([await run(ADMIN2), await run(ADMIN)]).toEqual([[1, "applied"], [0, "stale"]]);
+  });
+  it("asked again at execution: THEIR app removed while the change waits leaves it unapplied (and the switch went with it)", async () => {
+    const f = chatFleet({ [ADMIN]: { strict: true } }); f.hold();
+    const a = f.session({ account: ADMIN }), p = f.propose();
+    const r = f.confirm(a, p.view.id), decided = f.store.decide(p.view.id, "confirm", { ...r, via: "web" });
+    const access = f.any.webRemoteAccess();
+    expect([access.remove(adminKey("a", ADMIN)), access.strictOf(adminKey("a", ADMIN)), r.current()]).toEqual([true, false, false]);
+    p.release(); await decided;
+    expect([p.apply.mock.calls.length, f.store.get(p.view.id, "browser")!.state]).toEqual([0, "stale"]);
+  });
+  it("an admin who removes the app and sets one up again has the switch OFF (it went with the app): Apply now, no code", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true } }), a = f.session({ account: ADMIN }), p = f.propose();
+    expect(f.asked(a, p.view.id)).toEqual(["ready", null]);
+    const access = f.any.webRemoteAccess(); access.remove(adminKey("a", ADMIN));
+    setUp(f, adminKey("a", ADMIN), "c".repeat(16));
+    const [state, label] = f.asked(a, p.view.id);
+    expect([state, String(label).endsWith("(web-verified)")]).toEqual([null, true]);
+  });
+  it("the same switch, replaced app: setting up again over a running app keeps the admin's switch ON (a replacement is not a switch change)", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true } }), a = f.session({ account: ADMIN }), p = f.propose();
+    setUp(f, adminKey("a", ADMIN), "d".repeat(16));
+    expect(f.asked(a, p.view.id)).toEqual(["ready", null]);
+  });
+  it("the direct New Agent shortcut follows the same policy: refused off this computer only for an admin whose own switch is on", () => {
+    const f = chatFleet({ [ADMIN]: { strict: true }, [ADMIN2]: { strict: false } });
+    const allowed = (opts: Parameters<typeof f.session>[0]) => f.any.settingsDirectCreationAllowed(f.session(opts).req);
+    expect([allowed({ account: ADMIN }), allowed({ account: ADMIN2 }), allowed({ account: ADMIN, where: "here" })]).toEqual([false, true, true]);
+    const lock = chatFleet({ [ADMIN2]: { strict: false } }, { loopback_only: true });
+    expect([lock.any.settingsDirectCreationAllowed(lock.session({ account: ADMIN2 }).req), lock.any.settingsDirectCreationAllowed(lock.session({ account: ADMIN2, where: "here" }).req)]).toEqual([false, true]);
+  });
+});
 
 // D3 / B2b: the one shared helper (agreed with dev-claude), as a table.
 describe("hostSessionHere (src/authority/web-authority.ts)", async () => {

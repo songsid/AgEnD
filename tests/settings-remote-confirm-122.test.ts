@@ -1,17 +1,25 @@
 /**
  * AGEND-122 (upstream design issue #3486, R1): a signed-in human fleet admin confirms a held Settings change by pressing Apply now
- * from wherever the dashboard is reached, for every kind of change, on a chat fleet and a web-only one alike; the owner's stricter
- * option (`web.verified_authority.remote_confirm_code`) asks for the authenticator's code off the AgEnD computer instead.
+ * from wherever the dashboard is reached, for every kind of change, on a chat fleet and a web-only one alike; each admin's OWN
+ * stricter switch ("ask for my code to confirm from other devices", kept with their own authenticator in web-remote-access.json,
+ * never in fleet.yaml) asks for that admin's authenticator code off the AgEnD computer instead.
  *   - classification: a tailnet-style request (a Host that is not loopback, a forwarding header, a peer that is this machine behind
  *     `tailscale serve`, or a tailnet address of its own) is `lan` on the `local` surface — not a link; only the gateway's binding is;
  *   - the role (settings-role.ts), as a pure decision: who qualifies and the first check each other caller fails;
  *   - the default: every change class (a secret, access, a connection, an outward Hub change, opening a link) gets Apply now from this
  *     computer, a tailnet-style request and the public gateway; never an agent's request, a guest, a header token, the switch off, or
  *     "Only this computer can authorize" off this computer;
- *   - strict mode: off this computer a code replaces Apply now for every session — the owner signed in from outside included — and a
- *     change that opens a link is refused over the gateway, a real gateway-bound request, beside the tailnet-style `lan` request;
- *   - a chat fleet gets the authenticator for per-change codes only: no sign-in from outside, no switch;
- *   - the option's key: validated, patched, and turning it off is a held change (turning it on is not);
+ *   - strict mode (the admin's own switch): off this computer a code replaces Apply now for every session of THAT admin — the owner
+ *     signed in from outside included — and a change that opens a link is refused over the gateway, a real gateway-bound request,
+ *     beside the tailnet-style `lan` request;
+ *   - per admin: each admin has their own app and their own switch; the API only ever acts on the caller's own record, another admin
+ *     on the same fleet still has Apply now, and A's code never confirms for B;
+ *   - every set-up, replacement, removal and switch change posts a Notice naming the admin, from the LAN and on the host — and on a
+ *     chat fleet with nowhere else to post it, in the dashboard's Notices (once);
+ *   - a pending set-up is nobody else's to clear or replace (a remote remove with no app, a second session's begin);
+ *   - the ordinary New Agent shortcut follows the same policy (through the real gate): held for a strict admin off the computer and
+ *     under "Only this computer can authorize", created at once otherwise, asked again at execution;
+ *   - a chat fleet gets the authenticator for per-change codes only: no sign-in from outside;
  *   - the page is told it is remote (`remote: true`) so the card names no host command.
  */
 import { EventEmitter } from "node:events";
@@ -26,17 +34,22 @@ import { requestSettingsConfirmation } from "../src/settings-control.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { classifyWebPeer } from "../src/authority/web-authority.js";
 import { evaluateSettingsRole, type SettingsRoleInput } from "../src/authority/settings-role.js";
-import { verifiedAuthorityPatch, applyVerifiedAuthorityPatch } from "../src/web-settings-patch.js";
-import { validateFleetConfig as validateFleet } from "../src/config-validator.js";
 import { webPeerOf } from "../src/web-api.js";
 import { authorizeSession, WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
-import { bindGatewayRequest } from "../src/web-request-context.js";
-import { base32Encode, base32Decode, hotp, totpStep, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { bindGatewayRequest, gatewayRequestContext } from "../src/web-request-context.js";
+import { base32Encode, base32Decode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { settingsRequestExecution } from "../src/settings-request-capability.js";
+import { settingsFingerprint } from "../src/settings-transaction.js";
+import { t } from "../src/locale.js";
 
-const TOKEN = "d".repeat(48), ADMIN = "100";
+const TOKEN = "d".repeat(48), ADMIN = "100", ADMIN_B = "200";
 const SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));
 const codeAt = (ms: number) => hotp(base32Decode(SECRET)!, totpStep(ms));
+/** A chat account's own app, as a seeded file holds it (each admin has another secret). */
+const secretFor = (user: string) => base32Encode(Buffer.from(`secret-for-${user}`.padEnd(20, "#").slice(0, 20)));
+/** The code of an app (its secret) `offset` time steps from now. Each step is accepted once per app: tests that use an app twice use two steps. */
+const appCode = (app: string | { secret: string }, offset = 0) => hotp(base32Decode(typeof app === "string" ? app : app.secret)!, totpStep(Date.now()) + offset);
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [], fleets: any[] = [];
 afterEach(() => {
   for (const s of stores.splice(0)) s.close();
@@ -56,23 +69,32 @@ const WHERE = {
 } as const;
 type Where = keyof typeof WHERE;
 
-function fleet(o: { enrolled?: boolean; chat?: boolean; outside?: boolean; va?: Record<string, unknown> } = {}) {
+/**
+ * `enrolled`/`strict`: the host operator's app (a web-only fleet's one admin, a chat fleet's `agend web` host session) and its own switch;
+ * `admins`: chat accounts with an app of their own (and their own switch), by user id on the connection `a`.
+ */
+function fleet(o: { enrolled?: boolean; strict?: boolean; chat?: boolean; outside?: boolean; admins?: Record<string, { strict?: boolean }>; va?: Record<string, unknown> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-122-")); roots.push(dir);
-  if (o.enrolled) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: o.outside ?? true, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+  if (o.enrolled || o.admins) {
+    const rec = (secret: string, strict?: boolean) => ({ secret, enrolledAt: 1, lastStep: 0, ...(strict ? { strict: true } : {}) });
+    writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, ...(o.enrolled ? { totp: rec(SECRET, o.strict) } : {}),
+      ...(o.admins ? { admins: Object.fromEntries(Object.entries(o.admins).map(([user, a]) => [adminKey("a", user), rec(secretFor(user), a.strict)])) } : {}),
+      outside: o.outside ?? !!o.enrolled, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+  }
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
-    ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN] } }] } : {}),
+    ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN, ADMIN_B] } }] } : {}),
     ...(o.va ? { web: { verified_authority: o.va } } : {}),
     instances: { general: { working_directory: dir, general_topic: true } } } as any;
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   const store = new SettingsConfirmationStore({ audit: vi.fn() });
   stores.push(store); fleets.push({ fm, any });
   /** An admin session of one kind and a request from `where` carrying its cookie; `gateway` binds the request to the public gateway, as the gateway does. */
-  const session = (kind: "code" | "host" | "device" | "account" | "guest" | "outside", where: Where, opts: { gateway?: "quick" | "named"; method?: string } = {}) => {
+  const session = (kind: "code" | "host" | "device" | "account" | "guest" | "outside", where: Where, opts: { gateway?: "quick" | "named"; method?: string; user?: string } = {}) => {
     const link = !!opts.gateway || kind === "outside";
     const c = any.webSessions.create({ tier: kind === "guest" ? "guest" : "admin", surface: link ? "gateway" : "local", label: "browser", tokenEpoch: tokenEpoch(TOKEN),
       ...(kind === "host" ? { host: true } : {}), ...(kind === "device" ? { via: "device" } : {}),
-      ...(kind === "account" ? { owner: { adapterId: "a", userId: ADMIN } } : {}), ...(kind === "guest" ? { owner: { adapterId: "telegram", userId: "42" } } : {}),
+      ...(kind === "account" ? { owner: { adapterId: "a", userId: opts.user ?? ADMIN } } : {}), ...(kind === "guest" ? { owner: { adapterId: "telegram", userId: "42" } } : {}),
       ...(link ? { exposureId: "x" } : {}), ...(kind === "outside" ? { remote: "totp" } : {}) });
     const w = WHERE[where];
     const req: any = { method: opts.method ?? "POST", socket: { remoteAddress: w.remoteAddress },
@@ -85,7 +107,7 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; outside?: boolean; va?: 
     const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
     const view = store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
       fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
-      ...(effect.diff!.opensLink ? { opensLink: true as const } : {}), ...(effect.diff!.relaxesConfirm ? { relaxesConfirm: true as const } : {}), current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+      ...(effect.diff!.opensLink ? { opensLink: true as const } : {}), current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
     return { view, apply };
   };
   /** One change of each class the old rules treated differently. */
@@ -196,10 +218,9 @@ describe("the default: every class of change gets Apply now, from anywhere", () 
   });
 });
 
-describe("strict mode: off this computer a code, never Apply now — for every session", () => {
-  const strict = { remote_confirm_code: true };
+describe("strict mode (the admin's own switch): off this computer a code, never Apply now — for every session of that admin", () => {
   it("a LAN session, a tailnet-style session and the owner signed in from outside: the code, no Apply now; this computer: Apply now, no code", () => {
-    const f = fleet({ enrolled: true, va: strict });
+    const f = fleet({ enrolled: true, strict: true });
     f.any.outsideLink = () => ({ exposureId: "x" });
     const p = f.classes().access();
     for (const s of [f.session("code", "lan"), f.session("host", "tailnetServe"), f.session("outside", "here")]) {
@@ -208,30 +229,47 @@ describe("strict mode: off this computer a code, never Apply now — for every s
     const here = f.session("code", "here");
     expect([!!f.any.settingsSelfConfirmation(f.store, here.req, p.view.id), f.any.settingsTotpState(f.store, here.req, p.view.id)]).toEqual([true, null]);
   });
+  it("the switch is off by default; with no app set up there is no switch (it lives inside an enrolled record): Apply now", () => {
+    const f = fleet({ enrolled: true });
+    const p = f.classes().access(), s = f.session("code", "lan");
+    expect([!!f.any.settingsSelfConfirmation(f.store, s.req, p.view.id), f.any.settingsTotpState(f.store, s.req, p.view.id)]).toEqual([true, null]);
+    // A fleet with no app at all: there is no switch to be on (strict lives inside an enrolled record) — Apply now, as by default.
+    const none = fleet(), q = none.classes().access(), t2 = none.session("code", "lan");
+    expect([!!none.any.settingsSelfConfirmation(none.store, t2.req, q.view.id), none.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)]).toEqual([true, false]);
+  });
   it("a change that opens a link: confirmed with the code from a tailnet-style request, refused over a real gateway request — even with a correct code", () => {
-    const f = fleet({ enrolled: true, va: strict });
+    const f = fleet({ enrolled: true, strict: true });
     f.any.outsideLink = () => ({ exposureId: "x" });
     const p = f.classes().openLink(), tail = f.session("code", "tailnetServe"), link = f.session("outside", "here");
     const confirm = (s: { req: any }) => f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id));
     expect([f.any.settingsTotpState(f.store, link.req, p.view.id), confirm(link)]).toEqual(["on_host", { error: "not_here" }]);
     expect(confirm(tail)).toMatchObject({ label: "Authenticator code" });
   });
-  it("end to end: with the option on, a LAN session turning it off is refused without the code and succeeds with it — and the Notice says the requirement was turned off", async () => {
-    const f = fleet({ enrolled: true, va: strict }), s = f.session("code", "lan");
+  it("end to end: strict on, a LAN session is refused Apply now, a wrong code and a stale digest burn nothing, the right code confirms; turning the switch off asks the current code, then Apply now is back", async () => {
+    const f = fleet({ enrolled: true, strict: true }), s = f.session("code", "lan");
     const post = vi.spyOn(f.any, "postSettingsRemoteNotice").mockImplementation(() => undefined);
-    const p = f.propose("/api/settings/fleet/web", { verified_authority: { remote_confirm_code: null } });
-    expect(f.store.relaxesConfirm(p.view.id)).toBe(true);
-    expect([f.any.settingsSelfConfirmation(f.store, s.req, p.view.id), f.any.settingsTotpState(f.store, s.req, p.view.id)]).toEqual([null, "ready"]);
-    const digest = f.store.confirmDigest(p.view.id);
-    expect(f.any.settingsTotpConfirm(f.store, s.req, p.view.id, "000000", digest)).toEqual({ error: "wrong" });
-    expect(f.store.get(p.view.id, "browser")!.state).toBe("pending");
-    const ok = f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), digest);
+    vi.spyOn(f.any, "notifyFleetError").mockReturnValue(true);
+    const view = f.secretChange(), id = view.id;
+    expect([f.any.settingsSelfConfirmation(f.store, s.req, id), f.any.settingsTotpState(f.store, s.req, id)]).toEqual([null, "ready"]);
+    const digest = f.store.confirmDigest(id);
+    expect(f.any.settingsTotpConfirm(f.store, s.req, id, codeAt(Date.now()), "0".repeat(64))).toEqual({ error: "changed" });   // a stale page never burns a code
+    expect(f.any.settingsTotpConfirm(f.store, s.req, id, "000000", digest)).toEqual({ error: "wrong" });
+    expect(f.store.get(id, "browser")!.state).toBe("pending");
+    const ok = f.any.settingsTotpConfirm(f.store, s.req, id, codeAt(Date.now()), digest);
     expect(ok.label).toBe("Authenticator code");
-    const done = await f.store.decide(p.view.id, "confirm", { ...ok, via: "web" }); ok.done?.(done);
-    expect([done.state, post.mock.calls.map(c => c[1])]).toEqual(["applied", ["relax"]]);
+    const done = await f.store.decide(id, "confirm", { ...ok, via: "web" }); ok.done?.(done);
+    expect([done.state, post.mock.calls.map(c => c[1])]).toEqual(["applied", ["secret"]]);
+    // The switch is the admin's own: off asks the CURRENT code off this computer (the next step: each step is accepted once) …
+    expect(f.any.webOutsideStrict(s.req, false)).toEqual({ error: "code_required" });
+    expect(f.any.webOutsideStrict(s.req, false, "000000")).toEqual({ error: "wrong" });
+    expect(f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)).toBe(true);
+    expect(f.any.webOutsideStrict(s.req, false, codeAt(Date.now() + 30_000))).toBe("ok");
+    // … and then the same session has Apply now again.
+    const next = f.classes().access();
+    expect([!!f.any.settingsSelfConfirmation(f.store, s.req, next.view.id), f.any.settingsTotpState(f.store, s.req, next.view.id)]).toEqual([true, null]);
   });
   it("an agent's or header-token request has no session: no code either", () => {
-    const f = fleet({ enrolled: true, va: strict }), s = f.session("code", "lan"), p = f.classes().access();
+    const f = fleet({ enrolled: true, strict: true }), s = f.session("code", "lan"), p = f.classes().access();
     delete s.req.headers.cookie; s.req.headers.authorization = `Bearer ${TOKEN}`;
     expect([f.any.settingsTotpState(f.store, s.req, p.view.id), f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id))]).toEqual([null, { error: "not_here" }]);
   });
@@ -263,51 +301,326 @@ describe("Notices for a remote link-opening or secret confirmation", () => {
 });
 
 describe("setting up, replacing and removing the authenticator (M3, S1)", () => {
-  const secretOf = (r: any) => hotp(base32Decode(r.secret)!, totpStep(Date.now()));
-  it("a set-up begun before the option was turned on cannot be finished by a session the option now restricts", () => {
-    const f = fleet({ enrolled: true, outside: false }), s = f.session("code", "lan");
+  const secretOf = (r: any, offset = 0) => appCode(r, offset);
+  it("a set-up begun while no code was asked cannot be finished by a session that the admin's own switch now restricts", () => {
+    const f = fleet({ enrolled: true, outside: false }), s = f.session("code", "lan"), mine = f.session("host", "here");
     const begun = f.any.webOutsideBeginEnrollment(s.req);
-    expect(begun).toMatchObject({ secret: expect.any(String) });              // the option was off: no code asked
-    f.fm.fleetConfig!.web = { verified_authority: { remote_confirm_code: true } };
+    expect(begun).toMatchObject({ secret: expect.any(String) });              // the switch was off: no code asked
+    const enrolment = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY);
+    expect(f.any.webOutsideStrict(mine.req, true)).toBe("ok");               // switched on since (this computer asks nothing)
     expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("not_here");
-    expect(f.any.webRemoteAccess().enrollment).toBeDefined();
-    const mine = f.session("host", "here"), hostBegun = f.any.webOutsideBeginEnrollment(mine.req);
+    expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(enrolment);   // nothing was replaced
+    const hostBegun = f.any.webOutsideBeginEnrollment(mine.req);
     expect(f.any.webOutsideConfirmEnrollment(mine.req, secretOf(hostBegun))).toBe("ok");   // this computer is never asked
+    expect(f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)).toBe(true);                   // a replaced app keeps its switch
   });
-  it("a set-up begun on this computer is not finished by the same cookie from another device once the option is on", () => {
-    const f = fleet({ enrolled: true, outside: false, va: { remote_confirm_code: true } }), s = f.session("host", "here");
+  it("a set-up begun on this computer is not finished by the same cookie from another device once the switch is on", () => {
+    const f = fleet({ enrolled: true, strict: true, outside: false }), s = f.session("host", "here");
     const begun = f.any.webOutsideBeginEnrollment(s.req);
     expect(begun).toMatchObject({ secret: expect.any(String) });
     const away = { ...s.req, socket: { remoteAddress: "192.0.2.20" }, headers: { ...s.req.headers, host: "192.0.2.5:19280", origin: "http://192.0.2.5:19280" } };
     expect(f.any.webOutsideConfirmEnrollment(away, secretOf(begun))).toBe("not_here");
     expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("ok");        // the same start, finished on this computer
   });
-  it("begun with the option on: the current code first, then the finish is allowed", () => {
-    const f = fleet({ enrolled: true, outside: false, va: { remote_confirm_code: true } }), s = f.session("code", "lan");
+  it("begun with the switch on: the current code first, then the finish is allowed; the switch survives the replacement", () => {
+    const f = fleet({ enrolled: true, strict: true, outside: false }), s = f.session("code", "lan");
     expect(f.any.webOutsideBeginEnrollment(s.req)).toEqual({ error: "code_required" });
     const begun = f.any.webOutsideBeginEnrollment(s.req, codeAt(Date.now()));
     expect(begun).toMatchObject({ secret: expect.any(String) });
     expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("ok");
+    expect([f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY), f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)]).toEqual([true, true]);
   });
-  it("a web-only fleet whose connections from outside are on: replacing or removing asks the current code even with the option off; this computer is not asked", () => {
+  it("a web-only fleet whose connections from outside are on: replacing or removing asks the current code even with the switch off; this computer is not asked", () => {
     const f = fleet({ enrolled: true, outside: true }), s = f.session("code", "tailnetServe");
     expect([f.any.webOutsideBeginEnrollment(s.req), f.any.webOutsideRemove(s.req)]).toEqual([{ error: "code_required" }, { error: "code_required" }]);
     expect(f.any.webOutsideStatus(s.req)).toMatchObject({ codeNeeded: true, strict: false });
     expect(f.any.webOutsideRemove(f.session("host", "here").req)).toBe("ok");
   });
-  it("a first set-up from another device always posts a Notice; on this computer none", () => {
-    const f = fleet({ enrolled: false }), say = vi.spyOn(f.any, "notifyFleetError").mockReturnValue(true);
-    const s = f.session("code", "lan"), begun = f.any.webOutsideBeginEnrollment(s.req);
-    expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("ok");
-    expect(say.mock.calls.map(c => c[0])).toEqual([expect.stringContaining("set up from another device")]);
-    const g = fleet({ enrolled: false }), mute = vi.spyOn(g.any, "notifyFleetError").mockReturnValue(true), h = g.session("host", "here");
-    expect(g.any.webOutsideConfirmEnrollment(h.req, secretOf(g.any.webOutsideBeginEnrollment(h.req)))).toBe("ok");
-    expect(mute).not.toHaveBeenCalled();
+  it("the switch lives inside the app's record: removing the app removes it, and a new app starts with it off", () => {
+    const f = fleet({ enrolled: true, strict: true, outside: false }), s = f.session("host", "here");
+    expect([f.any.webOutsideStrict(s.req, false), f.any.webOutsideStrict(s.req, true)]).toEqual(["ok", "ok"]);
+    expect(f.any.webOutsideRemove(s.req)).toBe("ok");
+    expect([f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY), f.any.webOutsideStrict(s.req, true)]).toEqual([false, "not_enrolled"]);   // no app, no switch
+    expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(f.any.webOutsideBeginEnrollment(s.req)))).toBe("ok");
+    expect(f.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)).toBe(false);
   });
-  it("turning the option on from another device posts a Notice; from this computer none", () => {
-    const f = fleet({ enrolled: true }), say = vi.spyOn(f.any, "notifyFleetError").mockReturnValue(true);
-    f.any.announceCodeOptionOn(f.session("code", "tailnetServe").req); f.any.announceCodeOptionOn(f.session("code", "here").req);
-    expect(say.mock.calls.length).toBe(1);
+});
+
+/** Set up `s`'s own app from where it is (nothing is asked while its switch is off): the secret, with the first code taken at `offset` steps from now. */
+function enrol(f: ReturnType<typeof fleet>, s: { req: any }, offset = -1): string {
+  const begun = f.any.webOutsideBeginEnrollment(s.req);
+  expect(begun).toMatchObject({ secret: expect.any(String) });
+  expect(f.any.webOutsideConfirmEnrollment(s.req, appCode(begun, offset))).toBe("ok");
+  return begun.secret;
+}
+
+describe("per admin: each admin's own authenticator and switch (upstream #3486)", () => {
+  const key = (user: string) => adminKey("a", user);
+  it("A sets up the app and turns strict on from the LAN: A is asked for the code, no Apply now; B (no app) still has Apply now and is asked nothing; A on this computer has Apply now too", () => {
+    const f = fleet({ chat: true }), a = f.session("account", "lan", { user: ADMIN }), b = f.session("account", "lan", { user: ADMIN_B }), aHere = f.session("account", "here", { user: ADMIN });
+    enrol(f, a);
+    expect(f.any.webOutsideStrict(a.req, true)).toBe("ok");
+    const p = f.classes().access();
+    expect([f.any.settingsSelfConfirmation(f.store, a.req, p.view.id), f.any.settingsTotpState(f.store, a.req, p.view.id)]).toEqual([null, "ready"]);
+    expect([!!f.any.settingsSelfConfirmation(f.store, b.req, p.view.id), f.any.settingsTotpState(f.store, b.req, p.view.id)]).toEqual([true, null]);
+    expect([!!f.any.settingsSelfConfirmation(f.store, aHere.req, p.view.id), f.any.settingsTotpState(f.store, aHere.req, p.view.id)]).toEqual([true, null]);
+    expect(f.any.webOutsideStatus(a.req)).toMatchObject({ manage: true, enrolled: true, strict: true, codeNeeded: true });
+    expect(f.any.webOutsideStatus(b.req)).toMatchObject({ manage: true, enrolled: false, strict: false, codeNeeded: false });
+  });
+  it("B's calls act on B's own record only: A's app, switch and enrolment stay exactly as they were", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: { strict: true } } }), b = f.session("account", "lan", { user: ADMIN_B });
+    const access = () => f.any.webRemoteAccess(), snapshot = () => JSON.stringify([access().status(key(ADMIN)), access().enrollmentOf(key(ADMIN)), access().strictOf(key(ADMIN))]);
+    const mine = snapshot();
+    // B has no app: nothing to switch or remove — and nothing of A's is reachable from here.
+    expect([f.any.webOutsideStrict(b.req, false), f.any.webOutsideStrict(b.req, true), f.any.webOutsideRemove(b.req)]).toEqual(["not_enrolled", "not_enrolled", "not_here"]);
+    expect(snapshot()).toBe(mine);
+    // B sets up their own, turns their own on; A's record does not move.
+    enrol(f, b);
+    expect(f.any.webOutsideStrict(b.req, true)).toBe("ok");
+    expect([access().isEnrolled(key(ADMIN_B)), access().strictOf(key(ADMIN_B)), access().isEnrolled(HOST_ADMIN_KEY)]).toEqual([true, true, false]);
+    expect(snapshot()).toBe(mine);
+    // A's code is not B's: B's off, replace and remove are asked for B's own current code, and A's code is wrong for it.
+    const aCode = appCode(secretFor(ADMIN));
+    expect([f.any.webOutsideStrict(b.req, false, aCode), f.any.webOutsideBeginEnrollment(b.req, aCode), f.any.webOutsideRemove(b.req, aCode)]).toEqual([{ error: "wrong" }, { error: "wrong" }, { error: "wrong" }]);
+    expect([access().strictOf(key(ADMIN_B)), access().isEnrolled(key(ADMIN_B))]).toEqual([true, true]);
+    expect(snapshot()).toBe(mine);
+  });
+  it("A's code never confirms a change for B, and B's never for A; each one's own code does", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: { strict: true }, [ADMIN_B]: { strict: true } } });
+    const a = f.session("account", "lan", { user: ADMIN }), b = f.session("account", "lan", { user: ADMIN_B }), p = f.classes().access();
+    const confirm = (s: { req: any }, code: string) => f.any.settingsTotpConfirm(f.store, s.req, p.view.id, code, f.store.confirmDigest(p.view.id));
+    expect(confirm(b, appCode(secretFor(ADMIN)))).toEqual({ error: "wrong" });
+    expect(confirm(a, appCode(secretFor(ADMIN_B)))).toEqual({ error: "wrong" });
+    expect(f.store.get(p.view.id, "browser")!.state).toBe("pending");
+    expect(confirm(a, appCode(secretFor(ADMIN)))).toMatchObject({ label: "Authenticator code" });
+    expect(confirm(b, appCode(secretFor(ADMIN_B)))).toMatchObject({ label: "Authenticator code" });
+  });
+  it("a code's confirmation ends when that admin's app is replaced while the change waits", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: { strict: true } } });
+    const a = f.session("account", "lan", { user: ADMIN }), p = f.classes().access();
+    const ok = f.any.settingsTotpConfirm(f.store, a.req, p.view.id, appCode(secretFor(ADMIN)), f.store.confirmDigest(p.view.id));
+    expect(ok.current()).toBe(true);
+    // The same admin's app replaced meanwhile (an enrolment from this computer): what the old code authorized no longer holds.
+    const here = f.session("account", "here", { user: ADMIN });
+    enrol(f, here);
+    expect(ok.current()).toBe(false);
+  });
+  it("turning A's switch off needs A's current code off the AgEnD computer; on the computer none; turning it on never asks", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: { strict: true } } }), a = f.session("account", "lan", { user: ADMIN }), aHere = f.session("account", "here", { user: ADMIN });
+    expect(f.any.webOutsideStrict(a.req, false)).toEqual({ error: "code_required" });
+    expect(f.any.webOutsideStrict(a.req, false, "000000")).toEqual({ error: "wrong" });
+    expect(f.any.webRemoteAccess().strictOf(key(ADMIN))).toBe(true);
+    expect(f.any.webOutsideStrict(a.req, false, appCode(secretFor(ADMIN)))).toBe("ok");
+    expect(f.any.webRemoteAccess().strictOf(key(ADMIN))).toBe(false);
+    expect(f.any.webOutsideStrict(a.req, true)).toBe("ok");                                    // on: asks nothing
+    expect(f.any.webOutsideStrict(aHere.req, false)).toBe("ok");                               // the computer's own browser: no code
+    expect(f.any.webRemoteAccess().strictOf(key(ADMIN))).toBe(false);
+  });
+  it("a chat account used on the host computer manages only its own: the host operator's app and switch are never reached", () => {
+    const f = fleet({ chat: true, enrolled: true, strict: true }), access = () => f.any.webRemoteAccess();
+    const here = f.session("account", "here", { user: ADMIN }), other = f.session("account", "here", { user: ADMIN_B }), host = f.session("host", "here");
+    const hostState = () => JSON.stringify([access().status(HOST_ADMIN_KEY), access().enrollmentOf(HOST_ADMIN_KEY)]);
+    const mine = hostState();
+    expect(f.any.webOutsideStatus(here.req)).toMatchObject({ manage: true, enrolled: false, strict: false, codeNeeded: false });
+    expect(f.any.webOutsideStatus(host.req)).toMatchObject({ manage: true, enrolled: true, strict: true });
+    enrol(f, here);                                                                           // on this computer: no code asked
+    expect([access().isEnrolled(key(ADMIN)), f.any.webOutsideStrict(here.req, true), hostState()]).toEqual([true, "ok", mine]);
+    expect([access().strictOf(key(ADMIN)), access().strictOf(HOST_ADMIN_KEY)]).toEqual([true, true]);
+    // Another account with no app removing "its" app on the computer: nothing of the host operator's is touched.
+    expect([f.any.webOutsideRemove(other.req), f.any.webOutsideStrict(other.req, false), hostState()]).toEqual(["ok", "not_enrolled", mine]);
+    expect(f.any.webOutsideRemove(here.req)).toBe("ok");
+    expect([access().isEnrolled(key(ADMIN)), hostState()]).toEqual([false, mine]);
+  });
+});
+
+describe("every set-up, replacement, removal and switch change posts a Notice naming the admin", () => {
+  /** One admin's whole life through the API, as the rules ask (a code off the computer while their switch is on): five events. */
+  function life(f: ReturnType<typeof fleet>, s: { req: any }, away: boolean) {
+    const asked = (app: string) => (away ? appCode(app) : undefined);
+    const set = (code?: string) => { const b = f.any.webOutsideBeginEnrollment(s.req, code); expect(b).toMatchObject({ secret: expect.any(String) }); expect(f.any.webOutsideConfirmEnrollment(s.req, appCode(b, -1))).toBe("ok"); return b.secret as string; };
+    let app = set();                                                      // set-up
+    expect(f.any.webOutsideStrict(s.req, true)).toBe("ok");               // switch on (never asks)
+    app = set(asked(app));                                                // replacement (a code while the switch is on)
+    expect(f.any.webOutsideStrict(s.req, false, asked(app))).toBe("ok"); // switch off
+    expect(f.any.webOutsideRemove(s.req)).toBe("ok");                     // removal
+  }
+  const KEYS = ["outside.enrolled_notice_by", "outside.strict_on_notice_by", "outside.reenrolled_notice_by", "outside.strict_off_notice_by", "outside.removed_notice_by"];
+  it.each([
+    ["a chat account from the LAN", "account", "lan", true],
+    ["a chat account on the host computer", "account", "here", false],
+    ["the host operator from the LAN", "host", "lan", true],
+    ["the host operator on the host computer", "host", "here", false],
+  ] as const)("%s: all five reach notifyFleetError, never throttled, naming the admin", (_who, kind, where, away) => {
+    const f = fleet({ chat: true }), say = vi.spyOn(f.any, "notifyFleetError").mockReturnValue(true);
+    expect(f.any.setWebPersonName({ adapterId: "a", userId: ADMIN }, "Ada").ok).toBe(true);
+    const name = kind === "account" ? "Ada" : t("settings_confirm.host_operator_label");
+    life(f, f.session(kind, where), away);
+    expect(say.mock.calls).toEqual(KEYS.map(k => [t(k, name), { throttle: false }]));
+    expect(say.mock.calls.every(c => (c[0] as string).includes(name))).toBe(true);
+  });
+  it("a refused or empty call posts nothing: a wrong code, a switch already in that state, a remove with nothing to remove", () => {
+    const f = fleet({ chat: true, admins: { [ADMIN]: { strict: true } } }), say = vi.spyOn(f.any, "notifyFleetError").mockReturnValue(true);
+    const a = f.session("account", "lan", { user: ADMIN }), b = f.session("account", "lan", { user: ADMIN_B });
+    f.any.webOutsideStrict(a.req, false, "000000"); f.any.webOutsideStrict(a.req, true); f.any.webOutsideRemove(b.req); f.any.webOutsideStrict(b.req, true);
+    expect(say).not.toHaveBeenCalled();
+  });
+  it("a chat fleet with no General and no target: the dashboard's Notices carry each one, once, and the page is told", () => {
+    const f = fleet({ chat: true });
+    f.fm.fleetConfig!.instances = {};                                                         // no General, no primary target
+    const say = vi.spyOn(f.any, "notifyFleetError").mockReturnValue(false), sse = vi.spyOn(f.any, "emitSseEvent").mockImplementation(() => undefined);
+    expect(f.any.setWebPersonName({ adapterId: "a", userId: ADMIN }, "Ada").ok).toBe(true);
+    expect(f.any.webNoticesFeed()).toBeNull();                                                // nothing was ever put there
+    const a = f.session("account", "lan", { user: ADMIN });
+    const asked = (app: string) => appCode(app);
+    const step = (n: number, key: string) => {
+      const feed = f.any.webNoticesFeed();
+      expect(feed, `after step ${n}`).not.toBeNull();
+      const view = feed.view();
+      expect([view.items.length, view.unread, view.items[0].text, view.items[0].kind]).toEqual([n, n, t(key, "Ada"), "fleet"]);
+      expect(say).toHaveBeenCalledTimes(n);
+      const notices = sse.mock.calls.filter(c => c[0] === "notice");
+      expect(notices.length).toBe(n);
+      expect(notices.at(-1)![1]).toMatchObject({ notice: { text: t(key, "Ada") }, unread: n });
+    };
+    const set = (code?: string) => { const b = f.any.webOutsideBeginEnrollment(a.req, code); expect(f.any.webOutsideConfirmEnrollment(a.req, appCode(b, -1))).toBe("ok"); return b.secret as string; };
+    let app = set(); step(1, KEYS[0]!);                                                      // a first set-up, remote
+    expect(f.any.webOutsideStrict(a.req, true)).toBe("ok"); step(2, KEYS[1]!);               // strict on
+    app = set(asked(app)); step(3, KEYS[2]!);                                                // a replacement
+    expect(f.any.webOutsideStrict(a.req, false, asked(app))).toBe("ok"); step(4, KEYS[3]!);  // strict off
+    expect(f.any.webOutsideRemove(a.req)).toBe("ok"); step(5, KEYS[4]!);                     // a removal
+    // The notices are kept in the real store beside the fleet's files, readable again from a new read.
+    expect(f.any.webNoticeStore().view().items.map((n: any) => n.text).reverse()).toEqual(KEYS.map(k => t(k, "Ada")));
+  });
+});
+
+describe("a pending set-up is nobody else's to clear or replace (Prism P2-2)", () => {
+  it("strict is only a flag inside an enrolled record: with no app a switch call changes nothing and there is nothing to remove", () => {
+    const f = fleet(), s = f.session("code", "lan"), access = f.any.webRemoteAccess();
+    expect([f.any.webOutsideStrict(s.req, true), f.any.webOutsideStrict(s.req, false)]).toEqual(["not_enrolled", "not_enrolled"]);
+    expect([access.strictOf(HOST_ADMIN_KEY), access.isEnrolled(HOST_ADMIN_KEY), access.status(HOST_ADMIN_KEY).strict]).toEqual([false, false, false]);
+  });
+  it("a REMOTE remove with no app is not_here and does not clear the set-up the host began; the host still finishes it with the right code", () => {
+    const f = fleet(), host = f.session("host", "here"), remote = f.session("code", "lan");     // the same principal: a web-only fleet's one admin
+    const begun = f.any.webOutsideBeginEnrollment(host.req);
+    expect(begun).toMatchObject({ secret: expect.any(String) });
+    expect(f.any.webOutsideRemove(remote.req)).toBe("not_here");
+    expect(f.any.webOutsideRemove(remote.req, appCode(begun))).toBe("not_here");                    // not even with a code
+    expect(f.any.webOutsideConfirmEnrollment(host.req, appCode(begun))).toBe("ok");
+    expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(true);
+  });
+  it("the same on a chat fleet, for a chat account: another session's remove with no app leaves its pending set-up", () => {
+    const f = fleet({ chat: true }), first = f.session("account", "here", { user: ADMIN }), second = f.session("account", "lan", { user: ADMIN });
+    const begun = f.any.webOutsideBeginEnrollment(first.req);
+    expect(f.any.webOutsideRemove(second.req)).toBe("not_here");
+    expect(f.any.webOutsideConfirmEnrollment(first.req, appCode(begun))).toBe("ok");
+  });
+  it("on the computer a remove with no app is ok but still never touches a pending set-up", () => {
+    const f = fleet(), first = f.session("host", "here"), second = f.session("host", "here");
+    const begun = f.any.webOutsideBeginEnrollment(first.req);
+    expect(f.any.webOutsideRemove(second.req)).toBe("ok");
+    expect(f.any.webOutsideConfirmEnrollment(first.req, appCode(begun))).toBe("ok");
+  });
+  it("a second session's begin does not replace the first session's pending secret: each finishes its own, never the other's", () => {
+    const f = fleet(), one = f.session("host", "here"), two = f.session("host", "here");
+    const first = f.any.webOutsideBeginEnrollment(one.req), second = f.any.webOutsideBeginEnrollment(two.req);
+    expect(first.secret).not.toBe(second.secret);
+    expect(f.any.webOutsideConfirmEnrollment(one.req, appCode(second))).toBe("wrong");             // not the second one's secret
+    expect(f.any.webOutsideConfirmEnrollment(one.req, appCode(first))).toBe("ok");
+    expect(f.any.webOutsideConfirmEnrollment(two.req, appCode(second, 1))).toBe("ok");              // the second's own start survived
+  });
+});
+
+describe("the ordinary New Agent shortcut follows the same policy (Prism P2-1), through the real gate", () => {
+  /** The real SettingsHttpConfirmation, its principal built as the fleet builds it, the creation's apply an inert commit. */
+  function creationGate(f: ReturnType<typeof fleet>) {
+    const { any, fm, store } = f, created: string[] = [];
+    let calls = 0, hold: Promise<void> | null = null;
+    const gate = new SettingsHttpConfirmation(store, {
+      principal: req => {
+        const auth = authorizeSession(req, any.webToken, any.webSessions, { touch: false });
+        if (auth.kind !== "ok") return null;
+        const record = auth.session, sessions = any.webSessions, exposure = gatewayRequestContext(req);
+        return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+          localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
+          current: () => sessions === any.webSessions && !!any.webToken && sessions.isCurrent(record, tokenEpoch(any.webToken)) && (!exposure || exposure.isCurrent()) };
+      },
+      // The second look at the baseline is the one at execution (`unchanged`): a test may hold it to act between admission and execution.
+      baseline: async () => { const config = fm.fleetConfig; if (hold && ++calls > 1) await hold; return { config, classic: {}, fingerprint: settingsFingerprint(config) } as any; },
+      snapshot: () => fm.fleetConfig,
+      selfConfirm: (req, id) => any.settingsSelfConfirmation(store, req, id),
+      totp: { state: (req, id) => any.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => any.settingsTotpConfirm(store, req, id, code, digest) },
+      remote: req => any.settingsPageIsRemote(req),
+      directCreationPolicy: req => any.settingsDirectCreationAllowed(req),
+      directAgentCreation: true,
+    });
+    const next = (rq: any, rs: any) => {
+      const execution = settingsRequestExecution(rq);
+      if (!execution) return false;
+      execution.commit(() => { created.push("agent"); });                         // inert: no instance, no CLI
+      rs.statusCode = 200; rs.end(JSON.stringify({ name: "agent" })); return true;
+    };
+    const send = (s: { req: any }, method: string, path: string, body: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req: any = Object.assign(new EventEmitter(), s.req, { method, url: path, destroy: () => {} });
+      req.headers = { ...s.req.headers, "idempotency-key": `k${Math.random()}` };
+      let status = 0;
+      const res: any = { destroyed: false, headersSent: false, once: () => {}, setHeader: () => {}, writeHead(code: number) { status = code; this.headersSent = true; }, end(v: string) { resolve({ status, body: JSON.parse(v) }); } };
+      try { expect(gate.handle(req, res, new URL(path, "http://localhost"), next)).toBe(true); queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); }); } catch (e) { reject(e); }
+    });
+    const create = (s: { req: any }) => send(s, "POST", "/ui/instances", { topic_name: "helper", backend: "codex" });
+    const settle = () => new Promise(r => setTimeout(r, 30));                        // an unwanted direct apply is asynchronous
+    const stateOf = (r: { body: any }, s: { record: SessionRecord }) => store.get(r.body.pending_change.id, s.record.idHash)?.state;
+    return { created, create, send, settle, stateOf, holdExecution: () => { calls = 0; let release!: () => void; hold = new Promise<void>(r => { release = r; }); return () => { hold = null; release(); }; } };
+  }
+  it("(a) a strict admin from the LAN: not created at once — a held change, state pending, the code is offered; a correct code then confirms it", async () => {
+    const f = fleet({ enrolled: true, strict: true }), g = creationGate(f), s = f.session("code", "lan");
+    const r = await g.create(s);
+    expect([r.status, r.body.pending_change.state, r.body.pending_change.totp]).toEqual([202, "pending", "ready"]);
+    await g.settle();
+    expect([g.created.length, g.stateOf(r, s)]).toEqual([0, "pending"]);
+    const confirmed = await g.send(s, "POST", `/api/settings/pending/${r.body.pending_change.id}/confirm-totp`, { code: codeAt(Date.now()), digest: r.body.pending_change.confirm_digest });
+    expect(confirmed.status).toBe(202);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+    await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("applied"));
+  });
+  it("(b) the same admin on this computer (loopback): created at once", async () => {
+    const f = fleet({ enrolled: true, strict: true }), g = creationGate(f), s = f.session("code", "here");
+    const r = await g.create(s);
+    expect(r.status).toBe(202);
+    await vi.waitFor(() => expect(g.created.length).toBe(1));
+    await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("applied"));
+  });
+  it("(c) an admin whose switch is off, from the LAN: created at once — and so is a chat account whose own switch is off while another admin's is on", async () => {
+    const f = fleet({ enrolled: true }), g = creationGate(f), s = f.session("code", "lan");
+    const r = await g.create(s);
+    expect(r.status).toBe(202);
+    await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("applied"));
+    expect(g.created.length).toBe(1);
+    const c = fleet({ chat: true, admins: { [ADMIN]: { strict: true } } }), h = creationGate(c), a = c.session("account", "lan", { user: ADMIN }), b = c.session("account", "lan", { user: ADMIN_B });
+    const ra = await h.create(a), rb = await h.create(b);
+    expect([ra.body.pending_change.state, ra.body.pending_change.totp]).toEqual(["pending", "ready"]);
+    await vi.waitFor(() => expect(h.stateOf(rb, b)).toBe("applied"));
+    expect([h.created.length, h.stateOf(ra, a)]).toEqual([1, "pending"]);
+  });
+  it("(d) \"Only this computer can authorize\" on: from the LAN held with host_only, on this computer created at once", async () => {
+    const f = fleet({ enrolled: true, va: { loopback_only: true } }), g = creationGate(f);
+    const away = f.session("code", "lan"), r = await g.create(away);
+    expect([r.status, r.body.pending_change.state, r.body.pending_change.totp]).toEqual([202, "pending", "host_only"]);
+    await g.settle();
+    expect([g.created.length, g.stateOf(r, away)]).toEqual([0, "pending"]);
+    const here = f.session("code", "here"), q = await g.create(here);
+    expect(q.status).toBe(202);
+    await vi.waitFor(() => expect(g.stateOf(q, here)).toBe("applied"));
+    expect(g.created.length).toBe(1);
+  });
+  it("(e) strict switched on after admission but before execution: the policy is asked again, the change is stale and nothing is created", async () => {
+    const f = fleet({ enrolled: true }), g = creationGate(f), s = f.session("code", "lan"), host = f.session("host", "here");
+    const release = g.holdExecution();
+    const r = await g.create(s);                                                // admitted: the switch was off
+    expect(r.status).toBe(202);
+    expect(f.any.webOutsideStrict(host.req, true)).toBe("ok");                  // the admin switches strict on from the computer
+    release();
+    await vi.waitFor(() => expect(g.stateOf(r, s)).toBe("stale"));
+    expect(g.created.length).toBe(0);
   });
 });
 
@@ -316,8 +629,8 @@ describe("who can never confirm (agents, paired Windows PCs)", () => {
     await expect(requestSettingsConfirmation("/nonexistent", { action: "inspect", id: "x" }, { AGEND_INSTANCE_NAME: "worker" })).rejects.toThrow("Agent sessions cannot confirm Settings changes.");
   });
   it("a paired Windows PC (a runtime bearer token, never a browser cookie session) and an agent's token confirm nothing, in either mode", () => {
-    for (const va of [undefined, { remote_confirm_code: true }]) {
-      const f = fleet({ enrolled: true, va }), p = f.classes().access(), s = f.session("code", "lan");
+    for (const strict of [false, true]) {
+      const f = fleet({ enrolled: true, strict }), p = f.classes().access(), s = f.session("code", "lan");
       for (const authorization of ["Bearer runtime-token-0123456789", `Bearer ${TOKEN}`]) {
         const req = { ...s.req, headers: { host: s.req.headers.host, authorization } };
         expect([f.any.settingsSelfConfirmation(f.store, req, p.view.id), f.any.settingsTotpConfirm(f.store, req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id))]).toEqual([null, { error: "not_here" }]);
@@ -340,23 +653,6 @@ describe("a chat fleet's authenticator is for per-change codes only", () => {
     const f = fleet({ chat: true }), s = f.session("account", "tailnetServe");
     expect(f.any.webOutsideBeginEnrollment(s.req)).toMatchObject({ secret: expect.any(String) });
     expect(f.any.webOutsideSwitch(s.req, true)).toBe("not_here");
-  });
-});
-
-describe("the option's key", () => {
-  it("is validated as a boolean, patched, and known to the config check", () => {
-    const base = { defaults: { backend: "codex" }, instances: { general: { working_directory: "/tmp/x", general_topic: true } } } as any;
-    const ok = validateFleet({ ...base, web: { verified_authority: { remote_confirm_code: true } } } as any);
-    const bad = validateFleet({ ...base, web: { verified_authority: { remote_confirm_code: "yes" } } } as any);
-    expect([ok.errors.length, bad.errors.some((e: any) => /remote_confirm_code/.test(e.path ?? e.message ?? JSON.stringify(e)))]).toEqual([0, true]);
-    expect(verifiedAuthorityPatch({ remote_confirm_code: true })).toEqual({ remote_confirm_code: true });
-    expect(verifiedAuthorityPatch({ remote_confirm_code: "yes" })).toBe("invalid");
-    expect(applyVerifiedAuthorityPatch({ remote_confirm_code: true }, { remote_confirm_code: null }).next).toBeUndefined();
-  });
-  it("turning it on applies at once (nothing held); turning it off is a held change in the access section", () => {
-    const on = prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: { remote_confirm_code: true } }, { config: { defaults: {}, instances: {}, web: {} } as any, classic: {} });
-    const off = prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: { remote_confirm_code: null } }, { config: { defaults: {}, instances: {}, web: { verified_authority: { remote_confirm_code: true } } } as any, classic: {} });
-    expect([on.diff, off.diff?.section, off.diff?.summary.some(l => /remote.?_confirm.?_code/.test(l))]).toEqual([null, "access", true]);
   });
 });
 

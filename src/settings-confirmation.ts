@@ -85,8 +85,6 @@ export interface SettingsChangeProposal {
   authority?: SettingsChangeAuthority;
   /** AGEND-122: the change turns the named or quick link option on (see SettingsChangeDiff). */
   opensLink?: true;
-  /** AGEND-122: the change turns the owner's code option off (see SettingsChangeDiff). */
-  relaxesConfirm?: true;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
@@ -216,8 +214,6 @@ export class SettingsConfirmationStore {
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
   /** AGEND-122: the change turns the named or quick link option on (a Notice for every confirmation from another device). */
   opensLink(id: string): boolean { return this.records.get(id)?.proposal?.opensLink === true; }
-  /** AGEND-122: the change turns the owner's code option off. */
-  relaxesConfirm(id: string): boolean { return this.records.get(id)?.proposal?.relaxesConfirm === true; }
   /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
   confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {

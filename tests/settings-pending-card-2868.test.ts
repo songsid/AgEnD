@@ -2,7 +2,8 @@
  * #2868: the pending-change card says where to confirm it, in the order a person can act on it — the General card (the
  * platform it was posted on), or the host's command only when no General took it (otherwise folded under "Advanced");
  * "Apply now" when the server says this browser may confirm it itself; "Authorize this browser" when it isn't verified
- * but could be. The real app modules in the mini DOM; fetch is the only stub.
+ * but could be. AGEND-122 (per admin): the code-related lines speak of the person's OWN authenticator switch ("you asked for your code"), not a fleet
+ * option or "your owner". The real app modules in the mini DOM; fetch is the only stub.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fire } from "./helpers/mini-dom.js";
@@ -114,8 +115,15 @@ describe("this browser", () => {
     const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "en",
       { [`/api/settings/pending/${ID}/confirm`]: { __status: 403, error: "self_confirm_unavailable" } });
     fire(c.button("Apply now"), "click"); await settle(4);
-    expect([c.button("Apply now"), c.text().includes("This browser can't apply it here now. Another way to confirm it: the card in General (if this fleet has chat), or the code if your owner asks for one."), c.text().includes("press Confirm on the card in General")])
+    expect([c.button("Apply now"), c.text().includes("This browser can't apply it here now. Another way to confirm it: the card in General (if this fleet has chat), or your authenticator code if you asked for one."), c.text().includes("press Confirm on the card in General")])
       .toEqual([undefined, true, true]);
+  });
+  // AGEND-122 (per admin): the refused-Apply-now words speak of the person's OWN code ("if you asked for one"), not "your owner".
+  it("Apply now refused, in zh-TW: the reworded line (your own code, no owner)", async () => {
+    const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "zh-TW",
+      { [`/api/settings/pending/${ID}/confirm`]: { __status: 403, error: "self_confirm_unavailable" } });
+    fire(c.button("立即套用"), "click"); await settle(4);
+    expect([c.button("立即套用"), c.text().includes("或你要求時用你的驗證器代碼。"), c.text().includes("擁有者要求")]).toEqual([undefined, true, false]);
   });
 });
 
@@ -156,10 +164,10 @@ describe("confirm with the authenticator code (web-only fleet, this computer or 
     for (const d of c.p.root.querySelectorAll(".pending-card details")) outside = outside.replace(d.textContent ?? "", "");
     expect(outside).not.toContain("agend settings confirm");
   });
-  it("no authenticator set up (the owner asks for a code): says so, no link — set it up again on the AgEnD computer or turn the option off there", async () => {
+  it("no authenticator set up (your own switch asks for a code): says so, no link — set it up again on the AgEnD computer or turn your switch off there", async () => {
     const c = await withCode({ __status: 200 }, "zh-TW", "not_set_up");
     expect(c.text()).toContain("你目前在這台裝置還無法直接確認這項變更。");
-    expect(c.text()).toContain("這個 fleet 要求從其他裝置確認變更時輸入驗證器代碼，但還沒有設定驗證器。請到執行 AgEnD 的那台電腦");
+    expect(c.text()).toContain("你開啟了「從其他裝置確認變更時要我的驗證器代碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦");
     expect(c.p.root.querySelector(".pending-code-setup a"), "no link to a page that cannot set it up").toBeNull();
   });
 });
@@ -200,7 +208,7 @@ describe("one next step, by state", () => {
     const c = await card(view({ confirmation: NOCHAT, totp: "not_set_up" }));
     const text = shown(c);
     expect(text).toContain("This device can't confirm this change yet.");
-    expect(text).toContain("no authenticator is set up. Set one up again on the computer running AgEnD (Settings → Access & security), or turn that option off there.");
+    expect(text).toContain("You asked for your authenticator code to confirm changes from other devices, but your authenticator app is gone. Set it up again on the computer running AgEnD (Settings → Access & security), or turn that switch off there.");
     expect(text).not.toContain("Apply now");               // nothing here can press it: never mentioned as a step
     expect(text).not.toContain("agend settings confirm");
     expect(c.p.root.querySelector(".pending-code-setup a"), "no link to a page that cannot set it up").toBeNull();
@@ -478,8 +486,8 @@ describe("a remote page: no host command; the change details are folded", () => 
     }
   });
   it("the change lines sit folded under \"Change details\", underscores unescaped", async () => {
-    const c = await card(view({ confirmation: NOCHAT, summary: ["web.verified\\_authority.remote\\_confirm\\_code: default → true"] }));
+    const c = await card(view({ confirmation: NOCHAT, summary: ["web.verified\\_authority.loopback\\_only: false → true"] }));
     const d = c.p.root.querySelector(".pending-card details.pending-details") as any;
-    expect([d.querySelector("summary").textContent, d.open ?? false, d.querySelector("li").textContent]).toEqual(["Change details", false, "web.verified_authority.remote_confirm_code: default → true"]);
+    expect([d.querySelector("summary").textContent, d.open ?? false, d.querySelector("li").textContent]).toEqual(["Change details", false, "web.verified_authority.loopback_only: false → true"]);
   });
 });

@@ -155,7 +155,7 @@ owner too, with the same authority, checked on every request.
   (device-code sign-in) and sign other devices out.
 - Can't: act as operator from another machine, except the owner signed in from
   outside with the authenticator; or after the session was revoked or ran out.
-  Setting up, re-binding or removing the authenticator is any signed-in admin's, over a direct connection (never a link); while the owner's code option is on, off this computer it needs the current code. Connections from outside and their switch stay this computer's, on a web-only fleet.
+  Setting up, re-binding or removing the authenticator is each signed-in admin's own (never another's), over a direct connection (never a link); while their own switch is on, off this computer it needs their current code. Connections from outside and their switch stay this computer's, on a web-only fleet.
 - Threat model (64a289a0): a process running as the fleet's OS user is
   treated as the owner. It can read `web.token` and mint this session, and it
   can edit `fleet.yaml` anyway. AgEnD defends against remote parties, other OS
@@ -165,14 +165,16 @@ owner too, with the same authority, checked on every request.
   presses Apply now from wherever the dashboard is reached (this computer, a
   direct LAN or tailnet connection, a link whose option is on), for every class
   of change, on a chat fleet and a web-only fleet alike. An agent, a guest, a
-  header token and a paired Windows PC never confirm. The owner may ask for more
-  (`web.verified_authority.remote_confirm_code`): then off this computer each
-  change takes a fresh authenticator code, bound to that one change, used once,
-  under the same wrong-code limit as signing in from outside, audited as
-  "Authenticator code", and never over a link for a change that opens a link.
-  "Only this computer can authorize" still means only the AgEnD computer's own
-  browser. A remote confirmation of a link-opening or secret change posts a
-  Notice. See `docs/SECURITY.md#sensitive-settings-need-a-second-confirmation`.
+  header token and a paired Windows PC never confirm. Each admin may ask for more of THEIR OWN
+  confirmations: their own authenticator and their own "ask for my code" switch (per
+  admin, kept with the app, never in fleet.yaml): then off this computer each of their
+  changes takes a fresh code of their own app, bound to that one change, used once, under
+  the same wrong-code limit as signing in from outside, audited as "Authenticator code",
+  and never over a link for a change that opens a link. Nobody can set up, change or
+  switch off another admin's app; every set-up and switch posts a Notice to the fleet.
+  "Only this computer can authorize" still means only the AgEnD computer's own browser,
+  fleet-wide. A remote confirmation of a link-opening or secret change posts a Notice.
+  See `docs/SECURITY.md#sensitive-settings-need-a-second-confirmation`.
 - Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`, `hostSessionHere`);
   `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`;
   `src/fleet-manager.ts` (`settingsSelfConfirmation`, `settingsCodeSession`, `settingsTotpConfirm`; the role rule is `src/authority/settings-role.ts`).
@@ -398,7 +400,7 @@ signed in this way is the verified owner, the same as the host operator.
   builds; sign in with the authenticator app's code and, as the verified owner,
   approve a new device and sign other devices out (maintainer ruling, #3165).
 - Can't: use it on main today — alpha only; set up, re-bind or remove the
-  authenticator (a signed-in admin's, over a direct connection; connections from outside stay this computer's).
+  authenticator (each signed-in admin's own, over a direct connection; connections from outside stay this computer's).
 - Code (alpha branch): `src/auth-api.ts` (`/auth/totp`);
   `src/authority/web-authority.ts`; `src/fleet-manager.ts` (`deviceApprovalOwner`).
 - Refs: #3008, #3165, fleet decision 0471da59.

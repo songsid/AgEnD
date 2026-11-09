@@ -140,9 +140,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.
   const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
     || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
-  const relaxesConfirm = () => before.fleet?.web?.verified_authority?.remote_confirm_code === true && after.fleet?.web?.verified_authority?.remote_confirm_code !== true;
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { opensLink: true as const } : {}), ...(relaxesConfirm() ? { relaxesConfirm: true as const } : {}) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { opensLink: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (path === "/api/settings/general-location") {

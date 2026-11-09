@@ -52,6 +52,8 @@ export class SettingsHttpConfirmation {
     selfConfirm?(req: IncomingMessage, id: string): SettingsSelfConfirmation | null;
     /** alpha.6 #2c (hmsg-468cc290): the authenticator-code confirmation, on a web-only fleet's own page. */
     totp?: SettingsTotpConfirmation;
+    /** AGEND-122: whether the ordinary New Agent shortcut is open to this request (the role policy; false: it waits as a held change). */
+    directCreationPolicy?(req: IncomingMessage): boolean;
     /** AGEND-122: this page is a remote one (not the browser on the AgEnD computer): words only, no authority. */
     remote?(req: IncomingMessage): boolean;
     /** A running Fleet may admit an ordinary New Agent request from its current local-dashboard admin.
@@ -159,7 +161,7 @@ export class SettingsHttpConfirmation {
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
-      ...(effect.diff.opensLink ? { opensLink: true as const } : {}), ...(effect.diff.relaxesConfirm ? { relaxesConfirm: true as const } : {}),
+      ...(effect.diff.opensLink ? { opensLink: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
       unchanged: async () => (await this.options.baseline()).fingerprint === baseline.fingerprint && settingsFingerprint(this.options.snapshot()) === snapshot,
@@ -199,13 +201,16 @@ export class SettingsHttpConfirmation {
         "directory", "topic_name", "backend", "model", "description", "systemPrompt", "sandbox", "tags", "branch",
         "detach", "worktree_path", "workflow", "backend_options", "credentialProfile"].includes(key))
       && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
+    // AGEND-122 (Prism P2): this shortcut is a confirmation like any other — it follows the same policy (Only this computer can
+    // authorize; the admin's own code switch), asked here and again at execution. Refused: the creation waits as a held change.
+    const policy = (): boolean => this.options.directCreationPolicy?.(req) !== false;
     const direct = this.options.directAgentCreation === true && ordinaryCreate && principal.source === "web_session"
-      && !gatewayRequestContext(req) && localAdmin?.() === true;
+      && !gatewayRequestContext(req) && localAdmin?.() === true && policy();
     const companyDirect = this.options.directCompanyJoin === true && method === "POST"
       && url.pathname === "/api/hub/member/company-join/start" && principal.source === "web_session"
       && !gatewayRequestContext(req) && principal.localSession?.hostHere === true && principal.localSession.current();
     const self = result.reused ? null : direct || companyDirect
-      ? { label: principal.label, current: () => localAdmin?.() === true && (!companyDirect || principal.localSession?.current() === true) }
+      ? { label: principal.label, current: () => localAdmin?.() === true && (!direct || policy()) && (!companyDirect || principal.localSession?.current() === true) }
       : this.options.selfConfirm?.(req, result.view.id) ?? null;
     if (self) {
       const decided = this.store.decide(result.view.id, "confirm", { ...self, via: "web" });

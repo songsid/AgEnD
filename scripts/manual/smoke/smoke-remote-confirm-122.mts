@@ -4,7 +4,10 @@
 // `tailscale serve` sends it: AgEnD reads it as a LAN request. The session is the host's own sign-in code typed on that device.
 //   1 remote, no authenticator, option off: before, the card waited for the AgEnD computer; after, the change is confirmed and applies;
 //   2 remote, authenticator set up, option off: before, a code field; after, the change applies at once;
-//   3 remote, option "Ask for an authenticator code…" on: the code field for THAT change; the current code applies it.
+//   3 remote, THIS admin's own "ask for my code" switch on (per admin, kept in the authenticator's record): the code field for THAT change;
+//     the current code applies it;
+//   plus the Owner verification card in Settings → Access & security on a LAN page, as an admin sees it: not set up, the set-up dialog,
+//   set up with the switch off and on, the current-code dialog for turning it off, and the whole Settings shell (desktop and phone).
 // Run it against the base (REPO=<review-base checkout>) for the "before" shots and against the branch for the "after" shots
 // (SMOKE_NAME picks the output folder). A known authenticator secret is seeded into the scratch home only. Fake data only.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> MATRIX=full FONTCONFIG_FILE=<fonts.conf> \
@@ -24,13 +27,12 @@ const check = (n: string, ok: boolean, d?: unknown) => { r[n] = ok ? "PASS" : { 
 const HOST_CMD = /agend settings confirm/;
 const fx = await bootFixture({ port: 47560, instances: 4, host: true });
 const fm = fx.fm as any;
-const enroll = (on: boolean) => {
+const enroll = (on: boolean, strict = false) => {
   const file = join(fx.dir, WEB_REMOTE_ACCESS_FILE);
-  if (on) writeFileSync(file, JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+  if (on) writeFileSync(file, JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0, ...(strict ? { strict: true } : {}) }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
   else rmSync(file, { force: true });
   fm.webRemoteAccessState = undefined;          // read again from the file
 };
-const strictOption = (on: boolean) => { fm.fleetConfig.web = { ...fm.fleetConfig.web, verified_authority: on ? { remote_confirm_code: true } : {} }; };
 const membership = () => !!fm.getRawFleetConfig()?.hub_member?.enabled;
 /** What the card on the page reads: its text, the folded host command, a code field, Apply now, and whether it says applied. */
 const readCard = (page: any) => page.evaluate(() => {
@@ -45,7 +47,7 @@ try {
     const cn = caseName(c), zh = c.lang === "zh-TW";
     for (const [name, enrolled, strict] of SCENARIOS) {
       fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: false }]);
-      enroll(enrolled); strictOption(strict);
+      enroll(enrolled, strict);
       const { ctx, page, csp } = await fx.page(c, { path: "/settings/hub", ...REMOTE });
       const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
       await page.waitForSelector("#hubMemberEnabled", { timeout: 15000 });
@@ -67,6 +69,37 @@ try {
         // The lenient default: nothing waits for the AgEnD computer.
         check(`${tag}:applies-at-once`, membership(), { card });
       }
+      await ctx.close();
+    }
+  }
+  // The Owner verification card, as the admin sees it from another device (a LAN name), in each state it has.
+  const UI = [["4-card-not-set-up", false, false], ["6-card-set-up", true, false], ["7-code-dialog", true, true]] as const;
+  for (const c of matrix(process.env.MATRIX ?? "quick")) {
+    const cn = caseName(c);
+    for (const [name, enrolled, strict] of UI) {
+      enroll(enrolled, strict);
+      const { ctx, page } = await fx.page(c, { path: "/settings/access", ...REMOTE });
+      const tag = `${cn}:${name}`;
+      await page.waitForSelector("#outsideCard", { timeout: 15000 }).catch(() => null);
+      await page.waitForTimeout(600);
+      const card = page.locator("#outsideCard").first();
+      const present = (await card.count()) > 0;
+      r[`${tag}:observed`] = present ? await page.evaluate(() => ({ text: (document.querySelector("#outsideCard")?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 400),
+        setUp: !!document.querySelector("#outSetUp"), strictSwitch: !!document.querySelector("#outStrict") })) : { present: false };
+      try {
+        if (name === "7-code-dialog") {
+          // Turning YOUR switch off from another device asks your current code first.
+          await page.click("#outStrict"); await page.waitForSelector(".dlg #outAskCode", { timeout: 8000 });
+          await page.locator(".dlg").first().screenshot({ path: shotPath(SMOKE, cn, name) });
+        } else await (present ? card : page.locator("body")).screenshot({ path: shotPath(SMOKE, cn, name) });
+        if (name === "4-card-not-set-up" && present && await page.locator("#outSetUp").count()) {
+          await page.click("#outSetUp"); await page.waitForSelector(".dlg #outKey", { timeout: 8000 });
+          await page.waitForTimeout(400);
+          await page.locator(".dlg").first().screenshot({ path: shotPath(SMOKE, cn, "5-set-up-dialog") });
+          await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+        }
+        await page.screenshot({ path: shotPath(SMOKE, cn, `${name.slice(0, 1)}-shell`) });
+      } catch (e) { r[`${tag}:capture`] = String(e).slice(0, 160); await page.screenshot({ path: shotPath(SMOKE, cn, name) }).catch(() => {}); }
       await ctx.close();
     }
   }

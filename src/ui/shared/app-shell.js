@@ -729,7 +729,7 @@ register("pendingHost", {
     // AGEND-118: the one next step this device can take, by state; the other ways are folded under "Other ways to confirm".
     applyLead: "Press Apply now to confirm this change from this browser.", applyRefused: "This browser can't apply it here now. Use one of the other ways to confirm.",
     cantHere: "This device can't confirm this change yet.",
-    setupLead: "This fleet asks for an authenticator code to confirm changes from other devices, but no authenticator is set up. Set one up again on the computer running AgEnD (Settings → Access & security), or turn that option off there.",
+    setupLead: "You asked for your authenticator code to confirm changes from other devices, but your authenticator app is gone. Set it up again on the computer running AgEnD (Settings → Access & security), or turn that switch off there.",
     onHost: "A change that opens a public link can't be confirmed over a link. Confirm it from a direct connection, or in the browser on the computer running AgEnD.",
     hostOnly: "Only the computer running AgEnD can confirm changes here: “Only this computer can authorize” is turned on. Confirm it in the browser on that computer.",
     more: "Other ways to confirm",
@@ -760,7 +760,7 @@ register("pendingHost", {
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
     cantHere: "你目前在這台裝置還無法直接確認這項變更。",
-    setupLead: "這個 fleet 要求從其他裝置確認變更時輸入驗證器代碼，但還沒有設定驗證器。請到執行 AgEnD 的那台電腦，在「設定 → 存取與安全」重新設定驗證器 App，或在那裡關閉這個選項。",
+    setupLead: "你開啟了「從其他裝置確認變更時要我的驗證器代碼」，但你的驗證器 App 已經不見了。請到執行 AgEnD 的那台電腦，在「設定 → 存取與安全」重新設定，或在那裡關閉這個開關。",
     onHost: "會開放公開連結的變更無法透過連結確認。請改用直接連線，或在執行 AgEnD 的那台電腦的瀏覽器中確認。",
     hostOnly: "目前只有執行 AgEnD 的那台電腦能確認變更（已開啟「只有這台電腦可以授權」）。請到那台電腦的瀏覽器確認。",
     more: "其他確認方式",

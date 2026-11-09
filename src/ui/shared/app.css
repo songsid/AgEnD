@@ -1279,6 +1279,9 @@ img.amb-p { object-fit: contain; }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
+  /* AGEND-122: Owner verification's own buttons, dialog fields and switches are phone tap targets (style guide rule 7); the Devices
+     card's primary action beside it matches (one primary button height on the page). */
+  .p-settings .s-outside :is(.save-row .btn, .field input, label.check), .p-settings .s-devices .save-row .btn { min-height: var(--tap); }
   .kv { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {

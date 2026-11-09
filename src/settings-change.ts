@@ -223,11 +223,8 @@ function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, un
   if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
   const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
-  if (changed.some(k => !["enabled", "loopback_only", "remote_confirm_code", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
+  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
   const held: Array<[string, unknown, unknown]> = [];
-  // AGEND-122: the owner's stricter option — turning it on tightens and applies at once; turning it off is confirmed (with the
-  // code, off this computer, while it is on: that is what keeps a session it restricts from lifting the restriction by itself).
-  if (a.remote_confirm_code === true && b.remote_confirm_code !== true) held.push(["remote_confirm_code", a.remote_confirm_code, b.remote_confirm_code]);
   if (a.named_link !== true && b.named_link === true) held.push(["named_link", a.named_link, b.named_link]);
   if (!quickLinkEffective(a) && quickLinkEffective(b)) held.push(["quick_link", a.quick_link, b.quick_link]);
   return held;
@@ -383,8 +380,6 @@ export interface SettingsChangeDiff {
    * owner asks for a code it is never confirmed over a link (fleet-manager.ts).
    */
   opensLink?: true;
-  /** AGEND-122: the effect turns the owner's code option (`remote_confirm_code`) off — every confirmation from another device posts a Notice. */
-  relaxesConfirm?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {

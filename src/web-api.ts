@@ -566,6 +566,7 @@ export interface WebApiContext {
   webOutsideBeginEnrollment?(req: IncomingMessage, code?: string): { secret: string; uri: string; expiresInMs: number } | { error: "code_required" | "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } | null;
   webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
   webOutsideRemove?(req: IncomingMessage, code?: string): "ok" | "unsaved" | "not_here" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number };
+  webOutsideStrict?(req: IncomingMessage, on: boolean, code?: string): "ok" | "not_enrolled" | "not_here" | "unsaved" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number };
   webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** Refs #3061 (P2a): a web-only fleet's new-device approval — may this session approve (the verified owner), and the decision itself. */
   webDevicesStatus?(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority?: boolean; devices?: WebDeviceRow[] };
@@ -2771,14 +2772,15 @@ export function handleWebRequest(
   // direct connection (the fleet asks the live session each time; the public link refuses these routes outright):
   // POST /ui/outside/enroll (a new secret, shown once; AGEND-122: {code} — the current one — while the owner's stricter
   // option is on and this is not the AgEnD computer), POST /ui/outside/enroll/confirm {code}, POST /ui/outside/remove
-  // ({code} likewise), and POST /ui/outside/switch {on} — the switch stays this computer's admin's, on a web-only fleet.
+  // ({code} likewise), POST /ui/outside/strict {on, code?} (your own "ask for my code" switch) and POST /ui/outside/switch {on} — the
+  // switch stays this computer's admin's, on a web-only fleet. Each acts on the caller's own authenticator only (per admin).
   // Never a guest (not in GUEST_ROUTES).
   if (method === "GET" && path === "/ui/outside") {
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.webOutsideStatus?.(req) ?? { webOnly: false, here: false, manage: false, codeNeeded: false, strict: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null });
     return true;
   }
-  if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch")) {
+  if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch" || path === "/ui/outside/strict")) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "outside_not_here" }); return true; }
     (async () => {
       let body: Record<string, unknown>;
@@ -2814,6 +2816,13 @@ export function handleWebRequest(
       }
       const on = body && typeof body === "object" ? body.on : undefined;
       if (typeof on !== "boolean") { json(res, 400, { error: "on must be true or false" }); return; }
+      if (path === "/ui/outside/strict") {
+        // AGEND-122 (per admin): the caller's OWN "ask for my code" switch — on needs their app and asks nothing, off asks their current code.
+        const sr = ctx.webOutsideStrict?.(req, on, stepCode) ?? "not_here";
+        if (typeof sr === "object") { refusal(sr); return; }
+        json(res, sr === "ok" ? 200 : sr === "not_here" ? 403 : sr === "unsaved" ? 503 : 409, sr === "ok" ? { ok: true } : { error: sr === "not_here" ? "outside_not_here" : sr });
+        return;
+      }
       const r = ctx.webOutsideSwitch?.(req, on) ?? "not_here";
       json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 409, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
     })().catch(err => {

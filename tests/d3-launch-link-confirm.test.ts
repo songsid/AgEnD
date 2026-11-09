@@ -10,8 +10,9 @@
  *     a local session over the gateway; the owner's knobs (the web authorization switch, "Only this computer can authorize");
  *     and the session / switch / admin list asked again at execution;
  *   - the link-opening class (turning the named / quick link on) is marked `opensLink` only — Apply now works for it, a
- *     confirmation from another device posts a Notice, and in strict mode (`remote_confirm_code`) it is never confirmed over a
- *     public link (`totp: "on_host"`, `not_here`), though a LAN device may confirm it with the authenticator's code.
+ *     confirmation from another device posts a Notice, and for an admin whose OWN strict switch is on (per admin, AGEND-122: `strict`
+ *     inside their record in web-remote-access.json, never fleet.yaml) it is never confirmed over a public link (`totp: "on_host"`,
+ *     `not_here`), though a LAN device may confirm it with their authenticator's code; an admin whose switch is off still has Apply now.
  * The shared provenance helper's own table is B2b's (tests/settings-totp-confirm-b2b.test.ts).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,11 +50,11 @@ const SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));
 const codeAt = (ms: number) => hotp(base32Decode(SECRET)!, totpStep(ms));
 const AWAY = { "x-forwarded-for": "198.51.100.7" };                         // another device behind a proxy: a direct connection, not this computer
 const EXPOSURE = "e".repeat(32), LINK_ORIGIN = "https://abc.trycloudflare.com";
-const STRICT = { web: { verified_authority: { enabled: true, remote_confirm_code: true } } };
-const ENROLLED = JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] });
-async function startFleet(config: Record<string, unknown> = {}, opts: { enrolled?: boolean } = {}) {
+/** The host operator's app in web-remote-access.json; `strict` is THEIR switch ("ask for my code to confirm from other devices"), kept in the record. */
+const enrolled = (strict: boolean) => JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0, ...(strict ? { strict: true } : {}) }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] });
+async function startFleet(config: Record<string, unknown> = {}, opts: { strict?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-d3-")); dirs.push(dir);
-  if (opts.enrolled) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), ENROLLED, { mode: 0o600 });
+  if (opts.strict !== undefined) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), enrolled(opts.strict), { mode: 0o600 });
   const fm = new FleetManager(dir), any = fm as any;
   const sink = () => {};
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as unknown as typeof fm.logger;
@@ -262,9 +263,9 @@ describe("a link option turned on (#2453): marked opensLink; any signed-in admin
       expect(remoteNotices(h)).toHaveLength(2);
     } finally { await h.stop(); }
   }, 20_000);
-  it("strict mode (remote_confirm_code), web-only: this computer still gets Apply now; a device on the LAN is asked the authenticator's code for it, wrong refused, right one applies with a Notice; over HTTP the held Save says so", async () => {
+  it("the admin's own strict switch, web-only: this computer still gets Apply now; a device on the LAN is asked the authenticator's code for it, wrong refused, right one applies with a Notice; over HTTP the held Save says so", async () => {
     setLocale("en");
-    const h = await startFleet(STRICT, { enrolled: true });
+    const h = await startFleet({}, { strict: true });
     try {
       const host = await h.signIn(), a = held(h, "link");
       const away = h.reqOf(host.sessionId, AWAY);
@@ -290,12 +291,13 @@ describe("a link option turned on (#2453): marked opensLink; any signed-in admin
 // ── #3366 review (Fable F1, F2): the two guards on a link opener, now what strict mode and the Notice carry ──
 describe("a link opener and a web-verified admin's Apply now / an authenticator code (#3366 review, AGEND-122)", () => {
   const TOKEN = "c".repeat(48);
+  /** `strict`: the host operator's app is set up with their own switch on (false: set up, switch off). */
   function fixture(chat: boolean, strict = false) {
     const dir = mkdtempSync(join(tmpdir(), "agend-3366-")); dirs.push(dir);
-    if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), ENROLLED, { mode: 0o600 });
+    if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), enrolled(strict), { mode: 0o600 });
     const fm = new FleetManager(dir), any = fm as any;
     fm.fleetConfig = { defaults: { backend: "codex" }, ...(chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: ["1"] } }] } : {}),
-      ...(strict ? STRICT : {}), instances: { general: { working_directory: dir, general_topic: true } } } as any;
+      instances: { general: { working_directory: dir, general_topic: true } } } as any;
     writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
     const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
     const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
@@ -346,7 +348,7 @@ describe("a link opener and a web-verified admin's Apply now / an authenticator 
     await expect(f.store.decide(ordinary.view.id, "confirm", { ...own, via: "web" })).rejects.toMatchObject({ code: "admin_required" });
     expect([f.any.settingsSelfConfirmation(f.store, f.req(session.sessionId), ordinary.view.id), ordinary.apply.mock.calls.length]).toEqual([null, 0]);
   });
-  it("F2 — web-only fleet, strict mode: a correct authenticator code with the right digest, POSTed for a link opener over the public link, is refused (nothing applied); from a LAN device, or for an ordinary change over the link, it is accepted", async () => {
+  it("F2 — web-only fleet, the admin's own strict switch on: a correct authenticator code with the right digest, POSTed for a link opener over the public link, is refused (nothing applied); from a LAN device, or for an ordinary change over the link, it is accepted", async () => {
     const f = fixture(false, true), outside = f.make({ link: true, remote: true }), lan = f.make();
     vi.spyOn(f.any, "outsideLink").mockReturnValue({ exposureId: EXPOSURE });                      // the link "connections from outside" opened
     const link = f.propose(true), ordinary = f.propose(false);
@@ -364,5 +366,14 @@ describe("a link opener and a web-verified admin's Apply now / an authenticator 
     // On this computer nothing is asked in strict mode: Apply now, and no code is taken.
     expect([f.any.settingsTotpState(f.store, f.req(lan.sessionId, "here"), link.view.id), f.any.settingsSelfConfirmation(f.store, f.req(lan.sessionId, "here"), link.view.id)?.label])
       .toEqual([null, "This fleet's admin"]);
+  });
+  it("F2 control — the same fleet with the app set up but the admin's switch OFF: Apply now for the link opener from the LAN and over the link, no code asked, a correct code refused", () => {
+    const f = fixture(false, false), outside = f.make({ link: true, remote: true }), lan = f.make();
+    vi.spyOn(f.any, "outsideLink").mockReturnValue({ exposureId: EXPOSURE });
+    const link = f.propose(true);
+    expect([f.any.settingsTotpState(f.store, f.req(lan.sessionId, "lan"), link.view.id), f.any.settingsTotpState(f.store, f.req(outside.sessionId, "link"), link.view.id)]).toEqual([null, null]);
+    expect([f.any.settingsSelfConfirmation(f.store, f.req(lan.sessionId, "lan"), link.view.id)?.label, f.any.settingsSelfConfirmation(f.store, f.req(outside.sessionId, "link"), link.view.id)?.label])
+      .toEqual(["This fleet's admin", "This fleet's admin"]);
+    expect(f.any.settingsTotpConfirm(f.store, f.req(lan.sessionId, "lan"), link.view.id, codeAt(Date.now()), f.store.confirmDigest(link.view.id))).toEqual({ error: "not_here" });
   });
 });

@@ -1,4 +1,4 @@
 ---
 section: Security
 ---
-- **從另一台裝置確認「開啟連結」或「更改 secret」的變更時會發 Notice（#3486）。** 這類變更從另一台裝置確認後，除了稽核紀錄，擁有者也會收到 Notice（web-only fleet 在 dashboard 的 Notices；聊天型發到 General，否則主要連線，再否則網頁 Notices）。`docs/SECURITY.md` 用白話寫出剩餘風險：在擁有者開啟代碼選項或「只有這台電腦可以授權」之前，已登入的管理員 session 可以做任何變更，包括開啟連結。
+- **遠端確認與驗證器變更的安全 Notice（#3503、#3486）。** 從另一台裝置確認「開啟公開連結」或「更改 secret」的變更會發 Notice；每位管理員的驗證器設定、重新綁定、停用，以及「要我的代碼」開關的開啟或關閉，不論從哪裡發生都會發 Notice，並寫明是哪位管理員。Notice 發給全體管理員（web-only fleet 在 dashboard 的 Notices；聊天型發到 General，否則主要連線，再否則網頁 Notices）。`docs/SECURITY.md` 用白話寫出每位管理員各自獨立的模型與剩餘風險：在管理員開啟自己的開關、或擁有者開啟「只有這台電腦可以授權」之前，已登入的管理員 session 可以做任何變更，包括開啟連結。

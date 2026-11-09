@@ -404,7 +404,7 @@ import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
-import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
+import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -3320,6 +3320,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
       totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       remote: req => this.settingsPageIsRemote(req),
+      directCreationPolicy: req => this.settingsDirectCreationAllowed(req),
       directAgentCreation: true,
       directCompanyJoin: true,
       job: async id => {
@@ -3353,9 +3354,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const first = this.settingsRole(req);
     if (!first.role.ok || !first.handle) return null;
     const handle = first.handle, actor = first.role.actor, account = first.role.account;
-    // The owner's stricter option: off this computer, each change is confirmed with the authenticator's code instead
-    // (settingsCodeSession) — never by Apply now, whatever the session is (a link's, the owner signed in from outside, a LAN's).
-    if (this.remoteConfirmCode() && !first.role.onHost) return null;
+    // This admin's own stricter switch: off this computer, each of THEIR confirmations takes their authenticator's code instead
+    // (settingsCodeSession) — never Apply now, whatever the session is (a link's, the owner signed in from outside, a LAN's).
+    if (this.strictFor(first.role.actor) && !first.role.onHost) return null;
     if (account && !this.settingsAccountMayConfirm(store, id, actor)) return null;
     // Asked again at execution, from the same request's cookie: still this session, still this role, still an admin.
     const current = (): boolean => {
@@ -3388,6 +3389,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     };
   }
+  /**
+   * AGEND-122 (Prism P2): whether the ordinary New Agent shortcut — created at once, web-confirmed, with no held change — is open to
+   * this request. It is the same policy as Apply now: refused where "Only this computer can authorize" is on and this is not the
+   * AgEnD computer, and off the computer for an admin whose own "ask for my code" switch is on (the creation then waits as a held
+   * change and takes their code). Everything else is as before the role existed.
+   */
+  private settingsDirectCreationAllowed(req: IncomingMessage): boolean {
+    const { role } = this.settingsRole(req);
+    if (!role.ok) return role.reason !== "loopback_only";
+    return role.onHost || !this.strictFor(role.actor);
+  }
   /** AGEND-122: this request's role over a held change — its cookie session asked afresh each time (settings-role.ts). */
   private settingsRole(req: IncomingMessage): { role: SettingsRole; handle: string | null } {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
@@ -3405,9 +3417,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * AGEND-122 (upstream R1): a change that opens a link, or one that changes a secret, confirmed from another device always
    * posts a Notice — the audit trail alone is not what the owner sees. Null: not one of those, or confirmed on this computer.
    */
-  private settingsRemoteNoticeKind(store: SettingsConfirmationStore, id: string, onHost: boolean): "link" | "secret" | "relax" | null {
+  private settingsRemoteNoticeKind(store: SettingsConfirmationStore, id: string, onHost: boolean): "link" | "secret" | null {
     if (onHost) return null;
-    if (store.relaxesConfirm(id)) return "relax";
     if (store.opensLink(id)) return "link";
     return store.inspect(id)?.section === "secret" ? "secret" : null;
   }
@@ -3416,13 +3427,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * target (notifyFleetError) — and when nothing could be posted there, the web Notices, which a chat fleet's dashboard then
    * shows. Never throttled, and never silent. It names the change as the card showed it (redacted), who confirmed and how.
    */
-  private postSettingsRemoteNotice(view: SettingsPendingView, kind: "link" | "secret" | "relax", who: string): void {
+  private postSettingsRemoteNotice(view: SettingsPendingView, kind: "link" | "secret", who: string): void {
     const outcome = view.outcome ? view.outcome.message : view.state;
     const text = t("settings_confirm.remote_notice", who, t(`settings_confirm.remote_kind_${kind}`), view.summary.join("\n"), outcome);
+    this.postFleetSecurityNotice(text, view.id);
+  }
+  /**
+   * A security Notice that must not be silent: where a fleet notice goes (General, else the primary connection's notice target,
+   * else a web-only fleet's dashboard Notices) and, when nothing could be posted there, the web Notices store directly — which a
+   * chat fleet's dashboard then shows (recordWebNotice itself refuses a chat fleet). Never throttled; redacted like any Notice.
+   */
+  private postFleetSecurityNotice(text: string, id?: string): void {
     if (this.notifyFleetError(text, { throttle: false })) return;
-    const note = this.webNoticeStore()?.add({ kind: "fleet", text: stripPlaceRefs(text) });
-    if (note) this.emitSseEvent("notice", { notice: note, unread: this.webNoticeStore()!.unread() });
-    else this.logger.warn({ id: view.id }, "A settings change confirmed from another device could not be announced anywhere");
+    const store = this.webNoticeStore(), note = store?.add({ kind: "fleet", text: stripPlaceRefs(text) });
+    if (note && store) this.emitSseEvent("notice", { notice: note, unread: store.unread() });
+    else this.logger.warn({ id }, "A security Notice could not be announced anywhere");
+  }
+  /** Who an authenticator action is named after in its Notice. */
+  private adminName(actor: { adapter_id: string; user_id: string }): string {
+    return actor.adapter_id === HOST_OPERATOR.adapterId && actor.user_id === HOST_OPERATOR.userId
+      ? t("settings_confirm.host_operator_label") : this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
   }
   /**
    * AGEND-122: a chat account confirms a change only as an admin of every connection it touches — settingsChatAuthority's own
@@ -3448,14 +3472,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * AGEND-122 (upstream #3486, R1): the owner's stricter option, `web.verified_authority.remote_confirm_code`. Off by default.
-   * While it is on, a session that is not the browser on the AgEnD computer itself does not press Apply now: it confirms each
-   * change with the authenticator's code, bound to that one change (settingsTotpConfirm). The computer's own browser is not
-   * asked. An authenticator has to be set up first; if the option is on and none is (its file lost), a page that is not on this
-   * computer cannot confirm at all until one is set up there — failing closed, never open.
+   * AGEND-122 (upstream #3486, per admin): each admin's own stricter switch — off by default, kept with their own authenticator
+   * (web-remote-access.ts) and never in fleet.yaml. While it is on, THEIR confirmations from a page that is not the browser on the
+   * AgEnD computer itself do not press Apply now: each takes the code of their own app, bound to that one change
+   * (settingsTotpConfirm). Another admin is never asked, and cannot turn it on or off for them. The computer's own browser is not
+   * asked. The switch lives in the app's record, so it can only be on while the app is set up.
    */
-  private remoteConfirmCode(): boolean {
-    return this.fleetConfig?.web?.verified_authority?.remote_confirm_code === true;
+  private strictFor(actor: { adapter_id: string; user_id: string }): boolean {
+    return !!this.webRemoteAccess()?.strictOf(adminKey(actor.adapter_id, actor.user_id));
   }
   /**
    * Who is asked for the code: a session with a role over a held change (settings-role.ts) that is not on this computer,
@@ -3468,9 +3492,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsCodeSession(store: SettingsConfirmationStore, req: IncomingMessage, id: string):
     { handle: string; actor: { adapter_id: string; user_id: string }; account: boolean; current(): boolean } | null {
     const check = (asking: boolean): { handle: string; actor: { adapter_id: string; user_id: string }; account: boolean } | null => {
-      if (asking && !this.remoteConfirmCode()) return null;
       const { role, handle } = this.settingsRole(req);
       if (!role.ok || !handle || role.onHost) return null;
+      if (asking && !this.strictFor(role.actor)) return null;
       if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
       if (store.opensLink(id) && gatewayRequestContext(req)) return null;
       return { handle, actor: role.actor, account: role.account };
@@ -3481,10 +3505,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...first, current: () => { const now = check(false); return !!now && now.handle === first.handle && now.actor.user_id === first.actor.user_id && now.actor.adapter_id === first.actor.adapter_id; } };
   }
   /** One look at a code, for every place that asks for one: the fleet-wide wrong-code limit and a clock that looks off, logged and noticed the same way. */
-  private checkAuthenticatorCode(access: WebRemoteAccess, code: string, what: string):
+  private checkAuthenticatorCode(access: WebRemoteAccess, who: string, code: string, what: string):
     { ok: true; enrollment: unknown } | { ok: false; error: "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } {
-    const enrollment = access.enrollment;
-    const v = access.verify(code);
+    const enrollment = access.enrollmentOf(who);
+    const v = access.verify(code, who);
     if (v.kind === "ok") return enrollment ? { ok: true, enrollment } : { ok: false, error: "not_here" };
     if (v.kind === "paused") return { ok: false, error: "paused", retryAfterMs: v.retryAfterMs };
     if (v.kind === "not_enrolled") return { ok: false, error: "not_here" };
@@ -3512,10 +3536,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The owner turned on "Only this computer can authorize": a page that is not on this computer is told so, in plain words.
     if (!role.ok) return role.reason === "loopback_only" ? "host_only" : null;
     // Apply now is open to it (the option is off, or this is the AgEnD computer's own browser): no code is asked.
-    if (!this.remoteConfirmCode() || role.onHost) return null;
+    if (!this.strictFor(role.actor) || role.onHost) return null;
     if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
     if (store.opensLink(id) && gatewayRequestContext(req)) return "on_host";
-    return this.webRemoteAccess()?.enrolled ? "ready" : "not_set_up";
+    return this.webRemoteAccess()?.isEnrolled(adminKey(role.actor.adapter_id, role.actor.user_id)) ? "ready" : "not_set_up";
   }
   /**
    * The code, checked: the change's digest first (a stale page never burns a code), then one use per time step and the
@@ -3525,19 +3549,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   settingsTotpConfirm(store: SettingsConfirmationStore, req: IncomingMessage, id: string, code: string, digest: string):
     { label: string; current(): boolean; audit?: Record<string, unknown>; done?(view: SettingsPendingView): void } | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number } {
     const local = this.settingsCodeSession(store, req, id), access = this.webRemoteAccess();
-    if (!local || !local.current() || !access?.enrolled) return { error: "not_here" };
+    // The code checked is the CONFIRMING admin's own: their record, never another admin's or the fleet's.
+    const mine = local ? adminKey(local.actor.adapter_id, local.actor.user_id) : "";
+    if (!local || !local.current() || !access?.isEnrolled(mine)) return { error: "not_here" };
     // #3352 security review, point 2: the code confirms exactly the change the page showed — checked before the code is.
     if (digest !== store.confirmDigest(id)) return { error: "changed" };
     const shown = store.inspectHost(id)?.view.summary ?? [];
-    const checked = this.checkAuthenticatorCode(access, code, "settings change");
+    const checked = this.checkAuthenticatorCode(access, mine, code, "settings change");
     if (!checked.ok) return { error: checked.error, ...(checked.retryAfterMs !== undefined ? { retryAfterMs: checked.retryAfterMs } : {}) };
     const enrollment = checked.enrollment;
     this.logger.info({ id, handle: local.handle }, "Settings change confirmed with the authenticator code");
     const notice = this.settingsRemoteNoticeKind(store, id, false);   // the code is asked off this computer only
-    const who = `${local.account ? this.webPerson({ adapterId: local.actor.adapter_id, userId: local.actor.user_id }).name : t("settings_confirm.host_operator_label")} · ${t("settings_confirm.totp_label")}`;
+    const who = `${this.adminName(local.actor)} · ${t("settings_confirm.totp_label")}`;
     let lost = false;
     const current = (): boolean => {
-      if (!lost && !(local.current() && this.webRemoteAccess()?.enrollment === enrollment)) lost = true;
+      if (!lost && !(local.current() && this.webRemoteAccess()?.enrollmentOf(mine) === enrollment)) lost = true;
       return !lost;
     };
     return { label: t("settings_confirm.totp_label"), current, audit: { confirmed_with: "authenticator_code", summary: shown },
@@ -18530,121 +18556,142 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.outsideLink()?.exposureId === exposureId;
   }
 
-  /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
+  /**
+   * What Settings shows: THIS admin's own authenticator (set up or not, when, their own "ask for my code" switch), whether they
+   * may set it up or change it here and whether that asks their current code; and, for the host operator on a web-only fleet,
+   * the outside switch, a wait in force and the link — its address only to this computer.
+   */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; manage: boolean; codeNeeded: boolean; strict: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
-    const store = this.webRemoteAccess(), status = store?.status();
+    const store = this.webRemoteAccess();
+    const manager = this.authenticatorOwner(req);
+    const status = store?.status(manager?.who ?? HOST_ADMIN_KEY);
     const here = !!this.liveOwner(req, { hostOnly: true });
     const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
     const mine = !!open && isOutsideLinkOwner(open.owner);
     const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
-    // AGEND-122: whether this session may set up, replace or remove the authenticator (an admin with a role over held changes,
-    // on a direct connection), whether it needs the current code to (the owner's stricter option is on and this is not the AgEnD
-    // computer's own browser), and whether that option is on.
-    const manager = this.authenticatorOwner(req), strict = this.remoteConfirmCode();
     return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
-      manage: !!manager && (!strict || !!status?.enrolled || manager.onHost), codeNeeded: !!manager && !!status?.enrolled && this.authenticatorCodeAsked(manager, this.webRemoteAccess()!), strict,
+      manage: !!manager, codeNeeded: !!manager && !!store && this.authenticatorCodeAsked(manager, store), strict: !!status?.strict,
       outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
       link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
   }
 
   /**
-   * AGEND-122 (R1): who may set up, replace or remove the authenticator — an admin with a role over held changes
-   * (settings-role.ts) on a direct connection (never a link), on a chat fleet and a web-only one alike, from this computer or
-   * from another device. While the owner's stricter option is on, a session off this computer needs the current code to replace
-   * or remove it (authenticatorStep): the app is what the restriction rests on. Setting one up, and turning the option on, ask
-   * nothing — they only tighten. Connections from outside and their switch are another thing and stay a web-only fleet's, on its
-   * own computer (liveOwner).
+   * AGEND-122 (per admin): who may set up, replace or remove an authenticator, and turn its switch on or off — an admin with a
+   * role over held changes (settings-role.ts) on a direct connection (never a link), on a chat fleet and a web-only one alike, and
+   * only THEIR OWN (`who`: their connection and account; a web-only fleet's one admin and a chat fleet's host session are the host
+   * operator's). Another admin's is never reachable from here: a stolen session can lock out at most the admin it belongs to, and
+   * every such change posts a Notice to the fleet. On the AgEnD computer's own browser no code is asked. Connections from outside
+   * and their switch are another thing and stay a web-only fleet's, on its own computer (liveOwner).
    */
-  private authenticatorOwner(req: IncomingMessage): { handle: string; onHost: boolean; current(): boolean } | null {
+  private authenticatorOwner(req: IncomingMessage): { handle: string; who: string; actor: { adapter_id: string; user_id: string }; onHost: boolean; current(): boolean } | null {
     if (gatewayRequestContext(req)) return null;
     const first = this.settingsRole(req);
     if (!first.role.ok || !first.handle) return null;
-    const handle = first.handle;
-    return { handle, onHost: first.role.onHost, current: () => { const now = this.settingsRole(req); return now.role.ok && now.handle === handle; } };
+    const handle = first.handle, actor = first.role.actor, who = adminKey(actor.adapter_id, actor.user_id);
+    return { handle, who, actor, onHost: first.role.onHost,
+      current: () => { const now = this.settingsRole(req); return now.role.ok && now.handle === handle && adminKey(now.role.actor.adapter_id, now.role.actor.user_id) === who; } };
   }
   /**
-   * Replacing or removing the app asks for its current code off the AgEnD computer when the owner's option is on, and also — on a
-   * web-only fleet whose connections from outside are on — whatever the option says: there the app is the sign-in from outside,
-   * so a session must not be able to swap it for its own.
+   * Replacing or removing the app, and turning the switch off, ask for its current code off the AgEnD computer when the admin's own
+   * switch is on, and — for the host operator on a web-only fleet whose connections from outside are on — whatever the switch says:
+   * there the app is the sign-in from outside, so a session must not be able to swap it for its own.
    */
-  private authenticatorCodeAsked(owner: { onHost: boolean }, access: WebRemoteAccess): boolean {
-    return !owner.onHost && access.enrolled && (this.remoteConfirmCode() || this.outsideOn());
+  private authenticatorCodeAsked(owner: { onHost: boolean; who: string }, access: WebRemoteAccess): boolean {
+    return !owner.onHost && access.isEnrolled(owner.who) && (access.strictOf(owner.who) || (owner.who === HOST_ADMIN_KEY && this.outsideOn()));
   }
-  /** What replacing or removing the authenticator asks of this session: nothing, or the current code. */
-  private authenticatorStep(owner: { onHost: boolean }, access: WebRemoteAccess, code: string | undefined):
+  /** What changing the app asks of this session: nothing, or the current code (of its own app). */
+  private authenticatorStep(owner: { onHost: boolean; who: string }, access: WebRemoteAccess, code: string | undefined):
     { ok: true; verified: boolean } | { ok: false; error: "not_here" | "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number } {
     if (owner.onHost) return { ok: true, verified: true };
-    // The option is on and no app is set up (its file lost): only the AgEnD computer repairs that — never a session the option restricts.
-    if (this.remoteConfirmCode() && !access.enrolled) return { ok: false, error: "not_here" };
     if (!this.authenticatorCodeAsked(owner, access)) return { ok: true, verified: false };
     if (typeof code !== "string" || code.trim() === "") return { ok: false, error: "code_required" };
-    const checked = this.checkAuthenticatorCode(access, code, "authenticator change");
+    const checked = this.checkAuthenticatorCode(access, owner.who, code, "authenticator change");
     return checked.ok ? { ok: true, verified: true } : checked;
   }
   /**
-   * An app being set up, per session handle: whether that start was on this computer or passed the code. A set-up begun before the
-   * option was turned on (the secret lives ten minutes) must not be finished by a session the option now restricts: it never
-   * passed the code, so the finish is refused (webOutsideConfirmEnrollment).
+   * An app being set up, per session handle: whether that start was on this computer or passed the code. A set-up begun while the
+   * code was not asked (the secret lives ten minutes) must not be finished by a session whose switch is on by then, and one begun
+   * on this computer is not finished from another device: it never passed the code, so the finish is refused.
    */
   private authenticatorStarts = new Map<string, "host" | "code" | "none">();
 
-  /** Set up (or set up again): a new secret, shown once to the admin. Null: not them. A code is asked first when the option needs one. */
+  /** Set up (or set up again) your own: a new secret, shown once. Null: not you. A code is asked first when your switch needs one. */
   webOutsideBeginEnrollment(req: IncomingMessage, code?: string): { secret: string; uri: string; expiresInMs: number } | { error: "code_required" | "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } | null {
     const owner = this.authenticatorOwner(req), store = this.webRemoteAccess();
     if (!owner || !store) return null;
-    // Setting up from nothing asks no code — except when the option is on and an app is missing (above): then only this computer.
     const step = this.authenticatorStep(owner, store, code);
     if (!step.ok) {
       if (step.error === "not_here") return null;
       return { error: step.error, ...(step.retryAfterMs !== undefined ? { retryAfterMs: step.retryAfterMs } : {}) };
     }
     if (!owner.current()) return null;
-    const begun = store.beginEnrollment(owner.handle, hostname() || "fleet");
-    // On this computer is not the same as the code: a start on the host, finished by the same cookie from another device, is refused too.
+    const begun = store.beginEnrollment(owner.handle, hostname() || "fleet", owner.who);
     this.authenticatorStarts.set(owner.handle, owner.onHost ? "host" : step.verified ? "code" : "none");
     if (this.authenticatorStarts.size > 64) this.authenticatorStarts.delete(this.authenticatorStarts.keys().next().value!);
     return begun;
   }
 
-  /** The new app's first code: on "ok" it replaces the old one, whose sessions from outside end. */
+  /** The new app's first code: on "ok" it is now yours (the host operator's replaces the old one, ending the sessions from outside). */
   webOutsideConfirmEnrollment(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" {
     const owner = this.authenticatorOwner(req), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
-    const had = store.enrolled;
-    // Asked again here, not only at the start: the option may have been turned on since (see authenticatorStarts).
-    if (!owner.onHost && ((this.remoteConfirmCode() && !had) || (this.authenticatorCodeAsked(owner, store) && this.authenticatorStarts.get(owner.handle) !== "code"))) return "not_here";
+    const had = store.isEnrolled(owner.who);
+    // Asked again here, not only at the start: the switch may have been turned on since (see authenticatorStarts).
+    if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && this.authenticatorStarts.get(owner.handle) !== "code") return "not_here";
     const r = store.confirmEnrollment(owner.handle, code);
     if (r === "ok") {
       this.authenticatorStarts.delete(owner.handle);
       this.logger.info({ again: had, here: owner.onHost }, "Authenticator app set up");
-      if (had) {
-        this.endOutsideSessions();
-        // #3327: an authenticator set up again is announced where the owner looks (web Notices on a web-only fleet), so a
-        // set-up they did not make is noticed.
-        this.notifyFleetError(t("outside.reenrolled_notice"));
-      } else if (!owner.onHost) this.notifyFleetError(t("outside.enrolled_remote_notice"), { throttle: false });   // AGEND-122: from another device, always said
+      if (owner.who === HOST_ADMIN_KEY) this.endOutsideSessions();
+      // Every set-up or replacement, from anywhere, is said to the fleet's admins (#3327; AGEND-122): a set-up they did not make is noticed.
+      this.postFleetSecurityNotice(t(had ? "outside.reenrolled_notice_by" : "outside.enrolled_notice_by", this.adminName(owner.actor)));
     }
     return r;
   }
 
-  /** Forget the app: the switch goes off, the link closes, every session from outside ends. A code is asked first when the option needs one. */
+  /** Forget your own app (your switch with it). A code is asked first when your switch needs one. Nothing set up: nothing happens. */
   webOutsideRemove(req: IncomingMessage, code?: string): "ok" | "unsaved" | "not_here" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number } {
     const owner = this.authenticatorOwner(req), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
-    const step = store.enrolled ? this.authenticatorStep(owner, store, code) : { ok: true as const };
+    // Nothing of yours to remove: never reaches the store — a set-up another session (the host's recovery) has begun stays as it is.
+    if (!store.isEnrolled(owner.who)) return owner.onHost ? "ok" : "not_here";
+    const step = this.authenticatorStep(owner, store, code);
     if (!step.ok) {
       if (step.error === "not_here") return "not_here";
       return { error: step.error, ...(step.retryAfterMs !== undefined ? { retryAfterMs: step.retryAfterMs } : {}) };
     }
     if (!owner.current()) return "not_here";
     // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
-    const had = store.enrolled;
-    const saved = store.remove();
-    this.closeOutsideLink("outside removed");
-    if (had) this.notifyFleetError(t("outside.removed_notice"));                 // #3327: as above
-    this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
+    const saved = store.remove(owner.who);
+    if (owner.who === HOST_ADMIN_KEY) this.closeOutsideLink("outside removed");
+    this.postFleetSecurityNotice(t("outside.removed_notice_by", this.adminName(owner.actor)));
+    this.logger.info({ saved }, "Authenticator app removed");
     return saved ? "ok" : "unsaved";
+  }
+
+  /**
+   * Turn your own "ask for my code to confirm from other devices" switch on or off. On needs your app set up and asks nothing (it
+   * only tightens); off asks your current code off the AgEnD computer — so a session it restricts cannot lift the restriction for
+   * you without it. Never anyone else's. Either way a Notice goes to the fleet's admins.
+   */
+  webOutsideStrict(req: IncomingMessage, on: boolean, code?: string): "ok" | "not_enrolled" | "not_here" | "unsaved" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number } {
+    const owner = this.authenticatorOwner(req), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    if (!store.isEnrolled(owner.who)) return "not_enrolled";
+    if (store.strictOf(owner.who) === on) return "ok";
+    if (!on) {
+      const step = this.authenticatorStep(owner, store, code);
+      if (!step.ok) {
+        if (step.error === "not_here") return "not_here";
+        return { error: step.error, ...(step.retryAfterMs !== undefined ? { retryAfterMs: step.retryAfterMs } : {}) };
+      }
+      if (!owner.current()) return "not_here";
+    }
+    const r = store.setStrict(owner.who, on);
+    if (r === "not_enrolled") return r;
+    this.postFleetSecurityNotice(t(on ? "outside.strict_on_notice_by" : "outside.strict_off_notice_by", this.adminName(owner.actor)));
+    return r;
   }
 
   /** The switch. On: needs an app set up; the link opens. Off: it closes and every session from outside ends. */
@@ -18820,8 +18867,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     namedHost: string | null;
     /** A fleet with no chat connection: the page words the card for the authenticator, not for Discord / Telegram. */
     webOnly: boolean;
-    /** AGEND-122: an authenticator is set up — what the owner's stricter option (`remote_confirm_code`) needs to be turned on. */
-    authenticatorEnrolled: boolean;
   } {
     const configured = this.fleetConfig?.web?.verified_authority ?? {};
     const lanHosts = (this.fleetConfig?.web?.allowed_hosts ?? []).filter(h => { const name = hostnameOf(String(h)); return name !== null && !LOOPBACK_HOST_NAMES.includes(name); });
@@ -18837,16 +18882,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet(),
-      authenticatorEnrolled: this.authenticatorEnrolled() };
+    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
   }
-  /** AGEND-122: turning the code option on is not a held change; from another device it is still said where the owner looks. */
-  announceCodeOptionOn(req: IncomingMessage): void {
-    if (webPeerOf(req) === "loopback") return;
-    this.notifyFleetError(t("outside.strict_on_notice"), { throttle: false });
-  }
-  /** AGEND-122: an authenticator is set up (what the owner's stricter option needs to be turned on). */
-  authenticatorEnrolled(): boolean { return !!this.webRemoteAccess()?.enrolled; }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
   /**

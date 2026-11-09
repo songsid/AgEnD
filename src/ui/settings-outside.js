@@ -36,9 +36,13 @@ register("outside", {
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.",
     paused: "Too many wrong codes. Try again in {0}.", code: "Authenticator code", key: "Key",
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
-    leadConfirm: "Use your authenticator app's 6-digit code to confirm changes from other devices, when the option “Ask for an authenticator code to confirm from other devices” (Access & security → Web authority) is on.",
-    askTitle: "Enter the current code", askLead: "This fleet asks for an authenticator code to confirm from other devices. Enter the code your authenticator app shows now to continue.",
-    askRemove: "Codes will no longer be accepted, and changes confirmed from other devices will have to be confirmed on the computer running AgEnD until an authenticator is set up again or the option is turned off.",
+    leadConfirm: "Your own authenticator app. With it you can ask for its 6-digit code each time you confirm a change from another device; nobody else can set it up, change it or switch that on or off for you.",
+    strictLabel: "Ask for my authenticator code to confirm changes from other devices",
+    strictHint: "Off (the default): you apply a change from any device with Apply now. On: off the computer running AgEnD, each of YOUR confirmations takes the code for that change. It never applies to other admins, and turning it off, or replacing or removing your app, asks for your current code. Every set-up, change and switch posts a Notice to the fleet's admins.",
+    strictNeedApp: "Set up your authenticator app first.",
+    askStrictOff: "Turning this off needs your current code.",
+    askTitle: "Enter the current code", askLead: "Your authenticator is asked for here: enter the code your authenticator app shows now to continue.",
+    askRemove: "Your code will no longer be accepted, and while your switch was on, your confirmations from other devices will take Apply now again.",
     askContinue: "Continue", askRemoveGo: "Remove", askCode: "Current code",
   },
   "zh-TW": {
@@ -61,9 +65,13 @@ register("outside", {
     wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
     paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
-    leadConfirm: "用驗證器 App 的 6 位數代碼，從其他裝置確認變更；需開啟「從其他裝置確認時要驗證器代碼」（存取與安全 → 網頁授權）。",
-    askTitle: "請輸入目前的代碼", askLead: "這個 fleet 要求從其他裝置確認時輸入驗證器代碼。請輸入驗證器 App 現在顯示的代碼才能繼續。",
-    askRemove: "之後不再接受代碼；在重新設定驗證器或關閉該選項之前，從其他裝置發出的變更只能在執行 AgEnD 的那台電腦上確認。",
+    leadConfirm: "你自己的驗證器 App。可以在每次從其他裝置確認變更時要求它的 6 位數代碼；別人無法替你設定、更換或開關。",
+    strictLabel: "從其他裝置確認變更時要我的驗證器代碼",
+    strictHint: "關閉（預設）：你可以在任何裝置按「直接套用」完成變更。開啟：在執行 AgEnD 的那台電腦以外，「你自己」的每次確認都要輸入該項變更的代碼。只約束你自己，不影響其他管理員；要關閉、或更換／停用你的 App，都要輸入你目前的代碼。每次設定、變更與開關都會通知全體管理員。",
+    strictNeedApp: "請先設定你的驗證器 App。",
+    askStrictOff: "關閉需要你目前的代碼。",
+    askTitle: "請輸入目前的代碼", askLead: "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的代碼才能繼續。",
+    askRemove: "之後不再接受你的代碼；你原本開啟的要求也會一併結束，從其他裝置的確認會回到「直接套用」。",
     askContinue: "繼續", askRemoveGo: "停用", askCode: "目前的代碼",
   },
 });
@@ -227,10 +235,17 @@ export function OutsideCard() {
       setAsk({ ...asked, code: "", msg: askWhy(r) });
       return;
     }
-    let r; try { r = await api("/ui/outside/remove", { method: "POST", body: JSON.stringify({ code: asked.code }) }); } catch { r = null; }
+    const url = asked.kind === "strict" ? "/ui/outside/strict" : "/ui/outside/remove";
+    let r; try { r = await api(url, { method: "POST", body: JSON.stringify(asked.kind === "strict" ? { on: false, code: asked.code } : { code: asked.code }) }); } catch { r = null; }
     if (r && r.ok) { setAsk(null); return; }
     setAsk({ ...asked, code: "", msg: askWhy(r) });
   });
+  // AGEND-122 (per admin): YOUR switch — on asks nothing, off asks your current code off the AgEnD computer.
+  const flipStrict = (on) => {
+    if (!on && s.codeNeeded) { setAsk({ kind: "strict", code: "", msg: "" }); return; }
+    setS((x) => ({ ...x, strict: on }));
+    act(async () => { const r = await api("/ui/outside/strict", { method: "POST", body: JSON.stringify({ on }) }); if (!r.ok) toast(t("app.failed"), false); });
+  };
   const remove = async () => {
     if (s.codeNeeded) { setAsk({ kind: "remove", code: "", msg: "" }); return; }
     if (!(await confirmDialog({ title: to("removeTitle"), message: to("removeConfirm"), confirmLabel: to("remove"), danger: true }))) return;
@@ -255,7 +270,10 @@ export function OutsideCard() {
     ${s.pausedForMs > 0 ? html`<p class="note s-va-warn" role="status" id="outPaused">${to("paused", waitWords(s.pausedForMs))}</p>` : null}
     ${s.enrolled ? html`<p class="note" id="outSetUpOn">${to("setUpOn", new Date(s.enrolledAt).toLocaleDateString())}</p>
         <p class="note">${to("lostPhone")}</p>
-        ${manage ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${() => begin("again")}>${to("again")}</button>
+        ${manage ? html`<label class="check"><input id="outStrict" class="s-ui-toggle" type="checkbox" role="switch" checked=${s.strict === true} disabled=${busy}
+          aria-describedby="outStrict-hint" onChange=${(e) => flipStrict(e.target.checked)} /><span>${to("strictLabel")}</span></label>
+          <p class="note" id="outStrict-hint">${to("strictHint")}</p>
+          <div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${() => begin("again")}>${to("again")}</button>
           <button type="button" class="btn btn-danger" id="outRemove" disabled=${busy} onClick=${remove}>${to("remove")}</button></div>` : null}`
       : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${manage ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${() => begin("setup")}>${to("setUp")}</button></div>` : null}`}
     ${ask ? html`<${Dialog} title=${to(ask.kind === "remove" ? "removeTitle" : "askTitle")} onClose=${() => setAsk(null)} busy=${busy} actions=${html`
@@ -263,6 +281,7 @@ export function OutsideCard() {
         <button type="button" class=${`btn ${ask.kind === "remove" ? "btn-danger" : "btn-primary"}`} id="outAskGo" disabled=${busy || !canAsk} onClick=${submitAsk}>${to(ask.kind === "remove" ? "askRemoveGo" : "askContinue")}</button>`}>
       <div class="s-out-enroll" id="outAsk"><p class="note">${to("askLead")}</p>
         ${ask.kind === "remove" ? html`<p class="note">${to("removeConfirm")}</p><p class="note">${to("askRemove")}</p>` : null}
+        ${ask.kind === "strict" ? html`<p class="note">${to("askStrictOff")}</p>` : null}
         <div class="field"><label for="outAskCode">${to("askCode")}</label>
           <input id="outAskCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${ask.code}
             onInput=${(e) => setAsk({ ...ask, code: e.target.value })}
