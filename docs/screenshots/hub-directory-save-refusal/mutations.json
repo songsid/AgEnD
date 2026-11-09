@@ -1,0 +1,51 @@
+{
+  "baseline": {
+    "f872d8b433fb2cd93bc1855338a7d671c9043038594c8b79b38798982ea6f6de": "src/hub/settings-directory-save.ts"
+  },
+  "rows": [
+    {
+      "name": "no-refusal-response",
+      "exit": 1,
+      "passed": 3,
+      "failed": 5,
+      "deselected": 21
+    },
+    {
+      "name": "foreign-participant",
+      "exit": 1,
+      "passed": 7,
+      "failed": 1,
+      "deselected": 21
+    },
+    {
+      "name": "unbounded-error",
+      "exit": 1,
+      "passed": 6,
+      "failed": 2,
+      "deselected": 21
+    },
+    {
+      "name": "final-response-fence",
+      "exit": 1,
+      "passed": 7,
+      "failed": 1,
+      "deselected": 21
+    },
+    {
+      "name": "both-stamp-comparisons",
+      "exit": 1,
+      "passed": 5,
+      "failed": 3,
+      "deselected": 21
+    },
+    {
+      "name": "packet-builder-fence",
+      "exit": 1,
+      "passed": 7,
+      "failed": 1,
+      "deselected": 21
+    }
+  ],
+  "restored": true,
+  "note": "Two stamp comparisons overlap; their combined reversal pins the composite promise. Each other row reverses one guard. A swallowed test assertion was moved outside the error catch before the final reversal runs."
+}

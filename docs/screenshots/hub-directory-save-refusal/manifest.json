@@ -1,0 +1,9 @@
+{
+  "f872d8b433fb2cd93bc1855338a7d671c9043038594c8b79b38798982ea6f6de": "src/hub/settings-directory-save.ts",
+  "21f60b4f49d8e996a6ba2c82dd9ee3fdc9520ae1fd160a21890e0b372e4f5b3a": "tests/hub-directory-save.test.ts",
+  "7c20d1f1016010cae8872bd0a2a826c130447b89bb7db0405617310b46f8d3b9": "tests/hub-compose.test.ts",
+  "bba36d7cff2483a56fe7ebb1c0ba7605b1abd1fea8a5e02e3b55f88a67ae3910": "scripts/manual/hub-directory-save-refusal/verify.py",
+  "5493c6b54b31a198ab52bdf08b08ec2073d5b56ab2c1bceca118a71d30a1a564": "scripts/manual/hub-directory-save-refusal/README.md",
+  "1a7e35101fcb86ca6701f5442f33e8a8811ff4e220138a333d1c538f72a54fe1": "docs/screenshots/hub-directory-save-refusal/checks.json",
+  "d8e7564e8b4a0f14111656d54cbcbd843f750056b4c402b1e1f84c1a42f94071": "docs/screenshots/hub-directory-save-refusal/mutations.json"
+}
