@@ -659,19 +659,20 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
-  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean } = {}) {
+  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number } = {}) {
   const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined, lastHttp: HubHttp;
+  let atStage: (() => void) | undefined;
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
-  let borrowed: HubDirectorySettingsDecision | null = null, refuseNextDirectory = false, coldBorrows = 0;
+  let borrowed: HubDirectorySettingsDecision | null = null, refuseNextDirectory = false, refuseAllDirectories = false, coldBorrows = 0;
   const people = [ADMIN, ...options.people ?? []];
   const entry: HubHttpEntry = { ...real, createHubHttp(deps) {
     lastDeps = { ...deps, ...(options.noGroupHttp ? { groupHttp: undefined } : {}), ...(options.noDirectoryNotices ? { directoryNotices: undefined } : {}) };
     lastHttp = wrap(real.createHubHttp(lastDeps), lastDeps); return lastHttp;
   } };
-  const build = (http: () => Promise<HubHttpEntry> = async () => entry) => {
+  const build = (http: () => Promise<HubHttpEntry> = async () => entry, readConfig = () => hub.config) => {
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
-    writer = createHubSettingsWriter({ home: hub.home, readHub: () => hub.config.hub,
+    writer = createHubSettingsWriter({ home: hub.home, now: options.now, readHub: () => hub.config.hub,
       directoryDecision: () => borrowed ?? runtime?.directoryDecision() ?? null,
       saveHub(patches) {
         const next = structuredClone(hub.config.hub);
@@ -679,10 +680,10 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
         hub.config.hub = next;
         atomicWriteFileSync(join(hub.home, "fleet.yaml"), yaml.dump(hub.config), { mode: 0o600 });
       },
-      step(point) { if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
+      step(point) { if (point === "staged") { const action = atStage; atStage = undefined; action?.(); } if (point === crash) { crash = undefined; throw Error(`stop:${point}`); } },
     });
-    runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer,
-      createDirectory: config => { creates++; if (refuseNextDirectory && config.url === "ldaps://next.example.test") throw Error("owned replacement mount refusal");
+    runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http }, settingsWriter: writer, now: options.now, readConfig,
+      createDirectory: config => { creates++; if (refuseAllDirectories || refuseNextDirectory && config.url === "ldaps://next.example.test") throw Error("owned replacement mount refusal");
         return { realm: "corp", signIn: async (login, password) => {
           await signInGate?.();
           const person = people.find(p => p.login === login);
@@ -699,13 +700,14 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
     bindPassword: "Dummy-next-bind-only", changes: ["server", "secret"] as const,
     recipients: [{ kind: "host" as const, sink: "owner-needs-you" }, { kind: "person" as const, person: ADMIN.key }] });
   const actor = { kind: "host-owner" as const, sessionId: "owned-host-session", requestId: randomUUID() };
-  const commit = (point?: string) => {
+  const commit = (point?: string, recoveryDeadline?: number) => {
     const mounted = runtime!.directorySettings()!, draft = writer!.directory!.prepare({ ...candidate(), changes: [...candidate().changes] }, actor, mounted.current);
-    crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current);
+    crash = point; return writer!.directory!.commit(draft.ref, actor, mounted.current, undefined, recoveryDeadline);
   };
   return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; }, get http() { return lastHttp!; },
     get creates() { return creates; }, get eligibility() { return eligibility; }, get coldBorrows() { return coldBorrows; },
-    refuseNextDirectory() { refuseNextDirectory = true; },
+    atStage(action: () => void) { atStage = action; },
+    refuseNextDirectory() { refuseNextDirectory = true; }, refuseAllDirectories() { refuseAllDirectories = true; },
     withDecision<T>(work: (decision: HubDirectorySettingsDecision) => T): T {
       const mounted = runtime!.directoryDecision(); if (mounted) return work(mounted);
       const { settings, migrations } = hubServerDatabasePlan(hub.config.hub, entry.migrations); coldBorrows++;
@@ -1333,4 +1335,195 @@ describe.skipIf(process.platform === "win32")("directory runtime review regressi
       expect(runtime.directorySettings()).toBe(second); newDispose(); expect(runtime.directorySettings()).toBeNull();
     } finally { spy.mockRestore(); await runtime.close(); }
   });
+});
+
+
+describe.skipIf(process.platform === "win32")("durable directory startup reconciliation", () => {
+  it("closes an exact pending intent after restart and the actual ready HTTPS mount", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build();
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      expect(r.runtime.directorySettings()!.decision.mountRecovery()).toMatchObject({state:"ready",operation:{id:saved.receiptId}});
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+    } finally { await r.runtime.close(); }
+  });
+  it("reconstructs a post-decision crash after cold file recovery without inventing a later deadline", async () => {
+    const r = await directoryRuntimeRig(), deadline = Date.now() + 300_000;
+    try {
+      expect(() => r.commit("directory-decision", deadline)).toThrow("stop:directory-decision"); await r.runtime.close(); r.build();
+      expect(await r.runtime.recoverSettings(r.hub.config)).toBe(true); await r.runtime.apply(r.hub.config);
+      expect(r.runtime.directorySettings()!.decision.mountRecovery()).toMatchObject({state:"ready",expiresAt:deadline});
+    } finally { await r.runtime.close(); }
+  });
+  it("a refused replacement mount consumes the exact allowance in one forward restoration and serves the old content", async () => {
+    const r = await directoryRuntimeRig(), old = structuredClone(r.hub.config.hub);
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build(); r.refuseNextDirectory();
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      const d = r.runtime.directorySettings()!.decision, head = d.inspect(), restored = d.operation(head.operationId!);
+      expect(restored).toMatchObject({kind:"directory-compensation",compensates:saved.receiptId,directoryEpoch:2});
+      expect(r.hub.config.hub.directory).toEqual(old.directory);
+      const db = new Database(join(r.hub.home, SERVER_SET.database));
+      try {
+        expect(db.prepare("SELECT state FROM hub_settings_mount_recovery WHERE operation_id=?").get(saved.receiptId)).toEqual({state:"compensated"});
+        expect(db.prepare("SELECT count(*) n FROM hub_settings_security_notices").get()).toEqual({n:2});
+        expect(db.prepare("SELECT count(*) n FROM hub_sessions WHERE state='active'").get()).toEqual({n:0});
+      } finally { db.close(); }
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+    } finally { await r.runtime.close(); }
+  });
+  it.each([999, 1200])("a failed mount at clock %s keeps the expired/backward intent held without restoration", async time => {
+    let now = 1000; const r = await directoryRuntimeRig(undefined, { now: () => now });
+    try {
+      const saved = r.commit(undefined, 1200); await r.runtime.close(); now = time; r.build(); r.refuseNextDirectory();
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+      expect(r.runtime.currentHolds()).toMatchObject([{side:"server",reason:"settings-recovery"}]);
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending",expiresAt:1200});
+      });
+      expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+  it("a failed restored mount stays held at its new epoch and never recursively restores", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build(); r.refuseAllDirectories();
+      await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+      r.withDecision(d => {
+        const op = d.operation(d.inspect().operationId!);
+        expect(op).toMatchObject({kind:"directory-compensation",compensates:saved.receiptId,directoryEpoch:2});
+        expect(d.mountRecovery()).toBeNull();
+      });
+      expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+  it.each(["stop", "replacement"])("a held cold selection honors %s before any compensation", async mode => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === 2) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered;
+      if (mode === "stop") r.runtime.fence();
+      else void r.runtime.apply({...r.hub.config,hub:{...r.hub.config.hub,enabled:false}});
+      release(); await startup;
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { release(); await r.runtime.close(); }
+  });
+
+  it("Stop inside the final writer staging proof cannot commit a late compensation", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build(); r.refuseNextDirectory();
+      r.atStage(() => r.runtime.fence()); await r.runtime.apply(r.hub.config);
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(r.writer.pending()).toBe(false); expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+  it("a changed intent between cold selection and final writer proof is not the captured operation", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === 3) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered;
+      const db = new Database(join(r.hub.home, SERVER_SET.database));
+      try {
+        const row = db.prepare("SELECT body FROM hub_settings_operations WHERE id=?").get(saved.receiptId) as {body:string};
+        const op = JSON.parse(row.body); op.actor.requestId = randomUUID();
+        db.prepare("UPDATE hub_settings_operations SET body=? WHERE id=?").run(JSON.stringify(op), saved.receiptId);
+      } finally { db.close(); }
+      release(); await startup;
+      r.withDecision(d => expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1}));
+      expect(r.runtime.currentHolds()).toMatchObject([{reason:"settings-recovery"}]);
+      expect(r.writer.pending()).toBe(false); expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { release(); await r.runtime.close(); }
+  });
+
+  it("a stale accepted-config reader never queues the wrong image after forward restoration", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      r.commit(undefined, Date.now() + 300_000); await r.runtime.close();
+      const stale = structuredClone(r.hub.config); r.build(undefined, () => stale); r.refuseNextDirectory();
+      await r.runtime.apply(r.hub.config);
+      expect(r.hub.config.hub.directory).not.toMatchObject({url:"ldaps://next.example.test"});
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+      expect(r.runtime.currentHolds()).toMatchObject([{reason:"settings-recovery"}]);
+      r.withDecision(d => expect(d.inspect().directoryEpoch).toBe(2));
+      expect(await refused(r.hub.webPort)).toBe(true);
+    } finally { await r.runtime.close(); }
+  });
+
+  it("a live Save remount leaves its pending intent to the request instead of running startup recovery again", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      // This runtime already completed startup. The existing private request now owns its new pending operation.
+      const saved = r.commit(undefined, Date.now() + 300_000); r.refuseNextDirectory(); await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+    } finally { await r.runtime.close(); }
+  });
+
+  it.each([1, 2])("A-Off-A during startup import %s never revives the superseded attempt", async heldCall => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === heldCall) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered;
+      void r.runtime.apply({...r.hub.config,hub:{...r.hub.config.hub,enabled:false}}); void r.runtime.apply(r.hub.config);
+      release(); await startup;
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("unavailable");
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("an unchanged admitted view during cold selection retains the original restoration attempt", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.refuseNextDirectory();
+      let calls = 0, enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+      r.build(async () => { if (++calls === 2) { enter(); await held; } return r.entry; });
+      const startup = r.runtime.apply(r.hub.config); await entered; void r.runtime.apply(r.hub.config); release(); await startup;
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      const d = r.runtime.directorySettings()!.decision;
+      expect(d.operation(d.inspect().operationId!)).toMatchObject({kind:"directory-compensation",compensates:saved.receiptId,directoryEpoch:2});
+    } finally { release(); await r.runtime.close(); }
+  });
+  it("A-Off-A inside final staging cannot revive the writer compensation proof", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const saved = r.commit(undefined, Date.now() + 300_000); await r.runtime.close(); r.build(); r.refuseNextDirectory();
+      r.atStage(() => { void r.runtime.apply({...r.hub.config,hub:{...r.hub.config.hub,enabled:false}}); void r.runtime.apply(r.hub.config); });
+      await r.runtime.apply(r.hub.config);
+      r.withDecision(d => {
+        expect(d.inspect()).toMatchObject({operationId:saved.receiptId,directoryEpoch:1});
+        expect(d.mountRecovery()).toMatchObject({state:"pending"});
+      });
+      expect(r.writer.pending()).toBe(false);
+    } finally { await r.runtime.close(); }
+  });
+
 });

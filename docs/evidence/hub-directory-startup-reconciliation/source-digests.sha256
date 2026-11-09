@@ -1,0 +1,6 @@
+7204fd95ac34fc5ede764693f16132baa691017290305c65e5871334f6aa4005  src/hub/runtime.ts
+5c069ce553df9e45af08029c932602398d4ec052f8da91447e6783de38db9c00  src/fleet-manager.ts
+8af5850ce85f4bd9f89383c9715df933d4e773e6e4ded2455639dd0a2d52e93d  tests/hub-compose.test.ts
+5df2aee1ecdc6187d8c91e0bb2b9acb57ec62e5fb51b1725500dde2b9d7e84ca  tests/hub-settings-fleet-m2682.test.ts
+a4aa11714318baf17af902ae38056cc405d10c92eb911f857aedba85baded22a  scripts/manual/hub-directory-startup-reconcile/mutations.py
+a21ef190406e3f70e7a66322cdd35d81d72bf0978dae5ffa96e60c14081724fb  docs/design/hub-directory-startup-reconciliation.md
