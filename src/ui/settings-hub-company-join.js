@@ -7,21 +7,23 @@ import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
+    checking: "Checking this connection’s status. Review any local confirmation before continuing.",
     pending: "Local confirmation is required. Company sign-in has not started.",
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
     localWithdrawn: "Local confirmation was withdrawn. Company sign-in did not start.",
     reviewConfirmation: "Review local confirmation",
     withdraw: "Withdraw connection request",
-    localExpired: "Local confirmation has not completed within five minutes. Check this request before starting another connection.",
+    localExpired: "The local confirmation wait has ended without a verified connection result. Check this request before starting another connection.",
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
+    checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
     pending: "需要先完成本機確認，公司帳號登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
     localWithdrawn: "已撤回本機確認，尚未開始公司帳號登入。",
     reviewConfirmation: "開啟本機確認",
     withdraw: "撤回連接請求",
-    localExpired: "已等待五分鐘，本機確認尚未完成。請先檢查這次請求，再開始其他連接。",
+    localExpired: "等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
     leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
   },
 });
@@ -139,7 +141,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false } = {}) {
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${notice ? html`<p role="status" class="note">${notice}</p>` : null}
     ${pending || unmatched ? html`<div role="status" class="company-local-wait">
-      <p class="note">${jw(timedOut ? "localExpired" : "pending")}</p>
+      <p class="note">${jw(timedOut ? "localExpired" : !pending && (view === undefined || error) ? "checking" : "pending")}</p>
       <p class="note">${jw("pendingNext")}</p>
       <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
         ${pending ? html`<button type="button" class="btn btn-sm" disabled=${withdrawing} onClick=${cancelPending}>${jw("withdraw")}</button>` : null}

@@ -45,7 +45,7 @@ try{
    }
    if(zh){
     await wait.clock.install();await wait.reload();await wait.getByText("需要先完成本機確認，公司帳號登入尚未開始。",{exact:true}).waitFor();
-    await wait.clock.fastForward(300001);await wait.getByText("已等待五分鐘，本機確認尚未完成。請先檢查這次請求，再開始其他連接。",{exact:true}).waitFor();
+    await wait.clock.fastForward(300001);await wait.getByText("等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",{exact:true}).waitFor();
     check(tag+" timeout retains inspect and exit",await wait.locator('.s-company-join a[href="/settings/hub"]').count()===1&&await wait.locator('.s-company-join').getByRole('button',{name:'再次檢查',exact:true}).count()===1);
     const current=await(await ctx.request.get(fx.base+"/api/settings/pending/"+id)).json();check(tag+" local timeout does not decide server authorization",current.state==="pending");
     await shot(wait,tag+"-timeout");

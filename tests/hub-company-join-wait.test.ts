@@ -74,7 +74,7 @@ describe("company join local wait",()=>{
  });
  it("the five-minute pre-operation wait ends visibly, stops automatic reads and can inspect the same result without submitting Start",async()=>{
   const c=clock();fetcher(()=>response({ok:true,operation:null}));const p=await mount();
-  await c.next(300000);expect(p.root.textContent).toContain("Local confirmation has not completed");
+  await c.next(300000);expect(p.root.textContent).toContain("The local confirmation wait has ended");
   expect(p.root.querySelector(".skeleton")).toBeNull();expect(c.count(1500)).toBe(0);
   expect(btn(p,"Check again")).toBeTruthy();const before=calls.length;fire(btn(p,"Check again"),"click");await settle(10);
   expect(calls.length).toBeGreaterThan(before);expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
@@ -100,7 +100,7 @@ describe("company join local wait",()=>{
  });
  it("a local pending timeout does not apply, silently withdraw or retry the held change",async()=>{
   const c=clock();heldFetch();const p=await mount(false);await start(p);await c.next(300000);
-  expect(p.root.textContent).toContain("Local confirmation has not completed");
+  expect(p.root.textContent).toContain("The local confirmation wait has ended");
   expect(btn(p,"Withdraw connection request")).toBeTruthy();expect(btn(p,"Sign in with company account").disabled).toBe(true);
   expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);expect(calls.filter(x=>x.init.method==="DELETE")).toHaveLength(0);
  });
