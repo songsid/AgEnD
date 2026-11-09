@@ -1,6 +1,6 @@
 # Model picker — alpha twin (M-2731 / #3500)
 
-This is the alpha twin of merged main #3502 (`642f758b`). After the alpha.10 tag/unfreeze, alpha `a32b177d` was plain-merged into the prepared branch at `5b7127985`. These fresh captures use that source; all 668 added/removed production lines are identical to prepared `0cd4a024`. No release or deployment is implied.
+This is the alpha twin of merged main #3502 (`642f758b`). After the alpha.10 tag/unfreeze, alpha `a32b177d` was plain-merged into the prepared branch at `5b7127985`. The initial acceptance matched all 668 added/removed prepared production lines. R1 below repairs the reviewed cache-ordering and native-home issues and restores the alpha catalog status UI. No release or deployment is implied.
 
 The candidate snapshot is labelled `2.3.5-alpha.10-m2731-sync.0` through its own package metadata. These are real Chromium captures of the production Settings shell, Agent dialog, chat command cards and final confirmation. Private CJK/emoji fonts are used only by the capture process. The adjacent `model-picker-3500-main` directory remains main's earlier evidence; it is not alpha evidence.
 
@@ -14,7 +14,7 @@ All confirmations are cancelled: **zero Settings saves and zero Agent restarts**
 
 ## Before / after
 
-Before uses alpha `a32b177d`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the prepared implementation.
+Before uses alpha `a32b177d`'s `settings-dialogs.js`, `panel-chat.js` and `chat-store.js` with the same fixture data. Current screenshots use the R1 implementation; unchanged before screenshots remain the alpha baseline.
 
 | Case | Before Settings | After Settings | After Agent dialog | After chat |
 |---|---|---|---|---|
@@ -43,7 +43,16 @@ The matching before dialog/chat PNGs are included for each case.
 
 The phone's latest-message button sits outside the scroller and above the composer: [EN](after-phone-light-en-phone-latest.png), [zh-TW](after-phone-dark-zh-TW-phone-latest.png).
 
-## Local checks
+## R1 (current)
+
+- Restored the existing loading/error/source states and WSL catalog key, keeping Windows/account/computer bindings. Initial failures and explicit refresh use the shared error/Retry component; Retry now performs POST rediscovery, rather than the old cached GET refresh.
+- A slow GET can neither overwrite nor evict a newer refresh; reopening before or after that GET settles keeps the refreshed list. The shared passive TTL remains 30 seconds. The main-line cache correction is carried separately at `4856ee1f1`; its three ordering regressions fail first on main.
+- Windows `Claude_Config_Dir` / `Codex_Home` spellings select the same home as their uppercase forms. Codex config checks, child environment and cache reads stay together; conflicting aliases refuse. The inert fixtures use owned synthetic files and mocked vendor/child boundaries.
+- Fail-first: all 17 CI failures reproduced locally, plus both late-GET outcomes, reopening while GET remains held, and mixed-case Claude/Codex controls. R1 has **717 unique checks across 35 files**, including the closed Runtime bundle's five checks; both typechecks pass. Nine isolated reversals fail the intended cache, source/loading, home or child-environment assertion; restored controls pass.
+- R1 refreshes **81 PNGs** (42 current common, 21 cached-shell common, 12 current native, six cached-shell native). All 12 baseline PNGs carry unchanged. Source notes fit in EN/zh-TW; native phone model and account remain within the dialog body. No page/CSP errors, overflow, saves, restarts or portable-native fallback. The current common/native leg was captured before the final nonvisual passive-flight retirement line; both cached-shell legs include it.
+- Fresh Settings style gate: **24/24**. Snapshot version remains the disclosed private alpha.10 label. All 93 PNG hashes are recorded in `SHA256SUMS`; no artifacts substitute for images.
+
+## Initial acceptance checks (superseded counts retained for scope)
 
 - Fresh post-sync focused checks: **453/453**, zero skips, across 23 unique files (22 combined suites / 444 tests, including the five-test closed Runtime bundle suite, plus nine prototype-built FleetManager regression tests). This includes the structural continuation/CSP checks and the settings catalog's unchanged 30-second TTL/reset regression.
 - Both source and test typechecks pass.

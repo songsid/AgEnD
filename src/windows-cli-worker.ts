@@ -129,6 +129,12 @@ export function nativeCliEnvironment(source: NodeJS.ProcessEnv = process.env): N
   env.MUSE_UPDATE_INTERVAL_SECONDS = "31536000";
   return env;
 }
+/** Windows environment names are case-insensitive even when a JS snapshot preserves their spelling. */
+function nativeEnvironmentValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const values = [...new Set(Object.entries(env).filter(([key,value]) => key.toUpperCase() === name && value !== undefined).map(([,value]) => value!))];
+  if (values.length > 1) throw Error("Ambiguous native configuration home");
+  return values[0];
+}
 async function output(file: string, args: string[], timeout = 5000, env: NodeJS.ProcessEnv = nativeCliEnvironment()): Promise<NativeCommandOutput> {
   try {
     const r = await exec(file, args, { env, encoding: "utf8", timeout, maxBuffer: 64 * 1024, windowsHide: true, shell: false });
@@ -303,7 +309,7 @@ export async function refreshNativeModels(options: {
   check();
   if (options.cli === "codex") {
     if (options.directory) throw Error("Native Codex named accounts are not supported");
-    const directory = env.CODEX_HOME || join(home, ".codex");
+    const directory = nativeEnvironmentValue(env, "CODEX_HOME") || join(home, ".codex");
     // Native custom providers/profiles have no proved discovery adapter. Never borrow the ambient OpenAI list.
     let toml = "";
     try { toml = readFileSync(join(directory, "config.toml"), "utf8"); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw Error("Model discovery config is unavailable"); }
@@ -313,7 +319,9 @@ export async function refreshNativeModels(options: {
     if (/^\s*(?:profile|"profile"|'profile')\s*=/m.test(root) || /^\s*(?:model_provider|"model_provider"|'model_provider')\s*=/m.test(root) && !/^\s*(?:model_provider|"model_provider"|'model_provider')\s*=\s*["']openai["']\s*(?:#.*)?$/m.test(root)) throw Error("Native model provider could not be proved");
     const entry = await (options.find ?? findCli)("codex"); check();
     if (!entry) throw Error("Codex is not installed on this computer");
-    const selected = { ...env, CODEX_HOME: directory };
+    const selected = { ...env };
+    for (const key of Object.keys(selected)) if (key.toUpperCase() === "CODEX_HOME") delete selected[key];
+    selected.CODEX_HOME = directory;
     const args = [...nativeUpdateGuard("codex"), "debug", "models"];
     const result = await (options.run ? options.run(entry, args, selected) : output(entry.command, [...entry.args, ...args], 15_000, selected)); check();
     if (!result.ok) throw Error("Model discovery failed");
@@ -331,7 +339,7 @@ export async function refreshNativeModels(options: {
     const models=boundNativeModelOptions(parseNativeModels(cli,result.text));if(!models.length)throw Error("Model discovery returned no models");
     return {models,source:"cli-list"};
   }
-  const directory = options.directory || env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  const directory = options.directory || nativeEnvironmentValue(env, "CLAUDE_CONFIG_DIR") || join(home, ".claude");
   // A selected profile never falls back to another home, keychain, API key or ambient account.
   const file = join(directory, ".credentials.json"), info = lstatSync(file);
   if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) throw Error("Model discovery credentials are unavailable");
@@ -370,8 +378,9 @@ export interface NativeProbeOptions {
 
 /** Read Codex's own account-aware cache. No token files or model requests are involved. */
 export function readNativeCodexModels(home = homedir(), env = nativeCliEnvironment()): NativeModelOption[] {
-  const modelHome = env.CODEX_HOME && validWindowsDirectory(env.CODEX_HOME) ? env.CODEX_HOME : join(home, ".codex");
   try {
+    const configured = nativeEnvironmentValue(env, "CODEX_HOME");
+    const modelHome = configured && validWindowsDirectory(configured) ? configured : join(home, ".codex");
     const path = join(modelHome, "models_cache.json");
     if (statSync(path).size > 4 * 1024 * 1024) return [];
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));

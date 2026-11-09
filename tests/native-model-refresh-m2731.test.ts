@@ -1,8 +1,9 @@
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,resolve} from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {afterEach,expect,it,vi} from 'vitest';
-import {refreshNativeModels} from '../src/windows-cli-worker.js';
+import {nativeCliEnvironment,readNativeCodexModels,refreshNativeModels} from '../src/windows-cli-worker.js';
 const roots:string[]=[];
 afterEach(()=>{roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function rig(){const home=mkdtempSync(join(tmpdir(),'native-model-refresh-'));roots.push(home);const dir=join(home,'selected-profile');mkdirSync(dir);mkdirSync(join(home,'.claude'));writeFileSync(join(home,'.claude','.credentials.json'),JSON.stringify({claudeAiOauth:{accessToken:'ambient-must-not-be-used'}}));return {home,dir};}
@@ -43,4 +44,30 @@ it.each([
  const run=vi.fn(async()=>({ok:true,text:'{"models":[{"id":"model-new","name":"Latest"}]}'}));
  const result=await refreshNativeModels({cli,environment:{},find:async()=>({path:'C:\\cli.exe',command:'C:\\cli.exe',args:[]}),run});
  expect(result).toEqual({models:[{id:'model-new',name:'Latest'}],source:'cli-list'});expect(run).toHaveBeenCalledWith(expect.anything(),[...args],{});
+});
+
+// Use a Windows drive-shaped name inside the owned Linux checkout; no external filesystem or account is read.
+function windowsStore(home:string){const dir=process.platform==="win32"?join(home,"selected-win-home"): `C:\\agend-model-case-${randomUUID()}`;mkdirSync(dir);roots.push(resolve(dir));return dir;}
+it.each(["CLAUDE_CONFIG_DIR","Claude_Config_Dir"])("Claude rediscovery reads the filtered %s home, never ambient credentials",async key=>{
+ const {home}=rig(),dir=windowsStore(home);writeFileSync(join(dir,".credentials.json"),JSON.stringify({claudeAiOauth:{accessToken:"selected-case-token"}}));
+ const env=nativeCliEnvironment({[key]:dir});expect(env[key]).toBe(dir);
+ const request=vi.fn(async()=>new Response(JSON.stringify({data:[{id:"case-model"}]})));
+ await refreshNativeModels({cli:"claude-code",home,environment:env,request:request as never});
+ // Boolean proof only: no credential value is printed in a failing assertion.
+ expect((request.mock.calls[0] as any)?.[1]?.headers.Authorization==="Bearer selected-case-token").toBe(true);
+});
+it.each(["CODEX_HOME","Codex_Home"])("Codex config, child and model cache share the filtered %s home",async key=>{
+ const {home}=rig(),dir=windowsStore(home);writeFileSync(join(dir,"config.toml"),'model_provider="openai"\n');writeFileSync(join(dir,"models_cache.json"),JSON.stringify({models:[{slug:"selected-cache"}]}));
+ const env=nativeCliEnvironment({[key]:dir});expect(env[key]).toBe(dir);
+ expect(readNativeCodexModels(home,env).map(m=>m.id)).toEqual(["selected-cache"]);
+ const run=vi.fn(async(_entry:any,_args:any,child:NodeJS.ProcessEnv)=>{expect(Object.keys(child).filter(k=>k.toUpperCase()==="CODEX_HOME")).toEqual(["CODEX_HOME"]);expect(child.CODEX_HOME===dir).toBe(true);return {ok:true,text:"ignored"};});
+ await expect(refreshNativeModels({cli:"codex",home,environment:env,find:async()=>({path:"C:\\codex.exe",command:"C:\\codex.exe",args:[]}),run})).resolves.toMatchObject({models:[{id:"selected-cache"}]});
+ writeFileSync(join(dir,"config.toml"),'model_provider="custom"\n');await expect(refreshNativeModels({cli:"codex",home,environment:env,run})).rejects.toThrow(/provider/);expect(run).toHaveBeenCalledOnce();
+});
+
+it("conflicting Windows home aliases refuse rather than selecting an ambient account",async()=>{
+ const {home}=rig(),dir=windowsStore(home),other=windowsStore(home);const request=vi.fn(),run=vi.fn();
+ await expect(refreshNativeModels({cli:"claude-code",home,environment:nativeCliEnvironment({CLAUDE_CONFIG_DIR:dir,Claude_Config_Dir:other}),request})).rejects.toThrow(/Ambiguous/);
+ await expect(refreshNativeModels({cli:"codex",home,environment:nativeCliEnvironment({CODEX_HOME:dir,Codex_Home:other}),find:async()=>null,run})).rejects.toThrow(/Ambiguous/);
+ expect(request).not.toHaveBeenCalled();expect(run).not.toHaveBeenCalled();
 });

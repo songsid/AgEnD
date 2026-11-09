@@ -9,21 +9,24 @@ describe("the shared model field's explicit refresh", () => {
     const calls: any[] = []; let finish: (v: any) => void = () => {};
     vi.stubGlobal("fetch", vi.fn(async (url, opts: any = {}) => {
       calls.push({ url, opts });
-      const value = opts.method === "POST" ? await new Promise(r => { finish = r; }) : { models: [{ id: "sonnet", label: "Sonnet" }] };
+      const value = opts.method === "POST" ? await new Promise(r => { finish = r; }) : { models: [{ id: "sonnet", label: "Sonnet" }], source:"cli-cache" };
       return { ok: true, json: async () => value };
     }));
     const { ModelSelect } = await import("/ui/js/settings-dialogs.js"); const change = vi.fn();
     await p.mount(h(ModelSelect, { backend: "claude-code", instance: "w", value: "sonnet", onChange: change })); await settle(8);
     const refresh = () => p.root.querySelector(".model-refresh button")!;
+    expect(p.root.querySelector(".model-catalog-status [role=status]")!.textContent).toContain("local CLI model cache");
     expect(refresh()).not.toBeNull(); fire(refresh(), "click"); await settle();
     expect(refresh().disabled).toBe(true); expect(p.root.querySelector("select")!.value).toBe("sonnet");
     expect(p.root.textContent).toContain("Sonnet"); expect(change).not.toHaveBeenCalled();
+    expect(p.root.querySelector(".model-catalog-status [role=status]")!.textContent).toContain("local CLI model cache");
     expect(calls.at(-1)).toMatchObject({ url: "/ui/models/refresh", opts: { method: "POST", body: JSON.stringify({ backend: "claude-code", instance: "w" }) } });
     finish({ refreshed: false, models: [] }); await settle(8);
     expect(p.root.querySelector(".error-state")).not.toBeNull(); expect(p.root.textContent).toContain("Sonnet");
     fire(p.root.querySelector(".error-state button")!, "click"); await settle();
     expect(calls.filter(x => x.opts.method === "POST")).toHaveLength(2);
-    finish({ refreshed: true, models: [{ id: "opus", label: "Opus" }] }); await settle(8);
+    finish({ refreshed: true, models: [{ id: "opus", label: "Opus" }], source:"account-api" }); await settle(8);
+    expect(p.root.querySelector(".model-catalog-status [role=status]")!.textContent).toContain("selected account");
     expect(p.root.textContent).toContain("Opus"); expect(p.root.querySelector("select")!.value).toBe("sonnet"); expect(change).not.toHaveBeenCalled();
   });
   it("a late refresh for a different backend cannot replace the new backend's catalog", async () => {
@@ -46,4 +49,30 @@ it("alpha: switching account or computer changes both read/refresh keys and disc
  await render("second","personal");await settle(8);finish({refreshed:true,models:[{id:"old-private",label:"Old"}]});await settle(8);
  expect(calls.some(c=>c.url.includes("machineId=second")&&c.url.includes("profile=personal"))).toBe(true);
  expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("personal");expect(p.root.textContent).not.toContain("Old");
+});
+
+// A slow passive read must not replace or evict the explicit rediscovery in the shared 30 s cache.
+it.each(["success", "failure"])("a late passive GET %s cannot undo refresh when the picker remounts", async outcome => {
+  p=page();(await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs();
+  let release!:(value:any)=>void;const held=new Promise(r=>{release=r;});let reads=0;
+  vi.stubGlobal("fetch",async(_url:string,opts:any={})=>{
+    if(opts.method==="POST")return {ok:true,json:async()=>({refreshed:true,models:[{id:"fresh",label:"Fresh"}],source:"cli-list"})};
+    reads++;return reads===1?held:{ok:true,json:async()=>({models:[{id:"old",label:"Old"}]})};
+  });
+  const {ModelSelect}=await import("/ui/js/settings-dialogs.js"),render=()=>p.mount(h(ModelSelect,{backend:"codex",value:"",onChange(){}}));
+  await render();await settle();fire(p.root.querySelector(".model-refresh button")!,"click");await settle(8);
+  expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
+  release({ok:outcome==="success",json:async()=>({models:[{id:"old",label:"Old"}]})});await settle(8);
+  await p.unmount();await render();await settle(8);
+  expect(reads).toBe(1);expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
+  expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).not.toContain("old");
+});
+
+it("reopening before the old passive GET settles uses the refreshed shared snapshot",async()=>{
+  p=page();(await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs();let release!:(v:any)=>void;let reads=0;
+  vi.stubGlobal("fetch",async(_url:string,opts:any={})=>opts.method==="POST"?{ok:true,json:async()=>({refreshed:true,models:[{id:"fresh",label:"Fresh"}]})}:(reads++,new Promise(r=>{release=r;})));
+  const {ModelSelect}=await import("/ui/js/settings-dialogs.js"),render=()=>p.mount(h(ModelSelect,{backend:"codex",value:"",onChange(){}}));
+  await render();fire(p.root.querySelector(".model-refresh button")!,"click");await settle(8);await p.unmount();await render();await settle(8);
+  const visible=p.root.querySelectorAll("option").map((o:any)=>o.value);release({ok:true,json:async()=>({models:[{id:"old",label:"Old"}]})});await settle(8);
+  expect(reads).toBe(1);expect(visible).toContain("fresh");expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
 });

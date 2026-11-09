@@ -27,7 +27,7 @@ import {
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
-import { ModelRefresh, useRefreshableModels } from "./model-picker.js";
+import { ModelRefresh, useRefreshableModels, mw } from "./model-picker.js";
 import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
 import { AccountSelect } from "./accounts-view.js";   // #3212: the Account field (a new module: never a stale named import)
 import { capsOf } from "./cli-caps.js";
@@ -91,13 +91,16 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
   useEffect(() => { setTyping(false); }, [backend, instance, runtime, machineId, profile]);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   const managed = catalogOverride === undefined && !!backend;
+  const sourceNote = state.source === "account-api" ? mw("accountSource") : tn(state.source === "cli-list" ? "modelCatalogCliList" : state.source === "cli-cache" ? "modelCatalogCliCache"
+    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogOfficial" : "modelCatalogCached");
+  const note = state.loading ? tn("modelCatalogLoading") : !catalog?.length ? tn("modelCatalogEmpty") : sourceNote;
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
-    ${managed ? html`<${ModelRefresh} state=${state} disabled=${disabled} />` : null}</div>`;
+    ${managed ? html`${state.phase !== "load_error" ? html`<div class="model-catalog-status"><span class="note" role="status" aria-live="polite">${note}</span></div>` : null}<${ModelRefresh} state=${state} disabled=${disabled} initialFailure=${tn("modelCatalogFailed")} />` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark }) {

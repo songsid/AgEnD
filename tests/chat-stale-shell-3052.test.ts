@@ -49,6 +49,7 @@ describe("Chat in a tab opened before the upgrade (stale shell)", () => {
   it("panel-chat.js takes nothing newer than the old shell from instance-nav.js", () => {
     const src = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
     const named = /import \{([^}]*)\} from "\/assets\/instance-nav\.js"/.exec(src)![1].split(",").map(s => s.trim().split(/\s+as\s+/)[0]);
-    expect(named.sort()).toEqual(["modelText", "namesOf", "namesStore", "navStore", "supportsInstanceFeature"]);
+    // backendLabel already exists in the retained alpha.10 shell (unlike machineName).
+    expect(named.sort()).toEqual(["backendLabel", "modelText", "namesOf", "namesStore", "navStore", "supportsInstanceFeature"]);
   });
 });
