@@ -346,8 +346,13 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     const files = ["src/locale.ts", ...readdirSync("src/ui").filter(f => f.endsWith(".js")).map(f => `src/ui/${f}`),
       ...readdirSync("src/ui/shared").filter(f => f.endsWith(".js")).map(f => `src/ui/shared/${f}`)];
     // Only quoted strings (what a person reads), not comments.
+    // #3511: only the exact existing Hub confirmation translations, displayed in the page's language.
+    const hubSummary = new Set([
+      '"Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate."',
+      '"以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。"',
+    ]);
     const hits = files.flatMap(f => (readFileSync(f, "utf8").match(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g) ?? [])
-      .filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s)).map(s => `${f}: ${s.slice(0, 80)}`));
+      .filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && /公司|\bcompany\b|\bcorporate\b/i.test(s)).map(s => `${f}: ${s.slice(0, 80)}`));
     expect(hits).toEqual([]);
   });
 });
