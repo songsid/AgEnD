@@ -16,9 +16,14 @@ async function getJson(url) {
 function cached(url, force = false) {
   const hit = cache.get(url), now = performance.now();
   if (hit && (hit.pending || !force && now - hit.at < TTL_MS)) return hit.pending ?? Promise.resolve(hit.value);
-  const pending = getJson(force ? `${url}&refresh=1` : url).then((value) => { cache.set(url, { at: performance.now(), value, pending: null }); return value; })
-    .catch(() => { cache.delete(url); return null; });
-  cache.set(url, { at: now, value: null, pending });
+  const entry = { at: now, value: null, pending: null };
+  const pending = getJson(force ? `${url}&refresh=1` : url).then((value) => {
+    // Explicit rediscovery/reset may have replaced this request while it waited.
+    if (cache.get(url) === entry) cache.set(url, { at: performance.now(), value, pending: null });
+    return value;
+  }).catch(() => { if (cache.get(url) === entry) cache.delete(url); return null; });
+  entry.pending = pending;
+  cache.set(url, entry);
   return pending;
 }
 /**
@@ -78,6 +83,17 @@ export function useModelCatalogState(backend, instance, runtime, machineId) {
 export function useModelCatalog(backend, instance, runtime) {
   const state = useModelCatalogState(backend, instance, runtime);
   return state.loading && !state.models.length ? undefined : state.models;
+}
+
+/** Shared snapshot cache for upgraded fields; accessed through a namespace so old held modules still load. */
+export function readModelCatalog(target) { return readModelCatalogSnapshot(target).then(answer => answer.models); }
+/** Keep source provenance with the shared snapshot; the array-only API remains compatible with older pickers. */
+export function readModelCatalogSnapshot(target) {
+  const url = `/ui/models?${new URLSearchParams(target)}`;
+  return cached(url).then(answer => { if (!answer || !Array.isArray(answer.models)) throw Error("Model catalog unavailable"); return answer; });
+}
+export function rememberModelCatalog(target, answer) {
+  cache.set(`/ui/models?${new URLSearchParams(target)}`, { at: performance.now(), value: answer, pending: null });
 }
 
 /** A state that keeps a backend from being chosen (shown, disabled, with why); "unknown" never does. */

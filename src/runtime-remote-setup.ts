@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
 /** Capabilities a Runtime reports. A capability says the Runtime can do it; the switches say whether it may, right now. */
+export const MODEL_REFRESH_CAPABILITY = "model-catalog-refresh";
 export const REMOTE_SIGNIN_CAPABILITY = "remote-signin";
 export const CLI_INSTALL_CAPABILITY = "cli-install";
 
@@ -102,7 +103,7 @@ export function describeRemoteSwitches(switches: RemoteSwitches, now = Date.now(
 }
 
 /** Closed vocabulary of the audit record. Free text has no field here. */
-export const AUDIT_ACTIONS = ["switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install"] as const;
+export const AUDIT_ACTIONS = ["models.refresh", "switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install"] as const;
 export const AUDIT_OUTCOMES = ["started", "ok", "refused", "failed"] as const;
 export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "unconfirmed", "timeout", "rate_limited", "failed"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];

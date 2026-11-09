@@ -201,9 +201,9 @@ describe("add account and sign in (Runtime side of RuntimeSignInTransport)", () 
     const f = fixture({ find: async () => null }); f.on();
     await expect(ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor })).rejects.toThrow(/Claude Code is not installed/);
   });
-  it("a protocol error from an unmasked identity names the field only: the CLI-side read is checked again before anything is stored or sent", async () => {
+  it("a protocol error from an address that does not fit names the field only: the CLI-side read is checked again before anything is stored or sent", async () => {
     const f = fixture(); f.on(); owned(f);
-    f.setAnswer({ loggedIn: true, identity: { maskedEmail: "alice@example.com", plan: "team" } });
+    f.setAnswer({ loggedIn: true, identity: { maskedEmail: `alice${"a".repeat(255)}@example.com`, plan: "team" } });
     const error = await ask(f, "accounts.check", { cli: "claude-code", profile: "work" }).catch((e: Error) => e);
     expect(error).toBeInstanceOf(Error); expect(String((error as Error).message)).not.toContain("alice");
     expect(cachedCredentialStatus(f.root, "claude-code", "work")?.identity).toBeUndefined();
@@ -908,4 +908,24 @@ describe("P2: another audit writer's accepted record is never cut by an operatio
     } finally { holder.kill(); }
     expect(actions(f)).toEqual(["local:switch:ok:", `${actor}:profile.remove:started:work`, `${actor}:profile.remove:ok:work`]); expect(existsSync(lock)).toBe(false);
   });
+});
+
+describe('M-2731 models-only refresh on the account computer',()=>{
+ it('requires owner accounts consent, resolves the local default, returns no secret and audits the exact account',async()=>{
+  const models=vi.fn(async()=>({models:[{id:'claude-new',name:'New'}],source:'account-api'}));const f=fixture({models});const directory=owned(f);f.defaultProfile.mockReturnValue('work');
+  await expect(ask(f,'models.refresh',{cli:'claude-code',profile:'',actor})).rejects.toThrow(/turned off/);expect(models).not.toHaveBeenCalled();
+  f.on();expect(await ask(f,'models.refresh',{cli:'claude-code',profile:'',actor})).toMatchObject({cli:'claude-code',profile:'work',models:[{id:'claude-new'}]});
+  expect(models).toHaveBeenCalledWith('claude-code',directory,expect.any(Function));expect(f.audit().filter(x=>x.action==='models.refresh').map(x=>x.outcome)).toEqual(['started','ok']);await f.accounts.stop();
+ });
+ it.each(['default','switch','connection'])('drops a result if the %s changes during vendor discovery',async kind=>{
+  let finish!:(v:any)=>void,alive=true;const models=vi.fn(async()=>new Promise<any>(r=>{finish=r;})),f=fixture({models});owned(f);f.defaultProfile.mockReturnValue('work');f.on();
+  const pending=f.accounts.handle('models.refresh',{cli:'claude-code',profile:'',actor},()=>alive);await vi.waitFor(()=>expect(models).toHaveBeenCalledOnce());
+  if(kind==='default')f.defaultProfile.mockReturnValue(undefined);else if(kind==='switch')setRemoteSwitch(f.pairing,'accounts',false,undefined,1_700_000_000_000);else alive=false;
+  finish({models:[{id:'private-old'}],source:'account-api'});await expect(pending).rejects.toThrow();await f.accounts.stop();
+ });
+ it('refuses unknown/unowned or Codex profiles before discovery and never creates a profile',async()=>{
+  const models=vi.fn(),f=fixture({models});f.on();
+  for(const input of [{cli:'claude-code',profile:'missing',actor},{cli:'codex',profile:'work',actor},{cli:'claude-code',profile:'../escape',actor}])await expect(ask(f,'models.refresh',input)).rejects.toThrow();
+  expect(models).not.toHaveBeenCalled();expect(existsSync(join(f.root,'claude-code','missing'))).toBe(false);await f.accounts.stop();
+ });
 });

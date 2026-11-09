@@ -256,10 +256,11 @@ describe("the transport", () => {
     const lost = make(op => (op === "signin.start" ? { sessionId: SESSION } : (() => { throw new Error("That computer did not answer in time"); })()));
     await lost.transport.start({ ...spec, profile: "work" }, new AbortController().signal); await expect(lost.transport.close()).rejects.toThrow("signin_close_unconfirmed");
   });
-  it("the CLI's own `auth status` is the success check: signed in (masked identity only), signed out, a profile with no folder yet, or unknown; an unmasked e-mail is not shown", async () => {
+  it("the CLI's own `auth status` is the success check: signed in (an address that fits the contract, whole or the older masked form), signed out, a profile with no folder yet, or unknown; an address that does not fit is not shown", async () => {
     const answer = (value: unknown, fail?: string): AccountCaller => (async () => { if (fail) throw new Error(fail); return value; }) as AccountCaller;
     expect(await runtimeAccountStatus(answer({ loggedIn: true, identity: { maskedEmail: "ab***@example.com", plan: "max" } }), ID, "work")).toEqual({ state: "valid", identity: { maskedEmail: "ab***@example.com", plan: "max" } });
-    expect(await runtimeAccountStatus(answer({ loggedIn: true, identity: { maskedEmail: EMAIL } }), ID, "work")).toEqual({ state: "unknown" });
+    expect(await runtimeAccountStatus(answer({ loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com", plan: "max" } }), ID, "work")).toEqual({ state: "valid", identity: { maskedEmail: "alice.fixture@example.com", plan: "max" } });
+    for (const bad of [EMAIL + ",bob@example.org", "é@example.com", `${"a".repeat(255 - "@example.com".length)}@example.com`, "a b@example.com"]) expect(await runtimeAccountStatus(answer({ loggedIn: true, identity: { maskedEmail: bad } }), ID, "work"), bad.slice(0, 12)).toEqual({ state: "unknown" });
     expect(await runtimeAccountStatus(answer({ loggedIn: true }), ID, "work")).toEqual({ state: "valid" });
     expect(await runtimeAccountStatus(answer({ loggedIn: false }), ID, "work")).toEqual({ state: "invalid" });
     expect(await runtimeAccountStatus(answer({ loggedIn: null }), ID, "work")).toEqual({ state: "unknown" });

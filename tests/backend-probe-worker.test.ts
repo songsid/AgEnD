@@ -24,7 +24,15 @@ describe("isolated backend probe entry", () => {
   it("refreshes vendor data before probing the environment", async () => {
     await runBackendProbe({ ...input, mode: "env", refreshVendorCatalog: true });
     expect(refreshModelCatalog).toHaveBeenCalledOnce();
+    expect(refreshModelCatalog).toHaveBeenCalledWith(input.config);
+    expect(probeCLIEnv).toHaveBeenCalledWith({ ...input.config, catalogDiscovery: true });
     expect(refreshModelCatalog.mock.invocationCallOrder[0]).toBeLessThan(probeCLIEnv.mock.invocationCallOrder[0]!);
+  });
+  it("M-2731: refuses unsupported scoped discovery before constructing a backend", async () => {
+    for (const backend of ["grok", "kiro-cli", "claude-code"]) {
+      expect(await runBackendProbe({ ...input, backend, mode: "env", refreshVendorCatalog: true })).toBeNull();
+    }
+    expect(createBackend).not.toHaveBeenCalled(); expect(probeCLIEnv).not.toHaveBeenCalled();
   });
   it("instance catalog uses listModels and its exact config, never an account env probe", async () => {
     expect(await runBackendProbe({ ...input, mode: "models" })).toEqual([{ id: "custom", label: "Custom" }]);

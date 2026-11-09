@@ -9,6 +9,7 @@
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
+import {isNativeProviderId,nativeProvider} from "./windows-cli-providers.js";
 import { existsSync } from "node:fs";
 import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
@@ -42,6 +43,7 @@ export interface RemoteAccountsDeps {
   credentialRoot: string;
   now?: () => number;
   /** `claude auth status` under a profile folder, read by the shared parser. */
+  models?(cli: string, directory: string | undefined, authorized: () => boolean): Promise<{ models: import("./windows-cli-providers.js").NativeModelOption[]; source: string }>;
   status(cli: CredentialProfileCli, directory: string): Promise<RemoteStatusAnswer>;
   find(cli: CredentialProfileCli): Promise<RemoteCliExecutable | null>;
   /** The Windows CLI environment (an allowlist), to which the profile's variable is added here. */
@@ -93,7 +95,7 @@ function reasonOf(error: unknown): AuditReason {
   if (error instanceof CliInstallError) return error.reason === "timed-out" ? "timeout" : error.reason === "busy" ? "busy" : "failed";
   return "failed";
 }
-const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
+const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["models.refresh", "signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
 
 interface Meta { id: string; actor: string; cli: CredentialProfileCli; profile: string; signedIn?: boolean }
 /** The least time between two sign-outs or removes of one profile. It only slows a server that keeps asking; the switch and its time window are what bound the risk. */
@@ -316,6 +318,7 @@ export class RemoteAccounts {
       case "signin.status": { const input = this.parse(operation, payload); this.needSwitch(); return this.slot.find(input.sessionId).status(); }
       case "signin.write": return this.writeCode(this.parse(operation, payload), ctx);
       case "signin.start": return this.startSignIn(this.parse(operation, payload), ctx);
+      case "models.refresh": return this.models(this.parse(operation, payload), ctx);
       case "accounts.check": return this.check(this.parse(operation, payload), ctx);
       case "accounts.signout": return this.signOut(this.parse(operation, payload), ctx);
       case "accounts.remove": return this.remove(this.parse(operation, payload), ctx);
@@ -444,6 +447,28 @@ export class RemoteAccounts {
    * being changed is `busy`, and only `MAX_CONCURRENT_CHECKS` run at once on the computer (the slot is taken before anything is started, and given
    * back only when the last child of this check is done).
    */
+  /** Read-only catalog discovery uses the computer owner's existing accounts consent, never broadens it. */
+  private async models(input: { cli: string; profile: string; actor: string }, ctx: Ctx) {
+    this.gate(ctx, "accounts");
+    if (!isNativeProviderId(input.cli) || input.cli !== "claude-code" && input.cli !== "codex" && !nativeProvider(input.cli).modelProbe || !this.deps.models) throw new ProfileOwnershipRefusal("This Runtime cannot refresh models for that CLI", "unsupported");
+    if (input.cli !== "claude-code" && input.profile) throw new ProfileOwnershipRefusal("Native Codex named accounts are not supported", "unsupported");
+    const selected = input.profile || (input.cli === "claude-code" ? this.deps.defaultProfile() : undefined);
+    const key = selected?.toLowerCase() ?? `\0models:${input.cli}`;
+    if (key && (this.busy.has(key) || this.retained.has(key)) || this.activeChecks >= MAX_CONCURRENT_CHECKS) throw new SignInRefusal("Other account operations are running; try again shortly", "busy");
+    if (key) this.busy.add(key); this.activeChecks++;
+    try {
+      const directory = selected ? await requireOwnedProfile(this.deps.pairingDirectory,this.deps.credentialRoot,"claude-code",selected,this.deps.ownership) : undefined;
+      const current = (): boolean => { try { this.gate(ctx,"accounts"); return !!input.profile || input.cli !== "claude-code" || this.deps.defaultProfile() === selected; } catch { return false; } };
+      if (!current()) throw new SignInRefusal("The selected account changed; refresh it again", "failed");
+      this.record({actor:this.actorOf(input.actor),action:"models.refresh",outcome:"started",cli:input.cli,...(selected?{profile:selected}:{})},true);
+      const answer = await this.deps.models(input.cli,directory,current);
+      if (selected) await requireOwnedProfile(this.deps.pairingDirectory,this.deps.credentialRoot,"claude-code",selected,this.deps.ownership);
+      if (!current()) throw new SignInRefusal("The account or connection changed; refresh it again", "failed");
+      this.record({actor:input.actor,action:"models.refresh",outcome:"ok",cli:input.cli,...(selected?{profile:selected}:{})},false);
+      return {...answer,cli:input.cli,profile:selected??null};
+    } catch(error) { this.record({actor:input.actor,action:"models.refresh",outcome:"failed",cli:input.cli,...(selected?{profile:selected}:{}),reason:"failed"},false); throw error; } finally { if (key) this.busy.delete(key); this.activeChecks--; }
+  }
+
   private async check(input: { cli: string; profile: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
     this.gate(ctx, "accounts");
     const cli = this.cliOf(input.cli), key = input.profile.toLowerCase();

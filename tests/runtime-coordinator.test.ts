@@ -316,3 +316,18 @@ describe("selected-computer diagnostic task API", () => {
     ctx.webToken=token;const held=callApi(h,root,"POST",taskInput,ctx);await vi.waitFor(()=>expect(count).toBe(1));ctx.webToken=null;release();await vi.waitFor(()=>expect(held.status).toBe(403));expect(held.body).not.toContain(taskInput.cwd);
   });
 });
+
+describe("M-2731 optional model refresh capability",()=>{
+  it("does not send a new operation to an older peer; an upgraded peer receives only a closed models request",async()=>{
+    const h=hub(),identity=pair(h),base=await listen(h),ws=await connect(base,identity.credential,"old",{protocolVersions:[1],capabilities:["exec","remote-signin"]});
+    const frames:any[]=[];ws.on("message",v=>{const frame=JSON.parse(v.toString());frames.push(frame);if(frame.type==="account.request")ws.send(JSON.stringify({v:1,type:"account.response",id:frame.id,ok:true,result:{models:[{id:"old-peer-must-not-be-asked"}]}}));});
+    await expect(h.callAccount(identity.machineId,"models.refresh",{cli:"claude-code",profile:"work",actor:"admin:fixture"})).rejects.toThrow(/does not offer/);
+    expect(frames.filter(f=>f.type==="account.request")).toHaveLength(0);
+    ws.terminate();await vi.waitFor(()=>expect(h.machine(identity.machineId)?.status).toBe("offline"));
+    const current=await connect(base,identity.credential,"new",{protocolVersions:[1],capabilities:["exec","remote-signin","model-catalog-refresh"]});
+    current.on("message",raw=>{const frame=JSON.parse(raw.toString());if(frame.type==="account.request"){frames.push(frame);current.send(JSON.stringify({v:1,type:"account.response",id:frame.id,ok:true,result:{models:[{id:"new"}],source:"account-api",cli:"claude-code",profile:"work"}}));}});
+    expect(await h.callAccount(identity.machineId,"models.refresh",{cli:"claude-code",profile:"work",actor:"admin:fixture"})).toMatchObject({models:[{id:"new"}]});
+    expect(frames.filter(f=>f.type==="account.request")).toHaveLength(1);
+    const disk=readFileSync(join(homes.at(-1)!,"runtime-machines.json"),"utf8");expect(disk).not.toContain('"operation":"models.refresh"');expect(disk).not.toContain('"profile":"work"');
+  });
+});

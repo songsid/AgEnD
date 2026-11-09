@@ -78,6 +78,18 @@ describe("the chat's commands (the real page modules)", () => {
     return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
   }
 
+  it("M-2731: title Refresh and separate More are typed actions; failed refresh retains selected model chips", async () => {
+    const c = await chatPage({ model: "sonnet" });
+    c.fx.respond = (_path: string, body: any) => body?.action ? { error: "offline" } : { choices: { current: "sonnet", options: [{ id: "sonnet", label: "Sonnet" }], actions: ["refresh", "more"] } };
+    await c.type("/model"); await c.key("Enter");
+    expect(c.card().querySelector('.cmd-choices .current')!.getAttribute("aria-current")).toBe("true");
+    const refresh = c.card().querySelector('.cmd-head [data-model-action="refresh"]'); expect(refresh).not.toBeNull();
+    expect(c.card().querySelector('.cmd-choices [data-model-action]')).toBeNull();
+    fire(refresh, "click"); await settle(8);
+    expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", action: "refresh" });
+    expect(c.card().textContent).toContain("offline"); expect(c.card().querySelector('.cmd-choices .current')).not.toBeNull();
+  });
+
   it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
     const asked: string[] = [];
     const realFetch = (globalThis as any).fetch;
@@ -219,7 +231,7 @@ describe("the chat's commands (the real page modules)", () => {
       : { choices: { current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }] } });
     await c.type("/model"); await c.key("Enter");
     const opts = c.card().querySelectorAll(".cmd-choices .btn");
-    expect(opts.map((b: any) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["✓ Alpha", "true"], ["Beta", null]]);
+    expect(opts.map((b: any) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["Alpha", "true"], ["Beta", null]]);
     fire(opts[1], "click"); await settle();
     expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", args: "b" });
     expect(c.card().querySelector(".cmd-text").textContent).toBe("Model set to b");
@@ -260,10 +272,11 @@ describe("the chat's commands (the real page modules)", () => {
     const c = await chatPage({ context_pct: 69.4, model: "claude-opus-5-5", effort: "high" });
     expect(!!c.p.root.querySelector(".quick-actions"), "69% is under the line").toBe(false);
     const chips = c.p.root.querySelectorAll(".hd-chip");
-    expect(chips.map((b: any) => b.textContent)).toEqual(["claude-opus-5-5", "high"]);
+    expect(chips.map((b: any) => b.textContent)).toEqual(["Claude Code ▾", "claude-opus-5-5 ▾", "high"]);
     fire(chips[0], "click"); await settle();
     fire(chips[1], "click"); await settle();
-    expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "effort" }]);
+    fire(chips[2], "click"); await settle();
+    expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "backend" }, { instance: "w", command: "model" }, { instance: "w", command: "effort" }]);
   });
 
   it("the store's single flight covers the buttons too: a quick action while a command is out sends nothing", async () => {

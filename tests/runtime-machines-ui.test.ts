@@ -414,7 +414,7 @@ describe("remote machine UI",()=>{
     expect(app.appStore.get().windowsCli).toBe(false);
     await p.mount(h(Create,{onClose(){}}));await settle(8);await choose(idA);button("Next").click();await settle(8);
     expect(p.root.textContent).toContain("Working directory on Desktop (optional)");
-    expect(requests.some(item=>item.path===`/ui/models?backend=codex&runtime=windows&machineId=${idA}`)).toBe(true);
+    expect(requests.some(item=>item.path===`/ui/models?backend=codex&runtime=windows&machineId=${idA}&profile=`)).toBe(true);
     const name=p.root.querySelectorAll(".agent-runtime-fields input")[1];name.value="Remote helper";fire(name,"input");await settle();
     button("Create").click();await settle(8);
     const submitted=requests.find(item=>item.path==="/ui/instances");expect(submitted?.body).toMatchObject({runtime:"windows",machineId:idA,topic_name:"Remote helper",backend:"codex"});

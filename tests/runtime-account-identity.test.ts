@@ -13,7 +13,7 @@ import { credentialProfilesRoot, ensureCredentialProfile, rememberCredentialStat
 import { probeCredentialProfileStatus, probeNativeClis, type NativeCliExecutable } from "../src/windows-cli-worker.js";
 import type { WindowsCliProbe, WindowsCliTask } from "../src/windows-cli.js";
 
-// Fixtures only: example.com addresses. The full address below must appear NOWHERE the Runtime or AgEnD writes, shows or sends.
+// Fixtures only: example.com addresses. The whole address is sent to AgEnD over the paired channel and shown on the Accounts page; it must appear in no log line, error, close reason or CLI output.
 const RAW = "alice.fixture@example.com", RAW_OTHER = "bob.fixture@example.org";
 const rawStatus = (email: string, over: Record<string, unknown> = {}) => JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email, orgName: "Fixture Org", subscriptionType: "team", configDirectory: "C:\\fixture", ...over });
 const directories: string[] = [], clients: RuntimeClient[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [], sockets: WebSocket[] = [];
@@ -59,7 +59,7 @@ function everything(path: string): string {
 }
 
 describe("what a Runtime reports about the account behind a sign-in", () => {
-  it("is the masked e-mail and plan of each profile and of the default sign-in, produced from the CLI's own answer on that computer", async () => {
+  it("is the whole e-mail and plan of each profile and of the default sign-in, produced from the CLI's own answer on that computer", async () => {
     const answers = new Map([["work", rawStatus(RAW)], ["home", rawStatus(RAW_OTHER, { subscriptionType: "max" })], ["key", JSON.stringify({ loggedIn: true, authMethod: "api_key" })]]);
     const f = await fixture({ credentialStatus: (cli, directory) => probeCredentialProfileStatus(cli, directory, async () => exe, async (_exe, _args, env) => ({ ok: true, text: answers.get(env.CLAUDE_CONFIG_DIR!.split(/[\\/]/).pop()!) ?? "" })) });
     for (const name of ["work", "home", "key", "empty"]) ensureCredentialProfile(f.root, "claude-code", name);
@@ -68,11 +68,11 @@ describe("what a Runtime reports about the account behind a sign-in", () => {
     await f.hub.call(f.machineId, "probe", { force: true });
     const inventory = f.hub.machine(f.machineId)!.inventory!;
     expect(inventory.credentialProfiles?.profiles).toEqual([
-      { name: "empty", loggedIn: null, created: false }, { name: "home", loggedIn: true, identity: { maskedEmail: "bo***@example.org", plan: "max" }, created: false },
-      { name: "key", loggedIn: true, identity: { apiKey: true }, created: false }, { name: "work", loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" }, created: false }]);
+      { name: "empty", loggedIn: null, created: false }, { name: "home", loggedIn: true, identity: { maskedEmail: RAW_OTHER, plan: "max" }, created: false },
+      { name: "key", loggedIn: true, identity: { apiKey: true }, created: false }, { name: "work", loggedIn: true, identity: { maskedEmail: RAW, plan: "team" }, created: false }]);
     expect(inventory.clis[0].identity).toEqual({ maskedEmail: "de***@example.com", plan: "pro" });
-    // Nowhere: not in what AgEnD holds, not on the Runtime's disk, not in what the Runtime printed.
-    for (const text of [JSON.stringify(f.hub.listMachines()), everything(f.hubHome), everything(f.runtimeHome), f.lines.join("\n")]) for (const secret of [RAW, RAW_OTHER, "alice.fixture", "bob.fixture"]) expect(text).not.toContain(secret);
+    // Fail-first 3: not in anything either side printed (a log is not the Accounts page).
+    for (const secret of [RAW, RAW_OTHER, "alice.fixture", "bob.fixture"]) expect(f.lines.join("\n")).not.toContain(secret);
   });
   it("is the last known answer on a read that is not an explicit detection (no CLI is started), and updates on the next detection", async () => {
     const status = vi.fn(async () => ({ loggedIn: true as const, identity: { maskedEmail: "al***@example.com", plan: "team" as const } }));
@@ -105,7 +105,7 @@ describe("what a Runtime reports about the account behind a sign-in", () => {
   });
 });
 
-describe("AgEnD accepts an account identity in its closed, masked form only", () => {
+describe("AgEnD accepts an account identity in its closed form only: a whole ASCII address (or an older masked one)", () => {
   async function send(f: Awaited<ReturnType<typeof fixture>>, inventory: unknown) {
     const ws = new WebSocket(f.base.replace("http:", "ws:") + "/runtime/v1/connect", { headers: { Authorization: `Bearer ${f.credential}` } }); sockets.push(ws);
     await once(ws, "open"); const closed = once(ws, "close"), welcome = once(ws, "message");
@@ -115,15 +115,23 @@ describe("AgEnD accepts an account identity in its closed, masked form only", ()
   }
   const withProfile = (identity: unknown, loggedIn: unknown = true) => ({ home: "C:\\U", clis: [], credentialProfiles: { profiles: [{ name: "work", loggedIn, identity }] } });
   const withCli = (identity: unknown, over: Record<string, unknown> = {}) => ({ home: "C:\\U", clis: [{ id: "claude-code", path: "C:\\c.exe", version: "2.1.316", authenticated: true, runnable: true, supports: { execution: true }, readOnlySupport: true, permissionNote: "", models: [], identity, ...over }] });
-  it("takes the masked form", async () => {
+  it("takes a whole address, and the older masked form a Runtime may still have cached", async () => {
     const f = await fixture(); (f.client as unknown as { stopped: boolean }).stopped = true;
+    expect((await send(f, withProfile({ maskedEmail: RAW, plan: "team" }))).code).toBe(0);
+    expect((await send(f, withCli({ maskedEmail: "junsion.main@gmail.com", plan: "unknown" }))).code).toBe(0);
+    expect((await send(f, withProfile({ maskedEmail: `${"a".repeat(254 - "@example.com".length)}@example.com` }))).code).toBe(0);
     expect((await send(f, withProfile({ maskedEmail: "ab***@example.com", plan: "team" }))).code).toBe(0);
     expect((await send(f, withCli({ maskedEmail: "ab***@example.com", plan: "unknown" }))).code).toBe(0);
     expect((await send(f, withProfile({ apiKey: true }))).code).toBe(0);
   });
   it.each([
-    ["an unmasked e-mail", { maskedEmail: RAW }],
-    ["an unmasked e-mail in another key", { email: RAW }],
+    ["an e-mail in another key", { email: RAW }],
+    ["an address over 254 characters (never truncated)", { maskedEmail: `a${"a".repeat(254 - "@example.com".length)}@example.com` }],
+    ["a non-ASCII address", { maskedEmail: "alice.fixture@exämple.com" }],
+    ["a non-ASCII local part", { maskedEmail: "名前.fixture@example.com" }],
+    ["an address with a space", { maskedEmail: "alice fixture@example.com" }],
+    ["an address with two @", { maskedEmail: "alice@fixture@example.com" }],
+    ["an address with a trailing address", { maskedEmail: `${RAW},bob@example.org` }],
     ["a mask that shows too much", { maskedEmail: "alice***@example.com" }],
     ["a non-ASCII mask", { maskedEmail: "é***@example.com" }],
     ["a mask with a trailing address", { maskedEmail: "ab***@example.com,bob@example.org" }],
@@ -138,9 +146,9 @@ describe("AgEnD accepts an account identity in its closed, masked form only", ()
     for (const inventory of [withProfile(identity), withCli(identity)]) {
       const result = await send(f, inventory);
       expect(result.code).toBe(1008); expect(result.reason).toMatch(/^Invalid runtime message: Invalid runtime (?:credential profiles|CLI identity) \([A-Za-z ]+\)$/);
-      for (const secret of [RAW, "alice", "bob@example.org", "Alice", "gold"]) expect(result.reason).not.toContain(secret);
+      for (const secret of [RAW, "alice", "bob@example.org", "Alice", "gold", "aaaaaaaa", "fixture"]) expect(result.reason).not.toContain(secret);
     }
-    for (const secret of [RAW, "alice.fixture"]) { expect(output.join("\n")).not.toContain(secret); expect(everything(f.hubHome)).not.toContain(secret); expect(JSON.stringify(f.hub.listMachines())).not.toContain(secret); }
+    for (const secret of [RAW, "alice.fixture", "aaaaaaaa"]) { expect(output.join("\n")).not.toContain(secret); expect(everything(f.hubHome)).not.toContain(secret); expect(JSON.stringify(f.hub.listMachines())).not.toContain(secret); }
   });
   it("refuses an identity on something that cannot have one: a signed-out profile, another CLI, a CLI that is not signed in", async () => {
     const f = await fixture(); (f.client as unknown as { stopped: boolean }).stopped = true;
@@ -156,7 +164,7 @@ describe("AgEnD accepts an account identity in its closed, masked form only", ()
 });
 
 describe("the default sign-in's account, from the CLI probe on the Windows computer", () => {
-  it("is masked in the row before the Runtime stores or sends it, from the same `auth status` answer as `authenticated`", async () => {
+  it("is the whole address in the row, from the same `auth status` answer as `authenticated`", async () => {
     const run = vi.fn(async (_exe: NativeCliExecutable, args: string[]) => {
       const text = args.join(" ");
       if (text.includes("auth status")) return { ok: true, text: rawStatus(RAW) };
@@ -166,8 +174,8 @@ describe("the default sign-in's account, from the CLI probe on the Windows compu
     });
     const result = await probeNativeClis({ find: async id => id === "claude-code" ? exe : null, run, readModels: () => [] });
     const row = result.clis.find(cli => cli.id === "claude-code")!;
-    expect(row.authenticated).toBe(true); expect(row.identity).toEqual({ maskedEmail: "al***@example.com", plan: "team" });
-    expect(JSON.stringify(result)).not.toContain("alice.fixture");
+    expect(row.authenticated).toBe(true); expect(row.identity).toEqual({ maskedEmail: RAW, plan: "team" });
+    expect(JSON.stringify(result)).not.toContain("Fixture Org");
     expect(run.mock.calls.filter(call => call[1].includes("status"))).toHaveLength(1);   // one answer serves both
   });
   it("has none for a signed-out or API-key sign-in, and none for another CLI", async () => {

@@ -91,14 +91,14 @@ describe("the registry's files are part of the Runtime bundle", () => {
 });
 
 describe("an older Runtime and an older server still work with it", () => {
-  it("the Runtime reports the same protocol and capabilities as before (the registry adds none, and a CLI-specific one is not invented)", () => {
+  it("the Runtime retains protocol v1 and the shared capabilities (no registry-specific or per-CLI capability)", () => {
     const directory = mkdtempSync(join(tmpdir(), "agend-registry-info-"));
     try {
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: true, install: true })).toEqual({
-        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "cli-install"],
+        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "cli-install"],
       });
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: false, install: false }).capabilities)
-        .toEqual(["exec", "mcp", "credential-profiles", "account-identity", "remote-signin"]);
+        .toEqual(["exec", "mcp", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh"]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
