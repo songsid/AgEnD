@@ -17,7 +17,7 @@ const check=(name:string,ok:boolean)=>{r.checks.push({name,ok});if(!ok)throw Err
 try{
  fx=await bootFixture({port:Number(process.env.HP??55810),instances:1,classic:false});
  for(const c of matrix())for(const before of [true,false]){
-  const tag=caseName(c)+'-'+(before?'before':'after'),{ctx,page:p}=await fx.page(c,{path:'/settings'});p.on('pageerror',(e:any)=>r.errors.push(e.message));
+  const tag=caseName(c)+'-'+(before?'before':'after'),{ctx,page:p}=await fx.page(c,{path:'/settings/advanced'});p.on('pageerror',(e:any)=>r.errors.push(e.message));
   await ctx.route('**/*',(route:any)=>{const u=new URL(route.request().url());if(u.origin!==fx.base)return route.abort();if(before&&u.pathname==='/assets/app-shell.js')return route.fulfill({contentType:'application/javascript',body:execFileSync('git',['show','e5bef1cb2c21d57f8397cd592958340445202b6c:src/ui/shared/app-shell.js'],{cwd:repo})});return route.continue()});await p.reload();
   await p.evaluate(async()=>{const {appStore}=await import('/assets/app-store.js');appStore.set({pendingChanges:[{id:'preview-only',label:'Display fixture',state:'pending',summary:['Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate.'],deadline:Date.now()+60000,confirmation:{kind:'host_cli',code:'display-preview-only'}}]})});
   await p.locator('.pending-summary').waitFor();const text=await p.locator('.pending-summary').innerText();check(tag+' exact component text',text===(c.lang==='zh-TW'&&!before?'以公司帳號將這個 Fleet 連接到 Hub https://hub.example.test。分享 Agent 需另外選擇。':'Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate.'));
