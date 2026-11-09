@@ -1773,7 +1773,7 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
     await r.runtime.apply(r.hub.config);
   };
   it("reuses one cold source without an AD sign-in or any listener", async () => {
-    const r = await directoryRuntimeRig(); await off(r);
+    const r = await directoryRuntimeRig(), retired = r.runtime.directorySettings()!; await off(r);
     const before = { creates: r.creates, eligibility: r.eligibility };
     try {
       const [a, b] = await Promise.all([r.runtime.acquireDirectorySettings(), r.runtime.acquireDirectorySettings()]);
@@ -1781,6 +1781,12 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
       expect(a.source().config.url).toBe((r.hub.config.hub.directory as { url: string }).url);
       expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("off");
       expect(() => a.sessions()).toThrow(); expect(await r.runtime.acquireDirectorySettings()).toBe(a);
+      // Model a stale generation reference; the cold lease owns the new source's SQL proof basis.
+      const internal = r.runtime as unknown as { mountedDirectory: typeof retired | null };
+      internal.mountedDirectory = retired;
+      try { expect(r.runtime.directoryDecision() === a.decision).toBe(true); }
+      finally { internal.mountedDirectory = null; }
+
     } finally { await r.runtime.close(); }
   });
   it("Save while off changes the sealed source and epoch through the existing writer without starting", async () => {
@@ -1799,6 +1805,8 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
       expect(r.hub.config.hub.enabled).toBe(false); expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("off");
       expect(r.runtime.directorySettings()!.source().config.baseDn).toBe("ou=people,dc=example,dc=test");
       expect(r.eligibility).toBe(0);
+      r.hub.config.hub.enabled = true; await r.runtime.apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready"); expect(r.runtime.directorySettings()!.source().epoch).toBe(1);
     } finally { await control.close(); await r.runtime.close(); }
   });
   it("drains the cold physical pool before creating a live replacement", async () => {
@@ -1867,7 +1875,30 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
 
     } finally { await control?.close(); await r.runtime.close(); await new Promise<void>(resolve => blocker.close(() => resolve())); }
   });
-  it.each(["ABA", "Stop"])("a held cold selection never revives after %s", async mode => {
+  it.each(["constructor", "microtask"])("Refresh in a %s waits for stale driver cleanup before any replacement", async when => {
+    const r = await directoryRuntimeRig(); await r.runtime.close();
+    const config = { ...r.hub.config, hub: { ...r.hub.config.hub, enabled: false } };
+    let runtime!: HubRuntime, release!: () => void, reached!: () => void, refreshed: Promise<void> | undefined;
+    const held = new Promise<void>(resolve => { release = resolve; }), closing = new Promise<void>(resolve => { reached = resolve; });
+    let first = true;
+    const createDirectory = vi.fn(() => {
+      if (first) { first = false;
+        if (when === "constructor") refreshed = runtime.refresh(); else queueMicrotask(() => { refreshed = runtime.refresh(); });
+        return { realm: ADMIN.key.realm, close: async () => { reached(); await held; } } as any; }
+      return { realm: ADMIN.key.realm, close: async () => {} } as any;
+    });
+    runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => config, createDirectory, components: { http: async () => r.entry } });
+    await runtime.apply(config);
+    const pending = runtime.acquireDirectorySettings().catch(error => error);
+    try {
+      await Promise.race([closing, pending.then(() => undefined)]); let finished = false; const refresh = refreshed!.then(() => { finished = true; });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(finished).toBe(false); expect(createDirectory).toHaveBeenCalledOnce(); expect(runtime.directorySettings()).toBeNull();
+      release(); expect(await pending).toBeInstanceOf(Error); await refresh;
+      expect((await runtime.acquireDirectorySettings()).current()).toBe(true); expect(createDirectory).toHaveBeenCalledTimes(2);
+    } finally { release(); await pending; await refreshed; await runtime.close(); }
+  });
+  it.each(["unchanged", "ABA", "Refresh", "Stop"])("a held cold selection has the expected lifetime after %s", async mode => {
     const r = await directoryRuntimeRig(); await r.runtime.close();
     r.hub.config.hub.enabled = false;
     let release!: () => void, entered!: () => void;
@@ -1875,6 +1906,7 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
     const createDirectory = vi.fn(() => ({ realm: ADMIN.key.realm }) as any);
     const runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => r.hub.config, createDirectory,
       components: { http: async () => { entered(); await held; return r.entry; } } });
+    await runtime.apply(r.hub.config);
     const pending = runtime.acquireDirectorySettings().catch(error => error);
     try {
       await started;
@@ -1882,9 +1914,11 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
         const original = structuredClone(r.hub.config.hub);
         r.hub.config.hub = { ...original, name: "Different off-state image" }; await runtime.apply(r.hub.config);
         r.hub.config.hub = original; await runtime.apply(r.hub.config);
-      } else runtime.fence();
-      release(); expect(await pending).toBeInstanceOf(Error); expect(createDirectory).not.toHaveBeenCalled();
-      expect(runtime.directorySettings()).toBeNull();
+      } else if (mode === "Refresh") await runtime.refresh();
+      else if (mode === "Stop") runtime.fence();
+      release(); const outcome = await pending;
+      if (mode === "unchanged") { expect(outcome.current()).toBe(true); expect(createDirectory).toHaveBeenCalledOnce(); }
+      else { expect(outcome).toBeInstanceOf(Error); expect(createDirectory).not.toHaveBeenCalled(); expect(runtime.directorySettings()).toBeNull(); }
     } finally { release(); await pending; await runtime.close(); }
   });
 });

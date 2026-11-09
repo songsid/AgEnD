@@ -330,6 +330,10 @@ describe("host AD HTTP boundaries", () => {
       const call=(action:string,value?:unknown)=>request(r.port,action?"POST":"GET",directoryPrefix+action,r.headers(),value===undefined?undefined:JSON.stringify(value));
       const view=await call("");expect(view.status).toBe(200);expect(view.body.reauthentication).toBe("host");
       const source=runtime.directorySettings()!.source(),signin=vi.spyOn(source.directory,"signIn"),eligibility=vi.spyOn(source.directory,"checkEligibility");
+      const inspected=await call("/ca/inspect",{url:`ldaps://127.0.0.1:${replacement.port}`});
+      expect(inspected.status).toBe(200);expect(inspected.body.certificate.fingerprint256.replace(/:/g,"")).toBe(new X509Certificate(certs.leaf.cert).fingerprint256.replace(/:/g,""));
+      expect(replacement.bindRecords).toHaveLength(0);
+
       expect(view.body.directory.bindPasswordRef).toBeUndefined();expect(JSON.stringify(view.body)).not.toContain(r.input.bindPassword);
       const {realm:_realm,profile:_profile,...editable}=view.body.directory;
       const prepared=await call("/prepare",{directory:{...editable,url:`ldaps://127.0.0.1:${replacement.port}`},bindPassword:"Dummy-service-only"});
@@ -356,6 +360,9 @@ describe("host AD HTTP boundaries", () => {
       }finally{db.close();}
       expect(replacement.bindRecords.length).toBeGreaterThan(0);
       expect(replacement.bindRecords.every(b=>b.dn===r.input.directory.bindDn&&b.password==="Dummy-service-only")).toBe(true);
+      if(mode==="off") { r.fm.saveFleetConfig([{path:["hub","enabled"],value:true}]); await r.internal.applyHubSwitches();
+        expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");expect(runtime.directorySettings()!.source().epoch).toBe(1); }
+
     }finally{await replacement.close();}
   },30_000);
 });

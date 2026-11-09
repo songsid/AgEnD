@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "files": {
+    "ed66ec852868689e36fc44abb222c8c4b0a4a1dde7a8e80e505793cfed71ef51": "changes/3425-hub-directory-cold-settings.md",
+    "ae018392d333be149c34aaa8e6150b896a33f1cc52553eac1082e87cd12d9722": "changes/3425-hub-directory-cold-settings.zh-TW.md",
+    "652819eae3435fedc7aac313198ea9f48058100b779cf65ac2d7a865a9d904da": "docs/design/hub-directory-cold-settings.md",
+    "30628bf6d01dcb2568e3cd37d1f9848b4611c546afd28b4e8360d0df731ee7cd": "docs/screenshots/hub-directory-cold-settings/checks.json",
+    "c8a044147a73d8977fef085e05bdfb261b5200288340fe0f67ba41507f476a31": "docs/screenshots/hub-directory-cold-settings/mutations.json",
+    "8bca7366a584084196623fab3bbc2d4ae4c01eb4bfb673bd2438e85101b1f320": "scripts/manual/hub-directory-cold-settings/README.md",
+    "1ccddaf2ea8346c00e70af9d9070e764a4187f23232f1650609700a064bd36c8": "scripts/manual/hub-directory-cold-settings/verify.py",
+    "962dba8e4b7c7ae4819efb19cf74c8cb5d6535182f68fbd72dc4f6f29c4de9c7": "src/fleet-manager.ts",
+    "e8dee46ff5cce90006042a21fc28cdf24836ea7edb703616aa714de7ee98b87b": "src/hub/mount.ts",
+    "9ae57e2e2920e6583f53f9700165f90284cd607920c441459dec854a04b4a634": "src/hub/runtime.ts",
+    "cb3edf8b6876fdae40485bf7c8280b0bf3737943ec32b68bc3cdb6ccdac41f38": "src/hub/settings-commit.ts",
+    "94357075dfa97d8a7776fe5022dbb915b178e53dc01ac9c1d119d3856857dd2a": "src/hub/settings-directory-recovery.ts",
+    "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303": "src/hub/settings-directory-runtime.ts",
+    "d92bd2679f8bb74aeb03c4844d6a25e1d4e9b81199d0ce7ffa9cb6f1c2001b7c": "src/hub/settings-directory-save.ts",
+    "d399b6e03aa6df5c2a5f190efc1bea839b4c7e817fec8eddbb079da778720890": "tests/hub-compose.test.ts",
+    "8e0dbda1b89f3b0bb5e96e64bc633eac1d9a008e2baaed95edfb79bc2981deec": "tests/hub-directory-settings-decision.test.ts",
+    "125a730dd4ec686f897804ded55b7314480c1deaea1187bd3a195bcf58ca8281": "tests/hub-settings-fleet-m2682.test.ts",
+    "cb6c7260ca927125ab2d1470ef1c69f572efbb3af05e9d42d50fe12b4471141a": "tests/hub-web-init-http.test.ts"
+  }
+}
