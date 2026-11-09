@@ -18630,9 +18630,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * An app being set up, per session handle: whether that start was on this computer or passed the code. A set-up begun while the
    * code was not asked (the secret lives ten minutes) must not be finished by a session whose switch is on by then, and one begun
-   * on this computer is not finished from another device: it never passed the code, so the finish is refused.
+   * on this computer is not finished from another device: it never passed the code, so the finish is refused. A "code" start also
+   * records WHICH app the code proved (`enrollment`, the opaque id of the owner's app at that moment, null when there was none): a
+   * code is a proof about that app and about nothing that replaces it — the finish is refused once the owner's app has been
+   * replaced or removed since (say, a recovery on the computer), so an earlier remote set-up can never overwrite the newer app.
    */
-  private authenticatorStarts = new Map<string, "host" | "code" | "none">();
+  private authenticatorStarts = new Map<string, { kind: "host" | "code" | "none"; enrollment: string | null }>();
 
   /** Set up (or set up again) your own: a new secret, shown once. Null: not you. A code is asked first when your switch needs one. */
   webOutsideBeginEnrollment(req: IncomingMessage, code?: string): { secret: string; uri: string; expiresInMs: number } | { error: "code_required" | "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } | null {
@@ -18645,7 +18648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (!owner.current() || !store.hasRoom(owner.who)) return null;
     const begun = store.beginEnrollment(owner.handle, hostname() || "fleet", owner.who);
-    this.authenticatorStarts.set(owner.handle, owner.onHost ? "host" : step.verified ? "code" : "none");
+    this.authenticatorStarts.set(owner.handle, { kind: owner.onHost ? "host" : step.verified ? "code" : "none", enrollment: store.enrollmentOf(owner.who) });
     if (this.authenticatorStarts.size > 64) this.authenticatorStarts.delete(this.authenticatorStarts.keys().next().value!);
     return begun;
   }
@@ -18656,7 +18659,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!owner || !store || !owner.current()) return "not_here";
     const had = store.isEnrolled(owner.who);
     // Asked again here, not only at the start: the switch may have been turned on since (see authenticatorStarts).
-    if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && this.authenticatorStarts.get(owner.handle) !== "code") return "not_here";
+    const start = this.authenticatorStarts.get(owner.handle);
+    // A code proves the app that existed at the start and nothing that replaces it: an app replaced or removed since (a recovery on
+    // the computer, say) voids every earlier remote proof; the finish is refused and the newer app is kept.
+    if (start?.kind === "code" && start.enrollment !== store.enrollmentOf(owner.who)) { this.authenticatorStarts.delete(owner.handle); return "not_here"; }
+    if (!owner.onHost && this.authenticatorCodeAsked(owner, store) && start?.kind !== "code") return "not_here";
     const r = store.confirmEnrollment(owner.handle, code, { physicalHost: owner.onHost });
     if (r === "ok") {
       this.authenticatorStarts.delete(owner.handle);

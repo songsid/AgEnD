@@ -312,6 +312,39 @@ describe("setting up, replacing and removing the authenticator (M3, S1)", () => 
     expect(f.any.webOutsideConfirmEnrollment(s.req, secretOf(begun))).toBe("not_here");    // an app exists now: finishing a replacement asks the code it never gave
     expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(enrolment);          // nothing was replaced
   });
+  // Round 3 (Prism P2): a code is a proof about the app that existed when it was given, and about nothing that replaces it.
+  it("Prism's case: A's remote session proves its code and begins replacement B; a recovery on the computer sets up C; B's first code is then refused and C is kept", () => {
+    const f = fleet({ enrolled: true, outside: false }), remote = f.session("code", "lan"), computer = f.session("host", "here");
+    const b = f.any.webOutsideBeginEnrollment(remote.req, codeAt(Date.now()));          // switch off, remote: the current code, then a pending replacement B
+    expect(b).toMatchObject({ secret: expect.any(String) });
+    const c = f.any.webOutsideBeginEnrollment(computer.req);                            // the owner recovers on the computer: asks nothing
+    expect(f.any.webOutsideConfirmEnrollment(computer.req, secretOf(c))).toBe("ok");   // C is the app now
+    const keep = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY), notices = f.any.webNoticesFeed?.()?.list?.().length;
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b))).toBe("not_here");   // never verified against C: refused …
+    expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).toBe(keep);               // … and C is still the app
+    expect(f.any.webRemoteAccess().verify(secretOf(c, 1), HOST_ADMIN_KEY).kind).toBe("ok");
+    expect(f.any.webRemoteAccess().verify(secretOf(b, 2), HOST_ADMIN_KEY).kind).toBe("wrong");   // B never became the app
+    expect(f.any.webNoticesFeed?.()?.list?.().length).toBe(notices);                        // no "replaced" Notice for a refused finish
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b, 3))).toBe("not_here");     // and the voided start is not reusable
+  });
+  it("removal voids it too: the app is removed after the remote proof, a later remote finish is refused (a fresh start would be needed)", () => {
+    const f = fleet({ enrolled: true, outside: false }), remote = f.session("code", "lan"), computer = f.session("host", "here");
+    const b = f.any.webOutsideBeginEnrollment(remote.req, codeAt(Date.now()));
+    expect(f.any.webOutsideRemove(computer.req)).toBe("ok");
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b))).toBe("not_here");
+    expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(false);
+  });
+  it("controls: the app unchanged — a remote replacement with its code completes; the owner with no app recovers on the computer", () => {
+    const f = fleet({ enrolled: true, outside: false }), remote = f.session("code", "lan"), computer = f.session("host", "here");
+    const before = f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY);
+    const b = f.any.webOutsideBeginEnrollment(remote.req, codeAt(Date.now()));
+    expect(f.any.webOutsideConfirmEnrollment(remote.req, secretOf(b))).toBe("ok");      // nothing changed in between
+    expect(f.any.webRemoteAccess().enrollmentOf(HOST_ADMIN_KEY)).not.toBe(before);
+    expect(f.any.webRemoteAccess().verify(secretOf(b, 1), HOST_ADMIN_KEY).kind).toBe("ok");
+    expect(f.any.webOutsideRemove(computer.req)).toBe("ok");                              // the owner's app is gone …
+    expect(f.any.webOutsideConfirmEnrollment(computer.req, secretOf(f.any.webOutsideBeginEnrollment(computer.req)))).toBe("ok");   // … and set up again on the computer
+    expect(f.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)).toBe(true);
+  });
   it("a set-up begun on this computer is not finished by the same cookie from another device once the switch is on", () => {
     const f = fleet({ enrolled: true, strict: true, outside: false }), s = f.session("host", "here");
     const begun = f.any.webOutsideBeginEnrollment(s.req);
