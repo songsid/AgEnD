@@ -95,9 +95,11 @@ describe("general tool profile", () => {
     }
   });
 
-  it("still omits project-local repo and raw-config worker verbs", () => {
-    for (const t of ["checkout_repo", "release_repo", "get_fleet_config",
-      "get_instance_logs", "list_deployments", "validate_config"]) {
+  it("adds the four General debug tools but still omits repository leases (36525f1b)", () => {
+    for (const t of ["get_fleet_config", "get_instance_logs", "list_deployments", "validate_config"]) {
+      expect(TOOL_SETS.general).toContain(t);
+    }
+    for (const t of ["checkout_repo", "release_repo"]) {
       expect(TOOL_SETS.general).not.toContain(t);
     }
   });

@@ -1,7 +1,7 @@
 /**
  * #1490 P3 (#13 and #48):
  *
- * #13: create_instance must REFUSE tool_set and skipPermissions — same
+ * #13: create_instance must REFUSE tool_set for non-General callers and skipPermissions for all callers — same
  *      privilege boundary as update_instance_config (#804/#814).
  *
  * #48: update_instance_config must roll back the in-memory patch when
@@ -28,7 +28,7 @@ function createCtx(extraInstances: Record<string, unknown> = {}) {
 }
 
 const INERT_META = {
-  instanceName: "general",
+  instanceName: "dev",
   requestId: undefined,
   fleetRequestId: undefined,
   senderSessionName: undefined,

@@ -1378,12 +1378,23 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
   return after.errors.filter(issue => !had.has(`${issue.path}\u0000${issue.message}`));
 }
 
-const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
-  // Privilege boundary (#804/#814): tool_set must be set via Settings or
-  // fleet.yaml, not through the MCP tool. Check the raw args before Zod
-  // strips unknown fields, so the field is never silently ignored.
-  if (typeof (rawArgs as any)?.config?.tool_set === "string" || (rawArgs as any)?.config?.tool_set !== undefined) {
+const updateInstanceConfig: Handler = (ctx, rawArgs, respond, meta) => {
+  // Check raw fields before Zod strips them. Decision 36525f1b exempts only
+  // the authenticated General identity for tool_set, never skipPermissions.
+  if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
+    respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
     respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  const target = (rawArgs as any)?.name, caller = meta?.instanceName ?? "";
+  const instances = ctx.fleetConfig?.instances;
+  const selfTarget = target === caller || (instances && typeof target === "string" &&
+    Object.hasOwn(instances, target) && Object.hasOwn(instances, caller) && instances[target] === instances[caller]);
+  if ((rawArgs as any)?.config?.tool_set !== undefined && selfTarget) {
+    respond(null, "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
@@ -1404,7 +1415,8 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  * the backend (fresh, #1217), a credential profile or backend_options changed. Answers through `respond` like the tool.
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
-  const inst = ctx.fleetConfig?.instances[name];
+  const instances = ctx.fleetConfig?.instances;
+  const inst = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);
@@ -1458,7 +1470,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
-  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description"] as const) {
+  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description", "tool_set"] as const) {
     if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
   }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
@@ -1474,6 +1486,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
+  if (patch.tool_set !== undefined) inst.tool_set = patch.tool_set;
   // backend_options is read when the CLI is launched, so a change to it is not
   // in effect until the instance restarts. Merged per backend namespace so
   // setting a kiro option cannot silently drop a codex one.
@@ -1795,10 +1808,10 @@ const reportResult = wrapAsSend(
 );
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Privilege boundary (#804/#814): tool_set and skipPermissions must be set
-  // via Settings or fleet.yaml, not through the MCP tool. Check raw args before
-  // Zod's passthrough() silently forwards them to instance-lifecycle.
-  if ((rawArgs as any)?.tool_set !== undefined || (rawArgs as any)?.skipPermissions !== undefined) {
+  // Decision 36525f1b: only General may supply tool_set. Raw skipPermissions
+  // stays refused for everyone before passthrough can reach the lifecycle.
+  if ((rawArgs as any)?.skipPermissions !== undefined ||
+      ((rawArgs as any)?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? ""))) {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
@@ -1815,7 +1828,11 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
   }
   const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
-  await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
+  if (isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
+    // Out-of-band authenticated identity: raw passthrough fields cannot choose
+    // the protected target. The lifecycle checks the final allocated name.
+    await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, meta.instanceName);
+  } else await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
 
 const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {

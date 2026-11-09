@@ -6,7 +6,7 @@ roles: [general]
 
 ## Check health
 
-Prefer the fleet tools — they already know each instance's state:
+Prefer the fleet tools — they already know each instance's state. General’s default profile includes the read-only debug tools `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`; use them before dropping to host commands:
 - `list_instances` — every instance with its status and `instance_state`: idle / working / stuck / paused / awaiting_input (the CLI is waiting at an on-screen dialog or input).
 - `describe_instance("<name>")` — one instance's status, state, last activity, description.
 - `get_fleet_status` — just the counts: total, running, paused, stopped.
