@@ -331,6 +331,12 @@ describe("a change that did not go through says why, and can be sent again", () 
     const cards = [...w.p.root.querySelectorAll(".pending-card")];
     expect(cards.map((el: any) => [el.getAttribute("data-pending"), el.className.includes("pending")])).toEqual([[w.second, true]]);
   });
+  it("two quick clicks on Send again send it once (one claim per operation)", async () => {
+    const w = await written("access", []);
+    const again = w.button("Send again");
+    fire(again, "click"); fire(again, "click"); await settle(8);
+    expect(w.sent.filter(r => r.method === "PUT")).toHaveLength(2);        // the first write, and one send again
+  });
   it("Send again refused (the server says no): says so; the card stays", async () => {
     const w = await written("access", [{ __status: 409, error: "revision_conflict" }]);
     fire(w.button("Send again"), "click"); await settle(6);
