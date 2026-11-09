@@ -675,7 +675,8 @@ const ENDED_WHY = ["withdrawn", "rejected", "expired", "not_found", "settings_ch
 /**
  * AGEND-118: a change that did not go through says why — withdrawn, turned down, ran out, settings moved on — in the page's
  * language (the server's own sentence only for a reason this page does not know), and offers to send it again when the page
- * still has the request (p.retry: not for one that touches a secret).
+ * still has the request and sending it as it was is safe (p.retry: settings-confirm.js says which reasons; never for a
+ * change that touches a secret).
  */
 function PendingEnded({ p }) {
   const [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
@@ -733,7 +734,7 @@ register("pendingHost", {
     hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
     more: "Other ways to confirm",
     moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
-    moreCmd: "Or, on that computer, run this command:",
+    moreCmd: "On the computer running AgEnD, run:",
     copy: "Copy", copied: "Copied",
   },
   "zh-TW": {
@@ -766,7 +767,7 @@ register("pendingHost", {
     hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
     more: "其他確認方式",
     moreHost: "到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。",
-    moreCmd: "或在那台電腦上執行這行指令：",
+    moreCmd: "在執行 AgEnD 的那台電腦上執行：",
     copy: "複製", copied: "已複製",
   },
 });

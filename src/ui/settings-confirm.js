@@ -14,6 +14,11 @@ import { appStore } from "/assets/app-store.js";
 const POLL_MS = 2000;
 const SHOW_DONE_MS = 4000;                       // an applied request stays on screen this long, then goes
 const TERMINAL = new Set(["applied", "rejected", "expired", "stale", "failed"]);
+// AGEND-118: why a request ended, for "Send again". Only these reasons can be sent again as they were. Not offered when
+// settings moved on (settings_changed: the old content would go back over what changed), when the session or fleet that
+// asked is gone (request_no_longer_current, fleet_stopped), or for a reason this page does not know.
+const RESENDABLE = new Set(["withdrawn", "rejected", "expired", "not_found", "apply_failed"]);
+const resendable = (view) => TERMINAL.has(view.state) && RESENDABLE.has(view.outcome && view.outcome.reason_code);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 /** A key for one request, reused by every retry of it: a retry with the same key and body is the same request. */
@@ -76,7 +81,7 @@ function publish() {
       hostBrowser: view.totp === "host_browser" && view.state === "pending",
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
       // AGEND-118: a request that ended without applying can be sent again (the same write, a new confirmation).
-      retry: retry && TERMINAL.has(view.state) && view.state !== "applied" ? () => resend(view.id) : null,
+      retry: retry && resendable(view) ? () => resend(view.id) : null,
     })),
   });
 }
@@ -228,14 +233,17 @@ export async function confirmedWrite(path, { method = "POST", body, key = newKey
 }
 
 /**
- * AGEND-118: send the same write again from its card (withdrawn, expired, turned down…). A new key, so it is a new request;
+ * AGEND-118: send the same write again from its card (withdrawn, expired, turned down…; see RESENDABLE).
+ * Assumption: a change that carries a secret is marked `section: "secret"` by the server (from the keys the change touches,
+ * not from the body), and track() keeps no way to send those again. A new confirmedWrite whose body holds a secret
+ * the server would not mark that way must not be given a retry. A new key, so it is a new request;
  * it asks for a new confirmation like any other, and its card replaces this one. { ok: true } when the server took it
  * (held for confirmation, or applied outright); { ok: false } when it refused it or could not be reached — the card says so
  * and the person makes the change again in Settings. Nothing is followed here to the end: the new card does that.
  */
 export async function resend(id) {
   const e = tracked.get(id);
-  if (!e || !e.retry || !TERMINAL.has(e.view.state) || e.view.state === "applied") return { ok: false };
+  if (!e || !e.retry || !resendable(e.view)) return { ok: false };
   if (e.resending) return { ok: false };
   e.resending = true;
   let sent;

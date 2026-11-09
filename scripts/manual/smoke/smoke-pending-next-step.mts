@@ -1,9 +1,9 @@
 // AGEND-118: the "waiting for confirmation" card says the one next step this device can take, by state. A real browser on the
 // shared fixture (the product's own web server, a scratch home, no fleet start; every name and address is the fixture's own).
-// Each state is the real card for a real held change (turning Hub membership on), except two the fixture cannot reach on
-// its own — a request the browser may confirm itself (Apply now), one opened over a link, and one that ran out its five
-// minutes — which are the real page given the server's answer for them (the read of the held change is rewritten; nothing
-// else is).
+// Each state is the real card for a real held change (turning Hub membership on), except the ones the fixture cannot reach
+// on its own — a request the browser may confirm itself (Apply now), one opened over a link, one that ran out its five
+// minutes, one the settings moved on from — which are the real page given the server's answer for them (the read of the held
+// change is rewritten; nothing else is).
 //   unbound   web-only fleet, a code-signed-in admin, no authenticator set up   → set it up (or confirm on the AgEnD computer)
 //   bound     the same with the authenticator set up                           → the 6-digit field, at once
 //   host      the AgEnD computer's own browser, which may press Apply now      → Apply now
@@ -11,6 +11,8 @@
 //   withdrawn withdrawn from the card                                           → says so, and Send again
 //   expired   the five minutes ran out                                          → says so, and Send again
 //   unbound-open  the unbound card with its other ways to confirm opened
+//   bound-open    the bound card with its other ways to confirm opened
+//   stale         the settings changed since: says so, no Send again
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx tsx scripts/manual/smoke/smoke-pending-next-step.mts
 // Run it on two checkouts (OUT per run) to compare before and after.
@@ -90,12 +92,26 @@ try {
     await h.page.waitForSelector(".pending-code-input", { timeout: 10000 });
     await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "2-bound") });
     check(`${cn}:bound`, h.errs.length === 0 && (await h.csp()).length === 0, { errs: h.errs });
+    // bound again, with the folded ways opened
+    await h.page.click(".pending-card details.pending-host > summary");
+    await h.page.waitForTimeout(300);
+    await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "8-bound-open") });
     // expired: the same card, after its five minutes
     await rewriteReads(h.page, (v: any) => ({ ...v, state: "expired", remaining_ms: 0, can_withdraw: false, totp: undefined,
       outcome: { state: "expired", reason_code: "expired", message: EXPIRED[c.lang], decided_at: Date.now() } }));
     await h.page.waitForSelector(".pending-card.expired", { timeout: 8000 });
     await h.page.waitForTimeout(300);
     await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "6-expired") });
+    await h.ctx.close();
+    // settings changed since: nothing to send again as it was (the card says to make the change again in Settings)
+    enroll(fx, false);
+    h = await hold(fx, c);
+    await rewriteReads(h.page, (v: any) => ({ ...v, state: "stale", remaining_ms: 0, can_withdraw: false, totp: undefined,
+      outcome: { state: "stale", reason_code: "settings_changed", message: "", decided_at: Date.now() } }));
+    await h.page.waitForSelector(".pending-card.stale", { timeout: 8000 });
+    await h.page.waitForTimeout(300);
+    await card(h.page).screenshot({ path: shotPath(SMOKE, cn, "9-stale") });
+    check(`${cn}:stale-no-resend`, (await h.page.locator(".pending-actions .btn-primary").count()) === 0, { text: await text(h.page) });
     await h.ctx.close();
     // withdrawn: really withdrawn from the card
     enroll(fx, false);

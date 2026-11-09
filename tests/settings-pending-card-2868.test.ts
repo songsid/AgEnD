@@ -182,6 +182,9 @@ describe("one next step, by state", () => {
     expect(shown(c)).not.toContain("Apply now");
     expect(shown(c)).not.toContain("agend settings confirm");
     expect([fold(c).querySelector("summary").textContent, fold(c).open ?? false]).toEqual(["Other ways to confirm", false]);
+    // The command line says which computer it is for (the line before it is not always about that computer).
+    expect(fold(c).textContent.replace(/\s+/g, " ")).toContain("On the computer running AgEnD, run:");
+    expect(fold(c).textContent).not.toContain("on that computer");
   });
   it("not set up, away from the host: says this device can't confirm yet, the way to set it up and what happens next; the rest folded", async () => {
     const c = await card(view({ confirmation: NOCHAT, totp: "not_set_up" }));
@@ -196,6 +199,10 @@ describe("one next step, by state", () => {
     const more = fold(c).textContent.replace(/\s+/g, " ");
     expect(more).toContain("press Apply now on this card.");
     expect(fold(c).querySelector("code").textContent).toBe(`agend settings confirm ${ID}`);
+  });
+  it("the browser may press Apply now: the folded command line also says which computer", async () => {
+    const c = await card(view({ confirmation: NOCHAT, can_self_confirm: true }));
+    expect(fold(c).textContent.replace(/\s+/g, " ")).toContain("On the computer running AgEnD, run:");
   });
   it("the command's Copy button copies the whole command", async () => {
     const written: string[] = [];
@@ -238,6 +245,9 @@ describe("one next step, by state", () => {
     expect(shown(setup)).toContain("你目前在這台裝置還無法直接確認這項變更。");
     expect((setup.p.root.querySelector(".pending-code-setup a") as any).textContent.trim()).toBe("綁定驗證器");
     expect(fold(setup).querySelector("summary").textContent).toBe("其他確認方式");
+    expect(fold(setup).textContent).toContain("在執行 AgEnD 的那台電腦上執行：");
+    const apply = await card(view({ confirmation: NOCHAT, can_self_confirm: true }), undefined, "zh-TW");
+    expect(fold(apply).textContent).toContain("在執行 AgEnD 的那台電腦上執行：");
   });
 });
 
@@ -247,15 +257,17 @@ describe("a change that did not go through says why, and can be sent again", () 
   it.each([
     ["rejected", "withdrawn", "You withdrew this change, so nothing was changed.", "你已撤回這項變更，沒有任何設定被修改。"],
     ["rejected", "rejected", "An admin turned it down, so nothing was changed.", "管理者拒絕了這項變更，沒有任何設定被修改。"],
-    ["expired", "expired", "No one confirmed it within 5 minutes, so nothing was changed.", "5 分鐘內沒有人確認，所以沒有任何設定被修改。"],
-    ["expired", "not_found", "AgEnD is no longer holding this request (it timed out or was cleared), so nothing was changed.", "AgEnD 已經沒有這項等待中的請求（已逾時或已清除），沒有任何設定被修改。"],
-    ["stale", "settings_changed", "Settings changed after you asked for this, so it was not applied.", "你送出之後設定又被修改了，所以沒有套用。"],
-    ["stale", "request_no_longer_current", "The sign-in that asked for it ended, or the fleet changed, so it was not applied.", "送出這項變更的登入已結束，或 fleet 有變動，所以沒有套用。"],
-    ["stale", "fleet_stopped", "AgEnD stopped before it could be applied.", "AgEnD 在套用前停止了。"],
+    // Not "no one confirmed it": a change that was confirmed and still applying when the five minutes ran out ends as expired too.
+    ["expired", "expired", "It was not completed within 5 minutes. Check what the settings are now.", "5 分鐘內沒有完成，請確認設定目前的內容。"],
+    ["expired", "not_found", "AgEnD no longer has this request (it timed out or was cleared). Check what the settings are now.", "AgEnD 已經沒有這項請求（已逾時或已清除），請確認設定目前的內容。"],
+    ["stale", "settings_changed", "Settings changed after you asked for this, so it was not applied. Review them and make the change again in Settings.", "你送出之後設定又被修改了，所以沒有套用。請檢查設定後，到設定重新做一次這項變更。"],
+    ["stale", "request_no_longer_current", "The sign-in that asked for it ended, or the fleet changed, so it was not applied. Make the change again in Settings.", "送出這項變更的登入已結束，或 fleet 有變動，所以沒有套用。請到設定重新做一次這項變更。"],
+    ["stale", "fleet_stopped", "AgEnD stopped before it could be applied. Make the change again in Settings.", "AgEnD 在套用前停止了。請到設定重新做一次這項變更。"],
   ])("%s / %s: the reason in the page's language", async (state, reason, en, zh) => {
     expect((await card(ended(state, reason))).text()).toContain(en);
     expect((await card(ended(state, reason), undefined, "zh-TW")).text()).toContain(zh);
     expect((await card(ended(state, reason))).text()).not.toContain("server words");
+    expect((await card(ended(state, reason))).text()).not.toContain("No one confirmed");
   });
   it("a failed apply (or a reason a newer server adds) keeps the server's own sentence", async () => {
     expect((await card(ended("failed", "apply_failed", "Change could not be applied."))).text()).toContain("Change could not be applied.");
@@ -266,7 +278,7 @@ describe("a change that did not go through says why, and can be sent again", () 
   });
 
   // The same write, again: confirmedWrite keeps how to send it until the card is gone.
-  async function written(section: string, answers: Array<Record<string, unknown>>) {
+  async function written(section: string, answers: Array<Record<string, unknown>>, ending: { state: string; reason: string } = { state: "rejected", reason: "withdrawn" }) {
     for (const old of mounted.splice(0)) { await old.unmount(); old.restore(); }
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
@@ -280,7 +292,7 @@ describe("a change that did not go through says why, and can be sent again", () 
       sent.push({ method, url, key: init.headers?.["Idempotency-Key"] ?? null, body: init.body ?? null });
       let body: unknown = {};
       if (method === "PUT") body = { __status: 202, ok: true, result: "pending_confirmation", pending_change: view({ id: puts++ === 0 ? first : second, section }) };
-      else if (method === "DELETE") body = view({ id: first, section, state: "rejected", can_withdraw: false, remaining_ms: 0, outcome: { state: "rejected", reason_code: "withdrawn", message: "x", decided_at: 1 } });
+      else if (method === "DELETE") body = view({ id: first, section, state: ending.state, can_withdraw: false, remaining_ms: 0, outcome: { state: ending.state, reason_code: ending.reason, message: "x", decided_at: 1 } });
       else if (url === "/ui/authorization") body = { state: "none", reason: "not_authorized" };
       else if (url === `/api/settings/pending/${second}`) body = view({ id: second, section });
       else if (url === `/api/settings/pending/${first}`) body = view({ id: first, section });
@@ -315,6 +327,20 @@ describe("a change that did not go through says why, and can be sent again", () 
     fire(w.button("Send again"), "click"); await settle(6);
     expect(w.p.root.textContent).toContain("It could not be sent again. Make the change again in Settings.");
     expect(w.button("Send again")).toBeDefined();
+  });
+  // Only a request that can be sent again as it was: not when settings moved on (the old content would go back over what
+  // changed), not when the asking session or the fleet is gone, and not for a reason this page does not know.
+  it.each([
+    ["rejected", "withdrawn", true], ["rejected", "rejected", true], ["expired", "expired", true], ["expired", "not_found", true], ["failed", "apply_failed", true],
+    ["stale", "settings_changed", false], ["stale", "request_no_longer_current", false], ["stale", "fleet_stopped", false], ["rejected", "something_new", false],
+  ])("%s / %s: Send again is offered: %s", async (state, reason, offered) => {
+    const w = await written("access", [], { state, reason });
+    expect(w.p.root.querySelector(".pending-card").className).toContain(state);
+    expect(!!w.button("Send again")).toBe(offered);
+    if (!offered) {
+      fire(w.p.root.querySelector(".pending-card .icon-btn"), "click"); await settle(3);        // closing it leaves nothing to send
+      expect(w.sent.filter(r => r.method === "PUT")).toHaveLength(1);
+    }
   });
   it("a request that touches a secret is never kept to be sent again", async () => {
     const w = await written("secret", []);
