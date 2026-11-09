@@ -1,6 +1,6 @@
 // #2347 restart flow: saved changes that wait for an AgEnD restart are one app-wide line, in every panel, until AgEnD
 // restarts — Restart now (asked first, never automatic) or Later. Over the temporary public link it offers nothing; with
-// no Settings job to carry the restart it says how to restart on the host; a guest's page never asks.
+// no Settings job to carry the restart it says how to restart from General when the fleet has chat; a guest's page never asks.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
@@ -38,7 +38,7 @@ beforeEach(async () => {
   await p.unmount();
   apply.resetOperation();
   reqs = []; routes = [];
-  app.appStore.set({ restartPending: null, restartRunner: (jobId: string) => apply.restartPendingChanges(jobId) });
+  app.appStore.set({ restartPending: null, connections: null, restartRunner: (jobId: string) => apply.restartPendingChanges(jobId) });
   nav.navigate("/ui/fleet");
 });
 afterEach(() => { p.document.body.removeAttribute("data-public-link"); p.document.body.removeAttribute("data-tier"); });
@@ -110,10 +110,60 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect([!!line(), !!button("Restart now"), line()?.textContent.includes("public link")]).toEqual([true, true, false]);
   });
 
-  it("with no Settings job to carry it (a hand edit) it says how to restart on the host", async () => {
+  it("S-92: with no Settings job to carry it (a hand edit) it offers Restart now too: one click and the restart's own dialog; the server makes the job, which is followed", async () => {
+    let restarted = false;
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: restarted ? { pending: false } : { ...PENDING, job_id: null } } : undefined));
+    routes.push(r => (r.url === "/api/settings/apply/made1" ? { body: { ...JOB(restarted ? "done" : "running"), id: "made1" } } : undefined));
+    routes.push(r => (r.method === "POST" && r.url === "/api/settings/restart-fleet" ? (restarted = true, { status: 202, body: { job_id: "made1", restarting: true } }) : undefined));
+    await mountShell();
+    expect([!!button("Restart now"), /agend restart|on the host/.test(line()?.textContent ?? "")]).toEqual([true, false]);
+    await pressAndAnswer("Restart now", false);
+    expect(posts()).toEqual([]);                                          // Cancel restarts nothing
+    await pressAndAnswer("Restart now", true);
+    await vi.waitFor(() => expect(posts()).toEqual(["/api/settings/restart-fleet"]));
+    const sent = reqs.find(r => r.url === "/api/settings/restart-fleet")!;
+    // The confirmation is the request's value — the person typed nothing; no job id: the pending changes' own restart.
+    expect([sent.body.pending, sent.body.job_id, sent.body.confirm, typeof sent.key]).toEqual([true, undefined, "restart-agend", "string"]);
+    await vi.waitFor(() => expect(app.appStore.get().settingsOp?.job?.id).toBe("made1"));
+    await vi.waitFor(() => expect(line()).toBeNull());
+  });
+
+  it("S-92: on a fleet with no chat connection the restart's dialog says it is recorded in the dashboard's Notices, not a chat channel", async () => {
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+    const asked: string[] = [];
+    app.appStore.set({ connections: 0 });
+    await mountShell();
+    (globalThis as any).confirm = (m: string) => { asked.push(m); return false; }; p.window.confirm = (globalThis as any).confirm;
+    button("Restart now").click(); await settle(8);
+    const dialog = p.root.querySelector("dialog")?.textContent ?? asked.join("\n");
+    expect(dialog).toContain("recorded in this dashboard's Notices");
+    expect(dialog).not.toContain("chat channel");
+  });
+
+  it("a page that cannot restart (no runner) offers no button and says where else to, in #3363's words: General on a chat fleet", async () => {
+    app.appStore.set({ connections: 1, restartRunner: null });
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
     await mountShell();
-    expect([!!button("Restart now"), line()?.textContent.includes("agend restart")]).toEqual([false, true]);
+    expect([!!button("Restart now"), line()?.textContent.includes("Send /restart in General to use them.")]).toEqual([false, true]);
+  });
+
+  it("a web-only fleet with a Settings job offers Restart now and does not mention General", async () => {
+    app.appStore.set({ connections: 0 });
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
+    await mountShell();
+    expect([!!button("Restart now"), /General|\/restart/.test(line()?.textContent ?? "")]).toEqual([true, false]);
+  });
+
+  it("a web-only hand edit offers Restart now (S-92) and names no General or host command; a page that cannot restart says to restart AgEnD", async () => {
+    app.appStore.set({ connections: 0 });
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: { ...PENDING, job_id: null } } : undefined));
+    await mountShell();
+    expect([!!button("Restart now"), /General|\/restart|agend restart/.test(line()?.textContent ?? "")]).toEqual([true, false]);
+    await p.unmount();
+    app.appStore.set({ restartRunner: null });
+    await mountShell();
+    expect([!!button("Restart now"), /General|\/restart|agend restart/.test(line()?.textContent ?? "")]).toEqual([false, false]);
+    expect(line()?.textContent).toContain("Restart AgEnD to use them.");
   });
 
   it("a refused restart says why and keeps the line", async () => {

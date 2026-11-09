@@ -10,6 +10,8 @@ Behaviour is chosen by a keyword in the last user text:
   E400LONG HTTP 400 invalid_request_error "prompt is too long: … tokens > … maximum" (the API's context-limit error)
   E400BAD  HTTP 400 invalid_request_error with another message (2.1.306: no longer shown as "prompt is too long")
   BIG      reply with huge usage numbers (to make the session look large)
+  EDITDEMO <file>  Read <file>, Edit it ("two" → "TWO"), Bash `echo edit-probe`, then a text reply: a settled screen with
+           a prompt, a reply, an edit diff and a tool result, for the View-history check (view-history-sample.mts)
 otherwise a short text reply. Every request is appended to requests.log.
 """
 import json, sys, time, os
@@ -35,6 +37,22 @@ def last_user_text(body):
                 tool_result = True
         return (texts[-1] if texts else ""), tool_result
     return "", False
+
+
+def editdemo_step(body):
+    """EDITDEMO: (file, how many tool calls the assistant made since the EDITDEMO prompt), or None."""
+    msgs = body.get("messages") or []
+    for i in range(len(msgs) - 1, -1, -1):
+        m = msgs[i]
+        c = m.get("content")
+        texts = [c] if isinstance(c, str) else [p.get("text", "") for p in (c or []) if p.get("type") == "text"]
+        hit = next((t for t in texts if "EDITDEMO " in t), None)
+        if m.get("role") == "user" and hit is not None:
+            path = hit.split("EDITDEMO ", 1)[1].split()[0]
+            calls = sum(1 for a in msgs[i + 1:] if a.get("role") == "assistant" and isinstance(a.get("content"), list)
+                        for p in a["content"] if p.get("type") == "tool_use")
+            return path, calls
+    return None
 
 
 class H(BaseHTTPRequestHandler):
@@ -85,7 +103,14 @@ class H(BaseHTTPRequestHandler):
         stop = "end_turn"
         delay = 0.0
         usage_in = 50
-        if tool_result:
+        demo = editdemo_step(body)
+        if demo is not None and demo[1] < 3:
+            path, calls = demo
+            blocks = [("named", [("Read", {"file_path": path}), ("Edit", {"file_path": path, "old_string": "two", "new_string": "TWO"}),
+                                 ("Bash", {"command": "echo edit-probe", "description": "Print a marker"})][calls])]; stop = "tool_use"
+        elif demo is not None:
+            blocks = [("text", "Edited the file and printed the marker.")]
+        elif tool_result:
             blocks = [("text", "tool finished")]
         elif "BASHPERM" in text:
             blocks = [("tool", {"command": "touch perm-probe.txt", "description": "Create a marker file"})]; stop = "tool_use"
@@ -112,7 +137,8 @@ class H(BaseHTTPRequestHandler):
         if not body.get("stream"):
             content = []
             for kind, val in blocks:
-                content.append({"type": "text", "text": val} if kind == "text" else {"type": "tool_use", "id": f"toolu_{counter[0]}", "name": "Bash", "input": val})
+                name, val = val if kind == "named" else ("Bash", val)
+                content.append({"type": "text", "text": val} if kind == "text" else {"type": "tool_use", "id": f"toolu_{counter[0]}", "name": name, "input": val})
             return self._json(200, {"id": f"msg_{counter[0]}", "type": "message", "role": "assistant", "model": body.get("model", "claude-sonnet-4-5"), "content": content, "stop_reason": stop, "stop_sequence": None, "usage": {"input_tokens": usage_in, "output_tokens": 5}})
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
@@ -138,7 +164,8 @@ class H(BaseHTTPRequestHandler):
                     if delay:
                         time.sleep(delay)
             else:
-                ev("content_block_start", {"type": "content_block_start", "index": i, "content_block": {"type": "tool_use", "id": f"toolu_{counter[0]}", "name": "Bash", "input": {}}})
+                name, val = val if kind == "named" else ("Bash", val)
+                ev("content_block_start", {"type": "content_block_start", "index": i, "content_block": {"type": "tool_use", "id": f"toolu_{counter[0]}", "name": name, "input": {}}})
                 ev("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {"type": "input_json_delta", "partial_json": json.dumps(val)}})
             ev("content_block_stop", {"type": "content_block_stop", "index": i})
         ev("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None}, "usage": {"output_tokens": 5}})

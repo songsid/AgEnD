@@ -85,6 +85,17 @@ export function addAccountProfile(dataDir: string, backend: string, name: unknow
   return { ok: true };
 }
 
+/**
+ * Whether `name` is an account that exists for `backend`: its folder (made by Add) is there with exactly this spelling and is AgEnD's own (`ownProfileFolder`'s checks).
+ * A case-insensitive disk finds `chy` when the folder is `CHY`, and a case-sensitive one would make a second folder for it, so the spelling is compared by name, not by path.
+ * Nothing is created. `name` must already be valid.
+ */
+export function accountFolderExists(dataDir: string, backend: string, name: string, fs: ProfileFs = realFs()): boolean {
+  const found = ownProfileFolder(dataDir, backend, name, fs);
+  if (!found.ok) return false;
+  try { return readdirSync(found.base).includes(name); } catch { return false; }
+}
+
 export interface RemoveRequest {
   backend: string;
   name: unknown;

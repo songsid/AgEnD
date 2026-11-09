@@ -1389,7 +1389,7 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
     const text = markFaintRuns(tail.text);
     if (text !== tail.text) notes.push(FAINT_NOTE);
     if (startsInsideFaint(tail.text)) notes.push(FAINT_START_NOTE);
-    if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
+    if (capped) notes.push(t("logs.capped_tail", MAX_INSTANCE_LOG_LINES));
     if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
     if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
@@ -1422,11 +1422,27 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 }
 
 const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Privilege boundary (#804/#814): tool_set must be set via Settings or
-  // fleet.yaml, not through the MCP tool. Check the raw args before Zod
-  // strips unknown fields, so the field is never silently ignored.
-  if (typeof (rawArgs as any)?.config?.tool_set === "string" || (rawArgs as any)?.config?.tool_set !== undefined) {
+  // Check raw fields before Zod strips them. Decision 36525f1b exempts only
+  // the authenticated General identity for tool_set, never skipPermissions.
+  if ((rawArgs as any)?.config?.skipPermissions !== undefined) {
+    respond(null, "skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
     respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  const target = (rawArgs as any)?.name, caller = meta?.instanceName ?? "";
+  const instances = ctx.fleetConfig?.instances;
+  const selfTarget = target === caller || (instances && typeof target === "string" &&
+    Object.hasOwn(instances, target) && Object.hasOwn(instances, caller) && instances[target] === instances[caller]);
+  if ((rawArgs as any)?.config?.tool_set !== undefined && selfTarget) {
+    respond(null, "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
+  if ((rawArgs as any)?.config?.tool_set !== undefined && typeof target === "string" &&
+      instances && Object.hasOwn(instances, target) && isWindowsInstance(instances[target])) {
+    respond(null, WINDOWS_TOOL_SET_REFUSED);
     return;
   }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
@@ -1462,7 +1478,8 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  * the backend (fresh, #1217), a credential profile or backend_options changed. Answers through `respond` like the tool.
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
-  const inst = ctx.fleetConfig?.instances[name];
+  const instances = ctx.fleetConfig?.instances;
+  const inst = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
   if (isWindowsInstance(inst)) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
@@ -1517,7 +1534,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
-  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description"] as const) {
+  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description", "tool_set"] as const) {
     if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
   }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
@@ -1533,6 +1550,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
+  if (patch.tool_set !== undefined) inst.tool_set = patch.tool_set;
   // backend_options is read when the CLI is launched, so a change to it is not
   // in effect until the instance restarts. Merged per backend namespace so
   // setting a kiro option cannot silently drop a codex one.
@@ -1864,6 +1882,8 @@ const reportResult: Handler = (ctx, rawArgs, respond, meta) => {
 
 /** #2942: the settings an agent may ask to change on a Windows agent — the web editor's, of those the MCP schema offers. */
 const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
+/** M-2721 preserves #2942: General's direct profile authority covers portable/local agents only. */
+const WINDOWS_TOOL_SET_REFUSED = "A Windows agent's tool_set is set by a person in Settings on the host; agent requests cannot set it";
 /** #2942: what the agent hears about its request — held for General, or the state it already reached (a repeat). */
 function windowsRequestAnswer(view: { id: string; state: string }): Record<string, unknown> {
   return view.state === "pending"
@@ -1876,15 +1896,16 @@ function windowsRequestAnswer(view: { id: string; state: string }): Record<strin
 }
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
-  // Privilege boundary (#804/#814): tool_set and skipPermissions must be set
-  // via Settings or fleet.yaml, not through the MCP tool. Check raw args before
-  // Zod's passthrough() silently forwards them to instance-lifecycle.
-  if ((rawArgs as any)?.tool_set !== undefined || (rawArgs as any)?.skipPermissions !== undefined) {
+  // Decision 36525f1b: only General may supply tool_set. Raw skipPermissions
+  // stays refused for everyone before passthrough can reach the lifecycle.
+  if ((rawArgs as any)?.skipPermissions !== undefined ||
+      ((rawArgs as any)?.tool_set !== undefined && !isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? ""))) {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
   // #2942: a Windows agent from an agent's request is only ever held as a pending change for a fleet admin's General card.
   if ((rawArgs as any)?.runtime === "windows") {
+    if ((rawArgs as any)?.tool_set !== undefined) { respond(null, WINDOWS_TOOL_SET_REFUSED); return; }
     if (!ctx.requestWindowsCreate || !meta?.instanceName) { respond(null, WINDOWS_CREATE_REFUSED); return; }
     try { respond(windowsRequestAnswer(await ctx.requestWindowsCreate(meta.instanceName, rawArgs as Record<string, unknown>))); }
     catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CREATE_REFUSED); }
@@ -1905,7 +1926,11 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
   }
   const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
-  await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
+  if (isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
+    // Out-of-band authenticated identity: raw passthrough fields cannot choose
+    // the protected target. The lifecycle checks the final allocated name.
+    await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, meta.instanceName);
+  } else await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
 
 const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {

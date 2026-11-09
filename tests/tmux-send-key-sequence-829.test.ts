@@ -10,9 +10,10 @@ vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return {
     ...real,
-    execFile: ((cmd: string, args: string[], cb: (err: Error | null, out: { stdout: string; stderr: string }) => void) => {
+    // TmuxManager passes (binary, args, options, callback) — the callback is the last argument.
+    execFile: ((cmd: string, args: string[], ...rest: unknown[]) => {
       calls.push([cmd, ...args]);
-      cb(null, { stdout: "", stderr: "" });
+      (rest.at(-1) as (err: Error | null, out: { stdout: string; stderr: string }) => void)(null, { stdout: "", stderr: "" });
     }) as never,
   };
 });

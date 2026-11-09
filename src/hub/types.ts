@@ -105,7 +105,11 @@ export type HubMemberFrame =
   | HubFrame<"error", HubProtocolError>
   | HubFrame<"attachment.get", { id: string; offset: number }>
   | HubFrame<"attachment.put", HubAttachmentChunk>
-  | HubFrame<"exposure.quota", HubExposureQuota>;
+  | HubFrame<"exposure.quota", HubExposureQuota>
+  | HubFrame<"pairing.notice-ack", { id: string }>;
+export interface HubPairingNotice {
+  id: string; fleetId: string; generation: number; label: string; at: number; source: "group" | "manual"; revoked: boolean;
+}
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
@@ -115,7 +119,9 @@ export type HubServerFrame =
   | HubFrame<"revoke", HubRevocation>
   | HubFrame<"error", HubProtocolError>
   | HubFrame<"attachment.chunk", HubAttachmentChunk>
-  | HubFrame<"attachment.ack", { id: string; offset: number }>;
+  | HubFrame<"attachment.ack", { id: string; offset: number }>
+  | HubFrame<"pairing.notice", HubPairingNotice & { source: "group" }>
+  | HubFrame<"pairing.notice-v2", HubPairingNotice>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;
@@ -185,6 +191,8 @@ export type HubActor =
   | { kind: "local-host"; sessionId: string; directoryBinding: PersonKey | null };
 export interface HubRequestContext {
   readonly requestId: string;
+  /** Synchronous session/lifetime fence for a permit immediately before its effect; never directory authority. */
+  isCurrent?(): boolean;
   current(): Promise<HubActor>; // authenticates again, checks mode/session/body continuation
   requirePerson(): Promise<PersonKey>; // fresh directory eligibility; host repair is not an asker
   requireAdmin(): Promise<HubActor>; // current local host or explicit Hub admin assignment

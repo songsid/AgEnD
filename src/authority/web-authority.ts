@@ -9,6 +9,7 @@ import type { SessionRecord } from "../web-session.js";
 import type { WebConfig } from "../types.js";
 import { hostnameOf, LOOPBACK_HOST_NAMES } from "../web-host-guard.js";
 import type { SessionAuthorization } from "./session-authorizations.js";
+import { gatewayRequestContext } from "../web-request-context.js";
 
 /**
  * Where one request came from (§3.4): `loopback` is this machine naming a loopback host; `lan` is only "not loopback".
@@ -117,6 +118,19 @@ export function classifyWebPeer(req: { socket?: { remoteAddress?: string | undef
   const name = typeof host === "string" ? hostnameOf(host) : null;
   if (!name || !LOOPBACK_HOST_NAMES.includes(name)) return "lan";
   return FORWARDING_HEADERS.some(h => req.headers[h] !== undefined) ? "lan" : "loopback";
+}
+
+/**
+ * D3 / B2b (one helper, agreed with dev-claude): the host's own session — minted by `agend web` (its code is issued only
+ * to a direct request from this computer since #3345), an admin with no chat account — used from THIS computer by this
+ * request: no gateway context, and a loopback peer with a loopback Host and no forwarding header (classifyWebPeer). Asked
+ * per request, never from the session alone: a host session's cookie replayed over a link or through a proxy is not here.
+ * Never bare loopback: a session the host's `agend web` minted is required.
+ */
+export function hostSessionHere(session: Pick<SessionRecord, "host" | "owner" | "tier" | "surface"> | null | undefined,
+  req: { socket?: { remoteAddress?: string | undefined } | null; headers: NodeJS.Dict<string | string[]> }): boolean {
+  return session?.host === true && !session.owner && session.tier === "admin" && session.surface === "local"
+    && !gatewayRequestContext(req as never) && classifyWebPeer(req) === "loopback";
 }
 
 export interface WebAuthorityInput {

@@ -1,0 +1,376 @@
+{
+  "cases": [
+    {
+      "case": "desk-light-en",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-light-zh-TW",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-dark-en",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "desk-dark-zh-TW",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-light-en",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-light-zh-TW",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-dark-en",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "host-login": "PASS",
+      "real-shell": "PASS",
+      "host-mark": "PASS",
+      "geometry-before": "PASS",
+      "geometry-addresses": "PASS",
+      "ca-fingerprint": "PASS",
+      "geometry-directory": "PASS",
+      "no-binds-before-test": "PASS",
+      "geometry-administrator": "PASS",
+      "geometry-review": "PASS",
+      "only-service-binds": "PASS",
+      "no-secret-readback": "PASS",
+      "no-early-ready": "PASS",
+      "review-overflow": "PASS",
+      "geometry-created": "PASS",
+      "sealed-enabled": "PASS",
+      "no-holds": "PASS",
+      "verified-hub-https": "PASS",
+      "group-off": "PASS",
+      "no-admin-session-minted": "PASS",
+      "setup-audit-imported": "PASS",
+      "real-api-only": "PASS",
+      "requests": [
+        {
+          "path": "/api/settings/hub/setup",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/prepare",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/test",
+          "status": 200
+        },
+        {
+          "path": "/api/settings/hub/setup/commit",
+          "status": 200
+        }
+      ],
+      "no-page-errors": "PASS",
+      "no-csp": "PASS",
+      "cleaned": true
+    }
+  ],
+  "skew": "",
+  "limits": "owned scratch only, fake people/LDAPS, no real AD/account/CLI/native service/pilot",
+  "failures": [],
+  "cleaned": true
+}

@@ -7,6 +7,8 @@ import { OpenCodeBackend } from "../src/backend/opencode.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { SpawnGate } from "../src/spawn-gate.js";
 import { StormWindow } from "../src/storm-window.js";
+import { tagWindowId } from "../src/tmux-legacy.js";
+import { tmuxSocket } from "../src/tmux-binary.js";
 
 /**
  * #1160 (C): the session-id checkpoint never forks a CLI on the event loop. Idle observations look in
@@ -200,6 +202,7 @@ describe("lifecycle transitions: wait for the lookup, bounded", () => {
     backend.refreshSessionId = vi.fn(async () => { order.push("lookup:start"); await new Promise(r => setTimeout(r, 1_500)); order.push("lookup:done"); id.current = "ses_current"; return id.current; });
     const d = daemon(backend);
     writeFileSync(join(instanceDir, "window-id"), "@77");
+    tagWindowId(instanceDir, tmuxSocket(), "@77");   // this AgEnD's own window (an untagged one would be 2.3's, probed for)
     vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
     vi.spyOn(TmuxManager.prototype, "isWindowAlive").mockResolvedValue(true);
     vi.spyOn(TmuxManager.prototype, "killWindow").mockImplementation(async () => { order.push("kill"); });

@@ -14,6 +14,11 @@ import { appStore } from "/assets/app-store.js";
 const POLL_MS = 2000;
 const SHOW_DONE_MS = 4000;                       // an applied request stays on screen this long, then goes
 const TERMINAL = new Set(["applied", "rejected", "expired", "stale", "failed"]);
+// AGEND-118: why a request ended, for "Send again". Only these reasons can be sent again as they were. Not offered when
+// settings moved on (settings_changed: the old content would go back over what changed), when the session or fleet that
+// asked is gone (request_no_longer_current, fleet_stopped), or for a reason this page does not know.
+const RESENDABLE = new Set(["withdrawn", "rejected", "expired", "not_found", "apply_failed"]);
+const resendable = (view) => TERMINAL.has(view.state) && RESENDABLE.has(view.outcome && view.outcome.reason_code);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 /** A key for one request, reused by every retry of it: a retry with the same key and body is the same request. */
@@ -59,15 +64,26 @@ let timer = null, polling = false;
 
 function publish() {
   appStore.set({
-    pendingChanges: [...tracked.values()].map(({ view, at, label }) => ({
+    pendingChanges: [...tracked.values()].map(({ view, at, label, retry, displaySummary }) => ({
       ...view,
       label: label || null,
+      // Display only: the server owns the diff, confirmation digest and execution.
+      summary: displaySummary ? displaySummary(view) : view.summary,
       // Monotonic: when the server's countdown reaches zero on this page's clock.
       deadline: at + Math.max(0, Number(view.remaining_ms) || 0),
       withdraw: view.can_withdraw && view.state === "pending" ? () => withdraw(view.id) : null,
       // #2868: this browser may confirm it itself now (the server's read says so; it checks again on the click).
       applyNow: view.can_self_confirm && view.state === "pending" ? () => applyNow(view.id) : null,
+      // alpha.6 #2c (hmsg-468cc290): a web-only fleet's own page may confirm it with the authenticator's code.
+      confirmWithCode: view.totp === "ready" && view.state === "pending" ? (code) => confirmWithCode(view.id, code) : null,
+      totpNotSetUp: view.totp === "not_set_up" && view.state === "pending",
+      // Over a link (the leader's ruling (b)): no code here — confirm it in the host computer's own browser, or in General.
+      onHost: view.totp === "on_host" && view.state === "pending",
+      // A link option turned on (#2453, the leader's ruling on D3): only the browser on the AgEnD computer itself confirms it.
+      hostBrowser: view.totp === "host_browser" && view.state === "pending",
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
+      // AGEND-118: a request that ended without applying can be sent again (the same write, a new confirmation).
+      retry: retry && resendable(view) ? () => resend(view.id) : null,
     })),
   });
 }
@@ -97,8 +113,9 @@ function update(view, token) {
     e.done = true;
     finals.set(view.id, view);
     for (const resolve of e.waiters.splice(0)) resolve(view);
-    // A request that applied goes away by itself; one that did not stays until it is dismissed, so it is read.
-    if (view.state === "applied") e.doneTimer = setTimeout(() => forget(view.id), SHOW_DONE_MS);
+    // A request that applied goes away by itself (and needs no way to be sent again); one that did not stays until it is
+    // dismissed, so it is read.
+    if (view.state === "applied") { e.retry = null; e.doneTimer = setTimeout(() => forget(view.id), SHOW_DONE_MS); }
   }
   publish();
 }
@@ -130,11 +147,20 @@ async function poll() {
  * Follow a pending request until it is decided. Resolves with its final view (applied, rejected, expired, stale or
  * failed). The same id twice is followed once.
  */
-export function track(view, label) {
+export function track(view, label, retry, displaySummary) {
   if (finals.has(view.id) && !tracked.has(view.id)) return Promise.resolve(finals.get(view.id));   // decided and dismissed
+  // `retry`: a function that sends the same write again (confirmedWrite makes one only for a write its caller marked
+  // `resendable`). Also never kept for a request the server marks `section: "secret"` — a second line of defence, not the rule.
+  const again = typeof retry === "function" && view.section !== "secret" ? retry : null;
   let e = tracked.get(view.id);
-  if (!e) { e = { view, at: now(), label, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
-  else if (label && !e.label) e.label = label;
+  if (!e) { e = { view, at: now(), label, displaySummary, retry: again, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
+  else { if (label && !e.label) e.label = label; if (again && !e.retry) e.retry = again; }
+  if (typeof displaySummary === "function") {
+    e.displaySummary = displaySummary;
+    // Discovery may have settled this request before its original response arrives. Publish only its new copy;
+    // update() still rejects the older pending view, without changing the decided state, digest or deadline.
+    if (e.done) publish();
+  }
   const settled = e.done ? Promise.resolve(e.view) : new Promise((resolve) => e.waiters.push(resolve));
   update(view, ticket(e));
   schedule();
@@ -168,6 +194,27 @@ export async function applyNow(id) {
   return { ok: false, status: res.status };
 }
 
+/**
+ * alpha.6 feedback #2c (the user's decision hmsg-468cc290): confirm a pending change on this computer's own page with the
+ * owner's authenticator code. The server checks the code (each time step once, the fleet-wide wrong-code limit) and asks
+ * again at execution. { ok } or why not: "wrong", "paused" (retryAfterMs), "not_here" (this page can no longer), "unavailable".
+ */
+export async function confirmWithCode(id, code) {
+  const e = tracked.get(id);
+  if (!e) return { ok: false, error: "not_here" };
+  const token = ticket(e);
+  let res;
+  try { res = await api(`/api/settings/pending/${encodeURIComponent(id)}/confirm-totp`, { method: "POST", body: JSON.stringify({ code: String(code || "").replace(/\s+/g, ""), digest: String(e.view.confirm_digest || "") }) }); }
+  catch { return { ok: false, error: "unavailable" }; }
+  if (isPendingResponse(res) && res.body.pending_change.id === id) { update(res.body.pending_change, token); schedule(); return { ok: true }; }
+  if (res.status === 401 && res.body && res.body.error === "wrong_code") return { ok: false, error: "wrong" };
+  if (res.status === 429) return { ok: false, error: "paused", retryAfterMs: Number(res.body && res.body.retryAfterMs) || null };
+  // The change is not the one this page showed (#3352 security review, point 2): read it again; the code was not used.
+  if (res.status === 409 && res.body && res.body.error === "confirmation_changed") return { ok: false, error: "changed" };
+  if (res.status === 403) { if (e.view.totp) update({ ...e.view, totp: undefined }, token); return { ok: false, error: "not_here" }; }
+  return { ok: false, error: "unavailable" };
+}
+
 /** This session's requests still open on the server (after a reload): followed like new ones. */
 export async function attach() {
   let res;
@@ -183,14 +230,63 @@ export async function attach() {
  * network failure throws. Every other answer is returned as it is. `key` is the request's Idempotency-Key: pass the same one to
  * retry the same request. `onPending(id, view)` is told when it starts waiting — or, held and confirmed by its own
  * web-verified account (selfConfirmed(view), #2170), applying.
+ * `displaySummary(view)` describes a known write in the page's language; it changes only the local card, never the server diff or digest.
  */
-export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending } = {}) {
-  const res = await api(path, { method, headers: { ...(headers || {}), "Idempotency-Key": key }, body: body === undefined ? undefined : JSON.stringify(body) });
+export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending, resendable = false, displaySummary } = {}) {
+  // The payload and headers as handed off now: a later change to the caller's objects is not what "the same write" sends again.
+  const payload = body === undefined ? undefined : JSON.stringify(body), sent = { ...(headers || {}) };
+  const res = await api(path, { method, headers: { ...sent, "Idempotency-Key": key }, body: payload });
   if (isUnreadableAccept(res)) return { ok: false, status: 202, ambiguous: true, body: { error: "unreadable_confirmation_response" } };
   if (!isPendingResponse(res)) return res;
   if (onPending) onPending(res.body.pending_change.id, res.body.pending_change);
-  const final = await track(res.body.pending_change, label);
+  // Only a caller that says its body holds nothing sensitive (`resendable: true`) gets a way to send it again: the body is
+  // otherwise not kept past this call. Nothing is inferred from the server's `section` (an Add bot request, which carries
+  // a raw token, is not marked "secret" there).
+  const final = await track(res.body.pending_change, label, resendable === true ? resendOf(path, { method, payload, label, headers: sent }) : undefined, displaySummary);
   return outcomeResponse(final);
+}
+
+/**
+ * AGEND-118: send the same write again from its card (withdrawn, expired, turned down…; see RESENDABLE). Only a write whose
+ * caller passed `resendable: true` has one: that is the caller saying its body holds nothing sensitive, and it is the only
+ * thing that decides it — not the server's `section`, which does not mark every request that carries a secret.
+ * It is a new request with a key of its own, asking for a new confirmation like any other; its card replaces this one.
+ * { ok: true } when the server took it (held for confirmation, or applied outright); { ok: false } when it refused it (the
+ * card says so and the person makes the change again in Settings); { ok: false, uncertain: true } when it may have
+ * arrived and the answer is lost or unreadable: the next press sends the same key, so it asks about the same request and
+ * can never make a second one. Nothing is followed here to the end: the new card does that.
+ */
+export async function resend(id) {
+  const e = tracked.get(id);
+  if (!e || !e.retry || !resendable(e.view)) return { ok: false };
+  if (e.resending) return { ok: false };
+  e.resending = true;
+  let sent;
+  try { sent = await e.retry(); } catch { sent = { ok: false, uncertain: true }; } finally { e.resending = false; }
+  if (!sent || !sent.ok) return { ok: false, uncertain: !!(sent && sent.uncertain) };
+  forget(id);
+  return { ok: true };
+}
+
+/**
+ * The write again, for resend(): the payload and headers as they were handed off, with a key of its own. The key is made
+ * once and kept while the outcome is not known (no answer, an accepted answer that cannot be read, a server error): the
+ * server finds that key again, applying or decided, and answers with that request instead of starting another. A definite
+ * answer (held, applied, refused) ends it; the next resend from the card it made has a key of its own.
+ */
+function resendOf(path, { method, payload, label, headers }) {
+  let held = null;
+  return async () => {
+    const key = held ??= newKey("w");
+    let res;
+    try { res = await api(path, { method, headers: { ...headers, "Idempotency-Key": key }, body: payload }); }
+    catch { return { ok: false, uncertain: true }; }
+    if (isUnreadableAccept(res) || res.status >= 500) return { ok: false, uncertain: true };
+    held = null;
+    if (!isPendingResponse(res)) return { ok: res.ok };      // applied outright (no confirmation needed any more), or refused
+    track(res.body.pending_change, label, resendOf(path, { method, payload, label, headers }));
+    return { ok: true };
+  };
 }
 
 /** A decided request as the write's own answer. */

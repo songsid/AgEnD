@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-records.test.ts (37 tests | 1 failed) 82ms
+     × a notification's correct call ID cannot stand in for its different child ID 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > a notification's correct call ID cannot stand in for its different child ID
+AssertionError: expected [ 'completed', 'completed' ] to deeply equal [ 'unknown', 'unknown' ]
+
+- Expected
++ Received
+
+  [
+-   "unknown",
+-   "unknown",
++   "completed",
++   "completed",
+  ]
+
+ ❯ tests/subagent-records.test.ts:75:51
+     73|     const f = fixture("claude-code");
+     74|     for (const r of f.parent as any[]) if (r.origin?.kind === "task-no…
+     75|     expect(projectSubagents(f).map(r => r.state)).toEqual(["unknown", …
+       |                                                   ^
+     76|   });
+     77|   it("does not carry an old completed flag into a resumed Claude child…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 passed (37)
+   Start at  18:57:16
+   Duration  868ms (transform 330ms, setup 165ms, import 278ms, tests 82ms, environment 0ms)

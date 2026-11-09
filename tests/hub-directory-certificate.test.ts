@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { X509Certificate } from "node:crypto";
+import { TLSSocket } from "node:tls";
 import { directoryCaInfo, fetchDirectoryCa, inspectDirectoryCertificate } from "../src/hub/init/directory-certificate.js";
 import { CA_DN, directoryCaFixture, directoryCertificates } from "./support/hub-directory-ca-fixture.js";
 
@@ -13,6 +14,28 @@ async function fixture(pair = certs.leaf, mode: Parameters<typeof directoryCaFix
 }
 const credentials = { bindDn: "CN=Reader,DC=example,DC=test", password: "Dummy-fixture-only-22" };
 describe("initializer-only directory CA bootstrap over real loopback LDAPS", () => {
+  it.each(["inspect", "fetch-pinned", "fetch-verified"])("%s retains ownership until its client socket acknowledges close", async mode => {
+    const f = await fixture(mode === "inspect" ? certs.leaf : { ...certs.leaf, cert: certs.leaf.cert + certs.ca }), probe = mode === "inspect" ? undefined : await inspectDirectoryCertificate(f.url);
+    const actual = TLSSocket.prototype.emit, clients = new Map<TLSSocket, number>();
+    let entered!: () => void, release: (() => void) | undefined, settled = false;
+    const heldClose = new Promise<void>(r => { entered = r; }), wanted = mode === "fetch-verified" ? 2 : 1;
+    const spy = vi.spyOn(TLSSocket.prototype, "emit").mockImplementation(function (this: TLSSocket, event: string | symbol, ...args: any[]) {
+      if (event === "secureConnect" && this.remotePort === Number(new URL(f.url).port)) clients.set(this, clients.size + 1);
+      if (event === "close" && clients.get(this) === wanted) {
+        release = () => { Reflect.apply(actual, this, [event, ...args]); }; entered(); return true;
+      }
+      return Reflect.apply(actual, this, [event, ...args]);
+    });
+    const pending = (mode === "inspect" ? inspectDirectoryCertificate(f.url) : fetchDirectoryCa(probe!, probe!.certificate.fingerprint256, credentials))
+      .finally(() => { settled = true; }); void pending.catch(() => {});
+    try {
+      await heldClose;
+      // The other owned socket's destroy/close/unbind queue gets whole event-loop phases; no elapsed-time sleep.
+      for (let i = 0; i < 3; i++) await new Promise<void>(r => setImmediate(r));
+      expect(settled).toBe(false); const resume = release!; release = undefined; resume(); await pending;
+      expect(settled).toBe(true); expect(clients.size).toBe(mode === "inspect" ? 1 : 2);
+    } finally { release?.(); spy.mockRestore(); await pending.catch(() => {}); }
+  });
   it("inspects without sending application bytes and refuses plaintext, wrong-host or expired certificates", async () => {
     const f = await fixture(), p = await inspectDirectoryCertificate(f.url);
     expect(p.certificate.fingerprint256).toBe(new X509Certificate(certs.leaf.cert).fingerprint256);

@@ -1,15 +1,20 @@
 /** Private, loopback-only LDAP wire peer. It implements only test bind/search/unbind, no external directory. */
 import { createServer, type TLSSocket } from "node:tls";
+import { X509Certificate } from "node:crypto";
 import { BerReader, BerWriter } from "ldapts";
 import { guidStringToBytes } from "../../src/hub/directory/profiles.js";
 export const GROUP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", GROUP_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=Owners,DC=example,DC=test";
-export async function groupWirePeer(material: { cert: string; key: string }) {
-  const sockets = new Set<TLSSocket>(), binds: string[] = [], searches: any[] = [];
-  const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged", memberships: [GROUP_A],
+/** Optional recorded users also exercise production browser sign-in/eligibility; dummy passwords only. */
+export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
+export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[], ca?: { dn: string; pem: string; requireBind?: boolean }) {
+  const sockets = new Set<TLSSocket>(), binds: string[] = [], bindRecords: Array<{ dn: string; password: string }> = [], searches: any[] = [];
+  // "continuation" (M-2724): as AD does for every subtree search at a domain root, each one also returns continuation
+  // references to the DNS-zone and Configuration partitions, whether or not it found the entry.
+  const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged" | "continuation", memberships: [GROUP_A],
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
-    sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0);
+    sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0), bound = false;
     const reply = (id: number, tag: number, fill: (w: BerWriter) => void) => {
       const w = new BerWriter(); w.startSequence(); w.writeInt(id); w.startSequence(tag); fill(w); w.endSequence(); w.endSequence(); socket.write(w.buffer);
     };
@@ -36,7 +41,14 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
       try { while (buffer.length) {
         if (buffer.length < 2) return; const r = new BerReader(buffer); r.readSequence(); if (r.remain < r.length) return;
         const frameLength = r.offset + r.length, id = r.readInt()!, tag = r.readSequence();
-        if (tag === 0x60) { r.readInt(); const dn = r.readString()!; r.readString(0x80); binds.push(dn); result(id, 0x61); }
+        if (tag === 0x60) {
+          r.readInt(); const dn = r.readString()!, password = r.readString(0x80); binds.push(dn);
+          bindRecords.push({ dn, password: password! });
+          const user = users?.find(u => u.dn.toLowerCase() === dn.toLowerCase());
+          const accepted = !users || (dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
+            || !!(user && user.password === password) || !!(ca && !dn && !password);
+          bound = accepted && !!dn; result(id, 0x61, accepted ? 0 : 49);
+        }
         else if (tag === 0x42) socket.end();
         else if (tag === 0x63) {
           const base = r.readString(), scope = r.readEnumeration(), deref = r.readEnumeration(), sizeLimit = r.readInt(); r.readInt(); r.readBoolean();
@@ -47,22 +59,33 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
             while (r.offset < controlsEnd) { r.readSequence(); const controlEnd = r.offset + r.length, oid = r.readString(), critical = r.readBoolean(), value = r.readString(0x04, true); controls.push({ oid, critical, hex: value?.toString("hex") }); if (r.offset !== controlEnd) throw Error("Invalid control boundary"); }
           }
           searches.push({ base, scope, deref, sizeLimit, attributes, controls, filter: parsed });
-          if (controls.length) {
+          const continuation = () => { if (state.mode === "continuation" && scope === 2) for (const part of ["DC=DomainDnsZones", "DC=ForestDnsZones", "CN=Configuration"]) reply(id, 0x73, w => w.writeString(`ldaps://example.test/${part},DC=example,DC=test`)); };
+          const personGuid = equality(parsed, "objectGUID"), login = equality(parsed, "sAMAccountName")?.toString();
+          const user = users?.find(u => personGuid ? personGuid.equals(guidStringToBytes(u.id)!) : u.login.toLowerCase() === login?.toLowerCase());
+          const personAttributes = (selected?: GroupWireUser): Record<string, Array<string | Buffer>> => ({
+            objectGUID: [guidStringToBytes(selected?.id ?? PERSON_ID)!], userAccountControl: [selected?.eligible === false ? "514" : "512"],
+            sAMAccountName: [selected?.login ?? "person"], displayName: [selected?.login ?? "Person"],
+          });
+          if (ca && base?.toLowerCase() === ca.dn.toLowerCase()) {
+            if (ca.requireBind && !bound) result(id, 0x65, 50);
+            else { entry(id, ca.dn, { "cACertificate;binary": [new X509Certificate(ca.pem).raw] }); result(id, 0x65); }
+          } else if (controls.length) {
             state.beforeMembership?.();
             if (state.mode === "outage") socket.destroy();
             else if (state.mode === "unsupported") result(id, 0x65, 12);
             else {
-              const attrs: Record<string, Array<string | Buffer>> = { objectGUID: [guidStringToBytes(PERSON_ID)!], userAccountControl: ["512"], sAMAccountName: ["person"] };
-              if (state.mode !== "missing") attrs[state.mode === "ranged" ? "memberOf;range=0-1499" : "memberOf"] = state.memberships.map(g => state.mode === "plain" ? state.labels.get(g)! : `<GUID=${g}>;${state.labels.get(g)}`);
-              entry(id, "CN=Person,DC=example,DC=test", attrs);
+              const attrs = personAttributes(user);
+              if (state.mode !== "missing") attrs[state.mode === "ranged" ? "memberOf;range=0-1499" : "memberOf"] = (user?.groups ?? state.memberships).map(g => state.mode === "plain" ? state.labels.get(g)! : `<GUID=${g}>;${state.labels.get(g)}`);
+              if (!users || user) entry(id, user?.dn ?? "CN=Person,DC=example,DC=test", attrs);
               if (state.mode === "referral") reply(id, 0x73, w => w.writeString("ldaps://other.invalid"));
-              result(id, 0x65);
+              continuation(); result(id, 0x65);
             }
           } else {
             const raw = equality(parsed, "objectGUID");
             const selected = [...state.labels].find(([guid, dn]) => scope === 0 ? dn.toLowerCase() === base?.toLowerCase() : raw?.equals(guidStringToBytes(guid)!));
             if (selected) entry(id, selected[1], { objectGUID: [guidStringToBytes(selected[0])!], groupType: ["-2147483646"] });
-            result(id, 0x65);
+            else if (user) entry(id, user.dn, personAttributes(user));
+            continuation(); result(id, 0x65);
           }
         } else throw Error(`Unexpected inert-LDAP operation ${tag}`);
         buffer = buffer.subarray(frameLength);
@@ -70,6 +93,6 @@ export async function groupWirePeer(material: { cert: string; key: string }) {
     });
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  return { state, searches, binds, port: (server.address() as { port: number }).port,
+  return { state, searches, binds, bindRecords, port: (server.address() as { port: number }).port,
     close: async () => { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); } };
 }

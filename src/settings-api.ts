@@ -1,11 +1,15 @@
+import { handleHubWebInitHttp } from "./hub/init/web-http.js";
+import { handleHubDirectoryHostNoticeHttp } from "./hub/settings-directory-host-notice-http.js";
+import { handleHubDirectoryHostSettingsHttp } from "./hub/settings-directory-host-http.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
+import { hubPreviewPatch, hubPreviewSettingsView, hubRunPatch, hubRunView } from "./hub-host-settings.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
 import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
-import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsWrite } from "./settings-request-capability.js";
+import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsRequestJoinAuthority, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -49,6 +53,9 @@ import { isSettingsPage } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { CompanyIdentityChanged } from "./hub/join/trust.js";
+import { CompanyBrowserHostnameConflict } from "./hub/join/protocol.js";
+import { HubProtocolError, validated, uuid } from "./hub/validation.js";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { channelWithDefaults } from "./config.js";
@@ -93,13 +100,23 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  hubSetupSession?(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null;
+  hubSetup?():Promise<import("./hub/init/web.js").HubWebInitializer>;
+  hubDirectoryNotices?(): Promise<import("./hub/settings-directory-host-notices.js").HubDirectoryHostNotices>;
+  hubDirectorySettings?(): Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl>;
+  hubCompanySession?(req: IncomingMessage): import("./hub/join/local-journal.js").JoinLocalSession | null;
+  hubCompanyJoin?(): Promise<import("./hub/join/local.js").CompanyJoinController>;
+  invalidateHubCompanyJoin?(): void;
   /** The running Hub's host-owner retention policy; absent while off/unavailable. */
   hubBrowserCertificate?(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null;
   hubRetention?(): import("./hub/retention.js").HubRetentionControl | null;
+  /** M-2682: an unfinished sealed-settings commit (hub/settings-commit.ts) — Hub setting saves wait until it is recovered. */
+  hubSettingsBusy?(): boolean;
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberPairing?(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null;
+  hubMemberPairingView?(): Promise<import("./hub-pairing-summary.js").HubPairingView>;
   generalLocations?(): unknown;
   switchGeneralLocation?(input: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }>;
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
@@ -154,7 +171,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
-  requestSettingsSelfRestart?(jobId: string, key: string): Promise<SelfRestartResult>;
+  /** `jobId` null (S-92): the pending changes' own restart — the restart notice with no Settings job behind it. */
+  requestSettingsSelfRestart?(jobId: string | null, key: string): Promise<SelfRestartResult>;
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
@@ -759,6 +777,21 @@ export function handleSettingsRequest(
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      // v2 is an explicit local-owner read. Older clients keep the pure boolean response and lazy-off behavior.
+      if (url.searchParams.has("v")) {
+        if (url.searchParams.get("v") !== "2" || [...url.searchParams.keys()].length !== 1) { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return true; }
+        const owner = ctx.hubCompanySession?.(req), read = ctx.hubMemberPairingView?.bind(ctx), raw = ctx.getRawFleetConfig(), configPath = ctx.configPath;
+        if (!owner?.current()) { json(res, 403, { ok: false, error: "admin_required" }); return true; }
+        if (!read) { json(res, 404, { ok: false, error: "unavailable" }); return true; }
+        void (async () => {
+          const pairing = await read();
+          if (!owner.current() || gatewayRequestContext(req) || !guestSettingsCaller(req, url, ctx) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath || hubMembershipSettings(ctx.getRawFleetConfig()).enabled !== hubMembershipSettings(raw).enabled) {
+            json(res, 409, { ok: false, error: "unavailable" }); return;
+          }
+          json(res, 200, { ok: true, connectionCardV1: true, ...hubMembershipSettings(raw), pairing });
+        })().catch(() => json(res, 503, { ok: false, error: "unavailable" }));
+        return true;
+      }
       try { json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) }); }
       catch { json(res, 409, { ok: false, error: "invalid_hub_membership" }); }
       return true;
@@ -923,6 +956,58 @@ export function handleSettingsRequest(
     json(res, 405, { error: "method_not_allowed" }); return true;
   }
 
+  // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
+  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust))?$/);
+  if (companyRoute) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
+    const step = companyRoute[1], execution = settingsRequestExecution(req);
+    const authority = settingsRequestJoinAuthority(req);
+    const confirmed = step === "start" || step === "resume" || step === "repair-trust";
+    const session = confirmed ? authority?.session : ctx.hubCompanySession(req);
+    if (!session?.current()) { json(res, 403, { error: "private_session_required" }); return true; }
+    if (confirmed && (!isSettingsReplay(req) || !execution || !authority?.confirmedCurrent())) {
+      json(res, 403, { error: "admin_confirmation_required" }); return true;
+    }
+    if ((!step || step === "bridge") ? method !== "GET" : method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
+    void (async () => {
+      try {
+        execution?.assert();
+        const api = await ctx.hubCompanyJoin!();
+        if (!session.current()) throw new HubProtocolError("revoked");
+        if (step === "bridge") {
+          const bridge = api.bridge(validated(uuid, url.searchParams.get("operationId")), session), nonce = randomBytes(18).toString("base64");
+          const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+          // strict-origin preserves the mandatory browser Origin proof; no tokens or credentials are in the URL/referrer.
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "strict-origin",
+            "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${new URL(bridge.action).origin}; base-uri 'none'; frame-ancestors 'none'` });
+          res.end(`<!doctype html><html><meta charset="utf-8"><title>AgEnD Hub</title><body><form method="post" action="${escape(bridge.action)}"><input type="hidden" name="requestId" value="${escape(bridge.requestId)}"><input type="hidden" name="state" value="${escape(bridge.state)}"></form><script nonce="${nonce}">document.forms[0].submit()</script></body></html>`); return;
+        }
+        if (!step) {
+          const id = url.searchParams.get("operationId");
+          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session) }); return;
+        }
+        const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
+        execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
+        if (step === "repair-trust") {
+          if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
+          await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
+        } else if (step === "start") {
+          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
+          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId }, authority) });
+        } else {
+          if (!body || Object.keys(body).length !== 1) throw new HubProtocolError("invalid");
+          const id = validated(uuid, body.operationId);
+          json(res, 200, { ok: true, operation: step === "resume" ? await api.resume(id, authority!) : await api.cancel(id, session) });
+        }
+      } catch (error) {
+        const code = error instanceof CompanyBrowserHostnameConflict ? "separate-hostnames" : error instanceof CompanyIdentityChanged ? "identity-changed" : error instanceof HubProtocolError ? error.code : "unavailable";
+        json(res, code === "denied" || code === "revoked" ? 403 : code === "invalid" ? 400 : 409, { ok: false, error: code });
+      }
+    })();
+    return true;
+  }
+
   // S3c PR B: the member's pairing — GET the projection; POST connect / confirm / disconnect only as a confirmed
   // local-admin Settings replay (its continuation is the S1 call); POST cancel at once (local only). Never over the
   // public link; no member composed: 404 "unavailable".
@@ -932,8 +1017,8 @@ export function handleSettingsRequest(
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
-    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view() }); return true; }
-    if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
+    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: (api.notices?.() ?? []).filter(n => url.searchParams.get("v") === "2" || n.source === "group") }); return true; }
+    if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } ctx.invalidateHubCompanyJoin?.(); json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
     if (step && method === "POST") {
       const execution = settingsRequestExecution(req);
       let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
@@ -943,6 +1028,7 @@ export function handleSettingsRequest(
         execution.assert();
         if ((ctx.hubMemberPairing?.() ?? null) !== api) { json(res, 409, { ok: false, error: "unavailable" }); return; }
         const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
+        if (step === "connect" || step === "disconnect") ctx.invalidateHubCompanyJoin?.();
         const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
           : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding });
         json(res, r.ok ? 200 : 409, r);
@@ -1007,6 +1093,74 @@ export function handleSettingsRequest(
     }
     if (path === "/api/settings/hub/browser-certificate" && method === "GET") {
       try { json(res, 200, { ok: true, certificate: control.read() }); } catch (err) { refused(err); }
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  if(handleHubWebInitHttp(req,res,url,ctx))return true;
+  if (handleHubDirectoryHostNoticeHttp(req, res, url, ctx)) return true;
+  if (handleHubDirectoryHostSettingsHttp(req, res, url, ctx)) return true;
+
+  // M-2682 (leader, cid-hubname-ui): "Run this Hub" — hub.enabled, not sealed: the ordinary save; the runtime mounts or stops the
+  // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); never over the public link.
+  if (path === "/api/settings/hub/run") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      json(res, 200, { ok: true, ...hubRunView(ctx.getRawFleetConfig()) }); return true;
+    }
+    if (method === "PUT") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 256).then(bytes => {
+        let body: unknown; try { body = JSON.parse(bytes.toString("utf8")); } catch { return json(res, 400, { ok: false, error: "invalid" }); }
+        const plan = hubRunPatch(ctx.getRawFleetConfig(), body, { busy: () => ctx.hubSettingsBusy?.() === true });
+        if ("refused" in plan) return json(res, plan.refused === "not_initialized" ? 404 : plan.refused === "busy" ? 409 : 400, { ok: false, error: plan.refused });
+        try {
+          execution.assert();
+          if (!settingsRequestLocalAdmin(req)) throw Error("unavailable");
+          settingsWrite(req, () => ctx.saveFleetConfig([plan.patch]));
+        } catch (err) {
+          ctx.logger.warn({ err }, "settings: Hub run switch save refused");
+          return json(res, 503, { ok: false, error: "unsaved" });
+        }
+        json(res, 200, { ok: true, ...hubRunView(ctx.getRawFleetConfig()) });
+      }).catch(() => json(res, 400, { ok: false, error: "invalid" }));
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  // M-2682: "HTML previews on this Hub" — hub.web.preview_port, outside the sealed digest: the ordinary save (no reseal), checked
+  // against the Hub's own rule, this fleet's ports and a free bind. Host owner only, confirmed like retention; never over the public link.
+  if (path === "/api/settings/hub/preview") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      json(res, 200, { ok: true, ...hubPreviewSettingsView(ctx.getRawFleetConfig()) }); return true;
+    }
+    if (method === "PUT") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 1024).then(async bytes => {
+        let body: unknown; try { body = JSON.parse(bytes.toString("utf8")); } catch { return json(res, 400, { ok: false, error: "invalid_port" }); }
+        const plan = await hubPreviewPatch(ctx.getRawFleetConfig(), body, { busy: () => ctx.hubSettingsBusy?.() === true });
+        if ("refused" in plan) {
+          return json(res, plan.refused === "not_hosted" ? 404 : plan.refused === "busy" || plan.refused === "port_in_use" || plan.refused === "port_conflict" ? 409 : 400, { ok: false, error: plan.refused });
+        }
+        try {
+          execution.assert();
+          if (!settingsRequestLocalAdmin(req) || ctx.hubSettingsBusy?.() === true) throw Error("unavailable");
+          settingsWrite(req, () => ctx.saveFleetConfig([plan.patch]));
+        } catch (err) {
+          ctx.logger.warn({ err }, "settings: Hub preview save refused");
+          return json(res, 503, { ok: false, error: "unsaved" });
+        }
+        json(res, 200, { ok: true, ...hubPreviewSettingsView(ctx.getRawFleetConfig()) });
+      }).catch(() => json(res, 400, { ok: false, error: "invalid_port" }));
       return true;
     }
     json(res, 405, { error: "method_not_allowed" }); return true;
@@ -1594,8 +1748,9 @@ export function handleSettingsRequest(
         json(res, 400, { error: 'confirm must be the literal "restart-agend"' });
         return;
       }
-      const jobId = typeof body.job_id === "string" ? body.job_id : "";
-      if (!jobId) { json(res, 400, { error: "job_id required" }); return; }
+      // S-92: `pending: true` (the literal) asks for the pending changes' restart when no Settings job carries it.
+      const jobId = typeof body.job_id === "string" && body.job_id ? body.job_id : body.pending === true ? null : "";
+      if (jobId === "") { json(res, 400, { error: "job_id required" }); return; }
 
       const result = await ctx.requestSettingsSelfRestart!(jobId, key);
       if (result.ok) {
@@ -1672,9 +1827,10 @@ export function handleSettingsRequest(
     // refuses it — the agent would wait at a sign-in prompt instead of working. Unknown (cannot tell) is let through.
     if (!(mergedInst as { machine_id?: unknown }).machine_id && mergedInst.runtime !== "windows") {
       const backendAfter = String(mergedInst.backend ?? cfg!.defaults?.backend ?? "claude-code");
+      const backendBefore = String(base.backend ?? cfg!.defaults?.backend ?? "claude-code");
       const profileAfter = instanceCredentialProfile(mergedInst, cfg!.defaults, backendAfter);
-      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, String((base as { backend?: unknown }).backend ?? cfg!.defaults?.backend ?? "claude-code")) : null;
-      if (profileAfter && profileAfter !== profileBefore) {
+      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, backendBefore) : null;
+      if (profileAfter && (profileAfter !== profileBefore || backendAfter !== backendBefore)) {
         let login: ReturnType<typeof credentialProfileLogin> | null = null;
         try { login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter); } catch { login = null; }
         if (login?.state === "signed-out") { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }

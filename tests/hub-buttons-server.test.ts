@@ -178,6 +178,38 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect(w.questions()[0]).not.toContain("close_poll");
     expect(r!.audits.find(a => a.action === "poll.results")?.actor.kind).toBe("local-host");
   });
+  it("keeps generated poll prompts internal while preserving delivery, answers and typed lookalikes", async () => {
+    const w = await world(), b = wire({}); await w.answer(b);
+    const vote = await w.click(b, { options: [1] });
+    expect(vote.status).toBe(200);
+    const prompt = w.questions()[0]!;
+    expect(prompt).toContain("[poll results]");
+    expect(prompt).toContain("corp/");
+    const resultId = vote.json.receipt.messageId;
+    expect(r!.sent.some(({ frame }: any) => frame.type === "question" && frame.payload.identity.messageId === resultId && frame.payload.text === prompt)).toBe(true);
+    const read = async (after = 0) => {
+      // A new browser session avoids the per-session read pacing, not the room's authorization.
+      const browser = await r!.signIn("asker");
+      return r!.call(browser, "GET", `/hub/v1/rooms/${w.roomId}/messages?after=${after}`);
+    };
+    let history = await read();
+    expect(history.status).toBe(200);
+    expect(history.json.entries[1]).toMatchObject({ messageId: resultId, pollResult: true });
+    expect(history.json.entries[1].question).toBe("");
+    expect(JSON.stringify(history.json)).not.toContain("[poll results]");
+    expect(history.json.entries[0].buttons).toMatchObject({ state: "closed", poll: { counts: [0, 1] } });
+    await w.answer(wire(), { messageId: resultId });
+    await r!.restartHttp();
+    history = await read();
+    expect(history.json.entries[1]).toMatchObject({ pollResult: true, answer: "Choose" });
+    expect(history.json.entries[1].question).toBe("");
+    expect((await read(1)).json.entries[0]).toMatchObject({ messageId: resultId, pollResult: true, question: "", answer: "Choose" });
+    const typed = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.roomId}/messages`, { idempotencyKey: randomUUID(), text: prompt });
+    expect(typed.status).toBe(200);
+    history = await read();
+    expect(history.json.entries[2]).toMatchObject({ question: prompt });
+    expect(history.json.entries[2]).not.toHaveProperty("pollResult");
+  });
   it("multiple-choice retains one current ballot, closes at its deadline, and uses no fabricated human session", async () => {
     vi.useFakeTimers({ now: 1_000_000, toFake: ["Date", "setTimeout", "clearTimeout"] });
     const w = await world(), b = wire({ multi: true }); await w.answer(b);

@@ -27,6 +27,7 @@
 import { constants as fsConstants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { hostFacts, hostIds } from "../cli-registry.js";
 import { kiroStoreHasLogin } from "./kiro-auth-store.js";
 
 /** Profile names become a directory; keep them boring. */
@@ -273,11 +274,10 @@ export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
  * Backends whose credential profile can be signed in from chat — `/login <backend> <profile>` runs the backend's own
  * login in the browser terminal with the profile's variable (#1699 part 2). Only those whose login TUI was checked
  * under a relocated home; the others' profiles are signed in on the host with credentialProfileLoginCommand.
- * #3212 PR 4: Codex and Kiro too — checked on 2026-11-07 (issue #3212): `XDG_DATA_HOME=<profile> kiro-cli login` reaches
- * its "Select login method" picker with its store in `<profile>/kiro-cli/`; `CODEX_HOME=<profile> codex login
- * --device-auth` writes only under the profile (its device sign-in run once on a real account with the user's OK).
+ * #3212 PR 4: Codex and Kiro use the same profile environment for login as for launch: CODEX_HOME and XDG_DATA_HOME.
+ * Relocated-home evidence and its scope are recorded on #3212 / #3307; the registry owns named-login admission.
  */
-export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(["claude-code", "codex", "kiro-cli"]);
+export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(hostIds("dashboardSignIn").filter(id => hostFacts(id, "dashboardSignIn")!.named));
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
   return CREDENTIAL_HOMES[backendName] ?? null;

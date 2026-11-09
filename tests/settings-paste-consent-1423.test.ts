@@ -8,7 +8,8 @@ vi.mock("node:child_process", async original => ({
   ...await original<typeof import("node:child_process")>(),
   execFileSync: vi.fn(() => { throw new Error("no real CLI probes"); }),
   execFile: vi.fn((file: string, args: string[], optsOrCb: unknown, maybeCb?: unknown) => {
-    if (file !== "tmux") throw new Error("no real subprocesses");
+    // AgEnD's own tmux: the resolved binary (an absolute path), so match its name, not PATH's "tmux".
+    if (!/(^|\/)tmux$/.test(file)) throw new Error("no real subprocesses");
     const cb = (typeof optsOrCb === "function" ? optsOrCb : maybeCb) as (err: Error | null, out: string, error: string) => void;
     io.calls.push(args);
     if (args.includes("load-buffer")) {

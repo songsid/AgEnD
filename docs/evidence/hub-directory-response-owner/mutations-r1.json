@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "id": "F1-stop-drain",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "Stop retains the transferred"
+    },
+    {
+      "id": "F1b-stop-await",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "Stop retains the transferred"
+    },
+    {
+      "id": "F2-entry-live",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "refuses revoked-generation capture"
+    },
+    {
+      "id": "F2-final-live",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "caller proof revokes its generation"
+    },
+    {
+      "id": "F3-body",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "request body finishes"
+    },
+    {
+      "id": "F4-slot-release",
+      "assertionCaught": true,
+      "failedTests": 1,
+      "selection": "releases the slot after reply"
+    }
+  ],
+  "restored": true
+}

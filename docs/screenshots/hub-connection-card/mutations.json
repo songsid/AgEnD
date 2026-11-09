@@ -1,0 +1,185 @@
+{
+  "results": [
+    {
+      "name": "api-owner",
+      "path": "src/settings-api.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection refuses before private-file access {\"owner\":false}"
+      ]
+    },
+    {
+      "name": "api-late-owner",
+      "path": "src/settings-api.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection fences a held read after its session changes"
+      ]
+    },
+    {
+      "name": "api-config",
+      "path": "src/settings-api.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection fences a held read after its config changes"
+      ]
+    },
+    {
+      "name": "api-path",
+      "path": "src/settings-api.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection fences a held read after its path changes"
+      ]
+    },
+    {
+      "name": "api-membership",
+      "path": "src/settings-api.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection fences a held read after its membership changes"
+      ]
+    },
+    {
+      "name": "passive-late-stop",
+      "path": "src/fleet-manager.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection a late stop cannot publish a passive projection"
+      ]
+    },
+    {
+      "name": "passive-late-config",
+      "path": "src/fleet-manager.ts",
+      "test": "tests/hub-connection-card-api.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 15,
+      "exit": 1,
+      "assertions": [
+        "connection card's passive Settings projection a late config cannot publish a passive projection"
+      ]
+    },
+    {
+      "name": "projection-mark",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card unknown/incompatible reads never invent an unconnected form {\"ok\":true,\"enabled\":false,\"connectionCardV1\":false,\"pairing\":{\"state\":\"unpaired\"}}"
+      ]
+    },
+    {
+      "name": "online-state",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card a saved but offline link never shows Connected or a green status"
+      ]
+    },
+    {
+      "name": "late-read",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card a late read after unmount cannot publish a member mark or connect"
+      ]
+    },
+    {
+      "name": "single-write",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card one Resume remains pending until its exact shared confirmation applies in place"
+      ]
+    },
+    {
+      "name": "public-read",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card public pages make no private read"
+      ]
+    },
+    {
+      "name": "exact-review",
+      "path": "src/ui/settings-hub-connection.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card one Resume remains pending until its exact shared confirmation applies in place"
+      ]
+    },
+    {
+      "name": "retired-rejoin",
+      "path": "src/ui/settings-hub-company-join.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card a retired prior join does not hide a new sign-in or claim an absent binding is Connected"
+      ]
+    },
+    {
+      "name": "retired-status",
+      "path": "src/ui/settings-hub-company-join.js",
+      "test": "tests/hub-connection-card-ui.test.ts",
+      "caught": true,
+      "failed": 1,
+      "collected": 16,
+      "exit": 1,
+      "assertions": [
+        "one Hub connection card a retired prior join does not hide a new sign-in or claim an absent binding is Connected"
+      ]
+    }
+  ],
+  "restored": true
+}

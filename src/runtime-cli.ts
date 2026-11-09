@@ -12,10 +12,10 @@ import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, r
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, listCredentialProfileNames,
   rememberCredentialStatus, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
-import type { AccountIdentity } from "./claude-auth-status.js";
+import { redactedEmail, type AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
-import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
+import { createRuntimeProfile, isCreatedProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
 
@@ -72,9 +72,23 @@ function interactiveLogin(executable: NativeCliExecutable, args: string[], env: 
     child.on("error", fail); child.on("close", code => done(code ?? 1));
   });
 }
+/**
+ * `agend-runtime status` prints the credential report, and the report is built from the private status cache, which holds the WHOLE address (the Runtime sends
+ * it to AgEnD over the paired channel from that same report). A terminal line is not that channel: here every profile's address is redacted, and one that is not
+ * an address of the contract is dropped. `plan` and `apiKey` stay. `credentialProfileReport` itself is untouched.
+ */
+function redactedReport(report: ReturnType<typeof credentialProfileReport>): ReturnType<typeof credentialProfileReport> {
+  return { ...report, profiles: report.profiles.map(row => {
+    if (!row.identity) return row;
+    const { maskedEmail, ...rest } = row.identity, shown = maskedEmail === undefined ? undefined : redactedEmail(maskedEmail);
+    const identity = { ...(shown ? { maskedEmail: shown } : {}), ...rest };
+    const { identity: _full, ...bare } = row;
+    return Object.keys(identity).length ? { ...bare, identity } : bare;
+  }) };
+}
 function signInLabel(loggedIn: boolean | null): string { return loggedIn === true ? "signed in" : loggedIn === false ? "not signed in" : "not checked"; }
-/** `ab***@example.com · team`, or `API key`: the same masked identity AgEnD shows; never the full address. */
-function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [identity.maskedEmail, identity.plan].filter(Boolean).join(" · "); }
+/** `ab***@example.com · team`, or `API key`: a terminal line is not the Accounts page, so the address is redacted here; never the full address. */
+function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [redactedEmail(identity.maskedEmail), identity.plan].filter(Boolean).join(" · "); }
 export async function runtimeMain(argv = process.argv.slice(2), options: RuntimeMainOptions = {}): Promise<void> {
   if (argv.length === 1 && argv[0] === "--internal-update") { await runtimeUpdateInternalMain(); return; }
   const env = options.env ?? process.env, home = options.home ?? homedir();
@@ -213,7 +227,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const credentials = store.credentials();
     let credentialProfile: string | undefined; try { credentialProfile = store.credentialDefault(); } catch { /* status must still report the rest */ }
     process.stdout.write(`${JSON.stringify({ runtimeInfo: readRuntimeInfo(), profile: store.directory, paired: !!credentials, ...(credentials ? { server: credentials.server, machineId: credentials.machineId, name: credentials.name } : {}),
-      credentialProfiles: credentialProfileReport(credentialRoot, credentialProfile),
+      credentialProfiles: redactedReport(credentialProfileReport(credentialRoot, credentialProfile, name => isCreatedProfile(credentialRoot, "claude-code", name))),
       rotationPending: !!credentials?.pendingCredential, blocked: store.blocked(), jobs: store.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) }, null, 2)}\n`);
     return;
   }

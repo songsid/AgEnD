@@ -172,8 +172,10 @@ export const TaskBoardArgs = z.object({
 export const PostDecisionArgs = z.object({
   title: NonEmptyString.describe("Short title for the decision"),
   content: NonEmptyString.describe("Full decision description"),
-  scope: z.enum(["project", "fleet"]).optional()
-    .describe("'project' (default) = same working directory. 'fleet' = all instances."),
+  scope: z.enum(["project", "team", "fleet"]).optional()
+    .describe("'team' = every member of a team, wherever they work (the default when you are in a team). 'project' = this exact working directory (the default when you are in no team). 'fleet' = every instance on the fleet: only for rules every team follows."),
+  team: z.string().optional()
+    .describe("The team for scope 'team' (one you are in). Default: your team, when you are in exactly one."),
   tags: z.array(z.string()).optional()
     .describe("Optional tags for categorization"),
   ttl_days: z.number().optional()
@@ -498,9 +500,13 @@ export const GetFleetConfigArgs = z.object({
   name: z.string().optional().describe("Instance name (required when scope='instance')"),
 });
 
+// `general` is role-derived, never a writable profile (as in config-validator).
+const WritableToolSet = z.enum(["full", "standard", "worker", "coordinator", "minimal"]);
+
 export const UpdateInstanceConfigArgs = z.object({
   name: NonEmptyString.describe("Instance name to update"),
   config: z.object({
+    tool_set: WritableToolSet.optional().describe("AgEnD tool profile. Only General may set another agent’s profile directly; self-targets and other callers are refused (#804/#814)."),
     backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one stays so, and starts on it next time), and drops the instance's own model and effort: give `model` here for the new backend, or it inherits the fleet default, else that backend's own default."),
     model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
     resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
@@ -543,6 +549,7 @@ export const ReplaceInstanceArgs = z.object({
 // any unknown keys so internal callers (deploy_template) can forward extras
 // (profile-derived fields, start_point, …) without the schema stripping them.
 export const CreateInstanceArgs = z.object({
+  tool_set: WritableToolSet.optional().describe("AgEnD tool profile for the new instance. Only General may set another agent’s profile directly; self-targets and other callers are refused (#804/#814)."),
   directory: z.string().optional().describe(
     "Absolute path or ~-prefixed path to the project directory. Optional — omit to auto-create a workspace at ~/.agend/workspaces/<name>.",
   ),

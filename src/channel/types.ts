@@ -204,9 +204,6 @@ export interface ChannelAdapter extends EventEmitter {
    */
   sendStickers?(chatId: string, stickers: string[], opts?: SendOpts & { text?: string }): Promise<SentMessage>;
 
-  handlePairing(chatId: string, userId: string): Promise<string>;
-  confirmPairing(code: string, callerUserId?: string): Promise<boolean>;
-
   readonly topology: "topics" | "channels" | "flat";
 
   setChatId(chatId: string): void;

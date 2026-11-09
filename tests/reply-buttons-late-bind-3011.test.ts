@@ -1,6 +1,6 @@
 /**
  * #3011: a set's deadline is fixed at prepare(), before the send. When the platform confirms the send after that
- * deadline (a 20 s poll on a slow Discord send), arm() saw nothing ahead (nextExpiry looks only past `now`), so no timer
+ * deadline (a 20 s poll on a slow Discord send), arm() saw nothing ahead (nextExpiry then looked only past `now`), so no timer
  * was armed and the poll stayed open until something unrelated swept. bind() now sweeps at once for a past-due set.
  * The real store (scratch sqlite) and controller; a fake clock and a recording timer — no other trigger exists here.
  */

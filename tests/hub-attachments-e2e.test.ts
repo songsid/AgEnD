@@ -63,7 +63,7 @@ async function world(opts: { memberCapabilities?: readonly string[]; hubCapabili
   const pairing = new HubPairingService({ store, directory, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason),
     identity: { hubId: identity.hubId, memberOrigin, webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey } });
   const http = createHubHttp({ uow, audit, directory, pairing, store, content, attachments, current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), transport: () => (enabled ? server : null),
-    config: Object.freeze({ hubId: identity.hubId, name: "Team Hub", webOrigin, administrator: people.get("admin")! }),
+    config: Object.freeze({ hubId: identity.hubId, name: "Team Hub", memberOrigin, webOrigin, administrator: people.get("admin")! }),
     issuer: { keyId: identity.issuerKeyId, sign: (e) => signAsker(e, issuerKey) } }, sql);
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,
     ...(opts.hubCapabilities ? { capabilities: opts.hubCapabilities } : {}), current: () => enabled, hold: () => {}, receive: (frame, link) => http.receive(frame, link) });

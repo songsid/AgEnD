@@ -1,0 +1,59 @@
+{
+  "sourceCommit": "59c101890",
+  "syncedCommit": "2722b7e1f84d517be7f932bf86cde78bf27746b6",
+  "alphaBase": "ffd4eba02",
+  "focused": {
+    "numTotalTests": 187,
+    "numPassedTests": 187,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "changelog-fragments.test.ts",
+    "hub-company-join-ui.test.ts",
+    "hub-company-join-wait.test.ts",
+    "hub-connection-card-api.test.ts",
+    "hub-connection-card-ui.test.ts",
+    "hub-membership-api.test.ts",
+    "hub-membership-ui.test.ts",
+    "hub-ui-s3c.test.ts",
+    "i18n-ui-literals-2390.test.ts",
+    "settings-hub-section-a7b.test.ts",
+    "ui-css-literals-ratchet.test.ts"
+  ],
+  "types": {
+    "source": "PASS",
+    "tests": "PASS"
+  },
+  "commands": [
+    "npx vitest run tests/changelog-fragments.test.ts tests/hub-company-join-ui.test.ts tests/hub-company-join-wait.test.ts tests/hub-connection-card-api.test.ts tests/hub-connection-card-ui.test.ts tests/hub-membership-api.test.ts tests/hub-membership-ui.test.ts tests/hub-ui-s3c.test.ts tests/i18n-ui-literals-2390.test.ts tests/settings-hub-section-a7b.test.ts tests/ui-css-literals-ratchet.test.ts",
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json"
+  ],
+  "browserMatrix": {
+    "before": {
+      "cases": 8,
+      "checks": 58
+    },
+    "after": {
+      "cases": 8,
+      "checks": 102
+    },
+    "pending": {
+      "cases": 2,
+      "checks": 17
+    },
+    "skew": {
+      "cases": 10,
+      "checks": 30
+    },
+    "style": {
+      "checks": 62
+    }
+  },
+  "guardReversals": {
+    "caught": 15,
+    "total": 15,
+    "restored": true
+  }
+}

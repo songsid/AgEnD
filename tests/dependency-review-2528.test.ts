@@ -42,6 +42,9 @@ describe("dependency-review (#2528 PR 3)", () => {
       "MIT",
       "MPL-2.0",
       "Python-2.0",
+      // M-2457: AgEnD's bundled tmux (ncurses X11, utf8proc Unicode-3.0); the action checks each id of an AND on its own.
+      "Unicode-3.0",
+      "X11",
     ]);
   });
 

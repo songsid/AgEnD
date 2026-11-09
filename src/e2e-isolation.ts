@@ -32,6 +32,9 @@ import { lstatSync, realpathSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realDefaultAgendHome, tmuxSessionNameFor, tmuxSocketNameFor } from "./paths.js";
+
+/** An isolated home's bundled-tmux socket: its hashed name with `-b` (null stays null: tmux's default socket). */
+const bundledSocketName = (hashed: string | null): string | null => hashed === null ? null : `${hashed}-b`;
 import { UNIX_SOCKET_PATH_MAX } from "./channel/ipc-bridge.js";
 
 /** The live fleet's default health port. A scratch fleet must never use it. */
@@ -301,7 +304,8 @@ export function planScratchRun(request: ScratchRequest, seams: Seams = {}): Plan
   }
 
   // The decision that once killed live windows, evaluated for the CHILD's home rather than this process's.
-  const socketName = tmuxSocketNameFor(layout.agendHome, s.realAgendHome);
+  // M-2457: the child's AgEnD runs its bundled tmux on the home's hashed name with `-b` (tmux-binary.ts socketFor).
+  const socketName = bundledSocketName(tmuxSocketNameFor(layout.agendHome, s.realAgendHome));
   const sessionName = tmuxSessionNameFor(layout.agendHome, s.realAgendHome);
   if (socketName === null) {
     violations.push({ rule: "tmux-socket-default", detail: "the child would use tmux's DEFAULT socket — the live server" });
@@ -390,7 +394,7 @@ export function planTeardown(plan: ScratchPlan, seams: Seams = {}): TeardownResu
   if (basename(plan.tmuxSocketPath) !== plan.socketName || plan.socketName.length === 0 || plan.socketName === "default") {
     violations.push({ rule: "teardown-target", detail: `socket ${JSON.stringify(basename(plan.tmuxSocketPath))} is not the scratch run's own (${plan.socketName})` });
   }
-  if (s.realAgendHome !== null && tmuxSocketNameFor(plan.layout.agendHome, s.realAgendHome) !== plan.socketName) {
+  if (s.realAgendHome !== null && bundledSocketName(tmuxSocketNameFor(plan.layout.agendHome, s.realAgendHome)) !== plan.socketName) {
     violations.push({ rule: "teardown-target", detail: "the socket name is not the one the scratch home derives" });
   }
   if (violations.length > 0) return { ok: false, violations };

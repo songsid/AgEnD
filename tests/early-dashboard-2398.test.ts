@@ -19,6 +19,14 @@ vi.mock("../src/logger.js", async original => {
 });
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: (s: string) => { calls.notify.push(s); if (s === "READY=1") calls.readyStates.push(calls.readyProbe?.()); }, sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 vi.mock("../src/tmux-exec-helper.js", () => ({ tmuxExecHelper: { reopen() {}, start() {}, maintain() {}, async stop() {} } }));
+// The fleet's tmux server boundary (M-2457 §6): inert too. The real module stays; its probes and its record never run.
+vi.mock("../src/tmux-server.js", async original => ({
+  ...await original<typeof import("../src/tmux-server.js")>(),
+  reconcileServer: async () => null,
+  recordServer: async () => ({ socket: "agend-test", binary: "", version: "", sha256: "0".repeat(64), serverPid: 1, serverStart: 1 }),
+  readServerRecord: () => null,
+  sha256File: () => "0".repeat(64),
+}));
 // startInstance now awaits resolveBackendBinary before lifecycle.start (#3029). The probe is a child; this suite forbids those.
 vi.mock("../src/binary-probe.js", async original => {
   const real = await original<typeof import("../src/binary-probe.js")>();
@@ -110,6 +118,8 @@ instances:
   const guestSession = guests ? new WebSessionStore({ dataDir: dir }).create({ tier: "guest", surface: "local",
     label: "synthetic visitor", tokenEpoch: tokenEpoch(loadOrCreateWebToken(dir)), owner: visitor }) : null;
   const fm: any = new FleetManager(dir);
+  // #3526 runs discovery even without an adapter; this boot fixture keeps its worker inert too.
+  vi.spyOn(fm, "startCliEnvProbeWorker").mockReturnValue({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   calls.readyProbe = () => ({ complete: fm.startupComplete, startup: fm.startupDashboard, names: [...fm.daemons.keys()] });
   vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
   vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([]);

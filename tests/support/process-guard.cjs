@@ -84,7 +84,8 @@ function privateSocket(argv, env = process.env) {
     if (!home || !path.isAbsolute(home)) return false;
     const rel = path.relative(os.tmpdir(), home);
     return !rel.startsWith('..') && /^agend-[^/]+(?:\/|$)/.test(rel)
-      && names[0] === `agend-${crypto.createHash('sha256').update(home).digest('hex').slice(0, 6)}`;
+      // The home's hashed name (2.3's) or its bundled tmux's `<hashed>-b` (M-2457).
+      && [``, `-b`].map(suffix => `agend-${crypto.createHash('sha256').update(home).digest('hex').slice(0, 6)}${suffix}`).includes(names[0]);
   }
   const socket = sockets[0];
   if (!socket || !path.isAbsolute(socket)) return false;

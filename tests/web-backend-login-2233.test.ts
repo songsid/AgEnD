@@ -17,6 +17,8 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { GUEST_ROUTES } from "../src/web-guest-access.js";
 import type { WebTerminalEvents, WebTerminalResult, WebTerminalSpec } from "../src/web-terminal.js";
+import { credentialProfileEnv } from "../src/backend/credential-profile.js";
+import { getAgendHome } from "../src/paths.js";
 
 const TOKEN = "ABCDEFGHJKMNPQRSTVWX";
 class FakeSession extends EventEmitter {
@@ -360,6 +362,42 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     expect((await f.check(a, "agy")).body.message).toBe(t("login.remote_unsupported_agent_cli", "antigravity", "agy"));
     expect((await f.check(a, "codex", "work")).body.confirm).toMatchObject({ backend: "codex", profile: "work" });
     expect(f.terminals).toHaveLength(0);
+  });
+});
+
+describe("#3307 named accounts use the same controller/commands/outcomes as chat /login", () => {
+  it.each(["codex", "kiro-cli"])("%s: check → confirm → launch → success/cancel/expiry, always in the selected profile", async backend => {
+    for (const outcome of ["success", "cancel", "ttl"] as const) {
+      const checkAuth = vi.fn<NonNullable<LoginControllerDeps["checkAuth"]>>(async () => backend === "kiro-cli" ? "valid" as const : "invalid" as const);
+      const f = await fixture({ checkAuth }), a = f.session(), other = f.session();
+      const expectedEnv = credentialProfileEnv(getAgendHome(), backend, "work")!;
+      const asked = (await f.check(a, backend, "work")).body.confirm;
+      expect(asked).toMatchObject({ backend, profile: "work", deviceAuth: backend === "codex" });
+      expect(checkAuth).toHaveBeenCalledOnce();
+      expect(checkAuth.mock.calls[0]![1]).toEqual(expectedEnv);
+      expect(f.terminals).toHaveLength(0); // the check never launches a login
+      await f.start(a, asked.id);
+      const terminal = f.terminals[0]!;
+      const [key, home] = Object.entries(expectedEnv)[0]!;
+      const login = `${key}='${home}' ${backend === "codex" ? "codex login --device-auth" : "kiro-cli login"}`;
+      expect(terminal.spec.command).toBe(backend === "kiro-cli" ? `${key}='${home}' kiro-cli logout; ${login}` : login);
+      expect((await f.start(a, asked.id)).body).toEqual({ error: "confirm_expired" });
+      if (backend === "codex") {
+        await terminal.events.onHint!("https://auth.openai.com/codex/device", "ABCD-1234");
+        expect((await f.view(a)).body.login).toMatchObject({ hint: { code: "ABCD-1234" }, terminal: null, accessCode: null });
+        expect((await f.view(other)).raw).not.toContain("ABCD-1234");
+      } else {
+        expect((await f.view(a)).body.login).toMatchObject({ accessCode: TOKEN, terminal: { loopback: true } });
+        expect((await f.view(other)).raw).not.toContain(TOKEN);
+      }
+      if (outcome === "cancel") await f.call("POST", "/ui/backend-login/cancel", a.headers, {});
+      else await terminal.finish({ ok: outcome === "success", reason: outcome === "success" ? "exit" : "ttl", detail: outcome === "success" ? "success reported" : "time limit reached" });
+      const ended = (await f.view(a)).body.login;
+      expect(ended).toMatchObject({ backend, profile: "work", phase: "ended", ok: outcome === "success", terminal: null, accessCode: null });
+      if (outcome === "success") expect(f.recover).toHaveBeenCalledExactlyOnceWith(backend, "work");
+      else expect(f.recover).not.toHaveBeenCalled();
+      expect(f.lock.isHeld).toBe(false);
+    }
   });
 });
 

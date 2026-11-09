@@ -21,6 +21,7 @@ import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 import { initSettingsContentWidth } from "./settings-width.js";
 
@@ -347,9 +348,10 @@ function hubMarks() {
   return { hub: tokens.includes("hub"), member: tokens.includes("member") };
 }
 /**
- * The Hub workspace's sidebar: its brand and name, the conversation list (#3226 B: the Hub's lazy module's HubNav —
- * New chat, a filter, the rooms) and the session with its menu. A Hub module without HubNav (one from before) gets the
- * three page links instead.
+ * The Hub workspace's sidebar — cid-hub-shell-parity (the user's approved mockup): the fleet dashboard's own, so the two
+ * read as one product (style guide rule 1). The brand is one line ("AgEnD Hub"; the Hub's name, when it has one, is its
+ * tooltip — never a second line, never repeated); the rows, the conversation list and the foot come from the Hub's lazy
+ * module (HubSide, HubFoot). An older Hub module without them gets its HubNav and session row, or the three page links.
  */
 function HubSidebar({ route }) {
   const name = String(document.body?.dataset?.hubName || "").trim();
@@ -358,34 +360,46 @@ function HubSidebar({ route }) {
     aria-current=${tab === key ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span class="grow">${t(`hubShell.${key}`)}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
-      <a class="brand hub-brand" href="/ui/hub" onClick=${closeDrawer}>${t("hubShell.brand")}${name ? html`<span class="hub-brand-name"> · ${name}</span>` : null}</a>
-      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
+      <a class="brand" href="/ui/hub" title=${name || undefined} onClick=${closeDrawer}>${t("hubShell.brand")}</a>
+      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name=${narrow() ? "close" : "sidebar"} /></button>
     </div>
-    <nav data-trust="navigation" class="side-nav hub-side-nav" aria-label=${t("app.menu")}>
-      <${HubNavSlot} fallback=${html`${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}`} />
-    </nav>
-    <div class="side-foot" data-trust="navigation"><${HubSessionSlot} /></div>
+    <${HubSideSlot} fallback=${html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}</nav>`} />
+    <div class="side-foot" data-trust="navigation"><${HubFootSlot} /></div>
     <${SidebarResize} />
   </aside>`;
 }
-/** #3226 B: the conversation list from the Hub's lazy module; `fallback` until it loads, or when it has none. */
-function HubNavSlot({ fallback }) {
+/** The Hub's lazy module (panel-hub.js) for the sidebar's parts — imported where it mounts (the browser keeps one copy). */
+const loadHubModule = () => import("/ui/js/panel-hub.js");
+/** The rows and conversation list (HubSide); an older module's HubNav inside the nav; `fallback` until it loads, or when it has neither. */
+function HubSideSlot({ fallback }) {
   const [mod, setMod] = useState(null);
   const [none, setNone] = useState(false);
-  useEffect(() => { let live = true; import("/ui/js/panel-hub.js").then((m) => { if (!live) return; if (m.HubNav) setMod(() => m.HubNav); else setNone(true); }, () => { if (live) setNone(true); }); return () => { live = false; }; }, []);
-  return mod ? html`<${mod} onPick=${closeDrawer} />` : none ? fallback : null;
+  useEffect(() => { let live = true; loadHubModule().then((m) => { if (!live) return; if (m.HubSide || m.HubNav) setMod(() => m); else setNone(true); }, () => { if (live) setNone(true); }); return () => { live = false; }; }, []);
+  if (mod && mod.HubSide) return html`<${mod.HubSide} onPick=${closeDrawer} />`;
+  if (mod && mod.HubNav) return html`<nav data-trust="navigation" class="side-nav hub-side-nav" aria-label=${t("app.menu")}><${mod.HubNav} onPick=${closeDrawer} /></nav>`;
+  return none ? fallback : null;
 }
-/** The Hub's own session row (S3b): who is signed in to the Hub, and Sign out — from the Hub's lazy module, never /auth/. */
-function HubSessionSlot() {
+/** The foot (HubFoot: Settings and the session row); an older module's session row. */
+function HubFootSlot() {
   const [mod, setMod] = useState(null);
-  useEffect(() => { let live = true; import("/ui/js/panel-hub.js").then((m) => { if (live && m.HubSessionMenu) setMod(() => m.HubSessionMenu); }, () => {}); return () => { live = false; }; }, []);
-  return mod ? html`<${mod} />` : null;
+  useEffect(() => { let live = true; loadHubModule().then((m) => { if (live && (m.HubFoot || m.HubSessionMenu)) setMod(() => m); }, () => {}); return () => { live = false; }; }, []);
+  if (!mod) return null;
+  return mod.HubFoot ? html`<${mod.HubFoot} />` : html`<${mod.HubSessionMenu} />`;
 }
 /** A member fleet's "My fleet ↔ Hub" switcher: its module loads only on a member page, and shows only once paired. */
 function HubSwitcherSlot() {
   const [mod, setMod] = useState(null);
   useEffect(() => { let live = true; import("/ui/js/hub-switcher.js").then((m) => { if (live) setMod(() => m.HubSwitcher); }, () => {}); return () => { live = false; }; }, []);
   return mod ? html`<${mod} />` : null;
+}
+
+// Fleet-only lazy boundary: the Hub module graph never reaches member Settings or its private inbox.
+function MemberPairingNoticesSlot() {
+  const [Component, setComponent] = useState(null);
+  useEffect(() => { let live = true; import("/ui/js/hub-quick-pairing.js").then(m => {
+    if (live && m.MemberPairingNotices) setComponent(() => m.MemberPairingNotices);
+  }, () => {}); return () => { live = false; }; }, []);
+  return Component ? html`<${Component} />` : null;
 }
 
 function Sidebar({ route, onNewInstance, viewOnly }) {
@@ -653,9 +667,27 @@ export function PendingChanges({ inline = false } = {}) {
     ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
-    ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
+    ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}
     ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
   </section>`)}</div>`;
+}
+
+const ENDED_WHY = ["withdrawn", "rejected", "expired", "not_found", "settings_changed", "request_no_longer_current", "fleet_stopped"];
+/**
+ * AGEND-118: a change that did not go through says why — withdrawn, turned down, ran out, settings moved on — in the page's
+ * language (the server's own sentence only for a reason this page does not know), and offers to send it again when the page
+ * still has the request and sending it as it was is safe (p.retry: settings-confirm.js says which reasons; never for a
+ * change that touches a secret).
+ */
+function PendingEnded({ p }) {
+  const [failed, setFailed] = useState(""), [busy, setBusy] = useState(false);
+  const o = p.outcome || {};
+  const why = ENDED_WHY.includes(o.reason_code) ? t(`pendingEnded.why_${o.reason_code}`) : o.message;
+  // Not sure it was sent (no answer, or one that could not be read): the same press again asks about the same request.
+  const again = async () => { setBusy(true); setFailed(""); const r = await p.retry(); if (!r || !r.ok) { setFailed(r && r.uncertain ? "resendUnsure" : "resendFailed"); setBusy(false); } };
+  return html`${why ? html`<p class="note pending-ended">${why}</p>` : null}
+    ${failed ? html`<p class="note" role="alert">${t(`pendingEnded.${failed}`)}</p>` : null}
+    ${p.retry ? html`<div class="pending-actions"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${again}>${t("pendingEnded.resend")}</button></div>` : null}`;
 }
 
 /** #2868: where the confirm card was posted: "Discord", or "Discord (team-b)" for a connection with an id of its own. */
@@ -670,25 +702,184 @@ function whereText(where) {
  * "Authorize this browser" (the same DM card as the composer's). The host's command otherwise sits folded under
  * "Advanced".
  */
+// alpha.6 feedback #2c (the user's decision hmsg-77256f66): a change no General could take says WHY, in plain words, and what
+// would let it through — never "type this command on the host". The host's command stays folded under Advanced, a last resort.
+register("pendingHost", {
+  en: {
+    no_chat: "This fleet has no chat app connected, so there is no General to send the confirm card to.",
+    no_chat_do: "To confirm from Discord or Telegram instead, connect one in Settings → Chat & connections.",
+    cross_platform: "This change affects chat apps on more than one platform, so no single General can confirm it.",
+    cross_platform_do: "Make the change for one platform at a time.",
+    no_general: "No agent is the General in a connected chat app, so there is nowhere to send the confirm card.",
+    no_general_do: "Make an agent the General in Settings → Agents, then make the change again.",
+    chat_disconnected: "General's chat app is not connected right now, so the confirm card could not be sent.",
+    chat_disconnected_do: "Check the connection in Settings → Chat & connections, then make the change again.",
+    no_topic: "General has no topic in its chat yet, so the confirm card had nowhere to go.",
+    no_topic_do: "Send General a message in its chat once, then make the change again.",
+    post_failed: "The confirm card could not be posted in General.",
+    post_failed_do: "Check General's chat connection in Settings → Chat & connections, then make the change again.",
+    unknown: "No General could take the confirm card for this change.",
+    go: "Open",
+    codeLead: "Enter the 6-digit code from your authenticator app to confirm this change.",
+    codeLabel: "Authenticator code", codeGo: "Confirm",
+    codeWrong: "That code is not right. Use the current code in your authenticator app.",
+    codePaused: "Too many wrong codes. Try again in {0} minutes.",
+    codeNotHere: "This page can no longer confirm it with a code.",
+    codeUnavailable: "The code could not be checked. Try again.",
+    codeChanged: "This change is no longer the one shown here. Reload the page and check it again.",
+    // AGEND-118: the one next step this device can take, by state; the other ways are folded under "Other ways to confirm".
+    applyLead: "Press Apply now to confirm this change from this browser.", applyRefused: "This browser can't apply it here now. Use one of the other ways to confirm.",
+    cantHere: "This device can't confirm this change yet.",
+    setupLead: "Set up an authenticator app first. This card stays here: once it is set up, enter its 6-digit code on the card. If the time runs out before that, make the change again.",
+    setupGo: "Set up authenticator",
+    onHost: "This device can't confirm this change over a link. Do it from the computer running AgEnD.",
+    hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
+    more: "Other ways to confirm",
+    moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
+  },
+  "zh-TW": {
+    no_chat: "這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
+    no_chat_do: "若要改從 Discord 或 Telegram 確認，請到「設定 → 聊天與連線」連接其中一個。",
+    cross_platform: "這項變更涉及多個聊天平台，沒有單一的 General 可以確認。",
+    cross_platform_do: "請一次只變更一個平台。",
+    no_general: "已連接的聊天平台中沒有任何 Agent 是 General，所以確認卡無處可送。",
+    no_general_do: "請到「設定 → Agent」把一個 Agent 設為 General，再重新做一次這項變更。",
+    chat_disconnected: "General 的聊天平台目前沒有連線，確認卡無法送出。",
+    chat_disconnected_do: "請到「設定 → 聊天與連線」檢查連線，再重新做一次這項變更。",
+    no_topic: "General 在聊天平台上還沒有主題，確認卡無處可送。",
+    no_topic_do: "請先在 General 的聊天中傳一則訊息，再重新做一次這項變更。",
+    post_failed: "確認卡無法傳到 General。",
+    post_failed_do: "請到「設定 → 聊天與連線」檢查 General 的連線，再重新做一次這項變更。",
+    unknown: "這項變更沒有 General 可以接收確認卡。",
+    go: "前往",
+    codeLead: "輸入驗證器 App 的 6 位數驗證碼，就能確認這項變更。",
+    codeLabel: "6 位數驗證碼（驗證器 App）", codeGo: "確認",
+    codeWrong: "驗證碼不正確，請使用驗證器 App 目前顯示的 6 位數驗證碼。",
+    codePaused: "錯誤次數太多，請 {0} 分鐘後再試。",
+    codeNotHere: "這個頁面已無法用驗證碼確認這項變更。",
+    codeUnavailable: "無法檢查驗證碼，請再試一次。",
+    codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
+    applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
+    cantHere: "你目前在這台裝置還無法直接確認這項變更。",
+    setupLead: "請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數驗證碼。若倒數結束前還沒完成，請重新送出這項變更。",
+    setupGo: "綁定驗證器",
+    onHost: "你目前在這台裝置無法透過連結確認這項變更，請到執行 AgEnD 的那台電腦操作。",
+    hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
+    more: "其他確認方式",
+    moreHost: "到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。",
+  },
+});
+/**
+ * AGEND-118: the words of a change that did not go through, registered here with the component that reads them — a page
+ * that kept an earlier app-i18n.js (a tab left open across an upgrade) must not print raw keys.
+ */
+register("pendingEnded", {
+  en: {
+    why_withdrawn: "You withdrew this change, so nothing was changed.",
+    why_rejected: "An admin turned it down, so nothing was changed.",
+    why_expired: "It was not completed within 5 minutes. Check what the settings are now.",
+    why_not_found: "AgEnD no longer has this request (it timed out or was cleared). Check what the settings are now.",
+    why_settings_changed: "Settings changed after you asked for this, so it was not applied. Review them and make the change again in Settings.",
+    why_request_no_longer_current: "The sign-in that asked for it ended, or the fleet changed, so it was not applied. Make the change again in Settings.",
+    why_fleet_stopped: "AgEnD stopped before it could be applied. Make the change again in Settings.",
+    resend: "Send again",
+    resendFailed: "It could not be sent again. Make the change again in Settings.",
+    resendUnsure: "We could not tell whether it was sent. Press Send again to find out; it will not be sent twice.",
+  },
+  "zh-TW": {
+    why_withdrawn: "你已撤回這項變更，沒有任何設定被修改。",
+    why_rejected: "管理者拒絕了這項變更，沒有任何設定被修改。",
+    why_expired: "5 分鐘內沒有完成，請確認設定目前的內容。",
+    why_not_found: "AgEnD 已經沒有這項請求（已逾時或已清除），請確認設定目前的內容。",
+    why_settings_changed: "你送出之後設定又被修改了，所以沒有套用。請檢查設定後，到設定重新做一次這項變更。",
+    why_request_no_longer_current: "送出這項變更的登入已結束，或 fleet 有變動，所以沒有套用。請到設定重新做一次這項變更。",
+    why_fleet_stopped: "AgEnD 在套用前停止了。請到設定重新做一次這項變更。",
+    resend: "重新送出",
+    resendFailed: "無法重新送出，請到設定重新做一次這項變更。",
+    resendUnsure: "無法確定是否已經送出。再按一次「重新送出」就能查明，不會送出兩次。",
+  },
+});
+const PENDING_HOST_REASONS = ["no_chat", "cross_platform", "no_general", "chat_disconnected", "no_topic", "post_failed"];
+const PENDING_HOST_GO = { no_chat: "chat", no_general: "agents", chat_disconnected: "chat", post_failed: "chat" };
+/**
+ * alpha.6 feedback #2c (the user's decision hmsg-468cc290): on a web-only fleet's own page, a local admin who is not the host
+ * operator confirms a pending change with the owner's authenticator code. The server decides who may (p.confirmWithCode, from
+ * the view's `totp`) and checks the code; this only asks for it and says the answer.
+ */
+function PendingCode({ p }) {
+  const [code, setCode] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  const go = async (e) => {
+    e.preventDefault();
+    if (busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))) return;
+    setBusy(true); setMsg("");
+    const r = await p.confirmWithCode(code);
+    setBusy(false); setCode("");
+    if (r && r.ok) return;
+    const why = r && r.error;
+    setMsg(why === "wrong" ? t("pendingHost.codeWrong") : why === "paused" ? t("pendingHost.codePaused", Math.max(1, Math.ceil((r.retryAfterMs || 60000) / 60000)))
+      : why === "not_here" ? t("pendingHost.codeNotHere") : why === "changed" ? t("pendingHost.codeChanged") : t("pendingHost.codeUnavailable"));
+  };
+  return html`<form class="pending-self pending-code" onSubmit=${go}>
+    <span class="note">${t("pendingHost.codeLead")}</span>
+    <label class="field-row"><span class="sr-only">${t("pendingHost.codeLabel")}</span>
+      <input class="pending-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label=${t("pendingHost.codeLabel")}
+        value=${code} disabled=${busy} onInput=${(e) => setCode(e.target.value)} />
+      <button type="submit" class="btn btn-sm btn-primary" disabled=${busy || !/^\d{6}$/.test(code.replace(/\s+/g, ""))}>${t("pendingHost.codeGo")}</button></label>
+  </form>${msg ? html`<p class="note" role="alert">${msg}</p>` : null}`;
+}
+/**
+ * AGEND-118: how this page can confirm the change, as ONE next step by state (the server's read decides which; nothing here
+ * grants anything): the authenticator's code field when this page may use it, Apply now when the browser may confirm it,
+ * set up the authenticator when that would let it, or — over a link / when nothing is open to this page — where it has to be
+ * done. The ways that are not the step sit folded: "Other ways to confirm" (the reason no General got a card, and what to do
+ * on the AgEnD computer) and, as before this change, "Advanced: confirm on the host" with the bare command. The card never
+ * tells the person to run it (style guide rule 9), and has no Copy for it.
+ */
 function PendingHow({ p }) {
   const a = useWebAuthorization();
   const [refused, setRefused] = useState(false);
   const c = p.confirmation || {}, cmd = `agend settings confirm ${p.id}`;
-  const lead = c.kind === "posting" ? t("app.pendingPosting") : c.kind === "host_cli" ? t("app.pendingHostOnly", cmd) : t("app.pendingChatWhere", whereText(c.where));
-  // A browser that isn't verified but could be: authorizing it makes this one (and later ones) "Apply now".
-  const route = c.kind !== "host_cli" && !p.applyNow && a.st;
-  const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
-  const asking = route && a.st.state === "pending";
+  const cli = c.kind === "host_cli";
+  const why = cli && PENDING_HOST_REASONS.includes(c.reason) ? c.reason : null;
+  const go = why && Object.hasOwn(PENDING_HOST_GO, why) ? PENDING_HOST_GO[why] : null;
   const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
-  return html`<p class="note">${lead}</p>
-    ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
-      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
-    ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
-    ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
-      <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
-    ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
-    ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
-    ${c.kind !== "host_cli" ? html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>` : null}`;
+  const advanced = html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>`;
+  const goLink = go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null;
+  const whyDo = (why || cli) ? html`<p class="note pending-why">${t(`pendingHost.${why || "unknown"}`)}${why ? html` ${t(`pendingHost.${why}_do`)}${goLink}` : null}</p>` : null;
+  // The change is waiting for a General's card (or it is still being sent): that card is the step. A browser that isn't
+  // verified but could be can authorize itself (the same DM card as the composer's).
+  const mode = p.applyNow ? "apply" : p.confirmWithCode ? "code" : p.totpNotSetUp ? "setup" : p.onHost ? "link" : p.hostBrowser ? "hostBrowser" : "none";
+  if (!cli && (mode === "none" || mode === "apply")) {
+    const route = !p.applyNow && a.st;
+    const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
+    const asking = route && a.st.state === "pending";
+    const lead = c.kind === "posting" ? t("app.pendingPosting") : t("app.pendingChatWhere", whereText(c.where));
+    return html`<p class="note">${lead}</p>
+      ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
+        <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
+      ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
+      ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
+        <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
+      ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
+      ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
+      ${advanced}`;
+  }
+  const next = mode === "apply" ? html`<div class="pending-self"><span class="note">${t("pendingHost.applyLead")}</span>
+      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>`
+    : mode === "code" ? html`<${PendingCode} p=${p} />`
+    : mode === "setup" ? html`<p class="note pending-cant">${t("pendingHost.cantHere")}</p>
+      <div class="pending-self pending-code-setup"><span class="note">${t("pendingHost.setupLead")}</span>
+        <a class="btn btn-sm btn-primary" href=${settingsPath("access")}>${t("pendingHost.setupGo")}</a></div>`
+    : mode === "link" ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>`
+    : mode === "hostBrowser" ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>`
+    : html`${refused ? html`<p class="note" role="status">${t("pendingHost.applyRefused")}</p>` : null}${whyDo}`;
+  // What is not the step: shown folded only where there is something to say besides the command.
+  const others = mode === "setup" || mode === "link" || mode === "hostBrowser";
+  return html`${next}
+    ${others ? html`<details class="pending-host pending-others"><summary>${t("pendingHost.more")}</summary><div class="pending-more">
+      ${whyDo}
+      ${mode === "setup" ? html`<p class="note">${t("pendingHost.moreHost")}</p>` : null}</div></details>` : null}
+    ${advanced}`;
 }
 
 /** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
@@ -728,10 +919,12 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ * offers nothing. S-92 (#3326 D1): Restart now whenever the page can restart — with no Settings job behind it (a hand
+ * edit) too: the server makes the job (`restartRunner(null)`). The muted hint (#3363's words: chat fleets send /restart in
+ * General, web-only fleets are told to restart AgEnD, no command) is for a page that cannot restart.
  */
 function RestartLine() {
-  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
   const [later, setLater] = useState(null);
   const [busy, setBusy] = useState(false);
   const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
@@ -740,9 +933,13 @@ function RestartLine() {
   if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
-  const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  const canRestart = typeof restartRunner === "function";
+  // connections === 0 is web-only; null is unknown — do not name General.
+  const hint = !canRestart ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost") : null;
   const restart = async () => {
-    if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
+    // S-92: on a fleet with no chat connection the restart is announced in the dashboard's Notices, not a chat channel.
+    const message = t(connections === 0 ? "app.restartConfirmWebOnly" : "app.restartConfirm");
+    if (!(await confirmDialog({ title: t("app.restartNow"), message, confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
     let res;
     try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }
@@ -756,7 +953,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${hint ? html`<span class="muted">${hint}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }
@@ -906,8 +1103,10 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       <${StartupLine} />
+      ${viewOnly || guest || hub || !hubMarks().member || (nav.route?.panel === "settings" && nav.route.section === "hub") ? null : html`<${MemberPairingNoticesSlot} />`}
       ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest || hub ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

@@ -119,6 +119,8 @@ export interface CliBackendConfig {
   kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
   skipResume?: boolean;
+  /** Daemon-owned same-session CLI repair only; never a new conversation fallback. */
+  resumeSessionId?: string;
   /** Fleet instructions content to inject into the CLI's additive system prompt mechanism. */
   instructions?: string;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint). */
@@ -132,6 +134,8 @@ export interface CliBackendConfig {
    * catalog — claude-code's `GET /v1/models` then uses that profile's token, not the default login's.
    */
   credentialStoreHome?: string;
+  /** Daemon-owned explicit catalog discovery; ordinary probes retain their documented fallback. */
+  catalogDiscovery?: boolean;
   /** Daemon-owned localhost Muse usage relay, prepared before spawn. */
   museBaseUrl?: string;
   /**
@@ -240,6 +244,8 @@ export interface CliEnv {
    * the quick-pick tier stays short.
    */
   apiModels?: ModelOption[];
+  /** Explicit catalog probe could not refresh its account tier, even if static aliases are available. */
+  catalogRefreshFailed?: boolean;
   /**
    * Effort levels the CLI's own `--help` lists (antigravity, #1328), in AgEnD's canonical order. `[]`: the help was
    * read and lists none (the fallback applies); absent: the help could not be read.
@@ -1052,6 +1058,9 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
+  /** A fresh installed launcher, used by the one same-session model-version repair. */
+  refreshLaunchBinary?(path: string): void;
+
   probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[]; binary?: CliBinaryIdentity }>;
 
   /**
@@ -1063,7 +1072,7 @@ export interface CliBackend {
    * Called only by an explicit refresh — never by the startup or /model probe —
    * and it may throw; the caller reports a failed refresh and keeps the old list.
    */
-  refreshModelCatalog?(): Promise<void>;
+  refreshModelCatalog?(config?: CliBackendConfig): Promise<void>;
 }
 
 /**

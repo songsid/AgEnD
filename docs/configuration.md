@@ -131,21 +131,21 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 `access` is optional. **Omitting the entire block uses an `open` runtime fallback**, not `locked`; an existing persisted mode can still override it. To restrict chat access, explicitly set `mode: locked` and `allowed_users`.
 
-The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode`, an `allowed_users` array and, for pairing, the pairing limits explicitly.
+The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode` and an `allowed_users` array explicitly. Manage the bot’s allowed users in **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)**.
 
 | Field | Type | Whole-block fallback | Description |
 |-------|------|----------------------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`/`pairing` admit the effective allowlist; `pairing` also accepts `/pair` requests. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` and the legacy `pairing` alias admit the effective allowlist; access codes are no longer issued. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | Unioned with the persisted list; IDs compare as strings |
-| `max_pending_codes` | number | `0` | Max distinct users with pending pairing codes; set a positive limit for pairing |
-| `code_expiry_minutes` | number | `0` | Pairing code TTL in minutes; set a positive duration for pairing |
+| `max_pending_codes` | number | `0` | Legacy compatibility field; unused |
+| `code_expiry_minutes` | number | `0` | Legacy compatibility field; unused |
 
 **Persisted state and administration:**
 
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
-- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; approved pairing adds to the saved list.
+- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; existing saved grants are retained. Old pending codes are inert and cannot grant access.
 - Under `locked`/`pairing`, revocation must remove the grant from both lists; changing only one can leave access enabled. `open` does not restrict users in the first place.
-- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
+- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or a saved chat grant alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
 
 #### channel.options (Discord)
 
@@ -235,6 +235,8 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 ### instances.\<name\>
 
 `tool_set` enforces policy for the resolved instance identity, not isolation between shell-capable agents on the same uid. A sibling can read another instance’s `agent.token` or use its IPC socket; see [the shared-account threat model](SECURITY.md#tool-profiles-and-the-shared-host-account).
+
+General may set another agent’s `tool_set` directly through `update_instance_config({ name, config: { tool_set: "worker" } })` or supply `tool_set` to `create_instance`, without a confirmation card. Other callers, including coordinators and non-General `full` instances, retain the #804/#814 refusal. Both tools refuse `skipPermissions` for everyone. Valid writable profiles are `full`, `standard`, `worker`, `coordinator` and `minimal`; `general` is assigned by role, never written. General’s default profile includes `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`, but excludes `checkout_repo` and `release_repo`. Sensitive Settings confirmations are unchanged. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -736,7 +738,7 @@ Sign-in controls require the current setup cookie on this computer; they are ref
 
 `agend setup --backend-signin-capabilities` prints installer capability JSON without opening setup or clearing its completion marker. The Windows installer requires version-1 setup, dashboard and installer capability flags before using the new flow. It installs AgEnD first, then opens the backend checklist in the setup page. Older packages keep the console fallback. A resumed, already-configured install opens the same checklist on the dashboard with `agend web --code --backend-signins kiro-cli,claude-code,codex`; this navigation alone never starts a login. Existing installer progress IDs stay compatible. The final status uses fresh authentication checks, so a skipped login is never reported as signed in. Antigravity remains an explicit console fallback; its passive device-auth bridge has not been enabled.
 
-On the directly reached dashboard, only a current local admin session can use browser sign-in. Agents' header tokens, read sessions, guests and public links cannot read hints or send answers. Default Kiro/Claude/Codex accounts use the named controls; credential profiles retain their existing flow. **Use console fallback** is an explicit choice for an unsupported screen. The shell banner reopens an active attempt. A successful login invokes the existing recovery for that backend's default-account agents; merely reusing already-valid credentials does not restart running agents. Login, install and legacy/profile flows share one writer reservation.
+On the directly reached dashboard, only a current local admin session can use browser sign-in. Agents' header tokens, read sessions, guests and public links cannot read hints or send answers. Default Kiro/Claude/Codex accounts use the named controls, and so does a named Claude Code account (a credential profile) on this host: **Sign in** in Settings → Accounts opens the same dialog, titled with the account, and the login is written to that profile's own folder (`CLAUDE_CONFIG_DIR`), never the default account's. A sign-in this dialog started ends when the dialog is closed (never one another session or tab started), and it only signs in an account that exists with exactly that spelling, or one the configuration names (an agent, a room or the fleet default) whose folder is not there yet — the server then makes the folder through Add's own checks (`exists`, `case_clash`, `unsafe_root`) and starts the sign-in in the same step. Any other name is refused (`signin_profile_unknown`) and nothing is created. Other backends' credential profiles retain their existing flow, and **Use console fallback** (a small link under the controls) opens it for the same account. **Use console fallback** is an explicit choice for an unsupported screen. The shell banner reopens an active attempt. A successful login invokes the existing recovery for that backend's default-account agents (for a named account, only the agents on that account); merely reusing already-valid credentials does not restart running agents. Login, install and legacy/profile flows share one writer reservation.
 
 ### Quota reminders
 

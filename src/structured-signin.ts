@@ -8,18 +8,17 @@ import { performance } from "node:perf_hooks";
 import { LOGIN_FLOWS, extractLoginHint, type AuthCheckResult } from "./login-flows.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { linkableLoginUrl } from "./login-url.js";
+import { hostFacts, hostIdsByRank, type HostCliWith } from "./cli-registry.js";
 
-export const STRUCTURED_SIGNIN_BACKENDS = ["kiro-cli", "claude-code", "codex"] as const;
-export type StructuredBackend = typeof STRUCTURED_SIGNIN_BACKENDS[number];
+/** The CLIs whose sign-in is driven with browser controls (cli-registry.ts: `host.structuredSignIn`, in the order of its `rank`). */
+export type StructuredBackend = HostCliWith<"structuredSignIn">;
+export const STRUCTURED_SIGNIN_BACKENDS: readonly StructuredBackend[] = Object.freeze(hostIdsByRank("structuredSignIn") as StructuredBackend[]);
 export function structuredSignInSupported(backend: string): backend is StructuredBackend {
   return (STRUCTURED_SIGNIN_BACKENDS as readonly string[]).includes(backend);
 }
 
-const ARGV: Record<StructuredBackend, readonly string[]> = {
-  "kiro-cli": ["kiro-cli", "login"],
-  "claude-code": ["claude", "auth", "login"],
-  "codex": ["codex", "login", "--device-auth"],
-};
+/** The exact command each sign-in launches (cli-registry.ts: `host.structuredSignIn.argv`; pinned, literally, by tests/cli-registry-golden.test.ts). */
+const ARGV = Object.fromEntries(STRUCTURED_SIGNIN_BACKENDS.map(id => [id, hostFacts(id, "structuredSignIn")!.argv])) as Record<StructuredBackend, readonly string[]>;
 const TTL_MS = 10 * 60_000;
 const UNKNOWN_GRACE_MS = 5_000;
 const MAX_PANE = 64 * 1024;
@@ -97,6 +96,11 @@ export function structuredSignInPrompt(backend: StructuredBackend, input: string
 
 export interface StructuredSignInLaunch {
   argv: readonly string[];
+  /**
+   * #3190 Part 3c: a credential profile NAME on a paired computer, for a transport that signs a profile in there. Only a name: the transport turns it into
+   * its own folder and variable. Never a path, an environment or an argument. A transport that has no profiles (the host's own) refuses it.
+   */
+  profile?: string;
   /** Fixed command, only after an explicit re-login choice. Never an implicit logout. */
   logoutArgv?: readonly string[];
 }
@@ -116,6 +120,8 @@ export interface StructuredSignInDeps {
   lock: LoginWindowLock;
   /** Current setup owner / local-admin session. Rechecked after every await. */
   current(): boolean;
+  /** The credential profile NAME this sign-in is for (a paired computer's, #3190 Part 3c). Passed to the transport as `StructuredSignInLaunch.profile`; the closed name check is the caller's. */
+  profile?: string;
   /** Independently probe the backend's auth status; bounded and token-free (LOGIN_FLOWS.authCheck). */
   checkAuth(): Promise<AuthCheckResult>;
   /** Monotonic elapsed milliseconds; wall-clock corrections must not extend an attempt. */
@@ -193,7 +199,7 @@ export class StructuredSignIn {
       this.setPhase("starting");
       if (!this.current()) { await this.finish(this.lostReason()); return; }
       this.transportTouched = true;
-      this.startInFlight = this.deps.transport.start({ argv: [...ARGV[this.backend]],
+      this.startInFlight = this.deps.transport.start({ argv: [...ARGV[this.backend]], ...(this.deps.profile !== undefined ? { profile: this.deps.profile } : {}),
         ...(confirmedRelogin && this.backend === "kiro-cli" ? { logoutArgv: ["kiro-cli", "logout"] } : {}) }, this.abort.signal);
       await this.startInFlight;
       if (!this.current()) { await this.finish(this.lostReason()); return; }
@@ -291,7 +297,9 @@ export class StructuredSignIn {
           if (action.kind === "start_url" && !validStartUrl(value)) return "invalid";
           if (action.kind === "region" && !/^[a-z]{2}(?:-[a-z]+){1,3}-\d$/.test(value)) return "invalid";
           if (action.kind === "code" && !/^[A-Za-z0-9._~+/#=-]+$/.test(value)) return "invalid";
-          text = "\x15" + value + "\r"; // replace a prefilled prompt; literal bytes only
+          // Claude Code reads authorization codes raw; Ctrl+U becomes part of the code.
+          // Only Kiro's start URL and region prompts need their prefilled value cleared.
+          text = (action.kind === "code" ? "" : "\x15") + value + "\r";
         }
         if (text === null) return "invalid";
         this.answered.add(prompt.phase); // before the async write; redraws never re-arm an answered phase

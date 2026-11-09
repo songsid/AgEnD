@@ -102,6 +102,8 @@ agend ls --backend <name>       # Filter by backend
 agend ls --display              # Add display names as last column (hidden by default)
 agend attach [name]             # Attach to instance tmux window (accepts real name, display name, row number, or substring)
 agend tmux <tmux args…>         # Run a tmux command on this fleet's own tmux server and socket (e.g. agend tmux ls)
+agend rollback <version>        # Go back to an older AgEnD (2.3.x): close AgEnD's own tmux server first, then install and start it
+agend tmux-migrate --release <name>  # After an upgrade: release an agent held by an old tmux window you will close yourself
 agend logs                      # Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)
 agend logs -n 100               # Show last 100 lines (default: 50)
 agend logs -f                   # Follow mode (tail -f)
@@ -392,11 +394,10 @@ agend topic unbind <name>       # Unbind instance from topic
 agend access list <name>        # List allowed users
 agend access remove <name> <uid> # Remove user
 agend access lock <name>        # Lock instance access (whitelist only)
-agend access unlock <name>      # Unlock instance access (enable pairing)
-agend access pair <name> <uid>  # Generate pairing code
+agend access unlock <name>      # Use the saved allowlist (legacy pairing mode)
 ```
 
-`access pair` generates a code; it does not approve one. There is no CLI code-confirmation command or `access add`. An owner can grant access through the configured user list; saved and YAML lists are combined as described in [access configuration](configuration.md#channelaccess).
+Access codes are no longer generated or confirmed. Add allowed users in **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)** and apply through the existing confirmation. `unlock` retains the legacy `pairing` mode name but still admits only the effective allowlist; it does not open access. Saved and YAML grants are combined as described in [access configuration](configuration.md#channelaccess).
 
 ## Setup & installation
 

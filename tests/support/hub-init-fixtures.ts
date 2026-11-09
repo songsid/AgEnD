@@ -31,7 +31,7 @@ function openssl(args: string[], cwd: string): void {
   execFileSync("openssl", args, { cwd, stdio: "ignore" });
 }
 
-export function makeTestCerts(): TestCerts {
+export function makeTestCerts(host = "hub.example.test"): TestCerts {
   const dir = tempDir("agend-hubinit-certs-");
   const ec = ["-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes"];
   openssl(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=Test CA", "-keyout", "ca.key", "-out", "ca.pem"], dir);
@@ -40,7 +40,7 @@ export function makeTestCerts(): TestCerts {
     writeFileSync(join(dir, `${name}.ext`), `subjectAltName=${san}\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n`);
     openssl(["x509", "-req", "-in", `${name}.csr`, "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-days", "2", "-extfile", `${name}.ext`, "-out", `${name}.pem`], dir);
   };
-  leaf("hub", "DNS:hub.example.test,IP:192.0.2.10");
+  leaf("hub", `DNS:${host},IP:192.0.2.10`);
   leaf("other", "DNS:other.example.test");
   openssl(["genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", "stray.key"], dir);
   openssl(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=hub.example.test", "-addext", "subjectAltName=DNS:hub.example.test", "-keyout", "self.key", "-out", "self.pem"], dir);

@@ -33,6 +33,7 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
+import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -51,9 +52,11 @@ export interface SettingsEffectContext {
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
+  if (method === "PUT" && (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview")) return true;   // #3451 (M-2682)
   if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
@@ -66,6 +69,18 @@ function record(body: unknown): Record<string, any> {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsConfirmationError(400, "invalid_settings_body");
   return body as Record<string, any>;
 }
+/**
+ * #3326 finding 1 (alpha.6 feedback #2c): the Hub changes — membership, retention, the browser certificate, publishing an
+ * agent, the pairing steps — change no chat connection, so like General's location (and settingsEffectAuthority's own rule
+ * for a change with no connection targets) they are the primary General's to confirm. Scoped to no connection and no
+ * General, no card was ever posted and "Apply now" never showed, while the page said to confirm in General.
+ */
+const HUB_AUTHORITY = { connections: [] as string[], primaryGeneral: true, unknown: false };
+// #3352 review F1 (security): of these, the ones that open the fleet outward — trusting a Hub (pairing connect / confirm),
+// publishing an agent to it, replacing the Hub's browser certificate — are never confirmed by their asker's own browser
+// ("Apply now", #2170), as #2453 §0.2 drew for the named link: a hijacked or left-open verified browser must not pair with a
+// Hub of its choosing and publish an agent there. They take the primary General's card (or the host). Membership on/off,
+// retention and disconnecting widen nothing and stay self-confirmable.
 /** A pure projection. Original handler validation still runs against the admitted baseline. */
 export function prepareSettingsEffect(method: string, path: string, body: unknown, context: SettingsEffectContext, binding?: string, key?: string): {
   diff: SettingsChangeDiff | null; proof?: SettingsSecretProof;
@@ -82,7 +97,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
-      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+      affectedConnections: [], authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
@@ -91,7 +106,25 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
       summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
-      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+      affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  // #3451 (M-2682): the host owner's Hub switches — "Run this Hub" (hub.enabled) and "HTML previews on this Hub"
+  // (hub.web.preview_port). Their routes save only as a confirmed replay, so like retention they are proposed here first;
+  // the route re-checks everything (initialized, conflicts, a free port, an unfinished sealed commit) at the replay.
+  // Starting the Hub or opening a preview port opens a listener: outward, so never the asker's own "Apply now" (#3352 F1)
+  // — the host's own session here still confirms it at Save (hostLocalConfirm). Stopping and turning previews off widen nothing.
+  if (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview") {
+    if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    const run = path === "/api/settings/hub/run";
+    if (typeof b.enabled !== "boolean") throw new SettingsConfirmationError(400, run ? "invalid" : "invalid_port");
+    const port = b.port;
+    if (!run && b.enabled && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) throw new SettingsConfirmationError(400, "invalid_port");
+    const input = run ? { enabled: b.enabled } : b.enabled ? { enabled: true, port } : { enabled: false };
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      summary: [run ? t(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? t("hub.preview.on", String(port)) : t("hub.preview.off")],
+      affectedConnections: [], authority: HUB_AUTHORITY, ...(b.enabled ? { noSelfConfirm: true as const, hostLocalConfirm: true as const } : {}) } };
   }
   if (path === "/api/settings/hub/membership") {
     if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");
@@ -100,7 +133,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     catch { throw new SettingsConfirmationError(400, "invalid_hub_membership"); }
     const diff = settingsChangeDiff({ fleet: { hub_member: previous } }, { fleet: { hub_member: next } }, { operation });
     return { diff: diff ? { ...diff, section: "access", summary: [t(next.enabled ? "hub.membership.enable" : "hub.membership.disable")],
-      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } : null };
+      affectedConnections: [], authority: HUB_AUTHORITY } : null };
   }
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
   // confirm (#2170 self-confirmation).
@@ -108,7 +141,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
     || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const } : {}) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const, hostSessionOnly: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (path === "/api/settings/general-location") {
@@ -129,7 +162,28 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: { connections: [], primaryGeneral: false, unknown: false } } };
+      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
+  }
+  if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) {
+    const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust");
+    let target: string;
+    try {
+      if (repair) {
+        if (Object.keys(b).length !== 1 || typeof b.address !== "string") throw Error();
+        const address = parseCompanyAddress(b.address); if (!address.expected || address.invitation) throw Error();
+        target = address.webOrigin;
+      } else if (start) {
+        if (Object.keys(b).some(k => !["address", "label", "handoffId"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
+        if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
+        target = parseCompanyAddress(b.address).webOrigin;
+      } else {
+        if (Object.keys(b).length !== 1 || typeof b.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(b.operationId)) throw Error();
+        target = b.operationId;
+      }
+    } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)], affectedConnections: [],
+      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
   if (pairingStep) {
@@ -141,7 +195,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: { connections: [], primaryGeneral: false, unknown: false } } };
+      authority: HUB_AUTHORITY, ...(pairingStep[1] === "disconnect" ? {} : { noSelfConfirm: true as const, hostLocalConfirm: true as const }) } };
   }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);

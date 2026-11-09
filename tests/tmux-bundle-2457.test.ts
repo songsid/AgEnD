@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import { partsFor, readSources, srcDirName, stripCommand, TARGETS } from "../scripts/tmux/build-tmux.mjs";
-import { tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
+import { licenseFor, tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
 import { lockMismatches, parseApkInfo, toolchainEnv } from "../scripts/tmux/toolchain.mjs";
 
 const require = createRequire(import.meta.url);
@@ -27,18 +27,45 @@ const PIN = "3.8.0";
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
+// A bundled tmux package found broken after publish can never be pinned again (design §3: darwin-arm64 3.8.0 linked
+// jemalloc, and its server crashed on the real Mac). Checks AgEnD's own package.json — vacuous until it pins the tmux.
+const NEVER_PIN: Record<string, string[]> = { "@songsid/agend-tmux-darwin-arm64": ["3.8.0"] };
+describe("AgEnD's own package.json never pins a bundled tmux known to be broken", () => {
+  it("no pinned @songsid/agend-tmux-* version is on the NEVER_PIN list", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { optionalDependencies?: Record<string, string> };
+    const pins = Object.entries(manifest.optionalDependencies ?? {}).filter(([n]) => n.startsWith("@songsid/agend-tmux-"));
+    for (const [n, v] of pins) expect(NEVER_PIN[n] ?? [], `${n}@${v}`).not.toContain(v);
+    // The rule itself refuses the broken pin (the check is not vacuous by construction).
+    const bad = { "@songsid/agend-tmux-darwin-arm64": "3.8.0" };
+    expect(Object.entries(bad).some(([n, v]) => (NEVER_PIN[n] ?? []).includes(v))).toBe(true);
+  });
+});
+
+// M-2457 C-4: the bundled tmux is on, with no PATH fallback — every target is pinned, exactly, to the tmux release in
+// tmux-sources.json (`3.8.0`, or a repack `3.8.0-agend.N`).
+describe("AgEnD's own package.json pins the bundled tmux for every target", () => {
+  it("all four, exact versions of the pinned tmux release", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { optionalDependencies: Record<string, string> };
+    const pins = Object.entries(manifest.optionalDependencies).filter(([n]) => n.startsWith("@songsid/agend-tmux-"));
+    expect(pins.map(([n]) => n).sort()).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].map(t => `@songsid/agend-tmux-${t}`));
+    const [maj, min] = readSources().tmux.version.split(".");
+    for (const [n, v] of pins) expect(v, n).toMatch(new RegExp(`^${maj}\\.${min}\\.0(-agend\\.[1-9]\\d*)?$`));
+  });
+});
+
 describe("tmux-sources.json and the package manifest", () => {
-  it("pins every source by https url and sha256; jemalloc links only on darwin", () => {
+  it("pins every source by https url and sha256; no jemalloc anywhere (§3)", () => {
     const s = readSources();
     expect(s.tmux.version).toBe("3.8");
-    for (const k of ["tmux", "libevent", "ncurses", "utf8proc", "jemalloc"]) {
+    expect((s as unknown as Record<string, unknown>).jemalloc).toBeUndefined();
+    for (const k of ["tmux", "libevent", "ncurses", "utf8proc"] as const) {
       expect(s[k].url, k).toMatch(/^https:\/\//);
       expect(s[k].sha256, k).toMatch(/^[0-9a-f]{64}$/);
       expect(s[k].url, k).toContain(s[k].version);
     }
-    expect(partsFor(s, "linux-x64")).not.toContain("jemalloc");
-    expect(partsFor(s, "darwin-arm64")).toContain("jemalloc");
-    expect(partsFor(s, "darwin-arm64")).toContain("utf8proc");
+    expect(partsFor(s, "darwin-arm64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc"]);
+    expect(partsFor(s, "darwin-x64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc"]);
+    expect(partsFor(s, "linux-x64")).toEqual(["tmux", "libevent", "ncurses", "utf8proc", "musl"]);
     expect(srcDirName("utf8proc", "2.12.0")).toBe("utf8proc-2.12.0");
     // The terminfo subset holds what panes and attaching terminals need, and the alias names a listed entry.
     for (const t of ["tmux-256color", "xterm-256color", "screen-256color", "kitty"]) expect(s.terminfo).toContain(t);
@@ -109,9 +136,22 @@ describe("tmux-sources.json and the package manifest", () => {
     }
   });
 
+  // Fable #3312 F2: the licence is exactly the linked parts' (no jemalloc BSD-2-Clause left on darwin).
+  it("a package's licence is its linked parts' licences, each once", () => {
+    const s = readSources();
+    for (const target of TARGETS) {
+      const want = [...new Set(partsFor(s, target).flatMap(p => String(s[p as keyof typeof s] && (s as any)[p].license).split(" AND ")))].join(" AND ");
+      expect(tmuxManifest(target, { tmux: "3.8", sha256: "a".repeat(64), size: 1 }).license, target).toBe(want);
+      expect(licenseFor(target), target).not.toContain("BSD-2-Clause");
+    }
+    expect(licenseFor("linux-x64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
+    expect(licenseFor("darwin-arm64")).toBe("ISC AND BSD-3-Clause AND X11 AND MIT AND Unicode-3.0");
+  });
+
   it("THIRD_PARTY_NOTICES names every bundled component", () => {
     const notices = readFileSync(join(process.cwd(), "THIRD_PARTY_NOTICES.md"), "utf8");
-    for (const name of ["tmux", "libevent", "ncurses", "utf8proc", "jemalloc"]) expect(notices, name).toMatch(new RegExp(`\\b${name}\\b`, "i"));
+    for (const name of ["tmux", "libevent", "ncurses", "utf8proc"]) expect(notices, name).toMatch(new RegExp(`\\b${name}\\b`, "i"));
+    expect(notices).not.toMatch(/\bjemalloc\b/i);   // no longer linked (§3)
   });
 });
 
@@ -389,6 +429,15 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(r.answers).toBe(true);
   });
 
+  // Fable #3312 F1: the wait's own last observation decides. Runner CI saw the server reaped between two separate asks
+  // (the second one then read a vanished /proc entry): "gone", then "not gone", and the install was refused.
+  it("one observation of the server gone is the proof: it is not asked again and contradicted", async () => {
+    let asks = 0;
+    const r = await scenario({ gone: () => ++asks === 1 });   // gone at the first look; any later look says otherwise
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(asks).toBe(1);
+  });
+
   it("refused when the recorded server pid never exits — nothing unlinked", async () => {
     const r = await scenario({ gone: () => false });
     expect(r.proved.ok).toBe(false);
@@ -422,24 +471,36 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
   });
 });
 
-describe("the darwin build links jemalloc the way tmux's configure finds it", () => {
-  // tmux 3.8's configure: --enable-jemalloc → PKG_CHECK_MODULES(JEMALLOC, jemalloc, …), else "jemalloc not found".
-  // The first macOS dry run (run 42265015287) failed there on both Macs: only the static library and headers were
-  // installed, not jemalloc.pc.
-  it("installs jemalloc's pkg-config file beside its static library, where PKG_CONFIG_PATH points", () => {
-    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
-    const install = /sh\("make", \[([^\]]*)\], \{ cwd: dirs\.jemalloc/.exec(src)?.[1] ?? "";
-    expect(install.split(",").map(s => s.trim().replace(/"/g, ""))).toEqual(["install_lib_static", "install_lib_pc", "install_include"]);
-    expect(src).toMatch(/PKG_CONFIG_PATH: join\(deps, "lib\/pkgconfig"\)/);
-    expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
+// Fable #3312 F1 (runner CI): a zombie can be reaped between kill(0) and the /proc read; that read then fails, and the
+// old check called it "still running", refusing the install. Asked again, ESRCH is the proof; anything else is not.
+describe("processGone across a reap", () => {
+  const io = (kills: Array<"ok" | "ESRCH" | "EPERM">, read: string | NodeJS.ErrnoException) => ({
+    kill: () => { const k = kills.shift() ?? "ok"; if (k !== "ok") throw Object.assign(new Error(k), { code: k }); },
+    read: () => { if (typeof read !== "string") throw read; return read; },
   });
+  const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  it.each<[string, Array<"ok" | "ESRCH" | "EPERM">, string | NodeJS.ErrnoException, boolean]>([
+    ["no such process", ["ESRCH"], "", true],
+    ["a zombie", ["ok"], "123 (tmux: server) Z 1 1", true],
+    ["running", ["ok"], "123 (tmux: server) S 1 1", false],
+    ["reaped between kill(0) and the /proc read", ["ok", "ESRCH"], enoent, true],
+    ["its /proc entry unreadable but kill(0) still answers", ["ok", "ok"], enoent, false],
+    ["a permission error is never 'gone'", ["EPERM"], "", false],
+    ["an unreadable /proc for another reason is never 'gone'", ["ok", "ESRCH"], Object.assign(new Error("EACCES"), { code: "EACCES" }), false],
+  ])("%s → %s", (_why, kills, read, want) => {
+    expect(bundle.processGone(123, "linux", io(kills, read))).toBe(want);
+  });
+});
 
-  it("jemalloc per target: darwin-arm64 links it, darwin-x64 and Linux do not (§3: x86_64's server died with it)", () => {
+describe("the darwin build", () => {
+  // §3: the statically linked jemalloc 5.3.0 crashed the macOS tmux server on darwin-x64 (dry runs) and on darwin-arm64
+  // (the real Mac, C-4 leg M). Both Macs use the system allocator; configure is told so explicitly, or it would look for
+  // a jemalloc itself and could link a runner's Homebrew dylib.
+  it("never links jemalloc: no such part, and --disable-jemalloc on macOS", () => {
     const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
-    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc"))).toEqual([true, false, false, false]);
-    // configure gets --enable-jemalloc only where it is linked, and an explicit --disable-jemalloc on the other Mac
-    // (tmux's configure would otherwise look for one itself and could link a Homebrew dylib).
-    expect(src).toContain('if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");\n  else if (darwin) tmuxArgs.push("--disable-jemalloc");');
+    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc" as never))).toEqual([false, false, false, false]);
+    expect(src).toContain('if (darwin) tmuxArgs.push("--disable-jemalloc");');
+    expect(src).not.toContain("--enable-jemalloc");
   });
 
   it("a darwin build is reproducible: object paths relative in the debug map, ar member dates zeroed", () => {

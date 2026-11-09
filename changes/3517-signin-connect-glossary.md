@@ -1,0 +1,12 @@
+---
+section: Changed
+---
+- **Signing in again on the AgEnD computer, connecting AI accounts, and named codes (#3517).**
+  - The sign-in page no longer tells you to send /web when no chat is connected yet.
+  - Opened on the AgEnD computer itself, the sign-in page says how to sign in again there: the 「AgEnD 儀表板」 desktop shortcut on Windows, or `agend web` in a terminal. A used or expired automatic sign-in link says the same.
+  - AI provider accounts are now *connected*. Settings → Agents → **AI accounts and API keys** → **Accounts** shows connected / not connected, with **Connect** / **Reconnect** / **Disconnect**. You finish on the provider's official website, and the provider's code is the **authorization code**. Needs you, the `/backend` picker, setup, paired computers' accounts and `/login` use the same words.
+  - In 繁體中文, a code is never just 「代碼」:
+    - the dashboard's one-time code and another device's code are 「裝置登入碼」;
+    - the authenticator's is 「6 位數驗證碼（驗證器 App）」;
+    - the Hub's pairing code is 「手動配對碼」;
+    - a provider's is 「授權碼」.

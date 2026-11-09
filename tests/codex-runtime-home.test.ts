@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { CodexBackend } from "../src/backend/codex.js";
+import { shortTmpdir } from "./helpers/short-tmpdir.js";
 
 const RUNTIME_DIRS = ["app-server-daemon", "app-server-control"] as const;
 const saved = { AGEND_HOME: process.env.AGEND_HOME, CODEX_HOME: process.env.CODEX_HOME };
@@ -11,7 +11,7 @@ let shared: string;
 let instance: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "agend-1034-"));
+  root = mkdtempSync(join(shortTmpdir(), "agend-1034-"));
   shared = join(root, "shared");
   instance = join(root, "agend", "instances", "runtime-worker-t1503382598640996543");
   process.env.AGEND_HOME = join(root, "agend");
@@ -57,6 +57,9 @@ describe("Codex app-server runtime home isolation (#1034)", () => {
     expect(lstatSync(home).isDirectory()).toBe(true);
     expect(lstatSync(join(instance, "codex-home")).isSymbolicLink()).toBe(true);
     expect(readlinkSync(join(instance, "codex-home"))).toBe(home);
+    // The fixture is long enough that the legacy home would overflow, so the
+    // short physical home is what keeps the socket path under sun_path.
+    expect(join(instance, "codex-home", "app-server-control", "app-server-control.sock").length).toBeGreaterThanOrEqual(107);
     expect(join(home, "app-server-control", "app-server-control.sock").length).toBeLessThan(107);
     for (const name of RUNTIME_DIRS) {
       expect(existsSync(join(home, name)), name).toBe(false);

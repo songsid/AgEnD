@@ -1,0 +1,43 @@
+{
+  "baseline": {
+    "c1e41f5345fa502727dc370a574b82e7ee2513efd60b05a0599a2f713fb5e4cb": "src/fleet-manager.ts"
+  },
+  "rows": [
+    {
+      "name": "expired-owner",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 9
+    },
+    {
+      "name": "fence",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 9
+    },
+    {
+      "name": "physical-drain",
+      "exit": 1,
+      "passed": 0,
+      "failed": 2,
+      "deselected": 9
+    },
+    {
+      "name": "initialization-cas",
+      "exit": 1,
+      "passed": 1,
+      "failed": 1,
+      "deselected": 9
+    },
+    {
+      "name": "cache-owner",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "deselected": 10
+    }
+  ],
+  "restored": true
+}

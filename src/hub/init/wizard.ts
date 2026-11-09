@@ -138,8 +138,7 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   }
 
   // 1. Name and addresses.
-  let name = "";
-  while (!name) name = (await io.ask(ht("name_q"))).trim().slice(0, 64);
+  const name = (await io.ask(ht("name_q"))).trim().slice(0, 64) || undefined;
   const webOrigin = await askOrigin(deps, ht("web_origin_q"), undefined, coexistence);
   if (!webOrigin) return "cancelled";
   const suggestedMember = `https://${new URL(webOrigin).host.replace(/:\d+$/, "")}:9443`;

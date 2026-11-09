@@ -27,7 +27,9 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
+import { UpdatePillMark, UpdateSection } from "./settings-update.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
@@ -60,22 +62,7 @@ import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { DevicesCard } from "./settings-devices.js";
-/** The pure owner Settings switch is available while off; its pairing UI remains lazy and member-mark gated. */
-function HubCardSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-membership.js").then((m) => { if (live) setCard(() => m.HubMembershipSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
-function HubBrowserCertificateSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-browser-certificate.js").then(m => { if (live) setCard(() => m.HubBrowserCertificateSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
-function HubRetentionSlot() {
-  const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub-retention.js").then(m => { if (live) setCard(() => m.HubRetentionSettings); }, () => {}); return () => { live = false; }; }, []);
-  return Card ? html`<${Card} />` : null;
-}
+import { HubSection, hubSectionText } from "./settings-hub-section.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 import { AccountsView, defaultsBackendOptions } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
@@ -88,12 +75,21 @@ import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
+/**
+ * M-2733: tool_progress in the words its segment says (settings.seg_*; the value saved is the word). Local, not
+ * imported: an open tab may keep an older settings-dialogs.js, and a new named import would fail this lazily loaded
+ * panel. A word with no translation shows as itself.
+ */
+const choiceOptions = (field, values) => values.map((v) => {
+  const key = `settings.seg_${field}_${v}`, said = t(key);
+  return { value: v, label: said === key ? v : said };
+});
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", hub: "plug", advanced: "code" };
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -434,7 +430,9 @@ export function SettingsPanel({ route, navKey }) {
           <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
-    : html`<${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
+    // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
+    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
+    : html`<${UpdateSection} /><${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
   const wanted = useRef(null);
@@ -512,7 +510,7 @@ export function SettingsPanel({ route, navKey }) {
   // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
   return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
-    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} />` : null}>
+    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} /><${UpdatePillMark} />` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
@@ -1167,7 +1165,7 @@ function General({ ctx, part = "all" }) {
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
-  const fromDefaults = (k, value, target) => ({ text: valueText(value), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
+  const fromDefaults = (k, value, target) => ({ text: valueText(value, k), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
@@ -1181,7 +1179,7 @@ function General({ ctx, part = "all" }) {
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
           <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
-            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
+            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
         <div class=${fc("field", "classicReplyTriggers", "classicReplyTriggersInherit")}>${L(tn("replyTriggers"), "classic_defaults.reply_triggers")}
           <${Override} inherit=${f.classicReplyTriggersInherit} onInherit=${set("classicReplyTriggersInherit")} inherited=${fromDefaults("reply_triggers", Boolean(d.reply_triggers ?? schema.reply_triggers_default), "#g-reply-triggers")}>
             <label class="check"><input id="g-creply-triggers" type="checkbox" disabled=${f.classicReplyTriggersInherit} checked=${f.classicReplyTriggersInherit ? Boolean(d.reply_triggers ?? schema.reply_triggers_default) : f.classicReplyTriggers} onChange=${(e) => set("classicReplyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
@@ -1414,8 +1412,8 @@ function WebSection({ ctx, staged, part = "all" }) {
       <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
-          ${!overPublicLink ? html`<${HubCardSlot} />` : null}
-          ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} /><${HubBrowserCertificateSlot} />` : null}
+          ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
+          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${overPublicLink} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
@@ -1428,6 +1426,7 @@ function WebSection({ ctx, staged, part = "all" }) {
         </div><aside class="card s-access-related"><h3>${layoutText("revRelatedAccess")}</h3>
           <button type="button" onClick=${() => setAccessTab("guests")}><${Icon} name="user" size=${18} /><span><strong>${layoutText("accessGuests")}</strong><small>${layoutText("revRelatedGuests")}</small></span><${Icon} name="chevron" size=${16} /></button>
           <button type="button" onClick=${() => setAccessTab("sharing")}><${Icon} name="globe" size=${18} /><span><strong>${layoutText("accessSharing")}</strong><small>${layoutText("revRelatedSharing")}</small></span><${Icon} name="chevron" size=${16} /></button>
+          ${!overPublicLink && SETTINGS_SECTIONS.includes("hub") ? html`<button type="button" onClick=${() => navigate(sectionPath("hub"))}><${Icon} name="plug" size=${18} /><span><strong>${hubSectionText("relatedTitle")}</strong><small>${hubSectionText("relatedHint")}</small></span><${Icon} name="chevron" size=${16} /></button>` : null}
         </aside></div>
       </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="guests" active=${accessTab === "guests"}>
@@ -1586,17 +1585,19 @@ function OperationCard({ op, schema }) {
   const needsRestart = rows.some((r) => r.status === "restart-required");
   const failedRows = rows.some((r) => r.status === "failed");
   const mismatch = schema && schema.fleet_signature_mismatch;
+  // S-92: a fleet with no chat connection — its restart is recorded in the dashboard's Notices, not a chat channel.
+  const webOnly = useStore(appStore).connections === 0;
   const title = op.phase === "failed" ? tn("applyPartial") : fleetRestarting ? tn("restartFleetTitle") : busy ? tn("applying")
     : failedRows ? tn("applyPartial") : needsRestart ? tn("applyRestartNeeded") : tn("applyDone");
   const note = op.phase === "failed" ? (op.error === "busy" ? tn("applyBusy") : op.error ? tn("applyStepFailed", applyErrorText(op.error)) : "")
     : fleetRestarting ? tn("restartFleetWaiting") : op.lostJob ? tn("applyLostJob")
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
-    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
+    : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn(webOnly ? "applyRestartHintWebOnly" : "applyRestartHint") : "";
   const lease = useLease("operation-card");
   const restart = async () => {
     // The yes is for the job this card shows: it restarts AgEnD for that job only, and only while the card stands.
     const forJob = { opId: op.id, jobId: op.job && op.job.id };
-    if (!(await ask(tn("restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
+    if (!(await ask(tn(webOnly ? "restartFleetConfirmWebOnly" : "restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
     if (!lease.current()) return;
     setRestarting(true);
     const res = await restartFleet(forJob);

@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "base": "8ef522fbae2ee61b2f20f6e80a4094bfb7cfd0dc",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-settings-fleet-m2682.test.ts -t 'replaces an expired directory controller'",
+    "passed": 0,
+    "failed": 2,
+    "deselected": 7,
+    "reason": "Both identity/runtime cases fail their expected new-controller identity assertion; no collection failure."
+  },
+  "focused": [
+    {
+      "command": "npx vitest run tests/hub-settings-fleet-m2682.test.ts tests/hub-directory-settings-control.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "deselected": 0
+    },
+    {
+      "command": "npx vitest run tests/hub-settings-fleet-m2682.test.ts -t 'offers one lazy directory controller'",
+      "passed": 1,
+      "failed": 0,
+      "deselected": 10
+    }
+  ],
+  "types": [
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json"
+  ],
+  "scope": "Real FleetManager and sealed scratch config, recorder runtime/control doubles. No real directory/Hub reinitialization or full fleet Stop is claimed. The Stop control marks the manager stopping while physical old-controller close is held. Existing real controller unit suite retains physical directory lifetime coverage.",
+  "cases": [
+    "Hub identity changes",
+    "runtime object replacement",
+    "valid owner reuses cache",
+    "concurrent replacement shares one successor",
+    "old owner fenced before held physical drain",
+    "Stop during drain refuses successor"
+  ],
+  "limits": [
+    "No cold off/held source access",
+    "No new writer or migration",
+    "No browser/PNG/SKEW or real directory/account/native/pilot/live fleet operation"
+  ],
+  "counts": "The valid-reuse case was strengthened and rechecked separately; its1 pass overlaps the23 focused tests."
+}

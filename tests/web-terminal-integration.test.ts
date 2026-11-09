@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { TmuxTerminalBackend, WebTerminalSession, probeProcess, type ProcessProbe, type WebTerminalResult, type WebTerminalSpec } from "../src/web-terminal.js";
 import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 
 /**
  * The real thing end to end: a real tmux server per session, the real HTTP
@@ -25,7 +26,10 @@ function have(bin: string): boolean {
   // socket. -V starts no server; resource cases below use their own sockets.
   try { execFileSync(bin, ["-L", `agend-test-terminal-probe-${process.pid}`, "-V"], { stdio: "ignore" }); return true; } catch { return false; }
 }
-const tmuxAvailable = have("tmux");
+// M-2457 C-4: the tmux the backend runs by default (AgEnD's bundle); the test's own calls must use the same binary — a
+// runner's older system tmux cannot talk to that server ("server exited unexpectedly").
+const TMUX = (() => { try { return tmuxBinary(); } catch { return "tmux"; } })();
+const tmuxAvailable = have(TMUX);
 /** Cases that need the Linux /proc strong fingerprint (production deliberately has NONE elsewhere). */
 const linuxOnly = process.platform === "linux";
 
@@ -49,14 +53,14 @@ afterEach(async () => {
  * seconds ago under a name it chose.
  */
 function killServerAndSocket(socket: string): void {
-  try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* already gone */ }
+  try { execFileSync(TMUX, ["-L", socket, "kill-server"]); } catch { /* already gone */ }
   try {
     unlinkSync(join(process.env.TMUX_TMPDIR || "/tmp", `tmux-${process.getuid?.() ?? 0}`, socket));
   } catch { /* tmux removed it, or it was never created */ }
 }
 
 function tmuxServerAlive(socket: string): boolean {
-  try { execFileSync("tmux", ["-L", socket, "list-sessions"], { stdio: "ignore" }); return true; } catch { return false; }
+  try { execFileSync(TMUX, ["-L", socket, "list-sessions"], { stdio: "ignore" }); return true; } catch { return false; }
 }
 
 async function launch(command: string, over: Partial<WebTerminalSpec> = {}) {
@@ -330,7 +334,7 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
     const bin = join(dir, "tmux");
     // Real tmux for everything; new-session REALLY runs (server exists) but the client exits 1 (timeout/reject shape).
-    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = new-session ]; then tmux "$@"; exit 1; fi; done\nexec tmux "$@"\n`);
+    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = new-session ]; then "${TMUX}" "$@"; exit 1; fi; done\nexec "${TMUX}" "$@"\n`);
     chmodSync(bin, 0o755);
     const socket = `agend-term-b2ns-${process.pid}`;
     try {
@@ -346,7 +350,7 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
     const bin = join(dir, "tmux");
     // Real tmux for everything except set-option, which fails.
-    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = set-option ]; then exit 1; fi; done\nexec tmux "$@"\n`);
+    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = set-option ]; then exit 1; fi; done\nexec "${TMUX}" "$@"\n`);
     chmodSync(bin, 0o755);
     const socket = `agend-term-b5b-${process.pid}`;
     try {
@@ -363,7 +367,7 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     // Real tmux except kill-server, which fails (simulates a wedged/misbehaving server command).
     writeFileSync(bin, `#!/bin/sh
 for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; done
-exec tmux "$@"
+exec "${TMUX}" "$@"
 `);
     chmodSync(bin, 0o755);
     const done: WebTerminalResult[] = [];
@@ -393,12 +397,12 @@ exec tmux "$@"
     const bin = join(dir, "tmux");
     writeFileSync(bin, `#!/bin/sh
 for a in "$@"; do if [ "$a" = kill-server ]; then exit 0; fi; done
-exec tmux "$@"
+exec "${TMUX}" "$@"
 `);
     chmodSync(bin, 0o755);
     const socket = `agend-term-b2c-${process.pid}`;
     try {
-      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      execFileSync(TMUX, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
       await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead/);
       expect(tmuxServerAlive(socket)).toBe(true);
     } finally {
@@ -413,12 +417,12 @@ exec tmux "$@"
     // kill-server fails; list-sessions cannot execute (exit 75, e.g. EAGAIN-class failure).
     writeFileSync(bin, `#!/bin/sh
 for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; if [ "$a" = list-sessions ]; then exit 75; fi; done
-exec tmux "$@"
+exec "${TMUX}" "$@"
 `);
     chmodSync(bin, 0o755);
     const socket = `agend-term-b1a-${process.pid}`;
     try {
-      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      execFileSync(TMUX, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
       const backend = new TmuxTerminalBackend(bin);           // no PID captured: nothing can prove death
       await expect(backend.kill(socket)).rejects.toThrow(/could not be confirmed dead \(unknown\)/);
       expect(tmuxServerAlive(socket)).toBe(true);
@@ -439,12 +443,12 @@ for a in "$@"; do
   if [ "$a" = kill-server ]; then exit 0; fi
   if [ "$a" = list-sessions ]; then if [ ! -f "${counter}" ]; then : > "${counter}"; exit 75; fi; fi
 done
-exec tmux "$@"
+exec "${TMUX}" "$@"
 `);
     chmodSync(bin, 0o755);
     const socket = `agend-term-b1b-${process.pid}`;
     try {
-      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      execFileSync(TMUX, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
       await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead \(alive\)/);
       expect(tmuxServerAlive(socket)).toBe(true);
     } finally {
@@ -458,7 +462,7 @@ exec tmux "$@"
     const bin = join(dir, "tmux");
     writeFileSync(bin, `#!/bin/sh
 for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; if [ "$a" = list-sessions ]; then exit 75; fi; done
-exec tmux "$@"
+exec "${TMUX}" "$@"
 `);
     chmodSync(bin, 0o755);
     const backend = new TmuxTerminalBackend(bin);
@@ -542,7 +546,7 @@ exit 75
       expect(after.identity).toBe(before.identity);                                 // same generation
       expect(after.comm).not.toBe(before.comm);                                     // the rename really happened
       // And the backend therefore still treats it as OUR live process, not as PID reuse.
-      const backend = new TmuxTerminalBackend("tmux");
+      const backend = new TmuxTerminalBackend(TMUX);
       const socket = `agend-term-rename-${process.pid}`;
       backend.rememberServerForTests(socket, child.pid!, before.identity);
       expect(await backend.serverState(socket)).toBe("alive");
@@ -601,7 +605,7 @@ exit 75
 
   it("B1 (round 5): a platform without a strong fingerprint registers NO signal fallback — kill-server or loud cleanupFailed only", async () => {
     // probe says "unknown" at start (what probeProcess returns off-Linux for a live pid)
-    const backend = new TmuxTerminalBackend("tmux", { probeProcess: (): ProcessProbe => ({ kind: "unknown" }) });
+    const backend = new TmuxTerminalBackend(TMUX, { probeProcess: (): ProcessProbe => ({ kind: "unknown" }) });
     const socket = `agend-term-noid-${process.pid}`;
     try {
       await backend.start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} });
@@ -655,7 +659,7 @@ exit 75
     await until(() => text(b.messages).includes("FIRST"));
     b.ws.send(JSON.stringify({ t: "resize", cols: 90, rows: 25 }));
     await until(() => {
-      try { return execFileSync("tmux", ["-L", session.socketName, "display", "-p", "-t", "main", "#{window_width}x#{window_height}"]).toString().trim() === "90x25"; } catch { return false; }
+      try { return execFileSync(TMUX, ["-L", session.socketName, "display", "-p", "-t", "main", "#{window_width}x#{window_height}"]).toString().trim() === "90x25"; } catch { return false; }
     });
   });
 });

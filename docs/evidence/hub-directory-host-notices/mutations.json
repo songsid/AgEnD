@@ -1,0 +1,110 @@
+{
+  "scope": "13 isolated reversals, each selecting one host test; 11 unrelated tests deliberately unselected per run. AssertionError independently verified, then source restored.",
+  "cases": [
+    {
+      "guard": "settings-route",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "authority-before-factory",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "fixed-host-target",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "disconnect",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "owner-through-audit",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "hub-binding",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "origin-binding",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "facade-close",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "pre-io-current",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "input-snapshot",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "registry-snapshot",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "layout-snapshot",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    },
+    {
+      "guard": "schema-current",
+      "exitCode": 1,
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 11,
+      "assertionErrorVerified": true
+    }
+  ],
+  "restored": true
+}

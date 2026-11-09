@@ -22,7 +22,7 @@ beforeAll(async () => {
   card = await import("/ui/js/settings-hub.js");
   pg.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); });
+afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); (await import("/assets/app-i18n.js")).setLang("en", { store: false }); });
 
 const ROW = { agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,
   choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null };
@@ -84,6 +84,42 @@ describe("the card's agent share and pending rows", () => {
     expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
     expect(pg.root.querySelector(".hub-exposures [role=status]")!.textContent).toContain("Sent for confirmation");
   });
+  it.each(["en", "zh-TW"])("retires only the settled publication hint (%s)", async language => {
+    const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
+    let finish!: (v: unknown) => void;
+    const rows = [{ ...ROW }];
+    const setExposed = vi.fn(async () => {
+      rows[0] = { ...ROW, pending: { expiresAt: 9 } } as any;
+      return { ok: true, pending: { expiresAt: 9 }, settled: new Promise(r => { finish = r; }) };
+    });
+    const c = { ...fakeClient(rows, setExposed), exposures: async () => rows.map(row => ({ ...row })) };
+    const pg = await cardWith(c);
+    const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
+    await until(() => pg.root.querySelector(".hub-exposures [role=status]"));
+    expect(pg.root.textContent).toContain(language === "en" ? "Sent for confirmation" : "已送出確認");
+    rows[0] = { ...ROW, revision: 1, state: "published", pending: null } as any;
+    finish({ state: "applied" }); await until(() => (pg.root.querySelector(".hub-exposure input") as any).checked);
+    await settle(8);
+    expect((pg.root.querySelector(".hub-exposure input") as any).checked).toBe(true);
+    expect(pg.root.textContent).not.toContain(language === "en" ? "Sent for confirmation" : "已送出確認");
+    i18n.setLang("en", { store: false });
+  });
+  it("an older publication settlement cannot retire another Agent's newer pending hint", async () => {
+    const rows = [{ ...ROW }, { ...ROW, agent: "beta", display: "Beta" }];
+    let first!: (v: unknown) => void;
+    const c = { ...fakeClient(rows), exposures: async () => rows.map(row => ({ ...row })), setExposed: async (agent: string) => {
+      const row = rows.find(row => row.agent === agent)!; row.pending = { expiresAt: 9 } as any;
+      return { ok: true, pending: { expiresAt: 9 }, settled: agent === "atlas" ? new Promise(r => { first = r; }) : new Promise(() => {}) };
+    } };
+    const pg = await cardWith(c);
+    for (const index of [0, 1]) {
+      const box = pg.root.querySelectorAll(".hub-exposure input")[index] as any; box.checked = true; fire(box, "change");
+      await until(() => !pg.root.querySelectorAll(".hub-exposure input")[1]!.disabled || index === 1);
+      await settle(8);
+    }
+    first({ state: "rejected" }); await settle(10);
+    expect(pg.root.querySelector(".hub-exposures [role=status]")?.textContent).toContain("Sent for confirmation");
+  });
   it("a shared agent says where questions go; switching off withdraws", async () => {
     const shared = { ...ROW, exposureId: "e1", revision: 1, state: "published", policy: { dataView: "agent", tools: [] } };
     const setExposed = vi.fn(async () => ({ ok: true, remote: "pending" }));
@@ -143,9 +179,9 @@ describe("the member card's pairing (S3c PR B)", () => {
   it("pending with unknown Hub progress: the two steps as instructions (no marks); the local check before, its line after", async () => {
     const confirmFingerprint = vi.fn(async (d: string) => ({ ok: true, pairing: { ...PENDING, localConfirmed: true }, digest: d }));
     const pg = await cardWith(fake(PENDING, { confirmFingerprint }));
-    expect(pg.root.querySelector(".hub-steps-lead")!.textContent).toBe("Still needed on the Hub:");
+    expect(pg.root.querySelector(".hub-steps-lead")!.textContent).toBe("Finish the fingerprint check on the Hub too.");
     expect(pg.root.querySelectorAll(".hub-steps-unknown li").map((li: any) => li.textContent)).toEqual([
-      "Your confirmation: sign in to the Hub, open My exposures and confirm this fingerprint.", "The Hub administrator's approval of this fingerprint."]);
+      "On the Hub, compare this fingerprint and confirm your pairing.", "The Hub checks its group policy, or waits for its administrator's approval."]);
     expect(pg.root.querySelectorAll(".hub-steps-unknown svg").length).toBe(0);
     (pg.root.querySelector(".hub-local-confirm") as any).click();
     await until(() => pg.root.querySelector(".hub-local-confirmed"));
@@ -198,15 +234,19 @@ describe("the member client's pacing and steps", () => {
   it("connect / confirm / disconnect: a 202 is sent for confirmation (followed); disconnect is remote pending; the hints are checked first", async () => {
     const calls: any[] = [];
     const confirm = { api: vi.fn(async (path: string, o: any = {}) => { calls.push([path, o.body]);
-        if (path === "/api/hub/member/pairing") return { ok: true, status: 200, body: { ok: true, pairing: { state: "unpaired" } } };
+        if (path === "/api/hub/member/pairing?v=2") return { ok: true, status: 200, body: { ok: true, pairing: { state: "unpaired" } } };
         return { ok: false, status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "p".repeat(32) } } }; }),
       isPendingResponse: (r: any) => r.status === 202, track: vi.fn(async () => ({})), newKey: () => "k" };
     const c = client.createMemberClient({ confirm });
     expect(await c.connect({ address: "http://x", code: "ABCD-EFGH" })).toEqual({ ok: false, error: "address" });
-    expect(await c.connect({ address: "https://hub.test", code: "ABCD-EF01-2345" })).toEqual({ ok: true, pendingConfirmation: true, pairing: { state: "unpaired" } });
+    const connected = await c.connect({ address: "https://hub.test", code: "ABCD-EF01-2345" });
+    expect(connected).toMatchObject({ ok: true, pendingConfirmation: true, pairing: { state: "unpaired" } });
+    expect(await connected.settled).toEqual({});
     expect(JSON.parse(calls[0][1])).toEqual({ address: "https://hub.test", code: "ABCD-EF01-2345" });
     expect(await c.disconnect()).toEqual({ ok: false, error: "conflict" });                       // nothing shown: never sent
-    expect(await c.disconnect({ state: "paired", hub: { hubId: "h1" }, binding: "b".repeat(64) })).toEqual({ ok: true, remote: "pending", pendingConfirmation: true });
+    const disconnected = await c.disconnect({ state: "paired", hub: { hubId: "h1" }, binding: "b".repeat(64) });
+    expect(disconnected).toMatchObject({ ok: true, remote: "pending", pendingConfirmation: true });
+    expect(await disconnected.settled).toEqual({});
     expect(JSON.parse(calls.at(-2)[1])).toEqual({ hubId: "h1", binding: "b".repeat(64) });
     expect(confirm.track).toHaveBeenCalledTimes(2);
   });

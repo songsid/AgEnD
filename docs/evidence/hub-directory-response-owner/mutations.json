@@ -1,0 +1,83 @@
+{
+  "cases": [
+    {
+      "id": "R1-single-slot",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "at most one response"
+    },
+    {
+      "id": "R2-final-authority",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "late invalidation after building"
+    },
+    {
+      "id": "R3-final-lifetime",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "proof callback 2"
+    },
+    {
+      "id": "R4-clock-bounds",
+      "caughtByAssertion": true,
+      "failedTests": 2,
+      "selection": "time before callback"
+    },
+    {
+      "id": "R5-single-response",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "later unfinished"
+    },
+    {
+      "id": "R6-pipelining",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "pipelined companion"
+    },
+    {
+      "id": "R7-positive-server-drain",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "physical close acknowledgment"
+    },
+    {
+      "id": "R8-admission-stop",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "admission proof fences"
+    },
+    {
+      "id": "R9-expiry-abort",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "scheduled expiry"
+    },
+    {
+      "id": "R10-synchronous-abort",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "fences Stop synchronously"
+    },
+    {
+      "id": "R11-runtime-stop",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "Stop aborts a transferred"
+    },
+    {
+      "id": "R13-caller-proof",
+      "caughtByAssertion": true,
+      "failedTests": 2,
+      "selection": "admission proof without"
+    },
+    {
+      "id": "R12-runtime-drain",
+      "caughtByAssertion": true,
+      "failedTests": 1,
+      "selection": "Stop retains the transferred server"
+    }
+  ],
+  "restored": true
+}

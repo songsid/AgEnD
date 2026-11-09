@@ -27,6 +27,8 @@ async function served(config: Record<string, unknown>) {
   const fm = new FleetManager(dir), any = fm as any;
   fm.logger = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => fm.logger } as never;
   fm.fleetConfig = { defaults: {}, instances: {}, ...config } as never;
+  // S-117: a chat fleet's page leads with /web only while its chat is connected (signin-glossary-s117: not yet connected).
+  if ("channel" in config) any.adapterState.set("telegram", { status: "connected", retryCount: 0 });
   any.initializeWebAuthTokens(); any.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
   const port = ((any.healthServer as Server).address() as { port: number }).port;

@@ -19,6 +19,7 @@ import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { tmuxBinary } from "../src/tmux-binary.js";
 import { getTmuxSocketName } from "../src/paths.js";
 
 const pane = (name: string) => readFileSync(join(__dirname, "fixtures", `claude-2.1.293-${name}.pane.txt`), "utf8");
@@ -235,8 +236,10 @@ describe("TmuxManager.paneInMode, against a real tmux", () => {
     expect(getTmuxSocketName()).toBeTruthy();
     const socket = `agend-test-copy-mode-unit-${process.pid}`;
     TmuxManager.setSocketName(socket);
-    try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }
-    const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf8" });
+    // The server and its reads are AgEnD's tmux (the binary paneInMode runs), not the runner's PATH tmux (M-2457 C-4).
+    let bin = "";
+    try { bin = tmuxBinary(); execFileSync(bin, ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }
+    const tmux = (...args: string[]) => execFileSync(bin, ["-L", socket!, ...args], { encoding: "utf8" });
     try {
       tmux("new-session", "-d", "-s", "cm", "-x", "80", "-y", "10", "cat");
       const wid = tmux("list-windows", "-t", "cm", "-F", "#{window_id}").trim();

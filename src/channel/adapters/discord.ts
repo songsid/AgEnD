@@ -2319,17 +2319,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       return { status: "unknown", generation, reason: "provider-probe-failed" };
     }
   }
-
-  // ── Pairing ────────────────────────────────────────────────────────────
-
-  async handlePairing(chatId: string, userId: string): Promise<string> {
-    const code = this.accessManager.generateCode(userId);
-    return code;
-  }
-
-  async confirmPairing(code: string, callerUserId?: string): Promise<boolean> {
-    return this.accessManager.confirmCode(code, callerUserId);
-  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

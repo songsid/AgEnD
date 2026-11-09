@@ -1,4 +1,4 @@
 ---
 section: Added
 ---
-- **Codex and Kiro accounts sign in from chat and the web dashboard.** A named Codex or Kiro account (credential profile) can now be signed in the same way as a Claude Code one: `/login codex <profile>` or `/login kiro-cli <profile>` in chat, or **Sign in** on its row in **Settings → Agents → Accounts**, including right after **+ Add account**. Codex signs in with a device code into the profile's own folder (`CODEX_HOME`), and Kiro opens its login picker with the profile's store (`XDG_DATA_HOME`). Before, these accounts could only be signed in with a command run on the host.
+- **Connect Codex and Kiro named accounts from chat and Settings.** Use `/login codex <profile>` or `/login kiro-cli <profile>`, or **Connect account** on the account’s row in Settings → **AI accounts**, including after **+ Add account**. The existing login steps stay the same: Codex gives its official device page and authorization code with the profile’s `CODEX_HOME`; Kiro opens its login picker with the profile’s `XDG_DATA_HOME` (#3212).

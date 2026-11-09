@@ -29,6 +29,7 @@ describe("events.db with a driver that does not load", () => {
     expect(fm.openEventLog()).toBeNull();
     expect(readdirSync(d).filter(f => f.includes(".corrupt-"))).toEqual([]);
     expect(readFileSync(path, "utf8")).toBe("pretend history bytes");
-    expect(notices.join("\n")).toContain("npm rebuild better-sqlite3");
+    expect(notices.join("\n")).toContain("SQLite driver is incompatible with this Node.js version or architecture");
+    expect(notices.join("\n")).toContain("The file was left untouched. Driver repair is not available here.");
   });
 });

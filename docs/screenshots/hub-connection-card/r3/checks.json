@@ -1,0 +1,21 @@
+{
+  "scopedFinding": "R2 suffix regex incorrectly skipped visible HTML body/title/ARIA expressions ending in class=.",
+  "failFirst": {
+    "cases": 3,
+    "failed": 3
+  },
+  "focused": {
+    "numTotalTests": 99,
+    "numPassedTests": 99,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "named-link-test-2906.test.ts",
+    "hub-connection-card-ui.test.ts",
+    "web-settings-search-2347.test.ts"
+  ],
+  "testTypes": "PASS",
+  "productSource": "byte-identical to source-cleared 621f3a726b57124b546433b827a8c9b8e7ec92ab",
+  "browserEvidence": "Prior R0/R1 scope carries; no browser rerun for this test-only correction."
+}

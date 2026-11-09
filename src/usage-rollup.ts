@@ -166,7 +166,12 @@ export function pruneDays(days: UsageDays, now: number, zone: string, carriedThr
  * - Rollback gap: an older version running meanwhile prunes days without carrying them; those days are missing from
  *   the lifetime total for good (nothing else is lost).
  */
-export interface UsageLifetime { v: 1; through: string | null; first: string | null; by: Record<string, HourTotals> }
+export interface UsageLifetime {
+  v: 1; through: string | null; first: string | null; by: Record<string, HourTotals>;
+  /** #3450: receipt written with the automatic older Kiro history totals (also carried here before 400 days),
+   * before its rollup/finished marker. Those rows remain reportable until the usual 400-day prune. */
+  kiroBackfill?: string;
+}
 export const emptyLifetime = (): UsageLifetime => ({ v: 1, through: null, first: null, by: dict<HourTotals>() });
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
@@ -177,6 +182,7 @@ export function reviveLifetime(raw: unknown): UsageLifetime {
   const r = raw as UsageLifetime;
   if (isDate(r.through)) l.through = r.through;
   if (isDate(r.first)) l.first = r.first;
+  if (typeof r.kiroBackfill === "string" && /^[a-f0-9]{64}$/.test(r.kiroBackfill)) l.kiroBackfill = r.kiroBackfill;
   for (const [be, t] of Object.entries((r.by && typeof r.by === "object" ? r.by : {}) as Record<string, unknown>)) {
     if (Array.isArray(t) && t.length === 7 && t.every(n => Number.isFinite(n))) l.by[be] = t as HourTotals;
   }

@@ -1,0 +1,24 @@
+/* alpha.6 feedback: the Hub's signed-out page — AgEnD's sign-in style (signin.html): one centred card on the page's
+   background; while it shows, the shell's sidebar and tabs are hidden (focus and screen readers skip them too). Linked
+   by panel-hub.js's HubSignIn. Tokens only: both themes follow. */
+body.hub-signed-out #sidebar, body.hub-signed-out nav.tabs { visibility: hidden; }
+.hub-signin-page { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px;
+  overflow: auto; background: var(--bg); color: var(--text); }
+.hub-signin-card { width: 100%; max-width: 380px; margin: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 28px 24px; box-sizing: border-box; }
+.hub-signin-brand { display: flex; flex-direction: column; gap: 2px; margin: 0 0 18px; }
+.hub-signin-brand strong { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+.hub-signin-brand span { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.hub-signin-card h1 { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-semibold); }
+.hub-signin-lead { margin: 0 0 18px; color: var(--text-2); }
+.hub-signin-form { display: flex; flex-direction: column; }
+.hub-signin-form label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-medium); }
+.hub-signin-form input { width: 100%; box-sizing: border-box; margin: 0 0 14px; padding: 11px 12px; font: inherit; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); }
+.hub-signin-form input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+.hub-signin-go { width: 100%; margin-top: 4px; padding: 12px; font: var(--fw-semibold) var(--fs-md) var(--font-ui); color: var(--on-accent);
+  background: var(--accent-fill); border: 0; border-radius: var(--r-full); cursor: pointer; }
+.hub-signin-go:hover:not(:disabled) { opacity: .88; }
+.hub-signin-go:disabled { opacity: .6; cursor: default; }
+.hub-signin-go:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hub-signin-msg { min-height: 1.5em; margin: 14px 0 0; font-size: var(--fs-sm); color: var(--danger); }

@@ -39,6 +39,7 @@ vi.mock("../src/binary-probe.js", async (importOriginal) => {
 });
 
 import { ExecHelper, HELPER_SOURCE, type HelperExecOptions, type HelperExecResult } from "../src/tmux-exec-helper.js";
+import { resetTmuxResolution } from "../src/tmux-binary.js";
 
 let root: string, bin: string, log: string, helpers: ExecHelper[] = [];
 /** A private socket, as every test tmux call needs (the test process guard; the stub skips it). */
@@ -58,6 +59,9 @@ case "$1" in
 esac
 `);
   chmodSync(join(bin, "tmux"), 0o755);
+  // The helper runs AgEnD's tmux (the resolved binary): the stub is that binary, by AGEND_TMUX_BIN.
+  vi.stubEnv("AGEND_TMUX_BIN", join(bin, "tmux"));
+  resetTmuxResolution();
 });
 afterEach(() => {
   probeHang.wait?.release();
@@ -65,6 +69,8 @@ afterEach(() => {
   probeHang.held = 0;
   for (const h of helpers.splice(0)) h.stop();
   rmSync(root, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  resetTmuxResolution();
 });
 const ran = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : []);
 function helper(over: Partial<ConstructorParameters<typeof ExecHelper>[0]> = {}) {

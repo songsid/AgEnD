@@ -13,6 +13,8 @@ export interface HubMountOptions {
 const record = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
 export class HubMount implements HubMode {
   private generation = 0;
+  private serverGeneration = 0;
+  private memberConfiguration: string | null = null;
   private serverOn = false;
   private memberOn = false;
   private server: HubMountedService | null = null;
@@ -24,8 +26,8 @@ export class HubMount implements HubMode {
     this.transition = result.catch(() => {});
     return result;
   }
-  private async drain(): Promise<void> {
-    const owned = (["server", "member"] as const).filter(kind => this[kind] !== null);
+  private async drain(kinds: readonly ("server" | "member")[] = ["server", "member"]): Promise<void> {
+    const owned = kinds.filter(kind => this[kind] !== null);
     const results = await Promise.allSettled(owned.map(async kind => {
       const service = this[kind]!; service.fence(); await service.close();
       if (this[kind] === service) this[kind] = null; // Retain ownership until positive shutdown.
@@ -37,44 +39,58 @@ export class HubMount implements HubMode {
   serverEnabled(): boolean { return this.serverOn; }
   memberEnabled(): boolean { return this.memberOn; }
   /** Revocation is synchronous, before asynchronous stop/import/start work. */
+  fenceServer(): void {
+    this.serverGeneration++; this.serverOn = false; this.server?.fence();
+  }
   fence(): void {
-    this.generation++; this.serverOn = this.memberOn = false;
-    this.server?.fence(); this.member?.fence();
+    this.generation++; this.fenceServer(); this.memberOn = false; this.member?.fence();
+  }
+  /** A local server journal has no authority over an unchanged membership in another Hub. */
+  holdServer(input: { hub_member?: unknown }): Promise<void> {
+    const member = record(input.hub_member) && input.hub_member.enabled === true ? JSON.stringify(input.hub_member) : null;
+    // Still honor an explicit member disconnect/rebind, including first startup, without attempting the held server.
+    if (member !== this.memberConfiguration) return this.apply({ hub_member: input.hub_member });
+    this.fenceServer(); return this.enqueue(() => this.drain(["server"]));
+  }
+  /** Local settings recovery may drain this Hub's server without admitting or changing a member link. */
+  closeServer(): Promise<void> {
+    this.fenceServer(); return this.enqueue(() => this.drain(["server"]));
   }
   close(): Promise<void> {
     this.fence(); return this.enqueue(() => this.drain());
   }
   apply(input: { hub?: unknown; hub_member?: unknown }): Promise<void> {
     // Revoke synchronously, even while a previous factory/start/cleanup is still awaiting.
-    this.fence(); const generation = this.generation, snapshot = structuredClone(input);
-    return this.enqueue(() => this.applyOwned(snapshot, generation));
+    this.fence(); const generation = this.generation, serverGeneration = this.serverGeneration, snapshot = structuredClone(input);
+    this.memberConfiguration = record(snapshot.hub_member) && snapshot.hub_member.enabled === true ? JSON.stringify(snapshot.hub_member) : null;
+    return this.enqueue(() => this.applyOwned(snapshot, generation, serverGeneration));
   }
-  private async applyOwned(input: { hub?: unknown; hub_member?: unknown }, generation: number): Promise<void> {
+  private async applyOwned(input: { hub?: unknown; hub_member?: unknown }, generation: number, serverGeneration: number): Promise<void> {
     await this.drain();
     if (generation !== this.generation) return;
     const server = record(input.hub) && input.hub.enabled === true ? structuredClone(input.hub) : null;
     const member = record(input.hub_member) && input.hub_member.enabled === true ? structuredClone(input.hub_member) : null;
     if (!server && !member) return;
-    if (server) {
+    if (server && serverGeneration === this.serverGeneration) await (async () => {
       let reason: "initialization" | "service-unavailable" = "initialization";
       try {
         if (typeof server.hubId !== "string" || typeof server.memberOrigin !== "string") throw Error("Invalid Hub configuration");
         const digest = this.options.planDigest(server);
         const { verifyHubInitialization } = await import("./initialization.js");
-        if (generation !== this.generation) return;
+        if (generation !== this.generation || serverGeneration !== this.serverGeneration) return;
         verifyHubInitialization({ home: this.options.home, hubId: server.hubId, memberOrigin: server.memberOrigin, planDigest: digest });
         reason = "service-unavailable"; this.serverOn = true;
-        const current = () => this.serverOn && generation === this.generation;
+        const current = () => this.serverOn && generation === this.generation && serverGeneration === this.serverGeneration;
         const service = await this.options.createServer(server, current);
         this.server = service;
-        if (!current()) { await this.drain(); return; }
+        if (!current()) { await this.drain(["server"]); return; }
         await service.start();
-        if (!current()) { await this.drain(); return; }
+        if (!current()) { await this.drain(["server"]); return; }
       } catch {
-        if (generation === this.generation) { this.serverOn = false; this.options.hold(reason); }
-        await this.drain();
+        if (generation === this.generation && serverGeneration === this.serverGeneration) { this.serverOn = false; this.options.hold(reason); }
+        await this.drain(["server"]);
       }
-    }
+    })();
     if (member && generation === this.generation) {
       let reason: "member-pairing" | "service-unavailable" = "member-pairing";
       try {

@@ -88,10 +88,23 @@ export interface ApplyJob {
    * to is about to be replaced — a retry after the restart has to find it.
    */
   restart_key?: string;
+  /**
+   * #3373 review P3: when its restart was asked for. A restart may use a Save's job from long before (the newest that
+   * carries the pending changes): its "still restarting" time counts from here, never from the Save.
+   */
+  restartStartedAt?: number;
 }
 
 interface JobFile {
   jobs: ApplyJob[];
+}
+
+/**
+ * When a job was last at work, for its retention: its finish, else (#3390 review N1) the restart it runs now — a restart
+ * may use a Save's job from long before, and a running restart must never age out by that Save's start — else its start.
+ */
+function lastActive(job: ApplyJob): number {
+  return job.finishedAt ?? job.restartStartedAt ?? job.startedAt;
 }
 
 function isTerminal(status: ApplyJobStatus): boolean {
@@ -109,7 +122,7 @@ export interface ApplyJobView extends ApplyJob {
 }
 
 export function viewOf(job: ApplyJob, now = Date.now()): ApplyJobView {
-  const elapsed = Math.max(0, (job.finishedAt ?? now) - job.startedAt);
+  const elapsed = Math.max(0, (job.finishedAt ?? now) - (job.restartStartedAt ?? job.startedAt));
   const overdue = !isTerminal(job.status) && elapsed > job.deadlineMs;
   return {
     ...job,
@@ -177,7 +190,7 @@ export class ApplyJobStore {
   private prune(): void {
     const cutoff = this.now() - APPLY_JOB_RETENTION_MS;
     this.jobs = this.jobs
-      .filter(job => (job.finishedAt ?? job.startedAt) >= cutoff)
+      .filter(job => lastActive(job) >= cutoff)
       .slice(0, MAX_JOBS);
   }
 
@@ -224,7 +237,7 @@ export class ApplyJobStore {
   /** The live job for a key, if the client is retrying rather than re-applying. */
   findByKey(key: string): ApplyJob | null {
     const cutoff = this.now() - APPLY_JOB_RETENTION_MS;
-    return this.jobs.find(job => job.key === key && (job.finishedAt ?? job.startedAt) >= cutoff) ?? null;
+    return this.jobs.find(job => job.key === key && lastActive(job) >= cutoff) ?? null;
   }
 
   create(key: string, targets: Array<Pick<ApplyTarget, "target" | "kind">>, deadlineMs = APPLY_JOB_DEADLINE_MS): ApplyJob {

@@ -47,6 +47,16 @@ describe("hubEntryToMessages", () => {
     expect([q.attachments, q.quote, a.attachments, a.buttons]).toEqual([drawn, { kind: "page", fileId: "f", label: "p.html" }, drawn, buttons]);
     expect(S.hubEntryToMessages({ messageId: "m", sequence: 1, receipt: { stage: "queued", at: 1 }, question: "Q" }, room, {})[0]).not.toHaveProperty("attachments");
   });
+  it("does not attribute automatic poll results to the asker, but retains the agent reply and terminal status", () => {
+    const entry = { messageId: "result", sequence: 2, pollResult: true, receipt: { stage: "queued", at: 1 } };
+    expect(S.hubEntryToMessages(entry, room, { me: "Alex", reason })).toEqual([]);
+    expect(S.hubEntryToMessages({ ...entry, answer: "Thanks for voting.", receipt: { stage: "answered", at: 1 } }, room))
+      .toMatchObject([{ role: "agent", text: "Thanks for voting." }]);
+    expect(S.hubEntryToMessages({ ...entry, receipt: { stage: "failed", at: 1, reasonCode: "expired" } }, room, { reason }))
+      .toMatchObject([{ role: "status", text: "failed:expired" }]);
+    expect(S.hubEntryToMessages({ ...entry, pollResult: undefined, question: "[poll results] typed by me" }, room))
+      .toMatchObject([{ role: "user", text: "[poll results] typed by me" }]);
+  });
   it("nothing for an entry without a sequence", () => {
     expect([S.hubEntryToMessages(null, room), S.hubEntryToMessages({ messageId: "m" }, room)]).toEqual([[], []]);
   });
@@ -65,6 +75,28 @@ describe("createHubChatStore", () => {
       ask: async (...a: unknown[]) => { calls.push(["ask", ...a]); return { ok: true, receipt: { messageId: "m9", stage: "queued", at: 5 } }; } };
   }
   const room = { id: "11111111-2222-4333-8444-555555555555", exposureName: "Sales numbers", features: [] };
+  it("qualifies a definite refusal until a fresh room check, without closing on unknown", async () => {
+    const t = fakeTimers(), c = client([{ ok: true, entries: [], room }]);
+    c.ask = async () => ({ ok: false, code: "denied" }) as any;
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    expect((await s.send("Q")).code).toBe("denied");
+    expect(s.accessDenied()).toBe(true); expect(s.closed()).toBe(false);
+    c.read = async () => ({ ok: false, code: "backpressure" }) as any;
+    t.run(); await flush(); expect(s.accessDenied()).toBe(true);
+    c.read = async () => ({ ok: true, entries: [] }) as any;
+    t.run(); await flush(); expect(s.accessDenied()).toBe(true); // old Hub's unqualified answer isn't current access proof
+    c.read = async () => ({ ok: true, entries: [], room }) as any;
+    s.refresh(); t.run(); await flush(); expect(s.accessDenied()).toBe(false);
+    s.stop();
+  });
+  it("a read admitted before a refusal cannot restore its optimistic access label", async () => {
+    const t = fakeTimers(); let done!: (v: unknown) => void;
+    const c = client([]); c.read = () => new Promise(resolve => { done = resolve; }) as any;
+    c.ask = async () => ({ ok: false, code: "denied" }) as any;
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null });
+    await s.send("Q"); done({ ok: true, entries: [], room }); await flush();
+    expect(s.accessDenied()).toBe(true); s.stop();
+  });
   it("one read at once, the next only after POLL_MS; backpressure waits as long as the server says (at least POLL_MS)", async () => {
     const t = fakeTimers(), c = client([{ ok: true, entries: [] }, { ok: false, code: "backpressure", retryAfter: 30 }]);
     const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
@@ -86,6 +118,19 @@ describe("createHubChatStore", () => {
     expect(s.messages().map((m: any) => [m.text, m.delivery])).toEqual([["Q?", "processing"]]);
     // G's quota is the server's to give: a room without it withdraws it (the owner hid it); the other fields stay.
     expect([s.room().quota, s.room().exposureState, s.room().exposureName]).toEqual([undefined, "published", "Sales numbers"]);
+    s.stop();
+  });
+  it("a refreshed result clears an older tab's cached prompt without losing the agent answer", async () => {
+    const t = fakeTimers();
+    const entry = { messageId: "result", sequence: 1, receipt: { stage: "queued", at: 1 }, question: "[poll results] old internal prompt" };
+    const c = client([{ ok: true, entries: [entry] },
+      { ok: true, entries: [{ ...entry, pollResult: true, question: "", answer: "Result received.", receipt: { stage: "answered", at: 2 } }] }]);
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    expect(s.messages()).toMatchObject([{ role: "user", text: entry.question }]);
+    t.run(); await flush();
+    expect(s.entries()[0].question).toBe("");
+    expect(s.messages()).toMatchObject([{ role: "agent", text: "Result received." }]);
+    expect(s.messages()).toHaveLength(1);
     s.stop();
   });
   it("an answer with no room object at all (an older Hub) keeps what is known, quota included", async () => {

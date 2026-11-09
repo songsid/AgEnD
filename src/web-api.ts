@@ -1,4 +1,5 @@
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
+import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -28,6 +29,7 @@ import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -38,7 +40,7 @@ import { formatWebChannelEcho } from "./web-channel-echo.js";
 import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
 import { isSafeInstanceName } from "./web-shell-routes.js";
-import { MAX_COMMAND_ARGS } from "./web-commands.js";
+import { MAX_COMMAND_ARGS, type WebModelAction } from "./web-commands.js";
 import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-guard.js";
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
@@ -55,6 +57,7 @@ import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
 import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
+import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS } from "./backend-signin-pending.js";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
@@ -81,7 +84,7 @@ import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-a
 import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
 import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
-import { handleNativeModelCatalog } from "./native-model-catalog.js";
+import { handleNativeModelCatalog, refreshNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
@@ -359,6 +362,11 @@ const __dirname = dirname(__filename);
 export const SSE_HEARTBEAT_MS = 10_000;
 
 /** Minimal interface — only what web-api needs from FleetManager. */
+/** #3190 Part 3c: a paired computer an account write is for, and who asked (`admin:<handle>`: the name that computer's audit log records for the person). */
+export interface AccountMachine { id: string; actor: string }
+/** What an account write answers: done, or a code (and, for a computer, its own refusal sentence). */
+export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
+
 export interface WebApiContext {
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
@@ -373,14 +381,19 @@ export interface WebApiContext {
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
-  modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  modelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Array<{ id: string; label: string; description?: string }>;
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
+  refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
+  /** #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts), reached through the same `/ui/browser-backend-signins` with `?machine=&profile=`. */
+  readonly machineSignIns?: import("./machine-signins.js").MachineSignIns;
+  /** #3212: dashboard sign-ins for a NAMED account on this host (profile-signins.ts), reached through the same `/ui/browser-backend-signins` with `?backend=&profile=`. */
+  readonly profileSignIns?: import("./profile-signins.js").ProfileSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
   /** Starts, in the background, reading the account behind each Claude Code sign-in (masked). Never awaited: the list answers at once with what is known. */
@@ -392,7 +405,7 @@ export interface WebApiContext {
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
-    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
+    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; model?:string; backend_options?:Record<string,Record<string,unknown>>; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
@@ -407,10 +420,12 @@ export interface WebApiContext {
   /** #3212: the Accounts view (accounts-view.ts), for the local admin session only. */
   accountsView?(): Promise<unknown>;
   /** #3212 PR 2: + Add account / Remove (accounts-profiles.ts); `by` is the session's label, for the fleet log. */
-  addAccountProfile?(backend: string, name: unknown, by: string): { ok: true } | { ok: false; error: string; clash?: string };
-  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string; users?: unknown }>;
+  addAccountProfile?(backend: string, name: unknown, by: string, machine?: AccountMachine): AccountWriteResult | Promise<AccountWriteResult>;
+  removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine, opts?: { cancelSignIn?: true }): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
-  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string): Promise<{ ok: true; keychainLeft?: true } | { ok: false; error: string }>;
+  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
+  /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
+  setAccountKeepAlive?(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): { ok: true } | { ok: false; error: string };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
@@ -464,6 +479,8 @@ export interface WebApiContext {
   readonly ownerCss?: OwnerCssStore;
   /** #2308: the person's own app icon; changed by a signed-in admin only (never the public link, a guest or the token). */
   readonly appIcon?: AppIconStore;
+  /** M-2738: updating AgEnD from the web (src/web-update.ts); absent: /ui/update is not offered. */
+  readonly webUpdate?: WebUpdateHost;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
@@ -521,6 +538,7 @@ export interface WebApiContext {
   /** #1918: in-flight and recently finished cross-instance traffic, bounded (fleet-traffic.ts). */
   trafficSnapshot?(): { now: string; items: unknown[]; delegations?: unknown[] };
   /** #1218: an instance's Log steps, read on demand (null: no such instance; `{ enabled: false }`: the Log is off). */
+  subagentRuns?(name: string): Promise<import("./subagent-service.js").SubagentAnswer>;
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
@@ -529,7 +547,7 @@ export interface WebApiContext {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -698,6 +716,73 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
     try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * M-2738 (#3332): updating AgEnD from the web.
+ *   GET  /ui/update        { admin, current, offer?, checked_at?, check_failed?, progress?, now } — an admin session; a
+ *                          read-only session gets { admin: false, current } (its stale-tab reload line)
+ *   POST /ui/update/check  look now (one a minute) → the GET's answer
+ *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
+ *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
+ * Signed-in sessions only (never the CLI's token, a guest or the public link: none of these is a public route); an
+ * admin's for all but the version. Asked again once a body is in.
+ */
+function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const host = ctx.webUpdate;
+  if (!host) { json(res, 404, { error: "not found" }); return true; }
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
+  if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
+  if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 404, { error: "not found" }); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
+    const owner = verdict.session.owner;
+    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session" };
+  };
+  const view = (admin: boolean) => {
+    const st = host.updateState();
+    if (!admin) return { admin: false, current: st.current };
+    const progress = host.updateProgress();
+    return { admin: true, current: st.current, offer: st.offer, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  if (path === "/ui/update") { json(res, 200, view(first.admin)); return true; }
+  if (!first.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return true; }
+  if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
+  (async () => {
+    let body: Record<string, unknown> = {};
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!now.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return; }
+    if (path === "/ui/update/check") {
+      const r = await host.checkUpdateNow();
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      json(res, 200, view(true));
+      return;
+    }
+    const header = req.headers["idempotency-key"];
+    const key = typeof header === "string" ? header : "";
+    if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+    // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
+    if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
+    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
+    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
+    const r = await host.startWebUpdate(key, now.person, stillAllowed);
+    if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+    ctx.logger.info({ person: now.person }, "web: update started");
+    json(res, 202, { started: true });
+  })().catch((err) => {
+    ctx.logger.error({ err: (err as Error).message }, "Web update request failed");
+    try { json(res, 500, { error: "update_request_failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -1110,25 +1195,87 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   };
   const owner = who();
   if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
-  if (!["GET", "POST"].includes(req.method ?? "") || [...url.searchParams.keys()].length) { json(res, 404, { error: "not_found" }); return true; }
-  const service = ctx.browserBackendSignIns;
-  if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
+  if (!["GET", "POST"].includes(req.method ?? "")) { json(res, 404, { error: "not_found" }); return true; }
+  // #3190 Part 3c: `?machine=<id>&profile=<name>` addresses the same sign-in controls for a credential profile on a paired computer (machine-signins.ts). #3212:
+  // `?backend=<cli>&profile=<name>` addresses them for a named account on THIS host (profile-signins.ts). Nothing else is accepted in the query, and both are checked
+  // in full before anything else happens.
+  const keys = [...url.searchParams.keys()];
+  let target: { machine: string; profile: string } | null = null;
+  let account: { backend: string; profile: string } | null = null;
+  if (keys.length) {
+    const machine = url.searchParams.get("machine"), backend = url.searchParams.get("backend"), profile = url.searchParams.get("profile");
+    const shape = keys.length === 2 && new Set(keys).size === 2 && profile && validCredentialProfileName(profile);
+    if (shape && machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) && !backend) target = { machine, profile };
+    else if (shape && backend === "claude-code" && !machine) account = { backend, profile };
+    else { json(res, 404, { error: "not_found" }); return true; }
+  }
+  // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's or a named account's does not need it.
+  const service = target || account ? undefined : ctx.browserBackendSignIns, machines = target ? ctx.machineSignIns : undefined, accounts = account ? ctx.profileSignIns : undefined;
+  if (target ? !machines : account ? !accounts : !service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   void (async () => {
     let result;
-    if (reading) result = await service.refresh(owner);
+    if (target && machines) {
+      if (reading) result = machines.snapshot(owner, target);
+      else {
+        let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
+        let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+        // Only what a computer's sign-in can do: start (Claude Code, subscription: the Runtime builds the command), answer a prompt, cancel, read again.
+        const parsed = z.discriminatedUnion("operation", [
+          z.strictObject({ operation: z.literal("start"), backend: z.literal("claude-code"), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
+            z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
+            z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
+          ]) }),
+          z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+        ]).safeParse(body);
+        if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
+        const action = parsed.data;
+        if (action.operation === "start") result = await machines.begin(owner, target, action.relogin === true);
+        else if (action.operation === "input") result = await machines.input(owner, target, action.id, action.revision, action.action);
+        else if (action.operation === "cancel") result = await machines.cancel(owner, target);
+        else result = machines.snapshot(owner, target);
+      }
+    } else if (account && accounts) {
+      if (reading) result = await accounts.refresh(owner, account);
+      else {
+        let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
+        let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+        // The same controls as the default account's, for the one account in the address: start (its backend must be the address's), answer a prompt, cancel, read again.
+        // No checklist here: no select, no skip.
+        const parsed = z.discriminatedUnion("operation", [
+          z.strictObject({ operation: z.literal("start"), backend: z.literal(account.backend), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
+            z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
+            z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
+          ]) }),
+          z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional() }), z.strictObject({ operation: z.literal("refresh") }),
+        ]).safeParse(body);
+        if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
+        const action = parsed.data;
+        if (action.operation === "start") result = await accounts.begin(owner, account, action.relogin === true);
+        else if (action.operation === "input") result = await accounts.input(owner, account, action.id, action.revision, action.action);
+        else if (action.operation === "cancel") result = await accounts.cancel(owner, account, action.id);
+        else result = await accounts.refresh(owner, account, true);
+      }
+    } else if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return; }
+    else if (reading) result = await service.refresh(owner);
     else {
       let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
       const parsed = z.discriminatedUnion("operation", [
-        z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(["kiro-cli", "claude-code", "codex", "antigravity"])).max(4) }),
-        z.strictObject({ operation: z.literal("start"), backend: z.enum(["kiro-cli", "claude-code", "codex"]), relogin: z.boolean().optional() }),
+        z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS])).max(ONBOARDING_BACKENDS.length) }),
+        z.strictObject({ operation: z.literal("start"), backend: z.enum(ONBOARDING_BROWSER_BACKENDS as unknown as [typeof ONBOARDING_BROWSER_BACKENDS[number], ...typeof ONBOARDING_BROWSER_BACKENDS]), relogin: z.boolean().optional() }),
         z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
           z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
         ]) }),
-        z.strictObject({ operation: z.literal("skip"), backend: z.enum(["kiro-cli", "claude-code", "codex", "antigravity"]) }),
+        z.strictObject({ operation: z.literal("skip"), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]) }),
         z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
       ]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
@@ -1145,7 +1292,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
     json(res, 200, result);
   })().catch(error => {
     const code = error instanceof Error ? error.message : "";
-    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist))$/.test(code) ? code : "signin_failed";
+    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|busy|profile_unknown|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist|target)|machine_(?:unknown|offline|unsupported|accounts_off|unreachable|profile_not_owned|busy)|invalid_machine_target)$/.test(code) ? code : "signin_failed";
     if (!res.destroyed && !res.writableEnded) json(res, safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
   });
   return true;
@@ -1197,8 +1344,12 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
       const result = await logins.begin(now, parsed.data.confirm, parsed.data.tunnel === true);
       json(res, "error" in result ? 409 : 200, result);
     } else {
-      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "sign_in_args" }); return; }
-      json(res, 200, { message: await logins.cancel() });
+      // `{}`: the explicit "Cancel sign-in" — whatever sign-in is running, as ever. `{ run, ifUnopened }`: the dialog's own Close (#3321 review), for
+      // that one run and only while its terminal is unopened and it is this session's own; anything else is left alone and `cancelled` is false.
+      const parsed = z.union([z.strictObject({}), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
+      if ("run" in parsed.data) json(res, 200, await logins.closeRun(now, parsed.data.run));
+      else json(res, 200, { message: await logins.cancel() });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
   return true;
@@ -1214,6 +1365,9 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
   unsafe: 409, default_home: 409, failed: 500, unsupported: 400,
+  // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
+  machine_unknown: 404, machine_offline: 409, machine_unsupported: 409, machine_accounts_off: 409, machine_unreachable: 502, machine_profile_not_owned: 409,
+  machine_refused: 409, machine_default_login: 409,
 };
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1241,25 +1395,78 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
     const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
     if (now.handle !== first.handle) { json(res, 409, { error: "accounts_session_changed" }); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "accounts_json" }); return; }
+    // #3190 Part 3c: `machine` (a paired computer's id) turns the same route into that computer's account; the person's audit name is the session's opaque handle.
+    const machineId = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/).optional();
+    const onMachine = (id: string | undefined): AccountMachine | undefined | "refused" => {
+      if (id === undefined) return undefined;
+      return /^[a-f0-9]{16}$/.test(now.handle) ? { id, actor: `admin:${now.handle}` } : "refused";
+    };
+    const fail = (r: { error: string; clash?: string; users?: unknown; message?: string }) =>
+      json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}), ...(r.users ? { users: r.users } : {}), ...(r.message ? { message: r.message } : {}) });
     if (add) {
-      const parsed = z.strictObject({ name: z.string().max(200) }).safeParse(body);
+      const parsed = z.strictObject({ name: z.string().max(200), machine: machineId }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label);
-      if (r.ok) json(res, 200, { added: parsed.data.name });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.clash ? { clash: r.clash } : {}) });
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label, machine) : ctx.addAccountProfile!(add[1]!, parsed.data.name, now.label));
+      if (r.ok) json(res, 200, { added: parsed.data.name, ...(machine ? { machine: machine.id } : {}) });
+      else fail(r);
     } else if (remove) {
-      const parsed = z.strictObject({ confirm: z.string().max(200) }).safeParse(body);
+      // `cancelSignIn` (#3321 review): "Cancel sign-in and remove" — end the running sign-in of THIS account (and no other), then remove it, in one request.
+      // A paired computer's sign-in is cancelled from that computer's side, so it is refused there.
+      const parsed = z.strictObject({ confirm: z.string().max(200), machine: machineId, cancelSignIn: z.literal(true).optional() }).refine(a => !(a.machine && a.cancelSignIn)).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = await ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label);
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, machine)
+        : parsed.data.cancelSignIn ? ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label, undefined, { cancelSignIn: true })
+        : ctx.removeAccountProfile!(remove[1]!, target, parsed.data.confirm, now.label));
       if (r.ok) json(res, 200, { removed: target, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error, ...(r.users ? { users: r.users } : {}) });
+      else fail(r);
     } else {
-      const parsed = z.strictObject({ profile: z.string().max(200).nullable(), confirm: z.literal(true) }).safeParse(body);
+      const parsed = z.strictObject({ profile: z.string().max(200).nullable(), confirm: z.literal(true), machine: machineId }).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
-      const r = await ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label);
+      const machine = onMachine(parsed.data.machine);
+      if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      const r = await (machine ? ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label, machine) : ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label));
       if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
-      else json(res, ACCOUNT_STATUS[r.error] ?? 409, { error: r.error });
+      else fail(r);
     }
+  })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
+ * #3292: Settings → Accounts → Keep sign-in alive — `POST /ui/accounts/keep-alive` `{ backend, profile: <name> | null,
+ * enabled, fallback? }`. The same gate as the other account writes: the fleet's local admin session only, refused before
+ * the body is read and again after it; never the gateway, a guest, a read session or the CLI's header token.
+ */
+const KEEPALIVE_STATUS: Readonly<Record<string, number>> = { backend: 400, profile: 400, fallback: 400, write: 500 };
+function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
+  if (method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  if (typeof ctx.setAccountKeepAlive !== "function") { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "accounts_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "accounts_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "accounts_json" }); return; }
+    const parsed = z.strictObject({ backend: z.string().max(32), profile: z.string().max(200).nullable(), enabled: z.boolean(), fallback: z.boolean().optional() }).safeParse(body);
+    if (!parsed.success) { json(res, 400, { error: "accounts_args" }); return; }
+    const r = ctx.setAccountKeepAlive!(parsed.data.backend, parsed.data.profile, parsed.data.enabled, parsed.data.fallback, now.label);
+    if (r.ok) json(res, 200, { backend: parsed.data.backend, profile: parsed.data.profile, enabled: parsed.data.enabled });
+    else json(res, KEEPALIVE_STATUS[r.error] ?? 409, { error: r.error });
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
@@ -1805,6 +2012,38 @@ export function handleWebRequest(
   // ── Backend detection ─────────────────────────────────
 
   // #2072: the model a Settings field offers — the cached catalog of that backend (that instance's account's). Read only.
+  if (method === "POST" && path === "/ui/models/refresh") {
+    const admission = adminAdmissionOf(req, url, ctx);
+    if (!admission) { json(res, 403, { error: "admin_required" }); return true; }
+    void (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(k => !["backend","instance","runtime","machineId","profile"].includes(k))) { json(res, 400, { error: "invalid model target" }); return; }
+      const backend = body.backend, instance = body.instance ?? null;
+      if (typeof backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (typeof instance !== "string" || !isSafeInstanceName(instance)))) { json(res, 400, { error: "invalid model target" }); return; }
+      const runtime=body.runtime, machineId=body.machineId, profile=body.profile;
+      if(runtime!==undefined && runtime!=="windows" && runtime!=="wsl" || machineId!==undefined && (typeof machineId!=="string" || !/^[a-f0-9-]{36}$/i.test(machineId)) || profile!==undefined && (typeof profile!=="string" || profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))) {json(res,400,{error:"invalid model target"});return;}
+      const target={backend,instance,...(runtime?{runtime:runtime as "windows"|"wsl"}:{}),...(machineId?{machineId:machineId as string}:{}),...(profile!==undefined?{profile:profile as string}:{})};
+      let result;
+      try {
+        result=await refreshNativeModelCatalog(req,url,ctx,target);
+        // Recheck after runtime selection, before any portable probe is admitted.
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+        if(!result){
+          if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
+          result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));
+        }
+      } catch {if(!permitWebContinuation(req,res,ctx))return;json(res,503,{error:"model_refresh_unavailable"});return;}
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      json(res, 200, { backend, ...result });
+    })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/models") {
     const backend = url.searchParams.get("backend") ?? "";
     const instance = url.searchParams.get("instance");
@@ -1813,16 +2052,18 @@ export function handleWebRequest(
     const machineId = url.searchParams.get("machineId");
     if (machineId !== null && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(machineId) || runtime === "wsl")) { json(res,400,{error:"Invalid model runtime machine"});return true; }
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
+    const profile=url.searchParams.get("profile");
+    if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
+    const models = (profile!==null ? ctx.modelCatalogFor?.(backend,instance,{profile}) : ctx.modelCatalogFor?.(backend,instance)) ?? [];
     const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length) {
+      if (backend === "claude-code" && !models.length && !profile) {
         const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
         json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
       } else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
-    if (models.length || !ctx.cliModelCatalogFor) { answerCatalog(); return true; }
+    if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
     const canAnswer = (): boolean => !res.headersSent && !res.destroyed && !res.writableEnded && stillAuthorized(req, res, url, ctx);
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
@@ -2125,6 +2366,22 @@ export function handleWebRequest(
   // ── #1218: the Log tab ─────────────────────────────────
   // An instance's steps, read on demand from its own transcript (log-service.ts). Read-only, and offered on the public
   // link on purpose (the user's decision): the same masking applies to every viewer. Passive (web-auth.ts).
+
+
+  // Deliberately absent from public gateway, guest, View and Hub projections.
+  if (method === "GET" && path === "/ui/subagents") {
+    const admission = adminAdmissionOf(req, url, ctx), name = url.searchParams.get("instance") ?? "";
+    if (!admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    if (!name || name.length > 128 || !safeInstanceSegment(name)) { json(res, 400, { error: "invalid instance" }); return true; }
+    if (!ctx.subagentRuns) { json(res, 404, { error: "not available" }); return true; }
+    void ctx.subagentRuns(name).then(answer => {
+      if (res.destroyed) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
+      if (answer.status === "busy") { res.setHeader("Retry-After", "2"); json(res, 429, { error: "busy" }); return; }
+      json(res, 200, answer);
+    }).catch(() => { if (!res.destroyed) json(res, 503, { error: "unavailable" }); });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/steps") {
     const p = url.searchParams;
@@ -2592,6 +2849,7 @@ export function handleWebRequest(
 
   // #2308: the app icon (handleAppIcon: its state for a signed-in person; changing it, an admin's session only).
   if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
+  if (path === "/ui/update" || path.startsWith("/ui/update/")) return handleWebUpdate(req, res, url, ctx, path, method);
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
@@ -2599,6 +2857,8 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
+  // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
+  if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
@@ -2835,6 +3095,7 @@ export function handleWebRequest(
         if(command!=="model"){json(res,400,{error:"This persistent Windows runtime supports the model command; use its shared controls for other actions"});return;}
       }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
+      if (body.action !== undefined && !["refresh", "more", "refreshAll"].includes(body.action as string)) { json(res, 400, { error: "invalid model action" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
@@ -2849,10 +3110,21 @@ export function handleWebRequest(
         guestCommandsRunning.add(account);
         ctx.guestCommandRuns?.record(account);
       }
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[instance]) && body.action){
+        if(command!=="model" || body.action!=="refresh" || body.args){json(res,400,{error:"invalid model action"});return;}
+        const target=ctx.fleetConfig!.instances[instance];
+        try {
+          const refreshed=await refreshNativeModelCatalog(req,url,ctx,{backend:target.backend!,instance});
+          if(!stillAuthorized(req,res,url,ctx))return;
+          if(!refreshed || ctx.fleetConfig?.instances[instance]!==target || !nativeCliAuthorization(req,url,ctx)){json(res,409,{error:"model target changed"});return;}
+          json(res,200,{choices:{current:target.model??null,options:refreshed.models.map(m=>({id:m.id,label:m.label})),actions:["refresh"]}});
+        }catch{if(stillAuthorized(req,res,url,ctx))json(res,503,{error:t("model.refresh_failed")});}return;
+      }
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+        if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
     })().catch(err => {
@@ -3679,10 +3951,10 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string; limi
   // M-2297: the per-PC agent limit — say so, with the agents holding its slots (names only: no path, no id).
   if (err instanceof MachineSlotLimitError) return { reason: "machine_limit", error: message, limit: err.limit, holders: err.holders.map(h => ({ name: h.name, unknown: h.unknown })) };
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
-  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
-  if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
-  if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it on the host before retrying." };
-  return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status on the host, then retry." };
+  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Connect its AI account in Settings → Agents → AI accounts and API keys → Accounts, or send /login in chat, then retry." };
+  if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status in Fleet." };
+  if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it from the agent's chat menu → Start instance, then retry." };
+  return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status in Fleet, then retry." };
 }
 
 /** Handle POST /ui/send — extracted for readability. */
@@ -4068,6 +4340,19 @@ export interface AppShellContext {
   guestBadge?(owner: WebAccount): { name: string; platform: string };
   /** #2855: whether this guest's access is Trusted (its page offers View and search). */
   guestTrusted?(owner: WebAccount): boolean;
+  /**
+   * The configuration as written (fleet.yaml, re-read on every save): the Hub switches live only there — the parsed
+   * FleetConfig carries no `hub`/`hub_member` — and the Hub runtime already follows it (FleetManager.applyHubSwitches).
+   */
+  getRawFleetConfig?(): unknown;
+  /** #3298 S-89: this fleet's own Hub offers group permissions (marks the page `data-hub-groups`). */
+  hubGroupPermissions?(): boolean;
+  /** Display capability only. Setup routes independently reauthorize the exact local host session. */
+  hubSetupSession?(req: IncomingMessage): unknown;
+  /** Display capability only, local D3 host; the notice routes independently authorize every read/ACK. */
+  hubDirectoryNotices?(): Promise<unknown>;
+  /** Display only: AD editing routes reauthorize local D3 on every request. */
+  hubDirectorySettings?(): Promise<unknown>;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4222,9 +4507,25 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
  * `hub_member.enabled`, never over the public link. `hub` is only the Hub listener's own workspace page
  * (serveHubWorkspaceShell). Nothing otherwise: no Hub UI is drawn and no Hub module loads.
  */
-function hubBodyAttrs(req: IncomingMessage, config: HubSwitches): string {
+function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
+  // alpha.6 user report: the mark read the parsed FleetConfig, which never has `hub_member` — a saved switch (or one in the
+  // file at start) never marked the page, so Connect to a Hub never loaded. It reads what the runtime reads: the raw file.
+  let config: HubSwitches = null;
+  try { config = (ctx.getRawFleetConfig?.() ?? null) as HubSwitches; } catch { config = null; }
   // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
-  return hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  const member = hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  // #3298 S-89 (leader, #3372 N2): Settings → Hub's Group permissions row only when this fleet's own Hub has them composed —
+  // learned in this process, never by reading a Hub session across origins. Never over the public link.
+  let groups = false;
+  try { groups = ctx.hubGroupPermissions?.() === true; } catch { groups = false; }
+  let setup = false;
+  try { setup = !!ctx.hubSetupSession?.(req); } catch { /* unavailable authority never offers setup */ }
+  return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "")
+    + (setup && !gatewayRequestContext(req) ? ' data-hub-setup="1"' : "")
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-settings="1"' : "")
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectoryNotices === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "");
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
@@ -4240,7 +4541,11 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
+    && (admission.via !== "session" || admission.session.tier === "admin");
+
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
@@ -4262,7 +4567,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
-    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(req, ctx.fleetConfig) : ""}`
+    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(req, ctx) : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }

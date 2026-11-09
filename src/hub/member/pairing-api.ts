@@ -23,10 +23,11 @@ import { ensurePrivateDirectory, privatePath, readPrivateFile } from "../private
 import { beginHubPairing as realBegin, claimHubPairing as realClaim } from "../pairing-client.js";
 import { HubMemberProfileStore } from "../profile.js";
 import { httpsOrigin, type HubConnectError, type HubPairingHold, type HubPairingView } from "../../hub-pairing-summary.js";
+import { companyBindingSettled, type CompanyBindingMarker } from "../join/local-journal.js";
 export { httpsOrigin, pairingSummary } from "../../hub-pairing-summary.js";
 
 export type { HubConnectError, HubPairingHold, HubPairingView } from "../../hub-pairing-summary.js";
-interface MemberState { hubId?: string; localConfirmed?: { digest: string; at: number }; held?: HubPairingHold; disconnected?: { at: number };
+interface MemberState { hubId?: string; companyJoin?: CompanyBindingMarker; localConfirmed?: { digest: string; at: number }; held?: HubPairingHold; disconnected?: { at: number };
   /** Bindings disconnected and started over: never reconnected automatically (their profiles are kept: S1 has no revoke). */
   retired?: Array<{ hubId: string; profile: string | null }> }
 
@@ -37,6 +38,7 @@ const CODE = /^[a-f0-9]{12}$/;
 
 export interface HubMemberPairingDeps {
   home: string;
+  notices?(): import("../types.js").HubPairingNotice[];
   /** S5's client lifecycle (absent: offline). */
   link?(): "online" | "offline";
   /** A composition hold (S5), if any. */
@@ -113,7 +115,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         if (s.disconnected) return { state: "held", hold: "disconnected", memberOrigin: origin, hubId: s.hubId, binding };
         // #3115 r2: a saved profile whose claim never finished settling (the local receipt or the pending claim still
         // there) is not a pairing yet — for every reader, after a restart too: held, never paired.
-        const unfinished = !!s.localConfirmed || f.pending ? "unknown_outcome" as const : null;
+        const unfinished = !!s.localConfirmed || f.pending || s.companyJoin && !companyBindingSettled(deps.home, s.companyJoin, s.hubId, store.profileDigest()) ? "unknown_outcome" as const : null;
         const held = memHold ?? s.held ?? unfinished ?? deps.hold?.() ?? null;
         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
         return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
@@ -167,6 +169,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
 
   return {
     view,
+    notices: () => deps.notices?.() ?? [],
     /** Start pairing (a confirmed Settings replay's continuation): S1 persists the pending claim at once. */
     async connect(input: { address: unknown; code: unknown }, current: () => boolean): Promise<{ ok: true; pairing: HubPairingView } | { ok: false; error: HubConnectError }> {
       const origin = typeof input.address === "string" ? httpsOrigin(input.address) : null;
@@ -257,6 +260,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       try {
         const s = read();
         if (s.hubId !== hubId || s.disconnected || s.held || s.localConfirmed || files(hubId).pending || (unknown && unknown.hubId === hubId)) return true;
+        if (s.companyJoin && !companyBindingSettled(deps.home, s.companyJoin, hubId, profiles(deps.home, hubId).profileDigest())) return true;
         const r = (s.retired ?? []).find((x) => x.hubId === hubId);
         return !!r && profiles(deps.home, hubId).profileDigest() === r.profile;
       } catch { return true; }
@@ -281,6 +285,7 @@ export function currentBinding(home: string, profiles: (home: string, hubId: str
     if (!existsSync(join(home, "hub-member", st.hubId, "pairing.json"))) return null;
     const store = profiles(home, st.hubId);
     store.readProfile();
+    if (st.companyJoin && !companyBindingSettled(home, st.companyJoin, st.hubId, store.profileDigest())) return null;
     const r = (st.retired ?? []).find((x) => x.hubId === st.hubId);
     if (r && store.profileDigest() === r.profile) return null;
     return { hubId: st.hubId };

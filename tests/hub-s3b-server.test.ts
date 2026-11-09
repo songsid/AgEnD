@@ -193,7 +193,7 @@ describe("Hub catalog mirror and grants (S3b)", () => {
     const { e, o, a } = await world(rig);
     rig.addPerson("bea");
     expect((await rig.call(a, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bea", days: 1 })).status).toBe(404);
-    expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(404);   // bea never signed in
+    expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(409);   // reject stale revision before recipient lookup
     await rig.signIn("bea");
     expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 2, login: "bea", days: 1 })).status).toBe(409);
     expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bea", days: 400 })).status).toBe(400);
@@ -263,8 +263,7 @@ describe("Hub rooms, dispatch, leases and answers (S3b)", () => {
     expect((await rig.call(o, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(404);
     expect((await rig.call(a, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(200);
     const again = await rig.call(a, "GET", `/hub/v1/rooms/${roomId}/messages`);
-    expect(again.status).toBe(429);
-    expect(again.headers.get("retry-after")).toBe("10");
+    expect(again.status).toBe(200); // A page reopen is not an abusive polling loop.
     await rig.call(o, "DELETE", `/hub/v1/grants/${grant.id}?revision=1`);
     const a2 = await rig.signIn("alex");                      // a fresh session: not paced
     expect((await rig.call(a2, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(403);
@@ -418,6 +417,10 @@ describe("Hub administration and pairing (S3b)", () => {
     const offer = await rig.call(ad, "POST", "/hub/v1/admin/pairings", { login: "olivia" });
     expect(offer.status).toBe(200);
     expect(offer.json.code).toMatch(/^[a-f0-9]{12}$/);
+    // #3337: hand off the member listener, never the browser address or a request Host header.
+    expect(offer.json.memberOrigin).toBe("https://127.0.0.1:9");
+    expect(offer.json.memberOrigin).not.toBe(WEB_ORIGIN);
+    expect(Object.keys(offer.json).sort()).toEqual(["code", "expiresAt", "memberOrigin", "pairingId"]);
     const pending = rig.pairing.pair({ code: offer.json.code });
     expect((await rig.call(o, "GET", "/hub/v1/pairings")).json.pairings).toEqual([expect.objectContaining({ id: pending.pairingId, fingerprint: pending.fingerprint })]);
     expect((await rig.call(ad, "POST", `/hub/v1/admin/pairings/${pending.pairingId}/approve`, { fingerprint: pending.fingerprint })).status).toBe(403);  // owner first

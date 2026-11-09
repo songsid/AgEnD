@@ -1,0 +1,46 @@
+{
+  "focused": {
+    "files": [
+      "tests/hub-directory-host-notices.test.ts",
+      "tests/hub-directory-notice-ui.test.ts",
+      "tests/hub-quick-pairing-ui.test.ts",
+      "tests/hub-shell-parity.test.ts",
+      "tests/web-reconnect-1580.test.ts"
+    ],
+    "passed": 88,
+    "failed": 0,
+    "skipped": 0
+  },
+  "supplemental": {
+    "files": [
+      "tests/changelog-fragments.test.ts",
+      "tests/web-needs-1408.test.ts"
+    ],
+    "passed": 105,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": {
+    "source": "npm run typecheck: PASS",
+    "tests": "npm run typecheck:tests: PASS"
+  },
+  "browser": {
+    "checks": 44,
+    "passed": 44,
+    "receipt": "browser.json",
+    "screenshots": 8,
+    "transport": "real Hub HTTPS + fleet HTTP/D3; owned test CA ignored in browser; inert directory"
+  },
+  "mutations": {
+    "attempted": 11,
+    "caughtByAssertion": 11,
+    "restored": true,
+    "receipt": "mutations.json"
+  },
+  "limits": "No real AD, account, native CLI, pilot or live fleet. No API reply stubs. No new stream or automatic ACK. Save/form/startup composition remains separate.",
+  "finalStrengthenedHostControl": {
+    "selectedPassed": 1,
+    "deselected": 11,
+    "note": "After the 88-test run, added the no-configured-Hub display-mark assertion; re-ran the affected real HTTP/D3 case only."
+  }
+}

@@ -1,0 +1,3 @@
+c486a61d9d0c9a33a4375d33a8d4f9ac82cc4b55eaab4b3e4e4610cbf0da1e57  src/hub/settings-directory-decision.ts
+8e0e3eb9d024cbc493990270f1dc136ab8c69edae24f61964b9a22fd4ef196e3  src/hub/settings-directory-notices.ts
+b5b1473f70aa7e41317210022c2ee63bb6d71c99a15fa809b2253e5eb1b27fa0  tests/hub-directory-notices.test.ts

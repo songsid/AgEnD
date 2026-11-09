@@ -22,12 +22,12 @@
 
 ## General
 
-使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的確認保留：敏感設定（token 與存取權）由 fleet admin 確認，#804 照樣擋下 `tool_set` 或 `skipPermissions` 提權。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
+使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他呼叫者（含 coordinator）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
-- 能做什麼（beta.8 起）：worker 能力的全部，加上完整的 ORCHESTRATION、委派、排程，以及使用者的網頁外觀設定。
-- 不能做什麼：超出上述範圍。注意 main 上的程式碼還在 beta.8 之前，看到的仍是較小的子集（`src/tool-permissions.ts:107-136` 的 orchestration 動詞只有 `create/start/restart/wake_instance` 加上網頁設定（`get/set_web_settings`））——beta.8 落地就會換掉；見「不一致之處」。
-- 程式碼：`src/tool-permissions.ts:107-136`、`:201-208`；`src/instance-lifecycle.ts:2741`（General instance 不能被 replace）。
-- 相關決議與議題：fleet decision 9e3bea6c。
+- 能做什麼：使用 coordinator 除了儲存庫租約以外的工具（含唯讀除錯工具），並直接將其他 agent 的 `tool_set` 設為可寫入的工具組：`full`、`standard`、`worker`、`coordinator` 或 `minimal`。
+- 不能做什麼：預設 General 工具組不含 `checkout_repo`、`release_repo`；不能指定由角色決定的 `general` 工具組，也不能經這兩個設定工具傳入 `skipPermissions`。General 不得透過工具修改自己的 `tool_set`（建立操作最後指向自己時也一樣）；人員仍可在設定頁或 fleet.yaml 修改。若管理員明確縮限 General 的工具組，縮限仍生效。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
+- 程式碼：`src/tool-permissions.ts`、`src/general-instance.ts`、`src/outbound-handlers.ts`。
+- 相關決議：9e3bea6c、36525f1b。
 
 ## `coordinator` 工具組
 
@@ -71,6 +71,8 @@ ClassicBot 跑單一 agent 的私聊或群組，由 `classicBot.yaml` 管理—�
 
 - 能做什麼：在房間裡 `/start` 一個 agent 並跟它聊天。
 - 不能做什麼：不能用 fleet topic 的指令；看不到艦隊；未註冊的聊天除非允許 `/start`，否則保持靜默。
+代房間裡的人委派工作時，會保留請求人、承接 Agent 與 correlation 的對應；收到匹配的結果後，在綁定頻道摘要回報並提及原請求人。不相關的同儕報告、閒聊與 FYI 維持靜默。
+
 - 程式碼：`src/classic-channel-manager.ts`。
 - 相關決議與議題：`docs/permissions.md`。
 
@@ -90,14 +92,15 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 - 能做什麼：確認網頁授權、登入、批准指名要主機操作者的事。在純網頁艦隊裡，已驗證的擁有者——在這台電腦上，或從外面用驗證器登入——還可以核准新裝置（裝置代碼登入）、登出其他裝置。
 - 不能做什麼：不能從別台電腦冒充操作者，但從外面用驗證器登入的擁有者除外；session 被撤銷或過期後也不行。設定、重新綁定或移除驗證器只能在這台電腦上進行。
 - 程式碼：`src/authority/web-authority.ts`（`HOST_OPERATOR`）；`src/fleet-manager.ts:2056-2060`；`src/locale.ts:1505-1506`。
-- 相關決議與議題：28c2d3a3、#3165。
+- 威脅模型（64a289a0）：和 fleet 同一個作業系統使用者執行的程式，視為擁有者本人。它讀得到 `web.token`、能自己產生這個 session，本來也能修改 `fleet.yaml`。AgEnD 防範的是遠端的人、其他作業系統使用者、公開連結、訪客與 CSRF，詳見 `docs/SECURITY.zh-TW.md#威脅模型`。
+- 相關決議與議題：28c2d3a3、64a289a0、#3165、#3327。
 
 ## fleet admin（`admin_users`）
 
 列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 agent（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
-- 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或 pairing 核准本身不授予這個角色（`docs/SECURITY.md:13`）。
+- 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或持久化聊天授權本身不授予這個角色（`docs/SECURITY.md:13`）。
 - 程式碼：`src/config-validator.ts:368-376`、`:677`。
 - 相關決議與議題：—
 
@@ -193,7 +196,7 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 - 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
 - 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁用一行 PowerShell 指令安裝、指令會先檢查腳本的 SHA-256，或改用 ZIP；永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
-- 人的 pairing（`agend access pair`）是另一套較舊的機制：按 instance 發的存取碼，跟配對 PC 無關。
+- 人的存取權由「設定 → 聊天與連線 → 聊天連線 → 該 bot → 允許使用者（主 bot）」管理，跟 Runtime 配對不同。舊的使用者存取碼已移除，既有持久化授權仍保留；它不會授予 fleet 管理員權限。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
 - 相關決議與議題：72353fdf、#2936、#3007。
 

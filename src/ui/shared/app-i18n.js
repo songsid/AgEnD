@@ -28,6 +28,10 @@ function initialLang() {
   return deviceLanguage();
 }
 let current = initialLang();
+// M-2733: the page says its language from the start, not only after a change: the host writes <html lang> only from its
+// own prefs, so a language from this browser or the device left "en" — and :lang(zh-Hant) rules (no upper-cased
+// headings in Chinese) and screen readers took the Chinese page for English.
+if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = current === "zh-TW" ? "zh-Hant" : "en";
 
 /** Add a namespace: `register("chat", { en: {...}, "zh-TW": {...} })`. */
 export function register(ns, byLang) {
@@ -87,7 +91,7 @@ register("app", {
     failed: "That did not work — try again.", close: "Close", more: "More actions", menu: "Menu",
     pendingTitle: "Changes waiting for confirmation", pending_pending: "Waiting for confirmation", pending_applying: "Confirmed — applying…",
     pendingWeb: "Confirmed by your account (this browser is web-verified). General is told.",
-    pending_applied: "Confirmed and applied", pending_rejected: "Not applied", pending_expired: "Expired — nothing was changed",
+    pending_applied: "Confirmed and applied", pending_rejected: "Not applied", pending_expired: "Expired",
     pending_stale: "Not applied — settings changed meanwhile", pending_failed: "Confirmed, but applying it failed",
     pendingLeft: "{0} left", withdraw: "Withdraw",
     // #2868: where to confirm it, said plainly; the host's command folded away unless it is the only way.
@@ -101,7 +105,10 @@ register("app", {
     opFailed: "Settings were not applied", openSettings: "Open Settings",
     restartWaiting: "{0} saved change(s) take effect after AgEnD restarts", restartNow: "Restart now", restartLater: "Later",
     restartConfirm: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. A notice is posted to your chat channel.",
-    restartOnHost: "Run agend restart on the host to use them.",
+    // S-92: a fleet with no chat connection — its restart is recorded in the dashboard's Notices instead.
+    restartConfirmWebOnly: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. It is recorded in this dashboard's Notices.",
+    restartOnHost: "Restart AgEnD to use them.",
+    restartOnHostChat: "Send /restart in General to use them.",
     restartRefused: "Restart refused: {0}",
     pendingSent: "Sent for confirmation — a fleet admin confirms it in chat.",
     pendingSelfSent: "Confirmed by your account (this browser is web-verified) — applying.",
@@ -111,10 +118,10 @@ register("app", {
     confirmTitle: "Please confirm", confirmOk: "Continue", cancel: "Cancel",
     sidePanelLeave: "Leave {0} without saving? Your changes there will be lost.", sidePanelDiscard: "Discard changes",
     // The server's own wording (src/locale.ts needs.reason.*), so the web says what Discord says.
-    needs_reason_kiro_choice: "Kiro needs your decision", needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_question: "Asking you a question", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Sign-in needed", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: sign-in needed", needs_reason_backend_signin: "Backend sign-in needed", needs_reason_config_invalid: "Configuration file needs attention", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_config_fallback: "Running on stored configuration", config_history_edit: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. The next restart would use the stored valid copy from {4}. Correct the YAML error; the file has not been changed by AgEnD.", config_history_no_history: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. No stored valid copy is available, so the next restart cannot recover automatically. Correct the YAML error before restarting; the file has not been changed by AgEnD.", config_history_fallback: "{0}, line {1}, column {2}: {3}. AgEnD started using the stored valid copy from {4}. Correct the YAML error and reload the settings. The file on disk has not been changed by AgEnD.", needs_reason_general_windows_offline: "General’s Windows PC is offline", needs_reason_general_location_hold: "Run General on", needs_reason_native_pane_hold: "Windows agent needs attention", needs_reason_crashed: "Crashed", needs_reason_usage_limit: "Usage limit reached · reset time unknown", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed", needs_reason_missed_offline: "Missed while AgEnD was offline", needs_reason_task_review: "Waiting for your confirmation", needs_reason_task_blocked: "Blocked: asks you",
+    needs_reason_kiro_choice: "Kiro needs your decision", needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_question: "Asking you a question", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Waiting to connect its AI account", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: AI account not connected", needs_reason_backend_signin: "AI account needs connecting", needs_reason_config_invalid: "Configuration file needs attention", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_config_fallback: "Running on stored configuration", config_history_edit: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. The next restart would use the stored valid copy from {4}. Correct the YAML error; the file has not been changed by AgEnD.", config_history_no_history: "{0}, line {1}, column {2}: {3}. AgEnD is still running on the previous settings. No stored valid copy is available, so the next restart cannot recover automatically. Correct the YAML error before restarting; the file has not been changed by AgEnD.", config_history_fallback: "{0}, line {1}, column {2}: {3}. AgEnD started using the stored valid copy from {4}. Correct the YAML error and reload the settings. The file on disk has not been changed by AgEnD.", needs_reason_general_windows_offline: "General’s Windows PC is offline", needs_reason_general_location_hold: "Run General on", needs_reason_native_pane_hold: "Windows agent needs attention", needs_reason_crashed: "Crashed", needs_reason_usage_limit: "Usage limit reached · reset time unknown", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed", needs_reason_missed_offline: "Missed while AgEnD was offline", needs_reason_task_review: "Waiting for your confirmation", needs_reason_task_blocked: "Blocked: asks you",
   },
   "zh-TW": {
-    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance", newAgent: "新增 Agent",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Agent", newInstance: "新增 Agent", newAgent: "新增 Agent",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
     resizeSidebar: "側邊欄寬度", resizeSidebarHint: "拖曳調整寬度 · 按兩下恢復預設",
     names: "名稱", namesNickname: "暱稱優先", namesInstance: "實際名稱優先",
@@ -127,7 +134,7 @@ register("app", {
     connReconnecting: "連不上 AgEnD——可能正在重新啟動。正在重新連線…", connReconnectingIn: "連不上 AgEnD——可能正在重新啟動。{0} 秒後再試。",
     hydrating: "正在載入目前的狀態…", hydrateFailed: "無法載入目前的狀態（提示、送達標記）。",
     skip: "跳到對話", loadFailed: "無法載入。", retry: "再試一次", reloadPage: "重新載入頁面", loading: "載入中…",
-    noInstances: "還沒有 instance", noInstancesHint: "建立一個就能開始聊天。",
+    noInstances: "還沒有 Agent", noInstancesHint: "建立一個就能開始聊天。",
     guestChip: "訪客", guestAs: "訪客 · {0}", guestAsOn: "訪客 · {0}（{1}）", guestHint: "你只會看到在聊天中本來就能用的 agent。",
     session: "登入狀態", signIn: "登入", signedIn: "已登入", signedOut: "尚未登入", thisDevice: "這台裝置", devicePrefs: "主題與語言",
     lastActive: "{0}活動", justNow: "剛剛", minAgo: "{0} 分鐘前", hrAgo: "{0} 小時前", signOut: "登出",
@@ -135,12 +142,12 @@ register("app", {
     failed: "沒有成功，請再試一次。", close: "關閉", more: "更多動作", menu: "選單",
     pendingTitle: "等待確認的變更", pending_pending: "等待確認", pending_applying: "已確認——套用中…",
     pendingWeb: "由你的帳號確認（這個瀏覽器已通過網頁驗證），也會通知 General。",
-    pending_applied: "已確認並套用", pending_rejected: "未套用", pending_expired: "已逾時——沒有任何變更",
+    pending_applied: "已確認並套用", pending_rejected: "未套用", pending_expired: "已逾時",
     pending_stale: "未套用——設定在這期間已變動", pending_failed: "已確認，但套用失敗",
     pendingLeft: "剩 {0}", withdraw: "撤回",
     pendingPosting: "正在把確認卡送到 General…", pendingChatWhere: "要套用，請到 {0} 的 General，在確認卡上按「確認」。",
     pendingHostOnly: "沒有可以接收確認卡的 General。請在主機上確認：{0}", pendingAdvanced: "進階：在主機上確認",
-    pendingSelf: "這個瀏覽器已通過驗證，也可以直接在這裡套用。", pendingApplyNow: "直接套用",
+    pendingSelf: "這個瀏覽器已通過驗證，也可以直接在這裡套用。", pendingApplyNow: "立即套用",
     pendingApplyRefused: "這個瀏覽器現在無法直接套用，請到 General 確認。",
     pendingAuthorize: "授權這個瀏覽器，之後這類變更可以直接套用，不必到 General。",
     opWriting: "正在套用設定… {0}/{1}", opWaiting: "設定：等待在聊天中確認", opApplying: "正在套用設定…",
@@ -148,7 +155,9 @@ register("app", {
     opFailed: "設定沒有套用", openSettings: "開啟設定",
     restartWaiting: "{0} 項已儲存的變更要在 AgEnD 重新啟動後才會生效", restartNow: "立即重新啟動", restartLater: "稍後",
     restartConfirm: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。聊天頻道會收到一則通知。",
-    restartOnHost: "請在主機上執行 agend restart 讓它們生效。",
+    restartConfirmWebOnly: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。這次重新啟動會記錄在這個儀表板的通知中。",
+    restartOnHost: "請重新啟動 AgEnD 讓它們生效。",
+    restartOnHostChat: "請在 General 傳 /restart 讓它們生效。",
     restartRefused: "重新啟動被拒絕：{0}",
     pendingSent: "已送出確認——由 fleet 管理員在聊天中確認。",
     pendingSelfSent: "已由你的帳號確認（這個瀏覽器已通過網頁驗證）——套用中。",
@@ -156,6 +165,6 @@ register("app", {
     search: "搜尋", searchTitle: "搜尋聊天、agent 之間的訊息與任務（{0}）",
     confirmTitle: "請確認", confirmOk: "繼續", cancel: "取消",
     sidePanelLeave: "不儲存就離開「{0}」？你在那裡的修改會遺失。", sidePanelDiscard: "捨棄修改",
-    needs_reason_kiro_choice: "Kiro 需要你決定", needs_reason_hang: "沒有回應", needs_reason_exited: "已結束", needs_reason_assist: "在終端機上等待", needs_reason_question: "正在問你問題", needs_reason_permission: "需要權限", needs_reason_dangerous_command: "危險指令待確認", needs_reason_login: "需要登入", needs_reason_dialog: "停在對話框", needs_reason_terminal_input: "可能在等輸入", needs_reason_auth_paused: "已暫停：需要登入", needs_reason_backend_signin: "後端需要登入", needs_reason_config_invalid: "設定檔需要處理", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_config_fallback: "正在使用儲存的設定副本", config_history_edit: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 仍使用先前的設定執行。下次重新啟動會改用 {4} 儲存的有效副本。請修正 YAML 錯誤；AgEnD 未更動此檔案。", config_history_no_history: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 仍使用先前的設定執行。沒有可用的有效副本，下次重新啟動將無法自動恢復。請在重新啟動前修正 YAML 錯誤；AgEnD 未更動此檔案。", config_history_fallback: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 已使用 {4} 儲存的有效副本啟動。請修正 YAML 錯誤並重新載入設定。AgEnD 未更動磁碟上的檔案。", needs_reason_general_windows_offline: "General 所在的 Windows 電腦已離線", needs_reason_general_location_hold: "General 執行位置", needs_reason_native_pane_hold: "Windows 代理需要處理", needs_reason_crashed: "已崩潰", needs_reason_usage_limit: "用量已達上限 · 恢復時間未知", needs_reason_delivery_uncertain: "無法確認是否送達", needs_reason_delivery_failed: "傳送失敗", needs_reason_missed_offline: "AgEnD 離線時錯過", needs_reason_task_review: "等你確認", needs_reason_task_blocked: "卡住，在問你",
+    needs_reason_kiro_choice: "Kiro 需要你決定", needs_reason_hang: "沒有回應", needs_reason_exited: "已結束", needs_reason_assist: "在終端機上等待", needs_reason_question: "正在問你問題", needs_reason_permission: "需要權限", needs_reason_dangerous_command: "危險指令待確認", needs_reason_login: "等待連接 AI 帳號", needs_reason_dialog: "停在對話框", needs_reason_terminal_input: "可能在等輸入", needs_reason_auth_paused: "已暫停：AI 帳號未連接", needs_reason_backend_signin: "需要連接 AI 帳號", needs_reason_config_invalid: "設定檔需要處理", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_config_fallback: "正在使用儲存的設定副本", config_history_edit: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 仍使用先前的設定執行。下次重新啟動會改用 {4} 儲存的有效副本。請修正 YAML 錯誤；AgEnD 未更動此檔案。", config_history_no_history: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 仍使用先前的設定執行。沒有可用的有效副本，下次重新啟動將無法自動恢復。請在重新啟動前修正 YAML 錯誤；AgEnD 未更動此檔案。", config_history_fallback: "{0} 第 {1} 行、第 {2} 欄：{3}。AgEnD 已使用 {4} 儲存的有效副本啟動。請修正 YAML 錯誤並重新載入設定。AgEnD 未更動磁碟上的檔案。", needs_reason_general_windows_offline: "General 所在的 Windows 電腦已離線", needs_reason_general_location_hold: "General 執行位置", needs_reason_native_pane_hold: "Windows Agent 需要處理", needs_reason_crashed: "已崩潰", needs_reason_usage_limit: "用量已達上限 · 恢復時間未知", needs_reason_delivery_uncertain: "無法確認是否送達", needs_reason_delivery_failed: "傳送失敗", needs_reason_missed_offline: "AgEnD 離線時錯過", needs_reason_task_review: "等你確認", needs_reason_task_blocked: "卡住，在問你",
   },
 });

@@ -15,6 +15,11 @@ const L = (en, zh) => ({ en, "zh-TW": zh });
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
+  // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
+  ["hub.membership", "hub", "#hubMemberEnabled", null, "hub_member.enabled", ["hub", "team hub", "membership", "connect", "join", "pair", "share agents"], ["Hub", "團隊 Hub", "成員", "連線", "加入", "配對", "分享"], L("Allow this fleet to connect to a Hub", "允許這個 Fleet 連線至 Hub")],
+  ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address or company link", "Hub 位址或公司連結")],
+  ["hub.company-name", "hub", "#hubCompanyFleetName", null, null, ["fleet", "name", "hub", "company"], ["Fleet", "名稱", "Hub", "公司"], L("Fleet name", "Fleet 名稱")],
+  ["hub.connect", "hub", "#hub-connect", null, null, ["hub", "connect to a hub", "pairing code", "hub address", "fingerprint", "pair", "unpair", "disconnect", "join"], ["Hub", "連線至 Hub", "配對碼", "Hub 位址", "指紋", "配對", "解除配對", "中斷連線", "加入"], L("Connect to a Hub", "連線至 Hub")],
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
@@ -57,7 +62,7 @@ const ROWS = [
   ["chat.classic-reply-triggers", "chat", "#g-creply-triggers", "settings.replyTriggers", "classic_defaults.reply_triggers", ["classic native reply"], ["ClassicBot 原生回覆觸發"]],
   ["defaults.reply-guard", "agent-defaults", "#g-reply", "settings.replyCompletionGuard", "defaults.reply_completion_guard", ["delivered reply", "reply guard", "require reply"], ["送達回覆", "回覆保護"]],
   ["defaults.tool-set", "agent-defaults", "#g-ts", "settings.toolSet", "defaults.tool_set", ["tool set", "tools", "mcp"], ["工具組", "工具"]],
-  ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["Dashboard 權限", "權限", "外觀", "任務看板", "網頁設定"]],
+  ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["網頁儀表板權限", "儀表板", "權限", "外觀", "任務看板", "網頁設定"]],
   ["defaults.log-level", "agent-defaults", "#g-ll", "settings.logLevel", "defaults.log_level", ["log level", "debug", "logging"], ["記錄層級", "除錯", "日誌"]],
   ["defaults.agent-mode", "agent-defaults", "#g-am", "settings.agentMode", "defaults.agent_mode", ["agent mode", "mcp", "cli"], ["agent 模式"]],
   ["defaults.hang-on", "agent-defaults", "#g-hang-on", "settings.hangEnabled", "defaults.hang_detector.enabled", ["hang detector", "stuck", "frozen"], ["卡住偵測", "卡住", "當機"]],
@@ -102,6 +107,8 @@ const ROWS = [
   ["access.authority-hours", "access", "#vaHours", null, "web.verified_authority.max_session_hours", ["authorization hours", "how long", "authority"], ["授權時數", "多久"], L("How long a web authorization lasts", "網頁授權持續多久")],
   ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevoke", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
   // Fleet · Advanced
+  // M-2738 (D4): the running version and Update — #3332's search for "update" found nothing.
+  ["advanced.update", "advanced", ".s-update", null, null, ["update", "upgrade", "version", "new version", "check for updates", "release"], ["更新", "版本", "新版", "檢查更新", "升級"], L("Version and update", "版本與更新")],
   ["advanced.fleet-yaml", "advanced", ".s-dev", null, null, ["fleet.yaml", "yaml", "json", "raw", "edit config"], ["fleet.yaml", "YAML", "設定檔"], L("fleet.yaml (YAML / JSON)", "fleet.yaml（YAML / JSON）")],
   ["advanced.read-only", "advanced", ".s-web-ro", "settings.webReadOnlyTitle", null, ["allowed hosts", "view access", "preview port", "read only", "web settings"], ["allowed hosts", "唯讀", "網頁設定"]],
 ];

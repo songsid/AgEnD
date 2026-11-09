@@ -1,0 +1,64 @@
+{
+  "v": 1,
+  "base": "47106e8d0c3769021e30881b026ff7707747e72f",
+  "scope": "R1 presentation polish and Fable F1/F2 tests; production server code unchanged from bc10ddfed",
+  "suite": {
+    "command": "npx vitest run tests/hub-directory-editor-ui.test.ts tests/hub-directory-settings-control.test.ts tests/hub-directory-host-notices.test.ts tests/hub-groups-ui-s89.test.ts tests/hub-company-join-ui.test.ts tests/skeleton-hub-3290.test.ts tests/hub-shared-modules-a.test.ts tests/i18n-ui-literals-2390.test.ts tests/hub-compose.test.ts tests/changelog-fragments.test.ts --maxWorkers=2",
+    "passed": 333,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": {
+    "npx tsc --noEmit": "PASS",
+    "npx tsc --noEmit -p tsconfig.test.json": "PASS"
+  },
+  "mutations": {
+    "caught": 28,
+    "restored": true,
+    "run": "fresh complete R1 run; see mutations-r1.json",
+    "reviewerCases": [
+      "panel-client-mark",
+      "gateway-page-mark"
+    ]
+  },
+  "gates": {
+    "Hub full": 314,
+    "Settings full SECTIONS=hub": 62,
+    "note": "Both refreshed on the polished source. Ordinary gate rigs omit the AD editor; its own matrix checks its geometry."
+  },
+  "browser": {
+    "matrixCases": 8,
+    "surfaces": [
+      "host",
+      "Hub"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "languages": [
+      "en",
+      "zh-TW"
+    ],
+    "devices": [
+      "desk",
+      "phone390"
+    ],
+    "caseChecks": 340,
+    "record": "matrix-r1.json",
+    "screenshots": 107,
+    "recovery": "recovery-r1.json",
+    "skew": [
+      "skew-old-modules-r1.json",
+      "skew-old-shell-r1.json",
+      "skew-old-server-r1.json"
+    ]
+  },
+  "limits": [
+    "No real directory/account/native/CLI/pilot/live-fleet operation.",
+    "Server crash/compensation/reauthentication/epoch tests retain earlier library scope; R1 adds no server change.",
+    "Gateway shell test deliberately isolates its display gate from the upstream D3 validator; real routes still reauthorize.",
+    "The updated script asserts a nonzero selected-case count; the executed full receipt contains eight cases."
+  ],
+  "stage": "polish-r1"
+}

@@ -294,3 +294,66 @@ it("General's location card stays authorized across only its own synchronous lif
   await r.any.dispatchAdapterCallback({ ...data, userId: "a-F" }, "a", r.adapters[0]);
   expect(apply).toHaveBeenCalledOnce(); expect(r.store.get(view.id, "browser")!.state).toBe("applied");
 });
+
+// #3326 finding 1 (alpha.6 feedback #2c): the Hub changes on a chat fleet. Each was scoped to no connection and no General,
+// so no confirm card was ever posted ("Apply now" never showed either) while the page said to confirm in General. Now each
+// is the primary General's, as General's location is: its card is posted there, the primary General's admin confirms it,
+// and another connection's admin cannot.
+describe("Hub changes are confirmed by the primary General (#3326 finding 1)", () => {
+  const cert = { fingerprint256: "AA:".repeat(31) + "AA", validTo: "2027-01-01T00:00:00.000Z", selfSigned: true };
+  const cases: Array<[string, string, string, unknown, Record<string, unknown>, string | undefined]> = [
+    ["membership", "PUT", "/api/settings/hub/membership", { enabled: true }, { hubMembership: () => ({ enabled: false }) }, undefined],
+    ["retention", "PUT", "/api/settings/hub/retention", { contentDays: 14, eventDays: 60, revision: 1 }, {}, undefined],
+    ["browser certificate", "POST", "/api/settings/hub/browser-certificate/apply", { reference: "12345678-1234-4321-8abc-123456789012", revision: "c".repeat(64) },
+      { hubBrowserCertificate: () => ({ certificate: cert }) }, "owner"],
+    ["publish an agent", "POST", "/api/hub/member/exposures", { agent: "builder" }, { hubExposure: () => ({ summary: ["Publish builder to the Hub"] }) }, undefined],
+    ["pairing", "POST", "/api/hub/member/pairing/connect", { address: "https://hub.example.test", code: "ABCD-EFGH" }, { hubPairing: () => ({ summary: ["Connect to the Hub at https://hub.example.test"] }) }, undefined],
+  ];
+  it.each(cases)("%s: the card goes to the primary General; only its admin confirms", async (_name, method, path, body, extra, binding) => {
+    const r = rig("telegram");
+    const effect = prepareSettingsEffect(method, path, body, { config: r.fm.fleetConfig, classic: {}, ...extra } as any, binding);
+    expect(effect.diff!.authority).toEqual({ connections: [], primaryGeneral: true, unknown: false });
+    const apply = vi.fn(async (_current: () => boolean, execution: any) => execution.commit(() => "applied"));
+    const view = r.store.propose({ session: "browser", key: `hub:${path}`, bytes: 1, source: "web_session", section: effect.diff!.section,
+      requestedBy: "browser", fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections,
+      authority: effect.diff!.authority, current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+    const { entry, data } = await prompt(r);
+    expect([entry.adapterId, entry.instanceName]).toEqual(["a", "general_a"]);
+    await r.any.dispatchAdapterCallback({ ...data, userId: "b-F" }, "a", r.adapters[0]);
+    expect([apply.mock.calls.length, r.store.get(view.id, "browser")!.state]).toEqual([0, "pending"]);
+    await r.any.dispatchAdapterCallback({ ...data, userId: "a-F" }, "a", r.adapters[0]);
+    expect([apply.mock.calls.length, r.store.get(view.id, "browser")!.state]).toEqual([1, "applied"]);
+  });
+});
+
+// alpha.6 feedback #2c: when no General takes the card, the pending change says why (the page words it; never a host command).
+describe("why no General took the confirm card (alpha.6 feedback #2c)", () => {
+  const reasonOf = async (setup: (r: ReturnType<typeof rig>) => void) => {
+    const r = rig("telegram", ["a"]); setup(r);
+    const { view } = propose(r, false);
+    await vi.waitFor(() => expect(r.store.get(view.id, "browser")!.confirmation.kind).toBe("host_cli"));
+    return r.store.get(view.id, "browser")!.confirmation.reason;
+  };
+  it("no chat app connected at all", async () => {
+    expect(await reasonOf((r) => { (r.fm.fleetConfig as any).channels = []; })).toBe("no_chat");
+  });
+  it("no agent is the General", async () => {
+    expect(await reasonOf((r) => { delete (r.fm.fleetConfig as any).instances.general_a.general_topic; })).toBe("no_general");
+  });
+  it("General's chat app is not connected", async () => {
+    expect(await reasonOf((r) => { r.any.adapterState.set("a", { status: "disconnected", retryCount: 1 }); })).toBe("chat_disconnected");
+  });
+  it("General has no topic yet", async () => {
+    expect(await reasonOf((r) => { delete (r.fm.fleetConfig as any).instances.general_a.topic_id; })).toBe("no_topic");
+  });
+  it("#3352 N1: \"spans platforms\" only when the touched connections are on two platforms; otherwise no specific reason", () => {
+    const r = rig("telegram", ["a", "b"]);
+    expect(r.any.settingsNoCardReason(null, ["a", "b"], false), "both on Telegram: not cross-platform").toBeUndefined();
+    (r.fm.fleetConfig as any).channels[1].type = "discord";
+    expect(r.any.settingsNoCardReason(null, ["a", "b"], false)).toBe("cross_platform");
+    expect(r.any.settingsNoCardReason(null, ["a"], false), "one connection touched").toBeUndefined();
+  });
+  it("posting the card failed", async () => {
+    expect(await reasonOf((r) => { r.adapters[0]!.notifyAlert.mockRejectedValue(Error("telegram said no")); })).toBe("post_failed");
+  });
+});

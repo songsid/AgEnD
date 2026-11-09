@@ -5,7 +5,10 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { InteractionOwner } from "./backend/types.js";
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
+import { instanceTeams } from "./team-membership.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -90,37 +93,36 @@ export interface BackendInstallationInfo {
 
 const localBin = (home: string) => join(home, ".local", "bin");
 
-/** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
-export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
-  "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
+/**
+ * #1092: where each CLI's own installer puts its binary. Behaviour (it reads the environment and the home directory), so it stays here, keyed by CLI id; which CLIs
+ * there are, their binary and their install commands are the registry's (cli-registry.ts: `host.install`), and every one of them must have an entry here.
+ */
+const BIN_DIRS: Readonly<Record<string, NonNullable<BackendInstallationInfo["binDirs"]>>> = {
+  "claude-code": (_env, home) => [localBin(home)],
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
-  "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash", binDirs: (_env, home) => [localBin(home)] },
+  "kiro-cli": (_env, home) => [localBin(home)],
   // install.sh: BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"; codex there is
   // a symlink into ~/.codex/packages/standalone/current/bin (#1092).
-  codex: {
-    binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-    unattended: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
-    binDirs: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
-  },
-  opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash", binDirs: (_env, home) => [join(home, ".opencode", "bin")] },
-  antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
-  grok: {
-    binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash",
-    binDirs: (env, home) => [env.GROK_BIN_DIR, join(home, ".grok", "bin")].filter((d): d is string => !!d),
-  },
+  codex: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
+  opencode: (_env, home) => [join(home, ".opencode", "bin")],
+  antigravity: (_env, home) => [localBin(home)],
+  grok: (env, home) => [env.GROK_BIN_DIR, join(home, ".grok", "bin")].filter((d): d is string => !!d),
   // #1092: the muse launcher keeps its binary NEXT TO ITSELF. Piped into bash
   // it has no file of its own, so it downloaded the binary into the current
   // directory and then started muse there, leaving no `muse` command anywhere.
   // Its install mode (MUSE_LAUNCHER_INSTALL=1, read from the launcher) is run
   // on the launcher saved as ~/.local/bin/muse: it downloads beside it and
-  // exits without launching.
-  muse: {
-    binary: "muse",
-    install: 'mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"',
-    binDirs: (_env, home) => [localBin(home)],
-  },
+  // exits without launching (the command is in cli-spec-muse.ts).
+  muse: (_env, home) => [localBin(home)],
 };
+
+/** Shared CLI metadata used by startup validation and ClassicBot onboarding: the registry's binary and commands, with the installer's own directories. */
+export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = Object.fromEntries(hostIds("install").map(id => {
+  const facts = hostFacts(id, "install")!, binDirs = BIN_DIRS[id];
+  if (!binDirs) throw new Error(`BACKEND_INSTALLATION_INFO: ${id} has an install command in the registry but no installer directories`);
+  return [id, { binary: facts.binary, install: facts.command, ...(facts.unattended ? { unattended: facts.unattended } : {}), binDirs }] as const;
+}));
 
 /** Check one executable using the same PATH visible to the fleet process. */
 export function checkBinaryInstalled(binary: string): boolean {
@@ -196,8 +198,21 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * Context interface for instance lifecycle operations.
  * FleetManager implements this.
  */
+/**
+ * #3292: a start's hold on the sign-in it launches on. `current(config)`: the config still names it (checked with no await
+ * before the Daemon clones the config). `unknownEnd(ended)`: the start failed and its CLI was not proven gone — the
+ * sign-in stays held until `ended()` says so.
+ */
+export interface CredentialHold { published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void }
+
 export interface LifecycleContext {
   assertGeneralBindingStart?(name: string, config: InstanceConfig): void;
+  /**
+   * #3292 (review P1): the credential this start will launch on, held against Keep sign-in alive from before the CLI reads
+   * it — waits while a renewal of that same sign-in runs (a Codex refresh token is single-use). `published()` once the
+   * daemon is registered (it then holds the sign-in while it lives); `release()` when the start fails before that.
+   */
+  admitCredentialUse?(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<CredentialHold | null>;
   /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
   nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
   reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
@@ -295,6 +310,8 @@ export interface LifecycleContext {
    * instances. Absent means the complete roster cannot be proven (#1624).
    */
   kiroPeerWorkingDirectories?(name: string): string[];
+  /** The fleet's startup snapshot of active decisions; each daemon selects its own Active Decisions from it. */
+  activeDecisions?(): readonly ActiveDecisionRow[];
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
   /** Suppress only incident kinds caused by the active tmux server storm. */
@@ -1914,6 +1931,8 @@ export class InstanceLifecycle {
 
     const native = isNativePaneInstance(config) ? await this.ctx.nativePaneFor?.(name, config, check) : undefined;
     let nativePublished=false;
+    let credentialHold: CredentialHold | null = null, credentialPublished = false;
+    let launched: Daemon | null = null;
     try {
     check();
     if (isNativePaneInstance(config) && !native) throw Error("Native pane ownership is unavailable; no local CLI was started");
@@ -1972,6 +1991,16 @@ export class InstanceLifecycle {
       return;
     }
 
+    // #3292 review P1: never started on a sign-in Keep sign-in alive is renewing; held against renewal from here on.
+    // #3313 review r2: the hold names what this config names NOW (nothing awaits between this and the Daemon's clone).
+    if (!native) {
+      for (;;) {
+        credentialHold = await this.ctx.admitCredentialUse?.(name, config, backendName, check) ?? null;
+        check();
+        if (!credentialHold || credentialHold.current(config)) break;
+        credentialHold.release(); credentialHold = null;          // a save changed its account while it waited: ask again
+      }
+    }
     const backend = native?.backend ?? createBackend(backendName, instanceDir);
     const daemon = new Daemon(
       name,
@@ -1990,6 +2019,7 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    launched = daemon;
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
     daemon.on("kiro_compatibility_hold", (message: string | null) => {
@@ -2004,6 +2034,9 @@ export class InstanceLifecycle {
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
+    // Read at each spawn, like the peers below: joining or leaving a team changes the next launch's Active Decisions.
+    daemon.setDecisionTeams(() => instanceTeams(this.ctx.fleetConfig?.teams, name));
+    daemon.setDecisionSource(this.ctx.activeDecisions ? () => this.ctx.activeDecisions!() : undefined);
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(backendName === "kiro-cli"
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined
@@ -2051,6 +2084,13 @@ export class InstanceLifecycle {
       if (recovered.queued || recovered.reconciliationPending) {
         this.ctx.logger.warn({ name, ...recovered }, "Preparing durable outbox rows before target generation start");
       }
+      // M-2457 (Fable #3312 N2): a 2.3 window id goes to the migration journal before reconciliation reads window-id
+      // — read as a pane of AgEnD's own server it could be another instance's window. Fleet start sweeps every instance
+      // already; this covers a sweep that failed there. A sweep that cannot run holds this instance.
+      if (!native) {
+        const [{ sweepLegacyWindowIds }, { tmuxSocket }] = await Promise.all([import("./tmux-legacy.js"), import("./tmux-binary.js")]);
+        sweepLegacyWindowIds(getAgendHome(), [{ name, dir: instanceDir }], tmuxSocket());
+      }
       const reconciled = native
         ? { uncertain: 0, safeToStart: await this.ctx.reconcileNativePaneBeforeStart?.(name, daemon) === true }
         : await reconcileTargetBeforeStart(
@@ -2092,6 +2132,7 @@ export class InstanceLifecycle {
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
     nativePublished=!!native;
+    credentialPublished = true; credentialHold?.published();
     published?.(daemon); // Exact publication, synchronously after the ownership fence.
     if (seedNow) this.noteWokeForWork(name);
     this.ctx.onDaemonReady?.(name, daemon.bootId);
@@ -2139,6 +2180,14 @@ export class InstanceLifecycle {
     // (pause, notify) finds both.
     (daemon as IncidentEventSource).releaseStartupIncidents?.();
     }catch(error){
+      if (!credentialPublished && credentialHold) {
+        // #3313 review r2: released only when this start's CLI is positively gone (or never existed); else held until it is.
+        const d = launched as (Daemon & { startupCliEnded?(): Promise<boolean>; startupIncarnationEnded?(): Promise<boolean> }) | null;
+        const ended = d?.startupCliEnded ? await d.startupCliEnded().catch(() => false) : true;
+        if (ended) credentialHold.release();
+        // Later re-checks are read-only (#3313 review r3): a retry may already run in a window with the same id.
+        else credentialHold.unknownEnd(() => d?.startupIncarnationEnded ? d.startupIncarnationEnded() : Promise.resolve(false));
+      }
       // The factory registered helper authority before acquire(). A superseded pre-window start must release it too.
       if(native&&!nativePublished)await native.release("detach").catch(err=>this.ctx.logger.warn({name,err},"Prepared native authority could not detach"));
       throw error;
@@ -2353,6 +2402,9 @@ export class InstanceLifecycle {
             if (fencedWindowId) {
               try {
                 writeFileSync(join(this.ctx.getInstanceDir(name), "window-id"), `${fencedWindowId}\n`, { mode: 0o600 });
+                // M-2457: a window of AgEnD's own server (tagged), never taken for a 2.3 one (tmux-legacy.ts).
+                const [{ tagWindowId }, { tmuxSocket }] = await Promise.all([import("./tmux-legacy.js"), import("./tmux-binary.js")]);
+                tagWindowId(this.ctx.getInstanceDir(name), tmuxSocket(), fencedWindowId);
               } catch (err) {
                 this.ctx.logger.error({ err, name, windowId: fencedWindowId }, "Could not persist old window id after unverified durable stop");
               }
@@ -2544,6 +2596,7 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
     adapterId?: string,
     execution?: SettingsExecution,
+    toolSetCaller?: string,
   ): Promise<void> {
     const check = (): void => execution?.assert(); check();
     if (args.runtime !== undefined && args.runtime !== "wsl" && args.runtime !== "windows") { respond(null,"Unknown instance runtime"); return; }
@@ -2558,6 +2611,7 @@ export class InstanceLifecycle {
       return;
     }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
+    const selfToolSetError = "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)";
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
     const topicName = args.topic_name || (directory ? basename(directory) : undefined);
@@ -2618,6 +2672,7 @@ export class InstanceLifecycle {
         .find(([_, config]) => expandHome(config.working_directory) === directory);
       if (existingInstance) {
         const [eName, eConfig] = existingInstance;
+        if (eName === toolSetCaller) { respond(null, selfToolSetError); return; }
         respond({
           success: true,
           status: "already_exists",
@@ -2729,6 +2784,7 @@ export class InstanceLifecycle {
         .find(([_, config]) => expandHome(config.working_directory) === workDir);
       if (existingInstance) {
         const [eName, eConfig] = existingInstance;
+        if (eName === toolSetCaller) { respond(null, selfToolSetError); return; }
         respond({
           success: true,
           status: "already_exists",
@@ -2786,6 +2842,12 @@ export class InstanceLifecycle {
           if (adapterId != null && owner.channel_id != null && owner.channel_id !== adapterId) return false;
           return true;
         });
+      }
+      // A retried topic allocation may resolve to an existing General. Its
+      // authenticated caller may set other agents' profiles, never its own.
+      // Check before markers, config or startup; rollback retains referenced topics.
+      if (newInstanceName === toolSetCaller) {
+        throw new Error(selfToolSetError);
       }
       // A recycled name must never inherit a stale pause marker.
       clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));

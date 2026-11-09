@@ -56,7 +56,9 @@ void alex;
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings|hub-button-actions)\.js|ui\/hub|favicon)/;
+// What the Hub's own listener serves under /ui/js is the authority (a hand-kept list here went stale as Hub modules were added).
+const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts") as { HUB_UI_MODULES: readonly string[] };
+const ALLOWED = { test: (path: string) => /^\/(hub\/v1\/|assets\/|ui\/hub|favicon)/.test(path) || (path.startsWith("/ui/js/") && HUB_UI_MODULES.includes(path.slice(7))) };
 
 async function open(c: (typeof CASES)[number], path: string, route?: (page: any) => Promise<void>) {
   const ctx = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
@@ -102,7 +104,7 @@ try {
     await a.page.waitForSelector(".hub-home", { timeout: 10000 });
     await a.page.screenshot({ path: shot(`${tag}-1-home`) });
     // New chat: what is granted, who it answers for.
-    await a.page.click(c.device === "desk" ? ".sidebar .hub-new" : ".hub-home .hub-new");
+    await a.page.click(c.device === "desk" ? ".sidebar .side-new" : ".hub-home .side-new");
     await a.page.waitForSelector(".hub-pick-row", { timeout: 10000 });
     const picks = await a.page.evaluate(`[...document.querySelectorAll(".hub-pick-row .t")].map((x) => x.textContent)`);
     await a.page.screenshot({ path: shot(`${tag}-2-new-chat`) });
@@ -190,14 +192,14 @@ try {
     // The list: this room (and the session's menu).
     if (c.device === "phone") { await a.page.evaluate(`import("/assets/app-shell.js").then((m) => m.openDrawer())`); await a.page.waitForTimeout(500); }
     const list = await a.page.evaluate(`[...document.querySelectorAll(".sidebar .hub-room-row .t")].map((x) => x.textContent)`);
-    await a.page.click(".sidebar .hub-session button"); await a.page.waitForTimeout(300);
+    await a.page.click(".sidebar .hub-session-row button"); await a.page.waitForTimeout(300);
     // Shown, not just present: each item is inside the viewport and the topmost element at its centre.
     const menu = await a.page.evaluate(`[...document.querySelectorAll(".sidebar [role=menuitem]")].filter((x) => { const b = x.getBoundingClientRect();
       return b.height > 0 && b.top >= 0 && b.bottom <= innerHeight && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("[role=menuitem]") === x; }).map((x) => x.textContent.trim())`);
     await a.page.screenshot({ path: shot(`${tag}-7-list-and-menu`) });
     await a.page.keyboard.press("Escape");
     check(`${tag}-chat`, picks.includes("Sales numbers") && picks.includes("Design guide") && emptyOk && /one conversation|同一段對話/.test(notice) && shownAtOnce && tick.length > 0
-      && sent && answered && marks.code && marks.sender === agent && list.includes(agent) && menu.length === 3
+      && sent && answered && marks.code && marks.sender === agent && list.includes(agent) && menu.length === 2
       && layout.right <= 2 && layout.composerGap < 140 && !layout.stillWaiting
       && (c.device === "desk" ? rail.title && rail.cards >= 3 && rail.closedAfterReload && rail.reopened : rail.sheet && rail.cards >= 3)
       && a.errs.length === 0 && a.foreign.length === 0 && (await a.csp()).length === 0,

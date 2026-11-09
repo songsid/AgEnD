@@ -328,3 +328,56 @@ describe("P2: a stop that asked for the terminals to be retired keeps that reque
     await f.client.stop(); expect(two.retireOwned).not.toHaveBeenCalled(); expect(two.stop).toHaveBeenCalledTimes(1);
   }, 30_000);
 });
+
+describe("the new inventory reaches AgEnD before the answer to an account operation (#3190 Part 3c)", () => {
+  // The dashboard reads the computer's inventory the moment it has the answer, so the answer must not overtake the inventory it changed: with a slow detection the
+  // old fire-and-forget report came after it, and the Accounts view showed the profile that had just been removed.
+  const slowBridge = (state: { slow: boolean }): RuntimeBridge => ({ ...bridge, probe: async (): Promise<WindowsCliProbe> => { if (state.slow) await new Promise(done => setTimeout(done, 120)); return { home: "C:\\fixture", clis: [], probedAt: 1 }; } });
+  const order = (f: Awaited<ReturnType<typeof fixture>>) => f.frames.map((frame: any) => frame.type === "account.response" ? "answer" : frame.type);
+  const names = (f: Awaited<ReturnType<typeof fixture>>) => (f.frames.filter((frame: any) => frame.type === "inventory").at(-1)?.inventory?.credentialProfiles?.profiles ?? []).map((p: any) => [p.name, p.created]);
+  it("accounts.remove and accounts.signout send the changed inventory first, though detection is slow", async () => {
+    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
+    createRuntimeProfile(f.root, "claude-code", "work"); createRuntimeProfile(f.root, "claude-code", "spare");
+    state.slow = true; f.frames.length = 0;
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).ok).toBe(true);
+    expect(order(f)).toEqual(["inventory", "answer"]);
+    f.frames.length = 0;
+    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "spare", actor: "admin:u1" })).ok).toBe(true);
+    expect(order(f)).toEqual(["inventory", "answer"]); expect(names(f)).toEqual([["work", true]]);                  // the removed profile is already gone from what AgEnD was sent
+  });
+  it("accounts.check and a sign-in that creates a profile do the same: the new profile is in the inventory, as one this Runtime created, before the answer", async () => {
+    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
+    createRuntimeProfile(f.root, "claude-code", "work");
+    state.slow = true; f.frames.length = 0;
+    const started = await f.call("signin.start", { cli: "claude-code", profile: "fresh", method: "subscription", actor: "admin:u1" });
+    expect(started.ok).toBe(true);
+    expect(order(f)).toEqual(["inventory", "answer"]); expect(names(f)).toEqual([["fresh", true], ["work", true]]);
+    f.frames.length = 0;
+    expect((await f.call("accounts.check", { cli: "claude-code", profile: "work" })).ok).toBe(true);
+    expect(order(f)).toEqual(["inventory", "answer"]);
+  });
+  it("a revoked consent sends no inventory: the switch turned off while the detection waits stops it, and the operation's own answer still comes", async () => {
+    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
+    createRuntimeProfile(f.root, "claude-code", "work");
+    state.slow = true; f.frames.length = 0;
+    const pending = f.call("accounts.check", { cli: "claude-code", profile: "work" });
+    await new Promise(done => setTimeout(done, 30)); setRemoteSwitch(f.home, "accounts", false);
+    expect((await pending).type).toBe("account.response");
+    expect(f.frames.filter((frame: any) => frame.type === "inventory")).toEqual([]);
+  });
+});
+
+describe("M-2731 model refresh frames",()=>{
+  it("uses the existing nonreplayed account frames and the exact owned profile, behind the local accounts switch",async()=>{
+    const models=vi.fn(async()=>({models:[{id:"claude-new",name:"New"}],source:"account-api"}));
+    const f=await fixture({remoteAccounts:{models}});const directory=createRuntimeProfile(f.root,"claude-code","work").directory;
+    expect(f.hello().runtimeInfo.capabilities).toContain("model-catalog-refresh");
+    const payload={cli:"claude-code",profile:"work",actor:"admin:fixture"};
+    expect(await f.call("models.refresh",payload)).toMatchObject({type:"account.response",ok:false});expect(models).not.toHaveBeenCalled();
+    setRemoteSwitch(f.home,"accounts",true);
+    expect(await f.call("models.refresh",payload)).toMatchObject({type:"account.response",ok:true,result:{profile:"work",models:[{id:"claude-new"}]}});
+    expect(models).toHaveBeenCalledWith("claude-code",directory,expect.any(Function));
+    expect(f.frames.filter(x=>x.type==="response")).toEqual([]);
+    const old=await fixture({credentialProfilesRoot:undefined});expect(old.hello().runtimeInfo.capabilities).not.toContain("model-catalog-refresh");
+  });
+});

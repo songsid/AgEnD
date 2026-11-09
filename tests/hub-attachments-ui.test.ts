@@ -77,6 +77,21 @@ const choose = async (pg: AppPage, files: File[]) => {
 };
 
 describe("Hub chat attachments (D2)", () => {
+  it.each(["en", "zh-TW"])("#3458 qualifies the room header and access card after denial (%s)", async language => {
+    hubApi([], undefined, [], { ask: () => [403, { code: "denied" }] });
+    const pg = await openRoom(language); await type(pg, "A question");
+    fire(pg.root.querySelector("#sendBtn")!, "click");
+    await until(() => pg.root.querySelector(".hub-chat-head .tag.warn"));
+    const header = pg.root.querySelector(".hub-chat-head")!.textContent;
+    expect(header).toContain(language === "en" ? "Access needs checking" : "需要確認權限");
+    expect(header).not.toContain(language === "en" ? "Can ask" : "可提問");
+    if (!pg.root.querySelector(".hub-kv")) { fire(pg.root.querySelector(".hub-chat-head button")!, "click"); await settle(10); }
+    expect(pg.root.querySelector(".hub-kv")?.textContent).not.toContain(language === "en" ? "Ask, and read your own chat" : "提問、看自己的紀錄");
+    expect(pg.root.querySelector(".hub-kv")?.textContent).toContain(language === "en" ? "previous access information needs checking" : "先前的權限資訊需要重新確認");
+    expect((pg.root.querySelector("#sendBtn") as any).disabled).toBe(true);
+    expect(pg.root.querySelector("#msgIn")!.value).toBe("A question");
+    expect(pg.root.querySelector(".hub-banner button")?.textContent).toBe(language === "en" ? "Check access" : "重新檢查權限");
+  });
   it("a room whose link takes files: Attach uploads at once, lists the file, and Send names its id", async () => {
     const { calls } = hubApi(["attachments-v1", "quota-band-v1"]);
     const pg = await openRoom();
@@ -109,7 +124,7 @@ describe("Hub chat attachments (D2)", () => {
     hubApi([]);
     const pg = await openRoom(lang);
     expect(pg.root.querySelector("#attachBtn")).toBeNull();
-    expect(pg.root.querySelector(".hub-files-off")!.textContent).toBe(lang === "en" ? "This agent can't receive files yet." : "這個代理目前還不能接收檔案。");
+    expect(pg.root.querySelector(".hub-files-off")!.textContent).toBe(lang === "en" ? "This agent can't receive files yet." : "這個 Agent 目前還不能接收檔案。");
   });
 
   it("an answer's file shows in the thread from its room URL", async () => {

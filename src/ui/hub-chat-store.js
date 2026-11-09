@@ -37,7 +37,8 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
   const id = entry.sequence * 2, out = [];
   // D: a Hub file in the shared thread's shape (hub-attachments.js); one the renderer cannot take is left out.
   const files = (list) => { const a = Array.isArray(list) ? list.map(hubFileAttachment).filter(Boolean) : []; return a.length ? { attachments: a } : {}; };
-  out.push({ boot: "hub", id, role: "user", sender: me, ts: iso(entry.askedAt) ?? iso(at),
+  // A closed poll's tally is already in its widget. Its automatic agent prompt was not typed by the asker.
+  if (entry.pollResult !== true) out.push({ boot: "hub", id, role: "user", sender: me, ts: iso(entry.askedAt) ?? iso(at),
     text: entry.expired && entry.question === undefined ? "" : String(entry.question ?? ""), delivery: stageMark(stage),
     ...files(entry.questionFiles), ...(entry.quote ? { quote: entry.quote } : {}) });
   if (entry.answer !== undefined) {
@@ -56,7 +57,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
-  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, loaded: false, error: null, pending: [], full: false, reads: 0, farTurn: 0 };
+  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, loaded: false, error: null, accessDenied: false, accessEpoch: 0, pending: [], full: false, reads: 0, farTurn: 0 };
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
@@ -73,6 +74,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     if (!st.live || st.inflight || st.closed) return;
     if (doc && doc.hidden) { schedule(POLL_MS); return; }
     st.inflight = true;
+    const accessEpoch = st.accessEpoch;
     // Unsettled entries are read again (from just before the oldest one) — but a full page means there is more after
     // it: read on from the last one first, so an old open entry can never pin the read to the same page (#3246 review).
     const last = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
@@ -101,9 +103,11 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       // (an older Hub) keeps what is known.
       if (r.room) { st.room = { ...st.room, ...r.room }; if (!Object.prototype.hasOwnProperty.call(r.room, "quota")) delete st.room.quota; }
       st.pending = st.pending.filter((p) => !st.entries.some((e) => e.messageId === p.messageId));
+      if (r.room && accessEpoch === st.accessEpoch) st.accessDenied = false;
       st.loaded = true; st.error = null; emit(); schedule(POLL_MS); return;
     }
     if (r.code === "revoked" || r.code === "not-found") { st.closed = true; emit(); return; }
+    if (r.code === "denied") { st.accessDenied = true; st.accessEpoch++; }
     st.error = r.code || "failed"; emit();
     schedule(r.code === "backpressure" ? Math.max(POLL_MS, (r.retryAfter || 10) * 1000) : POLL_MS);
   }
@@ -123,6 +127,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     room: () => st.room,
     closed: () => st.closed,
+    accessDenied: () => st.accessDenied,
     loaded: () => st.loaded,
     error: () => st.error,
     entries: () => st.entries,
@@ -146,7 +151,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       if (!q || st.closed) return { ok: false, code: "invalid" };
       let r;
       try { r = await client.ask(st.room.id, newKey(), q, extras); } catch { r = { ok: false, code: "unreachable" }; }
-      if (!r.ok) { if (r.code === "revoked") { st.closed = true; emit(); } return r; }
+      if (!r.ok) { if (r.code === "denied" && st.live) { st.accessDenied = true; st.accessEpoch++; emit(); } if (r.code === "revoked") { st.closed = true; emit(); } return r; }
       st.pending.push({ messageId: r.receipt.messageId, text: q, at: r.receipt.at || Date.now() });
       emit();
       return r;

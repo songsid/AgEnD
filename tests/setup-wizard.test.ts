@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateBotToken, verifyBotToken, checkPrerequisites } from "../src/setup-wizard.js";
 import { createRequire, syncBuiltinESMExports } from "node:module";
+import { basename } from "node:path";
+import { tmuxBinary } from "../src/tmux-binary.js";
 
 describe("Setup Wizard", () => {
   describe("validateBotToken", () => {
@@ -57,14 +59,20 @@ describe("Setup Wizard", () => {
     it("returns detection results for a given backend binary", () => {
       const childProcess = createRequire(import.meta.url)("node:child_process");
       const probe = vi.spyOn(childProcess, "execSync").mockReturnValue(Buffer.from("fixture version\n"));
+      // AgEnD's own tmux is run by its absolute path (never PATH's), and is answered here: no real tmux runs.
+      const tmuxProbe = vi.spyOn(childProcess, "execFileSync").mockReturnValue(Buffer.from("tmux 3.8\n"));
       syncBuiltinESMExports();
       const result = checkPrerequisites("claude");
       expect(result).toHaveProperty("backendOk");
       expect(result).toHaveProperty("tmux");
       expect(typeof result.backendOk).toBe("boolean");
       expect(typeof result.tmux).toBe("boolean");
-      expect(probe.mock.calls.map(call => call[0])).toEqual(["claude --version", "tmux -V"]);
+      expect(probe.mock.calls.map(call => call[0])).toEqual(["claude --version"]);
+      expect(tmuxProbe.mock.calls.map(call => [call[0], call[1]])).toEqual([[tmuxBinary(), ["-V"]]]);
+      expect(basename(String(tmuxProbe.mock.calls[0]![0]))).toBe("tmux");
+      expect(result.tmuxVersion).toBe("tmux 3.8");
       probe.mockRestore();
+      tmuxProbe.mockRestore();
       syncBuiltinESMExports();
     });
   });

@@ -33,7 +33,10 @@ When an instance reports back, classify the outcome:
 
 ## Shared Decisions
 
-Use `post_decision` / `list_decisions` for any choice that affects more than 1 instance, changes an API contract, introduces a new dependency, or alters deployment process. The default `scope: "project"` reaches only instances in the same working directory — use `scope: "fleet"` for anything wider.
+Use `post_decision` / `list_decisions` for any choice that affects more than 1 instance, changes an API contract, introduces a new dependency, or alters deployment process. Pick the scope by who must follow it:
+- `scope: "team"` — your team's conventions (workflow, review policy). It reaches every member of the team wherever they work, including members in other directories or worktrees. It is the default when you are in a team; name `team` when you are in several.
+- `scope: "project"` — this exact working directory only (the default when you are in no team).
+- `scope: "fleet"` — only rules every team on the fleet follows. On a fleet with several teams, ask whether the other teams would want to see it before posting it fleet-wide.
 
 When instances disagree, collect both viewpoints, make a decision, and record it via post_decision.
 

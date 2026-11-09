@@ -6,6 +6,7 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { SubagentService } from "./subagent-service.js";
 import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
 import { quotaNoticeRule } from "./quota-notice-config.js";
 import { onUsageSnapshot } from "./usage/usage-api.js";
@@ -24,7 +25,7 @@ import { SettingsBaselines } from "./settings-baseline.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
-import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView, type SettingsNoCardReason } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
@@ -96,6 +97,7 @@ import {
   type UpdateMarkerIdentity,
   type UpdateProgressOperation,
   type UpdateProgressState,
+  type UpdateProgressTarget,
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
@@ -275,6 +277,7 @@ import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
+import { cachedNativeModelCatalog } from "./native-model-catalog.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
@@ -301,6 +304,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
+import type { ActiveDecisionRow } from "./daemon.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
@@ -332,6 +336,7 @@ import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
+import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -373,6 +378,8 @@ import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
+import { SignInKeepAlive, isKeepAliveBackend, type KeepAliveView, type SetResult as KeepAliveSetResult } from "./signin-keepalive.js";
+import { BACKEND_LABELS } from "./interaction-observation.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { GENERAL_NAME, GENERAL_PAUSE_ERROR, adoptGeneralByName, freeGeneralName, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
@@ -401,13 +408,15 @@ import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSess
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
+import { hubInitializationSession } from "./authority/hub-initialization.js";
+import { companyJoinSession } from "./authority/company-join.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
 import { isCanvasWorkerTool, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
@@ -474,9 +483,12 @@ import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
-import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
-import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
+import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
+import { MachineSignIns } from "./machine-signins.js";
+import { ProfileSignIns } from "./profile-signins.js";
 import { runQuiet } from "./quiet-run.js";
 
 const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
@@ -690,6 +702,11 @@ const CANCEL_BTN_MAX_LIFETIME_MS = 24 * 60 * 60_000;
 const STALE_CANCEL_CLICK_COOLDOWN_MS = 10_000;
 /** Orphaned-button ledger, swept at startup. Lives in the fleet data dir. */
 const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
+/**
+ * S-92: the restart marker's target for a web-only fleet's Settings restart (no chat message carries its progress). It is
+ * known by its `surface: "web"` (#3373 review P3: never by this id, which a chat connection could also be called).
+ */
+const WEB_RESTART_TARGET = "web-settings";
 /**
  * How often the cancel button's text is refreshed with elapsed working time.
  *
@@ -1187,6 +1204,7 @@ export class RestartSupersededError extends Error {
 }
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
+  private decisionSnapshot: readonly ActiveDecisionRow[] = [];
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
 
@@ -1624,9 +1642,130 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberExposureApi: import("./hub/member/exposure-api.js").HubMemberExposureApi | null = null;
   hubMemberExposures(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null { return this.hubMemberExposureApi; }
   attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
-  /** S3c PR B: the member's pairing API, attached by S5's member composition (null: no Hub member here). */
+  /** M-2687: local host-session setup; controller creation stays lazy while the Hub is off. */
+  private hubSetupController: import("./hub/init/web.js").HubWebInitializer | null = null;
+  private hubSetupInit: Promise<import("./hub/init/web.js").HubWebInitializer> | null = null;
+  private hubDirectoryControl: import("./hub/settings-directory-control.js").HubDirectorySettingsControl | null = null;
+  private hubDirectoryInit: Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> | null = null;
+  private hubDirectoryCurrent: (() => boolean) | null = null;
+  /** Both private listeners share this controller and the already-created sealed writer; callers prove authority first. */
+  async hubDirectorySettings(): Promise<import("./hub/settings-directory-control.js").HubDirectorySettingsControl> {
+    const previous = this.hubDirectoryInit, expired = this.hubDirectoryControl;
+    if (expired && this.hubDirectoryCurrent?.() !== true) {
+      // Retire physical work before constructing the next host owner; concurrent readers share its one initialization.
+      expired.fence();
+      await expired.close();
+      if (this.hubDirectoryInit === previous) {
+        this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
+      }
+    }
+    if (this.shuttingDown) throw Error("The Hub directory is unavailable");
+    const runtime = this.hubRuntime ?? await this.hubRuntimeCreated();
+    // The controller outlives individual mounted sources. Refresh can retire its source without changing its owner.
+    await runtime.acquireDirectorySettings();
+    if (this.shuttingDown || runtime !== this.hubRuntime) throw Error("The Hub directory changed");
+    const pending = this.hubDirectoryInit ??= (async () => {
+      if (!this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
+      const { createHubDirectorySettingsControl } = await import("./hub/settings-directory-control.js");
+      const { createHubDirectory } = await import("./hub/directory/index.js");
+      const mounted = runtime.directorySettings();
+      if (!mounted || this.shuttingDown || runtime !== this.hubRuntime) throw Error("The Hub directory changed");
+      const hubId = mounted.decision.hubId;
+      const current = () => !this.shuttingDown && runtime === this.hubRuntime
+        && (this.rawFleetConfig as { hub?: { hubId?: unknown } })?.hub?.hubId === hubId;
+      const control = createHubDirectorySettingsControl({ hubId, mounted: () => runtime.directorySettings(),
+        writer: () => this.hubSettingsWriter!.directory!, createDirectory: createHubDirectory, current,
+        withDecision: work => runtime.withDirectoryDecision(hubId, work, current), remount: async () => {
+          await this.applyHubSwitches();
+          // A stopped Hub is still stopped after Save; a headless source may confirm that outcome only while off.
+          if ((this.rawFleetConfig as { hub?: { enabled?: unknown } })?.hub?.enabled === false) await runtime.acquireDirectorySettings();
+        } });
+      if (!current()) { await control.close(); throw Error("The Hub directory changed"); }
+      this.hubDirectoryControl = control; this.hubDirectoryCurrent = current; return control;
+    })();
+    try { return await pending; }
+    catch (error) { if (this.hubDirectoryInit === pending) this.hubDirectoryInit = null; throw error; }
+  }
+  hubSetupSession(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null {
+    const token=this.webToken,sessions=this.webSessions,epoch=this.webAuthorityState().epoch;
+    return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
+      &&token===this.webToken&&sessions===this.webSessions&&epoch===this.webAuthorityState().epoch});
+  }
+  async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
+    this.hubSetupInit??=(async()=>{
+      const {createHubWebInitializer}=await import("./hub/init/web.js");
+      if(this.shuttingDown)throw Error("Fleet is stopping");
+      const controller=createHubWebInitializer({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),
+        writeFleet:patches=>this.saveFleetConfig(patches),committed:()=>this.applyHubSwitches()});
+      this.hubSetupController=controller;return controller;
+    })();
+    try{return await this.hubSetupInit;}catch(error){this.hubSetupInit=null;throw error;}
+  }
+  /** Existing-state host notices also work while the Hub listener is held. No runtime/initializer is started here. */
+  async hubDirectoryNotices(): Promise<import("./hub/settings-directory-host-notices.js").HubDirectoryHostNotices> {
+    const { createHubDirectoryHostNotices } = await import("./hub/settings-directory-host-notices.js");
+    if (this.shuttingDown) throw Error("Fleet is stopping");
+    return createHubDirectoryHostNotices({ home: this.dataDir,
+      readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub, current: () => !this.shuttingDown });
+  }
+  /** The member's company sign-in controller; separate from host-owned Hub initialization. */
+  private companyJoinController: import("./hub/join/local.js").CompanyJoinController | null = null;
+  private companyJoinInit: Promise<import("./hub/join/local.js").CompanyJoinController> | null = null;
+  private companyObservedMembership: boolean | null = null;
+  private companyMembershipWrite = false;
+  hubCompanySession(req: IncomingMessage): import("./hub/join/local-journal.js").JoinLocalSession | null {
+    const epoch = this.webAuthorityState().epoch, token = this.webToken, sessions = this.webSessions, generation = this.settingsGeneration;
+    return companyJoinSession(req, { token, sessions, config: this.fleetConfig, epoch, current: () => !this.shuttingDown
+      && generation === this.settingsGeneration && token === this.webToken && sessions === this.webSessions && epoch === this.webAuthorityState().epoch });
+  }
+  async hubCompanyJoin(): Promise<import("./hub/join/local.js").CompanyJoinController> {
+    const incarnation = this.settingsGeneration;
+    const initialization = this.companyJoinInit ??= (async () => {
+      const { CompanyJoinController } = await import("./hub/join/local.js");
+      const { currentBinding } = await import("./hub/member/pairing-api.js");
+      this.hubMemberBinding = currentBinding;
+      if (this.shuttingDown || incarnation !== this.settingsGeneration) throw Error("Fleet is stopping");
+      const controller = new CompanyJoinController({ home: this.dataDir,
+        snapshot: () => {
+          const state = join(this.dataDir, "hub-member/state.json");
+          return { membership: (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+            binding: existsSync(state) ? createHash("sha256").update(readFileSync(state)).digest("hex") : null };
+        },
+        enableMembership: (current, accept) => {
+          if (!current() || !this.configPath || !this.fleetConfig) throw Error("Join operation changed");
+          this.companyMembershipWrite = true;
+          try {
+            this.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
+            // Strict durability for the joined profile+journal, including this internally enabled switch.
+            const fd = openSync(this.configPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+            try { fsyncSync(fd); } finally { closeSync(fd); }
+            const parent = openSync(dirname(this.configPath), fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+            try { fsyncSync(parent); } finally { closeSync(parent); }
+            accept();
+          } finally { this.companyMembershipWrite = false; }
+        },
+        activate: () => { void this.applyHubSwitches().then(() => this.hubRuntime?.refresh()).catch(() => { /* Saved binding remains offline until a later refresh. */ }); },
+        link: () => this.hubMemberLink === "online" ? "online" : "offline",
+      });
+      this.companyJoinController = controller; return controller;
+    })();
+    try { return await initialization; }
+    catch (error) { if (this.companyJoinInit === initialization) this.companyJoinInit = null; throw error; }
+  }
+  invalidateHubCompanyJoin(): void { this.companyJoinController?.invalidate(); }
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
+  private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
+  /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
+  async hubMemberPairingView(): Promise<import("./hub-pairing-summary.js").HubPairingView> {
+    const raw = this.rawFleetConfig;
+    if (this.shuttingDown) throw Error("Fleet is stopping");
+    if (hubMembershipSettings(raw).enabled && this.hubMemberPairingApi) return this.hubMemberPairingApi.view();
+    const { createHubMemberPairingApi } = await import("./hub/member/pairing-api.js");
+    if (this.shuttingDown || this.rawFleetConfig !== raw) throw Error("Hub membership changed");
+    // This factory schedules nothing; only its private-file projection is called. No write method escapes.
+    return createHubMemberPairingApi({ home: this.dataDir, enabled: () => false }).view();
+  }
   attachHubMemberPairing(api: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null): void { this.hubMemberPairingApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
   private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
@@ -1917,6 +2056,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** S-51: the Hub switches follow the configuration in force (load, save, reload rollback), like the runtime ones. */
   private observeHubSwitches(): void {
+    const enabled = (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true;
+    if (this.companyObservedMembership !== null && enabled !== this.companyObservedMembership) {
+      if (!this.companyMembershipWrite) this.companyJoinController?.invalidate();
+    }
+    this.companyObservedMembership = enabled;
     this.observeHubAgentIncarnations();
     if (!this.hubEffectsReady || this.hubEffectsScheduled || this.shuttingDown) return;
     this.hubEffectsScheduled = true;
@@ -1933,6 +2077,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
       await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
+      // Finish an interrupted sealed-settings operation before mounting. Refusal overwrites nothing, fences the runtime,
+      // and never falls through to normal state creation/migration.
+      if (this.hubSettingsWriter?.pending()) {
+        try { if (!await runtime.recoverSettings(raw)) return; }
+        catch (err) { this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub settings recovery refused"); return; }
+      }
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
@@ -1940,12 +2090,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** M-2682: the one writer for sealed Hub settings, created with the Hub runtime. */
+  private hubSettingsWriter: import("./hub/settings-commit.js").HubSettingsWriter | null = null;
+
   /** Single flight: one import, one runtime, assigned once; every caller (and Stop) gets that same runtime. */
   private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
     this.hubRuntimeInit ??= (async () => {
       const { HubRuntime } = await import("./hub/runtime.js");
+      // M-2682: the one writer for sealed Hub settings (a rename from Hub Administration). It saves hub.* through this
+      // fleet's own synchronous writer, so nothing else here runs between its commit point and the new pair in force.
+      const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
+      this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
+        readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
+        directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
+        saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
+        settingsWriter: this.hubSettingsWriter,
+        directorySettings: () => this.hubDirectorySettings(),
+        readConfig: () => this.rawFleetConfig as { hub?: unknown; hub_member?: unknown },
+        version: agendVersion(),
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
         // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
@@ -1966,6 +2130,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
+          attachPairingNotices: read => { this.hubPairingNotices = read; },
           pokeAttention: () => this.needsYou?.poke(),
           linkState: state => { this.hubMemberLink = state; },
         },
@@ -1990,6 +2155,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.hubMemberBinding = currentBinding;
     this.attachHubMemberPairing(createHubMemberPairingApi({
       home: this.dataDir,
+      notices: () => this.hubPairingNotices?.() ?? [],
       enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
       link: () => (this.hubMemberLink === "online" ? "online" : "offline"),
       hold: () => (this.hubMemberLink === "revoked" ? "revoked" : null),
@@ -2220,6 +2386,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
+  hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true || this.hubSetupController?.pending() === true; }
+  /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
+  hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 
   private observeRuntimeSwitches(): void {
     setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);
@@ -2484,6 +2654,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  /** #3292: "Keep sign-in alive" (signin-keepalive.ts); built at startup, stopped at shutdown. */
+  private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -2533,6 +2705,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupDashboard: FleetStartup | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private adapterRetryInFlight = new Map<string, Promise<void>>();
+  /** #3365 review P2: connections whose adapter could not be confirmed stopped — none is admitted for them until a restart. */
+  private adapterTeardownUnknown = new Set<string>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
    * and stale callbacks from the old client must not win. */
@@ -2582,6 +2756,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  /** M-2738: the last update check's answer, for the web (null until the first check settles). */
+  private updateCheckState: { offer: UpdateOffer | null; checkedAt: number; failed: boolean } | null = null;
+  /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
+  private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
+  /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
+  private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
+  /**
+   * M-2738 (Prism #3505 P2-2): this fleet's own claim on a web-started update, from admission until its updater exits
+   * (or was never launched). The progress marker expires after 15 minutes so a crashed update cannot silence incident
+   * reports; that expiry never proves the update ended, so it never admits a second one while this is held.
+   */
+  private webUpdateOwned: { startedAt: number } | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
@@ -3150,13 +3336,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
-        return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+        return { localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
           localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
+      totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       directAgentCreation: true,
+      directCompanyJoin: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;
@@ -3189,12 +3377,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
+    // D3 (decision bcbb541f): on a fleet with a chat connection, a change no General can take a card for would wait for
+    // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
+    // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
+    // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) The noSelfConfirm changes
+    // the leader ruled on are included: the outward Hub changes (hostLocalConfirm) and a link option turned on
+    // (hostSessionOnly, cid-d3) — this session is exactly the one those allow.
+    // "No card": none could be posted now, or the one tried could not be (posting failed or ran out — the view says
+    // host_cli; #3362 review N1).
+    const noCard = (): boolean => !this.settingsCardPossible(store, id) || store.inspect(id)?.confirmation.kind === "host_cli";
+    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && noCard()
+      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id) || store.hostSessionConfirmable(id))) {
+      // A card that could not be posted stays unposted (no card is attached later): fixed now, not re-read at execution,
+      // where the store has already marked the change as confirmed from the web.
+      const handle = auth.session.handle, postFailed = store.inspect(id)?.confirmation.kind === "host_cli";
+      const here = (): boolean => { const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+        return now.kind === "ok" && now.session.handle === handle && hostSessionHere(now.session, req) && !this.isWebOnlyFleet(); };
+      return {
+        label: t("settings_confirm.host_operator_label"),
+        current: () => here() && (postFailed || !this.settingsCardPossible(store, id)),
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin (no General could take it)"); },
+      };
+    }
     // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there. #3008: except
     // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
     // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
     if (gatewayRequestContext(req) && auth.session.remote !== "totp") return null;
-    // …and never a change that turns the named-link option on: that one needs a General's card or the host.
-    if (!store.selfConfirmable(id)) return null;
+    // …and never a change that turns the named-link option on: that one needs a General's card or the host. B2b (the leader's
+    // ruling on #3352 F1; threat model A 64a289a0): the outward Hub changes (hostLocalConfirm) are the one exception — for
+    // the host operator's own local session only (below).
+    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id) && !store.hostSessionConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
@@ -3208,13 +3421,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ask. Asked again at execution: still the host operator now (this computer, not revoked or run out), still web-only.
     const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
       !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
-    if (hostOperator(actor)) {
+    // The host operator's own LOCAL session: its host session (the bootstrap or launch link), over loopback with no
+    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change, or a
+    // link option turned on (hostSessionOnly — the outside sign-in, a gateway, never may).
+    const hostLocal = (): boolean => hostSessionHere(record, req);
+    if (hostOperator(actor) && (store.selfConfirmable(id) || hostLocal())) {
       return {
         label: t("settings_confirm.host_operator_label"),
-        current: () => hostOperator(verified()),
+        current: () => hostOperator(verified()) && (store.selfConfirmable(id) || hostLocal()),
         done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin"); },
       };
     }
+    if (!store.selfConfirmable(id)) return null;
     const chat = this.settingsChatAuthority(store, id);
     if (!chat) return null;
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
@@ -3231,6 +3449,82 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
+  }
+
+  /**
+   * alpha.6 feedback #2c — the user's decision hmsg-468cc290 (option A; decisions 28c2d3a3/0471da59 keep the second factor): on a
+   * web-only fleet, a pending change can be confirmed on THIS computer's own page with the owner's authenticator code, by a
+   * local admin session that is not the host operator (who already has "Apply now"), on this computer or the LAN. Never over
+   * a link (named or quick), never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
+   * the same store as signing in from outside (#3008): each time step once, the fleet-wide wrong-code limit. Asked again at
+   * execution (`current`): the same session, still an admin here (this computer or the LAN), the fleet still web-only, the
+   * same app still set up (not replaced, nor removed and set up again). Audited by the store under its own label; a correct and a refused use are logged.
+   */
+  private settingsTotpSession(req: IncomingMessage): { handle: string; current(): boolean } | null {
+    // Who is offered the code (the leader's ruling, (b) — Fable's view; threat model 64a289a0): on a web-only fleet, an admin
+    // session with no chat account, on this computer (loopback, no forwarding header) or on the LAN — any such session not
+    // otherwise allowed (a local non-host session may be another OS user). NEVER over a link, named or quick: "over a link" is
+    // the gateway's own context, never a peer address (both links are tunnels arriving from 127.0.0.1). Never a guest.
+    // The code is the authority; the session only carries it (#3352 security review, point 4).
+    const allowed = (): { handle: string } | null => {
+      if (!this.isWebOnlyFleet()) return null;
+      const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (auth.kind !== "ok") return null;
+      const s = auth.session, gateway = gatewayRequestContext(req);
+      if (s.tier !== "admin" || s.owner) return null;
+      if (gateway) return null;
+      const peer = webPeerOf(req);
+      return s.surface === "local" && (peer === "loopback" || peer === "lan") ? { handle: s.handle } : null;
+    };
+    const first = allowed();
+    if (!first) return null;
+    return { handle: first.handle, current: () => { const now = allowed(); return !!now && now.handle === first.handle && !!this.webRemoteAccess()?.enrolled; } };
+  }
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_browser" | null {
+    // A link option turned on (hostSessionOnly): never a code. On a web-only fleet (no General to send it to), any session
+    // but the host's own here is told in plain words to do it in the browser on the AgEnD computer.
+    if (store.hostSessionConfirmable(id)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "host_browser" : null;
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id))) return null;
+    // Over a link (web-only fleet): never a code here — the card says to do it in the host computer's own browser, or in General.
+    if (gatewayRequestContext(req)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "on_host" : null;
+    if (!this.settingsTotpSession(req)) return null;
+    if (this.settingsSelfConfirmation(store, req, id)) return null;          // "Apply now" already (the host operator here)
+    return this.webRemoteAccess()?.enrolled ? "ready" : "not_set_up";
+  }
+  settingsTotpConfirm(store: SettingsConfirmationStore, req: IncomingMessage, id: string, code: string, digest: string):
+    { label: string; current(): boolean; audit?: Record<string, unknown>; done?(view: SettingsPendingView): void } | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number } {
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id)) || this.settingsSelfConfirmation(store, req, id)) return { error: "not_here" };
+    const local = this.settingsTotpSession(req), access = this.webRemoteAccess();
+    if (!local || !local.current() || !access?.enrolled) return { error: "not_here" };
+    // #3352 security review, point 2: the code confirms exactly the change the page showed — checked before the code is.
+    if (digest !== store.confirmDigest(id)) return { error: "changed" };
+    const shown = store.inspectHost(id)?.view.summary ?? [];
+    // #3355 review (Prism P2): the code's authority is the app it came from. Bound to that enrollment through execution — an
+    // app replaced, or removed and set up again, while the change waits ends it, for good (a later match never revives it).
+    const enrollment = access.enrollment;
+    const v = access.verify(code);
+    if (v.kind === "ok") {
+      if (!enrollment) return { error: "not_here" };
+      this.logger.info({ id, handle: local.handle }, "Settings change confirmed on this computer with the authenticator code");
+      let lost = false;
+      const current = (): boolean => {
+        if (!lost && !(local.current() && this.webRemoteAccess()?.enrollment === enrollment)) lost = true;
+        return !lost;
+      };
+      return { label: t("settings_confirm.totp_label"), current, audit: { confirmed_with: "authenticator_code", summary: shown },
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed with the authenticator code: done"); } };
+    }
+    if (v.kind === "paused") return { error: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind === "not_enrolled") return { error: "not_here" };
+    if (v.kind === "unavailable") return { error: "unavailable" };
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    this.logger.info({ id, handle: local.handle }, "Settings change: a wrong authenticator code was refused");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Authenticator codes paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { error: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { error: "wrong" };
   }
 
   /**
@@ -3581,13 +3875,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } });
   }
 
-  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
+  /**
+   * D3: whether a General could take this change's confirmation card now — the same authority and routes
+   * promptSettingsChange posts by. False: it would wait for the host's command (confirmation kind host_cli).
+   */
+  private settingsCardPossible(store: SettingsConfirmationStore, id: string): boolean {
+    const authority = this.settingsChatAuthority(store, id);
+    if (!authority) return false;
+    const excluded = new Set(store.affectedConnections(id));
+    return Object.keys(this.fleetConfig?.instances ?? {}).some(name => !!this.settingsGeneralRoute(name, authority.platform, excluded));
+  }
+
+  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void | SettingsNoCardReason> {
     const generation = this.settingsGeneration;
     const authority = this.settingsChatAuthority(store, view.id);
     if (!authority) {
       this.logger.info({ id: view.id }, "Settings authority is unknown or spans platforms; host CLI confirmation required");
-      return;
+      return this.settingsNoCardReason(null, [...store.affectedConnections(view.id), ...(store.authorityOf(view.id)?.connections ?? [])], false);
     }
+    let attempted = false;
     const excluded = new Set(store.affectedConnections(view.id));
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       const route = this.settingsGeneralRoute(name, authority.platform, excluded);
@@ -3598,6 +3904,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && this.settingsGeneration === generation
         && route.current() && authority.current();
       if (!current()) continue;
+      attempted = true;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
           instanceName: name, adapterId, adapter, chatId, threadId: topic,
@@ -3626,6 +3933,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // No platform confirmation was reachable. Host inspection is still required.
     this.logger.info({ id: view.id }, "Settings change requires local `agend settings confirm <id>`");
+    return this.settingsNoCardReason(authority.platform, store.affectedConnections(view.id), attempted);
+  }
+
+  /**
+   * alpha.6 feedback #2c: why no General could take a change's confirm card, so the page says what is missing in plain words
+   * (the user's decision hmsg-77256f66: never "type a host command"). `platform` null: the authority is unknown or spans
+   * platforms. `attempted`: a General route existed and posting to it failed.
+   */
+  private settingsNoCardReason(platform: "telegram" | "discord" | null, affected: readonly string[], attempted: boolean): SettingsNoCardReason | undefined {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    if (!channels.length) return "no_chat";
+    if (attempted) return "post_failed";
+    // No General at all comes first: then there is no authority to resolve either (the primary General's is unknown).
+    if (!Object.values(this.fleetConfig?.instances ?? {}).some(cfg => cfg?.general_topic === true)) return "no_general";
+    // #3352 review N1: "spans platforms" only when it does — the connections the change touches are on more than one platform.
+    // Any other unresolved authority (a duplicated or missing connection id): no specific reason; the page says the general one.
+    if (!platform) {
+      const touched = new Set(affected);
+      const types = new Set(channels.filter(ch => touched.has(ch.id ?? ch.type)).map(ch => ch.type));
+      return types.size > 1 ? "cross_platform" : undefined;
+    }
+    const excluded = new Set(affected);
+    const generals = Object.keys(this.fleetConfig?.instances ?? {}).filter(name => this.fleetConfig?.instances[name]?.general_topic === true)
+      .filter(name => { const id = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name); return !!id && !!adapter && adapter.type === platform && !excluded.has(id); });
+    if (!generals.length) return "no_general";
+    if (!generals.some(name => this.adapterState.get(this.getInstanceAdapterId(name)!)?.status === "connected")) return "chat_disconnected";
+    if (!generals.some(name => !!this.getGroupIdForInstance(name) && String(this.fleetConfig?.instances[name]?.topic_id ?? "") !== "")) return "no_topic";
+    return "post_failed";
   }
 
   private kiroMigrateDeps(): KiroMigrateDeps {
@@ -4942,6 +5277,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private finishStartup(bootUpdateMarker: UpdateMarkerIdentity | null = null): void {
     this.startupComplete = true;
     this.startNeedsYou();
+    this.startSignInKeepAlive();
     // Resolve whatever a previous run — or a setup host that crashed — left
     // behind. A tunnel nobody is tracking is a public entrance nobody is
     // watching, and the fleet starting is the moment there is finally a process
@@ -5002,7 +5338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = updateMarkerIdentity(this.dataDir);
     if (current && !sameUpdateMarker(current, bootUpdateMarker)) return;
     const leftover = readUpdateProgress(this.dataDir)?.progress;
-    if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
+    if (leftover?.cleanup === "pending" && !isWebUpdateTarget(leftover.target) && leftover.stage !== "failed" && leftover.stage !== "complete") return;
     clearUpdateMarker(this.dataDir);
   }
 
@@ -5371,25 +5707,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
-    const { spawn } = await import("./child-process.js");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
+    await this.launchInstalledUpdate(`slash /update by ${adapterId}:${data.userId}`,
+      () => this.fleetAdminGate(data.userId, adapterId) === "ok" && !this.shuttingDown);
+  }
+
+  /**
+   * The update itself, for slash `/update` and the web's Update (M-2738): the installed `agend`, verified, launched
+   * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
+   * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
+   */
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<import("node:child_process").ChildProcess | null> {
+    const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
-      return;
+      return null;
     }
-    const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend);
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
-      return;
+      return null;
     }
-    if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {
+    if (!stillAllowed()) {
       this.failUpdateProgress(t("not_authorized"));
-      return;
+      return null;
     }
     const logPath = updateLogPath(this.dataDir);
     const ts = new Date().toISOString();
@@ -5400,6 +5745,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (logFd) closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
     watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset, installed.agend);
     child.unref();
+    return child;
   }
 
   private async handleProfileSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
@@ -5911,6 +6257,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
   logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
+  private subagentReader = new SubagentService(name => this.lifecycle.daemons.get(name)?.subagentSource() ?? null);
+  subagentRuns(name: string) { return this.subagentReader.read(name); }
+
 
   /**
    * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
@@ -7909,6 +8258,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Stopped/paused ClassicBot entries count too; their workspace is exactly
    * the one startClassicInstance builds, not this FleetManager's dataDir.
    */
+  /** Take the startup snapshot of every active decision (text cut to 200 characters); see activeDecisions. */
+  snapshotActiveDecisions(): void {
+    try {
+      const decisions = this.scheduler?.db.listAllActiveDecisions() ?? [];
+      this.decisionSnapshot = decisions.map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root, ...(d.team ? { team: d.team } : {}) }));
+      if (decisions.length > 0) this.logger.info({ count: decisions.length }, "Active decisions snapshotted for instance instructions");
+    } catch (err) {
+      this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
+    }
+  }
+
+  /** The startup snapshot of active decisions, for a daemon's Active Decisions (it selects and caps its own). */
+  activeDecisions(): readonly ActiveDecisionRow[] {
+    return this.decisionSnapshot;
+  }
+
   kiroPeerWorkingDirectories(name: string): string[] {
     if (!this.fleetConfig || !this.classicChannels) throw new Error("Kiro peer configuration is not loaded");
     const peers: string[] = [];
@@ -9489,37 +9854,73 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(threadId ? { threadId } : {}),
       messageId,
     };
+    return this.launchTrackedFullRestart(target, text => this.reportFullRestartFailure(adapter, chatId, threadId, messageId, text),
+      () => this.startUpdateProgressMonitor(adapter));
+  }
+
+  /**
+   * S-92: the same tracked reload for a web-only fleet's Settings restart — no chat message to carry its progress: the
+   * marker names the web (WEB_RESTART_TARGET), a refusal is a fleet Notice, and the next fleet says it is back as one.
+   */
+  private async requestWebFullRestart(onLateFailure?: (detail: string) => void): Promise<boolean> {
+    const target = { surface: "web" as const, adapterId: WEB_RESTART_TARGET, chatId: WEB_RESTART_TARGET, messageId: `settings-${Date.now()}` };
+    const say = async (text: string): Promise<void> => { this.recordWebNotice("fleet", text); };
+    // No progress monitor reads the marker for the web: a helper that fails after its launch is said here, and settled.
+    return this.launchTrackedFullRestart(target, say, null, (detail) => {
+      void say(t("restart.full_launch_failed"));
+      onLateFailure?.(detail);
+    });
+  }
+
+  /**
+   * S-92: a fleet (with no chat connection) that comes up from a web-only Settings restart says it is back as a fleet
+   * Notice — the restart was announced as one. Anything else (a chat restart, an update, a plain boot): nothing here.
+   */
+  private async announceWebRestartDone(pending: { progress: UpdateProgressState } | null): Promise<boolean> {
+    if (!pending || updateProgressOperation(pending.progress) !== "full-restart" || pending.progress.target.surface !== "web") return false;
+    const { createRequire } = await import("node:module");
+    const version = createRequire(import.meta.url)("../package.json").version ?? "unknown";
+    return this.recordWebNotice("fleet", t("restart.settings_done", version));
+  }
+
+  private async launchTrackedFullRestart(
+    target: UpdateProgressTarget,
+    fail: (text: string) => Promise<void>,
+    startMonitor: (() => void) | null,
+    /** After the launch: the helper failed before the hand-off (with no progress monitor to say so). */
+    lateFailure?: (detail: string) => void,
+  ): Promise<boolean> {
     // This check is synchronous with the marker write below. A second command
     // cannot slip through between them on Node's event loop and replace the
     // first command's delivery target or launch a competing restart helper.
     if (this.shuttingDown || isUpdateInProgress(this.dataDir)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart refused because another planned restart is active");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart refused because another planned restart is active");
+      await fail(t("restart.full_busy"));
       return false;
     }
     if (!persistFullRestartProgress(this.dataDir, target)) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker could not be persisted — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker could not be persisted — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     const ownedMarker = readUpdateProgress(this.dataDir);
     if (!ownedMarker) {
-      this.logger.error({ adapterId: adapter.id }, "Full restart marker disappeared after persistence — reload refused");
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      this.logger.error({ adapterId: target.adapterId }, "Full restart marker disappeared after persistence — reload refused");
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
     this.lastUpdateProgressText = null;
-    this.startUpdateProgressMonitor(adapter);
+    startMonitor?.();
     await this.waitForFullRestartIdleGrace();
 
     // An update can begin while the idle wait yields. Never launch a second
     // process replacement against a marker we no longer own.
     if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) {
-      this.logger.warn({ adapterId: adapter.id }, "Full restart superseded during idle wait — reload refused");
+      this.logger.warn({ adapterId: target.adapterId }, "Full restart superseded during idle wait — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      await fail(t("restart.full_busy"));
       return false;
     }
 
@@ -9529,7 +9930,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Full restart helper failed to spawn — reload refused");
       if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
-      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      await fail(t("restart.full_launch_failed"));
       return false;
     }
 
@@ -9546,6 +9947,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;
       this.logger.error({ result }, "Full restart helper exited before the fleet began shutting down");
       setUpdateProgressStage(this.dataDir, "failed", { error: detail });
+      lateFailure?.(detail);
     });
     return true;
   }
@@ -9645,6 +10047,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     operation: UpdateProgressOperation | null,
   ): { render: { warning: string; cleanupCommand?: string } } | { watch: UpdateReceipt } | null {
     if (!pending || operation !== "update") return null;
+    // M-2738: no chat message to append a retire warning to; the updater's log keeps it.
+    if (isWebUpdateTarget(pending.progress.target)) return null;
     const receipt = updateReceiptOf(pending);
     if (!receipt) return null;
     const current = readUpdateProgress(this.dataDir);
@@ -9886,16 +10290,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
-    const { tmuxSocket, bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
+    // M-2457: AgEnD's own tmux socket (`agend` for the real home).
+    const { tmuxSocket, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
-    // M-2457 §6 rule 2 (bundled tmux only): a server from another pin still on the socket is ended by its own recorded
+    // M-2457 §6 rule 3: 2.3's window ids (untagged window-id files) move into the migration journal before anything —
+    // a stop, a pane check, a restart — can read one as a window on AgEnD's own server.
+    try {
+      const { sweepLegacyWindowIds } = await import("./tmux-legacy.js");
+      const moved = sweepLegacyWindowIds(getAgendHome(), Object.keys(fleet.instances ?? {}).map(name => ({ name, dir: this.getInstanceDir(name) })), tmuxSocket());
+      if (moved.length) this.logger.info({ instances: moved }, "2.3 tmux window ids moved to the migration journal");
+    } catch (err) { this.logger.warn({ err }, "Could not move 2.3 tmux window ids to the migration journal; each instance does it as it starts"); }
+    // M-2457 §6 rule 2: a server from another pin still on the socket is ended by its own recorded
     // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
-    const bundled = bundledTmuxEnabled() ? await (async () => {
+    const bundled = await (async () => {
       const srv = await import("./tmux-server.js");
       const binary = resolveTmux().binary;
-      return { srv, socket: tmuxSocket()!, current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
-    })() : null;
+      return { srv, socket: tmuxSocket(), current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })();
+    // M-2457 §5 (Fable #3312 N3): an upgraded home — agents ran here before (their output or session ids are on disk
+    // from an earlier start) and no AgEnD tmux server was ever recorded — gets the one own-tmux notice. A cleanly stopped
+    // 2.3 fleet leaves no window ids (no migration journal), so this, not the journal, is the evidence. Read before any
+    // agent of this start writes its own.
+    // Persisted before this start records server.json (see ownTmuxStartDecision).
+    this.ownTmuxUpgradedHome = FleetManager.ownTmuxStartDecision(getAgendHome(), bundled.previous, this.logger);
     this.tmuxHold = null;
     TmuxManager.setHold(null);
     if (bundled) {
@@ -9914,6 +10331,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (bundled) {
         await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
           log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // A server AgEnD starts later (the session re-created after the server crashed) is recorded the same way, so
+        // server.json always names the server that runs (leg M: an unrecorded server made `agend rollback` refuse).
+        TmuxManager.onSessionCreated(async () => {
+          const r = await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+            log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+          if (r) this.logger.info({ serverPid: r.serverPid }, "tmux server recorded (session created)");
+        });
         // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
         const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
         if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
@@ -9989,6 +10413,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of this.classicChannels.getAll()) {
       if (ch.adapterId) this.instanceWorldBinding.set(ch.instanceName, ch.adapterId);
     }
+
+    // #3526: catalogs belong to the fleet, including a fleet with no chat adapter.
+    this.probeCliEnvs();
 
     // #1565: the web chat as it was before this process — the configured instances' only (fleet.yaml and ClassicBot
     // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
@@ -10187,19 +10614,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
       this.dailyTipScheduler.start();
 
-      // Inject active decisions as env var for MCP instructions.
-      // Snapshotted at startup — new decisions via post_decision are available
-      // through list_decisions tool but not auto-injected until restart.
-      try {
-        const decisions = this.scheduler.db.listAllActiveDecisions();
-        if (decisions.length > 0) {
-          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root }));
-          process.env.AGEND_DECISIONS = JSON.stringify(capped);
-          this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
-        }
-      } catch (err) {
-        this.logger.debug({ err }, "Decision injection skipped (no decisions db or query failed)");
-      }
+      // Active decisions for each instance's instructions, snapshotted at startup — new decisions via post_decision are
+      // available through list_decisions but not auto-injected until restart. The whole active set is kept here (each
+      // entry's text cut to 200 characters) and handed to each daemon at spawn (activeDecisions): the daemon selects
+      // its own — fleet, its teams, its directory — and only then applies its caps, so other teams' or directories'
+      // rows can never crowd an instance's own out (#3421 review). Nothing unbounded goes into process.env.
+      this.snapshotActiveDecisions();
     }
 
     // Phase 1: Start general instances first and wait for them
@@ -10269,7 +10689,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
-        if (pendingUpdateProgress) {
+        // M-2738: a web-started update's target is a web surface too (src/web-update.ts): no chat message to adopt.
+        if (pendingUpdateProgress && pendingUpdateProgress.progress.target.surface !== "web") {
           const saved = pendingUpdateProgress.progress.target;
           const target: RestartProgressTarget = {
             adapter: this.adapters.get(saved.adapterId),
@@ -10462,6 +10883,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
+    } else {
+      await this.announceWebRestartDone(pendingUpdateProgress);
     }
     // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
     // quick link — Settings shows it on this computer).
@@ -10470,6 +10893,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
+
+    // M-2457 §5: the first start on AgEnD's own tmux says so, once per home: `tmux attach` no longer shows the agents.
+    this.announceOwnTmux();
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -10862,6 +11288,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const MAX_DELAY_MS = 5 * 60_000;
     const state = this.adapterState.get(adapterId);
     if (this.shuttingDown || !state || state.retryTimer || this.adapterRetryInFlight.has(adapterId)) return;
+    if (this.adapterTeardownUnknown.has(adapterId)) return;          // #3365 review P2: held until a restart, never retried
     const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, Math.min(state.retryCount, 6)), MAX_DELAY_MS);
     this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
     const timer = setTimeout(() => {
@@ -11108,6 +11535,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -11174,10 +11602,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // This adapter's own Telegram menus — each Telegram adapter registers its own when it starts (#1191).
     this.registerTelegramCommandsFor(channelConfig);
-
-    // Background-probe each backend's CLI env (version/models) → cli-env cache.
-    // Non-blocking: /model & status views read the cache; never delays startup.
-    this.probeCliEnvs();
 
     adapter.on("started", safeHandler((username: string, userId?: string) => {
       if (!isCurrentAdapter()) return;
@@ -11263,6 +11687,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -13105,6 +13530,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return isWebOnlyFleetConfig(this.fleetConfig);
   }
 
+  /**
+   * S-117 story 1: the sign-in page's "no chat" words (no /web to send) — a web-only fleet, or one whose chat is not
+   * connected yet (a fresh install whose bot is still being set up, or is down): /web cannot answer there.
+   */
+  signinWithoutChat(): boolean {
+    return this.isWebOnlyFleet() || ![...this.adapterState.values()].some(state => state.status === "connected");
+  }
+
   /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
   private webOnlyPromptPlace(): { adapter: ChannelAdapter; adapterId: string; chatId: string } | null {
     return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
@@ -13654,13 +14087,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const scoped = this.decisionScopeFor(instanceName, payload.scope, payload.team);
+          if ("error" in scoped) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: scoped.error }); return; }
           const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
           if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
             project_root: projectRoot,
-            scope: (payload.scope as "project" | "fleet" | undefined),
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title: payload.title as string,
             content: payload.content as string,
             tags: payload.tags as string[] | undefined,
@@ -13676,10 +14113,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result = decisionListAnswer(db.listDecisions(projectRoot, {
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
+            teams: instanceTeams(this.fleetConfig?.teams, instanceName),
           }), { id: payload.id, full: payload.full });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
+          const hidden = this.decisionHiddenFrom(instanceName, id);
+          if (hidden) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: hidden }); return; }
           if (payload.archive) {
             db.archiveDecision(id);
             result = { archived: true, id };
@@ -13872,26 +14312,88 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { id: value };
   }
 
+  /**
+   * The scope (and team) a new decision gets. Team membership is read from fleet.yaml now. Omitted scope: the poster's
+   * team when they are in exactly one, project (this exact directory) when they are in none; in several, they choose.
+   * A team decision goes only to a team the poster is in.
+   */
+  decisionScopeFor(instance: string, scope: unknown, team: unknown): { scope: "project" | "team" | "fleet"; team?: string; teams: string[] } | { error: string } {
+    const teams = instanceTeams(this.fleetConfig?.teams, instance);
+    const named = typeof team === "string" && team.trim() ? team.trim() : undefined;
+    if (scope !== undefined && scope !== null && scope !== "project" && scope !== "team" && scope !== "fleet") {
+      return { error: `scope must be "project", "team" or "fleet"` };
+    }
+    if (scope === "project" || scope === "fleet") {
+      return named ? { error: `team goes with scope "team", not "${scope}"` } : { scope, teams };
+    }
+    if (named) {
+      if (!teams.includes(named)) {
+        return { error: teams.length ? `You are not in team "${named}". Your teams: ${teams.join(", ")}` : `You are not in team "${named}" (you are in no team)` };
+      }
+      return { scope: "team", team: named, teams };
+    }
+    if (teams.length === 1) return { scope: "team", team: teams[0], teams };
+    if (teams.length > 1) return { error: `You are in several teams (${teams.join(", ")}): name one with team, or use scope "project" or "fleet"` };
+    if (scope === "team") return { error: `You are in no team: use scope "project" (this directory) or "fleet"` };
+    return { scope: "project", teams };
+  }
+
+  /**
+   * #3421 review: a team decision is only for its team's current members — reading it back through an update (even an
+   * empty one) or archiving it is refused to anyone else, exactly as list/get and supersede are. The refusal names it
+   * "not found", as for an id that does not exist, and changes nothing. Project and fleet decisions: as before.
+   */
+  decisionHiddenFrom(instance: string, id: unknown): string | null {
+    if (typeof id !== "string" || !this.scheduler) return null;
+    const d = this.scheduler.db.getDecision(id);
+    if (!d || d.scope !== "team") return null;
+    return d.team && instanceTeams(this.fleetConfig?.teams, instance).includes(d.team) ? null : `Decision "${id}" not found`;
+  }
+
+  /** A ClassicBot agent's own folder — where startClassicInstance launches it, and its project for decisions (#3454). */
+  classicWorkspaceDir(instanceName: string): string {
+    return join(getAgendHome(), "workspaces", instanceName);
+  }
+
+  /**
+   * #3454: the project root of an agent calling the agent endpoint (CLI mode), as the MCP path has it from the daemon's
+   * own working directory. A fleet instance: its fleet.yaml working_directory, as before. A ClassicBot agent (not in
+   * fleet.yaml): its own workspace — it used to fall back to "", one project shared by every CLI-mode ClassicBot room.
+   * Anything else: null, and the caller refuses rather than guess.
+   */
+  decisionProjectRootFor(instance: string): string | null {
+    const fleet = this.fleetConfig?.instances;
+    if (fleet && Object.hasOwn(fleet, instance)) return fleet[instance]?.working_directory ?? "";
+    if (this.classicChannels?.getAll().some(ch => ch.instanceName === instance)) return this.classicWorkspaceDir(instance);
+    return null;
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
-    const projectRoot = this.fleetConfig?.instances[instance]?.working_directory ?? "";
+    const root = this.decisionProjectRootFor(instance);
+    const unknownRoot = { error: `Decisions are unavailable for "${instance}": it is neither a fleet instance nor a ClassicBot agent, so its working directory is unknown` };
+    const projectRoot = root ?? "";
     const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
     const asNum = (v: unknown): number | undefined => typeof v === "number" ? v : undefined;
     const asStrArr = (v: unknown): string[] | undefined =>
       Array.isArray(v) && v.every(x => typeof x === "string") ? v as string[] : undefined;
     switch (op) {
       case "post": {
+        if (root === null) return unknownRoot;
         const title = asStr(args.title);
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
-        const scope = args.scope === "fleet" ? "fleet" : "project";
+        const scoped = this.decisionScopeFor(instance, args.scope, args.team);
+        if ("error" in scoped) return { error: scoped.error };
         const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
         if ("error" in supersedes) return { error: supersedes.error };
         try {
           return db.createDecision({
             project_root: projectRoot,
-            scope,
+            scope: scoped.scope,
+            team: scoped.team,
+            poster_teams: scoped.teams,
             title,
             content,
             tags: asStrArr(args.tags),
@@ -13906,13 +14408,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
       case "list": case "get": if (op === "get" && !asStr(args.id)?.trim()) return { error: "id is required" };
+        if (root === null) return unknownRoot;
         return decisionListAnswer(db.listDecisions(projectRoot, {
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
+        teams: instanceTeams(this.fleetConfig?.teams, instance),
       }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
+        const hidden = this.decisionHiddenFrom(instance, id);
+        if (hidden) return { error: hidden };
         return db.updateDecision(id, {
           content: asStr(args.content),
           tags: asStrArr(args.tags),
@@ -14589,6 +15095,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
+    if (!this.companyMembershipWrite && explicitPatches.some(p => p.path[0] === "hub_member"
+      && (p.path[1] === "enabled" ? p.value !== true || p.remove : p.path.length === 1))) this.invalidateHubCompanyJoin();
     this.publicWebLink?.refresh();
     this.enforceGuestSwitch();                       // #1920: a Settings save turning guests off ends their sessions
     this.observeWebAuthority();                      // #2453 review: so is a web-authority switch (off is always seen)
@@ -14709,8 +15217,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const key of Object.keys(current)) if (!Object.hasOwn(resolved, key)) delete (current as unknown as Record<string, unknown>)[key];
       Object.assign(current, resolved);
     }
+    const previousCatalogConfig = this.savedFleetConfigSnapshot;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.nativeMcpStore?.observePolicies();
+    this.probeChangedCliEnvs(previousCatalogConfig);
     this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
@@ -16322,6 +16832,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
 
   /**
+   * M-2457 §5: one fleet notice, the first time an upgraded home's fleet runs on AgEnD's own tmux. Marked done only once it
+   * was dispatched (General, the channel's notice target, or a web-only fleet's Notices), so a start with nowhere to
+   * post it tries again next start.
+   */
+  /** Set at fleet start (before any agent starts): this home ran agents on an earlier AgEnD's system tmux. */
+  ownTmuxUpgradedHome = false;
+
+  /** An upgraded home: agent state from an earlier start, and no AgEnD tmux server ever recorded (`previous`). */
+  static ownTmuxUpgraded(agendHome: string, previous: unknown): boolean {
+    return previous === null && FleetManager.priorAgentState(join(agendHome, "instances"));
+  }
+
+  /** Whether any instance directory holds state from an earlier start (its output log or a session id). */
+  static priorAgentState(instancesDir: string): boolean {
+    let names: string[] = [];
+    try { names = readdirSync(instancesDir); } catch { return false; }
+    return names.some(n => ["output.log", "session-id"].some(f => existsSync(join(instancesDir, n, f))));
+  }
+
+  /** Where an upgraded home's not-yet-dispatched own-tmux notice is kept across restarts; only a dispatch clears it. */
+  static ownTmuxPendingPath(agendHome: string): string { return join(agendHome, "tmux", "own-server-notice-pending"); }
+
+  /**
+   * Fleet start's decision, made before this start records server.json: an upgraded home is persisted as owing the
+   * notice. A restart before the notice is dispatched (a slow first start; alpha.6 leg M on the real Mac) would otherwise
+   * read the just-recorded server as "not an upgrade" and drop it.
+   */
+  static ownTmuxStartDecision(agendHome: string, previous: unknown, logger?: { warn: (o: object, m: string) => void }): boolean {
+    const upgraded = FleetManager.ownTmuxUpgraded(agendHome, previous);
+    if (upgraded) FleetManager.persistOwnTmuxPending(agendHome, logger);
+    return upgraded;
+  }
+
+  /** Record that this home owes the own-tmux notice (unless it was already posted). */
+  static persistOwnTmuxPending(agendHome: string, logger?: { warn: (o: object, m: string) => void }): void {
+    if (existsSync(join(agendHome, "tmux", "own-server-announced"))) return;
+    try {
+      mkdirSync(join(agendHome, "tmux"), { recursive: true });
+      writeFileSync(FleetManager.ownTmuxPendingPath(agendHome), `${new Date().toISOString()}\n`);
+    } catch (err) { logger?.warn({ err }, "Could not record the pending own-tmux notice"); }
+  }
+
+  announceOwnTmux(): void {
+    const marker = join(getAgendHome(), "tmux", "own-server-announced");
+    const pending = FleetManager.ownTmuxPendingPath(getAgendHome());
+    if (existsSync(marker)) return;
+    // Only a home an earlier AgEnD ran its agents in (on the system tmux) has something to be told (Fable #3312 N3):
+    // agent state from before this start and no recorded AgEnD tmux server (set at fleet start), or a migration journal
+    // (2.3 window ids found). A fresh home is marked without a notice.
+    // A pending notice persisted by an earlier start counts too: that start's server record must not hide the upgrade.
+    const upgraded = this.ownTmuxUpgradedHome || existsSync(pending) || existsSync(join(getAgendHome(), "tmux-migration.json"));
+    if (upgraded && !this.notifyFleetError(t("tmux.own_server_notice"), { throttle: false })) return;
+    try {
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, `${new Date().toISOString()}\n`);
+      rmSync(pending, { force: true });
+    } catch (err) { this.logger.warn({ err }, "Could not record that the own-tmux notice was posted"); }
+  }
+
+  /**
    * Post the daily summary where fleet-wide notices go.
    *
    * A named method rather than an inline closure so a test can drive the real
@@ -16433,6 +17003,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const known = instance !== undefined && Object.hasOwn(this.fleetConfig?.instances ?? {}, instance) ? instance : undefined;
     const notice = store.add({ kind, text: stripPlaceRefs(text), ...(known ? { instance: known } : {}) });
     this.emitSseEvent("notice", { notice, unread: store.unread() });
+    return true;
+  }
+
+  /** #3373 review P2: recordWebNotice for a notice that must be on disk first — true only once it was written. */
+  private recordWebNoticeDurable(kind: NoticeKind, text: string): boolean {
+    if (!this.webOnlyPromptPlace()) return false;
+    const store = this.webNoticeStore();
+    const notice = store?.addDurable({ kind, text: stripPlaceRefs(text) }) ?? null;
+    if (!notice) return false;
+    this.emitSseEvent("notice", { notice, unread: store!.unread() });
     return true;
   }
 
@@ -17231,6 +17811,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      signInKeepAlive: () => this.keepAliveAttention(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
       runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
       hubHolds: () => this.hubHolds.map(h => {
@@ -17978,7 +18559,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const r = store.confirmEnrollment(owner.handle, code);
     if (r === "ok") {
       this.logger.info({ again: had }, "Authenticator app set up for connections from outside");
-      if (had) this.endOutsideSessions();
+      if (had) {
+        this.endOutsideSessions();
+        // #3327: an authenticator set up again is announced where the owner looks (web Notices on a web-only fleet), so a
+        // set-up they did not make is noticed.
+        this.notifyFleetError(t("outside.reenrolled_notice"));
+      }
     }
     return r;
   }
@@ -17988,8 +18574,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
     // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
+    const had = store.enrolled;
     const saved = store.remove();
     this.closeOutsideLink("outside removed");
+    if (had) this.notifyFleetError(t("outside.removed_notice"));                 // #3327: as above
     this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
     return saved ? "ok" : "unsaved";
   }
@@ -18314,7 +18902,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
   private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
 
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string; action?: import("./web-commands.js").WebModelAction }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
@@ -18325,12 +18913,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
-    const choicesFromCache = (instance: string): WebChoices | null => {
+    const choicesFromCache = async (instance: string, more = false): Promise<WebChoices> => {
+      if(isWindowsInstance(this.fleetConfig?.instances[instance])){
+        const catalog=await this.listModelCatalog({instanceName:instance});
+        return {current:catalog.current_model,options:catalog.models.map(m=>({id:m.id,label:m.label})),actions:["refresh"]};
+      }
       const backend = this.backendNameForInstance(instance);
-      const cached = this.readCliEnv(backend, this.catalogProfile(backend, instance));     // the cached catalog only: never a probe here
-      if (!cached?.models.length) return null;
+      const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
-      return { current, options: this.withCurrentModel(cached.models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
+      const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
+      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+        actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
       scope: (instance) => this.webCommandScope(instance),
@@ -18351,6 +18944,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       applyModel: (instance, name) => this.applyModel(instance, name),
       modelChoices: choicesFromCache,
+      modelAction: async (instance, command, args, action, actionOpts) => {
+        const tokens = backendArgs(args);
+        if ((command === "model" && args) || (command === "backend" && (tokens.length !== 1 || action !== "refresh"))) return { error: t("menu.click_stale") };
+        const backend = command === "model" ? this.backendNameForInstance(instance) : tokens[0]!;
+        if (command === "backend") {
+          const refusal = this.backendCommandRefusal(instance);
+          if (refusal) return { error: refusal };
+          const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, tokens);
+          if (step.kind !== "choose" || step.step !== "model") return { error: step.kind === "refuse" ? step.text : t("menu.click_stale") };
+        }
+        if (action === "more" && backend !== "claude-code") return { error: t("menu.click_stale") };
+        if (action !== "more" || !this.webModelEnv(backend, instance)?.apiModels?.length) {
+          const result = await this.refreshModelCatalogFor(backend, instance);
+          if (!result.refreshed) return { error: t("model.refresh_failed") };
+        }
+        if (command === "model") return { choices: await choicesFromCache(instance, action !== "refresh") };
+        // Re-enter the shared backend→model→effort→confirm flow; no configuration write during refresh.
+        return this.webCommand({ instance, command: "backend", args }, { ...opts, publicLink: actionOpts.publicLink }).then(r => r.body as import("./web-commands.js").WebBackendAnswer);
+      },
       applyEffort: (instance, level) => this.applyEffort(instance, level),
       effortChoices: (instance) => {
         const levels = this.effortLevelsFor(instance);
@@ -18362,11 +18974,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const refusal = this.backendCommandRefusal(instance);
         if (refusal) return { error: refusal };
         // The cached model lists only, as the web's /model: never a live probe on this path.
-        const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, backendArgs(args));
+        const step = await backendStep({ ...this.backendCommandDeps(instance, { live: false }), models: async backend => this.modelCatalogFor(backend, instance) }, instance, backendArgs(args));
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
-          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
+          return { choices: { step: step.step, args: joinBackendArgs(step.args), ...(step.step === "model" ? { actions: ["refresh" as const] } : {}), prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
             // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
             const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
@@ -19883,6 +20495,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.loginController;
   }
 
+  /**
+   * #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts): #3212's StructuredSignIn over a RuntimeSignInTransport, one computer and one
+   * credential profile at a time. Its own coordinator, not the host's: it never touches the host's sign-in checklist or login window.
+   */
+  private machineSignInsInstance: MachineSignIns | null = null;
+  get machineSignIns(): MachineSignIns {
+    return this.machineSignInsInstance ??= new MachineSignIns({
+      call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
+      current: owner => this.browserSignInOwnerCurrent(owner),
+      reported: (id, profile) => this.machineAccounts.profileState(id, profile),
+      readiness: id => this.machineAccounts.readiness(id),
+      actor: owner => { const handle = (owner as SessionRecord).handle; return typeof handle === "string" && /^[a-f0-9]{16}$/.test(handle) ? `admin:${handle}` : null; },
+      changed: (event, owner) => {
+        // Safe fields only: the computer, the profile name, a phase and a fixed reason. Never a URL, a code, output or an e-mail address.
+        this.logger.info({ machine: event.machine, profile: event.profile, phase: event.phase, ...(event.reason ? { reason: event.reason } : {}), by: (owner as SessionRecord).label },
+          "Computer account sign-in from Settings → Accounts");
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        this.needsYou?.poke();
+      },
+    });
+  }
+  private machineAccountsInstance: MachineAccounts | null = null;
+  /** #3190 Part 3c: a paired computer's accounts in Settings → Accounts (machine-accounts.ts). */
+  get machineAccounts(): MachineAccounts {
+    return this.machineAccountsInstance ??= new MachineAccounts({
+      call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
+      machine: id => remoteRuntimeEnabled() ? this.runtimeCoordinator().machine(id) ?? undefined : undefined,
+      machines: () => remoteRuntimeEnabled() ? this.runtimeCoordinator().listMachines() : [],
+      agents: id => machineAgents(this.fleetConfig?.instances, id, name => { try { return nativeCredentialProfile(this.fleetConfig?.instances[name]) ?? null; } catch { return null; } }, this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      signingIn: (id, profile) => this.machineSignInsInstance?.signingIn(id, profile) ?? false,
+      log: entry => this.logger.info(entry, entry.outcome === "ok" ? "Computer account changed from Settings → Accounts" : "Computer account change refused"),
+    });
+  }
+
   private browserBackendSignInsInstance: BrowserBackendSignIns | null = null;
   private structuredLoginCleanupFailed = false;
   private readonly pendingBackendSince = new Map<string, number>();
@@ -19903,12 +20549,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
       },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
-      checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
+      checkConsoleAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       transport: () => createStructuredSignInTransport(),
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
-        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, null);   // its file changed, whoever is watching: a "needs sign-in" left from before is no longer the answer
+        }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -19919,6 +20568,46 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           void this.backendAvailability.refresh([event.backend], { force: true }).catch(() => {});
           if (launched) void this.recoverBackendInstances(event.backend, undefined, null).catch(() => this.logger.warn({ backend: event.backend }, "Post sign-in recovery failed"));
         }
+      },
+    });
+  }
+
+  private profileSignInsInstance: ProfileSignIns | null = null;
+  /**
+   * #3212: a NAMED account's sign-in on this host from Settings → Accounts — #2599's StructuredSignIn (press Sign in, open the page, paste the code), pointed at
+   * that profile's own folder (`CLAUDE_CONFIG_DIR`), under the host's login window like every other credential writer. Not the default account's checklist.
+   */
+  get profileSignIns(): ProfileSignIns {
+    return this.profileSignInsInstance ??= new ProfileSignIns({
+      lock: this.loginWindow,
+      current: owner => this.browserSignInOwnerCurrent(owner),
+      installed: backend => this.isCliInstalledOffLoop(backend),
+      known: (backend, profile) => accountFolderExists(this.dataDir, backend, profile) ? "exists" : this.configuredProfileNames(backend).has(profile) ? "configured" : "unknown",
+      add: (backend, profile) => {
+        const result = addAccountProfile(this.dataDir, backend, profile, this.configuredProfileNames(backend));
+        if (result.ok) this.logger.info({ backend, profile }, "Credential profile added by the first sign-in of an account the configuration names");
+        return result.ok;
+      },
+      checkAuth: (backend, profile) => {
+        const env = credentialProfileEnv(this.dataDir, backend, profile);
+        return env ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, env) : Promise.resolve("unknown" as const);
+      },
+      transport: target => createStructuredSignInTransport({ backend: target.backend, dataDir: this.dataDir }),
+      changed: (event, owner, launched) => {
+        try { this.eventLog?.insert("login", "browser_profile_signin", event); } catch { /* safe metadata only */ }
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        if (event.phase === "done") {
+          this.forgetSignInIdentities();   // a sign-in may be a different account now
+          this.keepAliveAfterSignIn(event.backend, event.profile);
+        }
+        this.needsYou?.poke();
+        if (!this.browserSignInOwnerCurrent(owner)) return;
+        if (event.phase === "starting") {
+          const record = owner as SessionRecord;
+          this.notifyFleetError(t("login.web_dashboard_notice", t("login.profile_label", event.backend, event.profile), record.label, record.handle.slice(0, 8)));
+        }
+        // A live CLI holds the old token in memory: the agents on THIS account (and no other) wake or restart, as after the other sign-in flows.
+        if (event.phase === "done" && launched) void this.recoverBackendInstances(event.backend, undefined, event.profile).catch(() => this.logger.warn({ backend: event.backend, profile: event.profile }, "Post sign-in recovery failed"));
       },
     });
   }
@@ -19940,7 +20629,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
-      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
+      cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
@@ -20036,8 +20725,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       diskProfiles.set(backend, rows);
     }
     const { agents, classic, fleetDefaults } = this.accountUses();
-    // Weekly usage, from the usage panel's own (cached, never forced) read.
+    // Weekly and short-window (5h) usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
+    const shortWindow = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
     for (const backend of ACCOUNT_CLIS) {
       const pid = usageProviderIdForBackend(backend); if (!pid) continue;
@@ -20047,11 +20737,196 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
       for (const provider of payload?.providers ?? []) {
-        const at = ids.get(provider.id); const w = at ? weeklyUsage(provider as never) : undefined;
-        if (at && w) usage.set(at, w);
+        const at = ids.get(provider.id); if (!at) continue;
+        const w = weeklyUsage(provider as never); if (w) usage.set(at, w);
+        const sh = shortUsage(provider as never); if (sh) shortWindow.set(at, sh);
       }
     } catch { /* the view without usage */ }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+    // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
+    const keepAlive = new Map<string, KeepAliveView>();
+    const ka = this.keepAliveService();
+    for (const backend of ACCOUNT_CLIS) {
+      if (!isKeepAliveBackend(backend)) continue;
+      for (const profile of [null, ...new Set([...(diskProfiles.get(backend) ?? []).map(d => d.profile), ...targets.filter(t => t.backend === backend && t.profile).map(t => t.profile!)])]) {
+        const v = ka.view(backend, profile); if (v) keepAlive.set(`${backend}\0${profile ?? ""}`, v);
+      }
+    }
+    // #3190 Part 3c: each paired computer's accounts, as rows under the `machine` scope. Read from what the computers reported; the view never waits long for one.
+    // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
+    let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
+    if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+  }
+
+  /**
+   * A sign-in just finished for this account: look at its Keep sign-in alive setting once now (when it is on), so what the Accounts row says about
+   * "the last check" is not the one from before the sign-in. Never awaited, and never allowed to fail the sign-in's own follow-up.
+   */
+  private keepAliveAfterSignIn(backend: string, profile: string | null): void {
+    if (!isKeepAliveBackend(backend)) return;
+    // Building the service can throw as well as the check, and the follow-up of a sign-in (waking its agents) must not depend on either.
+    const failed = (err: unknown) => { try { this.logger.debug({ err: String((err as Error)?.message ?? err), backend }, "Keep-alive check after a sign-in failed"); } catch { /* nothing to say it to */ } };
+    try { this.keepAliveService().tick({ only: { backend, profile } }).catch(failed); } catch (err) { failed(err); }
+  }
+
+  /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
+  private keepAliveService(): SignInKeepAlive {
+    return this.signInKeepAlive ??= new SignInKeepAlive({
+      dataDir: this.dataDir,
+      log: (level, msg, fields) => this.logger[level](fields, msg),
+      homeOf: (backend, profile) => profile ? credentialProfileHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot() ?? null,
+      acquire: (backend, profile) => this.acquireKeepAliveRun(backend, profile),
+      changed: () => {
+        this.needsYou?.poke();
+        // #3313 review P2-7: the Accounts view reads itself again on `backend_login` (no details: each page reads its own
+        // view). That event, not a new one: a tab whose cached shell predates this still passes it on.
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+      },
+      claudeKeychain: process.platform === "darwin",
+    });
+  }
+  private startSignInKeepAlive(): void { this.keepAliveService().start(); }
+
+  /**
+   * #3292 review: which sign-in each host agent is starting or running on, recorded at its start (InstanceLifecycle
+   * admitCredentialUse) from the configuration it launched with — never re-resolved against today's defaults. An entry
+   * whose start ended without a daemon, or whose daemon is gone, is dropped when next read.
+   */
+  private readonly credentialLeases = new Map<string, { key: string; starting: boolean }>();
+  /** #3292 review: Keep sign-in alive runs in flight, by sign-in: a start on that sign-in waits for its end. */
+  private readonly keepAliveRenewing = new Map<string, Promise<void>>();
+  private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
+
+  /**
+   * The sign-in a start launches on, from the instance's own (defaults-expanded at load) options — exactly what the
+   * Daemon's clone of that config hands its CLI. Never today's defaults: an older config object keeps its own.
+   */
+  private launchCredentialKey(config: InstanceConfig, backend: string): string {
+    let profile: string | null = null;
+    try { profile = resolveCredentialProfile(config.backend_options?.[backend]); } catch { profile = null; }
+    return this.credentialKey(backend, profile);
+  }
+
+  /**
+   * #3313 review r2: failed starts whose CLI was not proven gone keep holding their sign-in (across a retry of the same
+   * agent too) until a check finds it ended.
+   */
+  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean> }>();
+  private orphanCheck: Promise<void> | null = null;
+  private recheckCredentialOrphans(): void {
+    if (this.orphanCheck || !this.credentialOrphans.size) return;
+    this.orphanCheck = (async () => {
+      for (const [id, o] of [...this.credentialOrphans]) {
+        let gone = false;
+        try { gone = await o.ended(); } catch { gone = false; }
+        if (gone) this.credentialOrphans.delete(id);
+      }
+    })().finally(() => { this.orphanCheck = null; });
+  }
+
+  /**
+   * LifecycleContext: hold the sign-in a start will launch on (waits while Keep sign-in alive renews it). The key is
+   * read again after every wait; `current(config)` lets the start check, with no await before it builds its Daemon,
+   * that the config still names that sign-in (a save may have changed it meanwhile: then it asks again).
+   */
+  async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void } | null> {
+    if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
+    let key = this.launchCredentialKey(config, backend);
+    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) {
+      await renewing; assertCurrent();
+      key = this.launchCredentialKey(config, backend);
+    }
+    const lease = { key, starting: true };
+    this.credentialLeases.set(name, lease);
+    const drop = () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); };
+    return {
+      published: () => { lease.starting = false; },
+      release: drop,
+      current: c => this.launchCredentialKey(c, backend) === key,
+      // A failed start whose CLI may still run: the sign-in stays held (by itself, not by the agent's name) until it is seen gone.
+      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended }); this.recheckCredentialOrphans(); },
+    };
+  }
+
+  /**
+   * #3292: a sign-in is in use when a host agent is starting or running on it (as launched), a ClassicBot room is bound
+   * to it (or the rooms cannot be read — none when there is no classicBot.yaml), or a sign-in for it is running. Codex
+   * refresh tokens are single-use: a refresh beside a live user could spend the one it holds; and use keeps it alive.
+   */
+  private keepAliveInUse(backend: string, profile: string | null): boolean {
+    const key = this.credentialKey(backend, profile);
+    for (const o of this.credentialOrphans.values()) if (o.key === key) { this.recheckCredentialOrphans(); return true; }
+    for (const [name, lease] of [...this.credentialLeases]) {
+      if (!lease.starting && !this.daemons?.has(name)) { this.credentialLeases.delete(name); continue; }
+      if (lease.key === key) return true;
+    }
+    const same = (p: string | null | undefined) => profile === null ? !p : !!p && p.toLowerCase() === profile.toLowerCase();
+    const defaults = this.fleetConfig?.defaults, defaultBackend = defaults?.backend ?? "claude-code";
+    // A running agent with no record (started some other way): only its own setting is trusted; none names an account, so it may be on any.
+    for (const [name, daemon] of this.daemons ?? []) {
+      if (this.credentialLeases.has(name)) continue;
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (snap && isWindowsInstance(snap)) continue;
+      if (!snap) return true;
+      if ((snap.backend ?? defaultBackend) !== backend) continue;
+      let own: string | null = null;
+      try { own = resolveCredentialProfile(snap.backend_options?.[backend]); } catch { return true; }
+      if (!own || same(own)) return true;
+    }
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    if (rooms.kind === "unknown") return true;
+    for (const b of rooms.kind === "ok" ? rooms.bindings : []) {
+      const cli = b.backend ?? defaultBackend;
+      if (cli === backend && same(profileName(classicProfile(b.backend_options, defaults?.backend_options, cli)))) return true;
+    }
+    return (this.loginController?.signingIn(backend, profile) ?? false) || (profile !== null && (this.profileSignInsInstance?.signingIn(backend, profile) ?? false));   // #3212: the dashboard's structured sign-in of a named account counts too
+  }
+
+  /**
+   * #3292 review: one keep-alive run's admission, decided synchronously: not in use, the shared login window taken, and the
+   * sign-in marked as renewing (a start on it waits). The run's life is an account writer: a stop waits for it, and
+   * sign-in admission reopens after a restart only once it has ended. `release()` only after its CLI has exited.
+   */
+  private acquireKeepAliveRun(backend: string, profile: string | null): { release(): void } | "in_use" | "busy" {
+    if (this.keepAliveInUse(backend, profile)) return "in_use";
+    const claim = this.loginWindow.tryClaim("keepalive", backend);
+    if (!claim) return "busy";
+    const key = this.credentialKey(backend, profile);
+    let finished!: () => void;
+    const life = new Promise<void>(r => { finished = r; });
+    this.keepAliveRenewing.set(key, life);
+    this.accountWriters.add(life);
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.loginWindow.release(claim);
+        if (this.keepAliveRenewing.get(key) === life) this.keepAliveRenewing.delete(key);
+        this.accountWriters.delete(life);
+        finished();
+      },
+    };
+  }
+
+  /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
+  private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
+    const ka = this.signInKeepAlive; if (!ka) return [];
+    const day = (ms: number | undefined) => ms === undefined ? "?" : new Date(ms).toISOString().slice(0, 10);
+    const owner = this.worlds.keys().next().value;
+    return ka.attention().map(a => ({
+      backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
+      ...(owner ? { owner } : {}),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.endsAt)),
+    }));
+  }
+
+  /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
+  setAccountKeepAlive(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): KeepAliveSetResult {
+    const r = this.keepAliveService().set(backend, profile, enabled, fallback);
+    if (r.ok) this.logger.info({ backend, profile: profile ?? "(default)", enabled, by }, "Keep sign-in alive changed from Settings → Accounts");
+    return r;
   }
 
   /**
@@ -20073,14 +20948,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
-  addAccountProfile(backend: string, name: unknown, by: string): AddResult {
+  addAccountProfile(backend: string, name: unknown, by: string, machine?: MachineActor): AddResult | Promise<MachineAccountResult> {
+    // #3190 Part 3c: on a paired computer the profile's folder is made by its Runtime when the first sign-in starts; this only checks what can be checked first.
+    if (machine) return this.machineAccounts.add(backend, name, machine.id, by);
+    const result = addAccountProfile(this.dataDir, backend, name, this.configuredProfileNames(backend));
+    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
+    return result;
+  }
+
+  /** The profile names the configuration refers to for this backend — an agent, a ClassicBot room, the fleet default — whether or not their folders exist yet. */
+  private configuredProfileNames(backend: string): Set<string> {
     const { agents, classic, fleetDefaults } = this.accountUses();
     const configured = new Set<string>();
     for (const x of [...agents, ...classic]) if (x.backend === backend && x.profile) configured.add(x.profile);
     const fd = fleetDefaults.get(backend); if (fd) configured.add(fd);
-    const result = addAccountProfile(this.dataDir, backend, name, configured);
-    if (result.ok) this.logger.info({ backend, profile: name, by }, "Credential profile added from Settings → Accounts");
-    return result;
+    return configured;
   }
 
   /**
@@ -20088,9 +20970,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): Promise<RemoveResult> {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string, machine?: MachineActor, opts?: { cancelSignIn?: true }): Promise<RemoveResult | MachineAccountResult> {
+    if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
+    // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
+    if (opts?.cancelSignIn && validCredentialProfileName(name)) {
+      // The account's sign-in is either the dashboard's structured one (ProfileSignIns) or the chat/terminal one (the login controller); at most one runs on the host.
+      const ended = (await this.profileSignInsInstance?.cancelAccount(backend, name).catch(() => false))
+        || (await this.loginController?.cancelAccount(backend, name).catch(() => false));
+      if (ended) this.logger.info({ backend, profile: shown, by }, "Sign-in cancelled for Remove");
+    }
     const refused = (r: RemoveResult) => { if (!r.ok) this.logger.info({ backend, profile: shown, by, refused: r.error }, "Credential profile removal refused"); return r; };
     // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
     // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
@@ -20156,8 +21047,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       fleetDefault: same(fleetDefaults.get(backend)),
     };
     const held = this.loginWindow.current;
-    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
-      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend);
+    const signingIn = (this.loginController?.signingIn(backend, profile) ?? false) || (this.profileSignInsInstance?.signingIn(backend, profile) ?? false)
+      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
     return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
   }
 
@@ -20203,12 +21094,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
   }
-  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
+  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<SignOutResult | MachineAccountResult> {
+    if (machine) return this.machineAccounts.signOut(backend, profile, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime runs the CLI's own logout
     const named = typeof profile === "string" ? profile : null;
     const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
     // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
-    const signingIn = this.loginController?.signingIn(backend, named) ?? false;
+    const signingIn = (this.loginController?.signingIn(backend, named) ?? false) || (named !== null && (this.profileSignInsInstance?.signingIn(backend, named) ?? false));
     const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
@@ -20576,6 +21468,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
+    // #3292 review: Keep sign-in alive stops asking for runs and stops its CLI; its run's life is an account writer,
+    // waited for below like an account logout.
+    void this.signInKeepAlive?.stop();
     // Completion semantics live INSIDE the sessions: each awaits its own
     // confirmed cleanup, every tmux op on that path has a hard per-op bound
     // (web: abort ≤10 s + kill ≤31 s; legacy: create/list/kill ≤10 s each,
@@ -20606,6 +21501,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (confirmed) this.browserBackendSignInsInstance = null;
         else { this.structuredLoginCleanupFailed = true; this.logger.error("Structured login cleanup failed; sign-in admission remains closed until the host is restarted."); }
       }), "browser-controls"),
+      // #3190 Part 3c: a sign-in running on a paired computer is ended (its Runtime also ends it when the connection goes). One that could not be shown gone is logged.
+      bounded(this.machineSignInsInstance?.close().then(confirmed => {
+        if (confirmed) this.machineSignInsInstance = null;
+        else this.logger.error("A computer's account sign-in could not be confirmed ended; check that computer's Runtime window.");
+      }), "machine-signins"),
+      // #3212: a named account's sign-in on this host is ended too; one that could not be shown gone keeps sign-in admission closed, as the default account's.
+      bounded(this.profileSignInsInstance?.close().then(confirmed => {
+        if (confirmed) this.profileSignInsInstance = null;
+        else { this.structuredLoginCleanupFailed = true; this.logger.error("A named account's structured login cleanup failed; sign-in admission remains closed until the host is restarted."); }
+      }), "profile-signins"),
       bounded(this.loginController?.shutdown(), "web-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
       // #3305 review P2-3: an account logout in flight (its CLI) — the closed window fences its cleanup; this waits for it.
@@ -20630,6 +21535,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (confirmed) this.browserBackendSignInsInstance = null;
       return confirmed ? t("login.cancelled", browserBackend) : t("login.browser_cleanup_failed");
     }
+    // #3212: a named account's sign-in on this host ("Cancel sign-in and remove" and `/login cancel` end it as they end the others).
+    const ended = await this.profileSignInsInstance?.cancelActive();
+    if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
     if (this.loginController?.isActive()) return this.loginController.cancel();
     return t("login.no_session");
   }
@@ -20657,6 +21565,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** #1699 part 2: the login just signed in — a profile, or null for the backend's default one. */
     profile: string | null = null,
   ): Promise<PostLoginRecovery> {
+    this.keepAliveAfterSignIn(backend, profile ?? null);
     const woken: string[] = [];
     const restarted: string[] = [];
     const pending: string[] = [];
@@ -21899,7 +22808,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      if (!strippedText && !msg.attachments?.length) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY that carries the mention: then the
+      // replied-to message is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape
+      // ("/chat @bot (you)"). Only with the mention in the text: an empty reply to one of our own messages (addressed through #2551, a
+      // sticker or embed only) stays dropped, never an empty turn quoting our own answer (Fable #3342 F1).
+      if (!strippedText && !msg.attachments?.length && !(msg.replyToText && mentionTag && addressText.includes(mentionTag))) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 
@@ -22162,7 +23075,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     configured: string | null | undefined = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model,
   ): { known: boolean; names: string[] } {
     const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
-    const api = (this.readCliEnv("claude-code", this.catalogProfile("claude-code", instanceName))?.apiModels ?? []).map(m => m.id);
+    const api = (this.webModelEnv("claude-code", instanceName)?.apiModels ?? []).map(m => m.id);
     const lower = model.trim().toLowerCase();
     const bare = lower.replace(/\[1m\]$/, "");
     const known = aliases.some(a => a.toLowerCase() === bare)
@@ -22303,6 +23216,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pendingCliEnvProbes.clear();
     this.pendingVendorCliEnvProbes.clear();
     this.pendingInstanceModelProbes.clear();
+    this.webModelRefreshes.clear();
+    this.webModelCatalogs.clear();
   }
 
   private runBackendProbeWorker(key: string, input: BackendProbeInput): Promise<BackendProbeResult | null> {
@@ -22480,16 +23395,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #724: use the bounded variant so background startup probes cannot hang
     // indefinitely — each is wrapped by CLI_ENV_PROBE_DEADLINE_MS.
     for (const b of backends) void this.probeBackendBounded(b);
-    // #2072: each Claude credential profile in use has its own account catalog. Only fleet.yaml's agents are walked
-    // here; a ClassicBot room on a profile is probed on its first /model (catalogProfile knows rooms too).
-    const profiles = new Set<string>();
+    this.probeChangedCliEnvs(null);
+  }
+
+  /** Maintain discovery after committed config changes; a model-field read remains passive. */
+  private probeChangedCliEnvs(previous: FleetConfig | null): void {
+    const signature = (fleet: FleetConfig | null, name: string) => {
+      const inst = fleet?.instances[name];
+      if (!inst) return null;
+      const backend = inst.backend ?? fleet?.defaults?.backend ?? "claude-code";
+      return JSON.stringify({ backend, options: { ...fleet?.defaults?.backend_options?.[backend], ...inst.backend_options?.[backend] } });
+    };
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (isWindowsInstance(this.fleetConfig?.instances[name])) continue;
-      if (this.backendNameForInstance(name) !== "claude-code") continue;
-      const profile = this.catalogProfile("claude-code", name);
-      if (profile) profiles.add(profile);
+      const backend = this.backendNameForInstance(name);
+      const binding = this.webModelBinding(backend, name);
+      // A named agy account has no verified relocation/discovery contract. In particular,
+      // never publish the ambient account's models under that profile (#3526 / D7).
+      if (!binding || (binding.profile && !credentialHomeSpec(backend))) continue;
+      // A description/defaults save can retire a scoped answer's full binding even
+      // though its account signature is unchanged. Keep the conservative fence and
+      // re-arm the current binding, unless its answer or flight is already present.
+      if (previous && signature(previous, name) === signature(this.fleetConfig, name)
+          && (!binding.scoped || this.webModelEnv(backend, name) || this.webModelRefreshes.has(binding.key))) continue;
+      const work = binding.scoped
+        ? this.refreshModelCatalogFor(backend, name)
+        : this.probeBackendBounded(backend, { profile: binding.profile });
+      void work.catch(err => this.logger.debug({ backend, name, err }, "Background model discovery failed"));
     }
-    for (const profile of profiles) void this.probeBackendBounded("claude-code", { profile });
   }
 
   /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
@@ -22577,9 +23510,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Detection is admin-owned. A read never launches a provider or falls back to this host's account.
       let inventory: import("./windows-cli.js").WindowsCliProbe | null = null;
       try { inventory = await this.runtimeWindowsExecutor().probe({ force: false, machineId: config.machine_id }); } catch { /* offline remains unavailable */ }
+      const refreshed=cachedNativeModelCatalog(this,{backend,instance:instanceName});
+      const profile=config.backend_options?.[backend]?.credential_profile || (backend==="claude-code"?inventory?.credentialProfiles?.default:undefined);
       const row = inventory?.clis.find(value => value.id === backend);
       return { backend, scope: "instance", instance: instanceName, current_model: config.model || null,
-        models: (row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
+        models: refreshed?.models ?? (profile ? [] : row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
         source: row?.models?.length ? "cache" : "fallback",
         ...(inventory?.probedAt ? { probed_at: new Date(inventory.probedAt).toISOString() } : {}),
         note: "Windows runtime's last detected inventory; no coordinator account or live probe is used." };
@@ -23462,7 +24397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       currentBackend: (name) => this.backendNameForInstance(name),
       currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
       availability: () => this.backendAvailabilityFor(instanceName),
-      models: (backend) => this.backendModelOptions(backend, opts),
+      models: (backend) => this.backendModelOptions(backend, { ...opts, instance: instanceName }),
       // #1808: the same rule update_instance_config's switch applies (backendModelVerdict).
       modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
       effortLevels: (backend, model) => this.backendEffortLevels(instanceName, backend, model),
@@ -23516,7 +24451,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A custom provider has its own catalog, which the CLI reads at launch and AgEnD cannot see before one (#1815
     // review): only the launch-line rule applies — never the account's list or the default provider's naming pattern.
     if (opts.provider) return modelNameCarried(backend, model) ? { ok: true } : { ok: false, choices: [] };
-    const listed = this.readCliEnv(backend)?.models ?? [];
+    const listed = this.webModelEnv(backend, instanceName)?.models ?? [];
     const choices = listed.slice(0, 24).map(o => o.id);
     if (!modelNameCarried(backend, model)) return { ok: false, choices };
     if (listed.some(o => o.id === model)) return { ok: true };
@@ -23569,15 +24504,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2072 part 3: the models a Settings field offers for `backend` — the cached catalog (an instance's own credential
    * profile's, when it is named and has one), claude's account catalog included. Read only: never a probe.
    */
-  modelCatalogFor(backend: string, instance: string | null): import("./backend/types.js").ModelOption[] {
-    if (instance && isWindowsInstance(this.fleetConfig?.instances[instance])) return [];
-    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return [];
-    const own = instance && Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, instance) ? instance
-      : instance && this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? instance : null;
-    const env = this.readCliEnv(backend, this.catalogProfile(backend, own));
-    const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
-    for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
-    return out;
+  private webModelTargetIds = new WeakMap<object, number>();
+  private webModelTargetSequence = 0;
+  private webModelCatalogs = new Map<string, import("./backend/types.js").CliEnv>();
+  private webModelRefreshes = new Map<string, Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }>>();
+
+  /** Resolve only trusted config; the browser never supplies a home, provider URL or credentials. */
+  private webModelBinding(backend: string, instance: string | null, selection?: {profile?:string}) {
+    this.webModelTargetIds ??= new WeakMap(); this.webModelTargetSequence ??= 0;
+    this.webModelCatalogs ??= new Map(); this.webModelRefreshes ??= new Map();
+    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return null;
+    const instances = this.fleetConfig?.instances ?? {};
+    const own = instance && Object.hasOwn(instances, instance) ? instances[instance] : null;
+    const classic = instance && !own ? this.classicChannels?.getAll().find(c => c.instanceName === instance) : null;
+    if (instance && !own && !classic || own && isWindowsInstance(own)) return null;
+    const options = { ...this.fleetConfig?.defaults?.backend_options?.[backend], ...(own?.backend_options?.[backend] ?? (instance ? this.classicChannels?.getBackendOptionsByInstance(instance)?.[backend] : undefined)) };
+    if (selection?.profile !== undefined) {
+      if (selection.profile && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(selection.profile)) return null;
+      options.credential_profile = selection.profile || this.fleetConfig?.defaults?.backend_options?.[backend]?.credential_profile || undefined;
+    }
+    const profile = typeof options.credential_profile === "string" ? options.credential_profile : null;
+    const instanceDir = instance ? this.getInstanceDir(instance) : join(getAgendHome(), "cli-env");
+    const config = structuredClone({ workingDirectory: own?.working_directory ?? "", instanceDir,
+      instanceName: instance ?? `probe-${backend}`, mcpServers: {}, backendOptions: options,
+      ...(profile ? { credentialStoreHome: credentialProfileStoreHome(getAgendHome(), backend, profile) } : {}) });
+    const target = own ?? classic;
+    if (target && !this.webModelTargetIds.has(target)) this.webModelTargetIds.set(target, ++this.webModelTargetSequence);
+    const targetId = target ? this.webModelTargetIds.get(target) : 0;
+    const key = JSON.stringify({ backend, instance, config, targetId, target: own ?? classic, defaults: this.fleetConfig?.defaults });
+    return { key, own, classic, profile, config, scoped: !!options.provider || (!!profile && backend !== "claude-code") };
+  }
+
+  private webModelEnv(backend: string, instance: string | null, selection?: {profile?:string}) {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding) return null;
+    const disk = binding.scoped ? null : this.readCliEnv(backend, binding.profile);
+    const hit = this.webModelCatalogs.get(binding.key);
+    if (hit && Date.now() - hit.probedAt < CLI_ENV_TTL_MS && (!disk || hit.probedAt >= disk.probedAt)) return hit;
+    return disk;
+  }
+
+  modelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): import("./backend/types.js").ModelOption[] {
+    const env = this.webModelEnv(backend, instance, selection);
+    const seen = new Set<string>();
+    return [...(env?.models ?? []), ...(env?.apiModels ?? [])].filter(m => !seen.has(m.id) && !!seen.add(m.id));
+  }
+
+  /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */
+  async refreshModelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }> {
+    const binding = this.webModelBinding(backend, instance, selection);
+    if (!binding || this.shuttingDown) return { models: [], refreshed: false };
+    const pending = this.webModelRefreshes.get(binding.key);
+    if (pending) return pending;
+    const epoch = this.cliEnvProbeEpoch;
+    const current = () => {
+      const next = this.webModelBinding(backend, instance, selection);
+      return !this.shuttingDown && epoch === this.cliEnvProbeEpoch && next?.key === binding.key && next.own === binding.own && next.classic === binding.classic;
+    };
+    const work = this.runBackendProbeWorker(binding.scoped && !binding.profile ? `instance:${backend}:${binding.config.instanceDir}` : `global:${backend}${binding.profile ? `@${binding.profile}` : ""}`, {
+      mode: "env", backend, instanceDir: binding.config.instanceDir, config: binding.config, refreshVendorCatalog: true,
+    }).then(result => {
+      if (!current()) return { models: [], refreshed: false };
+      // Raw failure/empty discovery never masquerades as a successful refresh of the retained catalog.
+      if (!result || Array.isArray(result) || (!Array.isArray(result.models) || !result.models.length || result.catalogRefreshFailed)) return { models: this.modelCatalogFor(backend, instance, selection), refreshed: false };
+      if (this.webModelCatalogs.size >= 64) this.webModelCatalogs.delete(this.webModelCatalogs.keys().next().value!);
+      this.webModelCatalogs.set(binding.key, { ...result, backend, probedAt: Date.now() });
+      return { models: this.modelCatalogFor(backend, instance, selection), refreshed: true };
+    }).finally(() => { if (this.webModelRefreshes.get(binding.key) === work) this.webModelRefreshes.delete(binding.key); });
+    this.webModelRefreshes.set(binding.key, work);
+    return work;
   }
 
   /** Host-default fallback only: Grok has no modeled profile home. Never construct a backend or start a probe. */
@@ -23652,7 +24647,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The models `/model` would offer on a backend: the cached CLI env, else (live) a bounded probe. Never throws. */
-  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void }): Promise<import("./backend/types.js").ModelOption[]> {
+  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void; instance?: string }): Promise<import("./backend/types.js").ModelOption[]> {
+    if (!opts.live && opts.instance) return this.modelCatalogFor(backend, opts.instance);
     const cached = this.readCliEnv(backend);
     if (!opts.live || (cached?.models.length && !this.cliEnvNeedsRefresh(cached))) return cached?.models ?? [];
     opts.onLiveProbe?.();
@@ -24121,7 +25117,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<void> {
     execution?.assert();
     if (this.daemons.has(instanceName)) return;
-    const workDir = join(getAgendHome(), "workspaces", instanceName);
+    const workDir = this.classicWorkspaceDir(instanceName);
     ensureWorkspaceGit(workDir);
     const classicIdentity = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
     const toolProgress = classicIdentity
@@ -24328,6 +25324,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     }
+    // close() fences setup synchronously; its physical drain joins the asynchronous phase below.
+    // Awaiting even an absent controller here would yield before the remaining shutdown fences.
+    const setupClosed = this.hubSetupController?.close().catch(() => {
+      this.logger.warn("Hub setup scratch cleanup is unconfirmed; setup remains fenced");
+    });
+    this.hubSetupController=null; this.hubSetupInit=null;
+    const directoryNow = this.hubDirectoryControl, directoryInit = this.hubDirectoryInit;
+    this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
+    const directoryClosed = (directoryNow ? directoryNow.close() : directoryInit?.then(control => control.close()))?.catch(() => {
+      this.logger.warn("Hub directory settings cleanup is unconfirmed; settings remain fenced");
+    });
+    this.companyJoinController?.close(); this.companyJoinController = null; this.companyJoinInit = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
@@ -24382,6 +25390,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
     await inboundStopped;
+    await setupClosed;
+    await directoryClosed;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;
@@ -24721,6 +25731,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
+    this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
 
@@ -25032,7 +26043,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * audit notice — and only once all of that holds is the attempt written to
    * disk and fsynced, before anything spawns.
    */
-  async requestSettingsSelfRestart(jobId: string, key: string): Promise<SelfRestartResult> {
+  async requestSettingsSelfRestart(requestedJobId: string | null, key: string): Promise<SelfRestartResult> {
     // A retry after a lost response must not restart a second time. The key is
     // recorded on the job, which survives the restart it triggers.
     const already = this.applyJobs.findByRestartKey(key);
@@ -25050,6 +26061,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
     }
 
+    // S-92 (#3326 D1): a restart asked for the pending changes themselves (`requestedJobId` null) — the restart notice
+    // with no Settings job behind it (a hand edit of fleet.yaml). Only when a fleet-level restart is pending
+    // (settingsRestartPending, the notice's own test): its newest job carries it, else one is made here to carry it, once
+    // (the next ask finds that one). Everything below is the same path as a Save's restart.
+    let jobId = requestedJobId;
+    if (jobId === null) {
+      // One already asked for is in flight (its row "running"): never a second job, nor a second restart.
+      // #3373 review P2: a consumed restart job (and its row) runs until the next process settles it (settleAfterRestart)
+      // or its launch fails (finish) — so this sees only a restart still in flight, never an old one.
+      if (this.applyJobs.all().some(item => item.restart_key && item.targets.some(r => r.target === APPLY_FLEET_TARGET && r.status === "running"))) {
+        return { ok: false, status: 409, error: "a restart is already running" };
+      }
+      const pending = this.settingsRestartPending();
+      if (!pending) return { ok: false, status: 409, error: "no fleet-level change is pending any more" };
+      if (pending.job_id) jobId = pending.job_id;
+      else {
+        const made = this.applyJobs.create(`restart-pending:${key}`, [{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+        this.applyJobs.setTargetStatus(made.id, APPLY_FLEET_TARGET, "restart-required");
+        this.applyJobs.finish(made.id);
+        this.logger.info({ jobId: made.id, keys: pending.keys }, "Settings restart for pending changes with no Settings job: a job now carries it");
+        jobId = made.id;
+      }
+    }
     const job = this.applyJobs.get(jobId);
     const row = job?.targets.find(item => item.target === APPLY_FLEET_TARGET);
     if (!job || !row || row.status !== "restart-required") {
@@ -25071,7 +26105,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return {
           ok: false,
           status: 503,
-          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+          error: this.isWebOnlyFleet()
+            ? "the restart rate-limit file cannot be read"
+            : "the restart rate-limit file cannot be read — send /restart in General",
         };
       }
       return {
@@ -25098,12 +26134,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the admins are. Refusing when it cannot be posted is the same rule as
     // refusing when the progress marker cannot be written: no untraceable
     // restarts.
-    const notice = await this.postSelfRestartNotice();
-    if (!notice) {
+    // S-92 (leader's ruling, cid-a6-ui-feedback): a web-only fleet has no General to announce it in — its trace is the
+    // dashboard's own fleet Notice (where its admins are) plus the log line below. Every other guard above and below is
+    // the same. A chat fleet is unchanged: General is the trace.
+    const webOnly = this.isWebOnlyFleet();
+    const notice = webOnly ? null : await this.postSelfRestartNotice();
+    if (webOnly) {
+      if (!this.recordWebNoticeDurable("fleet", t("restart.settings_triggered"))) {
+        this.logger.error({ jobId }, "Could not record the Settings-triggered restart as a fleet Notice — refusing to restart silently");
+        return { ok: false, status: 503, error: "couldn't record the restart; try again" };
+      }
+      this.logger.info({ jobId, trace: "web-notice" }, "Settings-triggered restart announced as a fleet Notice (web-only fleet)");
+    } else if (!notice) {
       return {
         ok: false,
         status: 409,
-        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+        error: "no chat channel is available to announce the restart",
       };
     }
 
@@ -25112,12 +26158,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.applyJobs.update(jobId, current => {
       const target = current.targets.find(item => item.target === APPLY_FLEET_TARGET);
       if (target) target.status = "running";
+      // #3373 review P2: the job runs again while its restart does (its deadline is the restart's): the next process
+      // settles it (settleAfterRestart only touches running jobs), a failed launch finishes it.
+      current.status = "running";
+      delete current.finishedAt;
+      current.restartStartedAt = Date.now();         // its time counts from now, not from the Save (#3373 review P3)
       current.restart_key = key;
       current.deadlineMs = SELF_RESTART_DEADLINE_MS;
     });
     this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
 
-    const launched = await this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId)
+    // #3373 review P2: a web restart's helper that fails after it was launched (the answer already said "restarting") is
+    // said as a fleet Notice by requestWebFullRestart, and its job settles here as failed.
+    const settleLateFailure = (detail: string): void => {
+      this.applyJobs.setTargetStatus(jobId!, APPLY_FLEET_TARGET, "failed", detail);
+      this.applyJobs.finish(jobId!, detail);
+      this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId!)!));
+    };
+    const launched = await (notice ? this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId) : this.requestWebFullRestart(settleLateFailure))
       .catch(err => {
         this.logger.error({ err }, "Settings-triggered self restart failed to launch");
         return false;
@@ -25875,6 +26933,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let store: SecretStore | undefined;
     const generation = this.settingsGeneration;
     let replaced = false;
+    // S-91: whether an adapter ran before. One that did not is never "restored" by starting it with the old token (the token
+    // that would not start it); a failed start goes back to the background retry instead.
+    const wasRunning = this.adapters.has(job.connectionId);
     try {
       if (!channel || !envKey || !allowed.has(envKey)) throw new Error("connection is not configured for secret rotation");
       const owners = (this.fleetConfig?.channels
@@ -25909,15 +26970,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         try {
           store!.restoreIfCurrent(before);
           if (process.env[envKey] === secret) { if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken; }
-          // Build a fresh adapter from the restored token. If the old adapter
-          // was stopped already, this is the only safe way to return to the
-          // previous runtime without claiming a disk-only rollback succeeded.
-          const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
-            if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
-          } };
-          const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
-          if (!restored) throw new Error("adapter rollback did not become connected");
-          job.result = "rolled_back";
+          if (!wasRunning) {
+            // S-91: it was not running: the new adapter that did not come up is taken down (never left half-started), and
+            // the connection is the background retry's again, as before the token was entered.
+            if (await this.dropAdapterAfterFailedStart(job.connectionId, message)) job.result = "rolled_back";
+            else { job.result = "rollback_failed"; job.error = "the new adapter could not be confirmed stopped; restart AgEnD"; }
+          } else {
+            // Build a fresh adapter from the restored token. If the old adapter
+            // was stopped already, this is the only safe way to return to the
+            // previous runtime without claiming a disk-only rollback succeeded.
+            const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
+              if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
+            } };
+            const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
+            if (!restored) throw new Error("adapter rollback did not become connected");
+            job.result = "rolled_back";
+          }
         } catch (rollbackErr) {
           this.logger.error({ connectionId: job.connectionId, reason: safeSecretError(rollbackErr, oldToken, [secret]) }, "Settings connection secret rollback failed");
           job.result = "rollback_failed";
@@ -25933,16 +27001,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * S-91: how a connection stands against what this process set up at start. "same": its adapter start ran (and failed, or
+   * found no token), so starting it now is what the background retry does. "changed": its binding waits for the restart —
+   * never started live, whatever its role (#3365 review P2). "added": #1519 P6's rule.
+   */
+  private startedWithConnection(connectionId: string, channel: ChannelConfig): "same" | "changed" | "added" {
+    const started = this.startupFleetConfig;
+    const list = started?.channels ?? (started?.channel ? [started.channel] : []);
+    const then = list.find(item => (item.id ?? item.type) === connectionId);
+    return !then ? "added" : isDeepStrictEqual(then, channel) ? "same" : "changed";
+  }
+
+  /**
+   * S-91: a token's live start for a connection that was not running did not come up. Whatever adapter it left is taken
+   * down (handlers off, stopped, unregistered), and the connection goes back to the background retry with the error.
+   */
+  private async dropAdapterAfterFailedStart(connectionId: string, error: string): Promise<boolean> {
+    const fresh = this.adapters.get(connectionId);
+    // #3365 review P3: the primary's prune interval goes with it (a later start sets it up again, once).
+    if (this.getPrimaryAdapterId() === connectionId && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+    let stopped = true;
+    if (fresh) {
+      fresh.removeAllListeners();
+      stopped = await fresh.stop().then(() => true, () => false);
+      if (this.adapters.get(connectionId) === fresh) this.adapters.delete(connectionId);
+      if (this.worlds.get(connectionId)?.adapter === fresh) this.worlds.delete(connectionId);
+      if (this.adapter === fresh) this.adapter = null;
+    }
+    const previous = this.adapterState.get(connectionId);
+    if (previous?.retryTimer) clearTimeout(previous.retryTimer);
+    if (!stopped) {
+      // #3365 review P2: a stop that failed leaves the provider client's end unknown (it may still poll the bot). Said so —
+      // never "rolled back" — and no adapter for this connection is admitted again in this process: no retry, and every
+      // start refuses it (startSingleAdapterOwned / startAdditionalAdapterOwned). A restart of AgEnD clears it.
+      this.adapterTeardownUnknown.add(connectionId);
+      this.adapterState.set(connectionId, { status: "failed", retryCount: previous?.retryCount ?? 0, lastError: "the new adapter could not be confirmed stopped — restart AgEnD" });
+      this.logger.error({ connectionId, reason: error }, "Settings connection secret: the adapter that did not start could not be confirmed stopped");
+      return false;
+    }
+    if (this.shuttingDown || !this.secureConnectionChannel(connectionId)) return true;
+    this.adapterState.set(connectionId, { status: "retrying", retryCount: previous?.retryCount ?? 0, lastError: error });
+    this.scheduleAdapterRetry(connectionId);
+    return true;
+  }
+
   /** Stop the old provider client and construct a new one from process.env. */
   private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false, execution?: Pick<SettingsExecution, "owner" | "assert">): Promise<boolean> {
     const generation = this.settingsGeneration;
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
     const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
     check();
+    // S-91: never two starts of one connection at once. A background retry in flight finishes first: it read the token
+    // before this one was stored, so it gives way (its own check), or it came up and is replaced below like any adapter.
+    const inFlight = this.adapterRetryInFlight.get(connectionId);
+    if (inFlight) { await inFlight.catch(() => {}); check(); }
     const old = this.adapters.get(connectionId);
-    // No adapter: a connection that is not the primary, in a fleet already running connections, starts now (#1519 P6);
-    // otherwise the secret is valid on disk and the next start adopts it.
-    if (!old && !force && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    // No adapter: one this process started with, unchanged since (its start failed, or it had no token), starts now — S-91,
+    // the way the background retry starts it, the primary included. One added since starts now when it is not the primary
+    // and the fleet runs connections (#1519 P6). One changed since (its binding pending) never does: the secret is valid on
+    // disk and the next start adopts it with its binding.
+    if (!old && !force) {
+      const since = this.startedWithConnection(connectionId, channel);
+      if (since === "changed") return false;
+      if (since === "added" && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    }
     if (!old) { const pending = this.adapterState.get(connectionId)?.retryTimer; if (pending) clearTimeout(pending); }
     const primary = this.getPrimaryAdapterId() === connectionId;
     const previousState = this.adapterState.get(connectionId);
@@ -25982,9 +27105,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
       return true;
     }
+    // S-91: a retry timer set while it was coming up (the in-flight retry's own, giving way) must not start it a second time.
+    const settled = (): true => { const st = this.adapterState.get(connectionId); if (st?.retryTimer) { clearTimeout(st.retryTimer); st.retryTimer = undefined; } return true; };
     while (performance.now() < deadline) {
       const health = fresh.getHealthSnapshot?.();
-      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
+      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return settled();
       await new Promise(resolve => setTimeout(resolve, 100)); check();
     }
     throw new Error("new adapter did not become connected");
@@ -26347,46 +27472,70 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Update check ────────────────────────────────────────────────────
 
-  private async checkForUpdates(): Promise<void> {
-    try {
-      // Both npm lookups are async: as execSync they froze the fleet event loop for
-      // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
-      // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
-      // for a background version check.
-      const { execFile } = await import("./child-process.js");
-      const { promisify } = await import("node:util");
-      const execFileP = promisify(execFile);
-      const npmVersion = async (spec: string): Promise<string> => {
-        const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
-        return stdout.toString().trim();
-      };
-      const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-      const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
-      const latest = await npmVersion("@songsid/agend");
-      let target = latest;
-      let fromChannel = false;
-      // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
-      const channel = installedChannel(currentVersion);
-      if (channel !== "latest") {
-        let pre = "";
-        try {
-          pre = await npmVersion(`@songsid/agend@${channel}`);
-        } catch { /* no such tag */ }
-        // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
-        // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
-        // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
-        target = pre;
-        fromChannel = true;
-        // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
-        // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
-        // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
-        // @alpha like any channel release.
-        const core = (v: string) => v.replace(/^v/, "").split("-")[0];
-        if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
-          target = latest;
-          fromChannel = false;
-        }
+  /** The running package's version (package.json next to this code). */
+  private runningAgendVersion(): string {
+    // M-2738 (rig): the version THIS process runs, read when it loaded. The file on disk is the installed one: during an
+    // update it is briefly missing, then the new version while the old fleet still runs (a tab would be told to reload early).
+    if (!RUNNING_AGEND_VERSION) throw new Error("the running AgEnD version is unknown");
+    return RUNNING_AGEND_VERSION;
+  }
+
+  /**
+   * What the install's own channel offers: the target version and whether it came from that channel's dist-tag. Throws
+   * when npm cannot be asked (the callers decide what a failed look means).
+   */
+  private async lookUpUpdateTarget(currentVersion: string): Promise<{ target: string; fromChannel: boolean }> {
+    // Both npm lookups are async: as execSync they froze the fleet event loop for
+    // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
+    // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
+    // for a background version check.
+    const { execFile } = await import("./child-process.js");
+    const { promisify } = await import("node:util");
+    const execFileP = promisify(execFile);
+    const npmVersion = async (spec: string): Promise<string> => {
+      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+      return stdout.toString().trim();
+    };
+    const latest = await npmVersion("@songsid/agend");
+    let target = latest;
+    let fromChannel = false;
+    // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
+    const channel = installedChannel(currentVersion);
+    if (channel !== "latest") {
+      let pre = "";
+      try {
+        pre = await npmVersion(`@songsid/agend@${channel}`);
+      } catch { /* no such tag */ }
+      // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
+      // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
+      // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
+      target = pre;
+      fromChannel = true;
+      // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
+      // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
+      // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
+      // @alpha like any channel release.
+      const core = (v: string) => v.replace(/^v/, "").split("-")[0];
+      if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
+        target = latest;
+        fromChannel = false;
       }
+    }
+    return { target, fromChannel };
+  }
+
+  /** M-2738: record a look's answer for the web — the same offer the notice below would make. */
+  private recordUpdateCheck(currentVersion: string, found: { target: string; fromChannel: boolean } | null): void {
+    const offer = found ? updateOffer(currentVersion, found.target, found.fromChannel, !!found.target && this.semverGt(found.target, currentVersion)) : null;
+    this.updateCheckState = { offer, checkedAt: Date.now(), failed: found === null };
+  }
+
+  private async checkForUpdates(): Promise<void> {
+    let currentVersion: string;
+    try { currentVersion = this.runningAgendVersion(); } catch { return; }
+    try {
+      const { target, fromChannel } = await this.lookUpUpdateTarget(currentVersion);
+      this.recordUpdateCheck(currentVersion, { target, fromChannel });
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
@@ -26401,12 +27550,93 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
           if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
-          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily); installed from this computer.
+          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
           if (this.webNoticeStore()?.latest("update")?.text !== text) this.recordWebNotice("update", text);
         }
       }
-    } catch { /* silent — network issues */ }
+    } catch { this.recordUpdateCheck(currentVersion, null); /* silent — network issues */ }
+  }
+
+  // ── M-2738: updating from the web (src/web-update.ts) ───────────────
+
+  /** The web's update routes (web-api.ts handleWebUpdate) read and start through this. */
+  get webUpdate(): WebUpdateHost {
+    return {
+      updateState: () => {
+        let current: string | null = null;
+        try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
+        const s = this.updateCheckState;
+        return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+      },
+      checkUpdateNow: () => this.checkUpdateNow(),
+      updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
+      startWebUpdate: (key, person, stillAllowed) => this.startWebUpdateOnce(key, person, stillAllowed),
+      updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
+    };
+  }
+
+  /** "Check for updates": look now, no chat notice. One a minute; a second ask while one runs waits for it. */
+  private async checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const c = this.updateCheckNow;
+    if (c.running) { await c.running; return { ok: true }; }
+    if (Date.now() - c.lastAt < 60_000 && Date.now() >= c.lastAt) return { ok: false, status: 429, error: "checked_recently" };
+    c.lastAt = Date.now();
+    c.running = (async () => {
+      let currentVersion: string;
+      try { currentVersion = this.runningAgendVersion(); } catch { return; }
+      try { this.recordUpdateCheck(currentVersion, await this.lookUpUpdateTarget(currentVersion)); }
+      catch { this.recordUpdateCheck(currentVersion, null); }
+    })();
+    try { await c.running; } finally { c.running = null; }
+    return { ok: true };
+  }
+
+  /**
+   * M-2738: Update from the web — a fleet admin's session, after its own confirmation (the leader's D1). Only what the
+   * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
+   * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
+   */
+  private async startWebUpdate(person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
+    // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
+    if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
+    const offer = this.updateCheckState?.offer;
+    if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    const startedAt = Date.now();
+    const claim = { startedAt };
+    this.webUpdateOwned = claim;
+    const release = () => { if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
+    // Its progress must be recorded before anything runs: every other tab, and the next start, read it.
+    if (!persistUpdateProgress(this.dataDir, webUpdateTarget(startedAt), startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: offer.version })) {
+      release();
+      this.logger.error("Web update refused: its progress marker could not be written");
+      return { ok: false, status: 503, error: "progress_not_recorded" };
+    }
+    const origin = `web update by ${person}`;
+    // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed()).then(child => {
+      if (!child) { release(); return; }
+      child.once("exit", release);
+      child.once("error", release);
+    }, err => {
+      release();
+      this.logger.error({ err }, "Web update launch failed");
+      this.failUpdateProgress(t("update.failure.launch"));
+    });
+    return { ok: true };
+  }
+
+  /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
+  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    // Prism #3505 P3: reserved before anything is awaited — a concurrent request with the same key shares this answer.
+    const known = this.webUpdateStarts.get(key);
+    if (known) return known;
+    const answer = this.startWebUpdate(person, stillAllowed);
+    this.webUpdateStarts.set(key, answer);
+    while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
+    return answer;
   }
 
   /**
@@ -26690,7 +27920,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), noChat: this.signinWithoutChat(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);

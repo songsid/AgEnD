@@ -40,23 +40,20 @@ pause, wake and restart; templates; teams; `update_fleet_defaults`;
 `update_instance_config`; the kiro migrate and reconcile tools;
 `update_decision`; web settings — with no extra confirmation. The existing
 confirmations stay: sensitive config (tokens and access) is confirmed by a
-fleet admin, and #804 still refuses `tool_set` or `skipPermissions` escalation.
+fleet admin. Decision 36525f1b (user 2026-11-09) adds `get_instance_logs`,
+`get_fleet_config`, `validate_config` and `list_deployments`, and lets General
+set another agent’s `tool_set` directly through `update_instance_config` or
+`create_instance`, without confirmation. Non-General callers, coordinators
+included, retain the #804/#814 refusal; `skipPermissions` is refused for everyone.
 It supersedes the 2026-09-21 "dispatcher" rationale and lands in beta.8 (agy's
 PR). General is the fleet's admin instance — the first agent on a new fleet —
 and owns the General topic. An instance runs under the `general` tool set when
 `general_topic: true` or its name is `general`.
 
-- Can (as of beta.8): everything in the worker profile plus the full
-  ORCHESTRATION set, delegation, schedules, and the user's web-appearance
-  settings.
-- Can't: exceed that set. Note the code on main is pre-beta.8 and still shows
-  the smaller subset (`src/tool-permissions.ts:107-136` holds only
-  `create/start/restart/wake_instance` plus the web settings
-  (`get/set_web_settings`) of the orchestration verbs) — expected
-  to change when beta.8 lands; see Mismatches.
-- Code: `src/tool-permissions.ts:107-136`, `:201-208`;
-  `src/instance-lifecycle.ts:2741` (the General instance cannot be replaced).
-- Refs: fleet decision 9e3bea6c.
+- Can: use the coordinator tools except repository leases, including the read-only debug tools, and directly set another agent’s `tool_set` to a writable profile (`full`, `standard`, `worker`, `coordinator` or `minimal`).
+- Can’t: use `checkout_repo` or `release_repo` under the default General profile, assign the role-derived `general` profile, or pass `skipPermissions` through either configuration tool. General cannot change its own `tool_set` through either tool (including a create operation that resolves to itself); a person may still set it in Settings or fleet.yaml. An explicitly narrowed General remains narrowed. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
+- Code: `src/tool-permissions.ts`, `src/general-instance.ts`, `src/outbound-handlers.ts`.
+- Refs: fleet decisions 9e3bea6c and 36525f1b.
 
 ## `coordinator` tool set
 
@@ -124,6 +121,8 @@ A private chat or group where ClassicBot runs a single agent, managed by
 - Can: `/start` an agent in the room and chat with it.
 - Can't: use fleet-topic commands or see the fleet; an unregistered chat stays
   silent unless `/start` is allowed.
+When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
+
 - Code: `src/classic-channel-manager.ts`.
 - Refs: `docs/permissions.md`.
 
@@ -154,9 +153,25 @@ owner too, with the same authority, checked on every request.
 - Can't: act as operator from another machine, except the owner signed in from
   outside with the authenticator; or after the session was revoked or ran out.
   Setting up, re-binding or removing the authenticator is this computer only.
-- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`);
-  `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`.
-- Refs: 28c2d3a3, #3165.
+- Threat model (64a289a0): a process running as the fleet's OS user is
+  treated as the owner. It can read `web.token` and mint this session, and it
+  can edit `fleet.yaml` anyway. AgEnD defends against remote parties, other OS
+  users, links, guests and CSRF; see `docs/SECURITY.md#threat-model`.
+- Confirming a held Settings change on a web-only fleet (alpha.7, the user's
+  decision hmsg-468cc290; threat model 64a289a0): the host operator's own
+  session on this computer (its host session, a loopback request with no
+  forwarding header) confirms with Apply now, including the Hub changes that
+  open the fleet outward (pairing, publishing an agent, the browser
+  certificate). Any other admin session on this computer or the LAN confirms
+  with a fresh authenticator code. The code is the authority, bound to that one
+  change, used once, under the same wrong-code limit as signing in from
+  outside, and audited as "Authenticator code". Never over a link (named or
+  quick): there the page says to confirm on the host computer's own browser,
+  or in General. On a chat-connected fleet the primary General's card decides.
+- Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`, `hostSessionHere`);
+  `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`;
+  `src/fleet-manager.ts` (`settingsTotpSession`, `settingsTotpConfirm`).
+- Refs: 28c2d3a3, 64a289a0, #3165, #3327, #3352.
 
 ## fleet admin (`admin_users`)
 
@@ -168,7 +183,7 @@ the General topic (approved by the user 2026-11-04).
 
 - Can: admin-gated commands, confirming sensitive changes, managing access.
 - Can't: anything while unlisted — an empty list grants nobody, and open
-  access or pairing approval alone does not grant the role
+  access or a saved chat grant alone does not grant the role
   (`docs/SECURITY.md:13`).
 - Code: `src/config-validator.ts:368-376`, `:677`.
 - Refs: —
@@ -293,9 +308,20 @@ finishing it from review with done.
 
 ## decision
 
-A recorded agreement (`post_decision`, `list_decisions`), scoped to a project
-directory or to the whole fleet. Decisions are the fleet's memory of why,
-readable with `list_decisions`.
+A recorded agreement (`post_decision`, `list_decisions`). Decisions are the
+fleet's memory of why, readable with `list_decisions`. Each one has a scope:
+
+- **team**: every member of one team (fleet.yaml `teams`), wherever they work.
+  Membership is read when listing and at each launch, so joining or leaving a
+  team takes effect without posting again. This is the default for a poster in
+  a team; a poster in several teams names one.
+- **project**: this exact working directory only. This is the default for a
+  poster in no team.
+- **fleet**: every instance on the fleet. Use it only for rules every team
+  follows.
+
+An instance's Active Decisions are the fleet ones, its teams' ones and its own
+directory's ones.
 
 - Can: record agreements agents and people consult later.
 - Can't: enforce itself — code that never reads a decision is not bound by it
@@ -333,8 +359,8 @@ shortcuts from `agend shortcuts`). The rest is alpha only
 - General can run on a Windows pane: "Run General on" moves General to an
   approved, online paired PC while the coordinator — and chat and
   administrator authority — stay on the host (#3007).
-- Pairing of people (`agend access pair`) is the separate, older mechanism:
-  per-instance access codes, unrelated to paired PCs.
+- People are allowed through **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)**, not runtime pairing. Legacy people-access codes are removed;
+  existing saved grants remain. This does not grant fleet-admin authority.
 - Code (alpha branch): `docs/remote-runtime.md`, `docs/windows-cli-preview.md`,
   `docs/windows-general.md`; `src/runtime-bundle.ts`.
 - Refs: 72353fdf, #2936, #3007.

@@ -119,7 +119,7 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
 // #2889 (the user, hmsg-769c60a4): on a phone the reason was only in a tooltip, and touch has no hover.
 describe("#2889: a tap on 'Not verified' shows why it can't be authorized here", () => {
   const REASONS: Array<[string, string]> = [
-    ["no_account", "This browser was not signed in as an account (agend web): sign in with /web to authorize."],
+    ["no_account", "This browser has no chat-account identity. Open General in Telegram or Discord and send /web to sign in as your account."],
     ["not_admin", "Your account is not a fleet admin here."],
     ["public_link", "This sign-in can't be authorized over this link."],
     ["named_link_off", "Over your named link: turn on \"Also over my named link\" in Settings → Access & security on this computer."],

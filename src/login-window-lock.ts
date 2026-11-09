@@ -18,7 +18,8 @@
  */
 import { t } from "./locale.js";
 
-export type LoginWindowKind = "web" | "install";
+/** "keepalive" (#3292): a few seconds of `claude auth status` / `codex app-server` refreshing one idle sign-in. */
+export type LoginWindowKind = "web" | "install" | "keepalive";
 
 export interface LoginWindowClaim {
   readonly id: number;

@@ -1,7 +1,7 @@
 /**
  * #3212 PR 1: Settings → Agents → Accounts (src/ui/accounts-view.js, the real module over a faked GET /ui/accounts).
  * One card per CLI: the default sign-in and named accounts with which account each is (masked), who uses it and its
- * weekly usage; Sign in opens the existing dialog; "Move agents here…" stages each chosen agent's account (its other
+ * weekly usage; Sign in opens the existing dialog; "Move agents here" stages each chosen agent's account (its other
  * backend options kept); the fleet default stages a defaults change; a paired computer's rows are read-only under its
  * name; the Agent dialog's Account field lists signed-in accounts and disables a signed-out one; both languages.
  * Fixtures only (example.com).
@@ -56,21 +56,25 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     await mount();
     expect(p.root.querySelectorAll(".s-account-card").map((c: any) => c.getAttribute("data-backend"))).toEqual(["claude-code", "codex"]);
     const def = rowOf("claude-code", "default"), work = rowOf("claude-code", "work"), off = rowOf("claude-code", "personal");
-    expect([text(def.querySelector(".s-account-who strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
-      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents · fleet default", "37% of the week"]);
-    expect([text(work.querySelector(".s-account-who strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
-      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "82% of the week · last known"]);
-    expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not signed in", "used by no agent"]);
-    expect(text(off.querySelector(".s-actions button"))).toBe("Sign in");
+    expect([text(def.querySelector(".s-account-title-left strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
+      .toEqual(["Default connection", "ab***@example.com · Max", "used by 2 agents", "7d37%"]);
+    expect(text(def.querySelector(".s-account-title-left .s-account-default-tag"))).toBe("fleet default");     // the tag is in the title bar, not in the used-by pill
+    expect([text(work.querySelector(".s-account-title-left strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
+      .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "7d82%(stale)"]);
+    expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not connected", "used by no agent"]);
+    expect(text(off.querySelector(".s-actions button"))).toBe("Connect");
     expect(off.querySelector(".s-actions").textContent).not.toContain("Move agents here");      // a signed-out account takes no agents
     const team2 = rowOf("codex", "team2");
-    expect([team2.querySelector(".s-actions button")?.textContent ?? null, text(team2.querySelector("details code"))]).toEqual(["Move agents here…", "CODEX_HOME=/x codex login"]);
+    expect(team2.querySelector(".s-actions button")?.textContent ?? null).toBe("Move agents here");   // (the box layout drops the trailing "…")
+    expect(text(team2.querySelector("details"))).toContain("Send /login in chat");
+    expect(team2.querySelector("details code")).toBeNull();
   });
 
-  it("a paired computer's accounts are drawn read-only under its name (the reserved machine scope)", async () => {
+  it("an offline computer's accounts are drawn read-only under its name, with the reason (the machine scope)", async () => {
     await mount();
     const m = card("claude-code").querySelector(".s-account-machine");
-    expect(text(m.querySelector(".note"))).toBe("On Desk PC — offline");
+    expect(text(m.querySelector("strong"))).toBe("On Desk PC");
+    expect(text(m.querySelector(".s-account-why"))).toBe("Desk PC is offline. Start its Runtime to manage its accounts.");   // #3190 Part 3c words the server's reason code
     expect(m.querySelectorAll("button")).toHaveLength(0);
   });
 
@@ -81,12 +85,12 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(dialog && dialog.props).toMatchObject({ backend: "claude-code", profile: "personal" });
   });
 
-  it("Move agents here… stages each chosen agent onto the account, keeping its other backend options", async () => {
+  it("Move agents here stages each chosen agent onto the account, keeping its other backend options", async () => {
     const { staged } = await mount();
-    const move = [...rowOf("claude-code", "work").querySelectorAll(".s-actions button")].find((b: any) => b.textContent === "Move agents here…");
+    const move = [...rowOf("claude-code", "work").querySelectorAll(".s-actions button")].find((b: any) => b.textContent === "Move agents here");
     fire(move, "click"); await settle(6);
     const items = [...p.root.querySelectorAll(".s-account-move li")] as any[];
-    expect(items.map((li) => [text(li.querySelector("span")), text(li.querySelector("small"))])).toEqual([["rev", "now: Default sign-in"], ["ops", "now: Default sign-in"]]);   // dev is already on it
+    expect(items.map((li) => [text(li.querySelector("span")), text(li.querySelector("small"))])).toEqual([["rev", "now: Default connection"], ["ops", "now: Default connection"]]);   // dev is already on it
     const box = items[1].querySelector("input"); box.checked = true; fire(box, "change"); await settle(4);
     const stageBtn = [...p.root.querySelectorAll("dialog button, .dlg button")].find((b: any) => b.textContent === "Stage") as any;
     fire(stageBtn, "click"); await settle(6);
@@ -116,8 +120,8 @@ describe("Settings → Agents → Accounts (#3212)", () => {
   it("in zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
-    expect([text(rowOf("claude-code", "default").querySelector(".s-account-who strong")), text(rowOf("claude-code", "work").querySelector(".s-account-used"))])
-      .toEqual(["預設登入", "使用者：1 個 Agent · 1 個 ClassicBot 房間"]);
+    expect([text(rowOf("claude-code", "default").querySelector(".s-account-title-left strong")), text(rowOf("claude-code", "work").querySelector(".s-account-used"))])
+      .toEqual(["預設連接", "使用者：1 個 Agent · 1 個 ClassicBot 房間"]);
   });
 
   it("the Agent dialog's Account field: the fleet default first, signed-in accounts choosable, a signed-out one disabled", async () => {
@@ -125,7 +129,7 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     await p.mount(h(A.AccountSelect, { id: "ag-account", backend: "claude-code", value: "", onChange: (v: string) => { picked = v; } }));
     await settle(8);
     const opts = [...p.root.querySelectorAll("#ag-account option")] as any[];
-    expect(opts.map((o) => [o.value ?? o.getAttribute("value") ?? "", text(o), !!o.disabled])).toEqual([["", "Fleet default (default sign-in)", false], ["personal", "personal — not signed in", true], ["work", "work", false]]);
+    expect(opts.map((o) => [o.value ?? o.getAttribute("value") ?? "", text(o), !!o.disabled])).toEqual([["", "Fleet default (default connection)", false], ["personal", "personal — not connected", true], ["work", "work", false]]);
     const sel = p.root.querySelector("#ag-account"); sel.value = "work"; fire(sel, "change"); await settle(2);
     expect(picked).toBe("work");
   });
@@ -135,7 +139,10 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(p.root.querySelector("#ag-account")).toBeNull();
     await p.unmount(); A.accountsStore.set({ loaded: false, failed: false, view: null });
     (globalThis as any).fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: "accounts_need_a_local_admin" }) });
-    try { await mount(); expect(text(p.root.querySelector("[role=alert]"))).toBe("Could not read the accounts."); }
+    // Ridge #3321 S07: the section keeps its heading, and the shared error state offers Retry.
+    try { await mount(); const alert = p.root.querySelector("[role=alert]");
+      expect([text(alert).startsWith("Could not read the accounts."), text(p.root.querySelector(".s-accounts h3")), !![...p.root.querySelectorAll(".s-accounts button")].find((b: any) => text(b) === "Try again")])
+        .toEqual([true, "Accounts", true]); }
     finally { (globalThis as any).fetch = fetchFake; }
   });
 });

@@ -21,9 +21,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn as guardedSpawn } from "./child-process.js";
 import { linkableLoginUrl } from "./login-url.js";
+import { runtimeFacts } from "./cli-registry.js";
 
 /** What the Claude Code sign-in is. The server's `LOGIN_FLOWS["claude-code"]` carries the same argv and patterns; a test pins that they agree. */
-export const CLAUDE_LOGIN_ARGV = Object.freeze(["auth", "login"] as const);
+export const CLAUDE_LOGIN_ARGV: readonly string[] = Object.freeze(runtimeFacts("claude-code", "signIn")!.argv.slice(1));   // cli-registry.ts: `runtime.signIn` (the program name, then these words)
 export const CLAUDE_LOGIN_METHOD_FLAGS = Object.freeze({ subscription: "--claudeai", console: "--console" } as const);
 export type SignInMethod = keyof typeof CLAUDE_LOGIN_METHOD_FLAGS;
 export const SIGNIN_TTL_MS = 10 * 60_000;

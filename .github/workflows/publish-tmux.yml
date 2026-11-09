@@ -73,7 +73,7 @@ jobs:
         if: startsWith(matrix.target, 'linux-')
         run: |
           file "tmux-build/tmux-${{ matrix.target }}/bin/tmux" | tee /dev/stderr | grep -q "statically linked"
-      - name: Build twice on macOS (the locked Xcode; static libevent/ncurses/utf8proc/jemalloc; macOS 11+) and compare
+      - name: Build twice on macOS (the locked Xcode; static libevent/ncurses/utf8proc, system allocator; macOS 11+) and compare
         if: startsWith(matrix.target, 'darwin-')
         env:
           TARGET: ${{ matrix.target }}

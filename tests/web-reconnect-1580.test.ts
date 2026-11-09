@@ -347,13 +347,20 @@ describe("the public link (poll transport)", () => {
 });
 
 describe("one stream per tab", () => {
-  it("only app-stream.js makes an EventSource, and app.js makes the page's one stream", () => {
+  it("fleet and Hub workspaces own separate streams; the fleet app makes exactly one", () => {
     const root = join(process.cwd(), "src", "ui");
     const files: string[] = [];
     const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) { if (n !== "vendor") walk(p); } else if (n.endsWith(".js")) files.push(p); } };
     walk(root);
     const makers = files.filter(f => /new\s+(?:env\.|window\.|globalThis\.)?EventSource\s*\(/.test(readFileSync(f, "utf8"))).map(f => f.slice(root.length + 1));
-    expect(makers).toEqual(["shared/app-stream.js"]);
+    expect(makers).toEqual(["hub-client.js", "shared/app-stream.js"]);
+    // The Hub listener has its own signed-in workspace, not the fleet's /api/stream. Member dashboards keep
+    // their existing single fleet stream and get private notices through their existing local Settings poll.
+    const hub = readFileSync(join(root, "hub-client.js"), "utf8");
+    const webStart = hub.indexOf("export function createHubWebClient("), memberStart = hub.indexOf("export function createMemberClient(");
+    expect(hub.slice(0, webStart)).not.toMatch(/new\s+EventSource\s*\(/);
+    expect(hub.slice(webStart, memberStart).match(/new\s+EventSource\s*\(/g)).toHaveLength(1);
+    expect(hub.slice(memberStart)).not.toMatch(/new\s+EventSource\s*\(/);
     const app = readFileSync(join(root, "shared", "app.js"), "utf8");
     expect(app.match(/createStream\(/g)).toHaveLength(1);
   });

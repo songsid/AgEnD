@@ -54,6 +54,7 @@ import {
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionRecord, type SessionTier, type WebSessionStore } from "./web-session.js";
 import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
+import { isWsl } from "./wsl-detect.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -88,6 +89,8 @@ export interface AuthApiContext {
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
+  /** S-117 story 1: web-only, or no chat connected yet — the sign-in page never says "send /web" then. */
+  signinWithoutChat?(): boolean;
   /**
    * #3008: a code from the authenticator app, typed at the outside link's sign-in (FleetManager.outsideSignIn): "ok"
    * only for the link connections from outside opened (`exposureId`), with a code not used before.
@@ -139,6 +142,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
+  "model-picker.css": { file: join("shared", "model-picker.css"), type: "text/css; charset=utf-8" },
+  "subagent-row.css": { file: join("shared", "subagent-row.css"), type: "text/css; charset=utf-8" },
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
   "inter.woff2": { file: join("shared", "fonts", "inter.woff2"), type: "font/woff2" },
   // #2631: the Office's built-in Cozy style is drawn on this picture (static, no data, like the font).
@@ -162,11 +167,13 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
     "instance-switch.js",
     // #1523 N3: every page's header tools (text size, usage), the usage dialog they open, and the read stream it shares with View.
-    "header-tools.js", "usage-dialog.js", "read-stream.js",
+    "header-tools.js", "usage-dialog.js", "usage-meter.js", "read-stream.js",
     // #2585: the docked side panel in the usage rail's place (the shell's right-hand column).
     "side-panel.js",
     // #1665: the host-kept preferences and their browser cache.
     "app-prefs.js",
+    // M-2738: the update line and its confirmation (static code; the update state is read behind the gate).
+    "app-update.js",
     // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
     "setup-host-text.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
@@ -202,15 +209,21 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
   // AgEnD Hub P1: the Hub pages' own stylesheet (linked by their lazy modules only; static, no data).
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
+  // alpha.6 feedback: the Hub's signed-out page (linked by panel-hub.js's HubSignIn; an older hub.css lacks it).
+  "hub-signin.css": { file: join("shared", "hub-signin.css"), type: "text/css; charset=utf-8" },
   // #3226 B: the Hub chat's stylesheet (linked by hub-chat-strings.js; an older hub.css lacks it).
   "hub-chat.css": { file: join("shared", "hub-chat.css"), type: "text/css; charset=utf-8" },
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
   "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
+  // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).
+  "hub-groups.css": { file: join("shared", "hub-groups.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
+  // #3292: Keep sign-in alive's line on an Accounts row (linked by accounts-keepalive.js; an older accounts.css lacks it).
+  "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
   "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
@@ -280,12 +293,13 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean; loginQr?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean; loginQr?: boolean; noChat?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
     // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
     // #3061: on this computer's own listener of a web-only fleet (never a public link), it also offers "Sign in with another device".
-    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside && opts.loginQr ? ' data-login-qr="1"' : ""}`;
+    // S-117 story 1: a chat fleet whose chat is not connected yet (data-no-chat) — words only: never "send /web".
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside && opts.loginQr ? ' data-login-qr="1"' : ""}${!opts.webOnly && opts.noChat ? ' data-no-chat="1"' : ""}`;
     const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
@@ -347,7 +361,7 @@ export function handleAuthRequest(
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
     const link = gatewayRequestContext(req);
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, noChat: ctx.signinWithoutChat?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
       deviceLogin: !link && ctx.deviceLoginAvailable?.() === true, loginQr: ctx.loginQrEnabled?.() === true });
     return true;
   }
@@ -501,9 +515,11 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
+      // #3270: what a long-lived first-install code additionally needs — this computer's own loopback peer, and no host session ever authorized.
+      const redeemContext = { loopbackPeer: !gateway && classifyWebPeer(req) === "loopback", hostEverAuthorized: sessions.hostEverAuthorized };
       const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
-        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
-        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext)
+        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
@@ -626,10 +642,30 @@ export function handleAuthRequest(
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }
+    // #3327 (#3345 review): the host's own code is asked for on this computer only — a direct loopback peer, a loopback
+    // Host and no forwarding header (classifyWebPeer). Its one caller is `agend web` here; the web token alone, from a
+    // remote peer or through a proxy, must not mint an admin session (threat model 64a289a0: remote parties are not the
+    // owner). Redeeming the code it prints still works from wherever the owner types it.
+    if (classifyWebPeer(req) !== "loopback") {
+      ctx.logger.info({ source: "cli" }, "Web login code refused: not asked from this computer");
+      json(res, 403, { error: "A sign-in code can only be asked for on the AgEnD computer itself." });
+      return true;
+    }
     // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
-    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true });
-    ctx.logger.info({ source: "cli" }, "Web login code issued");
-    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
+    // #3270: the first host code on a fresh install (no host session EVER authorized — not "none right now") may live for an
+    // hour instead of five minutes, redeemable from this computer only and only until the first host session exists. Every
+    // one of these must hold, and a missing header is the ordinary 5 minutes:
+    //   - the caller says the code is going to an interactive terminal (`X-Agend-Code-Delivery: tty`; `agend web --code` with a
+    //     TTY on stdout). A code for a URL (`url`: browser history), for a pipe or a redirect (`non-tty`: an install log, a
+    //     service's journal) or from a caller that does not say, is never the long one;
+    //   - this is not WSL: Windows processes reach the fleet as loopback there and can read the distro's files;
+    //   - no host session was ever authorized here (the persisted marker).
+    // Nothing logged below carries the code itself — only that a first-install one was issued.
+    const delivery = String(req.headers["x-agend-code-delivery"] ?? "").trim().toLowerCase();
+    const bootstrap = delivery === "tty" && !isWsl() && !!ctx.webSessions && !ctx.webSessions.hostEverAuthorized;
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true, ...(bootstrap ? { bootstrap: true as const } : {}) });
+    ctx.logger.info({ source: "cli", ...(issued.bootstrap ? { bootstrap: true } : {}) }, "Web login code issued");
+    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt, ...(issued.bootstrap ? { bootstrap: true } : {}) });
     return true;
   }
 
@@ -722,7 +758,7 @@ export function handleAuthRequest(
 }
 
 export const REVOCATION_NOT_DURABLE_MESSAGE =
-  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign out again, or rotate the token (agend web-token rotate).";
+  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. This page cannot repair session storage.";
 
 /**
  * A revocation that holds only in memory is reported as a failure (500), never as "ok": the browser is

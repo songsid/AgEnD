@@ -56,7 +56,7 @@ codex and kiro-cli alike, #3212):
 
 It opens the same login as `/login <backend>`, for that profile only (codex: a
 device code; kiro: its login picker), and the web dashboard's Settings →
-Accounts offers the same **Sign in** per account. Or on the host:
+Accounts offers **Connect account** for each account. Or on the host:
 
 ```
 CLAUDE_CONFIG_DIR="${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>" claude auth login
@@ -113,7 +113,7 @@ is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
 Set `credential_profile` with `update_instance_config` or web Settings: the
-agent's **Account** field, or **Settings → Agents → AI sign-ins and API keys →
+agent's **Account** field, or **Settings → Agents → AI accounts and API keys →
 Accounts** (**Move agents here…**, and each CLI's **Fleet default**). Settings
 refuses a signed-out profile and names its login command.
 Never hand-edit `fleet.yaml`.

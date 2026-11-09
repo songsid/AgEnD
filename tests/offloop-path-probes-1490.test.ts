@@ -22,13 +22,24 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import { loginShell, unattendedInstallCommand } from "../src/unattended-install.js";
 import { ExecHelper, resolveOnPath, type HelperExecOptions } from "../src/tmux-exec-helper.js";
+import { resetTmuxResolution, tmuxBinary } from "../src/tmux-binary.js";
 
 const dirs: string[] = [];
 afterEach(() => {
   hooks.access.length = 0;
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  resetTmuxResolution();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
+
+/** The helper runs AgEnD's tmux: the fake on this test's PATH, made that binary (AGEND_TMUX_BIN) and resolved once here,
+ *  so the resolution's own check is not part of the probe under test. */
+function useFakeTmux(bin: string) {
+  vi.stubEnv("AGEND_TMUX_BIN", join(bin, "tmux"));
+  resetTmuxResolution();
+  tmuxBinary();
+}
 
 function scratch() {
   const d = mkdtempSync(join(tmpdir(), "agend-1490-path-"));
@@ -67,6 +78,7 @@ describe("resolveOnPath / ExecHelper do not accessSync", () => {
     mkdirSync(bin);
     writeFileSync(join(bin, "tmux"), "#!/bin/sh\nprintf ok\n", { mode: 0o755 });
     chmodSync(join(bin, "tmux"), 0o755);
+    useFakeTmux(bin);
     const { h, direct } = helper(bin);
     hooks.access.length = 0;
     await h.start();
@@ -84,6 +96,7 @@ describe("resolveOnPath / ExecHelper do not accessSync", () => {
     mkdirSync(bin);
     writeFileSync(join(bin, "tmux"), "#!/bin/sh\nprintf ok\n", { mode: 0o755 });
     chmodSync(join(bin, "tmux"), 0o755);
+    useFakeTmux(bin);
     const other = join(root, "other");
     mkdirSync(other);
     writeFileSync(join(other, "tmux"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });

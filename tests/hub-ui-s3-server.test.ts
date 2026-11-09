@@ -60,9 +60,10 @@ afterAll(async () => {
   await new Promise<void>((r) => fm.healthServer?.close(() => r()));
   rmSync(dir, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true });
 });
+// The switches live in the configuration as written (the raw fleet.yaml): the parsed FleetConfig has no `hub`/`hub_member`.
 const setSwitches = (hub?: unknown, member?: unknown) => {
-  if (hub === undefined) delete fm.fleetConfig.hub; else fm.fleetConfig.hub = hub;
-  if (member === undefined) delete fm.fleetConfig.hub_member; else fm.fleetConfig.hub_member = member;
+  if (hub === undefined) delete fm.rawFleetConfig.hub; else fm.rawFleetConfig.hub = hub;
+  if (member === undefined) delete fm.rawFleetConfig.hub_member; else fm.rawFleetConfig.hub_member = member;
 };
 
 describe("the switches and the page's mark (this fleet's listener)", () => {
@@ -86,6 +87,53 @@ describe("the switches and the page's mark (this fleet's listener)", () => {
       const guest = await get(session("guest", ALICE), "/ui/chat/a");
       expect([guest.status, bodyTag(guest.body).includes("data-hub")]).toEqual([200, false]);
     } finally { delete fm.fleetConfig.web; }
+  });
+  it("#3372 N2: data-hub-groups only while this fleet's own Hub offers group permissions; never on a guest's page", async () => {
+    setSwitches();
+    const sid = session("admin");
+    expect(bodyTag((await get(sid, "/settings/hub")).body)).not.toContain("data-hub-groups");
+    const spy = vi.spyOn(fm, "hubGroupPermissions").mockReturnValue(true);
+    try {
+      expect(bodyTag((await get(sid, "/settings/hub")).body)).toContain(' data-hub-groups="1"');
+      fm.fleetConfig.web = { guests: { enabled: true, grants: { [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["a"] } } } };
+      try { expect(bodyTag((await get(session("guest", ALICE), "/ui/chat/a")).body)).not.toContain("data-hub-groups"); } finally { delete fm.fleetConfig.web; }
+      // Never over the public link (Fable G1): the mark itself would tell public visitors this Hub has group permissions.
+      let pub = "";
+      const req = { url: "/settings/hub", headers: { host: "x.trycloudflare.com" }, socket: { remoteAddress: "127.0.0.1" } };
+      bindGatewayRequest(req, { surface: "gateway", exposureId: "e1", expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+      serveAppShell(req as never, { setHeader() {}, writeHead() {}, end(b?: string) { pub = String(b ?? ""); }, headersSent: false } as never, fm, "full");
+      expect(bodyTag(pub)).toContain('data-public-link="1"'); expect(bodyTag(pub)).not.toContain("data-hub-groups");
+      spy.mockReturnValue("yes" as never);                                  // only exactly true marks
+      expect(bodyTag((await get(sid, "/settings/hub")).body)).not.toContain("data-hub-groups");
+      spy.mockImplementation(() => { throw new Error("runtime gone"); });     // a failing runtime: the page still renders, unmarked
+      const failed = await get(sid, "/settings/hub");
+      expect([failed.status, bodyTag(failed.body).includes("data-hub-groups")]).toEqual([200, false]);
+    } finally { spy.mockRestore(); }
+  });
+  it("alpha.6 user report: Hub membership switched on and saved, then a reload — the page says member (Connect to a Hub loads), no restart", async () => {
+    setSwitches();
+    const sid = session("admin");
+    expect(bodyTag((await get(sid, "/settings/access")).body).includes("data-hub")).toBe(false);
+    // The write PUT /api/settings/hub/membership commits (settings-api.ts), on the real fleet.yaml.
+    fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
+    expect(bodyTag((await get(sid, "/settings/access")).body)).toContain(' data-hub="member"');
+    fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: false }]);
+    expect(bodyTag((await get(sid, "/settings/access")).body).includes("data-hub")).toBe(false);
+    setSwitches();
+  });
+  it("alpha.6 user report: a fleet that starts with hub_member.enabled in fleet.yaml marks its pages (the parsed config has no hub_member)", async () => {
+    const d = mkdtempSync(join(tmpdir(), "agend-hub3-start-"));
+    try {
+      writeFileSync(join(d, "fleet.yaml"), `health_port: 0\nhub_member:\n  enabled: true\ninstances:\n  a:\n    working_directory: ${d}\n    backend: claude-code\n`);
+      const other: any = new FleetManager(d);
+      other.logger = fm.logger; other.loadConfig(join(d, "fleet.yaml"));
+      expect(other.fleetConfig.hub_member, "the parsed config never carries it").toBeUndefined();
+      let body = "";
+      const req = { url: "/ui", headers: { host: "127.0.0.1" }, socket: { remoteAddress: "127.0.0.1" } };
+      const res = { setHeader() {}, writeHead() {}, end(b?: string) { body = String(b ?? ""); }, headersSent: false };
+      serveAppShell(req as never, res as never, other, "full");
+      expect(bodyTag(body)).toContain(' data-hub="member"');
+    } finally { rmSync(d, { recursive: true, force: true }); }
   });
   it("hub_member.enabled: never marked over the public link (member handlers are local-owner-only — hub.md §1)", () => {
     setSwitches(undefined, { enabled: true });

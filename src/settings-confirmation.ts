@@ -29,6 +29,12 @@ export interface SettingsChangeOutcome {
   detail?: string;
   result?: unknown;
 }
+/**
+ * alpha.6 feedback #2c (the user's decision hmsg-77256f66: never guide users to type a host command): why no General could
+ * take a change's confirm card — no chat connection at all; the change spans chat platforms; no agent is the General; the
+ * General's chat is not connected; the General has no topic yet; or posting the card failed.
+ */
+export type SettingsNoCardReason = "no_chat" | "cross_platform" | "no_general" | "chat_disconnected" | "no_topic" | "post_failed";
 export interface SettingsPendingView {
   id: string;
   state: SettingsChangeState;
@@ -46,10 +52,16 @@ export interface SettingsPendingView {
    * it. #2170: "web" — confirmed by the requester's own web-verified account, not in chat or on the host. The host's
    * command (`code`) works whatever the kind.
    */
-  confirmation: { kind: "posting" | "chat" | "host_cli" | "web"; code?: string; where?: Array<{ platform: string; connection: string }> };
+  confirmation: { kind: "posting" | "chat" | "host_cli" | "web"; code?: string; where?: Array<{ platform: string; connection: string }>;
+    /** alpha.6 feedback #2c: with "host_cli", why no General could take the card, for the page to say in plain words. */
+    reason?: SettingsNoCardReason };
   can_withdraw: boolean;
   /** #2868: the browser that reads it may confirm it itself now (#2170's rule, asked at that read): "Apply now". */
   can_self_confirm?: boolean;
+  /** alpha.6 #2c (hmsg-468cc290): this page may confirm it with the authenticator's code (ready), or could once one is set up. */
+  totp?: "ready" | "not_set_up" | "on_host" | "host_browser";
+  /** B2b: with `totp` ready, the change's digest the page sends back with the code (one code confirms only this change). */
+  confirm_digest?: string;
   outcome: SettingsChangeOutcome | null;
 }
 export interface SettingsChangeProposal {
@@ -67,12 +79,16 @@ export interface SettingsChangeProposal {
   authority?: SettingsChangeAuthority;
   /** #2453: never confirmed by its own requester (#2170) — it turns the named-link option on. */
   noSelfConfirm?: true;
+  /** B2b: noSelfConfirm, except for this computer's host operator on its own local session (see SettingsChangeDiff). */
+  hostLocalConfirm?: true;
+  /** A link option turned on: noSelfConfirm, except for the host's own session here only (see SettingsChangeDiff). */
+  hostSessionOnly?: true;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
   unchanged(): Promise<boolean>;
   /** The original handler, guarded at its asynchronous continuation edges. */
-  apply(current: () => boolean, execution: SettingsExecution): Promise<unknown>;
+  apply(current: () => boolean, execution: SettingsExecution, confirmedCurrent?: () => boolean): Promise<unknown>;
   /** Runtime state and persistence revisions, excluding the operation's private state. */
   snapshot?(): unknown;
   discard?(): void;
@@ -105,7 +121,8 @@ export class SettingsConfirmationStore {
     now?: () => number;
     wallNow?: () => number;
     audit(event: string, fields: Record<string, unknown>): void;
-    notify?(view: SettingsPendingView): void | Promise<void>;
+    /** Post the confirm card; when none could be attached, why (the page says it; the host CLI stays the last resort). */
+    notify?(view: SettingsPendingView): void | Promise<void | SettingsNoCardReason>;
     /** alpha.2 (M-2300): a request was made, decided or ran out — no details (a page that may see them reads them). */
     changed?(view: SettingsPendingView): void;
   }) {}
@@ -181,8 +198,9 @@ export class SettingsConfirmationStore {
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).
-    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).catch(() => this.audit("notification_failed", entry))
-      .finally(() => { if (entry.view.state === "pending" && entry.view.confirmation.kind === "posting") entry.view.confirmation = { kind: "host_cli", code: id }; });
+    let reason: SettingsNoCardReason | undefined;
+    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).then(r => { if (typeof r === "string") reason = r; }, () => { reason = "post_failed"; this.audit("notification_failed", entry); })
+      .finally(() => { if (entry.view.state === "pending" && entry.view.confirmation.kind === "posting") entry.view.confirmation = { kind: "host_cli", code: id, ...(reason ? { reason } : {}) }; });
     return { view: this.snapshot(entry), reused: false };
   }
   findRequest(session: string, key: string, fingerprint: string): SettingsPendingView | null {
@@ -194,6 +212,12 @@ export class SettingsConfirmationStore {
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
   /** #2453: whether its requester may confirm it by applying it (#2170) — not a change that opens the named link. */
   selfConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm !== true; }
+  /** B2b: a noSelfConfirm change the host operator's own local session may still confirm. */
+  /** A link option turned on (#2453): only the host's own session on this computer may confirm it (hostSessionHere). */
+  hostSessionConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm === true && p.hostSessionOnly === true; }
+  hostLocalConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm === true && p.hostLocalConfirm === true; }
+  /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
+  confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {
     const entry = this.records.get(id); return entry ? structuredClone(entry.authority) : null;
   }
@@ -231,7 +255,7 @@ export class SettingsConfirmationStore {
     if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", t("settings_confirm.result.withdrawn"));
     return this.snapshot(entry);
   }
-  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web";
+  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web"; audit?: Record<string, unknown>;
     followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }): Promise<SettingsPendingView> {
     const entry = this.records.get(id);
     if (entry) this.expire(entry);
@@ -244,7 +268,7 @@ export class SettingsConfirmationStore {
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     if (actor.via === "web") entry.view.confirmation = { kind: "web" };
     this.changed(entry);
-    this.audit("confirmed", entry, { decided_by: this.display(actor.label) });
+    this.audit("confirmed", entry, { decided_by: this.display(actor.label), ...(actor.audit ?? {}) });
     const current = (): boolean => !this.closed && entry.view.state === "applying"
       && this.now() < entry.deadline && actor.current() && proposal.current();
     try {
@@ -257,7 +281,7 @@ export class SettingsConfirmationStore {
         entry.execution = execution;
         try {
           // #2942: the same actor-aware fence the store checks (admin, session, state), not only the execution's snapshot.
-          const result = await proposal.apply(current, execution);
+          const result = await proposal.apply(current, execution, () => !this.closed && actor.current());
           if (!execution.completed) execution.complete();
           this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }

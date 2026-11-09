@@ -90,7 +90,7 @@ try {
     const old = await world([]);
     const b = await open(old.room.id);
     assert.equal(await b.p.locator("#attachBtn").count(), 0);
-    assert.equal((await b.p.locator(".hub-files-off").innerText()).trim(), zh ? "這個代理目前還不能接收檔案。" : "This agent can't receive files yet.");
+    assert.equal((await b.p.locator(".hub-files-off").innerText()).trim(), zh ? "這個 Agent 目前還不能接收檔案。" : "This agent can't receive files yet.");
     assert(await b.p.locator(".hub-files-off").isVisible(), "the line shows on this device");
     await b.p.screenshot({ path: join(out, `${prefix}-before.png`), fullPage: true });
     assert.deepEqual([b.errors, b.foreign, b.csp], [[], [], []]); await b.context.close();

@@ -1,0 +1,22 @@
+{
+  "testedSourceCommit": "2db13c3a91c4a2ee8013c4e48d759c432a19242b",
+  "base": "bddab17f9f149976413fa1c1d842383e83ea21e4",
+  "focused": {
+    "command": "npx vitest run tests/hub-directory-save.test.ts tests/hub-compose.test.ts tests/hub-directory-response-owner.test.ts",
+    "passed": 129,
+    "failed": 0,
+    "skipped": 0
+  },
+  "types": [
+    {
+      "command": "npx tsc --noEmit",
+      "exit": 0
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  ],
+  "isolation": "Private scratch Hub, real SQLite and CA-verified owned loopback HTTPS; inert directory only. No public route, real account/directory, native/pilot/live operation.",
+  "sourceSync": "Plain alpha merge. Two conflicts retained own added refusal docs and crashAt fixture helper; all other alpha changes preserved. Production delta is settings-directory-save.ts only."
+}

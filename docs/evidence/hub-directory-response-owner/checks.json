@@ -1,0 +1,36 @@
+{
+  "scope": "Private runtime ownership of the original HTTPS directory Save response across same-port remount; public AD editing remains uncomposed",
+  "focused": {
+    "passed": 100,
+    "files": 4,
+    "skipped": 0,
+    "command": "vitest run tests/hub-directory-response-owner.test.ts tests/hub-compose.test.ts tests/hub-compose-member.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=1"
+  },
+  "types": {
+    "source": "passed: tsc --noEmit",
+    "tests": "passed: tsc -p tsconfig.test.json --noEmit"
+  },
+  "realHttps": [
+    "CA-verified ordinary HTTPS with dummy sign-in",
+    "real mounted proof/shared writer/SQL decision and same-port runtime remount",
+    "one-time successor delivered on the original held response; old cookie refused",
+    "synchronous Stop cancels reply; transferred server physically acknowledged before Stop completes"
+  ],
+  "limits": [
+    "Capture route exists only in the owned test wrapper, not in product HTTP",
+    "Directory driver and candidate TLS probe are inert",
+    "No public AD authority or cookie-ref lookup route; no browser or real directory/account",
+    "Durable notice delivery and failed-mount compensation remain unfinished",
+    "No native lifecycle, pilot or live-fleet operation"
+  ],
+  "sync": "Plain merge of alpha ee155f80b; no rebasing or force push",
+  "reviewR1": {
+    "scope": "Tests and evidence only; production blobs byte-identical to reviewed d91aca1ab",
+    "F1": "The original one-setImmediate Stop assertion could observe unrelated mount teardown. Superseded: explicitly observe response-owner close entry after mount.close and drainLeftovers, then hold only the transferred server acknowledgment. Both removing the final close and dropping its await now fail an assertion.",
+    "F2": "After epoch/head revocation, capture refuses before caller proof runs; revocation inside the caller proof also refuses. A prior capture cannot reply under its revoked old authority. Existing remount control still replies only through fresh authority.",
+    "F3": "Actual TLS request with only one byte of a declared two-byte body refuses capture as invalid.",
+    "F4": "A successful reply releases the runtime slot and a second listener captures/replies successfully.",
+    "mutations": "Six independent assertion failures; all source restored. See mutations-r1.json. Original mutations.json is historical; its runtime-drain timing receipt is superseded here.",
+    "checks": "100/100 focused and test/source type program passed; source-only type receipt carries unchanged production."
+  }
+}

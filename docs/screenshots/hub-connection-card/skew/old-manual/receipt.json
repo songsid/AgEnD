@@ -1,0 +1,61 @@
+{
+  "before": false,
+  "skew": "old-manual",
+  "base": "a32b177df",
+  "checks": [
+    {
+      "name": "desk-light-en retained UI after skew",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en skew never writes",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW retained UI after skew",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW skew never writes",
+      "ok": true
+    },
+    {
+      "name": "nonempty selection",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-skew-old-manual.png",
+    "phone-dark-zh-TW-skew-old-manual.png"
+  ],
+  "errors": [],
+  "cleaned": true,
+  "limits": "Owned fake LDAPS and sealed Hub; real cookie/CSRF/Settings/transport/publish paths. No API reply substitution. Lifecycle/model/CLI blocked; no question sent to an agent.",
+  "initialReads": [
+    {
+      "tag": "desk-light-en",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":true,\"pairing\":{\"state\":\"unpaired\"}}"
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": 200,
+      "text": "{\"ok\":true,\"connectionCardV1\":true,\"enabled\":true,\"pairing\":{\"state\":\"unpaired\"}}"
+    }
+  ],
+  "status": "PASS"
+}

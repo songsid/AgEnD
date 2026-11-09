@@ -179,7 +179,7 @@ describe.skipIf(process.platform === "win32")("confirmed browser certificate rep
     const context = { config: { defaults: {}, instances: {} } as FleetConfig, classic: {}, hubBrowserCertificate: s.control.preview };
     expect(isSettingsMutation("POST", path)).toBe(true);
     const diff = prepareSettingsEffect("POST", path, input, context, "owner").diff!;
-    expect(diff).toMatchObject({ section: "access", authority: { connections: [], primaryGeneral: false, unknown: false } });
+    expect(diff).toMatchObject({ section: "access", authority: { connections: [], primaryGeneral: true, unknown: false } });
     expect(diff.summary.join(" ")).toContain(p.certificate.fingerprint256); expect(diff.summary.join(" ")).toContain(p.certificate.validTo);
     expect(diff.summary.join(" ")).toContain("self-signed");
     expect(() => prepareSettingsEffect("POST", path, input, context, "other-owner")).toThrow("conflict");

@@ -11,12 +11,15 @@
   const $ = (id) => document.getElementById(id);
   const T = {
     en: {
+      signout_unsaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
       checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your sign-in code.",
       label: "One-time code", submit: "Sign in", working: "Signing in…",
       hint: "No code? Send /web in General, then press a sign-in button to get one.",
       nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
       safe: "Page looks wrong after signing in?", safe_body: "Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Look.",
       refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
+      // #3270: the code in the opened link did not work (expired, used, or the fleet restarted). It is never put back in the box.
+      autofail: "The automatic sign-in did not work — its code has expired or was already used. To sign in again on this computer, run agend web in a terminal: it opens a new sign-in link.",
       unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
@@ -27,6 +30,13 @@
       hint_web: "On the AgEnD computer, run agend web --code to get a sign-in code.",
       refused_web: "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one.",
       resend_refused_web: "A new code could not be sent. Run agend web --code on the AgEnD computer for one.",
+      // S-117 story 1: on this computer (a loopback address) — sign in again here, never "send /web" (no chat may be
+      // connected yet). A Windows browser here is a WSL install's: its desktop shortcut opens the page with a new code.
+      hint_local: "On this computer, run agend web in a terminal: it opens the sign-in page and shows a new device sign-in code.",
+      hint_local_win: "On this computer, open the \u201cAgEnD 儀表板\u201d shortcut on the desktop: it opens the sign-in page with a new device sign-in code. Or run agend web in a WSL terminal.",
+      refused_local: "The code is invalid or no longer works. On this computer, run agend web in a terminal for a new one.",
+      refused_local_win: "The code is invalid or no longer works. On this computer, open the \u201cAgEnD 儀表板\u201d shortcut on the desktop for a new one.",
+      autofail_local_win: "The automatic sign-in did not work — its code has expired or was already used. To sign in again on this computer, open the \u201cAgEnD 儀表板\u201d shortcut on the desktop, or run agend web in a WSL terminal.",
       // #3008: through the link "Allow connections from outside" opened — the authenticator app's code (the leader's wording).
       label_outside: "Authenticator code", lead_outside: "Open your authenticator app and enter the 6-digit code for AgEnD.",
       hint_outside: "Lost your phone? On the AgEnD computer, choose \u201cSet up again\u201d.",
@@ -44,34 +54,41 @@
       dev_qr: "Or scan this QR code with a device that is already signed in as the owner. It holds this page's address and the code above, nothing else.",
     },
     "zh-TW": {
-      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
-      label: "一次性登入碼", submit: "登入", working: "登入中…",
+      signout_unsaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
+      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入裝置登入碼。",
+      label: "一次性裝置登入碼", submit: "登入", working: "登入中…",
       hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
       nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
       safe: "登入後畫面不對勁？", safe_body: "可能是你的自訂 CSS 把東西藏起來了。在網址最後加上 ?safe=1，就會不套用它地載入；再到「設定 → 外觀」修正或關閉。",
-      refused: "登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+      refused: "裝置登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+      autofail: "自動登入沒有成功：這個連結的裝置登入碼已過期或已用過。在這台電腦重新登入：在終端機執行 agend web，它會開啟新的登入連結。",
       unconfirmed: "登入暫時無法確認。請重新取碼再試；若仍失敗，請聯絡管理員。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
-      resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
-      resend_wait: "剛剛才要過登入碼，請稍候再試。",
-      resend_refused: "無法傳送新的登入碼。請用 /web 再要一個。",
-      hint_web: "在 AgEnD 電腦上執行 agend web --code 取得登入碼。",
-      refused_web: "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
-      resend_refused_web: "無法傳送新的登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
-      label_outside: "驗證器代碼", lead_outside: "打開驗證器 App，輸入 AgEnD 的 6 位數代碼。",
+      resend: "傳一組新的裝置登入碼給我", resent: "新的裝置登入碼已私訊給你，請在上方輸入。",
+      resend_wait: "剛剛才要過裝置登入碼，請稍候再試。",
+      resend_refused: "無法傳送新的裝置登入碼。請用 /web 再要一個。",
+      hint_web: "在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。",
+      refused_web: "裝置登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
+      resend_refused_web: "無法傳送新的裝置登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
+      hint_local: "在這台電腦重新登入：在終端機執行 agend web，它會開啟登入頁並顯示新的裝置登入碼。",
+      hint_local_win: "在這台電腦重新登入：點桌面上的「AgEnD 儀表板」捷徑，它會開啟登入頁並帶上新的裝置登入碼；或在 WSL 終端機執行 agend web。",
+      refused_local: "裝置登入碼無效或已失效。請在這台電腦的終端機執行 agend web 取得新的裝置登入碼。",
+      refused_local_win: "裝置登入碼無效或已失效。請點桌面上的「AgEnD 儀表板」捷徑取得新的裝置登入碼。",
+      autofail_local_win: "自動登入沒有成功：這個連結的裝置登入碼已過期或已用過。在這台電腦重新登入：點桌面上的「AgEnD 儀表板」捷徑；或在 WSL 終端機執行 agend web。",
+      label_outside: "6 位數驗證碼（驗證器 App）", lead_outside: "打開驗證器 App，輸入 AgEnD 的 6 位數驗證碼。",
       hint_outside: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
-      refused_outside: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
+      refused_outside: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。",
       paused_outside: "錯誤次數太多，請 {duration} 後再試。",
       minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
       another: "使用其他裝置登入", dev_title: "使用其他裝置登入",
-      dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組代碼。",
+      dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組裝置登入碼。",
       dev_waiting: "等待核准中… {time} 後失效。", dev_approved: "已核准，登入中…",
-      dev_expired: "這組代碼已失效。", dev_denied: "這個請求已被拒絕。", dev_new: "取得新代碼", dev_back: "返回",
-      dev_busy: "目前等待核准的裝置太多，請稍後再試。", dev_limited: "要求代碼的次數太多，請 {duration} 後再試。",
-      dev_unavailable: "這裡無法使用其他裝置登入。", dev_failed: "無法取得代碼。請檢查連線後再試。",
+      dev_expired: "這組裝置登入碼已失效。", dev_denied: "這個請求已被拒絕。", dev_new: "取得新的裝置登入碼", dev_back: "返回",
+      dev_busy: "目前等待核准的裝置太多，請稍後再試。", dev_limited: "要求裝置登入碼的次數太多，請 {duration} 後再試。",
+      dev_unavailable: "這裡無法使用其他裝置登入。", dev_failed: "無法取得裝置登入碼。請檢查連線後再試。",
       dev_lost: "連不上 AgEnD，仍在重試…",
-      dev_qr: "也可以用已登入且已驗證擁有者的裝置掃描這個 QR Code。裡面只有這個頁面的網址和上面的代碼，沒有其他東西。",
+      dev_qr: "也可以用已登入且已驗證擁有者的裝置掃描這個 QR Code。裡面只有這個頁面的網址和上面的裝置登入碼，沒有其他東西。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
@@ -87,7 +104,15 @@
   const loginQr = deviceLogin && document.body.getAttribute("data-login-qr") === "1";
   // Reserve the gated action while the form is still hidden, so ending the session read does not resize the card.
   if (deviceLogin) $("another").hidden = false;
-  const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  // S-117 story 1: a chat fleet whose chat is not connected yet (<body data-no-chat="1">) has the web-only words too —
+  // never "send /web" — and nothing else of a web-only fleet's (no authenticator or other-device sign-in from that).
+  const noChat = webOnly || (!!document.body && document.body.getAttribute("data-no-chat") === "1");
+  // S-117 story 1: this computer (a loopback address) has its own words first — sign in again here; a Windows browser
+  // here (a WSL install) is pointed at its desktop shortcut. Only words change: the page issues nothing itself (D3).
+  const local = !outside && /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/i.test((typeof location !== "undefined" && location.hostname) || "");
+  const win = local && /Windows/i.test((typeof navigator !== "undefined" && navigator.userAgent) || "");
+  const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (win && (T[lang][`${k}_local_win`] || T.en[`${k}_local_win`]))
+    || (local && (T[lang][`${k}_local`] || T.en[`${k}_local`])) || (noChat && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
     const minutes = Math.max(1, Math.ceil(ms / 60000));
@@ -96,7 +121,7 @@
     return hours === 1 ? t("hour") : t("hours").replace("{0}", String(hours));
   };
   // …and no "No chat bot?" help: the hint above already is it.
-  if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
+  if (noChat || local) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
   $("checking").setAttribute?.("aria-label", t("checking"));
   if (outside) {
@@ -104,6 +129,30 @@
     input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");
     input.setAttribute("pattern", "[0-9 ]*");
   }
+
+  // #3270: `agend web` opens this page on this computer as /signin#code=XXXX-XXXX. A fragment is never sent to the server, a
+  // log or a Referer; it is read here and taken out of the address bar and the history entry BEFORE anything else runs —
+  // before any request this script makes — so it cannot be copied, bookmarked or shared from the address bar. It is
+  // cleared wherever the page is (a link pasted from the terminal must not leave a code behind), but it is only ever
+  // exchanged on this computer's own loopback name: a page reached by any other name never spends it on its own. It is
+  // also only exchanged on a fresh navigation by a browser with no session yet (below) — a reload or a history entry that
+  // still carried a code must not sign a different session in over the one the person has.
+  const LOOPBACK_NAMES = /^(localhost|127\.0\.0\.1|::1|\[::1\])$/i;
+  let fragmentCode = null;
+  try {
+    const params = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+    if (params.has("code")) {
+      const raw = params.get("code") || "";
+      history.replaceState(null, "", location.pathname + location.search);
+      if (/^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/.test(raw)) fragmentCode = raw;
+    }
+  } catch { /* nothing to clean */ }
+  let freshNavigation = true;
+  try {
+    const nav = typeof performance === "object" && performance && typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation")[0] : null;
+    if (nav && nav.type && nav.type !== "navigate") freshNavigation = false;
+  } catch { /* no navigation timing: treat as fresh */ }
+  const autoCode = fragmentCode && freshNavigation && !outside && LOOPBACK_NAMES.test(location.hostname || "") ? fragmentCode : null;
 
   // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and
   // answered with this page), but it is still the fleet's token: take it out of the address bar and
@@ -117,14 +166,14 @@
   } catch { /* nothing to clean */ }
   // The command in the "No chat bot?" help is a <code> that never breaks across lines (a break inside "--code" reads as
   // two dashes and a word, alpha.2 sweep); the text around it is text.
-  const CMD = "agend web --code";
+  const CMD = /agend web(?: --code)?/;
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const text = t(el.getAttribute("data-i18n"));
-    const at = text.indexOf(CMD);
-    if (at < 0) { el.textContent = text; return; }
+    const m = CMD.exec(text);
+    if (!m) { el.textContent = text; return; }
     const code = document.createElement("code");
-    code.textContent = CMD;
-    el.replaceChildren(text.slice(0, at), code, text.slice(at + CMD.length));
+    code.textContent = m[0];
+    el.replaceChildren(text.slice(0, m.index), code, text.slice(m.index + m[0].length));
   });
 
   // An old deep link, /ui#instance=<name> (#1408 §3): the fragment never reaches the server, and the sign-in page is
@@ -170,7 +219,7 @@
     // A sign-out the server could not make durable says so here, once (agend-auth.js signOut).
     try {
       const note = sessionStorage.getItem("agend_signout_note");
-      if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note; }
+      if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note.startsWith("Signed out for now, but the change could not be saved") ? t("signout_unsaved") : note; }
     } catch { /* private mode */ }
     $("code").focus();
     offerResend();
@@ -369,6 +418,28 @@
     } catch { return false; }
   }
 
+  // What a refused POST /auth/login says (the form's and the fragment's exchange alike): 429 and 5xx are not a wrong code.
+  const failureText = (status) => (status === 429 ? t("paused") : status >= 500 ? t("unconfirmed") : t("refused"));
+
+  // #3270: the exchange of the code `agend web` put in the fragment. Resolves null once the browser is on its way into the
+  // app, else the words for why not — the form then shows them, so an expired or used code never leaves a blank page. The
+  // code itself is never shown or put in the box: whatever it was, it is spent or useless now.
+  async function autoSignIn(code) {
+    $("checking").textContent = t("working");
+    try {
+      const r = await fetch("/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (r.ok) { clearBounce(); location.replace(nextTarget()); return null; }
+      return r.status === 429 || r.status >= 500 ? failureText(r.status) : t("autofail");
+    } catch {
+      return t("network");
+    }
+  }
+
   $("form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = $("go");
@@ -393,7 +464,7 @@
       }
       // #1854: a 5xx is the server failing to confirm the sign-in (503: a public link's notice did not go out), not a
       // wrong code — say so. The code is spent either way: the way on is a new one.
-      msg.textContent = r.status === 429 ? t("paused") : r.status >= 500 ? t("unconfirmed") : t("refused");
+      msg.textContent = failureText(r.status);
     } catch (err) {
       if (err !== "shown") msg.textContent = t("network");
     }
@@ -402,8 +473,16 @@
     $("code").select();
   });
 
-  probe().then((signedIn) => {
-    if (signedIn) { markBounce(); location.replace(nextTarget()); return; }
+  (async () => {
+    // Someone who already has a session is simply let in: the code in the link is not exchanged over it (it stays unspent
+    // and, being from a link, short-lived anyway).
+    if (await probe()) { markBounce(); location.replace(nextTarget()); return; }
+    let failure = null;
+    if (autoCode) {
+      failure = await autoSignIn(autoCode);
+      if (failure === null) return;
+    }
     showForm();
-  });
+    if (failure) $("msg").textContent = failure;
+  })();
 })();

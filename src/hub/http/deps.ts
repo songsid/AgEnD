@@ -13,6 +13,7 @@ import type { HubPollBallot } from "../types.js";
 export interface HubHttpConfig {
   readonly hubId: string;
   readonly name: string;
+  readonly memberOrigin: string;
   readonly webOrigin: string;
   readonly administrator: PersonKey;
 }
@@ -28,12 +29,27 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;
   directory: HubDirectory;
   pairing: HubPairingService;
+  companyJoin?: import("../join/service.js").HubCompanyJoin;
+  /** Server-owned group permits; absent only in legacy injected compositions. */
+  groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
+  /**
+   * #3298 S-89: Administration → Group permissions and the signed-in welcome. Composed only with S-88's complete control; absent,
+   * the routes answer 404 and the session carries no "group-policy-v1" mark (the pages show nothing of it).
+   */
+  groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  /** S-90: durable credential-transaction outbox, independent of a group's current operational allowance. */
+  pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
+  /** Original security-notice recipients; independent of operational group or administrator permissions. */
+  directoryNotices?: Pick<import("../settings-directory-notices.js").HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
   config: HubHttpConfig;
+  /** M-2682: Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. Absent: 404. */
+  hubSettings?: Readonly<Omit<import("../settings-api.js").HubSettingsHttpDeps, "name">>;
   preview?: Readonly<import("../preview.js").HubPreviewView>;
   issuer: HubIssuer;
   /** Re-read on every use: null before HubServer exists and after fence/close — then work is unavailable, never queued. */
@@ -44,6 +60,8 @@ export interface HubHttpDeps {
   /** The server's mode (S5): `serverEnabled()` false once fenced — every request and continuation refuses from then on. */
   current(): HubMode;
   now?: () => number;
+  /** Private listener resource ownership; carries no session or directory authority. */
+  directoryResponse?: import("../compose/server.js").HubHttpDeps["directoryResponse"];
 }
 /**
  * S5's `hubTxDatabase(tx)` (db.ts): the DB behind a tx, valid only while that tx's `atomic` callback runs. Passed in

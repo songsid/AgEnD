@@ -164,8 +164,6 @@ Every adapter must implement these methods:
 | `react(chatId, messageId, emoji)` | Add emoji reaction |
 | `sendApproval(prompt, callback, signal?, threadId?)` | Send permission request with approve/deny buttons |
 | `downloadAttachment(fileId)` | Download a file to local path |
-| `handlePairing(chatId, userId)` | Handle pairing flow |
-| `confirmPairing(code)` | Confirm pairing code |
 | `setChatId(chatId)` | Set the default chat ID |
 | `getChatId()` | Get the current chat ID |
 | `promptUser(chatId, text, choices, opts?)` | Send a choice prompt |

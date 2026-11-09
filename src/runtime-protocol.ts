@@ -67,7 +67,7 @@ export type RuntimeOperation = "probe" | "workspace" | "run" | "cancel" | "recon
  * a command, a path or an environment. Replies carry only what the dashboard may show: a switch's state, a signed-in yes/no with the masked
  * identity, a sign-in's reduced screen. No token, and no raw CLI output.
  */
-export const RUNTIME_REMOTE_OPERATIONS = ["accounts.switches", "signin.start", "signin.capture", "signin.status", "signin.write", "signin.close", "accounts.check", "accounts.signout", "accounts.remove", "cli.install"] as const;
+export const RUNTIME_REMOTE_OPERATIONS = ["models.refresh", "accounts.switches", "signin.start", "signin.capture", "signin.status", "signin.write", "signin.close", "accounts.check", "accounts.signout", "accounts.remove", "cli.install"] as const;
 export type RuntimeRemoteOperation = typeof RUNTIME_REMOTE_OPERATIONS[number];
 export function isRuntimeRemoteOperation(value: unknown): value is RuntimeRemoteOperation {
   return typeof value === "string" && (RUNTIME_REMOTE_OPERATIONS as readonly string[]).includes(value);
@@ -75,6 +75,7 @@ export function isRuntimeRemoteOperation(value: unknown): value is RuntimeRemote
 export type RuntimeSignInMethod = "subscription" | "console";
 export interface RuntimeSwitchStates { accounts: { on: boolean; until?: number }; install: { on: boolean; until?: number } }
 export interface RuntimeRemotePayloads {
+  "models.refresh": { cli: string; profile: string; actor: string };
   "accounts.switches": Record<string, never>;
   "signin.start": { cli: string; profile: string; method: RuntimeSignInMethod; actor: string };
   "signin.capture": { sessionId: string };
@@ -87,7 +88,7 @@ export interface RuntimeRemotePayloads {
   "cli.install": { cli: string; actor: string };
 }
 const REMOTE_KEYS: { [K in RuntimeRemoteOperation]: readonly (keyof RuntimeRemotePayloads[K])[] } = {
-  "accounts.switches": [], "signin.start": ["cli", "profile", "method", "actor"], "signin.capture": ["sessionId"], "signin.status": ["sessionId"], "signin.write": ["sessionId", "input"],
+  "models.refresh": ["cli", "profile", "actor"], "accounts.switches": [], "signin.start": ["cli", "profile", "method", "actor"], "signin.capture": ["sessionId"], "signin.status": ["sessionId"], "signin.write": ["sessionId", "input"],
   "signin.close": ["sessionId"], "accounts.check": ["cli", "profile"], "accounts.signout": ["cli", "profile", "actor"], "accounts.remove": ["cli", "profile", "actor"], "cli.install": ["cli", "actor"],
 };
 /**
@@ -102,7 +103,7 @@ export function parseRuntimeRemotePayload<K extends RuntimeRemoteOperation>(oper
   for (const key of allowed) {
     const value = input[key];
     if (typeof value !== "string") return fail(key);
-    const pattern = key === "cli" ? /^[a-z][a-z0-9-]{0,31}$/ : key === "profile" ? /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/ : key === "actor" ? /^[A-Za-z0-9._:-]{1,64}$/
+    const pattern = key === "cli" ? /^[a-z][a-z0-9-]{0,31}$/ : key === "profile" ? (operation === "models.refresh" ? /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/ : /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/) : key === "actor" ? /^[A-Za-z0-9._:-]{1,64}$/
       : key === "sessionId" ? /^[a-f0-9]{32}$/ : key === "method" ? /^(?:subscription|console)$/ : undefined;
     if (pattern ? !pattern.test(value) : (key !== "input" || Buffer.byteLength(value, "utf8") > 4098)) return fail(key);
   }

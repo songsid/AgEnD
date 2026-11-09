@@ -49,7 +49,7 @@ agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the 
 agend-agent task comment M-3 "text"               # Comment on a card
 
 # Decisions
-agend-agent decision-post "title" "content"       # Post decision
+agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)
 agend-agent decision-list                         # List decisions (titles)
 agend-agent decision-get <id>                     # One decision's full text
 ```
@@ -61,14 +61,14 @@ An `uncertain` result may already have reached the target; do not resend blindly
 ## Rules
 
 - `[user:… via telegram|discord|web]` → use `agend-agent reply` (NOT `agend-agent send`)
-- `[from:INSTANCE]` → use `agend-agent send` or `agend-agent report` to answer the sending agent; AgEnD appends the runtime-specific rule for any requested channel-facing action.
+- `[from:INSTANCE]` → use `agend-agent send` or `agend-agent report` to answer the sending agent; AgEnD appends the runtime-specific rule for channel-facing work, including results of your own delegations.
 - Everything for a human user goes inside the `agend-agent reply` command. Your final
   terminal text is NOT delivered to their chat — it only reaches local logs and
   `/view`. After the command succeeds, end the turn with final text of exactly `.`
   (some backends such as Kiro CLI error on a turn with no text at all). Only
   exception: if the command fails, say so in the final text so the failure is visible
   to the operator.
-- For cross-instance responses, put the response in `agend-agent send` or
+- For responses to the sending agent, put the response in `agend-agent send` or
   `agend-agent report`. After the command succeeds, likewise end the turn with exactly
   `.`; if it fails, put the failure in the final text so the operator can diagnose it.
 - Task flow: `agend-agent delegate` → silent work → `agend-agent report`. Zero messages in between.

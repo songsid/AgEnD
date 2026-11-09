@@ -1,0 +1,48 @@
+{
+  "preSyncRelated": {
+    "sourceCommit": "92faf46b7ec4207a8481589e13e60a914280a753",
+    "command": "npx vitest run tests/hub-compose.test.ts tests/hub-directory-settings-control.test.ts tests/hub-settings-fleet-m2682.test.ts tests/fleet-memory-pressure-1113.test.ts tests/update-launch-1490.test.ts tests/public-web-menu-1367.test.ts",
+    "passed": 229,
+    "failed": 0,
+    "skipped": 0
+  },
+  "postDiagnosticsSync": {
+    "sourceCommit": "74465dc6f6ce741b1df48c6cc726fd063e8b7b63",
+    "command": "npx vitest run tests/hub-compose.test.ts tests/hub-directory-settings-control.test.ts tests/hub-settings-fleet-m2682.test.ts tests/hub-directory-diagnostics-m2724.test.ts",
+    "passed": 116,
+    "failed": 0,
+    "skipped": 0
+  },
+  "failFirst": {
+    "productionBase": "3ea0d07fece6987ec4f9aaab3953f3060acaa520",
+    "failed": 1,
+    "deselected": 80,
+    "reason": "The new configured-admin route assertion expected 200 and received 404; no collection/compiler failure."
+  },
+  "sync": {
+    "current": "4b42e7ff67febe7e034aabd2b901371fab9736fe",
+    "alphaBase": "e2ce7ec6a61e18b93c917b3b73f05b217373059e",
+    "plainMerges": true,
+    "conflicts": false,
+    "lastSync": "UI/docs/manual/pending-card alpha changes only; owned source/test blobs unchanged. Final source/test type checks run after this sync."
+  },
+  "isolation": "Private initialized scratch Hub, real SQLite and CA-verified loopback HTTPS. Directory driver and directory TLS probe inert; API replies not intercepted. FleetManager and ABA mount tests use recorder services only.",
+  "remaining": [
+    "AD editor form",
+    "CA bootstrap/fetch presentation",
+    "fleet/D3 edit route",
+    "final UI PNG and retained-module SKEW acceptance",
+    "Required alpha.10: local-host AD-down settings access/edit without AD sign-in, plus host start/stop"
+  ],
+  "types": [
+    {
+      "command": "npx tsc --noEmit",
+      "exit": 0
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  ],
+  "gateOnly": "Route authority/cancellation cases use a contract stub controller; real Save journeys use the shared real controller."
+}

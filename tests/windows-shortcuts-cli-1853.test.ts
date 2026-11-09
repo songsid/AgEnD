@@ -11,6 +11,8 @@
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer, type ServerResponse } from "node:http";
+import { once } from "node:events";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
@@ -285,80 +287,85 @@ describe.skipIf(!pwsh)("with pwsh: the encoded script itself", () => {
     expect(powershellArgs(full)[0]).toBe("-NoProfile");
   });
 
-  it("writes both scripts and the record, respecting another Linux and exact confirmation", async () => {
-    const han = scratchWindows();
-    const oneil = scratchWindows();
-    const other = scratchWindows();
-    const same = scratchWindows();
-    const casing = scratchWindows();
-    const dirs = [han, oneil, other, same, casing];
+  // Each behavior owns one batch completion signal and the unchanged 10 s case
+  // budget. Previously all eight shared one deadline, including five native children.
+  it.each([
+    { name: "fresh target", distro: "Ubuntu-22.04", user: "han", made: true },
+    { name: "quoted user", distro: "Ubuntu-22.04", user: "o'neil", made: true },
+    { name: "another Linux", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-24.04", user: "root" }, made: false },
+    { name: "same target", distro: "AgEnD", user: "root", record: { distro: "AgEnD", user: "root" }, made: true },
+    { name: "record changed after confirmation", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-B", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: false },
+    { name: "exact confirmed replacement", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-24.04", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: true },
+    { name: "user case differs", distro: "agend", user: "han", record: { distro: "AgEnD", user: "Han" }, made: false },
+    { name: "distro case differs, exact user", distro: "agend", user: "Han", record: { distro: "AgEnD", user: "Han" }, made: true },
+  ])("writes scripts/record only for the accepted target: $name", async ({ distro, user, record, seen, made }) => {
+    const w = scratchWindows();
     try {
-      writeTail(han, "Ubuntu-22.04", "han");
-      writeTail(oneil, "Ubuntu-22.04", "o'neil");
-      mkdirSync(join(other.local, "AgEnD"), { recursive: true });
-      writeFileSync(join(other.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
-      writeTail(other, "AgEnD", "root");
-      mkdirSync(join(same.local, "AgEnD"), { recursive: true });
-      writeFileSync(join(same.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"root"}');
-      writeTail(same, "AgEnD", "root");
-      mkdirSync(join(casing.local, "AgEnD"), { recursive: true });
-      writeFileSync(join(casing.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"Han"}');
-      writeTail(casing, "agend", "han");
-      writeTail(other, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }, "tail-race.ps1");
-      writeTail(other, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }, "tail-confirm.ps1");
-      writeTail(casing, "agend", "Han", undefined, "tail-han.ps1");
-      const out = await pwshFile(`
-function CaseOut([string]$name, [string]$text) {
-  $made = [bool]($text -match '(?m)^AGEND_SHORTCUTS_MADE=2$')
-  $other = if ($text -match '(?m)^AGEND_RECORD_OTHER=(.+)$') { $Matches[1] } else { '' }
-  Write-Output ("CASE=" + $name + " MADE=" + $made + " OTHER=" + $other)
-}
-CaseOut 'han' ((Invoke-Tail $env:HAN_ROOT (Join-Path $env:HAN_ROOT 'tail.ps1')) | Out-String)
-CaseOut 'oneil' ((Invoke-Tail $env:ONEIL_ROOT (Join-Path $env:ONEIL_ROOT 'tail.ps1')) | Out-String)
-CaseOut 'other' ((Invoke-Tail $env:OTHER_ROOT (Join-Path $env:OTHER_ROOT 'tail.ps1')) | Out-String)
-Write-Output ("CASE=other-exists " + (Test-Path -LiteralPath (Join-Path $env:OTHER_LOCAL 'AgEnD/restart-agend.ps1')))
-CaseOut 'same' ((Invoke-Tail $env:SAME_ROOT (Join-Path $env:SAME_ROOT 'tail.ps1')) | Out-String)
-Set-Content -LiteralPath (Join-Path $env:OTHER_LOCAL 'AgEnD/install.json') -Value '{"distro":"Ubuntu-B","user":"root"}' -Encoding utf8
-CaseOut 'raced' ((Invoke-Tail $env:OTHER_ROOT (Join-Path $env:OTHER_ROOT 'tail-race.ps1')) | Out-String)
-Set-Content -LiteralPath (Join-Path $env:OTHER_LOCAL 'AgEnD/install.json') -Value '{"distro":"Ubuntu-24.04","user":"root"}' -Encoding utf8
-CaseOut 'confirm' ((Invoke-Tail $env:OTHER_ROOT (Join-Path $env:OTHER_ROOT 'tail-confirm.ps1')) | Out-String)
-CaseOut 'casing-han' ((Invoke-Tail $env:CASING_ROOT (Join-Path $env:CASING_ROOT 'tail.ps1')) | Out-String)
-CaseOut 'casing-Han' ((Invoke-Tail $env:CASING_ROOT (Join-Path $env:CASING_ROOT 'tail-han.ps1')) | Out-String)
-
-`, {
-        HAN_ROOT: han.dir, HAN_LOCAL: han.local,
-        ONEIL_ROOT: oneil.dir, ONEIL_LOCAL: oneil.local,
-        OTHER_ROOT: other.dir, OTHER_LOCAL: other.local,
-        SAME_ROOT: same.dir, SAME_LOCAL: same.local,
-        CASING_ROOT: casing.dir, CASING_LOCAL: casing.local,
-      });
-
-      expect(out).toMatch(/^CASE=han MADE=True /m);
-      expect(out).toMatch(/^CASE=oneil MADE=True /m);
-      expect(out).toMatch(/^CASE=other MADE=False OTHER=Ubuntu-24\.04\|root$/m);
-      expect(out).toMatch(/^CASE=other-exists False$/m);
-      expect(out).toMatch(/^CASE=same MADE=True /m);
-      expect(out).toMatch(/^CASE=raced MADE=False OTHER=Ubuntu-B\|root$/m);
-      expect(out).toMatch(/^CASE=confirm MADE=True /m);
-      expect(out).toMatch(/^CASE=casing-han MADE=False OTHER=AgEnD\|Han$/m);
-      expect(out).toMatch(/^CASE=casing-Han MADE=True /m);
-      expect(existsSync(join(other.local, "AgEnD", "restart-agend.ps1"))).toBe(true); // confirm wrote
-      expect(JSON.parse(readFileSync(join(other.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "AgEnD", user: "root" });
-
-      for (const [w, user] of [[han, "han"], [oneil, "o'neil"]] as const) {
-        const restart = readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"));
-        expect([...restart.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
-        const q = user.replace(/'/g, "''");
-        expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
-        expect(readFileSync(join(w.local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
-        expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-22.04", user });
-        const lnk = readFileSync(join(w.local, "lnk.txt"), "utf8");
-        expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
-        expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
-        expect(readFileSync(join(w.dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+      if (record) {
+        mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+        writeFileSync(join(w.local, "AgEnD", "install.json"), JSON.stringify(seen ?? record));
       }
+      writeTail(w, distro, user, seen);
+      if (seen && record) writeFileSync(join(w.local, "AgEnD", "install.json"), JSON.stringify(record));
+      const out = await pwshFile(`
+$text = (Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')) | Out-String
+Write-Output ('CASE=complete MADE=' + [bool]($text -match '(?m)^AGEND_SHORTCUTS_MADE=2$'))
+Write-Output $text
+`, { CASE_ROOT: w.dir });
+      expect(out.split("\n")).toContain(`CASE=complete MADE=${made ? "True" : "False"}`);
+      for (const file of ["restart-agend.ps1", "open-dashboard.ps1"]) {
+        expect(existsSync(join(w.local, "AgEnD", file))).toBe(made);
+      }
+      expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual(made ? { distro, user } : record);
+      if (!made) {
+        expect(out.split("\n")).toContain(`AGEND_RECORD_OTHER=${record!.distro}|${record!.user}`);
+        expect(existsSync(join(w.dir, "wsl-calls.txt"))).toBe(false);
+        return;
+      }
+      expect(out.split("\n")).toContain("AGEND_SHORTCUTS_MADE=2");
+      expect(readFileSync(join(w.dir, "wsl-calls.txt"), "utf8")).toBe(`-d ${distro} -u ${user} --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+      const restart = readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"));
+      expect([...restart.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+      const q = user.replace(/'/g, "''");
+      expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend '${distro}' '${q}' -Wait | Out-Null`);
+      expect(readFileSync(join(w.local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard '${distro}' '${q}' -Wait | Out-Null`);
+      const lnk = readFileSync(join(w.local, "lnk.txt"), "utf8");
+      expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
+      expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+
+  it("reports batch completion only after the owned native marker child closes", async () => {
+    const w = scratchWindows();
+    let release: ServerResponse | undefined;
+    let entered!: () => void;
+    const childEntered = new Promise<void>(resolve => { entered = resolve; });
+    const server = createServer((_req, res) => { release = res; entered(); });
+    let running: Promise<string> | undefined;
+    try {
+      server.listen(0, "127.0.0.1"); await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Expected private loopback address");
+      // The real Process/pipe path stays in use. Its scratch executable signals
+      // entry, then waits for our response; no sleep or guessed observation window.
+      writeFileSync(join(w.bin, "wsl.exe"), `#!${process.execPath}\nconst fs = require('node:fs');\nfs.appendFileSync(${JSON.stringify(join(w.dir, "wsl-calls.txt"))}, process.argv.slice(2).join(' ')+'\\n');\nrequire('node:http').get(process.env.SHORTCUT_CHILD_GATE, r => { r.resume(); r.on('end', () => process.stdout.write('CHILD_COMPLETED\\n')); }).on('error', e => { console.error(e); process.exitCode=1; });\n`);
+      writeTail(w, "AgEnD", "root");
+      let settled = false;
+      running = pwshFile(`Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')\nWrite-Output 'CASE=child-closed'`, {
+        CASE_ROOT: w.dir, SHORTCUT_CHILD_GATE: `http://127.0.0.1:${address.port}/`,
+      }).then(out => { settled = true; return out; });
+      await Promise.race([childEntered, running.then(() => { throw new Error("Batch completed before its child entered"); })]);
+      expect(settled).toBe(false);
+      expect(readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n")).toHaveLength(1);
+      release!.end("release");
+      expect(await running).toMatch(/^CASE=child-closed$/m);
+      expect(settled).toBe(true);
     } finally {
-      for (const w of dirs) rmSync(w.dir, { recursive: true, force: true });
+      if (release && !release.writableEnded) release.end("cleanup");
+      if (running) await running.catch(() => {});
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+      rmSync(w.dir, { recursive: true, force: true });
     }
   });
   it("the saved restart/dashboard scripts invoke WSL for their recorded target", async () => {

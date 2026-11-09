@@ -74,7 +74,7 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,
       g.querySelectorAll(".seg-item").map((a: any) => a.textContent.trim())]);
     expect(groups).toEqual([["You", ["Preferences", "Look"]],
-      ["Fleet", ["Agents", "Runtime", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]]]);
+      ["Fleet", ["Agents", "Runtime", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Hub", "Advanced"]]]);
     expect(p.root.querySelector(".s-nav .seg-item[aria-current=page]").textContent.trim()).toBe("Agents");
   });
   it("each old address names its new section, on the page and on the server; ClassicBot's carries its place", () => {
@@ -122,6 +122,15 @@ describe("#2347: every card where it belongs", () => {
   ])("%s holds what it should, and not what moved elsewhere", async (section, present, absent) => {
     await open(section as string);
     expect([(present as string[]).filter((s) => !has(s)), (absent as string[]).filter(has)]).toEqual([[], []]);
+  });
+  it("M-2733: ClassicBot defaults' tool progress says its words in zh-TW; the values stay the config words", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW", { store: false });
+    try {
+      await open("chat");
+      const opts = [...p.root.querySelectorAll("#g-ctp option")] as any[];
+      expect(opts.map((o) => [o.value, o.textContent])).toEqual([["off", "關"], ["standard", "標準"], ["verbose", "詳細"]]);
+    } finally { i18n.setLang("en", { store: false }); }
   });
   it("an old link to a place in a section goes there once it is drawn (/settings/chat#classicbot)", async () => {
     nav.navigate("/settings/classic");
@@ -187,7 +196,7 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     const back = p.root.querySelector(".p-settings .panel-body .s-back");
     expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back?.getAttribute("href"), back?.textContent.trim()]).toEqual([
       // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
-      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/agent-defaults", "/settings/notifications", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/advanced"]],
+      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/agent-defaults", "/settings/notifications", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/hub", "/settings/advanced"]],
       "panel p-settings", "section", "/settings", "SettingsShared agent settings"]);
     nav.navigate("/settings");
   });

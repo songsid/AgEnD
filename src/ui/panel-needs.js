@@ -1,7 +1,7 @@
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
-// A renderer only (#1386 §4.2, the user's Discord-first rule): the list is the server's one derivation, the app
+// The shared list is a renderer only (#1386 §4.2, the user's Discord-first rule): the list is the server's one derivation, the app
 // store's `needs`, which arrives over the passive channels (SSE `needs`, the /ui/poll field). This panel reads
 // nothing (#1374: no new GET, no timer that asks the server); its writes are a person's actions:
 // - a prompt's own buttons, through the page's chat store (appStore.chatOwner — whichever chat import booted, a Retry's
@@ -27,6 +27,7 @@ import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
+import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
@@ -36,8 +37,8 @@ register("app", {
 
 register("needs", {
   en: {
-    title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
-    open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "Fleet sign-ins", signIn: "Sign in",
+    otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
+    open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
     ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
     notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
@@ -61,8 +62,8 @@ register("needs", {
     e_confirmation_not_pending: "This request was already decided or ran out.", e_not_found: "This request is no longer here.",
   },
   "zh-TW": {
-    title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
-    open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "Fleet 登入", signIn: "登入",
+    otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
+    open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
     notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
@@ -71,8 +72,8 @@ register("needs", {
     notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
-    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送", typeMissed: "離線時錯過",
-    proposals: "代理人的請求", proposalFrom: "{0} 的請求", proposalHint: "在你核准之前，不會建立或修改任何東西。核准時，AgEnD 會再次檢查這個請求、目標電腦和你的登入，然後只執行一次。",
+    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Agent", typeDelivery: "傳送", typeMissed: "離線時錯過",
+    proposals: "Agent 的請求", proposalFrom: "{0} 的請求", proposalHint: "在你核准之前，不會建立或修改任何東西。核准時，AgEnD 會再次檢查這個請求、目標電腦和你的登入，然後只執行一次。",
     approve: "核准", reject: "拒絕", deciding: "處理中…", expiresIn: "{0} 分鐘後過期", expiresSoon: "不到一分鐘後過期",
     applying: "正在套用…", openAgent: "開啟新 agent 的聊天", decided: "已在這裡決定", failedReason: "原因：{0}",
     f_runtime: "執行於", f_machine: "電腦", f_thisPc: "這台電腦（Windows）", f_topic_name: "名稱", f_backend: "CLI", f_model: "模型", f_directory: "資料夾",
@@ -208,11 +209,12 @@ export function NeedsPanel({ navKey }) {
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
       ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
-        : !items.length && !asks.length && !decidedHere.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
+        : !items.length && !asks.length && !decidedHere.length ? hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config", !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
           <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
+      <${HostDirectoryNotices} />
       <${NotifyToggle} />
     </div></div>
   </div>`;

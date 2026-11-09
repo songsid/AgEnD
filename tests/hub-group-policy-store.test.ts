@@ -140,7 +140,7 @@ describe("durable Hub group-policy foundation", () => {
   it("gives composition a repair state without a never-enabled generation change silently denying legacy operations", () => {
     const f = fixture();
     const inspect = () => inspectHubGroupPolicyBinding(f.db, "hub-1", "example", "generation-2");
-    expect(inspect()).toEqual({ kind: "repair-required", legacy: true });
+    expect(inspect()).toEqual({ kind: "repair-required", legacy: true, fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(inspectHubGroupPolicyBinding(f.db, "hub-1", "example", "generation-1")).toEqual({ kind: "ready" });
     f.enable(); expect(inspect()).toEqual({ kind: "repair-required", legacy: false });
     expect(() => createHubGroupPolicyStore({ ...f.options, generation: "generation-2" })).toThrow("group_policy_unavailable");

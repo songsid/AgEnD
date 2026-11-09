@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { dashboardSignInSupported } from "../src/web-backend-login.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv } from "../src/backend/credential-profile.js";
 import { admitProfileLogin } from "../src/login-controller.js";
+import { uiCliCaps } from "../src/cli-caps-module.js";
+import { runtimeFacts } from "../src/cli-registry.js";
 
 describe("#3212 PR 4: profile sign-in from chat and the dashboard", () => {
   it("Claude Code, Codex and Kiro profiles; nothing else", () => {
@@ -23,5 +25,15 @@ describe("#3212 PR 4: profile sign-in from chat and the dashboard", () => {
   });
   it("an invalid name is still refused for each", () => {
     for (const backend of ["codex", "kiro-cli"]) expect("refusal" in admitProfileLogin(backend, "../x"), backend).toBe(true);
+  });
+  it("Codex/Kiro named accounts keep the existing /login dialog, without enabling structured or Runtime sign-in", () => {
+    for (const backend of ["codex", "kiro-cli"] as const) {
+      expect(dashboardSignInSupported(backend, "work")).toBe(true);
+      expect(uiCliCaps()[backend].structuredSignIn).toBe(true); // default accounts already have browser controls
+      expect(uiCliCaps()[backend].structuredNamedSignIn).toBe(false);
+      expect(runtimeFacts(backend, "signIn")).toBeNull();
+      expect(runtimeFacts(backend, "namedAccounts")).toBeNull();
+    }
+    expect(uiCliCaps()["claude-code"].structuredNamedSignIn).toBe(true);
   });
 });

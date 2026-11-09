@@ -19,16 +19,18 @@ import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
-import "./settings-shared-strings.js";   // the words Shared agent settings added and this file draws (backendNotInstalledHost, changeInDefaults, …)
-import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
+import "./settings-shared-strings.js";
+import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
+import { ModelRefresh, useRefreshableModels, mw } from "./model-picker.js";
 import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
 import { AccountSelect } from "./accounts-view.js";   // #3212: the Account field (a new module: never a stale named import)
+import { capsOf } from "./cli-caps.js";
 /** M-2446: Codex speed choices (backend_options.codex.speed); "" = unset. Local, not imported: a stale tab may keep an
  *  older settings-model.js, and a new named import would fail this module's load. */
 const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
@@ -36,11 +38,26 @@ const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
 const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+// A cached older dictionary keeps the old alias label until reload, never a missing translation key.
+const legacyPairingLabel = () => { const label = tn("legacyPairing"); return label === "settings.legacyPairing" ? "pairing" : label; };
 export const impactText = (kind) => tn(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
 /** Ask in the app's own dialog (#1408 step 5): resolves true for the confirm button, false otherwise. */
 export const ask = (message, opts = {}) => confirmDialog({ message, ...opts });
 
 // ── Form pieces ──
+
+/**
+ * M-2733: a select whose values are config words (tool_progress off/standard/verbose, cross_instance_visibility
+ * full/summary/hidden) shows the words Shared agent settings' segments say (settings.seg_*); the value saved is the
+ * config word. A value with no words (a newer host's, or a stale strings file) shows as itself.
+ */
+export const CHOICE_FIELDS = ["tool_progress", "cross_instance_visibility"];
+const SEG_KIND = { tool_progress: "tool_progress", cross_instance_visibility: "visibility" };
+export function choiceLabel(field, value) {
+  const key = `settings.seg_${SEG_KIND[field] || field}_${value}`, said = t(key);
+  return said === key ? String(value) : said;
+}
+export const choiceOptions = (field, values) => values.map((v) => ({ value: v, label: choiceLabel(field, v) }));
 
 export function Select({ value, options, onChange, disabled, id, label }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
@@ -56,7 +73,7 @@ export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
   const known = backendOptions(value).filter((o) => !o.unavailable).map((o) => o.value);
   const opts = backendChoices(known, rows || [], value, {
     notInstalled: tn(hostOnly ? "backendNotInstalledHost" : "backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
-    unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v),
+    unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v), name: backendLabel,
   });
   return html`<select id=${id} value=${value} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
     ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
@@ -67,25 +84,23 @@ export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
  * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
-export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride }) {
-  const state = useModelCatalogState(catalogOverride === undefined ? backend : null, instance, runtime, machineId);
+export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride, profile }) {
+  const state = useRefreshableModels(catalogOverride === undefined ? backend : null, instance, { runtime, machineId, profile });
   const catalog = catalogOverride === undefined ? state.models : catalogOverride;
   const [typing, setTyping] = useState(false);
-  useEffect(() => { setTyping(false); }, [backend, instance, runtime]);
+  useEffect(() => { setTyping(false); }, [backend, instance, runtime, machineId, profile]);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   const managed = catalogOverride === undefined && !!backend;
-  const sourceNote = state.source === "cli-list" ? "modelCatalogCliList" : state.source === "cli-cache" ? "modelCatalogCliCache"
-    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogOfficial" : "modelCatalogCached";
-  const note = state.loading ? "modelCatalogLoading" : state.error ? "modelCatalogFailed" : !catalog?.length ? "modelCatalogEmpty"
-    : sourceNote;
+  const sourceNote = state.source === "account-api" ? mw("accountSource") : tn(state.source === "cli-list" ? "modelCatalogCliList" : state.source === "cli-cache" ? "modelCatalogCliCache"
+    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogOfficial" : "modelCatalogCached");
+  const note = state.loading ? tn("modelCatalogLoading") : !catalog?.length ? tn("modelCatalogEmpty") : sourceNote;
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
-    ${managed ? html`<div class="model-catalog-status"><span class="note" role=${state.error ? "alert" : "status"} aria-live="polite">${state.loading ? html`<span class="out-spin" aria-hidden="true"></span> ` : null}${tn(note)}</span><button type="button" class="btn btn-ghost btn-sm" disabled=${disabled || state.loading} onClick=${state.refresh}>${tn(state.error || !catalog?.length ? "modelCatalogRetry" : "modelCatalogRefresh")}</button></div>` : null}
-  </div>`;
+    ${managed ? html`${state.phase !== "load_error" ? html`<div class="model-catalog-status"><span class="note" role="status" aria-live="polite">${note}</span></div>` : null}<${ModelRefresh} state=${state} disabled=${disabled} initialFailure=${tn("modelCatalogFailed")} />` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark }) {
@@ -111,6 +126,7 @@ export function Inherited({ text, builtin, from }) {
 /** A value as the inherited line says it: on/off, minutes (0 = off), a backend's name; anything else as it is. */
 export function valueText(v, kind) {
   if (typeof v === "boolean") return tn(v ? "valueOn" : "valueOff");
+  if (CHOICE_FIELDS.includes(kind)) return choiceLabel(kind, v);
   if (kind === "minutes") return Number(v) === 0 ? tn("valueOff") : tn("minutesValue", v);
   if (kind === "backend") return backendLabel(v);
   return String(v);
@@ -327,12 +343,12 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
           <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} profile=${inst.runtime === "windows" ? undefined : acct} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
       ${(f.backend || defaults.backend || "claude-code") === "codex" && inst.runtime !== "windows" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
         <p class="note">${tn("codexSpeedHint")}</p></div>` : null}
-      ${inst.runtime !== "windows" && ["claude-code", "codex", "kiro-cli"].includes(acctBackend) ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
+      ${inst.runtime !== "windows" && capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}
@@ -355,9 +371,9 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
           ["log_level", "logLevel", LOG_LEVELS, defaults.log_level || "info", "#g-ll"]].map(([k, label, opts, dflt, target]) => html`<div key=${k} class="field">
           ${L(tn(label), `instance.${k}`, `ag-${k}`)}
           <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}
-            inherited=${inh(k, dflt, target, "", k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
+            inherited=${inh(k, dflt, target, CHOICE_FIELDS.includes(k) ? k : "", k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
             <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
-              options=${opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}>
+              options=${((list) => (CHOICE_FIELDS.includes(k) ? choiceOptions(k, list) : list))(opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts])} /></${Override}>
           ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
         <fieldset class="field dash-perms"><legend>${L(tn("dashboardAccess"), "instance.dashboard")}</legend>
           <p class="note">${tn("dashboardAccessHint")}</p>
@@ -380,7 +396,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
         <div class="field">${L(tn("modelFailover"), "instance.model_failover", "ag-fo")}
           <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}
             inherited=${inh("model_failover", (defaults.model_failover && defaults.model_failover[0]) || tn("modelNone"), null, "", !!(defaults.model_failover && defaults.model_failover.length))}>
-            <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("modelNone")}
+            <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} profile=${inst.runtime === "windows" ? undefined : acct} inherit=${tn("modelNone")}
               value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
           <${Feedback} warning=${failoverWarn} /></div>
       </div>
@@ -544,7 +560,7 @@ export function BotDialog({ id, ctx, onClose }) {
   if (!ch) return null;
   return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${pendingImpacts()} schema=${schema}>
     <div class="grid2">
-      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES} />
+      <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES.map((value) => value === "pairing" ? { value, label: legacyPairingLabel() } : value)} />
         <${Feedback} warning=${accessWarn} /></div>
       <div class="field">${L(tn("allowedUsers"), "fleet.channel.access.allowed_users")}<${ChipList} items=${users} onChange=${setUsers} placeholder=${tn("userIdPlaceholder")} label=${tn("allowedUsers")} /></div>
     </div>
@@ -740,8 +756,8 @@ export function ClassicDialog({ room, ctx, onClose }) {
             value=${f.inherit.auto_pause_after ? String(inherited.auto_pause_after) : f.auto_pause_after} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.auto} /></div>
       <div class="field">${L(tn("toolProgress"), "classic.tool_progress", "cl-tp")}
-        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "", "#g-ctp", "#g-tp")}>
-          <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></${Override}></div>
+        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "tool_progress", "#g-ctp", "#g-tp")}>
+          <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
       <div class="field">${L(tn("replyCompletionGuard"), "classic.reply_completion_guard")}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${roomInh("reply_completion_guard", "", "#g-creply", "#g-reply")}>
           <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}

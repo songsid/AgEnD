@@ -13,6 +13,8 @@ import { HubPairingService } from "./pairing.js";
 import { readPrivateFile } from "./private-files.js";
 import { readHubIdentity } from "./tls.js";
 import { personKeyString } from "./identity.js";
+import { handleCompanyJoin } from "./join/http.js";
+import type { HubCompanyJoin } from "./join/service.js";
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
@@ -24,6 +26,8 @@ export interface HubServerOptions {
   hold(fleetId: string | null, code: HubLinkCloseCode): void;
   /** The optional features this Hub offers (tests use a smaller list to stand in for an older Hub). */
   capabilities?: readonly string[];
+  /** Key-proved enrollment lives only on this pinned machine listener. */
+  companyJoin?: HubCompanyJoin;
 }
 export class HubServer {
   private server: Server | null = null;
@@ -66,6 +70,14 @@ export class HubServer {
     return parseStrictJson(Buffer.concat(chunks), 2048);
   }
   private async http(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // A still-bound old generation is temporarily unavailable, not a missing endpoint. Never read a body or mint work.
+    if (!this.current()) { this.response(res, 503, { code: "unavailable" }); return; }
+    if (this.options.companyJoin && this.machine(req) && req.headers.authorization === undefined
+      && req.method === "POST" && /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.test(req.url ?? "")) {
+      if (++this.accepting > HUB_LIMITS.pending) { this.accepting--; this.response(res, 429, { code: "backpressure" }); return; }
+      res.once("close", () => { this.accepting--; });
+      handleCompanyJoin(req, res, this.options.companyJoin, "machine"); return;
+    }
     if (!this.machine(req) || req.headers.authorization !== undefined || req.method !== "POST" || ![HUB_PATHS.pair, HUB_PATHS.claim].includes(req.url as typeof HUB_PATHS.pair)) { this.response(res, 404, { code: "not-found" }); return; }
     if (++this.accepting > HUB_LIMITS.pending) { this.accepting--; this.response(res, 429, { code: "backpressure" }); return; }
     try {
@@ -113,6 +125,7 @@ export class HubServer {
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "pairing.notice-ack" && (!context.features.has("pairing-notices-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
     const result = await this.options.receive(frame, context);
     if (!context.current()) return;
@@ -126,6 +139,8 @@ export class HubServer {
     const connection = this.connections.get(fleetId);
     if (!connection?.ready || !connection.context.current() || frame.linkEpoch !== connection.context.linkEpoch
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
+    if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */

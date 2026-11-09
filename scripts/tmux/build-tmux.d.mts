@@ -2,7 +2,7 @@
 export type TmuxSource = { version: string; url: string; sha256: string; license: string; licenseFile: string; platforms?: string[]; licenseOnly?: boolean };
 export type TmuxSources = {
   sourceDateEpoch: number;
-  tmux: TmuxSource; libevent: TmuxSource; ncurses: TmuxSource; utf8proc: TmuxSource; jemalloc: TmuxSource; musl: TmuxSource;
+  tmux: TmuxSource; libevent: TmuxSource; ncurses: TmuxSource; utf8proc: TmuxSource; musl: TmuxSource;
   terminfo: string[];
   toolchain: {
     alpine: { image: string; release: string; packages: Record<string, string> };

@@ -53,7 +53,7 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 | UTF-8 / CJK width | 3.8: no infinite loop on a `WCHAR_MAX` width (5602); redraw fixes around wide characters | CJK width test in PR B |
 | terminfo | 3.8: keep the existing Ss/Se; `@` disables a terminal feature; a `utf8` feature | none |
 | Memory | 3.8: "Various memory leak fixes" | the leak leg (matrix) |
-| macOS | 3.7c: "Build with jemalloc on macOS to avoid … a bug in calloc (5385)" | darwin-arm64 links jemalloc; darwin-x64 does not (its server died with it, §3) |
+| macOS | 3.7c: "Build with jemalloc on macOS to avoid … a bug in calloc (5385)" | **no jemalloc** on either Mac: the statically linked jemalloc crashed the server on both (§3) |
 | Security | CVE-2026-11623 (use-after-free in `image_free`, sixel builds, ≤3.6a; fixed in 3.7) | we build **without** images/sixel (§10) |
 
 **Matrix.** Static builds (§3 recipe: musl, libevent 2.1.12, ncurses 6.5), each tested in a private container with
@@ -89,8 +89,8 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 ## 3. Build: static, pinned, reproducible, in CI
 
 - **Sources:** tmux 3.8 (the pin, in `tmux-sources.json`), libevent 2.1.12-stable, ncurses 6.5, utf8proc 2.12.0
-  (tag archive sha256 `f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111`). jemalloc 5.3 is added on
-  darwin-arm64, as upstream does on macOS since 3.7c (not on darwin-x64: §3).
+  (tag archive sha256 `f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111`). No jemalloc, although upstream
+  builds with it on macOS since 3.7c (below).
   Each source is fetched by URL and checked against a **sha256 committed in the repo**
   (`scripts/release/tmux-sources.json`). A mismatch fails the build.
 - **linux-x64, linux-arm64:** built on Alpine (musl), **fully static** (`--enable-static`, everything linked in).
@@ -98,18 +98,28 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
     whose packages are glibc-only).
   - Recipe notes from the prototype: seed `ac_cv_search_forkpty="none required"` (musl has `forkpty` in libc); link
     the wide-char ncurses (`libncursesw.a`, aliased as `libncurses.a`); configure libevent without its regress suite.
-- **darwin-arm64, darwin-x64:** built on macOS runners. libevent, ncurses (and on darwin-arm64 jemalloc) are linked
+- **darwin-arm64, darwin-x64:** built on macOS runners. libevent, ncurses and utf8proc are linked
   **statically**, and libSystem stays dynamic (Apple supports no fully static binary). `MACOSX_DEPLOYMENT_TARGET=11.0`.
-  - **jemalloc on darwin-arm64 only.** On darwin-x64 (`macos-15-intel`) the statically linked jemalloc 5.3.0 tmux
+  - **No jemalloc (both Macs use macOS's own allocator, `--disable-jemalloc`).** The statically linked jemalloc 5.3.0
+    crashed the tmux server on both CPUs, so it is gone from `tmux-sources.json`:
+  - *darwin-x64.* On darwin-x64 (`macos-15-intel`) the statically linked jemalloc 5.3.0 tmux
     server died at once after its first client left: `new-session -d` returned, and the next `display-message` found no
     server (dry runs 42268291999 and 42273319563). Its `-vv` server log ends at `lost client` / `remove peer` with no
     orderly exit, and no crash report was written. Built with the system allocator (`--disable-jemalloc`) the same
     smoke passes on darwin-x64 (dry run 42280510117), so the cause is jemalloc on x86_64, not the build. The cost:
-    darwin-x64 keeps macOS's own `calloc`, which upstream works around with jemalloc (tmux #5385). Pinned in
-    `tmux-sources.json` (`platforms: ["darwin-arm64"]`) and by `tests/tmux-bundle-2457.test.ts`.
+    darwin-x64 keeps macOS's own `calloc`, which upstream works around with jemalloc (tmux #5385).
+  - *darwin-arm64.* The first packages (`@songsid/agend-tmux-darwin-arm64@3.8.0`) still linked jemalloc: its dry-run
+    smoke passed. On the real Mac (macOS 15 arm64, launchd; C-4 rehearsal leg M) the private server crashed after
+    about seven minutes of ordinary use, with no update or restart in progress. The crash report: `EXC_BAD_ACCESS`
+    (`SIGSEGV`, `KERN_INVALID_ADDRESS` at `0x0`), faulting thread `je_tcache_bin_flush_large` ←
+    `je_free_default` ← `server_client_lost` ← `event_base_loop` ← `proc_loop` ← `server_start`, with the annotation
+    "crashed on child side of fork pre-exec". The fleet recovered (storm window, a new server, agents respawned), but a
+    server that dies when a client leaves is not shippable. So darwin-arm64 drops jemalloc as darwin-x64 did, and is
+    repacked as `3.8.0-agend.2`. `3.8.0` for darwin-arm64 must never be pinned (`NEVER_PIN` in `tests/tmux-bundle-2457.test.ts` refuses it in `package.json`).
+  - The cost on both Macs: macOS's own `calloc` (tmux #5385). Pinned by `tests/tmux-bundle-2457.test.ts` (no jemalloc
+    part, `--disable-jemalloc`, never `--enable-jemalloc`).
   - **Reproducible link:** ld64 records each object's absolute path in the debug map and hashes the output into
     `LC_UUID` (which `strip` keeps), so the darwin link gets `-Wl,-oso_prefix,<work>/` and `ZERO_AR_DATE=1`.
-  - jemalloc's `jemalloc.pc` is installed with it: tmux's configure finds jemalloc only through pkg-config.
 - **Options:** `--disable-utempter`, and **no** `--enable-sixel`/`--enable-images`. `--enable-utf8proc`, statically, so
   that all four platforms use the same Unicode width tables. musl's own `wcwidth` lags, and CJK and emoji widths must
   match what the CLIs assume. The §2 matrix builds did **not** include utf8proc yet; PR A's first build reruns the
@@ -132,7 +142,7 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
   - publishes with `--provenance`, reusing the token fallback for the first publish of a new name.
   **A real publish goes through the leader** (as for the runtime). PRs only ever run `dry_run`.
 - **Package contents:** `bin/tmux`, `share/terminfo/…` (§4), `LICENSES/` (tmux ISC, libevent BSD-3, ncurses X11/MIT,
-  utf8proc MIT, jemalloc BSD-2 on darwin), `package.json` with `os`/`cpu` and `agendTmux: { version, sha256, size }`.
+  utf8proc MIT), `package.json` with `os`/`cpu` and `agendTmux: { version, sha256, size }`.
   The licences are also listed in `THIRD_PARTY_NOTICES.md` (a new "Bundled tmux" section, with versions and source URLs).
 - **In the AgEnD package:** an exact pin in `optionalDependencies` (like `@songsid/agend-node-*`), checked by a CI pin
   check (`check-runtime-pins.mjs` extended).
@@ -157,7 +167,10 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 
 ## 5. The private socket, and what a user sees
 
-- **Socket:** `-L agend` for the real home. Isolated homes keep `agend-<hash6>` (`paths.ts:49-55`). The session stays
+- **Socket:** `-L agend` for the real home. An isolated home gets `agend-<hash6>-b`: its 2.3 hashed name
+  (`paths.ts:49-55`) with `-b`, never the hashed name itself. 2.3 ran the **system** tmux on `agend-<hash6>`, and a 2.3
+  server that survives the upgrade there (launchd, foreground) is a legacy server for §6 rule 3, not a server of ours
+  (C-4 leg I: sharing the name held the whole fleet on "no record of the server"). The session stays
   `agend`. With `-L`, tmux puts the socket in `$TMUX_TMPDIR` or `/tmp/tmux-<uid>/` (mode 0700, owner-only).
 - **Config:** the server starts with `-f <package>/share/agend-tmux.conf`, a small file with our options. The user's
   `~/.tmux.conf` no longer applies to AgEnD's server, so their key bindings or plugins can't change delivery. The
@@ -224,14 +237,19 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
      SIGTERM, then the same positive-exit wait. Anything else holds the fleet with a Needs-you line ("AgEnD's previous
      tmux server is still running and can't be verified: <reason>"), and nothing is killed.
    - Two CLIs never resume one conversation: the old window is gone, positively, before the new one starts.
-3. **The 2.3.x → 2.4 hop** (the old server on the **default** socket, run by the system tmux):
+3. **The 2.3.x → 2.4 hop** (the old server, run by the system tmux on **2.3's socket for this home**: the **default**
+   socket for the real home, `agend-<hash6>` for an isolated one — "the default server" below means that socket):
    - On systemd/WSL, the old service's stop ends it.
    - On launchd and in the foreground it may still run. **Every 2.4 start, before any instance starts**, runs the legacy
      check with the **system** tmux on the **default** socket. It is not a once-per-host step: a rollback to 2.3 and a
      second upgrade create new legacy windows, and they are found the same way.
-     - **The trigger is per instance:** 2.4 writes `instances/<name>/window-id` with a socket tag (`agend:@12`); a file
-       without the tag was written by 2.3 and names a window on the default server. Any untagged file, or a default
-       server with session `agend` (or `AGEND_TMUX_SESSION`), means the check runs.
+     - **The trigger is per instance:** 2.4 writes `instances/<name>/window-id` with a socket tag (a sidecar
+       `window-id.socket`); a file without the tag was written by 2.3 and names a window on the default server.
+     - **The 2.3 id leaves `window-id` at once** (C-4 leg L3): at fleet start, before any instance does anything, every
+       untagged id moves into the journal's `pending` and its file is removed (journal first), and each instance's start
+       does the same. So no other reader of `window-id` (a stop, a pane check, a restart) can act on a 2.3 id against
+       the new server, whose ids start again from `@0`, and a hold survives the instance's retries and restarts until
+       the window is gone, migrated or released.
      - **Prove** each window ours: its `#{window_id}` equals the untagged window-id file, its name equals that
        instance's, and its pane's process tree runs that instance's backend binary.
      - Checkpoint each proven window's session id, `kill-window` it, and confirm it gone (and its pane pid exited)
@@ -242,9 +260,9 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
        may still be running (system tmux). Close it, or run `agend tmux-migrate --release <name>`." The rest of the fleet
        starts.
      - `~/.agend/tmux-migration.json` is a **journal**, not a skip flag: it names the default server incarnation
-       (`#{pid}` + `#{start_time}`) and each window's step (checkpointed, killed, confirmed). It lets an interrupted
-       migration resume on the **same** server without checkpointing twice; a different incarnation, or a new untagged
-       file, starts a fresh pass.
+       (`#{pid}` + `#{start_time}`), each window's step (checkpointed, killed, confirmed), the `pending` 2.3 ids and the
+       `released` ones. It lets an interrupted migration resume on the **same** server without checkpointing twice; a
+       different incarnation, or a new untagged file, starts a fresh pass.
    - The window-id files are rewritten (tagged) by the new spawns.
 4. **Later 2.4.x → 2.4.y with a new pin:** rule 2. The receipt names the pin and the server reports `#{version}`, so a
    mismatch can't outlive an update even where the server survives.

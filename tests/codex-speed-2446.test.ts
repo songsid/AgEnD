@@ -140,7 +140,7 @@ describe("validation and Settings", () => {
     expect(normalizeSettingsInstancePatch({ backend: "codex" }, { backend_options: { codex: { speed: "standard" } } }).backend_options).toEqual({ codex: { speed: "standard" } });
     for (const bad of [null, "fast", ["x"], { codex: "fast" }]) expect(() => normalizeSettingsInstancePatch(base, { backend_options: bad })).toThrow();
   });
-  it("the confirmation layer: the speed applies directly (like the model); anything else under backend_options does not", () => {
+  it("the confirmation layer: speed and supported account references apply directly; unrelated options do not", () => {
     const fleet = (codex: Record<string, unknown>) => ({ fleet: { instances: { w: { backend: "codex", backend_options: { codex } } } } });
     for (const [a, b] of [[{}, { speed: "fast" }], [{ speed: "fast" }, { speed: "standard" }], [{ speed: "fast" }, {}], [{ credential_profile: "work" }, { credential_profile: "work", speed: "fast" }]]) {
       expect(settingsChangeDiff(fleet(a), fleet(b), { operation: "PATCH instance" })).toBeNull();
@@ -150,7 +150,8 @@ describe("validation and Settings", () => {
     // Not the allow-listed values, or not that path: still the confirmation layer's (refused or confirmed, never quiet).
     const judged = (b: unknown, a: unknown = fleet({})) => { try { return settingsChangeDiff(a, b, { operation: "PATCH instance" }); } catch (e) { return e; } };
     expect(judged(fleet({ speed: "priority" }))).not.toBeNull();
-    expect(judged(fleet({ credential_profile: "other" }), fleet({ credential_profile: "work" }))).not.toBeNull();
+    expect(judged(fleet({ credential_profile: "other" }), fleet({ credential_profile: "work" }))).toBeNull(); // #3335 Accounts
+    expect(judged(fleet({ provider: "other" }))).not.toBeNull();
     expect(judged({ fleet: { instances: { w: { backend: "codex", backend_options: { "claude-code": { speed: "fast" } } } } } })).not.toBeNull();
   });
   it("the dialog's patch names only codex.speed, and only when it changed", () => {

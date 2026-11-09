@@ -2,13 +2,15 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { epoch, hash, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
+import { epoch, hash, person, uuid, identifier, plain, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import type { HubAuditRecord } from "./types.js";
 const pairing = z.strictObject({ id: uuid, owner: person, codeHash: hash.nullable(), expiresAt: epoch,
   fleetId: uuid.nullable(), claimHash: hash.nullable(), fingerprint: hash.nullable(), ownerConfirmed: z.boolean(), adminApproved: z.boolean(),
-  state: z.enum(["offered", "pending", "claimed", "revoked"]) });
+  approvedBy: person.optional(), state: z.enum(["offered", "pending", "claimed", "revoked"]),
+  /** Only self-service offers carry this server-authenticated origin; never an administrator approval. */
+  automatic: z.strictObject({ label: plain(120), initiatingSessionId: identifier }).optional() });
 const fleet = z.strictObject({ id: uuid, owner: person, credentialHash: hash.nullable(), generation: epoch,
-  status: z.enum(["active", "revoked"]) });
+  status: z.enum(["active", "revoked"]), label: plain(120).optional() });
 const stateSchema = z.strictObject({ v: z.literal(1), revision: epoch, revocationVersion: epoch, nextLinkEpoch: epoch,
   pairings: z.array(pairing).max(64), fleets: z.array(fleet).max(256),
   buckets: z.array(z.strictObject({ key: hash, since: epoch, attempts: epoch })).max(1024) });
@@ -27,7 +29,8 @@ export interface HubTransportStoreOptions {
 export function migrateHubTransportStore(db: Database.Database): void {
   db.exec("CREATE TABLE IF NOT EXISTS hub_transport_state (singleton INTEGER PRIMARY KEY CHECK(singleton=1), state TEXT NOT NULL)");
 }
-export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport", version: 1, up: migrateHubTransportStore });
+// Version 2 persists the approver identity; older binaries must refuse rather than reinterpret that proof.
+export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport", version: 2, up: migrateHubTransportStore });
 /** No file opening or migration on import/construction; initialization is explicit and belongs to S5. */
 export class HubTransportStore {
   private failed = false;
@@ -50,11 +53,12 @@ export class HubTransportStore {
       return state;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
-  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState) => T): T {
+  /** owningDb is callback-scoped, for a same-transaction participant; never stash or use it after change returns. */
+  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState, owningDb: Database.Database) => T): T {
     let writing = false;
     try {
       return this.db.transaction(() => {
-        const state = this.read(), result = change(state);
+        const state = this.read(), result = change(state, this.db);
         if (result && typeof (result as { then?: unknown }).then === "function") throw new HubProtocolError();
         state.revision++;
         validated(stateSchema, state);

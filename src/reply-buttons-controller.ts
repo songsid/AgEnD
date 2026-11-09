@@ -119,8 +119,8 @@ export class ReplyButtonsController {
     // #3011: the deadline was fixed at prepare(), before the send. A late bind is visible in daemon.log.
     if (set) this.deps.logger.info({ set: id, instance: set.instance, bindDelayMs: now - set.createdAt, poll: set.poll !== null }, "Reply buttons bound");
     if (set?.poll) this.scheduleTick(set);
-    // #3011: a platform that confirmed the send after the set's deadline (a short poll, a slow send) leaves nothing for
-    // arm(): nextExpiry only looks ahead. Sweep now, which closes/expires it and re-arms the one timer.
+    // #3011: a platform that confirmed the send after the set's deadline (a short poll, a slow send): sweep now, which
+    // closes/expires it and re-arms the one timer (arm() alone would wait its 1 s floor).
     if (set && set.expiresAt <= now) { void this.sweep(); return; }
     this.arm();
   }
@@ -428,12 +428,16 @@ export class ReplyButtonsController {
     this.pace.delete(id);
   }
 
-  /** One timer, for the next expiry. A wall-clock jump makes it fire early or late; the sweep re-reads the clock. */
+  /**
+   * One timer, for the earliest deadline not yet handled — a past one included (#3197), so a timer that fired a moment
+   * early, or a re-arm between a deadline and its sweep, cannot drop it. A wall-clock jump makes it fire early or late;
+   * the sweep re-reads the clock.
+   */
   arm(): void {
     if (this.stopped) return;
     if (this.timer !== null) this.deps.clearTimer(this.timer);
     this.timer = null;
-    const next = this.deps.store.nextExpiry(this.deps.now());
+    const next = this.deps.store.nextExpiry();
     if (next === null) return;
     const delay = Math.min(MAX_TIMER_MS, Math.max(1000, next - this.deps.now()));
     this.timer = this.deps.setTimer(() => { this.timer = null; void this.sweep(); }, delay);

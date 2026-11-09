@@ -657,6 +657,9 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       const node = join(f.runtimeHome, "bin", "node");
       const mark = join(f.root, "candidate-ran");
       writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+      // Whole second, away from a .9995ms Date-round-up: keepTimes restores stat.mtime
+      // (a Date), which can cross the contract's floor(mtimeMs/1000) boundary.
+      utimesSync(node, 1_700_000_000, 1_700_000_000);
       expect(postinstall(f).status).toBe(0);
       rmSync(mark, { force: true });
       (change as (f: ReturnType<typeof fixture>, node: string) => void)(f, node);

@@ -7,16 +7,16 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readlinkSync, existsSync, lstatSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { CodexBackend } from "../src/backend/codex.js";
+import { shortTmpdir } from "./helpers/short-tmpdir.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function makeInstanceDir(name: string, base?: string): string {
-  const root = base ?? mkdtempSync(join(tmpdir(), "agend-953-"));
+  const root = base ?? mkdtempSync(join(shortTmpdir(), "agend-953-"));
   dirs.push(root);
   const instanceDir = join(root, "instances", name);
   mkdirSync(instanceDir, { recursive: true });
@@ -48,7 +48,7 @@ function withAgendHome(agendHome: string, fn: () => void): void {
 
 describe("CodexBackend short CODEX_HOME (#953)", () => {
   it("uses a short path under cx/ instead of instanceDir/codex-home", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "agend-very-long-name-t1503382598640996543");
     mkdirSync(instanceDir, { recursive: true });
@@ -65,7 +65,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   });
 
   it("per-instance unique: two different instances get different short homes", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const dir1 = join(root, "instances", "alpha-t111");
     const dir2 = join(root, "instances", "beta-t222");
@@ -80,7 +80,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   });
 
   it("idempotent: same instance always gets same short home", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "stable-t999");
     mkdirSync(instanceDir, { recursive: true });
@@ -93,7 +93,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   });
 
   it("migration: renames existing legacyHome and leaves backward symlink", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "migrated-t555");
     mkdirSync(instanceDir, { recursive: true });
@@ -117,7 +117,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   });
 
   it("migration guard: no rename when old path is already a symlink (already migrated)", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "already-t666");
     mkdirSync(instanceDir, { recursive: true });
@@ -137,7 +137,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
     // Mutation guard: if the self-heal branch is missing, a constructor after
     // a crash (rename done, symlink not created) would leave legacyHome missing
     // and return shortHome without the backward-compat symlink.
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "crashed-t777");
     mkdirSync(instanceDir, { recursive: true });
@@ -173,7 +173,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
     // scenario where shortHome exists externally and rename can't proceed).
     // The real EXDEV path is tested at integration level; here we verify the
     // fallback return value and session preservation.
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "failsafe-t888");
     mkdirSync(instanceDir, { recursive: true });
@@ -200,7 +200,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   });
 
   it("socket path for a real long instance name fits in SUN_LEN", () => {
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     // A real-world long name that was failing before
     const instanceDir = join(root, "instances", "agend-reviewer-t1503382598640996543");
@@ -220,7 +220,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
     // Mutation guard: if the existsSync(canonical) guard is removed, every
     // CodexBackend construction for a probe/test with a non-existent dir would
     // create ~/.agend/cx/<hash>/ (orphan). This test verifies the guard.
-    const root = mkdtempSync(join(tmpdir(), "agend-953-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "does-not-exist");
     // instanceDir is NOT created
@@ -236,7 +236,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   it("B1: shortHomeFor resolves to canonical path (trailing slash not a different home)", () => {
     // Mutation guard: if shortHomeFor uses the raw string instead of resolve(),
     // `instanceDir + "/"` produces a different hash → different (orphaned) home.
-    const root = mkdtempSync(join(tmpdir(), "agend-953-cano-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-cano-"));
     dirs.push(root);
     const instanceDir = join(root, "instances", "canonical-t123");
 
@@ -265,7 +265,7 @@ describe("B1: delete_instance cleans up the codex short home (#953)", () => {
     // (a) removing the rmSync(shortHome) → test fails (short home survives)
     // (b) adding back `if (effectiveBackend === "codex")` with lookup after
     //     lifecycle.remove → test fails (falls back to fleet default "claude-code")
-    const root = mkdtempSync(join(tmpdir(), "agend-953-b1-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-b1-"));
     dirs.push(root);
     const name = "codex-long-name-t1503382598640996543";
     const instanceDir = join(root, "instances", name);
@@ -313,7 +313,7 @@ describe("B1: delete_instance cleans up the codex short home (#953)", () => {
   it("removes short home even when backend was switched away from codex before deletion", async () => {
     // Mutation guard (c): adding back `if (effectiveBackend === "codex")` check
     // would miss this case — instance has a short home but current backend is "claude-code".
-    const root = mkdtempSync(join(tmpdir(), "agend-953-b1-sw-"));
+    const root = mkdtempSync(join(shortTmpdir(), "agend-953-b1-sw-"));
     dirs.push(root);
     const name = "switched-backend-t555";
     const instanceDir = join(root, "instances", name);

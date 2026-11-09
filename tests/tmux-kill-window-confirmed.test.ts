@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { resetTmuxResolution } from "../src/tmux-binary.js";
 
 /**
  * sol (PR-B round 5, B1): a createWindow() whose exec timed out may still have
@@ -18,18 +19,25 @@ const SOCK = `agtkw${process.pid}`;
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", SOCK, ...args], { encoding: "utf8" });
 
 const ORIGINAL_PATH = process.env.PATH ?? "";
+// M-2457: TmuxManager runs AGEND_TMUX_BIN (else the bundle), never PATH's tmux. Point it at the tmux this file's own
+// server runs, so client and server are one binary; a failing wrapper replaces it for a single test.
+const SYSTEM_TMUX = (() => { try { return execFileSync("sh", ["-c", "command -v tmux"], { encoding: "utf8" }).trim(); } catch { return ""; } })();
+const useTmux = (bin: string) => { process.env.AGEND_TMUX_BIN = bin; resetTmuxResolution(); };
+const PREV_BIN = process.env.AGEND_TMUX_BIN;
+if (SYSTEM_TMUX) useTmux(SYSTEM_TMUX);
 afterEach(() => {
   process.env.PATH = ORIGINAL_PATH;
+  if (SYSTEM_TMUX) useTmux(SYSTEM_TMUX);
   try { tmux("kill-server"); } catch { /* gone */ }
   TmuxManager.setSocketName(null);
 });
 
-/** Put a `tmux` wrapper first in PATH that fails (exit 75) for the given subcommand and execs the real tmux otherwise. */
+/** AgEnD's tmux becomes a wrapper that fails (exit 75) for the given subcommand and execs the real tmux otherwise. */
 function failingTmux(subcommand: string): string {
   const dir = mkdtempSync(join(tmpdir(), "agend-tmuxwrap-"));
-  writeFileSync(join(dir, "tmux"), `#!/bin/sh\nfor a in "$@"; do if [ "$a" = ${subcommand} ]; then exit 75; fi; done\nPATH="${ORIGINAL_PATH}" exec tmux "$@"\n`);
+  writeFileSync(join(dir, "tmux"), `#!/bin/sh\nfor a in "$@"; do if [ "$a" = ${subcommand} ]; then exit 75; fi; done\nexec "${SYSTEM_TMUX}" "$@"\n`);
   chmodSync(join(dir, "tmux"), 0o755);
-  process.env.PATH = `${dir}:${ORIGINAL_PATH}`;
+  useTmux(join(dir, "tmux"));
   return dir;
 }
 
@@ -79,7 +87,7 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
       const tm = new TmuxManager("s", "");
       await expect(tm.createWindow("sleep 100", "/tmp", "agend-login-x")).rejects.toThrow();
     } finally {
-      process.env.PATH = ORIGINAL_PATH;
+      useTmux(SYSTEM_TMUX);
       rmSync(dir, { recursive: true, force: true });
     }
     expect(tmux("list-windows", "-t", "s", "-F", "#{window_name}")).not.toContain("agend-login-x");
@@ -91,7 +99,7 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
     try {
       await expect(TmuxManager.ensureSession("s2")).rejects.toThrow(/could not be determined/);
     } finally {
-      process.env.PATH = ORIGINAL_PATH;
+      useTmux(SYSTEM_TMUX);
       rmSync(dir, { recursive: true, force: true });
     }
     expect(await TmuxManager.sessionExistsStrict("s2")).toBe(false);         // positively absent (no server) → false, no throw
@@ -147,3 +155,6 @@ describe.skipIf(!have("tmux"))("#2806 failed startup cannot kill the active neig
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// Leave the environment as found for the rest of this worker.
+afterAll(() => { if (PREV_BIN === undefined) delete process.env.AGEND_TMUX_BIN; else process.env.AGEND_TMUX_BIN = PREV_BIN; resetTmuxResolution(); });

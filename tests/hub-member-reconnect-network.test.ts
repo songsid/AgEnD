@@ -24,7 +24,7 @@ it("reconnects nonempty history after a committed receipt loses its ACK, converg
     const profile = await r.pair(); for (const m of HUB_HTTP_MIGRATIONS) m.up(r.db);
     const live = new WeakMap<HubTx, Database.Database>(), audits: string[] = [];
     const deps: HubHttpDeps = { store: r.store, pairing: r.pairing, directory: r.directory,
-      config: { hubId: r.identity.hubId, name: "test", webOrigin: profile.hub.webOrigin, administrator: r.owner },
+      config: { hubId: r.identity.hubId, name: "test", memberOrigin: r.memberOrigin, webOrigin: profile.hub.webOrigin, administrator: r.owner },
       issuer: { keyId: r.identity.issuerKeyId, sign: e => signAsker(e, createPrivateKey(readFileSync(join(r.root, "hub/keys/issuer-key.pem")))) },
       content: { put: () => { throw Error("no plaintext replay"); }, get: () => undefined }, transport: () => r.server,
       current: () => ({ serverEnabled: () => true, memberEnabled: () => false, epoch: () => 0 }),

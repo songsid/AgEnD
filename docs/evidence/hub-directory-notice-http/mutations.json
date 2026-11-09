@@ -1,0 +1,76 @@
+{
+  "cases": [
+    {
+      "guard": "composition",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "groups-independent",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "session-mark",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "shell-mark",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "ack-csrf",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "duplicate-query",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "older-cursor",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "late-read-session",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "late-ack-session",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    },
+    {
+      "guard": "late-read-generation",
+      "failedAssertions": 1,
+      "passed": 0,
+      "deliberatelyUnselected": 60,
+      "exitCode": 1
+    }
+  ],
+  "restored": true,
+  "scope": "Ten isolated, assertion-caught reversals; each selects one new HTTPS case with the other 60 cases deliberately unselected. The harness stopped once on a duplicate needle before mutating it; it then selected the directory occurrence explicitly."
+}

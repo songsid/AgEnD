@@ -1,0 +1,56 @@
+{
+  "v": 1,
+  "base": "8ef522fbae2ee61b2f20f6e80a4094bfb7cfd0dc",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'AD settings from the local host session'",
+    "passed": 0,
+    "failed": 1,
+    "deselected": 12,
+    "reason": "AssertionError: expected404 to be200; no collection failure"
+  },
+  "focused": [
+    {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts tests/hub-directory-settings-control.test.ts",
+      "passed": 35,
+      "failed": 0,
+      "deselected": 0
+    },
+    {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'during a held body'",
+      "passed": 1,
+      "failed": 0,
+      "deselected": 23
+    },
+    {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'a held factory'",
+      "passed": 3,
+      "failed": 0,
+      "deselected": 21
+    }
+  ],
+  "types": [
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json"
+  ],
+  "source": "src/hub/settings-directory-host-http.ts",
+  "wire": "Actual FleetManager/fleet HTTP/D3/proof/writer/SQL/Runtime and CA-verified fake LDAPS. Old peer physically closed before read/test/save; candidate negative preserves old epoch/config, candidate positive remounts with durable notices, no Hub session/Hub cookie and no old-directory sign-in/eligibility call. Candidate receives only dummy service binds. No response stubs in this journey.",
+  "other": "Dispatch/refusal/held-factory tests use contract-faithful control doubles. All owned state/listeners cleaned up.",
+  "remaining": [
+    "cold source while Hub off/held",
+    "CA bootstrap for editor",
+    "AD form and UI acceptance/PNG/SKEW"
+  ],
+  "operations": "No real directory/account/pilot/native/live fleet operation.",
+  "counts": "35 original focused tests +1 added held-body test; the3 held-factory controls were rechecked after deterministic abort cleanup, overlapping the35. Do not add overlapping counts.",
+  "r1": {
+    "scope": "Test/docs/evidence only; production source byte-identical to a0f9c929.",
+    "tests": {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'a settled Save result'",
+      "passed": 2,
+      "failed": 0,
+      "deselected": 24
+    },
+    "proof": "Contract-faithful held apply marks its effect settled before D3 proof revocation. Revoked gets403 without committed:false; current gets the ready result. This particular control is not a SQL-commit claim; the original outage journey owns real SQL/wire coverage.",
+    "types": "npx tsc --noEmit -p tsconfig.test.json passed."
+  }
+}

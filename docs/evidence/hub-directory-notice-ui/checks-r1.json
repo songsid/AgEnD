@@ -1,0 +1,45 @@
+{
+  "focused": {
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      "hub-directory-notice-ui.test.ts",
+      "hub-shared-modules-a.test.ts",
+      "i18n-ui-literals-2390.test.ts"
+    ]
+  },
+  "types": "Both source and test typechecks pass after R1",
+  "phoneBrowser": {
+    "checks": 30,
+    "passed": 30,
+    "receipt": "browser-r1.json",
+    "tapChecks": 4,
+    "reachabilityChecks": 2,
+    "phoneImagesRetaken": 4,
+    "scrolledDetailsAdded": 2
+  },
+  "tapReversal": "tap-reversal-r1.json",
+  "visual": "All six phone images clear in read-only image review",
+  "ciCorrections": [
+    "Exact Hub-only module expectation includes the two new modules",
+    "Error-key state setter renamed; display still localized, no allowlist added"
+  ],
+  "scope": "CSS/measurement + nonsemantic state rename + tests/evidence. No new API or authority.",
+  "syncedFocused": {
+    "passed": 54,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      "hub-directory-host-notices.test.ts",
+      "hub-directory-notice-ui.test.ts",
+      "hub-shared-modules-a.test.ts",
+      "hub-shell-parity.test.ts",
+      "i18n-ui-literals-2390.test.ts"
+    ]
+  },
+  "alphaSync": {
+    "tip": "fbdeb4539197c1148f0996e3a95ed092c97bff10",
+    "resolution": "One add/add conflict in host-notices test: preserve the exact own test blob, whose only difference was the 12 new shell assertions. No source own-change edit in the sync."
+  }
+}

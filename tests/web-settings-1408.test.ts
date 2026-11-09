@@ -1292,10 +1292,15 @@ describe("#1465 review: confirmations that outlive their view", () => {
     await settle(6);
     p.root.querySelector(".s-row .menu > button").click(); await settle(2);
     p.root.querySelectorAll(".menu-item").find((b: any) => b.textContent.includes("Delete agent")).click(); await settle(2);
-    const toastsBefore = p.root.querySelectorAll(".toast").length;
+    // Toasts are one page-wide stack and each leaves 4 s after it came (ui-toast.js): an earlier test's toast may expire
+    // during this one, so a count can drop with nothing wrong (CI run 42336278335). What must not happen is a NEW toast:
+    // every toast after the late answer was already there before it.
+    const texts = () => [...p.root.querySelectorAll(".toast")].map((t: any) => t.textContent);
+    const before = texts();
     await p.mount(h("div", {}, h(T.Toasts, {})));                     // the panel goes, the toasts stay
     await yes(); await settle(6);
-    expect(p.root.querySelectorAll(".toast").length).toBe(toastsBefore);
+    const left = [...before];
+    for (const t of texts()) { const i = left.indexOf(t); expect(i, `a toast after the panel went: ${t}`).toBeGreaterThanOrEqual(0); left.splice(i, 1); }
   });
 
   it("Apply's questions stop when the panel goes: the next one is never asked, nothing is said", async () => {
@@ -1729,6 +1734,9 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op()?.phase).not.toBe("writing"), { timeout: 5000 }); await settle(4);
     await vi.waitFor(() => expect(p.root.textContent).toContain("starts with the new token when AgEnD restarts"), { timeout: 5000 });
+    // S-91 (hmsg-77256f66): the way to restart is the page's own restart notice, never a host command.
+    expect(p.root.textContent).toContain("restart notice at the top of the page");
+    expect(p.root.textContent).not.toContain("agend restart");
     expect(op().phase, "stored, not failed").not.toBe("failed");
   }, 15_000);
 });

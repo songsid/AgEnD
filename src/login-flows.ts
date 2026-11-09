@@ -39,6 +39,7 @@
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
 import { agyLoginScreenActive } from "./backend/antigravity.js";
 import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -192,7 +193,11 @@ export const KIRO_LOGIN_REQUIRED_SCREEN = /(?:^|\n)[ \t]*You are not logged in\.
 /** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
 const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}|${KIRO_LOGIN_REQUIRED_SCREEN.source}`);
 
-export const LOGIN_FLOWS: Record<string, LoginFlow> = {
+/**
+ * #3474 (M-2716, #3471 review): both maps are looked up with words a person types (`/login <backend>`), so they have no
+ * prototype — `__proto__`, `constructor` or `toString` must read as "no such backend", never an inherited property.
+ */
+export const LOGIN_FLOWS: Record<string, LoginFlow> = Object.assign(Object.create(null) as Record<string, LoginFlow>, {
   "codex": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
@@ -271,10 +276,12 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
     // Live-verified (claude 2.1.289): a code that LOOKS right but the server refuses ends the command with exit 1 and
     // "Login failed: Request failed with status code 400" — which the terminal page shows as "Ended", like an
-    // interruption. (A malformed code only prints "Invalid code…" and the prompt stays open for another try.)
+    // interruption. claude 2.1.319 says it in words instead: "Login failed: That code wasn't accepted. It may be incomplete,
+    // expired, already used, or from an earlier sign-in attempt. Sign in again to get a new code." (A malformed code only
+    // prints "Invalid code…" and the prompt stays open for another try.)
     failures: [
       {
-        pattern: /Login failed: Request failed with status code 400/,
+        pattern: /Login failed: Request failed with status code 400|Login failed: That code wasn't accepted/,   // two whole messages (not a grouped alternation): the upstream precheck's manifest keeps each as one literal
         message: "The sign-in code was rejected — it expired, was already used, was pasted more than once, or came from a different login attempt. Start /login again, open only the new link, and paste the code once",
         suggest: "relogin",
       },
@@ -302,21 +309,15 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     successPattern: /\? for shortcuts|^>\s*$/m,
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
-};
+} satisfies Record<string, LoginFlow>);
 
-/** Chat-command aliases accepted by `/login <backend>`. */
-export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
-  "claude": "claude-code",
-  "claude-code": "claude-code",
-  "codex": "codex",
-  "grok": "grok",
-  "kiro": "kiro-cli",
-  "kiro-cli": "kiro-cli",
-  "agy": "antigravity",
-  "antigravity": "antigravity",
-  // opencode can be installed by `/login`, but has no sign-in flow.
-  "opencode": "opencode",
-};
+/**
+ * Chat-command aliases accepted by `/login <backend>`: every CLI's id and the other names its spec gives it (cli-registry.ts: `host.chatLogin`). That includes
+ * a CLI chat declines (`agy`) and one it can only install (`opencode`: no sign-in flow); the flow table above says which.
+ */
+export const LOGIN_BACKEND_ALIASES: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, Object.fromEntries(
+  hostIds("chatLogin").flatMap(id => [id, ...hostFacts(id, "chatLogin")!.aliases].map(name => [name, id] as const)),
+));
 
 /**
  * Extract the authorization URL and one-time code from joined pane text.

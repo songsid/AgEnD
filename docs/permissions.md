@@ -13,13 +13,13 @@ AgEnD checks chat admission, command roles, AgEnD tool profiles and HTTP credent
 | AgEnD tool profile | Instance `tool_set` | Server-side permission to invoke AgEnD tools |
 | Dashboard / agent HTTP | `web.token` / per-instance `agent.token` | Separate bearer credentials, not chat roles |
 
-**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the owning bot's YAML list (invoking when there is no target); an empty list grants nobody F, and an unknown adapter fails closed. ClassicBot's empty admin list likewise grants nobody C. For new ClassicBot starts, omitted, empty or non-array guild/group/private-user lists admit nobody: non-C callers request approval in General. C may start directly. Existing registrations are unaffected.
+**Open chat access and saved chat grants do not make a fleet admin.** F is an explicit entry in the owning bot's YAML list (invoking when there is no target); an empty list grants nobody F, and an unknown adapter fails closed. ClassicBot's empty admin list likewise grants nobody C. For new ClassicBot starts, omitted, empty or non-array guild/group/private-user lists admit nobody: non-C callers request approval in General. C may start directly. Existing registrations are unaffected.
 
 ## Fleet chat admission and persisted access
 
-Omitting the whole `access` block supplies an **open** fallback. With a configured block, set its mode, `allowed_users` array and pairing limits explicitly; there is no field-by-field runtime initializer that turns an incomplete block into the documented defaults.
+Omitting the whole `access` block supplies an **open** fallback. With a configured block, set its mode and `allowed_users` array explicitly; there is no field-by-field runtime initializer that turns an incomplete block into the documented defaults.
 
-- Saved mode takes precedence over YAML mode. Saved allowed users and YAML `allowed_users` are unioned, string-normalized and deduplicated; pairing approval adds a saved grant.
+- Saved mode takes precedence over YAML mode. Saved allowed users and YAML `allowed_users` are unioned, string-normalized and deduplicated; existing saved grants remain; obsolete pending codes no longer grant access.
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
 - In locked/pairing mode, removing an ID from YAML alone may leave a saved grant. Removing only its saved grant can let YAML restore it at reconstruction. Remove both grants to revoke allowlist admission; open mode admits all users regardless of that list.
 - Typed fleet messages use the target instance's **owning world** access policy. An identified owner whose adapter/world is unavailable is refused; a sibling's policy cannot substitute for it.
@@ -79,7 +79,9 @@ Bot traffic has additional ingress filters before chat policy:
 
 ## AgEnD tool permissions
 
-`tool_set` filters the MCP tool menu **and is enforced on the server** for outbound IPC, typed IPC and agent HTTP/CLI operations. Asking for an omitted tool by name cannot bypass the profile. Profile selection uses an explicit recognized `tool_set`, otherwise the General role (`general`, which includes the full `ORCHESTRATION` tool list as AgEnD's administrator) for General, otherwise `worker`. Separate privilege guards remain in effect regardless of profile: `create_instance` and `update_instance_config` cannot set or escalate `tool_set` or `skipPermissions`, and sensitive Settings changes (tokens, access policies, permission escalations) still require fleet-admin confirmation.
+`tool_set` filters the MCP tool menu **and is enforced on the server** for outbound IPC, typed IPC and agent HTTP/CLI operations. Asking for an omitted tool by name cannot bypass the profile. Profile selection uses an explicit recognized `tool_set`, otherwise the General role (`general`, which includes the full `ORCHESTRATION` tool list as AgEnD's administrator) for General, otherwise `worker`. General’s default profile also includes the read-only debug tools `get_instance_logs`, `get_fleet_config`, `validate_config` and `list_deployments`; repository leases (`checkout_repo`, `release_repo`) remain excluded.
+
+General alone may set another agent’s `tool_set` directly through `update_instance_config` or `create_instance`, without a confirmation card (decision 36525f1b). The caller is the authenticated instance identity, never a claimed sender or requested profile. Writable values are `full`, `standard`, `worker`, `coordinator` and `minimal`; `general` is role-derived and cannot be assigned. Every other caller, including a coordinator or an ordinary instance with `full`, retains the #804/#814 refusal. Both tools explicitly refuse `skipPermissions` for everyone, General included. Sensitive Settings changes (tokens, access policies and admin membership) keep their existing fleet-admin confirmation. An explicitly narrowed General still faces its configured tool profile. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
 
 These checks govern AgEnD tools, independently of chat admission/admin roles. They do not constrain a backend's own Bash, file or network tools, and filesystem IPC permissions do not isolate processes sharing the fleet's OS user.
 
@@ -112,8 +114,6 @@ channels:
     access:
       mode: locked
       allowed_users: ["987654321"]
-      max_pending_codes: 5
-      code_expiry_minutes: 10
 
 # classicBot.yaml (separate file)
 defaults:

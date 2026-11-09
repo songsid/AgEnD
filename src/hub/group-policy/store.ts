@@ -1,4 +1,4 @@
-/** Durable foundation only: not composed or exposed by a route until action fences and the enable preview land. */
+/** Durable policy state; composed never-enabled. Activation still requires the confirmed impact/enrollment flow. */
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import type { HubAuditRecord, PersonKey } from "../types.js";
 import type { HubDirectory } from "../directory/types.js";
 import type { PolicyGroupFacts } from "../directory/groups.js";
 import { identifier, parseStrictJson, person, validated } from "../validation.js";
-import { evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
+import { GROUP_CAPABILITIES, evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 
 export class HubGroupPolicyError extends Error {
   constructor(readonly code: "unavailable" | "conflict" | "unsupported" | "invalid" | "audit") { super(`group_policy_${code}`); }
@@ -25,8 +25,10 @@ export function groupPolicyMigration(hubId: string, realm: string, generation: s
 export type HubGroupPolicyBinding = { readonly kind: "ready" } | {
   readonly kind: "repair-required";
   /** Only an intact, same-Hub/same-realm never-enabled record may preserve legacy behavior. */
-  readonly legacy: boolean;
-};
+  readonly legacy: true;
+  /** Validated selected binding plus the complete stored policy; never a strict-store read. */
+  readonly fingerprint: string;
+} | { readonly kind: "repair-required"; readonly legacy: false };
 /** Read-only composition probe: a directory-generation change must not take sign-in/admin repair down. */
 export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: string, realm: string, generation: string): HubGroupPolicyBinding {
   try {
@@ -36,11 +38,15 @@ export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: strin
     const policy = parseGroupPolicy(parseStrictJson(row.body));
     if (policy.realm !== binding.realm) return { kind: "repair-required", legacy: false };
     if (policy.generation === binding.generation) return { kind: "ready" };
-    return { kind: "repair-required", legacy: policy.state === "never-enabled" };
+    if (policy.state !== "never-enabled") return { kind: "repair-required", legacy: false };
+    const fingerprint = createHash("sha256").update(JSON.stringify({ hubId: row.hub_id,
+      realm: binding.realm, generation: binding.generation, policy })).digest("hex");
+    return { kind: "repair-required", legacy: true, fingerprint };
   } catch { return { kind: "repair-required", legacy: false }; }
 }
 
-const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional() });
+const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional(),
+  revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional() });
 export interface GroupCheckContext {
   requestId: string;
   resource?: z.infer<typeof resources>;
@@ -49,10 +55,18 @@ export interface GroupCheckContext {
 }
 export interface HubGroupPolicyStore {
   read(): HubGroupPolicy;
+  /** Admission only, never an allowance. Shares membership/welcome limits until the physical read settles. */
+  withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T>;
   /** Caller must freshly require the configured Hub admin and confirm the exact effective-access preview first. */
   replace(input: unknown, actor: PersonKey, context: GroupCheckContext): HubGroupPolicy;
   /** No cache. Result does not perform suspension; only authoritative negative may be used for that later. */
   check(subject: PersonKey, capability: GroupCapability, context: GroupCheckContext): Promise<HubGroupDecision>;
+  /**
+   * S-89 welcome DISPLAY only: the current policy and the three pure decisions from ONE fresh membership read (no read when never
+   * enabled). No audit, registration, suspension or permit; never reusable as authority — every action still calls `check` or a
+   * permit. Shares `check`'s in-flight bounds and freshness rule; unknown stays unknown.
+   */
+  describe(subject: PersonKey, context: GroupCheckContext): Promise<{ readonly policy: HubGroupPolicy; readonly decisions: Readonly<Record<GroupCapability, HubGroupDecision>> }>;
 }
 export function createHubGroupPolicyStore(options: {
   db: Database.Database; hubId: string; realm: string; generation: string; directory: HubDirectory;
@@ -76,8 +90,9 @@ export function createHubGroupPolicyStore(options: {
     resource: validated(resources, input.resource ?? {}), current: input.current });
   const record = (actor: HubAuditRecord["actor"], action: string, result: HubAuditRecord["result"], p: HubGroupPolicy, ctx: ReturnType<typeof context>, payload: unknown) => {
     const id = randomUUID(), at = now(), body = JSON.stringify({ ...ctx.resource, generation: binding.generation, policyRevision: p.revision, payload });
+    const { revision: _resourceRevision, ...resourceIds } = ctx.resource;
     const output: unknown = audit.appendInTransaction({ id, sequence: 0, at, requestId: ctx.requestId, actor, action, result, policyVersion: p.revision,
-      ...ctx.resource, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
+      ...resourceIds, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
     if (output && (typeof output === "object" || typeof output === "function") && typeof (output as { then?: unknown }).then === "function") {
       try { (output as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused either way */ }
       throw new HubGroupPolicyError("audit");
@@ -86,7 +101,18 @@ export function createHubGroupPolicyStore(options: {
     db.prepare("INSERT INTO hub_group_events VALUES(?, ?, ?)").run(id, body, at);
   };
   read(); // Missing/corrupt state is not an excuse to restore permissive legacy behavior.
-  return { read, replace(input, actor, incoming) {
+  return { read, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
+    const who = validated(person, subject); assert();
+    const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
+    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    inflight.set(key, count + 1); total++;
+    try { return await read(); }
+    finally {
+      const left = (inflight.get(key) ?? 1) - 1;
+      if (left) inflight.set(key, left); else inflight.delete(key);
+      total--;
+    }
+  }, replace(input, actor, incoming) {
     const next = parseGroupPolicy(input), who = validated(person, actor), ctx = context(incoming);
     if (who.realm !== binding.realm || next.realm !== binding.realm || next.generation !== binding.generation) throw new HubGroupPolicyError("invalid");
     if ((next.state === "enabled" || next.groups.length > 0) && directory.groupPolicy !== "ad-direct-guid") throw new HubGroupPolicyError("unsupported");
@@ -128,6 +154,30 @@ export function createHubGroupPolicyStore(options: {
           { person: who, capability: cap, ...decision });
         return decision;
       }).immediate();
+    } finally {
+      const left = (inflight.get(key) ?? 1) - 1;
+      if (left) inflight.set(key, left); else inflight.delete(key);
+      total--;
+    }
+  }, async describe(subject, incoming) {
+    const who = validated(person, subject), ctx = context(incoming);
+    assert(ctx.current);
+    const before = read();
+    const all = (p: HubGroupPolicy, facts: PolicyGroupFacts) => Object.freeze(Object.fromEntries(GROUP_CAPABILITIES.map((cap) => [cap, evaluateGroupPolicy(p, who, cap, facts)]))) as Readonly<Record<GroupCapability, HubGroupDecision>>;
+    if (before.state === "never-enabled") return Object.freeze({ policy: before, decisions: all(before, { kind: "unknown" }) });
+    const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
+    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    inflight.set(key, count + 1); total++;
+    try {
+      const started = now(); let facts: PolicyGroupFacts = { kind: "unknown" };
+      if (before.state === "enabled" && directory.groupPolicy === "ad-direct-guid" && directory.realm === binding.realm) {
+        try { facts = await directory.readPolicyGroups?.(Object.freeze({ ...who })) ?? { kind: "unknown" }; } catch { /* no partial/negative proof */ }
+      }
+      assert(ctx.current);
+      if (facts.kind !== "unknown" && (facts.observedAt < started || facts.observedAt > now())) facts = { kind: "unknown" };
+      // The policy as it is now (a change during the read is shown as it stands; nothing here decides anything).
+      const p = read();
+      return Object.freeze({ policy: p, decisions: all(p, p.revision === before.revision ? facts : { kind: "unknown" }) });
     } finally {
       const left = (inflight.get(key) ?? 1) - 1;
       if (left) inflight.set(key, left); else inflight.delete(key);

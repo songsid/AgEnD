@@ -65,7 +65,7 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     for (const p of [set.database, ...set.floors, ...set.keys]) expect(statSync(join(rig.memberHome, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(rig.memberHome, set.database), { readonly: true });
     expect((db.prepare("SELECT component FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component))
-      .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance", "s5-representative"]);
+      .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance", "s5-representative", "s90-pairing-inbox"]);
     db.close();
     // Attached to the fleet: the exposure API (P1 representative agent: the agent itself is the one choice) and attention.
     const api = f.attached.exposures as { list(): Array<{ agent: string; choices: { dataViews: unknown[] }; enforceable: boolean }> };

@@ -12,10 +12,11 @@ vi.mock("../src/paths.js", async original => ({
 import { TmuxManager } from "../src/tmux-manager.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxPaneHost } from "../src/tmux-pane-host.js";
+import { tmuxBinary, tmuxSocket } from "../src/tmux-binary.js";
 import type { Pane, PaneObservation } from "../src/pane-port.js";
 
 const exec = promisify(execFile);
-const native = (args: string[]) => exec("tmux", ["-L", fixture.socket, ...args], { timeout: 5_000 });
+const native = (args: string[]) => exec(tmuxBinary(), ["-L", tmuxSocket(), ...args], { timeout: 5_000 });
 const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 const host = new TmuxPaneHost();
 const root = mkdtempSync(join(tmpdir(), "agend-pane-port-"));
@@ -37,7 +38,7 @@ process.stdout.write('READY\\r\\n');
 fs.writeFileSync(process.argv[2], '');
 process.stdin.on('data', b=>{ fs.appendFileSync(process.argv[2], b); process.stdout.write('BYTES '+b.length+'\\r\\n'); });
 `);
-  TmuxManager.setSocketName(fixture.socket);
+  TmuxManager.setSocketName(tmuxSocket());
   await host.ensureSession(fixture.session);
   observation = new TmuxControlClient(fixture.session, 60);
   observation.start();

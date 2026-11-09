@@ -1,3 +1,4 @@
+import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
@@ -310,8 +311,12 @@ const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).
  *
  * AgEnD keeps the context, like the old resume menu: it answers Escape, which the dialog itself labels "resume" and
  * which needs no cursor — never Enter, never an arrow. Only this exact shape is answered: the title row, the
- * inactivity sentence and exactly the two options, bottom-anchored (only the description and footer rows may follow
- * the last option). Any other screen carrying the title is held for a human.
+ * inactivity sentence, exactly the known options with their exact descriptions (coldResumeOptionsExact) and the footer,
+ * bottom-anchored. Any other screen carrying the title is held for a human.
+ *
+ * The rows drawn above (description under its option) are how the binary-derived fixtures of 2.1.295/2.1.304 assumed
+ * it; the live captures of 2026-11-07 show the description beside the label (see coldResumeOptionsExact), which those
+ * versions' predicate held for a human whenever the server offered the look-up.
  *
  * 2.1.304 (binary `yrt`; the changelog's "warning before resuming an inactive conversation on Pro and Max"): the idle
  * trigger labels the same key "Esc to dismiss" — the action behind it is unchanged (`onCancel` → "dismiss" in both
@@ -320,8 +325,6 @@ const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).
  */
 const COLD_RESUME_TITLE = /^[ \t]*Resume this conversation\?[ \t]*$/;
 const COLD_RESUME_RESUME_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:1\.[ \t]*)?Resume[ \t]*$/;
-const COLD_RESUME_NEW_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:2\.[ \t]*)?Start a new conversation[ \t]*$/;
-const COLD_RESUME_NEW_DESCRIPTION = /^[ \t]*Claude can look this one up if you refer to it later[ \t]*$/;
 /**
  * The input guide's parts, joined by " · " (the idle trigger adds the arrow hint when a draft is waiting). Escape's
  * label is "resume", or "dismiss" on 2.1.304's idle trigger — one of them, exactly once.
@@ -354,11 +357,44 @@ export function claudeColdResumePromptState(pane: string): { titled: boolean; ex
   const body: string[] = [];
   while (k < region.length && !COLD_RESUME_RESUME_ROW.test(region[k]!)) body.push(region[k++]!.trim());
   const bodyOk = COLD_RESUME_BODY.test(body.join(" "));
-  const optionsOk = k < region.length && COLD_RESUME_RESUME_ROW.test(region[k]!) && COLD_RESUME_NEW_ROW.test(region[k + 1] ?? "");
-  let rest = region.slice(k + 2);
-  if (rest.length > 0 && COLD_RESUME_NEW_DESCRIPTION.test(rest[0]!)) rest = rest.slice(1);
-  const footerOk = rest.length === 1 && coldResumeFooter(rest[0]!);
+  // Options run from the "Resume" row to the footer, which must be the region's last row.
+  const footerOk = region.length - k >= 3 && coldResumeFooter(region[region.length - 1]!);
+  const optionsOk = footerOk && coldResumeOptionsExact(region.slice(k, region.length - 1));
   return { titled: true, exact: bodyOk && optionsOk && footerOk };
+}
+
+/**
+ * The option rows, live-captured on 2.1.318 and 2.1.319 (2026-11-07, first live capture): a description is painted in a
+ * column to the right of its label on the SAME row, after two or more spaces, and wraps inside that column onto rows of
+ * its own (`claude-2.1.31[89]-cold-resume-live-*` fixtures, 80 and 160 columns). 2.1.319 adds a third option behind the server
+ * flag `tengu_eager_brooks`, on the launch trigger only: "Resume from summary" (compacts, then continues). Escape keeps
+ * its meaning (`onCancel` → "dismiss": the prompt goes, the full conversation stays — checked live at 0/0.3/1.5 s).
+ */
+const COLD_RESUME_OPTION_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:([1-3])\.[ \t]*)?(Resume from summary|Start a new conversation|Resume)(?:[ \t]{2,}(\S.*?))?[ \t]*$/;
+const COLD_RESUME_LOOKUP_DESCRIPTION = "Claude can look this one up if you refer to it later";
+const COLD_RESUME_SUMMARY_DESCRIPTION = "Claude writes a summary now, and you continue from it";
+
+/**
+ * Exactly these options, in this order: Resume (no description); Start a new conversation (none, or the look-up text);
+ * and, optionally, Resume from summary (its own text). Numbers are absent (the idle trigger hides them) or 1, 2, 3.
+ * A row that starts no option continues the description above it; any text the grammar does not name makes it inexact.
+ */
+function coldResumeOptionsExact(rows: readonly string[]): boolean {
+  const options: { index?: string; label: string; description: string[] }[] = [];
+  for (const row of rows) {
+    const m = COLD_RESUME_OPTION_ROW.exec(row);
+    if (m) { options.push({ index: m[1], label: m[2]!, description: m[3] ? [m[3]] : [] }); continue; }
+    const last = options[options.length - 1];
+    if (!last) return false;
+    last.description.push(row.trim());
+  }
+  const labels = ["Resume", "Start a new conversation", "Resume from summary"].slice(0, options.length);
+  if (options.length < 2 || options.some((o, i) => o.label !== labels[i])) return false;
+  const numbered = options.map(o => o.index);
+  if (!numbered.every(n => n === undefined) && !numbered.every((n, i) => n === String(i + 1))) return false;
+  const text = options.map(o => o.description.join(" "));
+  return text[0] === "" && (text[1] === "" || text[1] === COLD_RESUME_LOOKUP_DESCRIPTION)
+    && (options.length === 2 || text[2] === COLD_RESUME_SUMMARY_DESCRIPTION);
 }
 const coldResumeExact = (pane: string): boolean => claudeColdResumePromptState(pane).exact;
 const coldResumeUnknown = (pane: string): boolean => { const s = claudeColdResumePromptState(pane); return s.titled && !s.exact; };
@@ -1178,6 +1214,9 @@ export class ClaudePaneDetectors {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
+      // #3441: only the CLI itself supplies the model requirement.
+      { pattern: CLAUDE_MINIMUM_ERROR, type: "outdated_cli", action: "notify", skipCooldown: true, skipRecoveryWait: true,
+        message: "Claude Code cannot run this model with its current version" },
       { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
       // What 2.1.288 prints once it has given up on a 429 after its 10 retries
       // (#1101): `● API Error: Request rejected (429) · <the API's message>`.
@@ -1485,6 +1524,8 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     this.binaryPath = resolveBinary("claude");
   }
 
+  refreshLaunchBinary(path: string): void { this.binaryPath = path; }
+
   /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
@@ -1523,11 +1564,18 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // marker alone. This also makes an empty/missing Classic workspace start
     // fresh rather than entering a resume crash loop.
     const retainedGeneral = selectedGeneralHostSession(this.instanceDir, config.instanceName, "claude-code", config.workingDirectory);
+    const repairSession = !config.skipResume && config.resumeSessionId
+      && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(config.resumeSessionId) ? config.resumeSessionId : null;
+    if (repairSession && retainedGeneral && repairSession !== retainedGeneral) {
+      throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed"));
+    }
     if (retainedGeneral) {
       const path = join(claudeConfigDirFor(profileDir), "projects", claudeProjectKey(config.workingDirectory), `${retainedGeneral}.jsonl`);
       try { if (!lstatSync(path).isFile()) throw Error("not regular"); }
       catch { throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed")); }
       cmd += ` --resume ${shellQuote(retainedGeneral)}`;
+    } else if (repairSession) {
+      cmd += ` --resume ${shellQuote(repairSession)}`;
     } else if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
       cmd += " --continue";
     }
@@ -1660,12 +1708,14 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
    * Any failure (no token, network, non-200) degrades to [] — the static
    * aliases from listModels() always remain available.
    */
+  private apiModelReadFailed = false;
   async listApiModels(storeHome?: string): Promise<import("./types.js").ModelOption[]> {
+    this.apiModelReadFailed = false;
     try {
       const { getClaudeOAuthToken } = await import("../usage/providers.js");
       // #2072: a profile's own login (its store home), else the default one.
       const token = await getClaudeOAuthToken(storeHome);
-      if (!token) return [];
+      if (!token) { this.apiModelReadFailed = true; return []; }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), CLI_PROBE_LONGEST_LEAF_MS);
       timer.unref?.();
@@ -1678,8 +1728,9 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
         signal: controller.signal,
       });
       clearTimeout(timer);
-      if (!res.ok) return [];
+      if (!res.ok) { this.apiModelReadFailed = true; return []; }
       const body = await res.json() as { data?: Array<{ id?: string; display_name?: string }> };
+      if (!Array.isArray(body.data)) { this.apiModelReadFailed = true; return []; }
       const options: import("./types.js").ModelOption[] = [];
       for (const model of body.data ?? []) {
         if (!model.id) continue;
@@ -1688,16 +1739,18 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       }
       return options;
     } catch {
-      return [];
+      this.apiModelReadFailed = true; return [];
     }
   }
 
   async probeCLIEnv(config?: CliBackendConfig) {
     const { probeCliVersion } = await import("./types.js");
+    const apiModels = await this.listApiModels(config?.credentialStoreHome);
     return {
       version: probeCliVersion(this.binaryPath),
       models: await this.listModels(),
-      apiModels: await this.listApiModels(config?.credentialStoreHome),
+      apiModels,
+      ...(this.apiModelReadFailed ? { catalogRefreshFailed: true } : {}),
     };
   }
 

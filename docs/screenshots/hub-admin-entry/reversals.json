@@ -1,0 +1,129 @@
+{
+  "results": [
+    {
+      "name": "server-feature",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls missing company feature retains the earlier group/manual entry and performs no company read"
+      ]
+    },
+    {
+      "name": "one-leading-entry",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 2,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)"
+      ]
+    },
+    {
+      "name": "manual-fold",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 3,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)",
+        "Administration leads with existing group and individual connection controls Advanced reveals a manual pairing already waiting for explicit admin approval"
+      ]
+    },
+    {
+      "name": "manual-attention",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls Advanced reveals a manual pairing already waiting for explicit admin approval"
+      ]
+    },
+    {
+      "name": "exact-copy",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls copies only the exact server-supplied identity link, without creating a code or invitation"
+      ]
+    },
+    {
+      "name": "exact-individual",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls an explicit individual invitation keeps the existing endpoint and scoped login body"
+      ]
+    },
+    {
+      "name": "invitation-scope",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 2,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+        "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)"
+      ]
+    },
+    {
+      "name": "off-retained-link",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls an off response with a retained public link still cannot offer copying or an invitation"
+      ]
+    },
+    {
+      "name": "unknown-copy",
+      "kind": "mounted-unit",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "Administration leads with existing group and individual connection controls an unread settings response does not claim joining is off or offer a copy"
+      ]
+    },
+    {
+      "name": "company-module-mark",
+      "kind": "owned-https-retained-module",
+      "caught": true,
+      "reason": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.hub-groups-entry') to be visible\u001b[22m\n\n    at <anonymous> (scripts/manual/hub-admin-entry/accept.mts:31:216)",
+      "checks": [
+        {
+          "name": "desk-light-en retained earlier entry",
+          "ok": true
+        }
+      ],
+      "cleaned": true
+    },
+    {
+      "name": "company-words-mark",
+      "kind": "owned-https-retained-module",
+      "caught": true,
+      "reason": "Error: desk-light-en retained earlier entry \"\"\n    at check (scripts/manual/hub-admin-entry/accept.mts:15:117)\n    at <anonymous> (scripts/manual/hub-admin-entry/accept.mts:31:87)",
+      "checks": [
+        {
+          "name": "desk-light-en retained earlier entry",
+          "ok": false
+        }
+      ],
+      "cleaned": true
+    },
+    {
+      "name": "owner-words-mark",
+      "kind": "owned-https-retained-module",
+      "caught": true,
+      "reason": "Error: desk-light-en retained earlier entry \"\"\n    at check (scripts/manual/hub-admin-entry/accept.mts:15:117)\n    at <anonymous> (scripts/manual/hub-admin-entry/accept.mts:31:87)",
+      "checks": [
+        {
+          "name": "desk-light-en retained earlier entry",
+          "ok": false
+        }
+      ],
+      "cleaned": true
+    }
+  ],
+  "restored": true
+}

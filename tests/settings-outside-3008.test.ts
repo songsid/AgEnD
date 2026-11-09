@@ -202,7 +202,7 @@ describe("Owner verification and Web authorization: the reference page's words",
     try {
       const w = await open();
       expect([text(w.$("#outsideCard h3")), text(w.$("#outState")), w.$("#outSetUp").textContent]).toEqual(["擁有者驗證", "尚未設定", "設定驗證器"]);
-      expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。");
+      expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數驗證碼，從外面證明你是這個 fleet 的擁有者。");
       expect([...w.$("#outApps").querySelectorAll(".tag")].map((e: any) => text(e))).toEqual(["Google Authenticator", "Microsoft Authenticator", "其他 TOTP 驗證器"]);
       expect(text(w.$("#outNoRecovery"))).toBe("遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。");
       const on = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
@@ -212,7 +212,7 @@ describe("Owner verification and Web authorization: the reference page's words",
       expect(p.root.textContent).not.toContain("備用碼");
       const setup = await open();
       await setup.click(setup.$("#outSetUp"));
-      expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入驗證器代碼以完成綁定", "驗證並啟用"]);
+      expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入 6 位數驗證碼以完成綁定", "驗證並啟用"]);
       const away = await open({ here: false });
       expect(text(away.$("#outHereOnly"))).toBe("只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。");
     } finally { i18n.setLang("en"); }

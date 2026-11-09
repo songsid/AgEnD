@@ -806,3 +806,35 @@ describe("a Settings apply drives the real reconcile", () => {
     expect(onDisk.jobs.find(item => item.id === job.id)!.status).toBe("done");
   });
 });
+
+describe("#3390 review N1: a running restart never ages out by the Save it uses", () => {
+  /** A Save at t0, done; its restart asked for at `restartAt` (the job runs again, as requestSettingsSelfRestart leaves it). */
+  function restarting(at: { now: number }, restartAt: number | null) {
+    const store = new ApplyJobStore(tempDir(), () => at.now);
+    const save = store.create("key-save-n1", [{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+    store.setTargetStatus(save.id, APPLY_FLEET_TARGET, "restart-required");
+    store.finish(save.id);
+    at.now += 25 * 60_000;                                            // the restart comes 25 minutes after the Save
+    store.update(save.id, job => {
+      job.targets.find(r => r.target === APPLY_FLEET_TARGET)!.status = "running";
+      job.status = "running"; delete job.finishedAt;
+      if (restartAt !== null) job.restartStartedAt = restartAt;
+      job.restart_key = "key-restart-n1";
+    });
+    return { store, save };
+  }
+  it("another Save while it restarts, 31 minutes after the first: the restarting job stays, and its key still finds it", () => {
+    const at = { now: 1_000_000_000 };
+    const { store, save } = restarting(at, 1_000_000_000 + 25 * 60_000);
+    at.now += 6 * 60_000;
+    store.create("key-other-n1", [{ target: "alpha", kind: "hot" }]);  // create() prunes
+    expect([!!store.get(save.id), store.findByKey("key-save-n1")?.id, store.findByRestartKey("key-restart-n1")?.id]).toEqual([true, save.id, save.id]);
+  });
+  it("control: a job with nothing recent (no restart, past retention) still ages out", () => {
+    const at = { now: 2_000_000_000 };
+    const { store, save } = restarting(at, null);
+    at.now += APPLY_JOB_RETENTION_MS;
+    store.create("key-other-n1b", [{ target: "alpha", kind: "hot" }]);
+    expect(store.get(save.id)).toBeNull();
+  });
+});

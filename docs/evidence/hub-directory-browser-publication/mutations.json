@@ -1,0 +1,21 @@
+{
+  "mutants": [
+    {
+      "guard": "mounted-current",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "older-entry",
+      "assertionCaught": true,
+      "failures": 1
+    },
+    {
+      "guard": "trusted-attestation",
+      "assertionCaught": true,
+      "failures": 1
+    }
+  ],
+  "restored": true,
+  "scope": "Original adapter checkpoint; three implementation blobs unchanged after dependency and alpha sync. No new mutations claimed after sync."
+}

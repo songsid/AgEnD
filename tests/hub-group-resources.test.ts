@@ -32,6 +32,27 @@ function held<T>() { let resolve!: (v: T) => void; const promise = new Promise<T
 const events = (db: Database.Database) => db.prepare("SELECT body FROM hub_group_resource_events ORDER BY rowid").all() as { body: string }[];
 
 describe("group-derived resource suspension, separate from underlying consent and grants", () => {
+  it("shares 32 physical eligibility slots across resource views, membership and welcome reads", async () => {
+    const f = fixture(), release = held<boolean>(); let entered = 0;
+    const items = Array.from({ length: 33 }, (_, i): HubGroupResource => ({ kind: "fleet", id: `manual-${i}`, revision: 1,
+      owner: { realm: owner.realm, objectId: `${String(i).padStart(8, "0")}-1111-4111-8111-111111111111` } }));
+    items.forEach(item => f.resources.captureManual(item, f.ctx)); f.enable();
+    const directory = { async checkEligibility(key: typeof owner) { entered++; await release.promise;
+      return { eligible: true as const, person: { key, login: "fake", dn: "CN=Fake,DC=example,DC=test", groups: [] } }; } };
+    const view = () => createHubGroupResources({ db: f.db, policy: f.policy, audit: f.audit, current: () => true, directory, now: () => 100 });
+    const work = items.slice(0, 32).map(item => view().check(item, f.ctx));
+    let extraResult: unknown; const extra = view().check(items[32]!, f.ctx).then(value => { extraResult = value; });
+    const checked = f.policy.check(items[32]!.owner, "ask_agents", f.ctx).catch(error => error);
+    const described = f.policy.describe(items[32]!.owner, f.ctx).catch(error => error);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(entered).toBe(32); expect(extraResult).toEqual({ outcome: "held" });
+      expect(await checked).toBeInstanceOf(Error); expect(await described).toBeInstanceOf(Error); expect(f.read).not.toHaveBeenCalled();
+      expect(f.db.prepare("SELECT count(*) n FROM hub_group_resources WHERE state='active' AND revision=1").get()).toEqual({ n: 33 });
+    } finally { release.resolve(true); await Promise.all([...work, extra, checked, described]); }
+    expect(await Promise.all(work)).toEqual(Array.from({ length: 32 }, () => ({ outcome: "allow" })));
+    await expect(view().check(items[32]!, f.ctx)).resolves.toEqual({ outcome: "allow" }); expect(entered).toBe(33);
+  });
   it("grandfathers only a pre-enable exact manual revision; other revisions and new manual capture refuse", async () => {
     const f = fixture(); f.resources.captureManual(resource, f.ctx); f.enable(); f.negative();
     expect(await f.resources.check(resource, f.ctx)).toEqual({ outcome: "allow" }); expect(f.read).not.toHaveBeenCalled();

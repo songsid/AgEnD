@@ -14,8 +14,6 @@ function makeAdapter(id: string, type = "mock"): ChannelAdapter & EventEmitter {
   emitter.editMessage = vi.fn(async () => {});
   emitter.react = vi.fn(async () => {});
   emitter.downloadAttachment = vi.fn(async () => "/tmp/file");
-  emitter.handlePairing = vi.fn(async () => "code");
-  emitter.confirmPairing = vi.fn(async () => true);
   emitter.sendApproval = vi.fn(async (_prompt: PermissionPrompt, _cb: (d: "approve" | "deny") => void, _signal?: AbortSignal): Promise<ApprovalHandle> => {
     return { cancel: vi.fn() };
   });

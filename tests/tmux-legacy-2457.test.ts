@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  type LegacyProbes, LegacyWindowHoldError, migrateLegacyWindow, readJournal, realLegacyProbes, releaseLegacyWindow, tagWindowId, treeRuns,
+  type LegacyProbes, LegacyWindowHoldError, migrateLegacyWindow, readJournal, realLegacyProbes, releaseLegacyWindow, sweepLegacyWindowIds, tagWindowId, treeRuns,
   windowIdState, writeJournal,
 } from "../src/tmux-legacy.js";
 
@@ -39,6 +39,38 @@ describe("the window-id tag", () => {
   });
 });
 
+describe("a tag counts only for the socket AgEnD runs now (Fable #3312 N1)", () => {
+  it("a tag naming another socket (an isolated home's dark-switch tag, now 2.3's name) is untagged, and swept", () => {
+    const { home, dir } = inst("@4");
+    tagWindowId(dir, "agend-1a2b3c", "@4");
+    expect(windowIdState(dir)).toEqual({ kind: "tagged", id: "@4", socket: "agend-1a2b3c" });          // no socket given: as before
+    expect(windowIdState(dir, "agend-1a2b3c-b")).toEqual({ kind: "untagged", id: "@4" });
+    expect(windowIdState(dir, "agend-1a2b3c")).toEqual({ kind: "tagged", id: "@4", socket: "agend-1a2b3c" });
+    expect(sweepLegacyWindowIds(home, [{ name: "dev", dir }], "agend-1a2b3c-b")).toEqual(["dev"]);
+    expect(readJournal(home).pending).toEqual({ dev: "@4" });
+  });
+  it("a tag for the current socket stays: nothing is swept", () => {
+    const { home, dir } = inst("@4");
+    tagWindowId(dir, "agend-1a2b3c-b", "@4");
+    expect(sweepLegacyWindowIds(home, [{ name: "dev", dir }], "agend-1a2b3c-b")).toEqual([]);
+    expect(existsSync(join(dir, "window-id"))).toBe(true);
+  });
+});
+
+describe("sweepLegacyWindowIds (fleet start)", () => {
+  it("moves only untagged ids into the journal (journal first), removes their files, leaves tagged ones alone", () => {
+    const home = scratch();
+    const mk = (name: string, id?: string) => { const dir = join(home, "instances", name); mkdirSync(dir, { recursive: true }); if (id) writeFileSync(join(dir, "window-id"), id); return { name, dir }; };
+    const a = mk("a", "@3"), b = mk("b", "@4"), c = mk("c"), d = mk("d", "not-an-id");
+    tagWindowId(b.dir, "agend", "@4");
+    expect(sweepLegacyWindowIds(home, [a, b, c, d])).toEqual(["a"]);
+    expect(readJournal(home).pending).toEqual({ a: "@3" });
+    expect([existsSync(join(a.dir, "window-id")), existsSync(join(b.dir, "window-id"))]).toEqual([false, true]);
+    expect(sweepLegacyWindowIds(home, [a, b, c])).toEqual([]);           // idempotent
+    expect(readJournal(home).pending).toEqual({ a: "@3" });
+  });
+});
+
 describe("treeRuns", () => {
   const procs = new Map([[100, { ppid: 1, args: "/bin/sh -c exec claude --resume x" }], [101, { ppid: 100, args: "/usr/local/bin/claude --resume x" }],
     [200, { ppid: 1, args: "bash" }], [201, { ppid: 200, args: "vim notes" }]]);
@@ -55,8 +87,9 @@ function fakes(o: { tmux?: string | null; windows?: Array<[string, string, strin
   const dead = new Set<number>();
   const p: LegacyProbes = {
     async systemTmux() { return o.tmux === undefined ? "/usr/bin/tmux" : o.tmux; },
-    async tmux(_bin, args) {
-      calls.push(args.join(" "));
+    async tmux(_bin, full) {
+      calls.push(full.join(" "));
+      const args = full[0] === "-L" ? full.slice(2) : full;   // the socket (another home) does not change the answer
       if (o.server instanceof Error) throw o.server;
       if (args[0] === "display-message") return o.server ?? "77 1700000000";
       if (args[0] === "kill-window") {
@@ -75,7 +108,7 @@ function fakes(o: { tmux?: string | null; windows?: Array<[string, string, strin
 }
 
 const args = (x: ReturnType<typeof inst>, p: LegacyProbes, checkpoint = () => {}) =>
-  ({ agendHome: x.home, instance: "dev", instanceDir: x.dir, session: "agend", backendBinary: "claude", checkpoint, probes: p });
+  ({ agendHome: x.home, instance: "dev", instanceDir: x.dir, session: "agend", legacySocket: null as string | null, backendBinary: "claude", checkpoint, probes: p });
 
 describe("migrateLegacyWindow", () => {
   it("proven: checkpoint, kill-window (never kill-server), confirmed gone, the id dropped, the journal at confirmed", async () => {
@@ -86,7 +119,7 @@ describe("migrateLegacyWindow", () => {
     expect(checkpoints).toBe(1);
     expect(calls.filter(c => c.startsWith("kill"))).toEqual(["kill-window -t @7"]);
     expect(existsSync(join(x.dir, "window-id"))).toBe(false);
-    expect(readJournal(x.home)).toEqual({ server: { pid: 77, start: 1700000000 }, windows: { dev: { windowId: "@7", step: "confirmed" } }, released: {} });
+    expect(readJournal(x.home)).toEqual({ server: { pid: 77, start: 1700000000 }, windows: { dev: { windowId: "@7", step: "confirmed" } }, released: {}, pending: {} });
   });
 
   it.each<[string, Parameters<typeof fakes>[0], RegExp]>([
@@ -134,14 +167,46 @@ describe("migrateLegacyWindow", () => {
 
   it("an interrupted pass resumes on the same server without checkpointing twice; another incarnation starts afresh", async () => {
     const x = inst("@7");
-    writeJournal(x.home, { server: { pid: 77, start: 1700000000 }, windows: { dev: { windowId: "@7", step: "checkpointed" } }, released: {} });
+    writeJournal(x.home, { server: { pid: 77, start: 1700000000 }, windows: { dev: { windowId: "@7", step: "checkpointed" } }, released: {}, pending: {} });
     let checkpoints = 0;
     expect(await migrateLegacyWindow(args(x, fakes().p, () => { checkpoints++; }))).toBe("migrated");
     expect(checkpoints).toBe(0);
     const y = inst("@7");
-    writeJournal(y.home, { server: { pid: 55, start: 1600000000 }, windows: { dev: { windowId: "@7", step: "confirmed" } }, released: {} });
+    writeJournal(y.home, { server: { pid: 55, start: 1600000000 }, windows: { dev: { windowId: "@7", step: "confirmed" } }, released: {}, pending: {} });
     expect(await migrateLegacyWindow(args(y, fakes().p, () => { checkpoints++; }))).toBe("migrated");
     expect(checkpoints).toBe(1);
+  });
+
+  // C-4 leg L3: the hold must outlive the failed start (whose cleanup removes window-id) and every retry/restart.
+  it("a hold persists: the 2.3 id lives in the journal, window-id is gone, and the next start is held again", async () => {
+    const x = inst("@7");
+    const o = { procs: new Map([[4000, { ppid: 1, args: "sleep 100000" }]]) };
+    await expect(migrateLegacyWindow(args(x, fakes(o).p))).rejects.toThrow(LegacyWindowHoldError);
+    expect(existsSync(join(x.dir, "window-id"))).toBe(false);          // no reader can take @7 for a window of the new server
+    expect(readJournal(x.home).pending).toEqual({ dev: "@7" });
+    await expect(migrateLegacyWindow(args(x, fakes(o).p))).rejects.toThrow(/does not run claude/);
+    expect(releaseLegacyWindow(x.home, "dev", x.dir)).toBe("@7");      // released from the journal alone
+    const { p, calls } = fakes(o);
+    expect(await migrateLegacyWindow(args(x, p))).toBe("released");
+    expect(calls).toEqual([]);
+    expect(readJournal(x.home).pending).toEqual({});
+  });
+
+  it("gone from the old server (or no old server): settled, and the next start has nothing to check", async () => {
+    const x = inst("@7");
+    expect(await migrateLegacyWindow(args(x, fakes({ windows: [] }).p))).toBe("stale");
+    expect(readJournal(x.home).pending).toEqual({});
+    const { p, calls } = fakes();
+    expect(await migrateLegacyWindow(args(x, p))).toBe("none");
+    expect(calls).toEqual([]);
+  });
+
+  it("another home: every call goes to 2.3's hashed socket (-L), never the default one", async () => {
+    const x = inst("@7");
+    const { p, calls } = fakes();
+    expect(await migrateLegacyWindow({ ...args(x, p), legacySocket: "agend-1a2b3c" })).toBe("migrated");
+    expect(calls.length).toBeGreaterThan(2);
+    expect(calls.every(c => c.startsWith("-L agend-1a2b3c "))).toBe(true);
   });
 
   it("released by the user: left alone, nothing asked or killed, the id dropped", async () => {

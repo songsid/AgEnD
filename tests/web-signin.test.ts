@@ -554,10 +554,16 @@ describe("a revocation that could not be saved is reported as a failure, never a
     const tc = fm.topicCommands;
     tc.getReplyAdapter = () => ({ sendText: async (_chat: string, text: string) => { sent.push(text); return { messageId: "m", chatId: "c" }; } });
     await tc.handleDashboardCommand({ text: "/dashboard revoke", chatId: "c", userId: "admin", adapterId: "tg", source: "telegram" });
-    const { t } = await import("../src/locale.js");
+    const { t, setLocale } = await import("../src/locale.js");
     expect(sent).toEqual([t("dashboard.revoked_not_durable", 1)]);
-    expect(sent[0]).toMatch(/could NOT be saved/);
+    expect(sent[0]).toMatch(/sessions file couldn't be updated/);
+    expect(sent[0]).toMatch(/restart may bring those sessions back/);
+    expect(sent[0]).not.toMatch(/restart AgEnD/);
     expect(sent[0]).not.toBe(t("dashboard.revoked", 1));
+    setLocale("zh-TW");
+    expect(t("dashboard.revoked_not_durable", 1)).toMatch(/重新啟動可能會讓那些 session 回來/);
+    expect(t("dashboard.revoked_not_durable", 1)).not.toMatch(/請重新啟動 AgEnD/);
+    setLocale("en");
     await stop(h.fm);
   }, 20_000);
 });

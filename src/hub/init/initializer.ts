@@ -14,6 +14,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, statSync } from "node:f
 import { dirname } from "node:path";
 import yaml from "js-yaml";
 import { atomicWriteFileSync } from "../../atomic-write.js";
+import type { RawConfigPatch } from "../../settings-api.js";
 import { applyFleetYamlPatches } from "../../fleet-yaml-patch.js";
 import { HubDirectoryConfigError, resolveDirectoryConfig } from "../directory/index.js";
 import { isCanonicalObjectId } from "../directory/profiles.js";
@@ -31,6 +32,8 @@ import {
   type HubInitPlan,
   type HubInitResult,
   type HubInitSecrets,
+  type HubInitHostOwner,
+  type HubInitConfirmationProvenance,
 } from "./types.js";
 
 import { hubInstallationInventory } from "./inventory.js";
@@ -43,6 +46,10 @@ export interface HubInitializerDeps {
   identity: HubIdentityProvider;
   probe: FleetProbe;
   now?: () => number;
+  /** Browser setup uses FleetManager's EXISTING synchronous config writer; terminal initialization keeps leaf-editing. */
+  writeFleet?(patches: RawConfigPatch[]): void;
+  /** Required browser audit is durable before enabling; contains no plan values, password or secret refs. */
+  beforeEnable?(event: { operationId: string; hubId: string; confirmationId: string; source: HubInitConfirmationProvenance["source"] }): void;
   /** The owner private directories must have (default: this process's uid). A seam for the other-owner refusal. */
   uid?: number;
   /** Test seam: called after each stage is durably recorded; a throw simulates an interruption there. */
@@ -57,6 +64,7 @@ interface OperationReceipt {
   plan: HubInitPlan;
   done: HubInitStage[];
   identity?: HubIdentitySummary;
+  confirmations?: HubInitConfirmationProvenance[];
 }
 
 const CONFIRMATION_TTL_MS = 10 * 60_000;
@@ -160,7 +168,36 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
   const paths = hubPaths(deps.home);
   const now = deps.now ?? Date.now;
   const uid = deps.uid ?? (typeof process.getuid === "function" ? process.getuid() : undefined);
-  const pending = new Map<string, { planDigest: string; secrets: HubInitSecrets; expiresAt: number }>();
+  const pending = new Map<string, { planDigest: string; secrets: HubInitSecrets; createdAt: number; expiresAt: number; owner?: HubInitHostOwner }>();
+  let committing = false, closed = false;
+  const ownerOf = (input?: HubInitHostOwner): HubInitHostOwner | undefined => {
+    if (input === undefined) return undefined; // the existing terminal caller
+    if (input.kind !== "host-session" || !input.ownerKey || typeof input.ownerKey !== "object"
+      || typeof input.sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(input.sessionId)
+      || !Number.isSafeInteger(input.authorityEpoch) || input.authorityEpoch < 0
+      || typeof input.requestId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(input.requestId)
+      || typeof input.current !== "function") throw new HubInitError("the local host confirmation is invalid");
+    return { kind: "host-session", ownerKey: input.ownerKey, sessionId: input.sessionId, authorityEpoch: input.authorityEpoch,
+      requestId: input.requestId, current: input.current.bind(input) };
+  };
+  const liveOwner = (owner?: HubInitHostOwner) => {
+    if (!owner) return;
+    let value: unknown;
+    try { value = owner.current(); } catch { throw new HubInitError("the local host session is no longer current"); }
+    if (value && (typeof value === "object" || typeof value === "function") && typeof (value as {then?:unknown}).then === "function") {
+      try { (value as PromiseLike<unknown>).then(undefined,()=>undefined); } catch { /* refused below */ }
+    }
+    if (value !== true) throw new HubInitError("the local host session is no longer current");
+  };
+  const sameOwner = (a?: HubInitHostOwner, b?: HubInitHostOwner) => a === undefined ? b === undefined : !!b
+    && a.ownerKey === b.ownerKey && a.sessionId === b.sessionId && a.authorityEpoch === b.authorityEpoch;
+  const synchronous = (value: unknown) => {
+    if (value && (typeof value === "object" || typeof value === "function") && typeof (value as {then?:unknown}).then === "function") {
+      try { (value as PromiseLike<unknown>).then(undefined,()=>undefined); } catch { /* refused below */ }
+      throw new HubInitError("the initialization callback must be synchronous");
+    }
+  };
+  const patchFleet = (patches: RawConfigPatch[]) => synchronous(deps.writeFleet ? deps.writeFleet(patches) : applyFleetYamlPatches(paths.fleetYaml, patches));
 
   const readReceipt = (): OperationReceipt | undefined => {
     if (!existsSync(paths.operation)) return undefined;
@@ -209,7 +246,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       problems.push("Hub key generation is not available in this build yet: it ships with the Hub transport. Nothing was changed.");
     }
     if (inspection.existingHub) problems.push(`a Hub is already initialized under ${deps.home}; initialization never replaces a Hub identity`);
-    if (typeof plan.name !== "string" || !NAME.test(plan.name.trim()) || plan.name !== plan.name.trim()) problems.push("name: 1–64 characters, no control characters, no leading or trailing spaces");
+    if (plan.name !== undefined && (typeof plan.name !== "string" || !NAME.test(plan.name.trim()) || plan.name !== plan.name.trim())) problems.push("name: 1–64 characters, no control characters, no leading or trailing spaces");
     problems.push(...originProblems("web address", plan.webOrigin), ...originProblems("member address", plan.memberOrigin));
     problems.push(...listenProblems("member listener", plan.memberListen), ...listenProblems("web listener", plan.webListen));
     if (plan.memberListen && plan.webListen && plan.memberListen.host === plan.webListen.host && plan.memberListen.port === plan.webListen.port) {
@@ -277,17 +314,26 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
   return {
     inspect,
     validate,
+    discardConfirmation(reference) { const p=pending.get(reference); if(p)p.secrets.bindPassword=""; pending.delete(reference); },
+    close() { closed=true; for(const p of pending.values())p.secrets.bindPassword=""; pending.clear(); },
 
-    async prepareConfirmation(plan: HubInitPlan, secrets: HubInitSecrets): Promise<HubInitConfirmation> {
-      const inspection = await inspectionFor(plan);
-      const { problems, digestExtra } = await problemsOf(plan, inspection);
+    async prepareConfirmation(input: HubInitPlan, secretInput: HubInitSecrets, ownerInput?: HubInitHostOwner): Promise<HubInitConfirmation> {
+      if (closed) throw new HubInitError("initialization is closed");
+      const plan = structuredClone(input), secrets = structuredClone(secretInput), owner = ownerOf(ownerInput);
+      liveOwner(owner);
+      const inspection = await inspectionFor(plan); liveOwner(owner);
+      const { problems, digestExtra } = await problemsOf(plan, inspection); liveOwner(owner);
       if (!secrets || typeof secrets.bindPassword !== "string" || secrets.bindPassword.length === 0) problems.push("the directory service account password is missing");
       if (problems.length > 0 || !digestExtra) throw new HubInitError(problems[0] ?? "the plan is not valid", problems);
       const planDigest = digestOf(plan, digestExtra);
       const reference = randomBytes(16).toString("hex");
-      pending.set(reference, { planDigest, secrets: { bindPassword: secrets.bindPassword }, expiresAt: now() + CONFIRMATION_TTL_MS });
+      const createdAt = now();
+      if (!Number.isSafeInteger(createdAt) || createdAt < 0) throw new HubInitError("the confirmation clock is unavailable");
+      for (const [ref,p] of pending) if(p.expiresAt <= createdAt) { p.secrets.bindPassword=""; pending.delete(ref); }
+      if(pending.size >= 32)throw new HubInitError("too many pending confirmations");
+      pending.set(reference, { planDigest, secrets: { bindPassword: secrets.bindPassword }, createdAt, expiresAt: createdAt + CONFIRMATION_TTL_MS, ...(owner ? {owner} : {}) });
       const summary = [
-        `Hub name: ${plan.name}`,
+        `Hub name: ${plan.name ?? "AgEnD Hub"}`,
         `Web address (browsers): ${plan.webOrigin}`,
         `Member address (fleets connect here): ${plan.memberOrigin}`,
         `Listeners: web ${plan.webListen.host}:${plan.webListen.port}, members ${plan.memberListen.host}:${plan.memberListen.port}`,
@@ -300,18 +346,32 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       return { reference, planDigest, summary };
     },
 
-    async commit(plan: HubInitPlan, localOwnerConfirmation: string): Promise<HubInitResult> {
+    async commit(input: HubInitPlan, localOwnerConfirmation: string, ownerInput?: HubInitHostOwner): Promise<HubInitResult> {
+      if (closed) throw new HubInitError("initialization is closed");
+      if (committing) throw new HubInitError("another initialization commit is still running");
+      const plan = structuredClone(input);
       const held = pending.get(localOwnerConfirmation);
       pending.delete(localOwnerConfirmation); // single use, whatever happens next
       if (!held) throw new HubInitError("this confirmation is unknown or was already used; confirm the plan again");
-      if (held.expiresAt <= now()) throw new HubInitError("this confirmation expired; confirm the plan again");
+      committing = true;
+      try {
+      const owner = ownerOf(ownerInput);
+      const guard = () => {
+        if (closed) throw new HubInitError("initialization is closed");
+        if (!sameOwner(held.owner, owner)) throw new HubInitError("this confirmation belongs to another source or host session");
+        liveOwner(held.owner); liveOwner(owner);
+        const t = now(); // after both callbacks, before any effect
+        if (!Number.isSafeInteger(t) || t < held.createdAt || t >= held.expiresAt) throw new HubInitError("this confirmation expired; confirm the plan again");
+      };
+      guard();
 
-      const inspection = await inspectionFor(plan);
-      const { problems, digestExtra, pems } = await problemsOf(plan, inspection);
+      const inspection = await inspectionFor(plan); guard();
+      const { problems, digestExtra, pems } = await problemsOf(plan, inspection); guard();
       if (problems.length > 0 || !digestExtra || !pems) throw new HubInitError(problems[0] ?? "the plan is not valid", problems);
       const planDigest = digestOf(plan, digestExtra);
       if (planDigest !== held.planDigest) throw new HubInitError("the plan or its certificate files changed after confirmation; confirm again");
 
+      guard();
       ensurePrivateDir(paths.hub, uid);
       let receipt = readReceipt();
       if (receipt && receipt.planDigest !== planDigest) throw new HubInitError("another initialization is in progress with different answers");
@@ -321,7 +381,14 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
         deps.afterStage?.("started");
       }
       const r = receipt;
+      const proof = { v: 1 as const, planDigest, referenceHash: sha256(localOwnerConfirmation), at: now(),
+        source: owner ? {kind:"host-session" as const,sessionId:owner.sessionId,authorityEpoch:owner.authorityEpoch,requestId:owner.requestId} : {kind:"terminal" as const} };
+      const confirmationId = owner ? sha256(canonical(proof)).slice(0,32) : sha256(localOwnerConfirmation).slice(0,32);
+      r.confirmations ??= []; r.confirmations.push({...proof,confirmationId});
+      guard(); writeReceipt(r);
       const mark = (stage: HubInitStage) => {
+        // Identity ownership bookkeeping is completed even after an await loses browser authority; no enabling follows.
+        if (stage !== "identity" && stage !== "enabled") guard();
         if (!r.done.includes(stage)) r.done.push(stage);
         writeReceipt(r);
         deps.afterStage?.(stage);
@@ -330,47 +397,54 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       // identity: S1 creates the keys; a resumed operation must find exactly the identity it created.
       let identity: HubIdentitySummary;
       if (r.done.includes("identity")) {
-        const found = await deps.identity.read(deps.home);
+        const found = await deps.identity.read(deps.home); guard();
         if (!found || !r.identity || found.hubId !== r.identity.hubId || found.spkiSha256 !== r.identity.spkiSha256) {
           throw new HubInitError("the Hub identity on disk is not the one this initialization created; nothing more was changed");
         }
         identity = found;
       } else {
-        if (await deps.identity.read(deps.home)) throw new HubInitError("a Hub identity already exists that this initialization did not create; nothing was replaced");
+        const prior = await deps.identity.read(deps.home); guard();
+        if (prior) throw new HubInitError("a Hub identity already exists that this initialization did not create; nothing was replaced");
         identity = await deps.identity.provision({ home: deps.home, memberOrigin: plan.memberOrigin });
         r.identity = identity;
         mark("identity");
       }
+      guard();
 
       if (!r.done.includes("web-tls")) {
         // The exact PEM text that was checked and bound to the confirmation (certificate hash and key SPKI): no re-read.
-        writePrivate(paths.webCert, pems.cert, uid);
-        writePrivate(paths.webKey, pems.key, uid);
+        guard(); writePrivate(paths.webCert, pems.cert, uid);
+        guard(); writePrivate(paths.webKey, pems.key, uid);
         mark("web-tls");
       }
 
       // On resume the password typed now wins: an earlier run's file is rewritten when it differs.
       const storedSecret = r.done.includes("secret") && existsSync(paths.bindSecret) ? readFileSync(paths.bindSecret, "utf8") : undefined;
       if (storedSecret !== held.secrets.bindPassword) {
-        writePrivate(paths.bindSecret, held.secrets.bindPassword, uid);
+        guard(); writePrivate(paths.bindSecret, held.secrets.bindPassword, uid);
         mark("secret");
       }
 
       if (!r.done.includes("config")) {
-        if (!existsSync(paths.fleetYaml)) atomicWriteFileSync(paths.fleetYaml, "hub:\n  enabled: false\n", { mode: 0o600 });
+        guard();
+        if (!existsSync(paths.fleetYaml)) {
+          if (deps.writeFleet) patchFleet([{path:["hub"],value:{enabled:false}}]);
+          else atomicWriteFileSync(paths.fleetYaml, "hub:\n  enabled: false\n", { mode: 0o600 });
+        }
         // An existing fleet's file without hub: create the block (off) first; the patcher writes leaves under it.
         const current = yaml.load(readFileSync(paths.fleetYaml, "utf8")) as Record<string, unknown> | null;
-        if (!current || typeof current !== "object" || !("hub" in current)) applyFleetYamlPatches(paths.fleetYaml, [{ path: ["hub"], value: { enabled: false } }]);
-        applyFleetYamlPatches(paths.fleetYaml, hubConfigPatches(plan, identity));
+        if (!current || typeof current !== "object" || !("hub" in current)) { guard(); patchFleet([{ path: ["hub"], value: { enabled: false } }]); }
+        guard(); patchFleet(hubConfigPatches(plan, identity));
         mark("config");
       }
 
-      if (!r.done.includes("manifest")) {
+      if (!r.done.includes("manifest") || owner) {
+        guard();
         // Sealed by S1 with the issuer key over the normalized settings now in fleet.yaml; the mount re-checks both.
         const sealedDigest = hubPlanDigest({ ...hubSettingsFor(plan, identity) });
         const committedAt = new Date(now()).toISOString();
-        const confirmationId = sha256(localOwnerConfirmation).slice(0, 32);
         const signature = await deps.identity.seal({ home: deps.home, planDigest: sealedDigest, confirmationId, committedAt });
+        guard();
         const manifest = { v: 1, hubId: identity.hubId, planDigest: sealedDigest, committedAt, confirmationId, signature };
         writePrivate(paths.manifest, `${JSON.stringify(manifest, null, 2)}\n`, uid);
         mark("manifest");
@@ -379,12 +453,13 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       if (!r.done.includes("enabled")) {
         // An unsigned, informational record alongside the sealed runtime manifest; enabled is still the last patch.
         // Also creates the record when resuming a pre-inventory operation that already completed the manifest stage.
-        writePrivate(paths.inventory, `${JSON.stringify(hubInstallationInventory(plan, identity, new Date(now()).toISOString()), null, 2)}\n`, uid);
-        applyFleetYamlPatches(paths.fleetYaml, [ENABLE_PATCH]);
+        guard(); writePrivate(paths.inventory, `${JSON.stringify(hubInstallationInventory(plan, identity, new Date(now()).toISOString()), null, 2)}\n`, uid);
+        guard(); synchronous(deps.beforeEnable?.({operationId:r.operationId,hubId:identity.hubId,confirmationId,source:proof.source}));
+        guard(); patchFleet([ENABLE_PATCH]);
         mark("enabled");
       }
-      held.secrets.bindPassword = "";
       return { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, configPath: paths.fleetYaml };
+      } finally { committing = false; held.secrets.bindPassword = ""; }
     },
   };
 }

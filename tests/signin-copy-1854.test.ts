@@ -21,11 +21,11 @@ const COPY = {
     unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
   },
   "zh-TW": {
-    lead: "輸入登入碼。",
+    lead: "輸入裝置登入碼。",
     hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
     nobot: "沒有聊天 bot？",
     nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
-    refused: "登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+    refused: "裝置登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
     unconfirmed: "登入暫時無法確認。請重新取碼再試；若仍失敗，請聯絡管理員。",
   },
 } as const;
@@ -87,7 +87,7 @@ describe("#1854 rank 2: the sign-in page", () => {
   // #2910 D5: a web-only fleet (no chat connection) — there is no /web to send: the code comes from the AgEnD computer.
   for (const [language, hint, refused] of [
     ["en", "On the AgEnD computer, run agend web --code to get a sign-in code.", "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one."],
-    ["zh-TW", "在 AgEnD 電腦上執行 agend web --code 取得登入碼。", "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。"],
+    ["zh-TW", "在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。", "裝置登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。"],
   ] as const) {
     it(`#2910 ${language}: a web-only fleet's page leads with agend web --code (as <code>); its "No chat bot?" help is hidden; a wrong code says the same`, async () => {
       const p = await page(language, 401, true);

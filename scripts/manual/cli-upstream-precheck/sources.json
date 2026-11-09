@@ -21,6 +21,7 @@
           "BYPASS_TITLE": "trust", "CLAUDE_BYPASS_DIALOG_PATTERN": "trust", "CLAUDE_DANGEROUS_COMMAND_PROMPT": "approval",
           "DANGER_OPTION_ROW": "approval", "DANGER_FOOTER": "approval", "claudeCommandRequestIdentity": "approval", "CLAUDE_AUTO_DENY_COUNTDOWN": "approval",
           "CLAUDE_BACKGROUND_WORK_EXIT": "exit", "quitBlockedByDialog": "exit", "CLAUDE_LIVE_TAIL": "idle-busy" } },
+      { "file": "src/claude-model-minimum.ts", "symbols": ["CLAUDE_MINIMUM_ERROR"], "surfaces": { "CLAUDE_MINIMUM_ERROR": "error" } },
       { "file": "src/daemon.ts", "symbols": ["detectMalformedClaudeToolCall"], "surfaces": { "detectMalformedClaudeToolCall": "error" } },
       { "file": "src/login-flows.ts", "symbols": ["claude-code"], "surfaces": { "claude-code": "onboarding" } },
       { "file": "src/backend/claude-transcript-errors.ts",

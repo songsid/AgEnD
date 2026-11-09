@@ -22,6 +22,27 @@ const directory = (over = {}) => createHubDirectory({ ...config, ...over }, { bi
 beforeEach(() => { f.searches.length = f.binds.length = f.tls.length = f.responses.length = 0; f.afterSearch = f.onBind = undefined; });
 
 describe("AD-only group permission reader", () => {
+  it.each([
+    ["wrong initial GUID", [group(b)], [], "not-security-group"],
+    ["distribution group", [{ ...group(), groupType: "2" }], [], "not-security-group"],
+    ["outside base", [{ ...group(), dn: "CN=Other,DC=elsewhere,DC=test" }], [], "not-security-group"],
+    ["ambiguous", [group(), group()], [], "unknown"], ["missing", [], [], "not-found"],
+    ["recreated during recheck", [group()], [group(b)], "unknown"],
+    ["moved during recheck", [group()], [{ ...group(), dn: "CN=Moved,DC=example,DC=test" }], "unknown"],
+    // M-2724: a reference with nothing found leaves absence unproven (the found-plus-references case is accepted, below).
+    ["referral with nothing found", { searchEntries: [], searchReferences: ["ldaps://elsewhere.invalid"] }, [], "unknown"],
+  ])("GUID continuity refuses %s", async (_name, first, second, reason) => {
+    f.responses.push(first, second);
+    expect(await directory().checkPolicyGroup!({ realm: "example", objectId: a })).toMatchObject({ ok: false, reason });
+  });
+  it("captures the group GUID before awaits and refuses unsupported/closed readers", async () => {
+    const mutable = { realm: "example", objectId: a }, d = directory();
+    f.responses.push([group()], [group()]); f.onBind = () => { mutable.objectId = b; };
+    expect(await d.checkPolicyGroup!(mutable)).toMatchObject({ ok: true, group: { key: { objectId: a } } });
+    expect(f.searches[0].filter.filters[1]).toMatchObject({ value: guidStringToBytes(a) });
+    await d.close(); expect(await d.checkPolicyGroup!({ realm: "example", objectId: a })).toEqual({ ok: false, reason: "unknown" });
+    expect(await directory({ profile: "openldap" }).checkPolicyGroup!({ realm: "example", objectId: a })).toEqual({ ok: false, reason: "unsupported" });
+  });
   it("requires an AD realm on the DC LDAPS port, before opening a connection", async () => {
     for (const over of [{ profile: "openldap" }, { url: "ldaps://directory.example.test:3269" }, { url: "ldaps://directory.example.test:1636" }]) {
       const d = directory(over); expect(d.groupPolicy).toBeUndefined();
@@ -62,10 +83,17 @@ describe("AD-only group permission reader", () => {
   ])("refuses %s", async (_label, first, second, reason) => {
     f.responses.push(first, second); expect(await directory().resolvePolicyGroup!(dn)).toEqual({ ok: false, reason });
   });
-  it("cannot search a DN outside the configured base or accept a referral as complete", async () => {
+  it("cannot search a DN outside the configured base or take a referral with nothing found as absence", async () => {
     expect(await directory().resolvePolicyGroup!("CN=Other,DC=elsewhere,DC=test")).toEqual({ ok: false, reason: "invalid" }); expect(f.searches).toEqual([]);
-    f.responses.push({ searchEntries: [group()], searchReferences: ["ldaps://elsewhere.invalid"] });
-    expect(await directory().resolvePolicyGroup!(dn)).toEqual({ ok: false, reason: "unknown" });
+    f.responses.push({ searchEntries: [], searchReferences: ["ldaps://elsewhere.invalid"] });
+    expect(await directory().resolvePolicyGroup!(dn)).toEqual({ ok: false, reason: "unknown", failure: "lookup" });
+  });
+  it("M-2724: AD's continuation references beside the found group (a domain-root base) do not refuse it", async () => {
+    const refs = ["ldaps://example.test/DC=DomainDnsZones,DC=example,DC=test", "ldaps://example.test/CN=Configuration,DC=example,DC=test"];
+    f.responses.push({ searchEntries: [group()], searchReferences: refs }, { searchEntries: [group()], searchReferences: refs }, { searchEntries: [entry()], searchReferences: refs });
+    const d = directory();
+    expect(await d.resolvePolicyGroup!(dn)).toEqual({ ok: true, group: { key: { realm: "example", objectId: a }, dn } });
+    expect(await d.readPolicyGroups!(user)).toMatchObject({ kind: "complete", groups: [a] });
   });
   it("requests critical extended-DN Flags1 and matches GUIDs from the SAME membership response", async () => {
     f.responses.push([entry()]);
@@ -79,12 +107,12 @@ describe("AD-only group permission reader", () => {
     ["unsupported control", new Error("unavailable critical extension")],
     ["plain DN", [entry(dn)]], ["missing memberOf", [entry(undefined)]],
     ["ranged partial", [{ ...entry(), "memberOf;range=0-1499": [`<GUID=${a}>;${dn}`] }]],
-    ["referral", { searchEntries: [entry()], searchReferences: ["ldaps://elsewhere.invalid"] }],
+    ["referral with nothing found", { searchEntries: [], searchReferences: ["ldaps://elsewhere.invalid"] }],
     ["ambiguous person", [entry(), entry()]], ["wrong identity", [{ ...entry(), objectGUID: guidStringToBytes(b) }]],
   ])("unknown is not negative proof: %s", async (_label, response) => {
     // entry(undefined) uses a default argument, so remove the attribute deliberately for this case.
     if (_label === "missing memberOf") response = [{ ...entry(), memberOf: undefined }];
-    f.responses.push(response); expect(await directory().readPolicyGroups!(user)).toEqual({ kind: "unknown" });
+    f.responses.push(response); expect((await directory().readPolicyGroups!(user)).kind).toBe("unknown");
   });
   it("distinguishes complete other-group facts, missing identity and a disabled user", async () => {
     f.responses.push([entry(`<GUID=${b}>;CN=Other,DC=example,DC=test`)], [], [{ ...entry(), userAccountControl: "514" }]); const d = directory();
@@ -103,11 +131,12 @@ describe("AD-only group permission reader", () => {
     const plain = entry(dn); f.responses.push([plain], [plain]); const d = directory();
     expect(await d.signIn("user", "Dummy-personal-password")).toMatchObject({ ok: true, person: { key: user } });
     expect(f.searches.every(s => s.controls === undefined)).toBe(true); expect(f.binds.filter(b => b.password === "Dummy-personal-password")).toHaveLength(1);
-    f.responses.push(new Error("unsupported extension")); expect(await d.readPolicyGroups!(user)).toEqual({ kind: "unknown" });
+    f.responses.push(new Error("unsupported extension")); expect(await d.readPolicyGroups!(user)).toEqual({ kind: "unknown", failure: "lookup" });
   });
   it("permission diagnostics do not repeat directory text, DNs or credentials", async () => {
     const events: unknown[] = [], d = createHubDirectory(config, { bindPassword: "Dummy-service-password" }, { onDiagnostic: e => events.push(e) });
-    f.responses.push(new Error(`service-password ${dn}`)); expect(await d.readPolicyGroups!(user)).toEqual({ kind: "unknown" });
-    expect(events).toEqual([{ op: "group-membership", outcome: "unknown" }]);
+    f.responses.push(new Error(`service-password ${dn}`)); expect(await d.readPolicyGroups!(user)).toEqual({ kind: "unknown", failure: "lookup" });
+    // M-2724: the step that failed is a closed name; the server's text still never appears.
+    expect(events).toEqual([{ op: "group-membership", outcome: "unknown", failure: "lookup" }]);
   });
 });

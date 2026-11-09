@@ -135,21 +135,21 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 
 `access` 可省略。**省略整個區塊時，執行時使用 `open` fallback**，不是 `locked`；既有持久化模式仍可能覆蓋它。若要限制聊天存取，請明確設定 `mode: locked` 與 `allowed_users`。
 
-下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode`、`allowed_users` 陣列，以及使用 pairing 時的配對限制。
+下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode` 與 `allowed_users` 陣列。要新增允許的使用者，請開啟「設定 → 聊天與連線 → 聊天連線 → 該 bot → 允許使用者（主 bot）」。
 
 | 欄位 | 型別 | 整段省略時的 fallback | 說明 |
 |------|------|----------------------|------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`／`pairing` 僅允許有效名單中的使用者；`pairing` 另可用 `/pair` 申請。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` 與舊設定的 `pairing` 別名都只允許有效名單中的使用者；不再發放存取碼。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | 與持久化名單取聯集；ID 以字串比較 |
-| `max_pending_codes` | number | `0` | 同時持有配對碼的不同使用者數量上限；pairing 請設定正數 |
-| `code_expiry_minutes` | number | `0` | 配對碼有效分鐘數；pairing 請設定正數 |
+| `max_pending_codes` | number | `0` | 舊設定的相容欄位；已不使用 |
+| `code_expiry_minutes` | number | `0` | 舊設定的相容欄位；已不使用 |
 
 **持久化狀態與管理權限：**
 
 - 主 adapter 使用 `<dataDir>/access/access.json`；額外 adapter 使用 `access/access-<adapterId>.json`。`dataDir` 預設為 `~/.agend`，可由 `AGEND_HOME` 指定。
-- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；配對核准會加入持久化名單。
+- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；既有持久化授權會保留。舊的待核准存取碼已無作用，不會授予存取權。
 - `locked`／`pairing` 下，撤銷使用者必須讓持久化與 YAML 兩份名單都不再授權；只改其中一份可能仍允許存取。`open` 本來就不限制使用者。
-- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
+- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或持久化聊天授權本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
 
 ---
 
@@ -294,6 +294,8 @@ templates:
 ## instances.\<name\>
 
 `tool_set` 對已辨識的 instance 身分執行政策防護，不會隔離同 uid、具有 shell 能力的 agent。另一個 agent 能讀它的 `agent.token` 或使用其 IPC socket；見[共用帳號威脅模型](SECURITY.zh-TW.md#工具組與共用主機帳號)。
+
+General 可透過 `update_instance_config({ name, config: { tool_set: "worker" } })` 直接修改其他 agent 的 `tool_set`，也可在 `create_instance` 指定，不需確認卡片。其他呼叫者（包含 coordinator 與非 General 的 `full` instance）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`，General 也一樣。可寫入的工具組是 `full`、`standard`、`worker`、`coordinator`、`minimal`；`general` 由角色指派，不能手設。General 的預設工具組包含 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，不包含 `checkout_repo`、`release_repo`。敏感設定原有的確認流程不變。General 不得透過這兩個工具修改自己的 `tool_set`，建立操作最後指向現有 General 時也一樣；人員仍可在設定頁或 fleet.yaml 修改。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
@@ -740,7 +742,7 @@ Canvas Worker 特效（上傳後在隔離 Worker 中執行的特效，#2275）�
 
 `agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。Windows 安裝程式只有在版本 1 的 setup、dashboard、installer 能力旗標都成立時才使用新流程：先安裝 AgEnD，再於 setup 頁面登入後端。舊版套件保留主控台備援。已有設定的安裝會用 `agend web --code --backend-signins kiro-cli,claude-code,codex` 開啟儀表板清單，單純導覽不會啟動登入。安裝進度 ID 維持相容；最後狀態會重新檢查登入，略過的後端不會被說成已登入。Antigravity 仍為明確的主控台備援，尚未啟用被動裝置驗證橋接。
 
-直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。
+直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制，這台主機上的 Claude Code 具名帳號（憑證設定檔）也是：在 設定 → 帳號 按 **登入** 會開啟同一個對話框，標題帶帳號名稱，登入寫進該設定檔自己的資料夾（`CLAUDE_CONFIG_DIR`），不會動到預設帳號。對話框自己開始的登入，在對話框關閉時結束（不會結束其他 session 或分頁開始的登入）；而且只會登入「拼法完全一致、已存在」的帳號，或設定檔指名（agent、聊天室或 fleet 預設）但資料夾還不存在的帳號——伺服器會用「新增」同一套檢查（`exists`、`case_clash`、`unsafe_root`）建立資料夾，並在同一步開始登入。其他名稱會被拒絕（`signin_profile_unknown`），也不會建立任何資料夾。其他後端的憑證設定檔保留原有流程；控制項下方的小字連結 **改用主控台備援** 會為同一個帳號開啟原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程（具名帳號則只恢復該帳號上的 agent）；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。
 
 ### 用量提醒
 

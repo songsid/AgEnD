@@ -37,23 +37,23 @@ register("outside", {
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
   },
   "zh-TW": {
-    title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。",
+    title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數驗證碼，從外面證明你是這個 fleet 的擁有者。",
     stateOn: "驗證器已設定", stateOff: "尚未設定", switch: "允許從外面連線",
-    needApp: "請先設定驗證器 App。從外面登入時會要求輸入它的代碼。",
+    needApp: "請先設定驗證器 App。從外面登入時會要求輸入它的 6 位數驗證碼。",
     setUp: "設定驗證器",
-    scan: "用 Authy、Google Authenticator 或 Microsoft Authenticator 掃描，或手動輸入金鑰，再輸入 App 顯示的 6 位數代碼。",
+    scan: "用 Authy、Google Authenticator 或 Microsoft Authenticator 掃描，或手動輸入金鑰，再輸入 App 顯示的 6 位數驗證碼。",
     setUpOn: "驗證器 App 已於 {0} 設定。", again: "重新綁定驗證器",
-    againConfirm: "舊 App 的代碼會失效，所有從外面登入的人都會被登出。",
+    againConfirm: "舊 App 的驗證碼會失效，所有從外面登入的人都會被登出。",
     remove: "停用", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
     openAt: "已開啟：{0}。", quick: "快速連結每次開啟網址都不同。",
     hereOnly: "只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。",
     lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。",
     noRecovery: "遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。",
     appsLabel: "可使用的驗證器 App", appOther: "其他 TOTP 驗證器",
-    step1: "1. 在驗證器中新增 AgEnD", step2: "2. 輸入驗證器代碼以完成綁定",
+    step1: "1. 在驗證器中新增 AgEnD", step2: "2. 輸入 6 位數驗證碼以完成綁定",
     activate: "驗證並啟用", removeTitle: "停用驗證器？",
-    wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
-    paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
+    wrong: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。",
+    paused: "錯誤次數太多，請 {0} 後再試。", code: "6 位數驗證碼（驗證器 App）", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
   },
 });
@@ -209,7 +209,7 @@ export function OutsideCard() {
   return html`<section class="card s-outside" id="outsideCard" ref=${card}><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
     <div class="chips s-out-apps" id="outApps" role="list" aria-label=${to("appsLabel")}><span class="tag" role="listitem">Google Authenticator</span><span class="tag" role="listitem">Microsoft Authenticator</span><span class="tag" role="listitem">${to("appOther")}</span></div>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
-    <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
+    <label class="check"><input id="outSwitch" class="s-ui-toggle" type="checkbox" role="switch" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>
     ${!s.enrolled ? html`<p class="note" id="outNeedApp">${to("needApp")}</p>` : null}
     ${s.outside && open && link.url ? html`<p class="note" id="outOpenAt">${to("openAt", link.url)}${link.quick ? ` ${to("quick")}` : ""}</p>` : null}

@@ -1247,7 +1247,7 @@ access
 
 access
   .command("unlock")
-  .description("Unlock instance access")
+  .description("Use the saved allowlist (legacy pairing mode)")
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { AccessManager } = await import("./channel/access-manager.js");
@@ -1302,25 +1302,6 @@ access
     const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
     am.removeUser(userId);
     console.log(`${instance}: removed user ${userId}`);
-  });
-
-access
-  .command("pair")
-  .description("Generate a pairing code for a user")
-  .argument("<instance>", "Instance name")
-  .argument("<user-id>", "Telegram user ID requesting pairing")
-  .action(async (instance: string, userId: string) => {
-    const { AccessManager } = await import("./channel/access-manager.js");
-    const instanceDir = join(DATA_DIR, "instances", instance);
-    if (!existsSync(instanceDir)) {
-      console.error(`Instance "${instance}" not found`);
-      process.exit(1);
-    }
-    const statePath = await resolveAccessPath(instance);
-    const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
-    const code = am.generateCode(userId);
-    console.log(`${instance}: pairing code = ${code}`);
-    console.log("Share this code with the user. It expires in 10 minutes.");
   });
 
 // === Update + Reload ===
@@ -2482,11 +2463,11 @@ program
   .option("--backend-signins <backends>", "Selected backend IDs, comma-separated, for local browser sign-in")
   .option("--backend-signin-capabilities", "Print installer sign-in capabilities without starting setup")
   .action(async (opts: { reset?: boolean; port?: string; tunnel?: boolean; backendSignins?: string; backendSigninCapabilities?: boolean }) => {
+    const { onboardingBackends, ONBOARDING_BROWSER_BACKENDS, ONBOARDING_CONSOLE_BACKENDS } = await import("./backend-signin-pending.js");
     if (opts.backendSigninCapabilities) {
-      console.log(JSON.stringify({ version: 1, setup: true, dashboard: true, installer: true, backends: ["kiro-cli", "claude-code", "codex"], console: ["antigravity"] }));
+      console.log(JSON.stringify({ version: 1, setup: true, dashboard: true, installer: true, backends: ONBOARDING_BROWSER_BACKENDS, console: ONBOARDING_CONSOLE_BACKENDS }));
       return;
     }
-    const { onboardingBackends } = await import("./backend-signin-pending.js");
     const selected = opts.backendSignins === undefined ? undefined : onboardingBackends(opts.backendSignins.split(","));
     if (selected === null || (opts.tunnel && selected?.length)) {
       console.error("Backend sign-in requires canonical backend IDs and a local setup page (no --tunnel)."); process.exit(1);
@@ -2632,32 +2613,57 @@ program
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
     // The code is minted by the running fleet (it lives in that process's memory), so ask it — with
-    // the header token, the one credential a local script has. No credential ever goes into a URL:
-    // the browser is opened on the sign-in page and the code is typed there.
+    // the header token, the one credential a local script has. The token never goes into a URL, and neither does the code
+    // in anything printed or sent to a server (the only place it appears is a `#fragment`, below).
     let code: string;
-    let minutes: number;
+    let lifetime: string;
+    let firstInstall = false;
+    const link = await import("./web-signin-link.js");
+    const { codeDeliveryFor, describeCodeLifetime, webSigninLinks } = link;
+    const wsl = link.isWsl();
+    // #3270: say where this code will be shown, because that decides how long it may live. Only `--code` printing to an
+    // interactive terminal off WSL asks for the first-install hour (`tty`); stdout that is a pipe, a redirect or an install
+    // log (`non-tty`) and a code that goes into the launch file's URL (`url`) get the ordinary 5 minutes, and on WSL (where a
+    // Windows process counts as loopback and can read this distro's files) nothing is asked for — the fleet refuses it too.
+    const delivery = codeDeliveryFor({ printOnly: !!opts.code, stdoutIsTty: process.stdout.isTTY === true, wsl });
+    const codeDeliveredByUrl = delivery === "url";
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
         method: "POST",
-        headers: { "X-Agend-Token": token },
+        headers: { "X-Agend-Token": token, ...(delivery ? { "X-Agend-Code-Delivery": delivery } : {}) },
         signal: AbortSignal.timeout(5000),
       });
-      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
+      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; bootstrap?: boolean; error?: string };
       if (!resp.ok || !body.code) {
         console.error(`Could not get a sign-in code: ${body.error ?? resp.statusText}`);
         process.exit(1);
       }
       code = body.code;
-      minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
+      firstInstall = body.bootstrap === true;
+      lifetime = describeCodeLifetime((body.expiresAt ?? Date.now()) - Date.now());
     } catch {
       console.error(t("cli.fleet_unreachable", port));
       process.exit(1);
     }
-    const signin = `http://localhost:${port}/signin${guide ? `?next=${encodeURIComponent(guide)}` : ""}`;
-    console.log(`Sign-in page: ${signin}`);
-    console.log(`Code:         ${code}   (works once, valid ~${minutes} min)`);
+    // #3270: the terminal gets the clean address and the code on every run (a WSL or headless user copies them, and so does
+    // anyone whose Snap or Flatpak browser cannot open the launch file). The browser this command opens on this computer
+    // reaches `#code=…` through a 0600 launch file — never through a command line, which other users of the machine can
+    // read — and the sign-in page clears the fragment from the address bar before doing anything else.
+    const links = webSigninLinks(port, code, guide || undefined);
+    console.log(`Sign-in page: ${links.display}`);
+    console.log(`Code:         ${code}   (works once, valid ${lifetime}${firstInstall ? "; after that run agend web again for a new one" : ""})`);
     if (opts.code) return;
-    openInBrowser(signin);
+    console.log(link.SIGNIN_FALLBACK_HINT);
+    if (!codeDeliveredByUrl) { openInBrowser(links.display); return; }   // WSL: the code stays out of a Windows command line: type it
+    let launch: string | null = null;
+    try {
+      link.sweepSigninLaunchFiles(DATA_DIR, Date.now());
+      launch = link.writeSigninLaunchFile(DATA_DIR, links.open);
+      link.scheduleSigninLaunchCleanup(launch);
+    } catch (err) {
+      console.error(`Could not prepare the automatic sign-in (${(err as Error).message}). Type the code on the page instead.`);
+    }
+    openInBrowser(launch ? link.launchFileArgument(launch) : links.display);
   });
 
 program
@@ -3735,9 +3741,8 @@ program
   });
 
 program
-  // M-2457: hidden and refused until the bundled tmux is turned on (C-4); before that a plain npm install -g is the
-  // way back, and nothing private needs closing.
-  .command("rollback", { hidden: true })
+  // M-2457 §7: the supported way back to 2.3.x — it closes AgEnD's own tmux server first, which 2.3.x can't see.
+  .command("rollback")
   .description("Go back to an older AgEnD (2.3.x): stop the fleet, close AgEnD's own tmux server and confirm it, then install that version and start it. Stops before installing anything if the close can't be confirmed.")
   .argument("<version>", "the version to go back to, e.g. 2.3.4")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
@@ -3745,19 +3750,15 @@ program
   .addOption(new Option("--no-start", "install only; do not start the older version (CI)").hideHelp())
   .action(async (version: string, opts: { yes?: boolean; package?: string; start?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "rollback", { yes: opts.yes, target: version })) process.exit(1);
-    if (!(await import("./tmux-binary.js")).bundledTmuxEnabled()) {
-      console.error(`agend rollback is for AgEnD's bundled tmux, which is not on here. To go back: npm install -g @songsid/agend@${version}`);
-      process.exit(1);
-    }
     const { rollback } = await import("./tmux-rollback.js");
     const { readServerRecord } = await import("./tmux-server.js");
-    const { bundledTmuxEnabled, tmuxSocket } = await import("./tmux-binary.js");
+    const { tmuxSocket } = await import("./tmux-binary.js");
     const { spawnSync } = await import("node:child_process");
     const self = (args: string[]) => spawnSync(process.execPath, [process.argv[1]!, ...args], { stdio: "inherit" });
     const fleetPid = (() => { try { return parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10); } catch { return NaN; } })();
     const result = await rollback({
       agendHome: DATA_DIR, from: pkgVersion, to: version.replace(/^v/, ""),
-      socket: readServerRecord(DATA_DIR)?.socket ?? (bundledTmuxEnabled() ? tmuxSocket() : null),
+      socket: readServerRecord(DATA_DIR)?.socket ?? tmuxSocket(),
       async stopFleet() { const r = self(["stop", "--yes"]); return { ok: r.status === 0, detail: `agend stop exited ${r.status ?? r.signal}` }; },
       async fleetGone() {
         if (!Number.isSafeInteger(fleetPid)) return true;
@@ -3779,15 +3780,16 @@ program
   });
 
 program
-  .command("tmux-migrate", { hidden: true })   // M-2457: until the bundled tmux is on (C-4), nothing is ever held
+  .command("tmux-migrate")   // M-2457 §6 rule 3: named by the Needs-you line of an instance held by an old 2.3 window
   .description("After an upgrade from AgEnD 2.3: release an instance held because an old tmux window (system tmux, default socket) may still run it. You then own that window; the instance starts on its next start.")
   .requiredOption("--release <name>", "the held instance")
   .action(async (opts: { release: string }) => {
     const { instanceNameInvalid } = await import("./quickstart-api.js");
     if (instanceNameInvalid(opts.release)) { console.error(`"${opts.release}" is not an instance name.`); process.exit(1); }
     const { releaseLegacyWindow } = await import("./tmux-legacy.js");
+    const { tmuxSocket } = await import("./tmux-binary.js");
     const dir = join(DATA_DIR, "instances", opts.release);
-    const id = releaseLegacyWindow(DATA_DIR, opts.release, dir);
+    const id = releaseLegacyWindow(DATA_DIR, opts.release, dir, tmuxSocket());
     if (!id) { console.error(`${opts.release} is not held by an old tmux window.`); process.exit(1); }
     console.log(`Released ${opts.release}: AgEnD will leave the old window ${id} (system tmux) alone. Close it yourself if it still runs that agent, then start ${opts.release} again (agend fleet start ${opts.release}).`);
   });
@@ -3857,8 +3859,8 @@ program
 
     // Attach or switch-client depending on whether we're already in tmux — in THIS fleet's tmux: with the bundled tmux,
     // $TMUX naming another server (the user's own, on its own socket) is not "inside"; that is an ordinary attach.
-    const { bundledTmuxEnabled, insideFleetTmux, tmuxSocket } = await import("./tmux-binary.js");
-    const insideOurs = insideFleetTmux(process.env.TMUX, bundledTmuxEnabled(), tmuxSocket());
+    const { insideFleetTmux, tmuxSocket } = await import("./tmux-binary.js");
+    const insideOurs = insideFleetTmux(process.env.TMUX, tmuxSocket());
     if (insideOurs) {
       // Already inside tmux — switch client
       try {

@@ -207,12 +207,12 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
   let csrf = null;
   const ended = new Set();
-  async function call(method, path, body) {
+  async function call(method, path, body, signal) {
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (method !== "GET" && csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
     let r;
-    try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", body: body === undefined ? undefined : JSON.stringify(body) }); }
+    try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", ...(signal ? { signal } : {}), body: body === undefined ? undefined : JSON.stringify(body) }); }
     catch { return { ok: false, status: 0, code: "unreachable" }; }
     let json = null;
     try { json = await r.json(); } catch { json = null; }
@@ -259,11 +259,66 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
     chooseButtons(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/buttons`, input); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
+    quickPairingV1: true,
+    createQuickPairing(label) { return call("POST", "/hub/v1/quick-pairing", { label }); },
+    quickPairing(pairingId) { return call("GET", `/hub/v1/quick-pairing${pairingId ? `?id=${id(pairingId)}` : ""}`); },
+    stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
+    revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
+    pairingNotices() { return call("GET", "/hub/v1/notices?v=2"); },
+    directorySecurityNoticesV1: true,
+    directorySecurityNotices({ before, limit = 25 } = {}) {
+      const query = new URLSearchParams({ limit: String(limit) });
+      if (before) query.set("before", before);
+      return call("GET", `/hub/v1/security-notices/directory?${query}`);
+    },
+    acknowledgeDirectorySecurityNotice(noticeId) { return call("POST", `/hub/v1/security-notices/directory/${id(noticeId)}/ack`); },
+    /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
+    pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
+    acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
+    subscribePairingNotices(fn, onClosed = () => {}) {
+      if (typeof EventSource === "undefined") return () => {};
+      const events = new EventSource("/hub/v1/notices/events?v=2"); let live = true;
+      events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
+      events.addEventListener("error", () => {
+        // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
+        if (live && events.readyState === 2) { live = false; events.close(); onClosed(); }
+      });
+      return () => { live = false; events.close(); };
+    },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
     approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
     revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
+    // #3298 S-89 (experimental, off unless the session lists "group-policy-v1"): group permissions, admin only; the welcome, any
+    // signed-in person (display only — every action still asks the server).
+    groupPolicy() { return call("GET", "/hub/v1/admin/group-policy"); },
+    resolveGroup(dn) { return call("POST", "/hub/v1/admin/group-policy/resolve", { dn }); },
+    previewGroupPolicy(policy) { return call("POST", "/hub/v1/admin/group-policy/preview", { policy }); },
+    /** The policy that was previewed and that preview's digest: the server applies only its own sealed candidate for them. */
+    saveGroupPolicy(policy, previewDigest) { return call("PUT", "/hub/v1/admin/group-policy", { policy, previewDigest }); },
+    /** One exact paused resource: its own revision, and the policy and suspension-record (lifecycle) revisions the page was shown. */
+    resumeGroupResource(resource, expectedPolicyRevision, expectedLifecycleRevision) {
+      return call("POST", "/hub/v1/admin/group-policy/resources/resume", { resource, expectedPolicyRevision, expectedLifecycleRevision });
+    },
+    welcome() { return call("GET", "/hub/v1/me/welcome"); },
+    // M-2682: Administration → This Hub — what it is, and its rename (two steps: the server binds the second to the first).
+    thisHub() { return call("GET", "/hub/v1/admin/hub"); },
+    prepareHubName(name) { return call("POST", "/hub/v1/admin/hub/name/prepare", { name }); },
+    commitHubName(ref) { return call("POST", "/hub/v1/admin/hub/name/commit", { ref }); },
+    /** This client has the This Hub calls (a cached older client does not: the card is then left out). */
+    thisHubV1: true,
+    /** Paired with directory-editor-v1 and the current read DTO; cached clients cannot offer the editor. */
+    directoryEditorV1: true,
+    directorySettings(signal) { return call("GET", "/hub/v1/admin/hub/directory", undefined, signal); },
+    prepareDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/prepare", input, signal); },
+    testDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/test", input, signal); },
+    saveDirectorySettings(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/save", input, signal); },
+    cancelDirectorySettings(input) { return call("POST", "/hub/v1/admin/hub/directory/cancel", input); },
+    inspectDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/inspect", input, signal); },
+    fetchDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/fetch", input, signal); },
+    /** This client has the group permissions calls (a cached older client does not: the pages then hide them). */
+    groupPolicyV1: true,
   };
 }
 
@@ -275,6 +330,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
  * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
  */
 export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
+  let pairingNotices = [];
   const listed = async () => {
     const r = await confirm.api("/api/hub/member/exposures");
     return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
@@ -283,13 +339,18 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
-    const r = await confirm.api("/api/hub/member/pairing");
-    if (r.ok && r.body && r.body.pairing) return r.body.pairing;
+    const r = await confirm.api("/api/hub/member/pairing?v=2");
+    if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
+    pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
   };
   const step = async (name, body) => {
     const r = await confirm.api(`/api/hub/member/pairing/${name}`, { method: "POST", headers: { "Idempotency-Key": confirm.newKey("hub") }, body: JSON.stringify(body || {}) });
-    if (confirm.isPendingResponse(r)) { void Promise.resolve(confirm.track(r.body.pending_change, "hub")).catch(() => {}); return { ok: true, pendingConfirmation: true, pairing: await pairingNow() }; }
+    if (confirm.isPendingResponse(r)) {
+      const settled = Promise.resolve(confirm.track(r.body.pending_change, "hub"));
+      void settled.catch(() => {});
+      return { ok: true, pendingConfirmation: true, settled, pairing: await pairingNow() };
+    }
     if (r.status === 404) return { ok: false, error: "unavailable" };
     return r.body && typeof r.body === "object" ? r.body : { ok: false, error: "unsaved" };
   };
@@ -308,6 +369,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   return {
     stub: false, member: true,
     pairing: pairingNow,
+    pairingNotices: () => pairingNotices,
     async connect({ address, code }) {
       const a = String(address || "").trim(), c = String(code || "").trim();
       if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };
@@ -320,7 +382,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
       // #3115 r2: exactly the pairing shown — its hub and bindingId; the server refuses any other (a replacement, a re-pair).
       const hubId = shown && (shown.hub ? shown.hub.hubId : shown.hubId), binding = shown && shown.binding;
       if (!hubId || !binding) return { ok: false, error: "conflict" };
-      const r = await step("disconnect", { hubId, binding }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
+      const r = await step("disconnect", { hubId, binding }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true, settled: r.settled } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
     async cancel() { const r = await confirm.api("/api/hub/member/pairing/cancel", { method: "POST", body: "{}" }); return r.ok && r.body && r.body.pairing ? r.body.pairing : pairingNow(); },
     /** The local status, every pollMs while visible (one request at a time; none while hidden); stops with the last listener. */
     subscribe(fn) { listeners.add(fn); if (!timer) timer = timers.setTimeout(tick, pollMs); return () => { listeners.delete(fn); if (!listeners.size && timer) { timers.clearTimeout(timer); timer = null; } }; },

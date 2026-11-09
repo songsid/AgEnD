@@ -4,6 +4,23 @@
 
 以下路徑使用預設資料目錄 `~/.agend`；可透過 `AGEND_HOME` 指定其他目錄。
 
+## 威脅模型
+
+AgEnD 防範的對象：
+- 遠端的人；
+- 同一台電腦上的其他使用者（其他作業系統帳號）；
+- 透過公開連結或 gateway 進來的訪客；
+- 網頁訪客（guest）；
+- 擁有者瀏覽器裡其他網頁發出的跨站請求（CSRF）。
+
+和 fleet **同一個作業系統使用者**執行的程式，視為擁有者本人（fleet 決議 64a289a0、#3327）。這種程式本來就能讀 `~/.agend/web.token`、修改 `fleet.yaml`、讀取憑證、直接執行各個 CLI，所以只擋住某一條 HTTP 路徑並不會帶來真正的保護。不該擁有擁有者權限的東西，請用另一個作業系統使用者或隔離的容器執行。
+
+在這個模型裡，AgEnD 仍然讓敏感步驟走「真人操作」的路徑，作為縱深防禦，而且不增加點擊：
+- **主機的登入碼**：`agend web` 使用的 `/auth/issue-code`，只回應來自這台電腦本身的直接請求：loopback 連線、loopback Host，而且沒有轉送標頭。從別處或透過 proxy 使用 web token，無法產生儀表板 session。印出來的登入碼仍可在任何地方的瀏覽器輸入。
+- **配對電腦**：產生配對碼和核准電腦，需要直接連到的儀表板上的管理員 session，包含它的 cookie 與 CSRF 值，也就是頁面上原本的「連接電腦」和「核准電腦」按鈕。只帶 `X-Agend-Token` 標頭的請求會被拒絕。
+- **開啟遠端執行環境**：這是需要確認的 Settings 變更，單憑 token 無法提出。
+- **純網頁 fleet**：主機操作者就是擁有者（決議 28c2d3a3）。驗證器 App 被重新設定或移除時，會發出通知（Notices），讓擁有者察覺不是自己做的變更。
+
 ## 聊天存取與管理權限
 
 獲准進入的使用者可以要求 agent 讀檔、改程式或執行指令，實際可做的動作由後端權限決定。請把這些使用者、他們的帳號，以及獲准進入的 bot，都視為能接觸 agent 工作區與主機的可信對象。
@@ -40,7 +57,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 能通過本機 dashboard 授權閘門的憑證有兩種，兩者都不會出現在網址裡：
 
 - **`X-Agend-Token`**：fleet 共用的 bearer token，存於 `~/.agend/web.token`（建立時權限為 `0600`；既有檔案的權限收緊採盡力處理）。CLI 與腳本以 header 送出。fleet 重啟後仍保留。`agend web-token rotate` 會替換它，同時讓所有瀏覽器登出（見下方）。輪換不代表能撤回已獲授權的請求，或關閉所有既有連線。
-- **瀏覽器 session**：以**一次性登入碼**登入後取得。fleet 管理員用 `/web` 取得登入碼：General 選單只以私訊送出；Discord 可改用確認送達的 ephemeral 回覆，Telegram 私訊失敗則請管理員先私訊 bot 的 `/start`。在主機上，`agend web` 會用 header token 印出一組。登入碼為 8 個字元，**只能用一次**、**5 分鐘**後失效，而且只有最新的一組有效。輸錯五次會讓該組登入碼作廢；15 分鐘內（跨不同登入碼）累計輸錯 20 次，會暫停所有登入 5 分鐘。沒有發出任何登入碼時，就沒有東西可猜。本機登入會在 General 公告（`web.notify_login`，預設開啟）；公開登入不論此設定，都必須確認通知送達。
+- **瀏覽器 session**：以**一次性登入碼**登入後取得。fleet 管理員用 `/web` 取得登入碼：General 選單只以私訊送出；Discord 可改用確認送達的 ephemeral 回覆，Telegram 私訊失敗則請管理員先私訊 bot 的 `/start`。在主機上，`agend web` 會用 header token 印出一組。登入碼為 8 個字元，**只能用一次**、**5 分鐘**後失效，而且只有最新的一組有效。這個 fleet 從未授權過任何主機 session 之前（新安裝——以持久化的標記判斷，登出或過期都不會讓它回來），`agend web --code` 在互動式終端機印出的第一組登入碼，改為自第一組發出起 **60 分鐘**有效（#3270）：只能從這台電腦兌換（公開連結、LAN 主機名稱、經轉發的代理一律不行），第一個主機 session 一建立就失效。它只印在要求它的那個終端機上，不會出現在其他地方：不會進管線、轉向、安裝記錄或服務的 journal（`agend web` 會說明 stdout 是不是終端機；沒有說明的呼叫端拿到的是一般的 5 分鐘登入碼），fleet 也絕不會把登入碼寫進 log。WSL 上絕不發放（使用者的 Windows 行程對 fleet 而言就是 loopback，而且讀得到這個 distro 的檔案）。WSL 上，以及第一個小時過後，所有登入碼都是 5 分鐘。`agend web` 以 AgEnD 家目錄裡權限 `0600` 的啟動檔（以 `wx` 建立在 `0700` 目錄中，兩分鐘後刪除）開啟瀏覽器、由它導向 `/signin#code=…`，登入碼不會出現在任何行程的命令列；放進網址的登入碼一律維持 5 分鐘。終端機每次也都會印出乾淨的網址和登入碼，因為以 Snap 或 Flatpak 安裝的瀏覽器讀不到家目錄隱藏資料夾裡的啟動檔：請打開該網址並輸入登入碼。`#` 之後不會送到伺服器；登入頁在發出任何請求前把它從網址列移除，且只在 `localhost`、`127.0.0.1`、`[::1]`、全新導覽、瀏覽器尚無 session 時兌換。輸錯五次會讓該組登入碼作廢（從這台電腦以外輸錯，不會讓 bootstrap 登入碼作廢）；15 分鐘內（跨不同登入碼）累計輸錯 20 次，會暫停所有登入 5 分鐘。沒有發出任何登入碼時，就沒有東西可猜。本機登入會在 General 公告（`web.notify_login`，預設開啟）；公開登入不論此設定，都必須確認通知送達。
 
 網址裡的 `?token=` **不是**憑證，舊連結與書籤也一樣：它會進到登入頁，token 會從網址列移除。
 
@@ -66,7 +83,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
 - **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
-- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能用驗證碼確認，更不能透過公開連結修改。**唯一的例外**：主機操作者自己的 session，也就是在 AgEnD 電腦本機的瀏覽器上使用（在那台電腦用 `agend web` 登入，走 loopback、沒有轉送標頭）的 session，可以像確認其他變更一樣確認它。在純網頁 fleet 上是「直接套用」；在有聊天連線的 fleet 上，則是在沒有 General 能接收確認卡時套用（D3）。純網頁 fleet 上的其他 session，會被告知請到 AgEnD 電腦本機的瀏覽器操作。快速連結選項也一樣。「在 AgEnD 電腦上」指的是 loopback 請求、loopback Host、沒有轉送標頭。本機的連接埠轉送（`ssh -L`、IDE 的連接埠轉送）進來的請求正是這樣，所以會被當成這台電腦。能建立這種轉送的人本來就已經掌控主機，因此這和威脅模型一致。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟即接受的風險。** Cloudflare 終止 TLS，看得到流量，包括 session cookie。已授權的 named-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
@@ -79,7 +96,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過臨時公開連結的網頁授權（#1939 §0.3），自 #2819 起預設開啟。** `/web` 開出的臨時公開連結（quick tunnel，`*.trycloudflare.com`）上的 session 也能透過帳號的確認卡授權，除非設定 `web.verified_authority.quick_link: false`。預設值本身不會授予任何權限：每個 session 仍須由帳號在私訊中確認。
 - **哪些請求算數。** 所有不是 named 的 gateway 請求，只依監聽端判定；任何 header 都無法設定或改變。session 必須屬於目前這次開放，而每個 quick 網址都是新的一次。
-- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。判斷依生效中的值（沒設定就是預設值：開啟；`true`、`false` 以外的值視為關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
+- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。和上面的命名連結一樣，AgEnD 電腦本機上主機操作者自己的 session 是唯一的例外。判斷依生效中的值（沒設定就是預設值：開啟；`true`、`false` 以外的值視為關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
 - **關閉**立即生效，所有 quick-link session 的回執都會視為無（`downgraded: quick_link_off`），那些 session 的授權也會被刪除。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟期間接受的風險。** quick 網址是網際網路上的公開位址：任何拿到它的人都能到登入頁。屏障和固定網域相同：私下傳給允許帳號的登入碼，以及該帳號對這個 session 的確認。Cloudflare 的 quick tunnel 服務終止 TLS，看得到流量，包括 session cookie；AgEnD 啟動 quick tunnel 時前面沒有任何驗證。已授權的 quick-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：

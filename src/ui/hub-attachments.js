@@ -15,12 +15,12 @@ register("hubfiles", {
     unavailable: "the agent can't receive files right now", other: "the Hub refused it ({0})", waitUpload: "Wait until the files are uploaded.",
     held: "This agent can't receive files right now. Send again when it can, or remove the files to send only the text.",
     reload: "Reload the page to attach files." },
-  "zh-TW": { attach: "附加檔案", off: "這個代理目前還不能接收檔案。", uploading: "上傳中…", remove: "移除 {0}",
+  "zh-TW": { attach: "附加檔案", off: "這個 Agent 目前還不能接收檔案。", uploading: "上傳中…", remove: "移除 {0}",
     failed: "{0} 沒有附加：{1}", tooMany: "每個問題最多 {0} 個檔案。", tooLarge: "超過 20 MB",
     typeNotAllowed: "不支援這種類型（PNG、JPEG、GIF、WebP、PDF、純文字、Markdown、CSV、JSON、Word、Excel、PowerPoint、HTML）",
     imageMismatch: "內容不是檔名所說的圖片", empty: "檔案是空的", busy: "等待中的檔案太多，請先送出或移除一些",
-    unavailable: "代理目前無法接收檔案", other: "Hub 拒絕了這個檔案（{0}）", waitUpload: "請等檔案上傳完成。",
-    held: "這個代理目前無法接收檔案。等它可以接收時再送出，或移除檔案只送出文字。",
+    unavailable: "Agent 目前無法接收檔案", other: "Hub 拒絕了這個檔案（{0}）", waitUpload: "請等檔案上傳完成。",
+    held: "這個 Agent 目前無法接收檔案。等它可以接收時再送出，或移除檔案只送出文字。",
     reload: "重新載入頁面後才能附加檔案。" },
 });
 export const hf = (key, ...a) => t(`hubfiles.${key}`, ...a);

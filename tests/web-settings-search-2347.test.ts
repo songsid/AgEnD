@@ -31,10 +31,14 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
+    if (path === "/api/settings/hub/membership") return { enabled: false };
+    if (path === "/api/settings/hub/membership?v=2") return { enabled: false, connectionCardV1: true, pairing: { state: "unpaired" } };
     if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(namedHost ? { namedHost } : {}) };
     if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
     if (path === "/api/fleet") return { version: "2.4.0", instances: [] };
     if (path === "/ui/owner-css/state") return { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } };
+    // M-2738: an admin's page — Advanced draws its "Version and update" card (advanced.update).
+    if (path === "/ui/update") return { admin: true, current: "2.4.0", offer: null, checked_at: null, check_failed: false, progress: null, now: Date.now() };
     if (path.startsWith("/ui/")) return {};
     return [];
   })();
@@ -58,11 +62,13 @@ afterEach(async () => { await p.unmount(); });
 
 const open = async (section: string) => {
   const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  // Await the current lazy connection form so registry coverage checks its actual fields.
+  if (section === "hub") { await import("/ui/js/settings-hub-connection.js"); await import("/ui/js/settings-hub-company-join.js"); }
   await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}|${Math.random()}` }));
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
-const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"];
+const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
 
 /** What a section draws that no entry covers, and the entries whose element it does not draw. */
 async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {
@@ -84,10 +90,12 @@ async function coverage(sections: string[], skipAbsent: (e: any) => boolean = ()
 }
 /** Drawn only with a fixed hostname (a named tunnel): checked by the named-tunnel case below. */
 const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link"]);
+// Settings → Hub: Connect to a Hub is drawn only once membership is on and the page is marked a member (alpha.6 #2).
+const MEMBER_ONLY = new Set(["hub.connect"]);
 
 describe("#2347 §6: the registry is what Settings draws", () => {
   it("every field with an id in a section has an entry, and every entry's element is drawn in its section", async () => {
-    expect(await coverage(SECTIONS, (e) => NAMED_ONLY.has(e.id))).toEqual([[], []]);
+    expect(await coverage(SECTIONS, (e) => NAMED_ONLY.has(e.id) || MEMBER_ONLY.has(e.id))).toEqual([[], []]);
   }, 30_000);
   it("with a fixed hostname (a named tunnel): its own fields too — Reopen after start, Also over my named link", async () => {
     rawWeb = { public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } }; namedHost = "chat.example.com";

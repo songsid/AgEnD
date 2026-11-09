@@ -16,6 +16,7 @@ import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
 import { fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric, type UsageStaleCause } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
+import { hostFacts } from "../cli-registry.js";
 import { readFileSync, statSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -48,17 +49,9 @@ export function isVisibleUsageMetric(metric: UsageMetric): boolean {
     && metric.used <= 0);
 }
 
-/** Map runtime backend names to the subscription provider row they consume. */
+/** Map runtime backend names to the subscription provider row they consume (cli-registry.ts: `host.usage.providerId`); null for a backend with no row. */
 export function usageProviderIdForBackend(backend: string | undefined): string | null {
-  switch (backend) {
-    case "claude-code": return "claude";
-    case "codex": return "codex";
-    case "grok": return "grok";
-    case "kiro-cli": return "kiro";
-    case "antigravity": return "antigravity";
-    case "muse": return "muse";
-    default: return null;
-  }
+  return hostFacts(backend, "usage")?.providerId ?? null;
 }
 
 /** Filter a cached all-provider snapshot without mutating the shared cache. */

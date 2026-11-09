@@ -27,9 +27,9 @@ export function formatTimeSince(isoStr: string): string {
 
 /** Async capture-pane with the same 2s bound the serial version had. */
 export function capturePaneAsync(
-  sessionName: string, socket: string | null, target: string, timeoutMs = 2000,
+  sessionName: string, socket: string, target: string, timeoutMs = 2000,
 ): Promise<string> {
-  const args = [...(socket ? ["-L", socket] : []), ...tmuxConfArgs(), "capture-pane", "-t", `${sessionName}:${target}`, "-p"];
+  const args = ["-L", socket, ...tmuxConfArgs(), "capture-pane", "-t", `${sessionName}:${target}`, "-p"];
   return new Promise<string>((resolve, reject) => {
     execFile(tmuxBinary(), args, { encoding: "utf-8", timeout: timeoutMs, ...tmuxEnvOption() }, (err, stdout) => {
       if (err) reject(err);

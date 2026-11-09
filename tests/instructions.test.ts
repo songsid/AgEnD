@@ -103,7 +103,7 @@ describe("buildFleetInstructions", () => {
     expect(readFileSync(new URL("../src/agent-cli-instructions.md", import.meta.url), "utf8")).toContain("`reply required → agend-agent report …`");
   });
 
-  it("lets ClassicBot perform only explicitly requested human-facing channel work", () => {
+  it("lets ClassicBot complete delegated human work and explicitly requested channel work", () => {
     const params = {
       ...base,
       runtimeIdentity: { kind: "classic" as const, backend: "codex", model: "gpt-5.6-sol" },
@@ -113,11 +113,12 @@ describe("buildFleetInstructions", () => {
     const core = buildMcpCoreInstructions(params);
 
     for (const instructions of [full, core]) {
-      expect(instructions).toContain("Only when the request explicitly asks");
+      expect(instructions).toContain("For other channel-facing work");
       expect(instructions).toContain("bound ClassicBot channel");
-      expect(instructions).toContain("ask, notify, follow up, or mention someone");
       expect(instructions).toContain("When the header says `reply required →`, also report the outcome to the sender");
     }
+    expect(full).toContain("ask, notify, follow up, or mention someone");
+    expect(core).toContain("require an explicit peer request");
     // The exception is keyed only by instance kind, not by request_kind, so
     // send_to_instance and delegate_task can assign the same channel work.
     expect(core).toContain("`delegate_task` → work silently → `report_result`");
@@ -157,8 +158,8 @@ describe("buildFleetInstructions", () => {
     });
 
     expect(classic).toContain("This is a ClassicBot instance");
-    expect(classic).toContain("Only when the request explicitly asks");
-    expect(classic).toContain("use `agend-agent reply` for that channel-facing action");
+    expect(classic).toContain("For other channel-facing work");
+    expect(classic).toContain("use `agend-agent reply` only when the request explicitly asks");
     expect(classic).toContain("When the header says `reply required →`, also report the outcome to the sender");
     expect(fleetTopic).toContain("This is a fleet-topic instance");
     expect(fleetTopic).toContain("never use `agend-agent reply`");

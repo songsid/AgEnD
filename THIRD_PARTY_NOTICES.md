@@ -141,5 +141,4 @@ component's full licence text in its `LICENSES/` directory:
 | libevent, https://libevent.org | 2.1.12-stable | BSD-3-Clause | linked statically |
 | ncurses, https://invisible-island.net/ncurses/ | 6.5 | X11 (MIT-style) | linked statically; the terminfo subset is compiled from its `misc/terminfo.src` |
 | utf8proc, https://github.com/JuliaStrings/utf8proc | 2.12.0 | MIT, and the Unicode License v3 for its data tables | linked statically |
-| jemalloc, https://jemalloc.net | 5.3.0 | BSD-2-Clause | linked statically, macOS builds only |
 | musl libc, https://musl.libc.org | 1.2.5 (the Alpine build image's, checked at build time) | MIT | linked statically, Linux builds only |

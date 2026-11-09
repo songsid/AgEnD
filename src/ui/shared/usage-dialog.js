@@ -11,42 +11,15 @@ import { Dialog } from "./ui-dialog.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
 import "./view-strings.js";
+import { CompactMeter, resetClock, resetText, tn, usageClock, usageDuration, usageText } from "./usage-meter.js";
+// What this file exported before the meter moved out of it (#3321), for what imports it from here.
+export { usageClock, windowTag, soonestReset } from "./usage-meter.js";
 
-function tn(key, values = {}) {
-  let s = t(`view.${key}`);
-  for (const [k, v] of Object.entries(values)) s = s.split(`{${k}}`).join(String(v));
-  return s;
-}
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this page only */ } };
 
 // ── AI usage ── Every provider the fleet's logins report; refreshed every 60 s while this dialog is open (passive).
 const USAGE_ORDER_KEY = "agend_view_usage_order";
-function usageText(fallback, ref) {
-  if (!ref || typeof ref.key !== "string") return fallback == null ? "" : String(fallback);
-  return (Array.isArray(ref.args) ? ref.args : []).reduce((text, value, i) => text.split(`{${i}}`).join(String(value)), t(`view.${ref.key}`));
-}
-function usageDuration(ms) {
-  const total = Math.max(1, Math.ceil(ms / 60000));
-  const d = Math.floor(total / 1440), h = Math.floor((total % 1440) / 60), m = total % 60;
-  if (total >= 2880) return usageText("", { key: "usage.duration.days_hours", args: [d, h] });
-  if (total >= 60) return usageText("", { key: "usage.duration.hours_minutes", args: [Math.floor(total / 60), m] });
-  return usageText("", { key: "usage.duration.minutes", args: [total] });
-}
-function resetText(iso) {
-  if (!iso) return "";
-  const ms = new Date(iso).getTime() - Date.now();
-  if (Number.isNaN(ms)) return "";
-  if (ms <= 0) return tn("usage.reset.soon");
-  return usageText("", { key: "usage.reset.in", args: [usageDuration(ms)] });
-}
-/** "14:05" today, "10/19 14:05" another day, in this browser's time: when last known numbers were read, a window reset. */
-export function usageClock(iso, now = Date.now()) {
-  const at = new Date(iso || "");
-  if (Number.isNaN(at.getTime())) return "";
-  const hm = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-  return new Date(now).toDateString() === at.toDateString() ? hm : `${at.getMonth() + 1}/${at.getDate()} ${hm}`;
-}
 /**
  * A row showing its last known numbers (the live read failed; #2236 follow-up): "已過期 · 快取於 14:05" and, for an expiry
  * or another failure, what to do on a second line (its full text is the mark's tooltip too). A row from an older
@@ -182,25 +155,6 @@ export function compactSlots(p) {
 }
 /** The windows a compact line shows, short first. */
 export const compactMetrics = (p) => { const { short, long } = compactSlots(p); return [short, long].filter(Boolean); };
-/** A window as a few characters ("5h", "7d"); one whose length is not known says its label. */
-export function windowTag(m) {
-  const ms = Number(m && m.windowMs);
-  if (!(ms > 0)) return usageText(m.label, m.labelI18n);
-  const h = ms / 3_600_000;
-  return h < 48 ? tn("usageWindowHours", { n: Math.round(h) }) : tn("usageWindowDays", { n: Math.round(h / 24) });
-}
-/** A time ahead in one unit, for the narrow column: "45m", "3h", "4d" (rounded down past an hour; the tooltip is exact). */
-function coarseDuration(ms) {
-  const min = Math.max(1, Math.ceil(ms / 60_000));
-  if (min < 60) return tn("usageWindowMinutes", { n: min });
-  const h = Math.floor(min / 60);
-  return h < 48 ? tn("usageWindowHours", { n: h }) : tn("usageWindowDays", { n: Math.floor(h / 24) });
-}
-/** The soonest reset still ahead among `metrics`: { short: "↻ 2h", full: "resets in 2h 5m" }, or null when none is known. */
-export function soonestReset(metrics, now = Date.now()) {
-  const at = metrics.map((m) => new Date(m.resetsAt || "").getTime()).filter((t) => Number.isFinite(t) && t > now).sort((a, b) => a - b)[0];
-  return at === undefined ? null : { short: `↻ ${coarseDuration(at - now)}`, full: resetText(new Date(at).toISOString()) };
-}
 /**
  * The logins grouped by provider for the compact view (nine logins, five of them Claude's: the provider once, then a
  * line per login), in the order the person set (↑↓): a group where its first login is, its logins in their order.
@@ -214,7 +168,6 @@ export function compactGroups(providers) {
   });
   return [...groups.values()];
 }
-const level = (pct) => (pct >= 90 ? "crit" : pct >= 70 ? "warn" : "");
 /**
  * #2240: an account whose percent windows come from several pools (agy: Gemini, Claude & others, Gemini 4 Argon) — each
  * pool with its windows and the tighter one (the most used); null for an account of one pool (its 5h / 7d lines).
@@ -231,28 +184,6 @@ export function compactPools(p) {
   return [...pools.values()].map((x) => ({ ...x, worst: x.metrics.reduce((a, b) => ((b.used ?? 0) > (a.used ?? 0) ? b : a)) }));
 }
 const pctOf = (m) => Math.min(100, Math.max(0, m.used ?? 0));
-/** When a window resets, at the clock ("14:05", "10/19 14:05"), for a tooltip; "" when unknown or already past. */
-function resetClock(m, now = Date.now()) {
-  const at = new Date((m && m.resetsAt) || "").getTime();
-  return Number.isFinite(at) && at > now ? `↻ ${usageClock(m.resetsAt, now)}` : "";
-}
-/**
- * One window on its own line: its few characters ("5h"), a full-width bar, the percent coloured as the full card, and
- * when this window resets ("↻ 8m"; the user's ask, 2026-10-23: a week's reset was hidden behind the 5 h one's). A pool's
- * line (#2240): the pool's name in place of the window, the reset of the window its percent is, every window (with its
- * reset time) in the tooltip.
- */
-function CompactMeter({ m, tag, title }) {
-  const bar = useRef(null);
-  const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
-  useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
-  const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
-  const reset = soonestReset([m]), clock = resetClock(m);
-  return html`<span class="u-cm" title=${title || `${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}${clock ? ` · ${clock}` : ""}`}>
-    <span class="u-cm-tag">${tag || windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
-    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span>
-    <span class="u-cm-reset">${reset ? html`${reset.short}<span class="sr-only"> (${reset.full})</span>` : null}</span></span>`;
-}
 /** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
 function rowNote(p) {
   if (p.status === "error") return usageText(p.error || tn("usage.error_fallback"), p.errorI18n);

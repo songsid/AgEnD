@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-room-reload
+
+ ↓ tests/hub-room-reload.test.ts > an immediate same-session reload returns the actual chat instead of429
+ ↓ tests/hub-room-reload.test.ts > rechecks the grant on an immediate reload, without a cached allow
+ ↓ tests/hub-room-reload.test.ts > rechecks owner eligibility and the exact session before disclosing a reload
+ ↓ tests/hub-room-reload.test.ts > reading then sending another question returns the new history, not a stale snapshot
+ ↓ tests/hub-room-reload.test.ts > a real request burst is bounded before more directory work, with Retry-After
+ ↓ tests/hub-room-reload.test.ts > different rooms and cursors share the same session work allowance
+ ↓ tests/hub-room-reload.test.ts > held reads keep both physical slots and a refusal adds no directory work
+ ↓ tests/hub-room-reload.test.ts > a grant expiring during an awaited owner check cannot disclose history
+ ↓ tests/hub-room-reload.test.ts > rechecks expiry at disclosure after projecting the current content
+ × tests/hub-room-reload.test.ts > holds the reservation through the real HTTP room-view continuation 107ms
+   → expected 200 to be 429 // Object.is equality
+ ↓ tests/hub-room-reload.test.ts > cannot disclose history when a grant expires in the final awaited room view
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-reload.test.ts > holds the reservation through the real HTTP room-view continuation
+AssertionError: expected 200 to be 429 // Object.is equality
+
+- Expected
++ Received
+
+- 429
++ 200
+
+ ❯ tests/hub-room-reload.test.ts:115:65
+    113|   });
+    114|   const pending=[rig!.call(a,"GET",path),rig!.call(a,"GET",path)];
+    115|   try{await both;expect((await rig!.call(a,"GET",path)).status).toBe(4…
+       |                                                                 ^
+    116|   finally{release();view.mockRestore();}
+    117|   expect((await Promise.all(pending)).map(r=>r.status)).toEqual([200,2…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  15:41:54
+   Duration  2.72s (transform 1.85s, setup 58ms, import 2.41s, tests 110ms, environment 0ms)
+

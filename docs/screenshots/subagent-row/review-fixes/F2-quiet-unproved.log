@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-ui.test.ts (14 tests | 2 failed) 37ms
+     × same-owner missing evidence retains only unknown metadata; a new owner drops it 9ms
+     × a present but unreadable/over-cap parent with no proved children stays hidden 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-ui.test.ts > read-only progress disclosure polling > same-owner missing evidence retains only unknown metadata; a new owner drops it
+AssertionError: expected Object{ owner: 'two', runs: [], …(1) } to deeply equal { Object (owner, runs, ...) }
+
+- Expected
++ Received
+
+  {
+-   "error": false,
++   "error": true,
+    "owner": "two",
+    "runs": [],
+  }
+
+ ❯ tests/subagent-ui.test.ts:19:514
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/subagent-ui.test.ts > read-only progress disclosure polling > a present but unreadable/over-cap parent with no proved children stays hidden
+AssertionError: expected Object{ owner: 'present-parent', …(2) } to deeply equal { owner: 'present-parent', …(2) }
+
+- Expected
++ Received
+
+  {
+-   "error": false,
++   "error": true,
+    "owner": "present-parent",
+    "runs": [],
+  }
+
+ ❯ tests/subagent-ui.test.ts:21:226
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  18:57:19
+   Duration  348ms (transform 66ms, setup 90ms, import 21ms, tests 37ms, environment 0ms)

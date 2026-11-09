@@ -10,7 +10,7 @@ import type { HubDirectoryConfig, PersonKey } from "../directory/index.js";
 export type HubCoexistence = "dedicated" | "same-user-pilot";
 
 export interface HubInitPlan {
-  name: string;
+  name?: string;
   /** Browser origin (https://host[:port]) — distinct from memberOrigin. */
   webOrigin: string;
   /** Member transport origin; its host goes into the self-signed member certificate's SAN. */
@@ -29,7 +29,7 @@ export interface HubInitPlan {
   webTls: {
     certFile: string;
     keyFile: string;
-    /** Private staging owned by explicit wizard generation, for cleanup after resume. */
+    /** Private staging owned by explicit certificate preparation, for cleanup after resume. */
     generated?: true;
   };
 }
@@ -80,6 +80,25 @@ export interface HubInitSecrets {
   bindPassword: string;
 }
 
+/** Trusted server adapter only: the host's D3 session on this computer, never parsed from a browser body. */
+export interface HubInitHostOwner {
+  kind: "host-session";
+  ownerKey: object;
+  sessionId: string;
+  authorityEpoch: number;
+  requestId: string;
+  current(): boolean;
+}
+/** Durable provenance contains hashes/ids only, never the session record, cookie, callback or service password. */
+export interface HubInitConfirmationProvenance {
+  v: 1;
+  planDigest: string;
+  referenceHash: string;
+  at: number;
+  source: { kind: "terminal" } | { kind: "host-session"; sessionId: string; authorityEpoch: number; requestId: string };
+  confirmationId: string;
+}
+
 export interface HubInitConfirmation {
   /** Opaque, single-use, expires; bound to the plan digest and to the secrets given with it. */
   reference: string;
@@ -100,8 +119,11 @@ export interface HubInitializer {
   /** Throws HubInitError with every problem; nothing is written. */
   validate(plan: HubInitPlan): Promise<void>;
   /** Addition: validate, then hold the plan + secrets in memory under a fresh reference for commit. */
-  prepareConfirmation(plan: HubInitPlan, secrets: HubInitSecrets): Promise<HubInitConfirmation>;
-  commit(plan: HubInitPlan, localOwnerConfirmation: string): Promise<HubInitResult>;
+  prepareConfirmation(plan: HubInitPlan, secrets: HubInitSecrets, owner?: HubInitHostOwner): Promise<HubInitConfirmation>;
+  commit(plan: HubInitPlan, localOwnerConfirmation: string, owner?: HubInitHostOwner): Promise<HubInitResult>;
+  /** Internal narrowing cleanup for a server-owned draft; never an HTTP bearer-authority endpoint. */
+  discardConfirmation?(reference: string): void;
+  close?(): void;
 }
 
 export class HubInitError extends Error {

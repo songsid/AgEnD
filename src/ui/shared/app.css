@@ -171,8 +171,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-app-icon-small { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; }
 /* The fields' placeholders show the defaults: readable, not the browser's faint grey (dark mode). */
 .s-appearance input::placeholder { color: var(--text-3); opacity: 1; }
-/* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. */
-:lang(zh-Hant) .card h3 { text-transform: none; letter-spacing: 0; }
+/* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. M-2733: nor a
+   Settings section group heading ("整個 FLEET"). The Agents list's group buttons keep theirs: their width is the tap target. */
+:lang(zh-Hant) .card h3, :lang(zh-Hant) .s-nav-head { text-transform: none; letter-spacing: 0; }
 .s-learn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border);
   color: var(--text-3); font-size: 11px; text-decoration: none; text-transform: none; letter-spacing: 0; line-height: 1; }
 .s-learn:hover, .s-learn:focus-visible { color: var(--text); border-color: var(--text-3); }
@@ -420,7 +421,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .dlg-box { display: flex; flex-direction: column; max-height: 85vh; }
 .dlg-box:focus { outline: none; }   /* the open dialog's first stop (ui-dialog.js): no ring; Tab moves on with one */
 .dlg-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-3) var(--s-2) var(--s-5); }
-.dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .dlg-body { padding: var(--s-2) var(--s-5) var(--s-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-3); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
 /* A drawer (ui-dialog.js `drawer`): on a desk, the right edge at full height, the page in view beside it. A phone keeps
@@ -532,6 +533,14 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-section-layout :is(.s-general, .s-web) { gap: 20px; }
 .s-section-layout .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .s-section-layout .field { min-width: 0; }
+.hub-directory-notices .card > h2 { font-size: var(--fs-lg); margin: 0 0 var(--s-2); }
+.hub-directory-notices .directory-notice { padding: var(--s-3) 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.hub-directory-notices .directory-notice h3 { font-size: var(--fs-sm); margin: 0 0 var(--s-1); }
+.hub-directory-notices .directory-notice p { margin: var(--s-1) 0 var(--s-2); }
+.hub-directory-notices .s-actions { margin-top: var(--s-3); }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-directory-notices .btn { min-height: var(--tap); min-width: var(--tap); }
+}
 .s-section-layout .field > label { overflow-wrap: anywhere; }
 .s-ui-disclosure { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .s-ui-disclosure > summary { display: block; position: relative; padding: 16px 44px 16px 20px; color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); cursor: pointer; list-style: none; }
@@ -550,12 +559,12 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 20px; min-width: 0; padding: 14px 0; }
 .s-setting-row + .s-setting-row { border-top: 1px solid var(--border); }
 .s-setting-row .note { margin: 5px 0 0; }
-.p-settings input.s-ui-toggle { appearance: none; position: relative; display: inline-block; flex: none; width: 38px; height: 22px; min-height: 0; margin: 0; padding: 0; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface-3, var(--surface-2)); cursor: pointer; }
-.p-settings input.s-ui-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-3); transition: transform var(--t-fast); }
-.p-settings input.s-ui-toggle:checked { background: var(--accent); border-color: var(--accent); }
-.p-settings input.s-ui-toggle:checked::after { background: var(--on-accent, #fff); transform: translateX(16px); }
-.p-settings input.s-ui-toggle:disabled { cursor: default; opacity: 0.55; }
-.p-settings input.s-ui-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.p-settings input.s-ui-toggle, .p-hub input.s-ui-toggle { appearance: none; position: relative; display: inline-block; flex: none; width: 38px; height: 22px; min-height: 0; margin: 0; padding: 0; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface-3, var(--surface-2)); cursor: pointer; }
+.p-settings input.s-ui-toggle::after, .p-hub input.s-ui-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-3); transition: transform var(--t-fast); }
+.p-settings input.s-ui-toggle:checked, .p-hub input.s-ui-toggle:checked { background: var(--accent); border-color: var(--accent); }
+.p-settings input.s-ui-toggle:checked::after, .p-hub input.s-ui-toggle:checked::after { background: var(--on-accent, #fff); transform: translateX(16px); }
+.p-settings input.s-ui-toggle:disabled, .p-hub input.s-ui-toggle:disabled { cursor: default; opacity: 0.55; }
+.p-settings input.s-ui-toggle:focus-visible, .p-hub input.s-ui-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .s-classic-area { display: flex; flex-direction: column; gap: 16px; }
 .s-classic-area > .s-ap-group { margin-bottom: 0; }
 @media (max-width: 600px) {
@@ -1253,6 +1262,9 @@ img.amb-p { object-fit: contain; }
   .kb-open .tabs { display: none; }
   /* #2478: with the keyboard up the line under the composer goes too — the box sits on the keyboard; back on blur. */
   .kb-open .composer-row { display: none; }
+  /* M-2733: on a phone the line under the composer was flush with the box's rounded edge, 4px under it and on the tab
+     bar: it starts where the box's text does and has room above and below. */
+  .composer-row { margin-top: 0; padding: var(--s-1) var(--s-3) var(--s-2); }
   .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; justify-content: center; font-size: 11px; color: var(--text-2); position: relative; }
   .tab.active { color: var(--text); font-weight: var(--fw-semibold); }
   .tab-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full); background: var(--danger-fill); color: var(--on-danger); font-size: 10px; line-height: 16px; text-align: center; }
@@ -1266,6 +1278,8 @@ img.amb-p { object-fit: contain; }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
+  .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
+  .s-update .s-update-row .btn { min-height: var(--tap); }   /* M-2738: the Version and update card's buttons */
   .kv { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1748,7 +1762,10 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .pending-summary { list-style: disc; padding-left: var(--s-5); color: var(--text-2); font-size: var(--fs-xs); }
 .pending-actions { display: flex; justify-content: flex-end; }
 .pending-self { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.pending-self > .note { flex: 1 1 16rem; min-width: 0; }
 .pending-host summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-xs); }
+/* AGEND-118: the other ways to confirm, folded under one summary. */
+.pending-more { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
 .pending-host code { display: block; margin-top: var(--s-1); font-size: var(--fs-xs); overflow-wrap: anywhere; user-select: all; }
 /* Settings' pending bar sits at the bottom of the page: toasts and request cards stand above it, never on its buttons. */
 .shell:has(.s-pending) .toasts { bottom: calc(var(--s-6) + 64px); }
@@ -1761,6 +1778,47 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .restart-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2); color: var(--text);
   --lbar-color: var(--warn); }
 .restart-line .restart-keys { font-family: var(--font-mono); }
+/* M-2738: the update line (a new version, progress, failure, reload). Its own padding and the top safe area: on a phone
+   it can be the first thing under the status bar. No accent bar (the restart line's): tone by background. */
+.update-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2) var(--s-3);
+  padding: max(10px, env(safe-area-inset-top)) max(var(--s-4), env(safe-area-inset-right)) 10px max(var(--s-4), env(safe-area-inset-left));
+  text-align: left; font-size: var(--fs-sm); line-height: 1.45; color: var(--text); border-bottom: 1px solid var(--border); }
+.update-line.bad { background: var(--danger-bg); border-bottom-color: var(--danger-line); }
+.update-line.bad .update-title, .update-line.bad .update-icon { color: var(--danger); }
+.update-line.ok { background: var(--ok-bg); }
+.update-line.ok .update-icon { color: var(--ok); }
+.update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
+.update-icon { display: inline-flex; flex: none; margin-top: 1px; }
+.update-words { min-width: 0; }
+.update-title { font-weight: 600; }
+.update-sub { font-size: var(--fs-xs); color: var(--text-2); }
+.update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
+.update-actions { display: flex; align-items: center; gap: var(--s-2); flex: none; }
+.update-actions .btn { white-space: nowrap; word-break: keep-all; }
+.update-x { border: 0; background: transparent; padding: 4px; color: inherit; }
+.update-spinner { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--border);
+  border-top-color: var(--accent); box-sizing: border-box; animation: update-spin 0.9s linear infinite; }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-spinner { animation-duration: 2.4s; } }
+.update-bar { height: 4px; margin-top: 6px; min-width: 240px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.update-fill { display: block; height: 100%; background: var(--accent); width: 0; }
+.update-fill.s1 { width: 25%; } .update-fill.s2 { width: 50%; } .update-fill.s3 { width: 75%; } .update-fill.s4 { width: 100%; }
+.update-log { max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2); }
+.update-log-cause { word-break: break-word; }
+@media (max-width: 700px) {
+  .update-line { justify-content: flex-start; }
+  .update-text { flex: 1 1 100%; }
+  .update-actions.indent { margin-left: 26px; }
+}
+/* M-2738: Settings → Advanced → Version and update */
+.s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
+.s-update dt { color: var(--text-2); }
+.s-update dd { margin: 0; }
+.s-update dd.new { color: var(--accent); font-weight: 600; }
+.s-update .s-update-note { color: var(--text-2); margin: 0 0 var(--s-3); }
+.s-update .s-update-row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.pill.ver-new { text-transform: none; letter-spacing: 0; background: var(--accent-fill); color: var(--accent); margin-left: 6px; }
 /* #2233: the backend sign-in dialog and Settings' list */
 .signin-field { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-2) 0; }
 .signin-label { color: var(--text-2); font-size: var(--fs-xs); min-width: 6em; }
@@ -1793,7 +1851,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-browser-actions { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
 .signin-browser-actions .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (pointer: coarse), (max-width: 899px) {
-  .signin-browser :is(button, a), .signin-browser-actions .btn { min-height: var(--tap); }
+  .signin-browser :is(button, a), .signin-browser-actions .btn, .signin-browser ~ .note .btn { min-height: var(--tap); }
 }
 @media (max-width: 899px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
@@ -4088,3 +4146,64 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Quota preferences obey the panel CSP: no inline styles. */
 .p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }
+
+/* alpha.6 feedback (#3): one Settings card. Every section's top-level card has the same frame: a 1px border, the --r-md
+   corners the lists, drawers and disclosures beside it already have, and 24px inside (16px on a phone). The editor and the
+   terminal cards stay full-bleed; a card inside a drawer or a disclosure is part of that box. Nothing in a card is wider
+   than the card: a select is as wide as its longest option unless bounded (a paired PC's long name ran the General
+   location card off the right edge). */
+.p-settings .s-section-layout :is(.card, details.s-ui-disclosure, .runtime-connect-guide, .s-look-advanced):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { border: 1px solid var(--border); border-radius: var(--r-md); }
+.p-settings .s-section-layout .card:not(.s-dev, .s-access-terminal):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { padding: 24px; }
+@media (max-width: 600px) {
+  .p-settings .s-section-layout .card:not(.s-dev, .s-access-terminal):not(:is(details, .drawer-body, .s-disclosure-body, .s-look-disclosure-body) *) { padding: 16px; }
+}
+.p-settings .s-section-layout :is(select, textarea, input:not([type="checkbox"], [type="radio"])) { max-width: 100%; }
+.general-location-row { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.general-location-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; }
+.general-location-now > span { color: var(--text-2); }
+.general-location-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }
+
+/* Host setup uses the shared Settings form; long public fingerprints wrap on a phone. */
+.hub-setup code { overflow-wrap: anywhere; white-space: normal; min-width: 0; }
+.hub-setup .check { min-height: var(--tap); }
+
+.hub-setup-fingerprint > span { display: inline-block; white-space: nowrap; }
+@media (max-width: 600px) {
+  .hub-setup :is(input:not([type="checkbox"]), select) { min-height: var(--tap); }
+}
+
+.s-hub-section { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+.s-hub-section > .card { flex: none; }
+
+/* Shared AD editor: both the host Settings card and Hub Administration, including the native trust dialog. */
+.hub-directory-editor { min-width: 0; }
+.hub-directory-editor :is(code, .field) { min-width: 0; overflow-wrap: anywhere; }
+.hub-directory-editor textarea { max-width: 100%; resize: vertical; }
+.hub-directory-editor :is(input, select, textarea) { display: block; width: 100%; max-width: 100%; min-width: 0; }
+.hub-directory-password-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
+.hub-directory-fingerprint { display: grid; grid-template-columns: repeat(4, max-content); gap: var(--s-1) var(--s-2); white-space: normal; }
+.hub-directory-fingerprint > span { display: inline-block; white-space: nowrap; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-directory-editor :is(.btn, .dlg-x) { min-width: var(--tap); min-height: var(--tap); }
+  .hub-directory-editor .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; padding-block: var(--s-2); }
+  .hub-directory-editor .dlg-actions .btn-primary { flex: 0 1 auto; }
+  .hub-directory-editor :is(input, select) { min-height: var(--tap); font-size: var(--fs-md); }
+  .hub-directory-editor textarea { font-size: var(--fs-md); }
+  .s-hub-section .hub-retention .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .s-hub-section .hub-retention input { min-width: 0; max-width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
+  .s-hub-section .hub-retention button { align-self: flex-start; max-width: 100%; min-height: var(--tap); white-space: normal; }
+}
+
+/* S-119: the existing company, manual and sharing controls share one Settings card. */
+.s-hub-connection { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.s-hub-connection > .s-group-head { padding: 0; flex-wrap: wrap; cursor: default; text-transform: none; letter-spacing: normal; }
+.s-hub-connection > .s-group-head h3 { margin: 0; font-size: var(--fs-lg); }
+.s-hub-connection .hub-connection-summary .field { min-width: 0; overflow-wrap: anywhere; }
+.s-hub-connection .s-ui-disclosure > summary { cursor: pointer; }
+@media (max-width: 899px), (pointer: coarse) {
+  .s-hub-connection :is(.btn, input:not([type="checkbox"]), .check, .hub-exposure-main, summary) { min-height: var(--tap); }
+  .s-hub-connection .btn { min-width: var(--tap); }
+  .s-hub-connection .field-row { flex-wrap: wrap; }
+  .s-hub-connection .field-row > .btn-primary { width: 100%; }
+  .s-hub-connection .hub-fp .btn { white-space: normal; }
+}

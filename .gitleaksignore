@@ -6,3 +6,15 @@ ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:gener
 ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:146
 ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:148
 ca661e664b2d681bb71b4ee8de602cafa70cdd0f:tests/runtime-audit-write.test.ts:generic-api-key:158
+
+# PR #3427: historical JSON entry was the verified SHA256 of mutation-token-bound.log, not a credential.
+# Current manifest uses standard digest-first SHA256SUMS format. Exact historical finding only.
+75bdac9dd409a97dc0dd68a30b0fccbcd2a13905:docs/screenshots/hub-room-reload/SHA256SUMS.json:generic-api-key:47
+
+# Generated SubagentRun.key digests from public synthetic fixtures, not credentials.
+# Exact historical commit/path/rule/line only; current evidence logs redact these values.
+# No paths, rules, future commits or other findings are exempted.
+e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fixes/M1-parent-sidechain.log:generic-api-key:18
+e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19
+d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M1-parent-sidechain.log:generic-api-key:18
+d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19

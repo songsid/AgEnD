@@ -5,6 +5,7 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hubChat", {
   en: {
+    navSearch: "Search", notices: "Notices", noticesTitle: "Notices", noNotices: "No security notices", noticesLead: "When a new fleet connects to this Hub, you're told here. If you don't recognise it, revoke it.", settings: "Settings", signedIn: "Signed in", signOut: "Sign out",
     chats: "Chats", newChat: "New chat", search: "Search chats", noChats: "No chats yet", noChatsHint: "Start one with New chat: it lists the agents someone allowed you to ask.",
     noMatch: "No chat matches.", waiting: "Waiting for an answer", represents: "Answers for {0}",
     pickTitle: "New chat", pickSearch: "Search agents or owners", pickHint: "Only the agents someone allowed you to ask are listed.",
@@ -34,6 +35,7 @@ register("hubChat", {
     back: "Chats",
   },
   "zh-TW": {
+    navSearch: "搜尋", notices: "通知", noticesTitle: "通知", noNotices: "沒有安全通知", noticesLead: "有新的 Fleet 連接到這個 Hub 時，會在這裡通知你。如果你不認得它，請撤銷。", settings: "設定", signedIn: "已登入", signOut: "登出",
     chats: "對話", newChat: "新對話", search: "搜尋對話", noChats: "還沒有對話", noChatsHint: "用「新對話」開始：會列出有人允許你提問的 Agent。",
     noMatch: "沒有符合的對話。", waiting: "等待回答", represents: "代表 {0} 回答",
     pickTitle: "新對話", pickSearch: "搜尋 Agent 或擁有者", pickHint: "只列出有人允許你提問的 Agent。",

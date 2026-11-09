@@ -9,6 +9,7 @@
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
+import {isNativeProviderId,nativeProvider} from "./windows-cli-providers.js";
 import { existsSync } from "node:fs";
 import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
@@ -42,6 +43,7 @@ export interface RemoteAccountsDeps {
   credentialRoot: string;
   now?: () => number;
   /** `claude auth status` under a profile folder, read by the shared parser. */
+  models?(cli: string, directory: string | undefined, authorized: () => boolean): Promise<{ models: import("./windows-cli-providers.js").NativeModelOption[]; source: string }>;
   status(cli: CredentialProfileCli, directory: string): Promise<RemoteStatusAnswer>;
   find(cli: CredentialProfileCli): Promise<RemoteCliExecutable | null>;
   /** The Windows CLI environment (an allowlist), to which the profile's variable is added here. */
@@ -56,8 +58,12 @@ export interface RemoteAccountsDeps {
   defaultProfile(): string | undefined;
   /** Takes a share of the Runtime's activity (the update fence waits for it): held for each request and for as long as a sign-in is open. Returns the release. */
   enter?: () => () => void;
-  /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
-  changed(): void;
+  /**
+   * A cached answer was written or forgotten: the caller re-reports the computer's inventory. With `authorized` (an account operation that is still waiting for its answer)
+   * the new inventory is sent BEFORE this resolves, so that the dashboard reads the new state as soon as it has the answer; asked, before each of its steps, whether the
+   * switch is still on and the request's connection still the live one. Without it (an install) the report is only started.
+   */
+  changed(authorized?: () => boolean): void | Promise<void>;
   /** A CLI was installed: the caller detects again for real (not from its cache) and sends that inventory before this resolves. */
   installed?(authorized?: () => boolean): void | Promise<void>;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
@@ -89,7 +95,7 @@ function reasonOf(error: unknown): AuditReason {
   if (error instanceof CliInstallError) return error.reason === "timed-out" ? "timeout" : error.reason === "busy" ? "busy" : "failed";
   return "failed";
 }
-const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
+const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["models.refresh", "signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
 
 interface Meta { id: string; actor: string; cli: CredentialProfileCli; profile: string; signedIn?: boolean }
 /** The least time between two sign-outs or removes of one profile. It only slows a server that keeps asking; the switch and its time window are what bound the risk. */
@@ -172,6 +178,15 @@ export class RemoteAccounts {
     if (using) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is in use by a running ${using === "pane" ? "terminal" : "task"} on this computer; stop it first`, "in_use");
   }
 
+  /**
+   * Re-reports the computer's inventory and waits for it to be sent, so that an account operation's answer reaches the server AFTER the inventory it changed (#3190 Part 3c):
+   * the Accounts view reads the inventory the moment it has the answer. A revoked consent (the switch off, a changed connection) stops it, and a failed report is not a failed
+   * operation: the change was made, and the next detection shows it.
+   */
+  private async refreshed(ctx: Ctx): Promise<void> {
+    const authorized = (): boolean => { try { this.gate(ctx, "accounts"); return true; } catch { return false; } };
+    try { await this.deps.changed(authorized); } catch { /* the change was made; the next detection reports it */ }
+  }
   private record(entry: AuditEntry, required: boolean): void {
     try { this.audit.append(entry); }
     catch { if (required) throw new RemoteSetupRefusal("This computer could not write its audit log, so nothing was done", "failed"); }
@@ -303,6 +318,7 @@ export class RemoteAccounts {
       case "signin.status": { const input = this.parse(operation, payload); this.needSwitch(); return this.slot.find(input.sessionId).status(); }
       case "signin.write": return this.writeCode(this.parse(operation, payload), ctx);
       case "signin.start": return this.startSignIn(this.parse(operation, payload), ctx);
+      case "models.refresh": return this.models(this.parse(operation, payload), ctx);
       case "accounts.check": return this.check(this.parse(operation, payload), ctx);
       case "accounts.signout": return this.signOut(this.parse(operation, payload), ctx);
       case "accounts.remove": return this.remove(this.parse(operation, payload), ctx);
@@ -346,6 +362,7 @@ export class RemoteAccounts {
           try { createRuntimeProfile(credentialRoot, cli, input.profile); }
           catch { throw new ProfileOwnershipRefusal("The profile folder could not be created", "invalid_request"); }
           this.record({ actor, action: "profile.add", outcome: "ok", cli, profile: input.profile }, false);
+          await this.refreshed(ctx);                                    // the new profile is in the report before the dashboard is answered
         }
         const directory = await requireOwnedProfile(pairingDirectory, credentialRoot, cli, input.profile, this.deps.ownership);
         // The switch and the connection once more, in the same synchronous step as the child is started (the slot waits before it calls this).
@@ -430,6 +447,28 @@ export class RemoteAccounts {
    * being changed is `busy`, and only `MAX_CONCURRENT_CHECKS` run at once on the computer (the slot is taken before anything is started, and given
    * back only when the last child of this check is done).
    */
+  /** Read-only catalog discovery uses the computer owner's existing accounts consent, never broadens it. */
+  private async models(input: { cli: string; profile: string; actor: string }, ctx: Ctx) {
+    this.gate(ctx, "accounts");
+    if (!isNativeProviderId(input.cli) || input.cli !== "claude-code" && input.cli !== "codex" && !nativeProvider(input.cli).modelProbe || !this.deps.models) throw new ProfileOwnershipRefusal("This Runtime cannot refresh models for that CLI", "unsupported");
+    if (input.cli !== "claude-code" && input.profile) throw new ProfileOwnershipRefusal("Native Codex named accounts are not supported", "unsupported");
+    const selected = input.profile || (input.cli === "claude-code" ? this.deps.defaultProfile() : undefined);
+    const key = selected?.toLowerCase() ?? `\0models:${input.cli}`;
+    if (key && (this.busy.has(key) || this.retained.has(key)) || this.activeChecks >= MAX_CONCURRENT_CHECKS) throw new SignInRefusal("Other account operations are running; try again shortly", "busy");
+    if (key) this.busy.add(key); this.activeChecks++;
+    try {
+      const directory = selected ? await requireOwnedProfile(this.deps.pairingDirectory,this.deps.credentialRoot,"claude-code",selected,this.deps.ownership) : undefined;
+      const current = (): boolean => { try { this.gate(ctx,"accounts"); return !!input.profile || input.cli !== "claude-code" || this.deps.defaultProfile() === selected; } catch { return false; } };
+      if (!current()) throw new SignInRefusal("The selected account changed; refresh it again", "failed");
+      this.record({actor:this.actorOf(input.actor),action:"models.refresh",outcome:"started",cli:input.cli,...(selected?{profile:selected}:{})},true);
+      const answer = await this.deps.models(input.cli,directory,current);
+      if (selected) await requireOwnedProfile(this.deps.pairingDirectory,this.deps.credentialRoot,"claude-code",selected,this.deps.ownership);
+      if (!current()) throw new SignInRefusal("The account or connection changed; refresh it again", "failed");
+      this.record({actor:input.actor,action:"models.refresh",outcome:"ok",cli:input.cli,...(selected?{profile:selected}:{})},false);
+      return {...answer,cli:input.cli,profile:selected??null};
+    } catch(error) { this.record({actor:input.actor,action:"models.refresh",outcome:"failed",cli:input.cli,...(selected?{profile:selected}:{}),reason:"failed"},false); throw error; } finally { if (key) this.busy.delete(key); this.activeChecks--; }
+  }
+
   private async check(input: { cli: string; profile: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
     this.gate(ctx, "accounts");
     const cli = this.cliOf(input.cli), key = input.profile.toLowerCase();
@@ -445,7 +484,7 @@ export class RemoteAccounts {
       const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
       rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) });
       if (this.meta && this.meta.profile === input.profile) this.meta.signedIn = answer.loggedIn === true;
-      this.deps.changed();
+      await this.refreshed(ctx);
       return { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) };
     } finally { this.activeChecks--; }
   }
@@ -487,7 +526,7 @@ export class RemoteAccounts {
             return this.deps.status(cli, directory);
           });
         rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn });
-        this.deps.changed();
+        await this.refreshed(ctx);
         if (answer.loggedIn !== false) throw new SignInRefusal(`Credential profile "${input.profile}" is still signed in after sign-out`, "failed");
         return { loggedIn: false as const };
       },
@@ -510,7 +549,7 @@ export class RemoteAccounts {
         // The protection (the default profile, tasks, terminals, the switch) is asked again, synchronously, immediately before the rename: `beforeCommit`.
         await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
           { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true), beforeDelete: () => this.finalLook(ctx, input.profile, true) });
-        this.deps.changed();
+        await this.refreshed(ctx);
         return { removed: true as const };
       },
     });

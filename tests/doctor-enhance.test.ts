@@ -62,8 +62,9 @@ channels:
       connectSocket: async path => path.endsWith("/live/channel.sock"),
       run: (file, args) => {
         if (file === "codex" && args[0] === "--version") return commandResult(0, "codex 1.0\n");
-        if (file === "tmux" && args[0] === "-V") return commandResult(0, "tmux 3.7\n");
-        if (file === "tmux" && args.includes("has-session")) return commandResult(0);
+        // AgEnD's own tmux, by its resolved path (never PATH's): match the binary's name.
+        if (/(^|\/)tmux$/.test(file) && args[0] === "-V") return commandResult(0, "tmux 3.7\n");
+        if (/(^|\/)tmux$/.test(file) && args.includes("has-session")) return commandResult(0);
         return commandResult(1, "", "not found");
       },
     });

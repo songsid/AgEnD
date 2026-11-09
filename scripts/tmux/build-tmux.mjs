@@ -5,7 +5,7 @@
 //
 // - Every source comes from scripts/release/tmux-sources.json and must match its sha256 (a mismatch stops the build).
 // - Linux (run on Alpine/musl): fully static — libevent, ncurses, utf8proc and musl linked in, so one binary runs on any
-//   glibc or musl distro. macOS: libevent, ncurses, utf8proc and (darwin-arm64 only, §3) jemalloc linked statically, libSystem dynamic (Apple
+//   glibc or musl distro. macOS: libevent, ncurses and utf8proc linked statically (no jemalloc, §3), libSystem dynamic (Apple
 //   has no static libc), MACOSX_DEPLOYMENT_TARGET=11.0.
 // - No sixel/images (CVE-2026-11623's area), no utempter.
 // - The toolchain is locked too (scripts/tmux/toolchain.mjs): the build refuses to run on any other, and records it.
@@ -25,7 +25,7 @@ import { toolchainEnv, toolchainIdentity } from "./toolchain.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const SOURCES_FILE = join(ROOT, "scripts/release/tmux-sources.json");
 export const TARGETS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"];
-const PARTS = ["tmux", "libevent", "ncurses", "utf8proc", "jemalloc", "musl"];
+const PARTS = ["tmux", "libevent", "ncurses", "utf8proc", "musl"];
 
 /** The pin file, checked: every part has a version, an https url and a 64-hex sha256. */
 export function readSources(file = SOURCES_FILE) {
@@ -45,7 +45,7 @@ export function readSources(file = SOURCES_FILE) {
   return s;
 }
 
-/** The parts a target links: `platforms` names an OS (linux) or a whole target (darwin-arm64: jemalloc, §3). */
+/** The parts a target links: `platforms` names an OS (linux) or a whole target. */
 export function partsFor(sources, target) {
   const os = target.split("-")[0];
   return PARTS.filter((k) => !sources[k].platforms || sources[k].platforms.includes(os) || sources[k].platforms.includes(target));
@@ -162,18 +162,11 @@ async function main(argv) {
   copyFileSync(join(dirs.utf8proc, "utf8proc.h"), join(deps, "include/utf8proc.h"));
   copyFileSync(join(dirs.utf8proc, "libutf8proc.a"), join(deps, "lib/libutf8proc.a"));
 
-  if (parts.includes("jemalloc")) {
-    cfg("jemalloc", [`--prefix=${deps}`, "--disable-shared", "--enable-static", "--disable-cxx", "--disable-stats", "--disable-doc"]);
-    // jemalloc.pc too: tmux's configure finds jemalloc only through pkg-config (PKG_CHECK_MODULES), and with
-    // --enable-jemalloc stops with "jemalloc not found" without it (the first macOS dry run, run 42265015287).
-    sh("make", ["install_lib_static", "install_lib_pc", "install_include"], { cwd: dirs.jemalloc, env });
-  }
-
   const tmuxArgs = [`--prefix=/opt/agend-tmux`, "--enable-utf8proc", "--disable-utempter"];
-  // jemalloc where the sources pin it (darwin-arm64); elsewhere on macOS explicitly off — tmux's configure would
-  // otherwise look for one on its own (a runner's Homebrew copy would be linked dynamically).
-  if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");
-  else if (darwin) tmuxArgs.push("--disable-jemalloc");
+  // No jemalloc on any target (§3: the statically linked jemalloc 5.3.0 crashed the macOS server on both CPUs). On
+  // macOS explicitly off — tmux's configure would otherwise look for one on its own (a runner's Homebrew copy would be
+  // linked dynamically).
+  if (darwin) tmuxArgs.push("--disable-jemalloc");
   if (!darwin) tmuxArgs.push("--enable-static");
   // musl has forkpty in libc; without this seed tmux's configure picks its own compat forkpty and the link collides.
   sh("./configure", tmuxArgs, { cwd: dirs.tmux, env: { ...env, ...(darwin ? {} : { ac_cv_search_forkpty: "none required" }) } });

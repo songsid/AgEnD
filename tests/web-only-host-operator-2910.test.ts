@@ -245,7 +245,13 @@ describe("#2910 D1 Settings: the host operator applies its own change", () => {
     try {
       const s = await c.signIn();
       const a = await held(c);
+      // A chat fleet: a change a General can take keeps its card (D1) — no Apply now for the host's session.
+      const card = vi.spyOn(c.any, "settingsCardPossible").mockReturnValue(true);
       expect(c.any.settingsSelfConfirmation(a.store, reqOf(c, s.sessionId), a.view.id)).toBeNull();
+      // D3 (bcbb541f): one no General can take (this fleet has none) would wait for the host's command — the host's own
+      // session here confirms it instead (tests/d3-launch-link-confirm.test.ts covers the rule).
+      card.mockRestore();
+      expect(c.any.settingsSelfConfirmation(a.store, reqOf(c, s.sessionId), a.view.id)?.label).toBe("This computer's admin");
     } finally { await c.stop(); }
   }, 20_000);
 });

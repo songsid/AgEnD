@@ -30,7 +30,6 @@ import {
   CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
   credentialProfileHome,
-  credentialProfileLoginCommand,
   credentialProfileStoreHome,
   instanceCredentialProfile,
   isCredentialProfileName,
@@ -47,6 +46,7 @@ import {
   type StatuslineWindow,
 } from "./statusline-usage.js";
 import type { UsageI18nKey } from "./i18n-keys.js";
+import { hostFacts, hostIds, hostIdsByRank } from "../cli-registry.js";
 
 export interface UsageMetric {
   /** Per-window local observation; null means legacy/unknown, never fresh evidence. */
@@ -455,7 +455,7 @@ export async function getClaudeOAuthToken(storeHome?: string): Promise<string | 
  * login is cannot be proven from config files (a stale `.claude.json`, an env token), and a hidden quota in use is
  * worse than two rows of one subscription (Prism, #2237 review).
  */
-export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean }
+export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean; hasChat?: boolean }
 
 /**
  * Exported for tests — the statusline/API preference order is the subject.
@@ -490,15 +490,14 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // #2236: a profile on the host that no instance uses, signed out: not set up here — no row.
     if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
-      // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback: from chat
-      // (`/login claude-code <profile>`, #1699 part 2), or the exact line on the host — the same words as the auth alert.
-      const host = (scope.profile && credentialProfileLoginCommand(getAgendHome(), "claude-code", scope.profile))
-        || `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome)} claude auth login`;
-      if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
+      // On screen (`ok`, as kiro's signed-out row): Settings is always on the
+      // dashboard. Chat `/login` only when this fleet has a chat channel — CHAT_PROFILE_LOGIN_BACKENDS is a backend
+      // capability, not this fleet's chat availability.
+      if (scope.profile && scope.hasChat && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
         const chat = `/login claude-code ${scope.profile}`;
-        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\` (or run \`${host}\` on the host).`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat, host), metrics: [] };
+        return { status: "ok", hint: `Not connected — connect it in Settings → Agents → AI accounts and API keys → Accounts, or with \`${chat}\`.`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat), metrics: [] };
       }
-      return { status: "ok", hint: `Not logged in — sign in with: ${host}`, hintI18n: i18n("usage.hint.claude_profile_signed_out", host), metrics: [] };
+      return { status: "ok", hint: "Not connected — connect it in Settings → Agents → AI accounts and API keys → Accounts.", hintI18n: i18n("usage.hint.claude_profile_signed_out"), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
@@ -1687,14 +1686,18 @@ type UsageProvider = { id: string; name: string; profile?: string; defaultLogin?
 
 type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 
-const DEFAULT_PROVIDERS: UsageProvider[] = [
-  { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
-  { id: "codex", name: "Codex", fetch: fetchCodexUsage },
-  { id: "muse", name: "Muse", fetch: fetchMuseUsage },
-  { id: "grok", name: "Grok", fetch: fetchGrokUsage },
-  { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
-  { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
-];
+/** How each provider's usage is read (behaviour, keyed by the provider id the registry gives each CLI: cli-registry.ts `host.usage.providerId`). */
+const USAGE_FETCHERS: Readonly<Record<string, UsageProvider["fetch"]>> = {
+  claude: fetchClaudeUsage, codex: fetchCodexUsage, muse: fetchMuseUsage, grok: fetchGrokUsage, kiro: fetchKiroUsage, antigravity: fetchAntigravityUsage,
+};
+/** The usage panel's providers, in its order: the registry's CLIs with a usage row, each with the function that reads it. */
+const DEFAULT_PROVIDERS: UsageProvider[] = hostIdsByRank("usage").map(cli => {
+  const { providerId, name } = hostFacts(cli, "usage")!, fetch = USAGE_FETCHERS[providerId];
+  if (!fetch) throw new Error(`usage: ${cli} has a usage row in the registry (${providerId}) but nothing reads it`);
+  return { id: providerId, name, fetch };
+});
+/** The ids of the providers the panel reads by default, in its order (tests check each has a reader, and the registry says the same). */
+export function defaultUsageProviderIds(): string[] { return DEFAULT_PROVIDERS.map(provider => provider.id); }
 
 const MUSE_SESSION_MS = 5 * 60 * 60 * 1000;
 
@@ -1814,18 +1817,24 @@ export function providersForConfig(
  * The shared row is "Claude (default)" beside profiles (shown whenever that login exists); a profile no instance uses
  * shows only when signed in. isHostLoginUsageProvider keeps these rows through the snapshot's running-instances filter.
  */
+function fleetHasChat(config: UsageFleetConfig | null | undefined): boolean {
+  const channels = (config as { channels?: unknown } | null | undefined)?.channels;
+  return Array.isArray(channels) && channels.length > 0;
+}
+
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
   const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
+  const hasChat = fleetHasChat(config);
   return [
     { id: provider.id, name: `${provider.name} (default)`, defaultLogin: true, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
     ...profiles.map((profile, i) => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       profile,
-      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile } : { profile, hostOnly: true }),
+      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile, hasChat } : { profile, hostOnly: true, hasChat }),
     })),
   ];
 }
@@ -1957,12 +1966,9 @@ function bindingProfile(
   return instance.classicProfile !== undefined ? instance.classicProfile : instanceCredentialProfile(instance, defaults, backendName);
 }
 
-/** The backend a usage row reads its credentials from. */
+/** The backend whose named accounts have a usage row of their own under this provider id (cli-registry.ts: `host.usage.profileRows`); null for any other. */
 function usageBackendForProviderId(id: string): string | null {
-  if (id === "kiro") return "kiro-cli";
-  if (id === "codex") return "codex";
-  if (id === "claude") return "claude-code";
-  return null;
+  return hostIds("usage").find(cli => { const usage = hostFacts(cli, "usage")!; return usage.providerId === id && usage.profileRows; }) ?? null;
 }
 
 let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;

@@ -1,0 +1,45 @@
+{
+  "scope": "Private mounted HubSessions adapter; AD Save route and originating browser response remain absent",
+  "focused": {
+    "passed": 247,
+    "files": 5,
+    "skipped": 0,
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
+  },
+  "types": {
+    "source": "passed",
+    "tests": "passed"
+  },
+  "initialSelection": {
+    "passed": 2,
+    "intentionallyUnselected": 37
+  },
+  "https": "Production S3 listener with ordinary CA verification and dummy sign-in; old/new runtime generations",
+  "limits": [
+    "Directory driver and candidate TLS probe are inert",
+    "Private actor context comes from the fixture session row, not a public AD authority route",
+    "Cookie helper used for subsequent HTTPS request; no originating response delivery claim",
+    "No browser, real directory/account, native, pilot or live-fleet operation"
+  ],
+  "finalSelection": {
+    "passed": 2,
+    "intentionallyUnselected": 37,
+    "reason": "After the focused run, the expiry assertion was strengthened to bracket the synchronous release clock rather than allow a timing tolerance. Source is unchanged; both handoff cases rechecked."
+  },
+  "priorFocused": {
+    "passed": 239,
+    "files": 5,
+    "skipped": 0,
+    "command": "vitest run tests/hub-compose.test.ts tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2"
+  },
+  "syncedSelection": {
+    "passed": 2,
+    "intentionallyUnselected": 45
+  },
+  "sync": {
+    "parent": "Reviewed runtime dependency merged into alpha",
+    "resolution": "Retained both additive test blocks; duplicate squash conflicts retained the already combined code. Alpha merge changes no files.",
+    "implementation": "The three adapter implementation blobs are byte-identical to the original draft; original three mutation reversals carry with that scope.",
+    "types": "Source and test checks passed on the combined tree."
+  }
+}

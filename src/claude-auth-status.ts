@@ -1,11 +1,14 @@
 /**
  * `claude auth status`, read once and the same way everywhere (the AgEnD host's `authCheck` and CLI sign-in list, the Windows Runtime's
- * per-profile report and default sign-in): is it signed in, and which account is it, as a MASKED e-mail and a plan.
+ * per-profile report and default sign-in): is it signed in, and which account is it, as an e-mail and a plan.
  *
- * The full e-mail never leaves `parseClaudeAuthStatus`: it is masked inside, before anything is returned, stored, logged, shown or sent
- * (`ab***@example.com`). The same pattern is enforced where a masked value arrives from elsewhere (the server, on a Runtime's report), and a
- * value that does not match it is a protocol error, never "cleaned up". The domain is sent in full on purpose: it lets an admin tell a work
- * account from a personal one.
+ * The e-mail is the WHOLE address (`alice@example.com`), because one administrator's accounts usually share a prefix and a mask such as
+ * `al***@example.com` then shows two accounts as one. It is validated strictly (printable ASCII, one `@`, at most 254 characters) and an address
+ * that does not fit is dropped, never truncated or "cleaned up". Where a value arrives from elsewhere (the server, on a Runtime's report) the same
+ * check applies and a value that fails it is a protocol error; the older masked form (`ab***@example.com`, still in a Runtime's cached status)
+ * is accepted too. The address is shown only on the Accounts page to a local administrator session (`accountIdentityVisible`; every other caller
+ * and the Hub get no identity at all), and it is never written to a log, an error message, an audit line, a notice or a chat reply: `redactedEmail`
+ * is the form for any text that is not that page.
  *
  * Built-ins only: it is part of the Runtime bundle (RUNTIME_BUNDLE_MODULES).
  */
@@ -16,7 +19,10 @@ export const ACCOUNT_IDENTITY_CAPABILITY = "account-identity";
 export const PLANS = Object.freeze(["free", "pro", "max", "team", "enterprise", "unknown"] as const);
 export type Plan = typeof PLANS[number];
 export interface AccountIdentity {
-  /** `ab***@example.com`: one or two characters of the local part (one when it has two or fewer), `***`, the whole domain. Absent when the CLI gave no usable address. */
+  /**
+   * The account's whole e-mail address (`alice@example.com`), as validated by `validMaskedEmail`; an older Runtime may still report the masked
+   * form (`ab***@example.com`). The field keeps its name so the protocol does not change. Absent when the CLI gave no usable address.
+   */
   maskedEmail?: string;
   plan?: Plan;
   /** An API-key sign-in: there is no account behind it, so no e-mail and no plan. */
@@ -28,28 +34,41 @@ export interface ClaudeAuthStatus extends AccountIdentity {
 }
 
 /**
- * The mask contract. ASCII only, one or two visible characters, then `***@`, then a dotted ASCII domain of at most 253 characters
- * (the look-ahead), under a total length cap.
+ * The address contract. ASCII only: a local part of letters, digits and `._%+-`, `@`, then a dotted ASCII domain, under a total length cap
+ * of 254 (the look-ahead; the domain alone is at most 253).
  */
+const FULL_EMAIL = /^(?=.{3,254}$)[A-Za-z0-9._%+-]+@(?=.{1,253}$)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+/** The older form that a Runtime may still have cached (`ab***@example.com`): one or two characters, `***`, a dotted ASCII domain. Accepted, never produced. */
 const MASKED_EMAIL = /^[A-Za-z0-9._%+-]{1,2}\*\*\*@(?=.{1,253}$)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 const MAX_MASKED = 260;
 const MAX_EMAIL = 254;
 const ACCOUNT_KEYS = ["maskedEmail", "plan", "apiKey"] as const;
 
-export function validMaskedEmail(value: unknown): value is string { return typeof value === "string" && value.length <= MAX_MASKED && MASKED_EMAIL.test(value); }
+/** A whole address or an older masked one: the only shapes of `maskedEmail` that are sent, stored or shown. Anything else (too long, non-ASCII, a space, two `@`) is not. */
+export function validMaskedEmail(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_MASKED && (value.length <= MAX_EMAIL && FULL_EMAIL.test(value) || MASKED_EMAIL.test(value));
+}
 export function validPlan(value: unknown): value is Plan { return typeof value === "string" && (PLANS as readonly string[]).includes(value); }
 
-/** Module-private on purpose: the only way to get a masked address is through the parser, so no caller ever holds a raw one. */
-function mask(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+/**
+ * The address as the CLI reported it, or undefined when it does not fit the contract: never truncated, never partly kept. The RAW value is checked
+ * first (its length, and that it holds only printable ASCII plus the ASCII white space `trim` removes), so padding can never make an over-long or
+ * non-ASCII value fit: `trim` only strips the ASCII white space around what the CLI printed, and the address that is left is checked again.
+ */
+function cleanEmail(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value || value.length > MAX_EMAIL || !/^[\t\n\v\f\r \x21-\x7e]+$/.test(value)) return undefined;
   const text = value.trim();
-  if (!text || text.length > MAX_EMAIL || !/^[\x21-\x7e]+$/.test(text)) return undefined;          // printable ASCII, no space: a non-ASCII address sends none
-  const at = text.indexOf("@");
-  if (at < 1 || at !== text.lastIndexOf("@")) return undefined;
-  const local = text.slice(0, at), domain = text.slice(at + 1);
-  const masked = `${local.slice(0, local.length <= 2 ? 1 : 2)}***@${domain}`;
-  // Self-check with the very pattern the server enforces: anything that does not fit it sends no e-mail, never a partial one.
-  return validMaskedEmail(masked) ? masked : undefined;
+  return text && validMaskedEmail(text) && !text.includes("*") ? text : undefined;
+}
+/**
+ * `ab***@example.com` for any text that is not the Accounts page (a terminal line, a log, an error, an audit line, a notice, a chat reply):
+ * one or two characters of the local part, `***`, the whole domain. Undefined when the value is not an address of this contract.
+ */
+export function redactedEmail(value: unknown): string | undefined {
+  if (!validMaskedEmail(value)) return undefined;
+  const at = value.indexOf("@"), local = value.slice(0, at);
+  if (local.endsWith("***")) return value;
+  return `${local.slice(0, local.length <= 2 ? 1 : 2)}***@${value.slice(at + 1)}`;
 }
 /**
  * The subscription type as Claude names it, trimmed and lower-cased: the one normalization both the plan reported here and the usage
@@ -66,7 +85,7 @@ function planOf(value: unknown): Plan | undefined {
 }
 
 /**
- * Closed parse of an identity that arrives from elsewhere (a Runtime's report): `maskedEmail` only in its masked form, `plan` only from
+ * Closed parse of an identity that arrives from elsewhere (a Runtime's report): `maskedEmail` only as a valid address (or the older masked form), `plan` only from
  * the list, `apiKey` only `true`, and nothing else. A violation is an error carrying no value: the rejected text is never echoed.
  */
 export function parseAccountIdentity(value: unknown): AccountIdentity {
@@ -108,7 +127,7 @@ function* jsonObjectCandidates(text: string): Generator<string> {
  * Parse the output of `claude auth status` (stdout and stderr may be merged, so the JSON object is looked for among other text, braces included):
  * the first balanced object that parses and has a boolean `loggedIn` is the answer.
  * `loggedIn`: the CLI's own boolean, null when there is no readable answer. Only a signed-in answer carries an identity: an account login
- * has a masked e-mail and a plan; an API key (`authMethod: "api_key"`) is marked as such and has neither.
+ * has an e-mail and a plan; an API key (`authMethod: "api_key"`) is marked as such and has neither.
  */
 export function parseClaudeAuthStatus(text: unknown): ClaudeAuthStatus {
   const unreadable: ClaudeAuthStatus = { loggedIn: null };
@@ -123,6 +142,6 @@ export function parseClaudeAuthStatus(text: unknown): ClaudeAuthStatus {
   if (!row) return unreadable;
   if (row.loggedIn !== true) return { loggedIn: false };
   if (row.authMethod === "api_key") return { loggedIn: true, apiKey: true };
-  const maskedEmail = mask(row.email), plan = planOf(row.subscriptionType);
+  const maskedEmail = cleanEmail(row.email), plan = planOf(row.subscriptionType);
   return { loggedIn: true, ...(maskedEmail ? { maskedEmail } : {}), ...(plan ? { plan } : {}) };
 }

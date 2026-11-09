@@ -12,9 +12,9 @@
 // with the authenticator's code. Anyone else sees the card, the explanation and a disabled button. The server decides
 // that on every request and refuses everything else regardless (POST /ui/devices/{lookup,approve,deny} → 403).
 // Refs #3061 (review of P2b): with web authorization off nobody is an owner, so nobody can add a device or sign another out —
-// the card says so and points to `agend web-token rotate` on the AgEnD computer (which ends every session); and the
-// confirm screen leads with where the request is from and its address (the device name is the browser's own word and can be
-// faked) and says to allow only when the new device shows the same code.
+// this card is web-only (the reader is on the AgEnD computer's dashboard), so it explains that and does not name General
+// or ask the computer's owner; and the confirm screen leads with where the request is from and its address (the device
+// name is the browser's own word and can be faked) and says to allow only when the new device shows the same code.
 // The words are English and 繁體中文, as everything in src/ui (tests/i18n-ui-literals-2390.test.ts).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
@@ -45,41 +45,37 @@ register("devices", {
     signOutOwnerOnly: "Only a device whose owner is verified can sign out another device.",
     signOutTitle: "Sign out this device?", signOutLead: "{0} will have to sign in again.", signOutGo: "Sign out",
     signedOut: "{0} was signed out.", alreadyGone: "That device is already signed out.",
-    notSaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign it out again.",
-    authorityOffA: "Web authorization is off, so no device is the owner: none can add a device or sign another one out. To sign the other devices out, run ",
-    authorityOffB: " on the AgEnD computer. It ends every session, this one included, and every device has to sign in again.",
+    notSaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
+    authorityOff: "Web authorization is off, so no device is the owner: none can add a device or sign another one out.",
   },
   "zh-TW": {
-    title: "裝置與登入", lead: "用 8 碼代碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
+    title: "裝置與登入", lead: "用 8 碼裝置登入碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
     add: "新增裝置", noCopy: "核准不會複製這台裝置的登入狀態，新裝置會取得自己的工作階段。",
     ownerOnly: "只有已驗證擁有者的裝置才能新增裝置。請使用 AgEnD 電腦，或用驗證器 App 登入。",
-    dlgTitle: "新增裝置", dlgLead: "在新裝置上選「使用其他裝置登入」，再輸入它顯示的代碼。",
-    codeLabel: "新裝置上的代碼", find: "繼續",
-    confirmTitle: "允許這台裝置登入？", device: "裝置", from: "來源", address: "位址", left: "剩餘時間", code: "代碼",
+    dlgTitle: "新增裝置", dlgLead: "在新裝置上選「使用其他裝置登入」，再輸入它顯示的裝置登入碼。",
+    codeLabel: "新裝置上的裝置登入碼", find: "繼續",
+    confirmTitle: "允許這台裝置登入？", device: "裝置", from: "來源", address: "位址", left: "剩餘時間", code: "裝置登入碼",
     fromHost: "這台電腦", fromNetwork: "網路（區網或 tailnet）",
     grants: "只能使用一般的網頁功能，不含擁有者授權；擁有者授權需另外驗證。",
-    sameCode: "只有新裝置的畫面上顯示的是同一組代碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。",
+    sameCode: "只有新裝置的畫面上顯示的是同一組裝置登入碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。",
     allow: "允許", deny: "拒絕", back: "返回", done: "完成",
     approved: "已核准。新裝置幾秒內就會登入。", denied: "已拒絕。新裝置會收到不能登入的通知。",
-    notFound: "沒有等待中的裝置使用這組代碼。請確認新裝置上的代碼；它可能已失效。",
-    expired: "這組代碼已失效。請讓新裝置重新取得代碼。",
+    notFound: "沒有等待中的裝置使用這組裝置登入碼。請確認新裝置上的裝置登入碼；它可能已失效。",
+    expired: "這組裝置登入碼已失效。請讓新裝置重新取得。",
     paused: "錯誤次數太多，請 {0} 後再試。", decided: "這個請求已經處理過了。",
     lostOwner: "這台裝置已不能核准登入：它的擁有者驗證已結束。",
     minutes: "{0} 分鐘", minute: "1 分鐘",
     listTitle: "已登入的裝置", refresh: "重新整理", approvedBy: "核准方式：{0}",
-    viaCode: "登入碼", viaDevice: "裝置代碼", viaHost: "主機", viaTotp: "驗證器 App",
+    viaCode: "一次性裝置登入碼", viaDevice: "其他裝置核准", viaHost: "主機", viaTotp: "驗證器 App",
     ownerOk: "已驗證擁有者", ownerNo: "已登入，尚未驗證擁有者",
     signOutOwnerOnly: "只有已驗證擁有者的裝置才能登出其他裝置。",
     signOutTitle: "登出這台裝置？", signOutLead: "{0} 需要重新登入。", signOutGo: "登出",
     signedOut: "已登出 {0}。", alreadyGone: "這台裝置已經登出了。",
-    notSaved: "暫時登出了，但變更沒能存檔：重新啟動後這個工作階段可能會回來。請修正 ~/.agend/web-sessions.json 的權限，再登出一次。",
-    authorityOffA: "網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。要登出其他裝置，請在 AgEnD 電腦上執行 ",
-    authorityOffB: "。這個指令會結束所有工作階段（包括目前這個），每台裝置都要重新登入。",
+    notSaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
+    authorityOff: "網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。",
   },
 });
 const td = (k, ...v) => t(`devices.${k}`, ...v);
-/** The one thing that signs other devices out when nobody is an owner: a command, the same in both languages. */
-export const ROTATE_COMMAND = "agend web-token rotate";
 
 /** A wait as words: "2 minutes" / 「2 分鐘」 (rounded up). */
 export function pauseWords(ms) {
@@ -241,7 +237,7 @@ export function DevicesCard() {
       </li>`)}</ul>
       ${others && !s.owner && !authorityOff ? html`<p class="note" id="devicesSignOutOwnerOnly">${td("signOutOwnerOnly")}</p>` : null}
       ${note ? html`<p class=${`note ${note.ok ? "" : "error"}`} role=${note.ok ? "status" : "alert"} id="devicesNote">${note.text}</p>` : null}` : null}
-    ${authorityOff ? html`<p class="note s-va-warn" id="devicesAuthorityOff">${td("authorityOffA")}<code id="devicesRotate">${ROTATE_COMMAND}</code>${td("authorityOffB")}</p>`
+    ${authorityOff ? html`<p class="note s-va-warn" id="devicesAuthorityOff">${td("authorityOff")}</p>`
       : !s.owner ? html`<p class="note" id="devicesOwnerOnly">${td("ownerOnly")}</p>` : null}
     <div class="save-row"><button type="button" class="btn btn-primary" id="devicesAdd" disabled=${!s.owner} onClick=${open}>${td("add")}</button></div>
     ${dlg ? html`<${Dialog} title=${td("dlgTitle")} onClose=${close} busy=${busy} actions=${actions}>${body}</${Dialog}>` : null}

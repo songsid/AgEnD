@@ -187,7 +187,7 @@ describe("the pairing routes", async () => {
   it("the routes: the projection and cancel for the admin only; the steps only as a confirmed replay; never over the public link; none composed: 404", async () => {
     const api = { view: vi.fn(() => ({ state: "unpaired" })), cancel: vi.fn(() => ({ state: "unpaired" })), connect: vi.fn(async () => ({ ok: true, pairing: { state: "pending" } })),
       confirmFingerprint: vi.fn(async () => ({ ok: false, error: "conflict" })), disconnect: vi.fn(async () => ({ ok: true, remote: "pending" })) };
-    expect(await call({ method: "GET", path: "/api/hub/member/pairing", api })).toEqual({ status: 200, body: { ok: true, pairing: { state: "unpaired" } } });
+    expect(await call({ method: "GET", path: "/api/hub/member/pairing", api })).toEqual({ status: 200, body: { ok: true, pairing: { state: "unpaired" }, notices: [] } });
     expect((await call({ method: "GET", path: "/api/hub/member/pairing", admin: false, api })).status).toBe(403);
     expect((await call({ method: "GET", path: "/api/hub/member/pairing", gateway: true, api })).status).toBe(403);
     expect((await call({ method: "POST", path: "/api/hub/member/pairing/cancel", admin: false, api })).status).toBe(403);
