@@ -36,7 +36,7 @@ import { formatWebChannelEcho } from "./web-channel-echo.js";
 import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
 import { isSafeInstanceName } from "./web-shell-routes.js";
-import { MAX_COMMAND_ARGS } from "./web-commands.js";
+import { MAX_COMMAND_ARGS, type WebModelAction } from "./web-commands.js";
 import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-guard.js";
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
@@ -349,6 +349,7 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  refreshModelCatalogFor?(backend: string, instance: string | null): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
@@ -492,7 +493,7 @@ export interface WebApiContext {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string; action?: WebModelAction }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -1671,6 +1672,26 @@ export function handleWebRequest(
   // ── Backend detection ─────────────────────────────────
 
   // #2072: the model a Settings field offers — the cached catalog of that backend (that instance's account's). Read only.
+  if (method === "POST" && path === "/ui/models/refresh") {
+    const admission = adminAdmissionOf(req, url, ctx);
+    if (!admission) { json(res, 403, { error: "admin_required" }); return true; }
+    void (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(k => k !== "backend" && k !== "instance")) { json(res, 400, { error: "invalid model target" }); return; }
+      const backend = body.backend, instance = body.instance ?? null;
+      if (typeof backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (typeof instance !== "string" || !isSafeInstanceName(instance)))) { json(res, 400, { error: "invalid model target" }); return; }
+      if (!ctx.refreshModelCatalogFor) { json(res, 503, { error: "model_refresh_unavailable" }); return; }
+      const result = await ctx.refreshModelCatalogFor(backend, instance);
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
+      json(res, 200, { backend, ...result });
+    })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/models") {
     const backend = url.searchParams.get("backend") ?? "";
     const instance = url.searchParams.get("instance");
@@ -2446,6 +2467,7 @@ export function handleWebRequest(
       const instance = str(body?.instance, 128), command = str(body?.command, 32);
       if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
+      if (body.action !== undefined && !["refresh", "more", "refreshAll"].includes(body.action as string)) { json(res, 400, { error: "invalid model action" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
@@ -2462,8 +2484,9 @@ export function handleWebRequest(
       }
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
           { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+        if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
     })().catch(err => {

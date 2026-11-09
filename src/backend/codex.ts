@@ -2557,14 +2557,31 @@ export class CodexBackend implements CliBackend {
    * that cache best-effort and hide internal-only entries. A small documented
    * fallback keeps `/model` usable before the first TUI catalog refresh.
    */
-  async listModels(): Promise<ModelOption[]> {
+  /** Explicit discovery must read/refetch the same proven home. Never borrow a global custom-provider catalog. */
+  private discoveryHome(config?: CliBackendConfig): string {
+    if (!config) return existsSync(join(this.isolatedCodexHome, "models_cache.json")) ? this.isolatedCodexHome : this.sharedCodexHome;
+    const provider = config.backendOptions?.provider;
+    if (provider) {
+      if (config.credentialStoreHome) throw new Error("Provider and named account catalog cannot be proven together");
+      const parsed = parseToml(readFileSync(join(this.isolatedCodexHome, "config.toml"), "utf8"));
+      if (parsed.model_provider !== provider || parsed.profile) throw new Error("Provider catalog not prepared for this Agent");
+      return this.isolatedCodexHome;
+    }
+    // A previous private provider must not win over this requested default account.
+    const home = config.credentialStoreHome ?? this.sharedCodexHome;
+    const path = join(home, "config.toml");
+    if (existsSync(path)) {
+      const parsed = parseToml(readFileSync(path, "utf8"));
+      if (parsed.profile || (parsed.model_provider && parsed.model_provider !== "openai")) throw new Error("Default account catalog cannot be proven");
+    }
+    return home;
+  }
+
+  async listModels(config?: CliBackendConfig): Promise<ModelOption[]> {
     try {
-      const isolatedCache = join(this.isolatedCodexHome, "models_cache.json");
-      const cachePath = existsSync(isolatedCache)
-        ? isolatedCache
-        : join(this.sharedCodexHome, "models_cache.json");
+      const cachePath = join(this.discoveryHome(config), "models_cache.json");
       if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) {
-        return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
+        return config ? [] : CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
       }
 
       const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
@@ -2590,7 +2607,7 @@ export class CodexBackend implements CliBackend {
       if (models.length > 0) return models;
     } catch { /* missing/stale/unknown cache format — use documented fallback */ }
 
-    return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
+    return config ? [] : CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
   }
 
   /**
@@ -2609,10 +2626,8 @@ export class CodexBackend implements CliBackend {
    * Targets the same CODEX_HOME listModels() reads, so the refetch lands in the
    * file that is read next.
    */
-  async refreshModelCatalog(): Promise<void> {
-    const home = existsSync(join(this.isolatedCodexHome, "models_cache.json"))
-      ? this.isolatedCodexHome
-      : this.sharedCodexHome;
+  async refreshModelCatalog(config?: CliBackendConfig): Promise<void> {
+    const home = this.discoveryHome(config);
     await execFileAsync(this.binaryPath, ["debug", "models"], {
       env: { ...process.env, CODEX_HOME: home },
       timeout: CODEX_CATALOG_REFRESH_TIMEOUT_MS,
@@ -2620,7 +2635,7 @@ export class CodexBackend implements CliBackend {
     });
   }
 
-  async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[]; currentModel?: string }> {
+  async probeCLIEnv(config?: CliBackendConfig): Promise<{ version?: string; models: ModelOption[]; currentModel?: string }> {
     // The configured model is readable from the isolated base config. Fall
     // back to the shared user config before this instance has been prepared.
     let currentModel: string | undefined;
@@ -2636,7 +2651,7 @@ export class CodexBackend implements CliBackend {
         .map(l => l.match(/^model\s*=\s*["']([^"']+)["']/)?.[1])  // `model` only, not *_model
         .find((v): v is string => !!v);
     } catch { /* no config / unreadable */ }
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(config?.catalogDiscovery ? config : undefined), currentModel };
   }
 
   cleanup(config: CliBackendConfig): void {

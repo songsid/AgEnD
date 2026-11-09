@@ -1689,12 +1689,14 @@ export class ClaudeCodeBackend implements CliBackend {
    * Any failure (no token, network, non-200) degrades to [] — the static
    * aliases from listModels() always remain available.
    */
+  private apiModelReadFailed = false;
   async listApiModels(storeHome?: string): Promise<import("./types.js").ModelOption[]> {
+    this.apiModelReadFailed = false;
     try {
       const { getClaudeOAuthToken } = await import("../usage/providers.js");
       // #2072: a profile's own login (its store home), else the default one.
       const token = await getClaudeOAuthToken(storeHome);
-      if (!token) return [];
+      if (!token) { this.apiModelReadFailed = true; return []; }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), CLI_PROBE_LONGEST_LEAF_MS);
       timer.unref?.();
@@ -1707,8 +1709,9 @@ export class ClaudeCodeBackend implements CliBackend {
         signal: controller.signal,
       });
       clearTimeout(timer);
-      if (!res.ok) return [];
+      if (!res.ok) { this.apiModelReadFailed = true; return []; }
       const body = await res.json() as { data?: Array<{ id?: string; display_name?: string }> };
+      if (!Array.isArray(body.data)) { this.apiModelReadFailed = true; return []; }
       const options: import("./types.js").ModelOption[] = [];
       for (const model of body.data ?? []) {
         if (!model.id) continue;
@@ -1717,16 +1720,18 @@ export class ClaudeCodeBackend implements CliBackend {
       }
       return options;
     } catch {
-      return [];
+      this.apiModelReadFailed = true; return [];
     }
   }
 
   async probeCLIEnv(config?: CliBackendConfig) {
     const { probeCliVersion } = await import("./types.js");
+    const apiModels = await this.listApiModels(config?.credentialStoreHome);
     return {
       version: probeCliVersion(this.binaryPath),
       models: await this.listModels(),
-      apiModels: await this.listApiModels(config?.credentialStoreHome),
+      apiModels,
+      ...(this.apiModelReadFailed ? { catalogRefreshFailed: true } : {}),
     };
   }
 
