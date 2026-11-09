@@ -24,7 +24,7 @@ export const CLAUDE_CODE_SPEC = {
       permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Workspace accepts file edits inside the working directory only. Every other permission request (shell, network, other folders) is denied in headless mode unless Claude Code's own settings already allow it.",
       promptTransport: "stdin-text", modelProbe: null, rank: 1,
     }),
-    install: yes({ kind: "npm" }),
+    install: yes({ kind: "npm", pin: "audited" }),
     signIn: yes({ argv: ["claude", "auth", "login"], profile: "named" }),
     namedAccounts: yes({ env: "CLAUDE_CONFIG_DIR" }),
     accountRows: yes(),

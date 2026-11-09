@@ -158,6 +158,11 @@ describe("the Windows Runtime's lists, as they were", () => {
     expect(CREDENTIAL_PROFILE_CLIS).toEqual({ "claude-code": "CLAUDE_CONFIG_DIR" });
     expect(Object.keys(INSTALLABLE_CLIS)).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
     expect(runtimeIds("install")).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
+    // What each pin vouches for, written out (the page says "Not yet verified by AgEnD" only for `integrity`): the npm CLIs are pinned to audited releases; Antigravity's download is pinned for its
+    // integrity only (the vendor serves just its newest build, and the CLI updates itself afterwards — 2026-11-10 decision).
+    expect(Object.fromEntries(runtimeIds("install").map(id => [id, [runtimeFacts(id, "install")!.kind, runtimeFacts(id, "install")!.pin]]))).toEqual({
+      "claude-code": ["npm", "audited"], "codex": ["npm", "audited"], "antigravity": ["download", "integrity"], "opencode": ["npm", "audited"],
+    });
     expect(runtimeIds("signIn")).toEqual(["claude-code"]);
     expect(runtimeFacts("claude-code", "signIn")).toMatchObject({ argv: ["claude", "auth", "login"], profile: "named" });
     expect(runtimeIds("identity")).toEqual(["claude-code"]);

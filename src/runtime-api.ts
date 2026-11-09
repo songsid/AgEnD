@@ -3,6 +3,7 @@ import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
 import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, runtimePairingAdmin, type WindowsCliApiContext } from "./windows-cli-api.js";
+import { runtimeFacts } from "./cli-registry.js";
 import { INSTALLABLE_CLIS, isInstallableCli, type InstallableCliId } from "./runtime-cli-install.js";
 import type { RuntimeSwitchStates } from "./runtime-protocol.js";
 import { RuntimeNotPendingError, type RuntimeCoordinator } from "./runtime-coordinator.js";
@@ -154,7 +155,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         // What came back from the computer is checked before the browser sees it: a wrong shape is one fixed error, not a pass-through.
         if (got) { switches = switchStatesOf(answered); if (!switches) { json(res, 502, { error: "That computer's answer about its setup was not understood" }); return; } }
         json(res, 200, { capable, online: machine.status === "online", switches, job: jobs.get(id) ?? null,
-          catalog: Object.values(INSTALLABLE_CLIS).map(({ id: cli, version, kind }) => ({ id: cli, version, kind })) });
+          catalog: Object.values(INSTALLABLE_CLIS).map(({ id: cli, version, kind }) => ({ id: cli, version, kind, pin: runtimeFacts(cli, "install")?.pin ?? "integrity" })) });
       })().catch(() => json(res, 400, { error: "Could not read this computer's setup" }));
       return true;
     }

@@ -530,7 +530,7 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     }
     report("checking-publisher");
     contained();
-    if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", "The package did not contain the expected program");
+    if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", cli.kind === "download" ? "The downloaded file is no longer in place after the checks, so nothing was installed" : "The package did not contain the expected program");
     boundary();
     const signer = await (deps.signerOf ?? ((f, s) => windowsSignerOf(f, run, s, deps.killWaitMs)))(file, signal);
     stopped();

@@ -13,7 +13,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.316", kind: "npm" }, { id: "codex", version: "0.165.0", kind: "npm" }, { id: "antigravity", version: "1.5.3", kind: "download" }, { id: "opencode", version: "1.19.5", kind: "npm" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.316", kind: "npm", pin: "audited" }, { id: "codex", version: "0.165.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -159,6 +159,14 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     i18n.setLang("en", { store: false });
   });
   // AGEND-135 (#3521): Antigravity is a one-click install from a pinned, verified download — listed with the others, and it says what the download is checked against.
+  it("\"Not yet verified by AgEnD\" follows the registry's `pin`, not the install kind or a vendor: an integrity pin has it, an audited pin does not", async () => {
+    setup = { ...setup, catalog: [{ id: "claude-code", version: "2.1.316", kind: "download", pin: "audited" }, { id: "codex", version: "0.165.0", kind: "npm", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }] };
+    await p.mount(h(Panel, { navKey: "install-pin" })); await settle(14);
+    expect(rowOf("claude-code").textContent).not.toContain("Not yet verified by AgEnD");       // a download that is audited
+    expect(rowOf("codex").textContent).toContain("Not yet verified by AgEnD");                    // an npm package pinned for integrity only
+    expect(rowOf("codex").textContent).not.toContain("Google");                                   // the words name no vendor
+    expect(rowOf("opencode").textContent).not.toContain("Not yet verified by AgEnD");
+  });
   it("AGEND-135: Antigravity is listed with its pinned version, asks with the download wording, and sends only its id", async () => {
     const asked: string[] = [];
     (globalThis as any).confirm = (message: string) => { asked.push(message); return true; };
