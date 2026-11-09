@@ -46,6 +46,39 @@ describe("fixed build-time source provenance", () => {
     expect(unavailable.modified).toBeNull();
     expect(installedBuildLabel("1.22.0", unavailable)).toContain("changes unknown");
   });
+  it("#3484 (M-2723): the release's own version stamp (npm pkg set version, then the prepublishOnly rebuild) is not a modified tree", () => {
+    const f = repository();
+    // As the real manifest: an escaped \u2014 and unsorted dependencies, both of which `npm pkg set` rewrites.
+    const manifest = { name: "@songsid/agend", version: "1.22.0", description: "fleet \u2014 daemon", scripts: { build: "tsc" },
+      dependencies: { yaml: "^2.9.0", zod: "^4.6.6", ws: "8.22.0" }, devDependencies: { vitest: "^4", "@types/node": "^25" }, files: ["dist"] };
+    writeFileSync(join(f.root, "package.json"), JSON.stringify(manifest, null, 2).replace("—", "\\u2014") + "\n");
+    f.git("add", "package.json"); f.git("commit", "-qm", "manifest"); f.git("tag", "v2.3.5-alpha.9");
+    expect(builder.buildProvenance(f.root)).toMatchObject({ ref: "v2.3.5-alpha.9", channel: "release", modified: false });
+    // What publish.yml does: `npm pkg set version=<tag>` — the version field only, rewritten in place.
+    // npm's own cache and config live outside the fixture (the fixture's HOME is its git root: npm's default ~/.npm
+    // would be an untracked directory in it), and never come from the caller's environment (#3489 review).
+    const npmEnv: NodeJS.ProcessEnv = { ...process.env, npm_config_userconfig: "/dev/null", npm_config_cache: scratch() };
+    for (const key of Object.keys(npmEnv)) if (/^npm_config_(?!userconfig$|cache$)/i.test(key)) delete npmEnv[key];
+    execFileSync("npm", ["pkg", "set", "version=2.3.5-alpha.9"], { cwd: f.root, timeout: 20000, env: npmEnv });
+    expect(f.git("status", "--porcelain")).toBe(" M package.json\n");
+    expect(readFileSync(join(f.root, "package.json"), "utf8").indexOf('"ws"')).toBeLessThan(readFileSync(join(f.root, "package.json"), "utf8").indexOf('"yaml"'));   // npm re-sorted them
+    expect(builder.buildProvenance(f.root).modified).toBe(false);
+    // ...but a truly dirty tree still reports true:
+    const set = (m: object) => writeFileSync(join(f.root, "package.json"), JSON.stringify(m, null, 2) + "\n");
+    set({ ...manifest, version: "2.3.5-alpha.9", scripts: { build: "tsc && echo injected" } });
+    expect(builder.buildProvenance(f.root).modified, "another package.json field").toBe(true);
+    set({ ...manifest, version: "2.3.5-alpha.9", dependencies: { ...manifest.dependencies, ws: "8.23.0" } });
+    expect(builder.buildProvenance(f.root).modified, "a dependency version").toBe(true);
+    set({ ...manifest, version: "2.3.5-alpha.9" });
+    writeFileSync(join(f.root, "program.txt"), "changed\n");
+    expect(builder.buildProvenance(f.root).modified, "the stamp plus a tracked edit").toBe(true);
+    f.git("checkout", "--", "program.txt"); writeFileSync(join(f.root, "extra.ts"), "new code");
+    expect(builder.buildProvenance(f.root).modified, "the stamp plus an untracked file").toBe(true);
+    rmSync(join(f.root, "extra.ts")); writeFileSync(join(f.root, "package.json"), "{ not json");
+    expect(builder.buildProvenance(f.root).modified, "an unreadable package.json").toBe(true);
+    f.git("checkout", "--", "package.json"); f.git("add", "-A");
+    expect(builder.buildProvenance(f.root).modified, "back to the tag").toBe(false);
+  });
   it("retains export-substituted identity in an archive, without inheriting a surrounding checkout", () => {
     const f = repository();
     const tar = execFileSync("git", ["-C", f.root, "archive", "--format=tar", "HEAD"], { timeout: 3000 });
