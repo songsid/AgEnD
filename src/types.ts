@@ -525,6 +525,12 @@ export interface WebVerifiedAuthorityConfig {
   enabled?: boolean;
   /** "Only this computer can authorize": only loopback requests qualify (default false: LAN and tailnet too). */
   loopback_only?: boolean;
+  /**
+   * AGEND-122 (#3486, R1): the owner's stricter option — off by default. On: a session that is not the browser on the AgEnD
+   * computer confirms each held Settings change with the authenticator's code (bound to that change) instead of pressing
+   * Apply now. Needs an authenticator set up first. Turning it on applies at once; turning it off is a confirmed change.
+   */
+  remote_confirm_code?: boolean;
   /** A session's authorization lasts this many hours after it was given, 1–48 (default 48). */
   max_session_hours?: number;
   /**

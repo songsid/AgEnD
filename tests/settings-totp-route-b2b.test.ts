@@ -1,7 +1,9 @@
 /**
- * alpha.6 #2c (hmsg-468cc290; the leader's ruling (b)): POST /api/settings/pending/:id/confirm-totp, the route itself —
- * refused over any link before the body is read; a bounded body with the code and this change's digest; each refusal its
- * own status (wrong 401, changed 409, paused 429 with Retry-After, not here 403); a correct code decides the change once.
+ * alpha.6 #2c (hmsg-468cc290), reworked by AGEND-122 (upstream #3486): POST /api/settings/pending/:id/confirm-totp, the route itself.
+ * It no longer refuses a link request up front — the fleet decides who may confirm with a code (settingsCodeSession: a change that
+ * opens a link is never code-confirmed over a link, answered `not_here` like any other refusal); a bounded body with the code and
+ * this change's digest; each refusal its own status (wrong 401, changed 409, paused 429 with Retry-After, not here 403); a correct
+ * code decides the change once — over a link too, when the fleet says it may.
  */
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,10 +35,16 @@ function rig(answer: any) {
 }
 
 describe("POST /api/settings/pending/:id/confirm-totp", () => {
-  it("over any link: refused, the code never checked", async () => {
+  it("over a link: not refused up front — the fleet is asked (with the link's request) and its refusal is the answer; the change stays pending", async () => {
+    const r = rig({ error: "not_here" });
+    const out = await r.send({ code: "123456", digest: "d" }, { gateway: true });
+    expect([out.status, out.body.error, r.confirm.mock.calls.length, r.store.get(r.view.id, "me")!.state, r.apply.mock.calls.length]).toEqual([403, "totp_confirm_unavailable", 1, "pending", 0]);
+  });
+  it("over a link, when the fleet allows it (an ordinary change, the owner signed in from outside): a correct code decides the change once", async () => {
     const r = rig({ label: "Authenticator code", current: () => true });
-    expect((await r.send({ code: "123456", digest: "d" }, { gateway: true })).status).toBe(403);
-    expect(r.confirm).not.toHaveBeenCalled();
+    const out = await r.send({ code: "123456", digest: "abc" }, { gateway: true });
+    await vi.waitFor(() => expect(r.store.get(r.view.id, "me")!.state).toBe("applied"));
+    expect([out.status, r.apply.mock.calls.length, r.confirm.mock.calls[0]!.slice(2)]).toEqual([202, 1, ["123456", "abc"]]);
   });
   it("a body without the code or the digest: 400, nothing checked", async () => {
     const r = rig({ label: "Authenticator code", current: () => true });

@@ -58,7 +58,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   const guests = guestsPatch(patch.guests);
   if (guests === "invalid") return { error: "guests must be { enabled?, chat?: boolean|null, open_instances?: { <connection>: [instance…]|null }, narrow?: { \"<connection>:<user>\": [instance…]|null }, grants?: { \"<connection>:<user>\": { name?, instances: [instance…] }|null } }" };
   const verifiedAuthority = verifiedAuthorityPatch(patch.verified_authority);
-  if (verifiedAuthority === "invalid") return { error: "verified_authority must be { enabled?, loopback_only?: boolean|null, max_session_hours?: number|null }" };
+  if (verifiedAuthority === "invalid") return { error: "verified_authority must be { enabled?, loopback_only?: boolean|null, remote_confirm_code?: boolean|null, max_session_hours?: number|null }" };
   return {
     ...(patch.notify_login !== undefined ? { notifyLogin: patch.notify_login as WebConfig["notify_login"] } : {}),
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
@@ -197,6 +197,7 @@ export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: Gu
 export type VerifiedAuthorityPatch = {
   enabled?: boolean | null;
   loopback_only?: boolean | null;
+  remote_confirm_code?: boolean | null;
   max_session_hours?: number | null;
   named_link?: boolean | null;
   quick_link?: boolean | null;
@@ -206,7 +207,7 @@ export function verifiedAuthorityPatch(raw: unknown): VerifiedAuthorityPatch | n
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
   const out: VerifiedAuthorityPatch = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (k === "enabled" || k === "loopback_only" || k === "named_link" || k === "quick_link") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
+    if (k === "enabled" || k === "loopback_only" || k === "remote_confirm_code" || k === "named_link" || k === "quick_link") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
     if (k === "max_session_hours") { if (v !== null && !(typeof v === "number" && Number.isFinite(v))) return "invalid"; out[k] = v as number | null; continue; }
     return "invalid";
   }
@@ -217,7 +218,7 @@ export function applyVerifiedAuthorityPatch(current: WebVerifiedAuthorityConfig 
   { next: WebVerifiedAuthorityConfig | undefined; changes: Array<{ path: string[]; value: unknown; remove?: true }> } {
   const next: WebVerifiedAuthorityConfig = { ...current };
   const changes: Array<{ path: string[]; value: unknown; remove?: true }> = [];
-  for (const key of ["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"] as const) {
+  for (const key of ["enabled", "loopback_only", "remote_confirm_code", "max_session_hours", "named_link", "quick_link"] as const) {
     if (!(key in patch)) continue;
     const v = patch[key];
     if (v === null || v === undefined) { delete next[key]; changes.push({ path: ["web", "verified_authority", key], value: undefined, remove: true }); }

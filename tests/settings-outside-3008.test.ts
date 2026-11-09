@@ -1,14 +1,22 @@
 /**
- * #3008 ② Settings → Access & security → "Connections from outside" (src/ui/settings-outside.js), as rendered — the
- * leader's wording (cid-alpha3-design, strings 1–13 and 17):
- *  - a fleet with a chat connection: no card;
- *  - this computer's admin, nothing set up: the switch can't be turned on, the hint says to set up an app first; "Set up
+ * #3008 ② / AGEND-122 (R1) Settings → Access & security → "Owner verification" (src/ui/settings-outside.js), as rendered — the
+ * leader's wording (cid-alpha3-design, strings 1–13 and 17). The card is driven by what GET /ui/outside says: `webOnly`, `here`
+ * (this computer's host admin: the switch), `manage` (this session may set up / replace / remove the app: an admin on a direct
+ * connection, this computer or another device, a chat fleet too), `codeNeeded` (replacing or removing asks the current code):
+ *  - a fleet with a chat connection: the card shows to a session that can `manage` it (no switch, the confirm lead), and read-only
+ *    when an app is set up; with neither a say nor an app there is nothing to show;
+ *  - an admin who can manage, nothing set up: the switch can't be turned on, the hint says to set up an app first; "Set up
  *    authenticator app" shows a QR code (drawn by the vendored encoder as one SVG path), the key in groups of four and
  *    the code field; Continue waits for 6 digits; a wrong code says to check the phone's clock; a right one closes it;
  *  - set up: the date, the lost-phone line, "Set up again" (asks, with the leader's words) and "Remove" (asks); the
  *    switch turns it on (POST /ui/outside/switch) and the status says where it is open, a quick link's note included;
  *  - a wait in force says how long, as words;
- *  - from elsewhere (the server's `here: false`): "Only on the AgEnD computer.", the switch read-only, no buttons.
+ *  - from another device (`here: false`, `manage: true`): the buttons are there, the switch is read-only and says it is the
+ *    AgEnD computer's; a session that cannot manage (`manage: false`): "This can only be changed on the computer running AgEnD.",
+ *    no buttons; `codeNeeded`: Set up again / Remove ask for the current code first (the dialog, wrong / paused answers, its words).
+ *  - the Web authority card's new switch `#vaRemoteCode` ("Ask for an authenticator code to confirm changes from other devices",
+ *    `web.verified_authority.remote_confirm_code`): off by default, disabled while no app is set up, staged and saved as
+ *    `{ verified_authority: { remote_confirm_code: true | null } }` only.
  * Pure helpers too: the wait's words, the key's groups, the QR path from the real vendored encoder.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -19,7 +27,7 @@ import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 
 const schema = buildSettingsImpactSchema();
-let p: AppPage, status: any, chat = false, authWebOnly: boolean | undefined;
+let p: AppPage, status: any, chat = false, authWebOnly: boolean | undefined, authConfigured: Record<string, unknown> = {}, authEnrolled: boolean | undefined;
 let sent: Array<{ method: string; path: string; body: any }> = [];
 let answers: Record<string, { status: number; body: any }> = {};
 const realFetch = (globalThis as any).fetch;
@@ -33,10 +41,10 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (method === "POST" && path === "/ui/outside/enroll") return ENROLL;
     if (method !== "GET") return { ok: true };
     if (path === "/ui/outside") return status;
-    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(authWebOnly === undefined ? {} : { webOnly: authWebOnly }) };
+    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: authConfigured, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(authWebOnly === undefined ? {} : { webOnly: authWebOnly }), ...(authEnrolled === undefined ? {} : { authenticatorEnrolled: authEnrolled }) };
     if (path === "/api/settings/guests") return { enabled: false, chat: true, instances: [], connections: [], guests: [] };
     if (path === "/api/settings/schema") return schema;
-    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, ...(chat ? { channels: [{ type: "telegram", id: "telegram" }] } : {}), web: {} };
+    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, ...(chat ? { channels: [{ type: "telegram", id: "telegram" }] } : {}), web: { verified_authority: authConfigured } };
     if (path === "/api/settings/classic") return { channels: {}, defaults: {} };
     if (path === "/api/settings/connections") return [];
     if (path === "/api/fleet") return { version: "2.3.5", instances: [] };
@@ -46,10 +54,10 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
 };
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/access" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; answers = {}; chat = false; authWebOnly = undefined; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
+beforeEach(() => { sent = []; answers = {}; chat = false; authWebOnly = undefined; authConfigured = {}; authEnrolled = undefined; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
 afterEach(async () => { await p.unmount(); });
 
-const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
+const base = { webOnly: true, here: true, manage: true, codeNeeded: false, strict: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
 async function open(over: Record<string, unknown> = {}) {
   status = { ...base, ...over };
   const { SettingsPanel } = await import("/ui/js/panel-settings.js");
@@ -78,9 +86,26 @@ describe("#3008 ② the helpers", () => {
 });
 
 describe("#3008 ② Settings → Access & security → Owner verification (Connections from outside)", () => {
-  it("a fleet with a chat connection (the server says webOnly: false): no card", async () => {
-    const w = await open({ webOnly: false });
-    expect(w.$("#outsideCard")).toBeNull();
+  it("a fleet with a chat connection (webOnly: false): the card shows to a session that can manage the app — no switch, the confirm lead, set up works", async () => {
+    const w = await open({ webOnly: false, here: false, manage: true });
+    expect([w.$("#outsideCard h3")?.textContent, w.$("#outSwitch"), w.$("#outNeedApp"), w.$("#outSwitchHere"), !!w.$("#outSetUp")]).toEqual(["Owner verification", null, null, null, true]);
+    expect(w.$("#outLead").textContent).toContain("to confirm changes from other devices");
+    await w.click(w.$("#outSetUp"));
+    await settle(10);
+    expect([w.posts(), !!w.$("#outEnroll")]).toEqual([[["/ui/outside/enroll", {}]], true]);
+  });
+  it("a chat fleet, a session that cannot manage it: nothing to show without an app; read-only with one (no buttons)", async () => {
+    const none = await open({ webOnly: false, here: false, manage: false });
+    expect(none.$("#outsideCard")).toBeNull();
+    const set = await open({ webOnly: false, here: false, manage: false, enrolled: true, enrolledAt: 1 });
+    expect([set.$("#outState").textContent, set.$("#outHereOnly").textContent, set.$("#outSetUp"), set.$("#outAgain"), set.$("#outRemove"), set.$("#outSwitch")])
+      .toEqual(["Authenticator set up", "This can only be changed on the computer running AgEnD.", null, null, null, null]);
+  });
+  it("an older server (no `manage`): read as before — only this computer's admin manages", async () => {
+    const away = await open({ manage: undefined, codeNeeded: undefined, strict: undefined, here: false });
+    expect([away.$("#outHereOnly") !== null, away.$("#outSetUp")]).toEqual([true, null]);
+    const here = await open({ manage: undefined, here: true });
+    expect([here.$("#outHereOnly"), here.$("#outSetUp") !== null]).toEqual([null, true]);
   });
   it("nothing set up: the switch can't be turned on; set up shows the QR code, the key and the code field; a wrong code, then a right one", async () => {
     const w = await open();
@@ -171,10 +196,109 @@ describe("#3008 ② Settings → Access & security → Owner verification (Conne
     const w = await open({ enrolled: true, enrolledAt: 1, pausedForMs: 2 * 3600_000 });
     expect(w.$("#outPaused").textContent).toBe("Too many wrong codes. Try again in 2 hours.");
   });
-  it("from elsewhere: only on the AgEnD computer — the switch read-only, no buttons", async () => {
+  it("from another device (here: false, manage: true): the admin sets up again or removes; the switch stays read-only and says whose it is", async () => {
     const w = await open({ here: false, enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", quick: true } });
-    expect([w.$("#outHereOnly").textContent, w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outAgain"), w.$("#outRemove"), w.$("#outSetUp"), w.$("#outOpenAt")])
-      .toEqual(["Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.", true, true, null, null, null, null]);
+    expect([w.$("#outHereOnly"), w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outSwitchHere").textContent, !!w.$("#outAgain"), !!w.$("#outRemove"), w.$("#outOpenAt")])
+      .toEqual([null, true, true, "Connections from outside are turned on and off on the computer running AgEnD.", true, true, null]);   // the link's address is this computer's only
+    const none = await open({ here: false });
+    expect([none.$("#outSwitch").disabled, !!none.$("#outSetUp")]).toEqual([true, true]);
+  });
+  it("a session that cannot manage it (manage: false — over a link, a guest, not an admin): the state only, no buttons, the switch read-only", async () => {
+    const w = await open({ here: false, manage: false, enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", quick: true } });
+    expect([w.$("#outHereOnly").textContent, w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outAgain"), w.$("#outRemove"), w.$("#outSetUp"), w.$("#outSwitchHere"), w.$("#outOpenAt")])
+      .toEqual(["This can only be changed on the computer running AgEnD.", true, true, null, null, null, null, null]);
+    const unset = await open({ here: false, manage: false });
+    expect([unset.$("#outHereOnly") !== null, unset.$("#outSetUp")]).toEqual([true, null]);
+  });
+  it("the AgEnD computer's own admin (here: true): the switch works whatever strict says — the code is never asked there", async () => {
+    const w = await open({ enrolled: true, enrolledAt: 1, strict: true, codeNeeded: false });
+    await w.check(w.$("#outSwitch"), true);
+    await w.click(w.$("#outRemove"));
+    await settle(10);
+    expect(w.posts()).toEqual([["/ui/outside/switch", { on: true }], ["/ui/outside/remove", {}]]);   // no code dialog, no code in the body
+    expect(p.root.querySelector("#outAsk")).toBeNull();
+  });
+  // AGEND-122: the owner's strict option is on and this session is off the AgEnD computer: replacing or removing the app asks for
+  // the CURRENT code, in a dialog of its own, before anything happens (the server asks again and answers 400 / 401 / 429).
+  describe("the current code (codeNeeded): Set up again and Remove ask for it first", () => {
+    const away = { here: false, manage: true, codeNeeded: true, strict: true, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) };
+    it("Set up again: the code dialog first, no enrolment request until it is right; the code goes with the request; then the set-up dialog", async () => {
+      const w = await open(away);
+      await w.click(w.$("#outAgain"));
+      expect([!!w.$("#outAsk"), w.$("#outAsk .note").textContent, w.$("#outAskGo").disabled, w.$("#outEnroll"), w.posts()]).toEqual([true,
+        "This fleet asks for an authenticator code to confirm from other devices. Enter the code your authenticator app shows now to continue.", true, null, []]);
+      expect(w.$("dialog .dlg-title").textContent).toBe("Enter the current code");
+      await w.type(w.$("#outAskCode"), "12345");
+      expect(w.$("#outAskGo").disabled).toBe(true);                                         // 6 digits first
+      await w.type(w.$("#outAskCode"), "123 456");
+      expect(w.$("#outAskGo").disabled).toBe(false);
+      await w.click(w.$("#outAskGo"));
+      await settle(10);
+      expect(w.posts()).toEqual([["/ui/outside/enroll", { code: "123 456" }]]);
+      expect([w.$("#outAsk"), !!w.$("#outEnroll"), w.$("dialog .dlg-title").textContent, w.$("#outKey").textContent]).toEqual([null, true, "Set up again", "JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP"]);
+    });
+    it("Set up again: a wrong code is answered in the dialog (and cleared), a paused one says how long; Cancel changes nothing", async () => {
+      const w = await open(away);
+      await w.click(w.$("#outAgain"));
+      answers["POST /ui/outside/enroll"] = { status: 401, body: { error: "wrong" } };
+      await w.type(w.$("#outAskCode"), "111111");
+      await w.click(w.$("#outAskGo"));
+      expect([w.$("#outAskMsg").textContent, w.$("#outAskCode").value, !!w.$("#outAsk"), w.$("#outEnroll")])
+        .toEqual(["That code didn't work. Check that your phone's clock is right and try the newest code.", "", true, null]);
+      answers["POST /ui/outside/enroll"] = { status: 429, body: { error: "paused", retryAfterMs: 15 * 60_000 } };
+      await w.type(w.$("#outAskCode"), "222222");
+      await w.click(w.$("#outAskGo"));
+      expect(w.$("#outAskMsg").textContent).toBe("Too many wrong codes. Try again in 15 minutes.");
+      await w.click(w.$("#outAskCancel"));
+      expect([w.$("#outAsk"), w.$("#outEnroll"), w.posts().map(x => x[0])]).toEqual([null, null, ["/ui/outside/enroll", "/ui/outside/enroll"]]);
+    });
+    it("Remove: a code first — no confirm question, nothing sent until the code; the code goes with the request; the dialog closes when it worked", async () => {
+      const w = await open(away);
+      await w.click(w.$("#outRemove"));
+      expect([w.$("dialog .dlg-title").textContent, w.$("#outAsk").textContent.includes("Codes will no longer be accepted"), w.posts()]).toEqual(["Remove the authenticator app?", true, []]);
+      await w.type(w.$("#outAskCode"), "654321");
+      await w.click(w.$("#outAskGo"));
+      await settle(10);
+      expect([w.posts(), w.$("#outAsk")]).toEqual([[["/ui/outside/remove", { code: "654321" }]], null]);
+    });
+    it("Remove: wrong code → says so and stays; paused → how long", async () => {
+      const w = await open(away);
+      await w.click(w.$("#outRemove"));
+      answers["POST /ui/outside/remove"] = { status: 401, body: { error: "wrong" } };
+      await w.type(w.$("#outAskCode"), "000000");
+      await w.click(w.$("#outAskGo"));
+      expect([w.$("#outAskMsg").textContent, !!w.$("#outAsk")]).toEqual(["That code didn't work. Check that your phone's clock is right and try the newest code.", true]);
+      answers["POST /ui/outside/remove"] = { status: 429, body: { error: "paused", retryAfterMs: 2 * 3600_000 } };
+      await w.type(w.$("#outAskCode"), "000001");
+      await w.click(w.$("#outAskGo"));
+      expect(w.$("#outAskMsg").textContent).toBe("Too many wrong codes. Try again in 2 hours.");
+    });
+    it("not needed (this computer, or the option off): no dialog — Set up again opens the set-up at once, Remove asks its old question", async () => {
+      const w = await open({ ...away, codeNeeded: false });
+      await w.click(w.$("#outAgain"));
+      await settle(10);
+      expect([w.$("#outAsk"), !!w.$("#outEnroll"), w.posts()]).toEqual([null, true, [["/ui/outside/enroll", {}]]]);
+    });
+    it("a first-time set-up asks no code (it only tightens), even in strict mode", async () => {
+      const w = await open({ here: false, manage: true, codeNeeded: false, strict: true, enrolled: false });
+      await w.click(w.$("#outSetUp"));
+      await settle(10);
+      expect([w.$("#outAsk"), w.posts()]).toEqual([null, [["/ui/outside/enroll", {}]]]);
+    });
+    it("zh-TW: the code dialog's words", async () => {
+      const i18n = await import("/assets/app-i18n.js");
+      i18n.setLang("zh-TW");
+      try {
+        const w = await open(away);
+        await w.click(w.$("#outAgain"));
+        expect([w.$("dialog .dlg-title").textContent, w.$("#outAsk .note").textContent, w.$("#outAskGo").textContent, w.$("#outAskCode").parentNode.querySelector("label").textContent])
+          .toEqual(["請輸入目前的代碼", "這個 fleet 要求從其他裝置確認時輸入驗證器代碼。請輸入驗證器 App 現在顯示的代碼才能繼續。", "繼續", "目前的代碼"]);
+        answers["POST /ui/outside/enroll"] = { status: 429, body: { error: "paused", retryAfterMs: 60 * 60_000 } };
+        await w.type(w.$("#outAskCode"), "123456");
+        await w.click(w.$("#outAskGo"));
+        expect(w.$("#outAskMsg").textContent).toBe("錯誤次數太多，請 1 小時 後再試。");
+      } finally { i18n.setLang("en"); }
+    });
   });
 });
 
@@ -213,8 +337,10 @@ describe("Owner verification and Web authorization: the reference page's words",
       const setup = await open();
       await setup.click(setup.$("#outSetUp"));
       expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入驗證器代碼以完成綁定", "驗證並啟用"]);
-      const away = await open({ here: false });
-      expect(text(away.$("#outHereOnly"))).toBe("只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。");
+      const away = await open({ here: false, manage: false });
+      expect(text(away.$("#outHereOnly"))).toBe("只能在執行 AgEnD 的那台電腦上變更。");
+      const other = await open({ here: false });
+      expect(text(other.$("#outSwitchHere"))).toBe("從外面連線的開關，要在執行 AgEnD 的那台電腦上操作。");
     } finally { i18n.setLang("en"); }
   });
   it("the Remove question has its own title and button, in both languages", async () => {
@@ -245,6 +371,53 @@ describe("Owner verification and Web authorization: the reference page's words",
     authWebOnly = undefined;                                                                  // an older server: no flag, the chat wording
     w = await open();
     expect(text(w.$("#vaEnabled").parentNode)).toBe("Allow web authority");
+  });
+  // AGEND-122: the owner's stricter option, "Ask for an authenticator code to confirm changes from other devices"
+  // (web.verified_authority.remote_confirm_code, #vaRemoteCode in the Web authority card): off by default; it needs an app set up.
+  describe("#vaRemoteCode: ask for an authenticator code to confirm changes from other devices", () => {
+    const writes = () => sent.filter(x => x.method !== "GET" && x.path === "/api/settings/fleet/web").map(x => x.body);
+    const save = async (w: any) => { await settle(2); const region = p.root.querySelector("[role=region]"); const b = region && region.querySelectorAll("button").find((x: any) => x.textContent.trim() === "Save"); if (b) await w.click(b); };
+    it("off by default and disabled with no authenticator set up, saying so; no write", async () => {
+      authEnrolled = false;
+      const w = await open();
+      const box = w.$("#vaRemoteCode");
+      expect([box.checked, box.disabled, text(w.$("#vaRemoteCodeNeedApp")), text(box.parentNode)])
+        .toEqual([false, true, "Set up an authenticator app first (Owner verification, above).", "Ask for an authenticator code to confirm changes from other devices"]);
+      expect(text(w.$("#vaRemoteCode-hint"))).toContain("Off (the default): a signed-in admin applies a change from any device with Apply now.");
+      await save(w);
+      expect(writes()).toEqual([]);
+    });
+    it("an app is set up: turning it on is staged and saved as { verified_authority: { remote_confirm_code: true } } — nothing else", async () => {
+      authEnrolled = true;
+      const w = await open();
+      expect([w.$("#vaRemoteCode").checked, w.$("#vaRemoteCode").disabled, w.$("#vaRemoteCodeNeedApp")]).toEqual([false, false, null]);
+      await w.check(w.$("#vaRemoteCode"), true);
+      await save(w);
+      expect(writes()).toEqual([{ verified_authority: { remote_confirm_code: true } }]);
+    });
+    it("on in the config: shown on (even with the app gone — it can be turned off); turning it off is staged as null", async () => {
+      authConfigured = { remote_confirm_code: true };
+      authEnrolled = false;
+      const w = await open();
+      expect([w.$("#vaRemoteCode").checked, w.$("#vaRemoteCode").disabled, w.$("#vaRemoteCodeNeedApp")]).toEqual([true, false, null]);
+      await w.check(w.$("#vaRemoteCode"), false);
+      await save(w);
+      expect(writes()).toEqual([{ verified_authority: { remote_confirm_code: null } }]);
+    });
+    it("a server that does not say (older): read as no app — off and disabled", async () => {
+      const w = await open();
+      expect([w.$("#vaRemoteCode").checked, w.$("#vaRemoteCode").disabled]).toEqual([false, true]);
+    });
+    it("zh-TW: the switch, its hint and the set-up note", async () => {
+      const i18n = await import("/assets/app-i18n.js");
+      i18n.setLang("zh-TW");
+      try {
+        authEnrolled = false;
+        const w = await open();
+        expect([text(w.$("#vaRemoteCode").parentNode), text(w.$("#vaRemoteCodeNeedApp")), text(w.$("#vaRemoteCode-hint")).startsWith("關閉（預設）：已登入的管理員可以在任何裝置上按「直接套用」完成變更。")])
+          .toEqual(["從其他裝置確認變更時要驗證器代碼", "請先設定驗證器 App（上方的擁有者驗證）。", true]);
+      } finally { i18n.setLang("en"); }
+    });
   });
   it("Web authority in zh-TW: the reference page's lead, switch and rule", async () => {
     const i18n = await import("/assets/app-i18n.js");

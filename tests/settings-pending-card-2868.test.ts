@@ -85,18 +85,16 @@ describe("where to confirm it", () => {
   it("zh-TW", async () => {
     const c = await card(view({ confirmation: { kind: "chat", code: ID, where: [{ platform: "discord", connection: "discord" }] } }), undefined, "zh-TW");
     expect(c.text()).toContain("要套用，請到 Discord 的 General，在確認卡上按「確認」。");
-    expect(c.text()).toContain("授權這個瀏覽器，之後這類變更可以直接套用，不必到 General。");
     expect(c.p.root.querySelector(".pending-host summary").textContent).toBe("進階：在主機上確認");
   });
 });
 
 describe("this browser", () => {
-  it("not verified: Authorize this browser asks for the DM card (the composer's same request)", async () => {
+  it("AGEND-122: no \"Authorize this browser\" step any more — a signed-in admin applies by role, so the card never asks for a DM confirmation of the browser", async () => {
     const c = await card(view());
-    expect(c.text()).toContain("Authorize this browser to apply changes like this here next time, without General.");
-    fire(c.button("Authorize this browser"), "click"); await settle(4);
-    expect(c.calls.filter(([m, u]) => m === "POST" && u === "/ui/authorization")).toHaveLength(1);
-    expect(c.text()).toContain("Sent — confirm it in your DM within 5 minutes.");
+    expect(c.text()).not.toContain("Authorize this browser");
+    expect(c.button("Authorize this browser")).toBeUndefined();
+    expect(c.calls.filter(([m, u]) => m === "POST" && u === "/ui/authorization")).toHaveLength(0);
   });
   it("verified but not allowed to confirm this one: only the General instruction (no Apply now, no Authorize)", async () => {
     const c = await card(view(), { state: "verified", until: Date.now() + 3600_000 });
@@ -106,7 +104,7 @@ describe("this browser", () => {
     const applying = view({ state: "applying", can_withdraw: false, confirmation: { kind: "web" } });
     const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "en",
       { [`/api/settings/pending/${ID}/confirm`]: { __status: 202, ok: true, result: "pending_confirmation", pending_change: applying } });
-    expect(c.text()).toContain("This browser is verified, so you can also apply it here.");
+    expect(c.text()).toContain("You are signed in as an admin, so you can apply it here.");
     expect(c.button("Authorize this browser"), "verified: nothing to authorize").toBe(undefined);
     fire(c.button("Apply now"), "click"); await settle(4);
     expect(c.calls.filter(([m, u]) => m === "POST" && u === `/api/settings/pending/${ID}/confirm`)).toHaveLength(1);
@@ -116,7 +114,7 @@ describe("this browser", () => {
     const c = await card(view({ can_self_confirm: true }), { state: "verified", until: Date.now() + 3600_000 }, "en",
       { [`/api/settings/pending/${ID}/confirm`]: { __status: 403, error: "self_confirm_unavailable" } });
     fire(c.button("Apply now"), "click"); await settle(4);
-    expect([c.button("Apply now"), c.text().includes("This browser can't apply it here now — confirm it in General."), c.text().includes("press Confirm on the card in General")])
+    expect([c.button("Apply now"), c.text().includes("This browser can't apply it here now. Another way to confirm it: the card in General (if this fleet has chat), or the code if your owner asks for one."), c.text().includes("press Confirm on the card in General")])
       .toEqual([undefined, true, true]);
   });
 });
@@ -153,16 +151,16 @@ describe("confirm with the authenticator code (web-only fleet, this computer or 
   });
   it("over a link (on_host): no field — confirm from the computer running AgEnD; never a host command", async () => {
     const c = await withCode({ __status: 200 }, "en", "on_host");
-    expect([!!c.p.root.querySelector(".pending-code-input"), c.text()]).toEqual([false, expect.stringContaining("This device can't confirm this change over a link. Do it from the computer running AgEnD.")]);
+    expect([!!c.p.root.querySelector(".pending-code-input"), c.text()]).toEqual([false, expect.stringContaining("A change that opens a public link can't be confirmed over a link.")]);
     let outside = c.p.root.querySelector(".pending-card")!.textContent ?? "";
     for (const d of c.p.root.querySelectorAll(".pending-card details")) outside = outside.replace(d.textContent ?? "", "");
     expect(outside).not.toContain("agend settings confirm");
   });
-  it("no authenticator set up: says so and links to Access & security", async () => {
+  it("no authenticator set up (the owner asks for a code): says so, no link — set it up again on the AgEnD computer or turn the option off there", async () => {
     const c = await withCode({ __status: 200 }, "zh-TW", "not_set_up");
     expect(c.text()).toContain("你目前在這台裝置還無法直接確認這項變更。");
-    expect(c.text()).toContain("請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。");
-    expect((c.p.root.querySelector(".pending-code-setup a") as any).getAttribute("href")).toBe("/settings/access");
+    expect(c.text()).toContain("這個 fleet 要求從其他裝置確認變更時輸入驗證器代碼，但還沒有設定驗證器。請到執行 AgEnD 的那台電腦");
+    expect(c.p.root.querySelector(".pending-code-setup a"), "no link to a page that cannot set it up").toBeNull();
   });
 });
 
@@ -177,7 +175,8 @@ describe("one next step, by state", () => {
     for (const d of root.querySelectorAll("details")) text = text.replace(d.textContent ?? "", "");
     return text.replace(/\s+/g, " ");
   };
-  const folds = (c: Awaited<ReturnType<typeof card>>) => [...c.p.root.querySelectorAll(".pending-card details")] as any[];
+  // The change details fold (`.pending-details`) is not one of the confirmation folds.
+  const folds = (c: Awaited<ReturnType<typeof card>>) => [...c.p.root.querySelectorAll(".pending-card details:not(.pending-details)")] as any[];
   /** The fold named by its summary: "Other ways to confirm" or the bare command's "Advanced: confirm on the host". */
   const fold = (c: Awaited<ReturnType<typeof card>>, summary: string) => folds(c).find(d => d.querySelector("summary").textContent === summary);
   const OTHERS = "Other ways to confirm", ADVANCED = "Advanced: confirm on the host";
@@ -201,11 +200,10 @@ describe("one next step, by state", () => {
     const c = await card(view({ confirmation: NOCHAT, totp: "not_set_up" }));
     const text = shown(c);
     expect(text).toContain("This device can't confirm this change yet.");
-    expect(text).toContain("once it is set up, enter its 6-digit code on the card. If the time runs out before that, make the change again.");
+    expect(text).toContain("no authenticator is set up. Set one up again on the computer running AgEnD (Settings → Access & security), or turn that option off there.");
     expect(text).not.toContain("Apply now");               // nothing here can press it: never mentioned as a step
     expect(text).not.toContain("agend settings confirm");
-    expect((c.p.root.querySelector(".pending-code-setup a.btn-primary") as any).getAttribute("href")).toBe("/settings/access");
-    expect((c.p.root.querySelector(".pending-code-setup a") as any).textContent.trim()).toBe("Set up authenticator");
+    expect(c.p.root.querySelector(".pending-code-setup a"), "no link to a page that cannot set it up").toBeNull();
     // Folded: the host's own browser (where Apply now exists); the bare command stays under Advanced, as before.
     expect(fold(c, OTHERS).textContent.replace(/\s+/g, " ")).toContain("press Apply now on this card.");
     expect(fold(c, ADVANCED).querySelector("code").textContent).toBe(`agend settings confirm ${ID}`);
@@ -238,10 +236,10 @@ describe("one next step, by state", () => {
   });
   it("over a link / a link option: only where to do it — the host's command folded", async () => {
     const link = await card(view({ confirmation: NOCHAT, totp: "on_host" }));
-    expect(shown(link)).toContain("Do it from the computer running AgEnD.");
+    expect(shown(link)).toContain("A change that opens a public link can't be confirmed over a link.");
     expect(shown(link)).not.toContain("agend settings confirm");
-    const hostOnly = await card(view({ confirmation: NOCHAT, totp: "host_browser" }));
-    expect(shown(hostOnly)).toContain("only the browser on the computer running AgEnD can confirm it");
+    const hostOnly = await card(view({ confirmation: NOCHAT, totp: "host_only" }));
+    expect(shown(hostOnly)).toContain("Only the computer running AgEnD can confirm changes here");
     expect(fold(hostOnly, ADVANCED).querySelector("code").textContent).toBe(`agend settings confirm ${ID}`);
   });
   it("zh-TW: the same steps; the button reads the same as the text that names it", async () => {
@@ -250,7 +248,7 @@ describe("one next step, by state", () => {
     expect(c.button("立即套用")).toBeDefined();
     const setup = await card(view({ confirmation: NOCHAT, totp: "not_set_up" }), undefined, "zh-TW");
     expect(shown(setup)).toContain("你目前在這台裝置還無法直接確認這項變更。");
-    expect((setup.p.root.querySelector(".pending-code-setup a") as any).textContent.trim()).toBe("綁定驗證器");
+    expect(setup.p.root.querySelector(".pending-code-setup a")).toBeNull();
     expect(fold(setup, "其他確認方式").textContent).toContain("到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。");
   });
 });
@@ -463,5 +461,25 @@ describe("the card's own words travel with the card", () => {
     }
     // Every key the component reads in its own groups is registered in the shell.
     for (const m of shell.matchAll(/t\("(pendingHost|pendingEnded)\.([A-Za-z_]+)"\)/g)) expect(shell.slice(shell.indexOf(`register("${m[1]}"`)), `${m[1]}.${m[2]}`).toContain(`${m[2]}:`);
+  });
+});
+
+// AGEND-122: a page that is not the AgEnD computer's own browser (`remote: true`) never shows the host command; the change's
+// details are folded under "Change details", without the Markdown escapes the server adds for chat.
+describe("a remote page: no host command; the change details are folded", () => {
+  const NOCHAT = { kind: "host_cli", code: ID, reason: "no_chat" };
+  it("remote: no Advanced fold and no command, in every state; the computer's own page keeps it", async () => {
+    for (const extra of [{}, { can_self_confirm: true }, { totp: "ready", confirm_digest: "d".repeat(32) }, { totp: "not_set_up" }, { totp: "host_only" }, { totp: "on_host" }] as any[]) {
+      const remote = await card(view({ confirmation: NOCHAT, remote: true, ...extra }));
+      expect(remote.p.root.querySelector(".pending-card details.pending-host:not(.pending-others)"), JSON.stringify(extra)).toBeNull();
+      expect(remote.text()).not.toContain("agend settings confirm");
+      const here = await card(view({ confirmation: NOCHAT, ...extra }));
+      expect(here.p.root.querySelector(".pending-card details.pending-host code").textContent).toBe(`agend settings confirm ${ID}`);
+    }
+  });
+  it("the change lines sit folded under \"Change details\", underscores unescaped", async () => {
+    const c = await card(view({ confirmation: NOCHAT, summary: ["web.verified\\_authority.remote\\_confirm\\_code: default → true"] }));
+    const d = c.p.root.querySelector(".pending-card details.pending-details") as any;
+    expect([d.querySelector("summary").textContent, d.open ?? false, d.querySelector("li").textContent]).toEqual(["Change details", false, "web.verified_authority.remote_confirm_code: default → true"]);
   });
 });

@@ -10,7 +10,9 @@
  *  - Enter in the code field verifies (once the code is 6 digits); nothing closes it while the code is being checked;
  *  - no second question before "Set up again" opens it; an enrolment the server answers after the dialog closed, or will
  *    not give at all, opens nothing;
- *  - both languages. Only on this computer: from elsewhere there is no button, so no dialog (settings-outside-3008).
+ *  - both languages. Only for a session that can manage the app (GET /ui/outside's `manage`: an admin on a direct connection —
+ *    AGEND-122: this computer or another device, a chat fleet too); one that cannot has no button, so no dialog (settings-outside-3008,
+ *    which also covers the current-code dialog that Set up again / Remove open while the owner's strict option is on).
  * Review of #3165 (P2 2), the last describe: closing and opening the dialog again while a request for a secret is still out must not
  * leave the screen showing a secret the server no longer holds. The server here is the REAL pending-secret store
  * (WebRemoteAccess), and a request can be held on its way to it, so the order the requests REACH it in is the test's to choose.
@@ -70,7 +72,7 @@ afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
 beforeEach(() => { sent = []; answers = {}; holds = {}; holdEach = {}; store = null; });
 afterEach(async () => { await p.unmount(); });
 
-const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
+const base = { webOnly: true, here: true, manage: true, codeNeeded: false, strict: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
 const ENROLLED = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) };
 const text = (el: any) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 async function open(over: Record<string, unknown> = {}) {

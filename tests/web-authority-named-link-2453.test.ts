@@ -8,8 +8,9 @@
  *   and the peer is `named_link`.
  * - Read now: option off → its receipts read as none (named_link_off) at once; back on (it was on before) moves the epoch,
  *   so they never come back; loopback_only on downgrades them as lan ones.
- * - Settings: turning it on is confirmed and marked never self-confirmed (the trusted effect, alone or mixed); off is
- *   immediate.
+ * - Settings: turning it on is a confirmed change marked `opensLink` (the trusted effect, alone or mixed; AGEND-122: any
+ *   signed-in admin session confirms it — the mark only brings a Notice for a remote confirmation and the strict mode's
+ *   "never over a link"); off is immediate.
  * - The fleet: a named-link session authorized by the Confirm path is web-verified with peer named_link; the link's end
  *   takes its authorizations with it.
  * Real modules; temp homes only (no fleet started, no tunnel, no network).
@@ -144,13 +145,14 @@ describe("the state: named_link remembered; back on after it was on moves the ep
   });
 });
 
-describe("Settings: on is confirmed and never self-confirmed; off is immediate", () => {
+describe("Settings: on is a confirmed change marked opensLink (AGEND-122: no host-only rule); off is immediate", () => {
   const FLEET = { defaults: {}, channels: [{ id: "dc", type: "discord", group_id: "G", bot_token_env: "X" }], instances: { a: { working_directory: "/tmp" } } };
   const judge = (va: unknown, current?: Record<string, unknown>) =>
     prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: { ...structuredClone(FLEET), web: current ? { verified_authority: current } : {} } as any, classic: {} }).diff;
-  it("on: a confirmed change, marked noSelfConfirm — alone, or mixed with keys that are immediate on their own", () => {
+  it("on: a confirmed change, marked opensLink — alone, or mixed with keys that are immediate on their own", () => {
     const alone = judge({ named_link: true }), mixed = judge({ named_link: true, loopback_only: true, max_session_hours: 6 });
-    expect([alone?.noSelfConfirm, alone?.summary.join("\n").includes("named\\_link"), mixed?.noSelfConfirm]).toEqual([true, true, true]);
+    expect([alone?.opensLink, alone?.summary.join("\n").includes("named\\_link"), mixed?.opensLink]).toEqual([true, true, true]);
+    expect([alone, mixed].map(d => d && "noSelfConfirm" in d)).toEqual([false, false]);          // the old host-only marks are gone
   });
   it("off, or nothing about it: immediate (no confirmation, no mark)", () => {
     expect([judge({ named_link: null }, { named_link: true }), judge({ loopback_only: true }), judge({ named_link: true }, { named_link: true })]).toEqual([null, null, null]);

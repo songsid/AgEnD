@@ -223,8 +223,11 @@ function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, un
   if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
   const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
-  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
+  if (changed.some(k => !["enabled", "loopback_only", "remote_confirm_code", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
   const held: Array<[string, unknown, unknown]> = [];
+  // AGEND-122: the owner's stricter option — turning it on tightens and applies at once; turning it off is confirmed (with the
+  // code, off this computer, while it is on: that is what keeps a session it restricts from lifting the restriction by itself).
+  if (a.remote_confirm_code === true && b.remote_confirm_code !== true) held.push(["remote_confirm_code", a.remote_confirm_code, b.remote_confirm_code]);
   if (a.named_link !== true && b.named_link === true) held.push(["named_link", a.named_link, b.named_link]);
   if (!quickLinkEffective(a) && quickLinkEffective(b)) held.push(["quick_link", a.quick_link, b.quick_link]);
   return held;
@@ -374,20 +377,14 @@ export interface SettingsChangeDiff {
   /** Private normalized effect scope, populated by prepareSettingsEffect. */
   authority?: SettingsChangeAuthority;
   /**
-   * #2453 (§0.2): the effect turns `web.verified_authority.named_link` on — never confirmed by the asking session itself
-   * (#2170), whatever else the change holds. Judged from the config before and after (prepareSettingsEffect), never the body.
+   * #2453 (§0.2) / §0.3: the effect turns `web.verified_authority.named_link` or `quick_link` on, whatever else the change
+   * holds — judged from the config before and after (prepareSettingsEffect), never the body. AGEND-122: it is confirmed as
+   * any change is (a signed-in admin's Apply now), but every confirmation from another device posts a Notice, and while the
+   * owner asks for a code it is never confirmed over a link (fleet-manager.ts).
    */
-  noSelfConfirm?: true;
-  /** B2b (the leader's ruling on #3352 F1): a noSelfConfirm change that this computer's host operator, on its own local
-   *  session, may still Apply now (the outward Hub changes on a web-only fleet; threat model A). */
-  hostLocalConfirm?: true;
-  /**
-   * The leader's ruling on D3's residual (cid-d3): a noSelfConfirm change that turns a link option on (#2453 named_link /
-   * quick_link) — confirmed only by the host operator's own session on this computer (hostSessionHere), on either fleet
-   * type. Never by an authenticator code or any other session: those keep #2453 (a General card, or "do it in the browser
-   * on the AgEnD computer").
-   */
-  hostSessionOnly?: true;
+  opensLink?: true;
+  /** AGEND-122: the effect turns the owner's code option (`remote_confirm_code`) off — every confirmation from another device posts a Notice. */
+  relaxesConfirm?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {

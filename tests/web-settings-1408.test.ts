@@ -598,7 +598,7 @@ describe("#1423: a change an admin must confirm", () => {
     expect(op().steps[0].status).toBe("running");
     await vi.advanceTimersByTimeAsync(50);
     const card = p.root.querySelector(".pending-card");
-    expect([card?.textContent.includes("Confirmed by your account (this browser is web-verified)"), card?.textContent.includes("confirms this in chat")]).toEqual([true, false]);
+    expect([card?.textContent.includes("Confirmed by your account as a signed-in admin"), card?.textContent.includes("confirms this in chat")]).toEqual([true, false]);
     expect(p.root.querySelector(".s-op")?.textContent).not.toContain("Waiting for confirmation");
     decided = true;
     await vi.advanceTimersByTimeAsync(5_000);

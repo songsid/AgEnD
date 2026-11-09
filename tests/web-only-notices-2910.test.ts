@@ -203,7 +203,8 @@ describe("#2910 D2 the page", () => {
     const r = await import("../src/ui/shared/app-route.js" as string);
     expect([r.parseRoute("/ui/notices"), r.routePath({ panel: "notices" }), r.routeKey({ panel: "notices" })]).toEqual([{ panel: "notices" }, "/ui/notices", "notices:"]);
     const shell = readFileSync(join(process.cwd(), "src/ui/shared/app-shell.js"), "utf8");
-    expect(shell).toContain('app.connections === 0 && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell"');
+    // AGEND-122: a chat fleet shows it too while one is unread (a confirmation from another device that nothing else could carry).
+    expect(shell).toContain('(app.connections === 0 || (app.notices && app.notices.unread > 0)) && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell"');
     expect(readFileSync(join(process.cwd(), "src/ui/shared/app-stream.js"), "utf8")).toMatch(/const EVENTS = \[[^\]]*"notice"\]/);
   });
 });

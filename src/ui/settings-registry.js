@@ -101,6 +101,7 @@ const ROWS = [
   ["access.cloudflare-token", "access", "#publicTunnelToken", "settings.namedToken", "web.public_link.tunnel_token_env", ["cloudflare token", "tunnel token", "token", "fixed address", "secret"], ["Cloudflare token", "tunnel token", "token", "固定網址", "金鑰"]],
   ["access.authority", "access", "#vaEnabled", "settings.vaEnabled", "web.verified_authority.enabled", ["web authority", "verified", "authorize"], ["網頁授權", "驗證", "授權"]],
   ["access.authority-loopback", "access", "#vaLoopbackOnly", "settings.vaLoopbackOnly", "web.verified_authority.loopback_only", ["only this computer", "loopback", "authorize"], ["只有這台電腦", "授權"]],
+  ["access.authority-remote-code", "access", "#vaRemoteCode", "settings.vaRemoteCode", "web.verified_authority.remote_confirm_code", ["authenticator code", "remote", "confirm", "other devices", "strict"], ["驗證器代碼", "其他裝置", "遠端", "確認"]],
   // #2453: shown with a fixed hostname (a named tunnel), or while it is on; its label names the hostname, so its own words here.
   ["access.authority-named-link", "access", "#vaNamedLink", null, "web.verified_authority.named_link", ["named link", "my named link", "authorize", "fixed hostname"], ["固定網域", "授權", "named link"], L("Also over my named link", "也允許透過我的固定網域")],
   ["access.authority-quick-link", "access", "#vaQuickLink", null, "web.verified_authority.quick_link", ["temporary public link", "quick link", "quick tunnel", "authorize", "trycloudflare"], ["臨時公開連結", "授權", "quick tunnel"], L("Also over the temporary public link", "也允許透過臨時公開連結")],

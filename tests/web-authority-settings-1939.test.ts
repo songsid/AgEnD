@@ -6,6 +6,10 @@
  *   General admin; the reverse of each applies at once.
  * - GET /api/settings/web-authority (what is in force, the authorized sessions) and POST …/revoke (at once, the caller
  *   asked again after the body). Never over the public link.
+ * - AGEND-122 (upstream #3486): what a held change is confirmed BY is no longer a per-change mark — any signed-in admin session
+ *   presses Apply now (src/authority/settings-role.ts). Turning on the named / quick link is
+ *   held and carries only `opensLink` (a Notice for a remote confirmation; never code-confirmed over a link). What a web
+ *   *message* carries (evaluateWebAuthority, #1939) is unchanged.
  * Rig: the real classifier and projection; the real gate in front of the real handler on a fleet.yaml on disk (as
  * web-guest-settings-1920); a real FleetManager for the overview and the live revoke.
  */
@@ -161,11 +165,11 @@ describe("through the gate and the real handler", () => {
 });
 
 describe("§0.3: the quick-link option through the gate (#2819: on by default)", () => {
-  it("on from an explicit false — true, or the false removed (it inherits on): held for a confirmation, not self-confirmable; nothing written yet", async () => {
+  it("on from an explicit false — true, or the false removed (it inherits on): held for a confirmation, marked opensLink; nothing written yet", async () => {
     for (const quick_link of [true, null]) {
       const h = harness({ web: { verified_authority: { quick_link: false } } });
       const r = await h.request("PUT", WEB, { verified_authority: { quick_link } });
-      expect([r.status, r.body.result, h.store.selfConfirmable(r.body.pending_change.id), h.save.mock.calls.length], String(quick_link)).toEqual([202, "pending_confirmation", false, 0]);
+      expect([r.status, r.body.result, h.store.opensLink(r.body.pending_change.id), h.save.mock.calls.length], String(quick_link)).toEqual([202, "pending_confirmation", true, 0]);
     }
   });
   it("off, true over the default, or a true removed: written at once; and never over the public link", async () => {
@@ -181,10 +185,10 @@ describe("§0.3: the quick-link option through the gate (#2819: on by default)",
 });
 
 describe("#2453 (§0.2): the named-link option through the gate", () => {
-  it("on: held for a confirmation, the held change marked not self-confirmable; nothing written yet", async () => {
+  it("on: held for a confirmation, the held change marked opensLink; nothing written yet", async () => {
     const h = harness();
     const r = await h.request("PUT", WEB, { verified_authority: { named_link: true } });
-    expect([r.status, r.body.result, h.store.selfConfirmable(r.body.pending_change.id), h.save.mock.calls.length]).toEqual([202, "pending_confirmation", false, 0]);
+    expect([r.status, r.body.result, h.store.opensLink(r.body.pending_change.id), h.save.mock.calls.length]).toEqual([202, "pending_confirmation", true, 0]);
   });
   it("off: written at once; and never over the public link", async () => {
     const h = harness({ web: { verified_authority: { named_link: true } } });
@@ -192,10 +196,10 @@ describe("#2453 (§0.2): the named-link option through the gate", () => {
     expect((await h.request("PUT", WEB, { verified_authority: { named_link: null } })).status).toBe(200);
     expect(h.raw().web.verified_authority).toBeUndefined();
   });
-  it("control — an ordinary held change stays self-confirmable", async () => {
+  it("control — an ordinary held change is not marked opensLink (no Notice-for-a-link, no strict-mode link refusal)", async () => {
     const h = harness();
     const r = await h.request("PUT", "/api/settings/fleet/channels", [{ id: "dc", type: "discord", group_id: "G", bot_token_env: "X", access: { mode: "locked", allowed_users: ["2"] } }]);
-    expect([r.status, h.store.selfConfirmable(r.body.pending_change.id)]).toEqual([202, true]);
+    expect([r.status, h.store.opensLink(r.body.pending_change.id)]).toEqual([202, false]);
   });
 });
 

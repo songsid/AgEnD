@@ -59,9 +59,15 @@ export interface SettingsPendingView {
   /** #2868: the browser that reads it may confirm it itself now (#2170's rule, asked at that read): "Apply now". */
   can_self_confirm?: boolean;
   /** alpha.6 #2c (hmsg-468cc290): this page may confirm it with the authenticator's code (ready), or could once one is set up. */
-  totp?: "ready" | "not_set_up" | "on_host" | "host_browser";
+  totp?: "ready" | "not_set_up" | "on_host" | "host_only";
   /** B2b: with `totp` ready, the change's digest the page sends back with the code (one code confirms only this change). */
   confirm_digest?: string;
+  /**
+   * AGEND-122: this page is not the browser on the AgEnD computer itself (a LAN, tailnet or link connection). Only about
+   * what the page says: it names no host command and no "go to that computer" step the reader cannot take. It grants
+   * nothing and is never read by a check.
+   */
+  remote?: true;
   outcome: SettingsChangeOutcome | null;
 }
 export interface SettingsChangeProposal {
@@ -77,12 +83,10 @@ export interface SettingsChangeProposal {
   requestFingerprint?: string;
   affectedConnections?: readonly string[];
   authority?: SettingsChangeAuthority;
-  /** #2453: never confirmed by its own requester (#2170) — it turns the named-link option on. */
-  noSelfConfirm?: true;
-  /** B2b: noSelfConfirm, except for this computer's host operator on its own local session (see SettingsChangeDiff). */
-  hostLocalConfirm?: true;
-  /** A link option turned on: noSelfConfirm, except for the host's own session here only (see SettingsChangeDiff). */
-  hostSessionOnly?: true;
+  /** AGEND-122: the change turns the named or quick link option on (see SettingsChangeDiff). */
+  opensLink?: true;
+  /** AGEND-122: the change turns the owner's code option off (see SettingsChangeDiff). */
+  relaxesConfirm?: true;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
@@ -210,12 +214,10 @@ export class SettingsConfirmationStore {
     return this.snapshot(entry);
   }
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
-  /** #2453: whether its requester may confirm it by applying it (#2170) — not a change that opens the named link. */
-  selfConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm !== true; }
-  /** B2b: a noSelfConfirm change the host operator's own local session may still confirm. */
-  /** A link option turned on (#2453): only the host's own session on this computer may confirm it (hostSessionHere). */
-  hostSessionConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm === true && p.hostSessionOnly === true; }
-  hostLocalConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm === true && p.hostLocalConfirm === true; }
+  /** AGEND-122: the change turns the named or quick link option on (a Notice for every confirmation from another device). */
+  opensLink(id: string): boolean { return this.records.get(id)?.proposal?.opensLink === true; }
+  /** AGEND-122: the change turns the owner's code option off. */
+  relaxesConfirm(id: string): boolean { return this.records.get(id)?.proposal?.relaxesConfirm === true; }
   /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
   confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {

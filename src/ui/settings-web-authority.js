@@ -25,6 +25,8 @@ export function verifiedAuthorityBody(original, f) {
   const out = {};
   if (f.enabled !== original.enabled) out.enabled = f.enabled ? null : false;                   // §0.1: on is the default
   if (f.loopbackOnly !== original.loopbackOnly) out.loopback_only = f.loopbackOnly ? true : null;
+  // AGEND-122: the owner's stricter option — off by default; turning it on needs an authenticator set up, and turning it off asks the code.
+  if (f.remoteCode !== original.remoteCode) out.remote_confirm_code = f.remoteCode ? true : null;
   if (f.hours !== original.hours) out.max_session_hours = f.hours === null ? null : f.hours;
   // #2453 (§0.2): off by default; turning it on is confirmed in a General or on the host.
   if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? true : null;
@@ -48,7 +50,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     const o = r && r.ok ? r.body : null;
     if (!o || typeof o !== "object" || !o.state || !o.hours || !Array.isArray(o.lanHosts) || !Array.isArray(o.authorized)) { setFailed(true); return; }
     const c = o.configured || {};
-    const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
+    const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, remoteCode: c.remote_confirm_code === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
       namedLink: c.named_link === true, quickLink: c.quick_link == null || c.quick_link === true };   // #2819: on unless set otherwise
     setOverview(o); setFailed(false);
     setOriginal((prev) => prev || orig);
@@ -95,6 +97,11 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
       <p class="note">${layoutText("revAuthorityEnabledHint")}</p>
       <label class=${fc("check", "loopbackOnly")}><input class="s-ui-toggle" id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${layoutText("revAuthorityLocal")}</span></label>
       <p class="note">${layoutText("revAuthorityLocalHint")}</p>
+      ${/* AGEND-122: the owner's stricter option. Off: a signed-in admin applies from any device. On: off this computer, each change takes the code. */ ""}
+      <label class=${fc("check", "remoteCode")}><input class="s-ui-toggle" id="vaRemoteCode" type="checkbox" checked=${f.remoteCode} disabled=${!overview.authenticatorEnrolled && !f.remoteCode}
+        aria-describedby="vaRemoteCode-hint" onChange=${(e) => set({ remoteCode: e.target.checked })} /><span>${tn("vaRemoteCode")}</span></label>
+      <p class="note" id="vaRemoteCode-hint">${tn("vaRemoteCodeHint")}</p>
+      ${!overview.authenticatorEnrolled && !f.remoteCode ? html`<p class="note" id="vaRemoteCodeNeedApp">${tn("vaRemoteCodeNeedApp")}</p>` : null}
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
       <div class=${fc("field", "hours")}><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
         <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any"

@@ -26,7 +26,8 @@ register("outside", {
     againConfirm: "Codes from the old app stop working, and everyone signed in from outside is signed out.",
     remove: "Remove", removeConfirm: "Connections from outside are turned off, and everyone signed in from outside is signed out.",
     openAt: "Open at {0}.", quick: "A quick link gets a new address each time it opens.",
-    hereOnly: "Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.",
+    hereOnly: "This can only be changed on the computer running AgEnD.",
+    switchHere: "Connections from outside are turned on and off on the computer running AgEnD.",
     lostPhone: "Lost your phone? On the AgEnD computer, choose “Set up again”. There is no email or backup-code recovery.",
     noRecovery: "If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.",
     appsLabel: "Works with these authenticator apps", appOther: "Other TOTP authenticators",
@@ -35,6 +36,10 @@ register("outside", {
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.",
     paused: "Too many wrong codes. Try again in {0}.", code: "Authenticator code", key: "Key",
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
+    leadConfirm: "Use your authenticator app's 6-digit code to confirm changes from other devices, when the option “Ask for an authenticator code to confirm from other devices” (Access & security → Web authority) is on.",
+    askTitle: "Enter the current code", askLead: "This fleet asks for an authenticator code to confirm from other devices. Enter the code your authenticator app shows now to continue.",
+    askRemove: "Codes will no longer be accepted, and changes confirmed from other devices will have to be confirmed on the computer running AgEnD until an authenticator is set up again or the option is turned off.",
+    askContinue: "Continue", askRemoveGo: "Remove", askCode: "Current code",
   },
   "zh-TW": {
     title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。",
@@ -46,7 +51,8 @@ register("outside", {
     againConfirm: "舊 App 的代碼會失效，所有從外面登入的人都會被登出。",
     remove: "停用", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
     openAt: "已開啟：{0}。", quick: "快速連結每次開啟網址都不同。",
-    hereOnly: "只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。",
+    hereOnly: "只能在執行 AgEnD 的那台電腦上變更。",
+    switchHere: "從外面連線的開關，要在執行 AgEnD 的那台電腦上操作。",
     lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。",
     noRecovery: "遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。",
     appsLabel: "可使用的驗證器 App", appOther: "其他 TOTP 驗證器",
@@ -55,6 +61,10 @@ register("outside", {
     wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
     paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
+    leadConfirm: "用驗證器 App 的 6 位數代碼，從其他裝置確認變更；需開啟「從其他裝置確認時要驗證器代碼」（存取與安全 → 網頁授權）。",
+    askTitle: "請輸入目前的代碼", askLead: "這個 fleet 要求從其他裝置確認時輸入驗證器代碼。請輸入驗證器 App 現在顯示的代碼才能繼續。",
+    askRemove: "之後不再接受代碼；在重新設定驗證器或關閉該選項之前，從其他裝置發出的變更只能在執行 AgEnD 的那台電腦上確認。",
+    askContinue: "繼續", askRemoveGo: "停用", askCode: "目前的代碼",
   },
 });
 const to = (k, ...v) => t(`outside.${k}`, ...v);
@@ -109,9 +119,10 @@ function Qr({ uri }) {
  * back) meets the same request.
  */
 let enrolling = null;
-function askEnrollment() {
+function askEnrollment(code) {
   if (!enrolling) {
-    const asked = (async () => { try { return await api("/ui/outside/enroll", { method: "POST", body: "{}" }); } catch { return null; } })();
+    // AGEND-122: while the owner's option asks for a code, replacing the app starts with the current one (`code`).
+    const asked = (async () => { try { return await api("/ui/outside/enroll", { method: "POST", body: JSON.stringify(code ? { code } : {}) }); } catch { return null; } })();
     enrolling = asked.finally(() => { enrolling = null; });
   }
   return enrolling;
@@ -126,6 +137,8 @@ export const outsidePoll = { quickMs: 2000, slowMs: 15000 };
 export function OutsideCard() {
   // `dlg`: the set-up dialog while it is open — { kind: "setup" | "again", enroll: null (asking the server) | { secret, uri } }.
   const [s, setS] = useState(null), [dlg, setDlg] = useState(null), [code, setCode] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
+  // `ask`: the current-code dialog while it is open — { kind: "again" | "remove", code, msg } (AGEND-122).
+  const [ask, setAsk] = useState(null);
   // Fences: an answer that arrives after the card is gone, or after a newer read began, is dropped; nor does a read
   // land while an action is under way (the box shows the click until the action's own read). `dlg`: the same for the
   // dialog's enrolment (closed meanwhile: its answer is dropped); `refocus`: the dialog just closed, focus goes back.
@@ -162,8 +175,13 @@ export function OutsideCard() {
     const el = card.current && card.current.querySelector(s && s.enrolled ? "#outAgain" : "#outSetUp");
     if (el && !el.disabled && typeof el.focus === "function") el.focus();
   }, [dlg, busy]);
-  if (!s || !s.webOnly) return null;
+  if (!s) return null;
   const here = s.here === true;
+  // AGEND-122: whether this session may set up, replace or remove the app (an admin on a direct connection, this computer or
+  // another device; the server says, and refuses everything else). A server that does not say is read as the old rule: here.
+  const manage = s.manage !== undefined ? s.manage === true : here;
+  if (!s.webOnly && !manage && !s.enrolled) return null;                          // a chat fleet: nothing to show without an app or a say
+
   const act = async (fn) => {
     setBusy(true); setMsg(""); live.current.busy = true; live.current.seq++;      // a read under way is outdated now
     try { await fn(); } finally { live.current.busy = false; if (live.current.mounted) { setBusy(false); load(); } }
@@ -171,7 +189,8 @@ export function OutsideCard() {
   // Open the dialog at once (the button that opened it still has focus) and ask the server for the secret meanwhile; if it
   // will not give one, the dialog closes with the page's usual "failed". Nothing is changed until the right code is confirmed.
   const begin = async (kind) => {
-    if (!here || live.current.dlgOpen) return;                                    // not here, or one is open already
+    if (!manage || live.current.dlgOpen) return;                                  // not allowed, or one is open already
+    if (kind === "again" && s.codeNeeded) { setAsk({ kind, code: "", msg: "" }); return; }   // the current code first
     const id = ++live.current.dlg;
     live.current.dlgOpen = true;
     setDlg({ kind, enroll: null }); setCode(""); setMsg("");
@@ -195,7 +214,25 @@ export function OutsideCard() {
     setMsg(why === "wrong" ? to("wrong") : t("app.failed"));
   });
   const canConfirm = !!(dlg && dlg.enroll) && /^\s*\d{3}\s?\d{3}\s*$/.test(code);
+  // The current code, asked before replacing or removing the app while the owner's option asks for codes off this computer.
+  const askWhy = (r) => (r && r.status === 401 ? to("wrong") : r && r.status === 429 ? to("paused", waitWords((r.body && r.body.retryAfterMs) || 60000)) : t("app.failed"));
+  const canAsk = !!ask && /^\s*\d{3}\s?\d{3}\s*$/.test(ask.code);
+  const submitAsk = () => act(async () => {
+    const asked = ask;
+    if (asked.kind === "again") {
+      live.current.dlgOpen = true;
+      const r = await askEnrollment(asked.code);
+      if (r && r.ok && r.body && r.body.secret) { setAsk(null); setDlg({ kind: "again", enroll: r.body }); setCode(""); setMsg(""); return; }
+      live.current.dlgOpen = false;
+      setAsk({ ...asked, code: "", msg: askWhy(r) });
+      return;
+    }
+    let r; try { r = await api("/ui/outside/remove", { method: "POST", body: JSON.stringify({ code: asked.code }) }); } catch { r = null; }
+    if (r && r.ok) { setAsk(null); return; }
+    setAsk({ ...asked, code: "", msg: askWhy(r) });
+  });
   const remove = async () => {
+    if (s.codeNeeded) { setAsk({ kind: "remove", code: "", msg: "" }); return; }
     if (!(await confirmDialog({ title: to("removeTitle"), message: to("removeConfirm"), confirmLabel: to("remove"), danger: true }))) return;
     act(async () => { const r = await api("/ui/outside/remove", { method: "POST", body: "{}" }); if (!r.ok) toast(t("app.failed"), false); });
   };
@@ -206,20 +243,32 @@ export function OutsideCard() {
     if (!r.ok) toast(t("app.failed"), false);
   }); };
   const link = s.link, open = link && link.state === "open";
-  return html`<section class="card s-outside" id="outsideCard" ref=${card}><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
+  return html`<section class="card s-outside" id="outsideCard" ref=${card}><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to(s.webOnly ? "lead" : "leadConfirm")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
     <div class="chips s-out-apps" id="outApps" role="list" aria-label=${to("appsLabel")}><span class="tag" role="listitem">Google Authenticator</span><span class="tag" role="listitem">Microsoft Authenticator</span><span class="tag" role="listitem">${to("appOther")}</span></div>
-    ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
-    <label class="check"><input id="outSwitch" class="s-ui-toggle" type="checkbox" role="switch" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
+    ${!manage ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
+    ${s.webOnly ? html`<label class="check"><input id="outSwitch" class="s-ui-toggle" type="checkbox" role="switch" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>
-    ${!s.enrolled ? html`<p class="note" id="outNeedApp">${to("needApp")}</p>` : null}
+    ${manage && !here ? html`<p class="note" id="outSwitchHere">${to("switchHere")}</p>` : null}` : null}
+    ${!s.enrolled && s.webOnly ? html`<p class="note" id="outNeedApp">${to("needApp")}</p>` : null}
     ${s.outside && open && link.url ? html`<p class="note" id="outOpenAt">${to("openAt", link.url)}${link.quick ? ` ${to("quick")}` : ""}</p>` : null}
     ${s.outside && link && !open ? html`<p class="note" id="outStarting">${t("app.loading")}</p>` : null}
     ${s.pausedForMs > 0 ? html`<p class="note s-va-warn" role="status" id="outPaused">${to("paused", waitWords(s.pausedForMs))}</p>` : null}
     ${s.enrolled ? html`<p class="note" id="outSetUpOn">${to("setUpOn", new Date(s.enrolledAt).toLocaleDateString())}</p>
         <p class="note">${to("lostPhone")}</p>
-        ${here ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${() => begin("again")}>${to("again")}</button>
+        ${manage ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${() => begin("again")}>${to("again")}</button>
           <button type="button" class="btn btn-danger" id="outRemove" disabled=${busy} onClick=${remove}>${to("remove")}</button></div>` : null}`
-      : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${() => begin("setup")}>${to("setUp")}</button></div>` : null}`}
+      : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${manage ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${() => begin("setup")}>${to("setUp")}</button></div>` : null}`}
+    ${ask ? html`<${Dialog} title=${to(ask.kind === "remove" ? "removeTitle" : "askTitle")} onClose=${() => setAsk(null)} busy=${busy} actions=${html`
+        <button type="button" class="btn" id="outAskCancel" disabled=${busy} onClick=${() => setAsk(null)}>${t("app.cancel")}</button>
+        <button type="button" class=${`btn ${ask.kind === "remove" ? "btn-danger" : "btn-primary"}`} id="outAskGo" disabled=${busy || !canAsk} onClick=${submitAsk}>${to(ask.kind === "remove" ? "askRemoveGo" : "askContinue")}</button>`}>
+      <div class="s-out-enroll" id="outAsk"><p class="note">${to("askLead")}</p>
+        ${ask.kind === "remove" ? html`<p class="note">${to("removeConfirm")}</p><p class="note">${to("askRemove")}</p>` : null}
+        <div class="field"><label for="outAskCode">${to("askCode")}</label>
+          <input id="outAskCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${ask.code}
+            onInput=${(e) => setAsk({ ...ask, code: e.target.value })}
+            onKeyDown=${(e) => { if (e.key === "Enter" && canAsk && !busy) { e.preventDefault(); submitAsk(); } }} /></div>
+        ${ask.msg ? html`<p class="feedback error" role="alert" id="outAskMsg">${ask.msg}</p>` : null}</div>
+    </${Dialog}>` : null}
     ${dlg ? html`<${Dialog} title=${to(dlg.kind === "again" ? "again" : "setUp")} onClose=${closeDlg} busy=${busy} actions=${html`
         <button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${closeDlg}>${t("app.cancel")}</button>
         <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !canConfirm} onClick=${submitBind}>${to("activate")}</button>`}>

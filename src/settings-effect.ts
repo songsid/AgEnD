@@ -97,7 +97,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
-      affectedConnections: [], authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
+      affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
@@ -111,8 +111,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   // #3451 (M-2682): the host owner's Hub switches — "Run this Hub" (hub.enabled) and "HTML previews on this Hub"
   // (hub.web.preview_port). Their routes save only as a confirmed replay, so like retention they are proposed here first;
   // the route re-checks everything (initialized, conflicts, a free port, an unfinished sealed commit) at the replay.
-  // Starting the Hub or opening a preview port opens a listener: outward, so never the asker's own "Apply now" (#3352 F1)
-  // — the host's own session here still confirms it at Save (hostLocalConfirm). Stopping and turning previews off widen nothing.
+  // Starting the Hub or opening a preview port opens a listener: outward. AGEND-122: confirmed as any change is (a signed-in
+  // admin's Apply now). Stopping and turning previews off widen nothing.
   if (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
     const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
@@ -124,7 +124,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
       summary: [run ? t(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? t("hub.preview.on", String(port)) : t("hub.preview.off")],
-      affectedConnections: [], authority: HUB_AUTHORITY, ...(b.enabled ? { noSelfConfirm: true as const, hostLocalConfirm: true as const } : {}) } };
+      affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/membership") {
     if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");
@@ -135,13 +135,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: diff ? { ...diff, section: "access", summary: [t(next.enabled ? "hub.membership.enable" : "hub.membership.disable")],
       affectedConnections: [], authority: HUB_AUTHORITY } : null };
   }
-  // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
-  // confirm (#2170 self-confirmation).
+  // #2453 (§0.2): the trusted effect — the named-link option off before, on after — marks the change as one that opens a
+  // public link (a Notice for every confirmation from another device; never over a link while a code is asked).
   // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.
   const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
     || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
+  const relaxesConfirm = () => before.fleet?.web?.verified_authority?.remote_confirm_code === true && after.fleet?.web?.verified_authority?.remote_confirm_code !== true;
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const, hostSessionOnly: true as const } : {}) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { opensLink: true as const } : {}), ...(relaxesConfirm() ? { relaxesConfirm: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (path === "/api/settings/general-location") {
@@ -162,7 +163,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
+      authority: HUB_AUTHORITY } };
   }
   if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) {
     const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust");
@@ -183,7 +184,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)], affectedConnections: [],
-      authority: HUB_AUTHORITY, noSelfConfirm: true, hostLocalConfirm: true } };
+      authority: HUB_AUTHORITY } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
   if (pairingStep) {
@@ -195,7 +196,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
-      authority: HUB_AUTHORITY, ...(pairingStep[1] === "disconnect" ? {} : { noSelfConfirm: true as const, hostLocalConfirm: true as const }) } };
+      authority: HUB_AUTHORITY } };
   }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);

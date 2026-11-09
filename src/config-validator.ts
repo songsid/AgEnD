@@ -539,10 +539,11 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       const v = config.web.verified_authority;
       if (!isObj(v)) err("web.verified_authority", "must be a mapping");
       else {
-        const known = ["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"];
+        const known = ["enabled", "loopback_only", "remote_confirm_code", "max_session_hours", "named_link", "quick_link"];
         for (const k of Object.keys(v)) if (!known.includes(k)) warn(`web.verified_authority.${k}`, `unknown key (known: ${known.join(", ")}) — ignored`);
         if (v.enabled !== undefined && typeof v.enabled !== "boolean") err("web.verified_authority.enabled", "must be a boolean");
         if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
+        if (v.remote_confirm_code !== undefined && typeof v.remote_confirm_code !== "boolean") err("web.verified_authority.remote_confirm_code", "must be a boolean");
         if (v.named_link !== undefined && typeof v.named_link !== "boolean") err("web.verified_authority.named_link", "must be a boolean");
         if (v.quick_link !== undefined && typeof v.quick_link !== "boolean") err("web.verified_authority.quick_link", "must be a boolean");
         const h = v.max_session_hours;

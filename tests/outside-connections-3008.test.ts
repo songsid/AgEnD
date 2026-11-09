@@ -7,10 +7,17 @@
  * the named/quick link options; "Only this computer can authorize" still refuses it; the switch off, another link, a chat
  * fleet: none. Its receipts hold while the switch is on and read as none at once when it goes off.
  *
+ * AGEND-122 (R1, upstream #3486): who changes what moved. The authenticator's set-up / replace / remove is any role-ok admin
+ * session on a DIRECT connection (settings-role.ts: this computer or a LAN/tailnet name, a chat fleet too; never a link, a
+ * guest, a header token, an agent) — and while the owner's strict option (`web.verified_authority.remote_confirm_code`) is on and the
+ * page is not this computer, replacing or removing needs the CURRENT code. The switch (and signing in from outside) stay a
+ * web-only fleet's host admin on this computer. A session from outside is "This fleet's admin" (was "This computer's admin").
+ *
  * A real fleet over HTTP, its public link through the REAL gateway with only the tunnel stubbed (no cloudflared, no
  * trycloudflare — the leader's rule for this host):
- *  - host-only: setting up, the switch, removal answer only this computer's admin on this computer (a LAN session, a
- *    session over the link, no session: refused; over the link the gateway refuses the routes outright);
+ *  - setting up / removal answer an admin session on a direct connection (a LAN session too) and nobody else (a session over the
+ *    link, a guest, a header token, no session: refused; over the link the gateway refuses the routes outright); the switch
+ *    answers only this computer's host admin;
  *  - on needs an app set up; it opens the link (owned by this computer's admin); the status shows its address here only;
  *  - over the link: the sign-in code works once, makes an admin session that is web-verified as this computer's admin,
  *    which then decides an agent's request in Needs you and applies its own settings change; a Notice says who signed in;
@@ -183,11 +190,16 @@ async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: s
 }
 
 describe("#3008 a real fleet: connections from outside", () => {
-  it("only this computer's admin, here, sets it up or switches it; on needs an app; on opens the link, its address shown here only", async () => {
+  it("a signed-in admin on a direct connection sets it up (this computer or a LAN name); only this computer's host admin switches it; on needs an app; on opens the link, its address shown here only", async () => {
     const h = await startFleet();
     const s = await h.hostSignIn();
-    // Off a loopback peer (a LAN session, as a reverse proxy shows): refused.
-    expect((await h.local(s, "POST", "/ui/outside/enroll", {}, { "x-forwarded-for": "10.0.0.5" })).status).toBe(403);
+    // From a LAN peer (a reverse proxy's forwarding header): the admin may bind the app (R1) — but the switch stays this computer's.
+    const lan = { "x-forwarded-for": "10.0.0.5" };
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan))).toMatchObject({ webOnly: true, here: false, manage: true, codeNeeded: false, strict: false });
+    expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ here: true, manage: true, codeNeeded: false, strict: false });
+    expect((await h.local(s, "POST", "/ui/outside/enroll", {}, lan)).status).toBe(200);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: true }, lan)).status).toBe(403);           // not this computer
+    expect(parse(await h.local(s, "POST", "/ui/outside/switch", { on: true }, lan)).error).toBe("outside_not_here");
     expect((await h.local(s, "POST", "/ui/outside/switch", { on: true })).status).toBe(409);                 // no app yet
     expect(parse(await h.local(s, "POST", "/ui/outside/switch", { on: true })).error).toBe("not_enrolled");
     const key = await h.enroll(s);
@@ -195,23 +207,100 @@ describe("#3008 a real fleet: connections from outside", () => {
     expect(on.status).toBe(200);
     await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
     const status = parse(await h.local(s, "GET", "/ui/outside"));
-    expect(status).toMatchObject({ webOnly: true, here: true, enrolled: true, outside: true, link: { state: "open", url: `https://${HOST}/signin`, quick: true } });
+    expect(status).toMatchObject({ webOnly: true, here: true, manage: true, enrolled: true, outside: true, link: { state: "open", url: `https://${HOST}/signin`, quick: true } });
     expect(JSON.stringify(status)).not.toContain(Buffer.from(key).toString("hex"));
-    // Over the link: the status reads (no address), the changes are refused by the gateway itself.
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan)).link.url).toBeUndefined();          // the address is this computer's only
+    // Over the link: the status reads (no address, nothing to manage), the changes are refused by the gateway itself.
     const r = await h.codeIn(key);
     expect(r.status).toBe(200);
     const remote = r as { cookie: string; sessionId: string };
     const there = parse(await h.outside("GET", "/ui/outside", { session: remote }));
-    expect([there.here, there.outside, there.link.url]).toEqual([false, true, undefined]);
+    expect([there.here, there.manage, there.outside, there.link.url]).toEqual([false, false, true, undefined]);
     for (const path of ["/ui/outside/enroll", "/ui/outside/enroll/confirm", "/ui/outside/remove", "/ui/outside/switch"]) {
       expect((await h.outside("POST", path, { session: remote, body: { on: false, code: "123456" } })).status).toBe(404);
     }
-    // That session's cookie carried straight to this computer's port (not through the link): no one here.
+    // That session's cookie carried straight to this computer's port (not through the link): a gateway session, no one here.
     expect((await h.local(remote, "POST", "/ui/outside/switch", { on: false })).status).not.toBe(200);
+    expect((await h.local(remote, "POST", "/ui/outside/enroll", {})).status).not.toBe(200);
+    expect((await h.local(remote, "POST", "/ui/outside/remove", {})).status).not.toBe(200);
     expect(parse(await h.local(s, "GET", "/ui/outside")).outside).toBe(true);
-    // No session at all: nothing.
+    // No session at all: nothing. The CLI's header token is no cookie session: not either.
     expect((await raw(h.port, "POST", "/ui/outside/enroll", { origin: h.origin, "content-type": "application/json" }, "{}")).status).toBe(401);
+    expect((await raw(h.port, "POST", "/ui/outside/enroll", { origin: h.origin, "content-type": "application/json", "x-agend-token": h.token }, "{}")).status).toBeGreaterThanOrEqual(401);
+    expect((await raw(h.port, "POST", "/ui/outside/remove", { origin: h.origin, "content-type": "application/json", "x-agend-token": h.token }, "{}")).status).toBeGreaterThanOrEqual(401);
+    expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ enrolled: true });                // still set up
   }, 20_000);
+
+  it("R1: who may bind the app — a guest, an owner-less session on a chat fleet, the web switch off, \"Only this computer\" off this computer: not; a web-only fleet's other signed-in admin, a chat fleet's own admin: yes", async () => {
+    const h = await startFleet();
+    const s = await h.hostSignIn();
+    const cookieName = s.cookie.split("=")[0]!;
+    const login = (sessionId: string) => ({ cookie: `${cookieName}=${sessionId}`, sessionId });
+    const epoch = tokenEpoch(h.token);
+    const make = (over: Record<string, unknown>) => login(h.any.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: epoch, ...over }).sessionId);
+    // A guest: never (not on the guest routes).
+    const guest = await h.local(login(h.any.webSessions.create({ tier: "guest", surface: "local", label: "g", tokenEpoch: epoch, owner: { adapterId: "dc", userId: "9" } }).sessionId), "POST", "/ui/outside/enroll", {});
+    expect([guest.status >= 401, parse(guest).secret]).toEqual([true, undefined]);
+    // A web-only fleet: the fleet's other signed-in admin (a sign-in code's session, no chat account) may — it is the fleet's admin here.
+    const other = make({});
+    expect([(await h.local(other, "GET", "/ui/outside")).status, parse(await h.local(other, "GET", "/ui/outside")).manage, (await h.local(other, "POST", "/ui/outside/enroll", {})).status]).toEqual([200, true, 200]);
+    // …and it still has no switch: not the host session.
+    expect(parse(await h.local(other, "GET", "/ui/outside")).here).toBe(false);
+    expect((await h.local(other, "POST", "/ui/outside/switch", { on: true })).status).toBe(403);
+    // A chat fleet: the same owner-less session is nobody (only the host's own session is the fleet's admin there); a chat
+    // account that is an admin of its connection is.
+    h.fm.fleetConfig = { ...h.fm.fleetConfig, channel: { type: "telegram", mode: "topic", bot_token_env: "T", group_id: "-100", access: { mode: "locked", allowed_users: ["1"] } } } as never;
+    expect(h.any.isWebOnlyFleet()).toBe(false);
+    expect([(await h.local(other, "POST", "/ui/outside/enroll", {})).status, parse(await h.local(other, "GET", "/ui/outside")).manage]).toEqual([403, false]);
+    expect((await h.local(s, "POST", "/ui/outside/enroll", {})).status).toBe(200);                          // the host's own session
+    const admin = make({ owner: { adapterId: "telegram", userId: "1" } }), notAdmin = make({ owner: { adapterId: "telegram", userId: "2" } });
+    expect([(await h.local(admin, "POST", "/ui/outside/enroll", {})).status, (parse(await h.local(admin, "GET", "/ui/outside")) as any).manage]).toEqual([200, true]);
+    expect([(await h.local(notAdmin, "POST", "/ui/outside/enroll", {})).status, (parse(await h.local(notAdmin, "GET", "/ui/outside")) as any).manage]).toEqual([403, false]);
+    h.fm.fleetConfig = { ...(h.fm.fleetConfig as object), channel: undefined } as never;
+    // "Only this computer can authorize": off this computer nobody; on it, as before.
+    h.fm.fleetConfig = { ...(h.fm.fleetConfig as object), web: { verified_authority: { enabled: true, loopback_only: true } } } as never;
+    const lan = { "x-forwarded-for": "10.0.0.5" };
+    expect([(await h.local(s, "POST", "/ui/outside/enroll", {}, lan)).status, (parse(await h.local(s, "GET", "/ui/outside", undefined, lan)) as any).manage]).toEqual([403, false]);
+    expect([(await h.local(s, "POST", "/ui/outside/enroll", {})).status, (parse(await h.local(s, "GET", "/ui/outside")) as any).manage]).toEqual([200, true]);
+    // The web authorization switch off: nobody, not even here.
+    h.fm.fleetConfig = { ...(h.fm.fleetConfig as object), web: { verified_authority: { enabled: false } } } as never;
+    expect([(await h.local(s, "POST", "/ui/outside/enroll", {})).status, (parse(await h.local(s, "GET", "/ui/outside")) as any).manage]).toEqual([403, false]);
+  }, 20_000);
+
+  // AGEND-122: the owner's strict option is on (`web.verified_authority.remote_confirm_code`).
+  it("strict mode: replacing or removing the app off this computer asks for the CURRENT code (400 / 401 / 200); this computer is never asked; no app yet, only this computer binds one", async () => {
+    const h = await startFleet(undefined, { web: { verified_authority: { enabled: true, remote_confirm_code: true } } });
+    const s = await h.hostSignIn();
+    const lan = { "x-forwarded-for": "10.0.0.5" };
+    // Strict with no app set up (its file lost): the LAN session cannot repair it — only this computer.
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan))).toMatchObject({ strict: true, manage: false, codeNeeded: false, enrolled: false });
+    expect((await h.local(s, "POST", "/ui/outside/enroll", {}, lan)).status).toBe(403);
+    expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ strict: true, manage: true, codeNeeded: false });
+    const key = await h.enroll(s);                                                                       // this computer: no code asked
+    // An app is set up: the LAN session may manage it, with the code; this computer needs none.
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan))).toMatchObject({ strict: true, manage: true, codeNeeded: true, enrolled: true });
+    expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ strict: true, manage: true, codeNeeded: false, enrolled: true });
+    const missing = await h.local(s, "POST", "/ui/outside/enroll", {}, lan);
+    expect([missing.status, parse(missing).error]).toEqual([400, "code_required"]);
+    const wrong = await h.local(s, "POST", "/ui/outside/enroll", { code: "000000" }, lan);
+    expect([wrong.status, parse(wrong).error]).toEqual([401, "wrong"]);
+    const removeWrong = await h.local(s, "POST", "/ui/outside/remove", { code: "000000" }, lan);
+    expect([removeWrong.status, parse(removeWrong).error]).toEqual([401, "wrong"]);
+    expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan)).enrolled).toBe(true);           // nothing changed
+    expect((await h.local(s, "POST", "/ui/outside/remove", {}, lan)).status).toBe(400);
+    // The right current code: a new secret is given (the code is the proof it is the owner); the old app still holds until the new one is confirmed.
+    const right = await h.local(s, "POST", "/ui/outside/enroll", { code: hotp(key, totpStep(Date.now())) }, lan);
+    expect([right.status, typeof parse(right).secret]).toEqual([200, "string"]);
+    // The same code twice in one time step is not accepted again (the fleet's one-use rule).
+    const again = await h.local(s, "POST", "/ui/outside/remove", { code: hotp(key, totpStep(Date.now())) }, lan);
+    expect([again.status, parse(again).error]).toEqual([401, "wrong"]);
+    // Removing with the right (next) code works; this computer removes without one.
+    const removed = await h.local(s, "POST", "/ui/outside/remove", { code: hotp(key, totpStep(Date.now()) + 1) }, lan);
+    expect(removed.status).toBe(200);
+    expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ enrolled: false });
+    await h.enroll(s);
+    expect((await h.local(s, "POST", "/ui/outside/remove", {})).status).toBe(200);                        // this computer: no code
+  }, 30_000);
 
   it("signed in from outside: once per code, this computer's admin — decides an agent's request, applies its own change; a Notice says who", async () => {
     const h = await startFleet();
@@ -248,13 +337,13 @@ describe("#3008 a real fleet: connections from outside", () => {
       return req;
     };
     const self = h.any.settingsSelfConfirmation(store, overLink(first), own.id);
-    expect(self?.label).toBe("This computer's admin");
+    expect(self?.label).toBe("This fleet's admin");
     expect((await store.decide(own.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
     // The switch off: the same session confirms nothing any more (it has ended).
     const another = store.propose({ session: record.idHash, key: "web-change-2", fingerprint: "h", bytes: 1, source: "web", section: "channel", requestedBy: "web",
       summary: ["Change more"], authority: { connections: [], primaryGeneral: true, unknown: false }, affectedConnections: [],
       current: () => true, unchanged: async () => true, snapshot: () => null, apply: vi.fn() }).view;
-    expect(h.any.settingsSelfConfirmation(store, overLink(first), another.id)?.label).toBe("This computer's admin");
+    expect(h.any.settingsSelfConfirmation(store, overLink(first), another.id)?.label).toBe("This fleet's admin");
     const s2 = await h.hostSignIn();
     await h.local(s2, "POST", "/ui/outside/switch", { on: false });
     expect(h.any.settingsSelfConfirmation(store, overLink(first), another.id)).toBeNull();

@@ -32,7 +32,7 @@ export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse,
  * execution — or why not.
  */
 export interface SettingsTotpConfirmation {
-  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_browser" | null;
+  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_only" | null;
   confirm(req: IncomingMessage, id: string, code: string, digest: string): (SettingsSelfConfirmation & { audit?: Record<string, unknown> }) | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number };
 }
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -52,6 +52,8 @@ export class SettingsHttpConfirmation {
     selfConfirm?(req: IncomingMessage, id: string): SettingsSelfConfirmation | null;
     /** alpha.6 #2c (hmsg-468cc290): the authenticator-code confirmation, on a web-only fleet's own page. */
     totp?: SettingsTotpConfirmation;
+    /** AGEND-122: this page is a remote one (not the browser on the AgEnD computer): words only, no authority. */
+    remote?(req: IncomingMessage): boolean;
     /** A running Fleet may admit an ordinary New Agent request from its current local-dashboard admin.
      * Still uses the store's exact request claim, replay and execution fences; never grants this to agent requests. */
     directAgentCreation?: boolean;
@@ -90,7 +92,8 @@ export class SettingsHttpConfirmation {
     if (totp && method === "POST") {
       const principal = this.options.principal(req);
       if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
-      if (!this.options.totp || gatewayRequestContext(req)) { json(res, 403, { error: "totp_confirm_unavailable" }); return true; }
+      // AGEND-122: over a link too — the fleet decides who may (settingsCodeSession): never a change that opens a link, over one.
+      if (!this.options.totp) { json(res, 403, { error: "totp_confirm_unavailable" }); return true; }
       void readBoundedWebBody(req, 1024).then(raw => {
         let code: unknown, digest: unknown;
         try { const b = JSON.parse(raw.toString("utf8") || "{}"); code = b?.code; digest = b?.digest; } catch { code = undefined; }
@@ -156,8 +159,7 @@ export class SettingsHttpConfirmation {
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
-      ...(effect.diff.noSelfConfirm ? { noSelfConfirm: true as const } : {}), ...(effect.diff.hostLocalConfirm ? { hostLocalConfirm: true as const } : {}),
-      ...(effect.diff.hostSessionOnly ? { hostSessionOnly: true as const } : {}),
+      ...(effect.diff.opensLink ? { opensLink: true as const } : {}), ...(effect.diff.relaxesConfirm ? { relaxesConfirm: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
       unchanged: async () => (await this.options.baseline()).fingerprint === baseline.fingerprint && settingsFingerprint(this.options.snapshot()) === snapshot,
@@ -218,9 +220,11 @@ export class SettingsHttpConfirmation {
    *  it is bound to), or where to go — asked at each read. */
   private forPage(req: IncomingMessage, view: SettingsPendingView, self?: false): SettingsPendingView {
     if (view.state !== "pending") return view;
+    // AGEND-122: said whichever way this page may confirm — the card names no host step to a page that is not on the host.
+    const page: SettingsPendingView = this.options.remote?.(req) === true ? { ...view, remote: true } : view;
     // (`self` false: the caller has just asked — it is not — so it is not asked twice.)
-    if (self !== false && this.options.selfConfirm?.(req, view.id)) return { ...view, can_self_confirm: true };
+    if (self !== false && this.options.selfConfirm?.(req, view.id)) return { ...page, can_self_confirm: true };
     const totp = this.options.totp?.state(req, view.id) ?? null;
-    return totp ? { ...view, totp, ...(totp === "ready" ? { confirm_digest: this.store.confirmDigest(view.id) ?? undefined } : {}) } : view;
+    return totp ? { ...page, totp, ...(totp === "ready" ? { confirm_digest: this.store.confirmDigest(view.id) ?? undefined } : {}) } : page;
   }
 }

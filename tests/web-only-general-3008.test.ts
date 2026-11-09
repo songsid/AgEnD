@@ -109,7 +109,9 @@ describe("#3008 G1 Settings: one General on a fleet with no chat connection", ()
   it("two ticks proposed while there was none (not confirmed as saved), confirmed one after the other: one General — the second is stale (the fleet changed under it)", async () => {
     const h = await fleet({ instances: { a: { working_directory: "/w/a" }, b: { working_directory: "/w/b" } } });
     try {
-      // An admin session that is not this computer's admin (an ordinary code): its changes wait for a confirmation.
+      // AGEND-122: a signed-in admin applies at once now, so to hold two changes the web authorization switch is turned off first:
+      // no web session confirms then, and the changes wait for the host.
+      h.fm.fleetConfig!.web = { ...h.fm.fleetConfig!.web, verified_authority: { enabled: false } } as any;
       const { tokenEpoch } = await import("../src/web-session.js");
       const code = h.any.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(h.fm.getDashboardAccess().token!) }).display;
       const other = await h.signInWith(code);

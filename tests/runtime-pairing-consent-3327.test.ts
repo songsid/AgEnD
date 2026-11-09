@@ -210,9 +210,9 @@ describe("#3327 a real fleet", () => {
   it("an authenticator set up again, or removed, is announced; a first set-up is not", async () => {
     const h = await startFleet();
     try {
-      vi.spyOn(h.any, "liveOwner").mockReturnValue({ handle: "0123456789abcdef", current: () => true });
+      vi.spyOn(h.any, "authenticatorOwner").mockReturnValue({ handle: "0123456789abcdef", onHost: true, current: () => true });   // AGEND-122: the app is bound by any admin role, not liveOwner
       const enrol = () => {
-        const begun = h.fm.webOutsideBeginEnrollment({} as IncomingMessage)!;
+        const begun = h.fm.webOutsideBeginEnrollment({} as IncomingMessage) as { secret: string };
         expect(h.fm.webOutsideConfirmEnrollment({} as IncomingMessage, hotp(base32Decode(begun.secret)!, totpStep(Date.now())))).toBe("ok");
       };
       enrol();

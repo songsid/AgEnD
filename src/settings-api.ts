@@ -138,6 +138,10 @@ export interface SettingsApiContext extends AppShellContext {
   sendGuestCodeByAdmin?(owner: { adapterId: string; userId: string }, by: string, current?: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #1939 S2a: Settings → Web → Web authority — what is in force, the actions to pick from, and the revocation. */
   webAuthorityOverview?(): unknown;
+  /** AGEND-122: an authenticator is set up — the owner's stricter option (`remote_confirm_code`) can only be turned on while one is. */
+  authenticatorEnrolled?(): boolean;
+  /** AGEND-122: the code option was turned on by this request — a Notice when it came from another device. */
+  announceCodeOptionOn?(req: IncomingMessage): void;
   revokeWebAuthority?(): { epoch: number; durable: boolean };
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
@@ -1283,6 +1287,8 @@ export function handleSettingsRequest(
       }
       // #1939 S2a: web authority; loosening it is confirmed, tightening applies at once (settings-change.ts).
       if (parsed.verifiedAuthority) {
+        // AGEND-122: asking for the code needs an app to give it — never turned on with none set up (it would lock this page out).
+        if (parsed.verifiedAuthority.remote_confirm_code === true && ctx.authenticatorEnrolled?.() !== true) return json(res, 409, { error: "authenticator_required" });
         const applied = applyVerifiedAuthorityPatch(cfg.web?.verified_authority, parsed.verifiedAuthority);
         if (applied.next) web.verified_authority = applied.next; else delete web.verified_authority;
         changes.push(...applied.changes);
@@ -1302,6 +1308,8 @@ export function handleSettingsRequest(
         ctx.logger.warn({ err }, "settings: web save refused");
         return json(res, 500, { ok: false, error: (err as Error).message });
       }
+      // AGEND-122: turning the owner's code option on applies at once (it only tightens); from another device it is announced.
+      if (parsed.verifiedAuthority?.remote_confirm_code === true && previous.web?.verified_authority?.remote_confirm_code !== true) ctx.announceCodeOptionOn?.(req);
       // #2348: a grant taken away (or emptied) ends that person's guest access now — sessions, an outstanding code, and
       // remembered browsers — not at their next request. A narrowed grant keeps its sessions; they see less from now on.
       const ended = new Map<string, number>();

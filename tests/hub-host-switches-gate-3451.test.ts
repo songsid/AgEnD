@@ -104,13 +104,14 @@ describe("#3451: the host owner's Hub switches are confirmed Settings changes", 
     expect(await h.put("/api/settings/hub/preview", { enabled: true, port: 0 })).toEqual({ status: 400, body: { error: "invalid_port" } });
     expect(h.save).not.toHaveBeenCalled();
   });
-  it("opening a listener (start, a preview port) is outward: never the asker's own Apply now, but the host's session here (#3352 F1); stop and off widen nothing", () => {
+  it("opening a listener (start, a preview port) is outward but, since AGEND-122, confirmed like any change (a signed-in admin's Apply now); the Hub authority scope stays; stop and off widen nothing", () => {
     const ctx = { config: { defaults: {}, instances: {} } as any, classic: {} };
-    const flags = (path: string, body: unknown) => { const d = prepareSettingsEffect("PUT", path, body, ctx).diff!; return [d.noSelfConfirm ?? false, d.hostLocalConfirm ?? false, d.authority]; };
+    const diff = (path: string, body: unknown) => prepareSettingsEffect("PUT", path, body, ctx).diff!;
     const hub = { connections: [], primaryGeneral: true, unknown: false };
-    expect(flags("/api/settings/hub/run", { enabled: true })).toEqual([true, true, hub]);
-    expect(flags("/api/settings/hub/preview", { enabled: true, port: 8445 })).toEqual([true, true, hub]);
-    expect(flags("/api/settings/hub/run", { enabled: false })).toEqual([false, false, hub]);
-    expect(flags("/api/settings/hub/preview", { enabled: false })).toEqual([false, false, hub]);
+    for (const [path, body] of [["/api/settings/hub/run", { enabled: true }], ["/api/settings/hub/preview", { enabled: true, port: 8445 }],
+      ["/api/settings/hub/run", { enabled: false }], ["/api/settings/hub/preview", { enabled: false }]] as const) {
+      const d = diff(path, body);
+      expect([d.authority, "noSelfConfirm" in d, "hostLocalConfirm" in d]).toEqual([hub, false, false]);
+    }
   });
 });

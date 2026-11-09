@@ -18,7 +18,6 @@ import { ErrorState, Skeleton } from "./ui-states.js";
 import { Dialog } from "./ui-dialog.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
-import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
@@ -462,8 +461,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${/* #2910 D2: a web-only fleet (no chat connection) has Notices — what General would have said. */
-        app.connections === 0 && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell", t("app.noticesNav"), app.notices.unread | 0, "app.noticesCount") : null}
+      ${/* #2910 D2: a web-only fleet (no chat connection) has Notices — what General would have said. AGEND-122: a chat fleet too, while one is unread (a confirmation from another device that nothing else could carry). */
+        (app.connections === 0 || (app.notices && app.notices.unread > 0)) && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell", t("app.noticesNav"), app.notices.unread | 0, "app.noticesCount") : null}
       ${searchOffered(canCreate) ? searchRow() : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
@@ -663,7 +662,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(line).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}
@@ -719,6 +718,7 @@ register("pendingHost", {
     post_failed_do: "Check General's chat connection in Settings → Chat & connections, then make the change again.",
     unknown: "No General could take the confirm card for this change.",
     go: "Open",
+    details: "Change details",
     codeLead: "Enter the 6-digit code from your authenticator app to confirm this change.",
     codeLabel: "Authenticator code", codeGo: "Confirm",
     codeWrong: "That code is not right. Use the current code in your authenticator app.",
@@ -729,10 +729,9 @@ register("pendingHost", {
     // AGEND-118: the one next step this device can take, by state; the other ways are folded under "Other ways to confirm".
     applyLead: "Press Apply now to confirm this change from this browser.", applyRefused: "This browser can't apply it here now. Use one of the other ways to confirm.",
     cantHere: "This device can't confirm this change yet.",
-    setupLead: "Set up an authenticator app first. This card stays here: once it is set up, enter its 6-digit code on the card. If the time runs out before that, make the change again.",
-    setupGo: "Set up authenticator",
-    onHost: "This device can't confirm this change over a link. Do it from the computer running AgEnD.",
-    hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
+    setupLead: "This fleet asks for an authenticator code to confirm changes from other devices, but no authenticator is set up. Set one up again on the computer running AgEnD (Settings → Access & security), or turn that option off there.",
+    onHost: "A change that opens a public link can't be confirmed over a link. Confirm it from a direct connection, or in the browser on the computer running AgEnD.",
+    hostOnly: "Only the computer running AgEnD can confirm changes here: “Only this computer can authorize” is turned on. Confirm it in the browser on that computer.",
     more: "Other ways to confirm",
     moreHost: "On the computer running AgEnD, open AgEnD in its own browser and press Apply now on this card.",
   },
@@ -751,6 +750,7 @@ register("pendingHost", {
     post_failed_do: "請到「設定 → 聊天與連線」檢查 General 的連線，再重新做一次這項變更。",
     unknown: "這項變更沒有 General 可以接收確認卡。",
     go: "前往",
+    details: "變更明細",
     codeLead: "輸入驗證器 App 的 6 位數代碼，就能確認這項變更。",
     codeLabel: "驗證器代碼", codeGo: "確認",
     codeWrong: "代碼不正確，請使用驗證器 App 目前顯示的代碼。",
@@ -760,10 +760,9 @@ register("pendingHost", {
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
     cantHere: "你目前在這台裝置還無法直接確認這項變更。",
-    setupLead: "請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。若倒數結束前還沒完成，請重新送出這項變更。",
-    setupGo: "綁定驗證器",
-    onHost: "你目前在這台裝置無法透過連結確認這項變更，請到執行 AgEnD 的那台電腦操作。",
-    hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
+    setupLead: "這個 fleet 要求從其他裝置確認變更時輸入驗證器代碼，但還沒有設定驗證器。請到執行 AgEnD 的那台電腦，在「設定 → 存取與安全」重新設定驗證器 App，或在那裡關閉這個選項。",
+    onHost: "會開放公開連結的變更無法透過連結確認。請改用直接連線，或在執行 AgEnD 的那台電腦的瀏覽器中確認。",
+    hostOnly: "目前只有執行 AgEnD 的那台電腦能確認變更（已開啟「只有這台電腦可以授權」）。請到那台電腦的瀏覽器確認。",
     more: "其他確認方式",
     moreHost: "到執行 AgEnD 的那台電腦，用它自己的瀏覽器開啟 AgEnD，在這張卡上按「立即套用」。",
   },
@@ -835,45 +834,36 @@ function PendingCode({ p }) {
  * tells the person to run it (style guide rule 9), and has no Copy for it.
  */
 function PendingHow({ p }) {
-  const a = useWebAuthorization();
   const [refused, setRefused] = useState(false);
   const c = p.confirmation || {}, cmd = `agend settings confirm ${p.id}`;
   const cli = c.kind === "host_cli";
   const why = cli && PENDING_HOST_REASONS.includes(c.reason) ? c.reason : null;
   const go = why && Object.hasOwn(PENDING_HOST_GO, why) ? PENDING_HOST_GO[why] : null;
   const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
-  const advanced = html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>`;
+  // AGEND-122: a page that is not the AgEnD computer's own browser never shows the host command.
+  const advanced = p.remote ? null : html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>`;
   const goLink = go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null;
   const whyDo = (why || cli) ? html`<p class="note pending-why">${t(`pendingHost.${why || "unknown"}`)}${why ? html` ${t(`pendingHost.${why}_do`)}${goLink}` : null}</p>` : null;
-  // The change is waiting for a General's card (or it is still being sent): that card is the step. A browser that isn't
-  // verified but could be can authorize itself (the same DM card as the composer's).
-  const mode = p.applyNow ? "apply" : p.confirmWithCode ? "code" : p.totpNotSetUp ? "setup" : p.onHost ? "link" : p.hostBrowser ? "hostBrowser" : "none";
+  // The change is waiting for a General's card (or it is still being sent): that card is the step.
+  const mode = p.applyNow ? "apply" : p.confirmWithCode ? "code" : p.totpNotSetUp ? "setup" : p.onHost ? "link" : p.hostOnly ? "hostOnly" : "none";
   if (!cli && (mode === "none" || mode === "apply")) {
-    const route = !p.applyNow && a.st;
-    const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
-    const asking = route && a.st.state === "pending";
     const lead = c.kind === "posting" ? t("app.pendingPosting") : t("app.pendingChatWhere", whereText(c.where));
     return html`<p class="note">${lead}</p>
       ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
         <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
       ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
-      ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
-        <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
-      ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
-      ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
       ${advanced}`;
   }
   const next = mode === "apply" ? html`<div class="pending-self"><span class="note">${t("pendingHost.applyLead")}</span>
       <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>`
     : mode === "code" ? html`<${PendingCode} p=${p} />`
     : mode === "setup" ? html`<p class="note pending-cant">${t("pendingHost.cantHere")}</p>
-      <div class="pending-self pending-code-setup"><span class="note">${t("pendingHost.setupLead")}</span>
-        <a class="btn btn-sm btn-primary" href=${settingsPath("access")}>${t("pendingHost.setupGo")}</a></div>`
+      <p class="note pending-code-setup">${t("pendingHost.setupLead")}</p>`
     : mode === "link" ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>`
-    : mode === "hostBrowser" ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>`
+    : mode === "hostOnly" ? html`<p class="note pending-host-only">${t("pendingHost.hostOnly")}</p>`
     : html`${refused ? html`<p class="note" role="status">${t("pendingHost.applyRefused")}</p>` : null}${whyDo}`;
   // What is not the step: shown folded only where there is something to say besides the command.
-  const others = mode === "setup" || mode === "link" || mode === "hostBrowser";
+  const others = mode === "setup" || mode === "link";
   return html`${next}
     ${others ? html`<details class="pending-host pending-others"><summary>${t("pendingHost.more")}</summary><div class="pending-more">
       ${whyDo}

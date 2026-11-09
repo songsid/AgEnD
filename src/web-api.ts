@@ -563,9 +563,9 @@ export interface WebApiContext {
   /** #3008: connections from outside — what Settings shows (the link's address only to this computer's admin here). */
   webOutsideStatus?(req: IncomingMessage): Record<string, unknown>;
   /** #3008: set up the authenticator (this computer's admin, here only): a new secret, shown once. Null: not them. */
-  webOutsideBeginEnrollment?(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null;
+  webOutsideBeginEnrollment?(req: IncomingMessage, code?: string): { secret: string; uri: string; expiresInMs: number } | { error: "code_required" | "wrong" | "paused" | "unavailable" | "not_here"; retryAfterMs?: number } | null;
   webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
-  webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
+  webOutsideRemove?(req: IncomingMessage, code?: string): "ok" | "unsaved" | "not_here" | { error: "code_required" | "wrong" | "paused" | "unavailable"; retryAfterMs?: number };
   webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** Refs #3061 (P2a): a web-only fleet's new-device approval — may this session approve (the verified owner), and the decision itself. */
   webDevicesStatus?(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority?: boolean; devices?: WebDeviceRow[] };
@@ -2767,13 +2767,15 @@ export function handleWebRequest(
   }
 
   // ── #3008: connections from outside (a web-only fleet) ──
-  // GET /ui/outside: the state (any admin; over the outside link too, read-only). Everything that changes it is this
-  // computer's admin's, on this computer (the fleet asks the live session each time; the public link refuses these
-  // routes outright): POST /ui/outside/enroll (a new secret, shown once), POST /ui/outside/enroll/confirm {code},
-  // POST /ui/outside/remove, POST /ui/outside/switch {on}. Never a guest (not in GUEST_ROUTES).
+  // GET /ui/outside: the state (any admin; over the outside link too, read-only). What changes it is an admin's, over a
+  // direct connection (the fleet asks the live session each time; the public link refuses these routes outright):
+  // POST /ui/outside/enroll (a new secret, shown once; AGEND-122: {code} — the current one — while the owner's stricter
+  // option is on and this is not the AgEnD computer), POST /ui/outside/enroll/confirm {code}, POST /ui/outside/remove
+  // ({code} likewise), and POST /ui/outside/switch {on} — the switch stays this computer's admin's, on a web-only fleet.
+  // Never a guest (not in GUEST_ROUTES).
   if (method === "GET" && path === "/ui/outside") {
     res.setHeader("Cache-Control", "no-store");
-    json(res, 200, ctx.webOutsideStatus?.(req) ?? { webOnly: false, here: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null });
+    json(res, 200, ctx.webOutsideStatus?.(req) ?? { webOnly: false, here: false, manage: false, codeNeeded: false, strict: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null });
     return true;
   }
   if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch")) {
@@ -2783,9 +2785,17 @@ export function handleWebRequest(
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       res.setHeader("Cache-Control", "no-store");
+      // AGEND-122: replacing or removing the authenticator asks for the current code while the owner's stricter option is on
+      // and this is not the AgEnD computer's own browser (the fleet decides); the answer to a missing or wrong one is its own.
+      const stepCode = body && typeof body === "object" && typeof body.code === "string" && body.code.length <= 32 ? body.code : undefined;
+      const refusal = (r: { error: string; retryAfterMs?: number }): void => {
+        if (r.error === "paused") { res.setHeader("Retry-After", String(Math.ceil((r.retryAfterMs ?? 60_000) / 1000))); json(res, 429, { error: "paused", retryAfterMs: r.retryAfterMs ?? null }); return; }
+        json(res, r.error === "wrong" ? 401 : r.error === "unavailable" ? 503 : r.error === "code_required" ? 400 : 403, { error: r.error === "not_here" ? "outside_not_here" : r.error });
+      };
       if (path === "/ui/outside/enroll") {
-        const r = ctx.webOutsideBeginEnrollment?.(req) ?? null;
+        const r = ctx.webOutsideBeginEnrollment?.(req, stepCode) ?? null;
         if (!r) { json(res, 403, { error: "outside_not_here" }); return; }
+        if ("error" in r) { refusal(r); return; }
         json(res, 200, r);
         return;
       }
@@ -2797,7 +2807,8 @@ export function handleWebRequest(
         return;
       }
       if (path === "/ui/outside/remove") {
-        const r = ctx.webOutsideRemove?.(req) ?? "not_here";
+        const r = ctx.webOutsideRemove?.(req, stepCode) ?? "not_here";
+        if (typeof r === "object") { refusal(r); return; }
         json(res, r === "ok" ? 200 : r === "unsaved" ? 503 : 403, r === "ok" ? { ok: true } : { error: r === "unsaved" ? "unsaved" : "outside_not_here" });
         return;
       }
