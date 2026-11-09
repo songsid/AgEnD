@@ -1,0 +1,17 @@
+{
+  "264dce3bd405a559000da5a46e5cf8d6851e583e2abe6320e6d23cbb149cd474": "src/fleet-manager.ts",
+  "f25978cdf3e574542812d8002078e89e48033d32f0b273ee09c975783942e9fa": "src/hub/compose/server.ts",
+  "06c8a9a08ee476f4d1f2eaf4a05407353ebcb40eb8eff75a938a7d6821d850e2": "src/hub/http/compose.ts",
+  "c80fadcfce3facc17de521b622cb328ece9262dd2e81809319c7b5e0a087b212": "src/hub/http/deps.ts",
+  "e0971e37d59ba523cd4fce2eba795ee7617ccfda7f16edbaafb288ffadf247d6": "src/hub/runtime.ts",
+  "f1a97c6b380dd731886f5597e620c2426bde43a4c2ecf5e286123ea3c51bbe3b": "src/hub/settings-directory-control.ts",
+  "07355f052c62526b7120798228c7e9e6de28af7f9a52f2d8ce7e0606e74a889b": "src/hub/settings-directory-http.ts",
+  "b69c692c1fe71b19c8cbd791ff3369d9d647e41caafb8e6123678f410c29740a": "tests/hub-compose.test.ts",
+  "6978b4a4e9481c3b5ad7808b9b0b56e245986118e5784af2286eb0137e3461a2": "tests/hub-directory-settings-control.test.ts",
+  "2773d9164176f297071e2ebae520f7f1ac13a964614628b849e9600177807a48": "tests/hub-settings-fleet-m2682.test.ts",
+  "313e601495424b8832760387a0591d7b62fbf957723b55954ba89c954cb3de5a": "docs/design/hub-directory-settings-http.md",
+  "28272760c63c9b3a617dcafd0e2eba3e539d7291b2cf590cb0ec0a61344260c6": "scripts/manual/hub-directory-admin-api/README.md",
+  "5d8dc1c420eaa36c89904d844ee06773def821e8a7ce857fb1e6649d673936a4": "scripts/manual/hub-directory-admin-api/verify.py",
+  "51130c956fc041136ce56fd52e0f6b44bc29cab7549a5a2e91c14412aa42e808": "docs/screenshots/hub-directory-admin-api/checks.json",
+  "a1c51ca1f997d4e9716c9a7383176d89a5130885635ca1dba331ac2cbae08849": "docs/screenshots/hub-directory-admin-api/mutations.json"
+}

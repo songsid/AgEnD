@@ -14,6 +14,6 @@ The Python runner changes one guard/forwarding site per row and restores each fi
 
 The real HTTP rig initializes a private scratch Hub with owned CA-verified loopback HTTPS listeners and the real SQLite, writer, Runtime, controller and HubSessions. Only the directory driver and TLS probe are inert. API responses are not intercepted. The full writer/decision/physical-response path runs for ready, forward-restored, unavailable-candidate and proven-stale outcomes. The old-directory reauthentication leg uses a synthetic password and confirms it is never sent to the candidate driver. No public real directory, account, native process, pilot or live fleet is used.
 
-Wiring checks use the FleetManager recorder. Cold borrowing uses an already initialized private DB with a held module import plus an inert mount recorder for the A→Off→A control. That facade expires after the callback; tests never borrow production state.
+Gate-only HTTP authority/cancellation cases use a contract stub controller. Wiring checks use the FleetManager recorder. Cold borrowing uses an already initialized private DB with a held module import plus an inert mount recorder for the A→Off→A control. That facade expires after the callback; tests never borrow production state.
 
 The form, CA-fetch presentation, fleet/D3 edit route, desktop/phone PNGs and retained-UI SKEW remain future acceptance. There is no UI delta in this backend slice. It adds no migration and never permits rewinding a DB, floor or epoch.
