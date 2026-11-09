@@ -215,7 +215,7 @@ describe("the open instance stays on top while a filter is on (#1936)", () => {
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW"); await settle(2);
     await typeFilter(pg, "ap");
-    expect([pinnedBlock(pg).getAttribute("aria-label"), pinnedBlock(pg).querySelector(".v-group-head .grow").textContent]).toEqual(["你目前開著的 instance", "目前"]);
+    expect([pinnedBlock(pg).getAttribute("aria-label"), pinnedBlock(pg).querySelector(".v-group-head .grow").textContent]).toEqual(["你目前開著的 Agent", "目前"]);
     setLang("en"); await settle();
   });
 });

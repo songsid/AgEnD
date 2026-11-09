@@ -232,7 +232,7 @@ describe("failures and controls are localized", () => {
   it("the Chinese pane and roster failure lines keep their placeholders", () => {
     i18n.setLang("zh-TW");
     expect(i18n.t("view.paneFailed")).toBe("⚠ 無法載入 {name} 的 pane（HTTP {status}）。");
-    expect(i18n.t("view.rosterFailedShort")).toBe("無法載入 instance 清單。");
+    expect(i18n.t("view.rosterFailedShort")).toBe("無法載入 Agent 清單。");
   });
 
   it("a roster that cannot load shows the panel's error state, not a raw message", async () => {
