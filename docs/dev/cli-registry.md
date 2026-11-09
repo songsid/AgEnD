@@ -45,7 +45,7 @@ Measured 2026-11-09 (the hashes and signers are in `runtime-cli-install.ts` and 
 | Antigravity | not yet — **possible** | No npm package (`agy`, `antigravity-cli` on npm are not Google's). The vendor script downloads `…/antigravity-cli/<version>/windows-x64/cli_windows_x64.exe` named by a manifest with its `sha512`; that file's sha512 matches and it is Authenticode `Valid`, signer `Google LLC`. A pinned download (exact URL + sha512 + signer) meets Part 3b but needs a download step the Runtime does not have (`runtime-cli-install.ts` is npm-only). The CLI also updates itself, so the pin only governs what is first installed. |
 | Grok | no | `@xai-official/grok` (publisher `xai-security`) is on npm, but its Windows program (`grok.exe`, shipped brotli-compressed and unpacked by the package's own postinstall into `~/.grok`) is **not signed** (`NotSigned`): a registry hash and no statement of who built it. The vendor script installs whatever is current, so it cannot be pinned. |
 | Kiro | no | The stable manifest lists one Windows artifact, an MSI (no zip, no per-user package); the script runs `msiexec` into `C:\Program Files\Kiro-Cli`, which needs elevation (maintainer: keep elevation out of one-click). |
-| Muse | no | No npm package; its launcher installs itself next to the script. |
+| Muse | no | No npm package; its launcher (`muse-launcher.ps1`, not versioned) installs itself, and updates itself, from the vendor's server: there is no fixed file to pin. The registry says why (`runtime.install`); #44's page shows the official command with the same reason. |
 
 A CLI that stays "official command only" says why on the page (`OFFICIAL_COMMANDS` in `src/ui/runtime-cli-install.js`, from the same facts).
 
