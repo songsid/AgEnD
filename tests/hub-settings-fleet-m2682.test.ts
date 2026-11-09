@@ -126,6 +126,21 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
       else{expect(results).toEqual([{status:"fulfilled",value:replacement},{status:"fulfilled",value:replacement}]);expect(hub.controls).toBe(2);}
     }finally{release();await Promise.allSettled(calls);}
   });
+  it.each(["Stop", "runtime replacement"])("a cached controller cannot escape %s during source reacquisition", async mode => {
+    const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    await fm.hubDirectorySettings();
+    let release!: () => void, enter!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    vi.spyOn(fm.hubRuntime, "acquireDirectorySettings").mockImplementation(async () => { enter(); await held; return hub.directory; });
+    const pending = fm.hubDirectorySettings(); void pending.catch(() => {});
+    try {
+      await entered;
+      if (mode === "Stop") fm.shuttingDown = true;
+      else fm.hubRuntime = Object.create(Object.getPrototypeOf(fm.hubRuntime));
+      release(); const error = await pending.then(() => null, (error: unknown) => error);
+      expect(error).toBeInstanceOf(Error); expect(error.message).toContain("changed"); expect(hub.controls).toBe(1);
+    } finally { release(); await pending.catch(() => {}); }
+  });
   it("Stop during the lazy import refuses before constructing a directory control", async () => {
     const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
     const pending = fm.hubDirectorySettings(); fm.shuttingDown = true;

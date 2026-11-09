@@ -106,7 +106,7 @@ describe("#2347 §10: an agent's inherited fields say what they inherit, and fro
     const dlg = p.root.querySelector("dialog");
     expect([inheritedOf("ag-auto"), inheritedOf("ag-hang"), inheritedOf("ag-tool_progress"), inheritedOf("ag-log_level")])
       .toEqual(["Inherited: 30 min · change in Shared agent settings", "Inherited: 10 min default · change in Shared agent settings",
-        "Inherited: standard · change in Shared agent settings", "Inherited: info default · change in Shared agent settings"]);
+        "Inherited: Standard · change in Shared agent settings", "Inherited: info default · change in Shared agent settings"]);
     // The CLI is chosen in the Runtime section now, which says where an inherited CLI comes from.
     expect(text(p.root.querySelector(".agent-runtime-settings .s-inherited"))).toBe("Inherited: Codex · change in Shared agent settings");
     const links = ["ag-auto", "ag-hang", "ag-log_level"].map((id) => p.root.querySelector(`#${id}`).closest(".field").querySelector(".s-inherited a").getAttribute("href"));
@@ -142,12 +142,12 @@ describe("#2347 §10: a ClassicBot room inherits from ClassicBot defaults first"
     await open("chat", "ops");
     const link = (id: string) => p.root.querySelector(`#${id}`).closest(".field").querySelector(".s-inherited a").getAttribute("href");
     expect([inheritedOf("cl-tp"), link("cl-tp"), inheritedOf("cl-auto"), link("cl-auto"), inheritedOf("cl-be")])
-      .toEqual(["Inherited: verbose · change in ClassicBot defaults", "/settings/chat#g-ctp", "Inherited: 30 min · change in Shared agent settings", "/settings/agent-defaults#g-auto",
+      .toEqual(["Inherited: Verbose · change in ClassicBot defaults", "/settings/chat#g-ctp", "Inherited: 30 min · change in Shared agent settings", "/settings/agent-defaults#g-auto",
         "Inherited: Codex · change in Shared agent settings"]);
     expect(text(p.root.querySelectorAll("#cl-model option")[0])).toBe("inherit (gpt-5.5)");
     // Every inherited line, including built-in reply guard on and reply-trigger off.
     expect(p.root.querySelector("dialog").querySelectorAll(".s-inherited").map(text)).toEqual(["Inherited: Codex · change in Shared agent settings",
-      "Inherited: 30 min · change in Shared agent settings", "Inherited: verbose · change in ClassicBot defaults", "Inherited: on default · change in Shared agent settings", "Inherited: off default · change in Shared agent settings"]);
+      "Inherited: 30 min · change in Shared agent settings", "Inherited: Verbose · change in ClassicBot defaults", "Inherited: on default · change in Shared agent settings", "Inherited: off default · change in Shared agent settings"]);
   });
   it("ClassicBot defaults' own inherited fields say what they take from Agent defaults", async () => {
     await open("chat", "classic-defaults");

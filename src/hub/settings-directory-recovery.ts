@@ -83,6 +83,11 @@ export function withHubDirectoryNoticeRecovery<T>(options: HubDirectoryRecoveryO
   });
 }
 
+/** Private physical owner retained by the runtime when construction failed but driver cleanup is unconfirmed. */
+export class HubDirectoryColdCleanupError extends HubStateError {
+  constructor(readonly close: () => Promise<void>) { super("service-unavailable", "Directory construction cleanup is unconfirmed"); }
+}
+
 /** Explicit local settings access only. No listener, migration, state creation, or directory network at construction. */
 export async function createHubDirectoryColdSettings(options: HubDirectoryRecoveryOptions & {
   hub: Record<string, unknown>; generation: string; current(): boolean;
@@ -117,8 +122,11 @@ export async function createHubDirectoryColdSettings(options: HubDirectoryRecove
       })(),
       sessions(): never { throw new HubStateError("service-unavailable", "A local recovery source has no Hub browser sessions"); },
       withDirectoryRead<T>(person: PersonKey, work: () => Promise<T>): Promise<T> {
-        const pending = policy.withDirectoryRead(person, work); active.add(pending);
-        void pending.finally(() => active.delete(pending)).catch(() => {}); return pending;
+        // Register ownership before dispatch: the callback may synchronously re-enter close().
+        let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void;
+        const pending = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); active.add(pending);
+        void pending.finally(() => active.delete(pending)).catch(() => {});
+        void policy.withDirectoryRead(person, work).then(resolve, reject); return pending;
       },
       fence,
       close(): Promise<void> {
@@ -134,8 +142,12 @@ export async function createHubDirectoryColdSettings(options: HubDirectoryRecove
     return lease;
   } catch (error) {
     closed = true;
-    try { await (directory as (HubDirectory & { close?(): Promise<void> }) | undefined)?.close?.(); }
-    finally { state.close(); }
+    const cleanup = async () => {
+      await (directory as (HubDirectory & { close?(): Promise<void> }) | undefined)?.close?.();
+      state.close();
+    };
+    try { await cleanup(); }
+    catch { throw new HubDirectoryColdCleanupError(cleanup); }
     throw error;
   }
 }
