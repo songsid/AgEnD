@@ -77,7 +77,7 @@ describe("#3270 signin.js: #code= on a loopback host name", () => {
   });
 
   for (const [what, status, text] of [
-    ["expired or used (401)", 401, "The automatic sign-in did not work — its code has expired or was already used. Run agend web on the AgEnD computer for a new one."],
+    ["expired or used (401)", 401, "The automatic sign-in did not work — its code has expired or was already used. To sign in again on this computer, run agend web in a terminal: it opens a new sign-in link."],
     ["paused (429)", 429, "Too many wrong codes — sign-in is paused for a few minutes."],
     ["not confirmed (503)", 503, "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator."],
   ] as const) {
