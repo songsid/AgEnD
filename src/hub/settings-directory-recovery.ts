@@ -8,6 +8,7 @@ import { HubTransportStore } from "./store.js";
 import { HubFileVersionFloor } from "./version-floor.js";
 import { createHubDirectorySettingsDecision, type HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import { createHubDirectoryNotices, type HubDirectoryNotices } from "./settings-directory-notices.js";
+import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "./settings-directory-recovery-intent.js";
 
 export interface HubDirectoryRecoveryOptions {
   home: string; hubId: string; memberOrigin: string;
@@ -34,6 +35,8 @@ function withState<T>(options: HubDirectoryRecoveryOptions, work: (participant: 
       "SELECT id,body FROM hub_settings_operations LIMIT 0",
       "SELECT id,operation_id,body FROM hub_settings_security_notices LIMIT 0",
       "SELECT notice_id,kind,target,state FROM hub_settings_security_targets LIMIT 0",
+      ...(options.migrations.some(m => m.component === HUB_DIRECTORY_RECOVERY_MIGRATION.component)
+        ? ["SELECT operation_id,expires_at,state,completed_at FROM hub_settings_mount_recovery LIMIT 0"] : []),
     ]) db.prepare(sql).all();
     bindHubInstance(db, hubId, "complete", 0);
     key = readKeyFile(home, set.keys[0]!);

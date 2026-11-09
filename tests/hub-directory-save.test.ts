@@ -12,13 +12,17 @@ function deferred() { let resolve!: () => void; const promise = new Promise<void
 function fixture() {
   const hubId = randomUUID(), id = randomUUID(), compensation = randomUUID(), events: string[] = [];
   let time = 1000, live = true, owner = true, connected = true, active = true, failure = false, failRestore = false;
+  let deadline: void | number;
   let proofGate: (() => Promise<void>) | undefined, mountGate: (() => Promise<void>) | undefined;
   const actor = { kind: "hub-administrator" as const, person: { realm: "fictional", objectId: randomUUID() }, sessionId: "owned-session", requestId: randomUUID() };
   const context = { actor, current: () => live };
   const expected = { operationId: null, directoryEpoch: 0, transportRevision: 0, authorizationVersion: 0, policySha: "a".repeat(64) };
   const head = { ...expected } as Omit<typeof expected, "operationId"> & { operationId: string | null };
-  const original = { id, kind: "directory", compensates: null, actor: structuredClone(actor), expected, directoryEpoch: 1 } as unknown as HubDirectorySettingsOperation;
-  const decision = { hubId, inspect: () => ({ ...head }), operation: vi.fn(() => structuredClone(original)) } as unknown as HubDirectorySettingsDecision;
+  const original = { id, kind: "directory", compensates: null, actor: structuredClone(actor), expected, directoryEpoch: 1, recovery: { v: 1, expiresAt: 301_000 } } as unknown as HubDirectorySettingsOperation;
+  let mountReady = false;
+  const intent = vi.fn((): ReturnType<HubDirectorySettingsDecision["mountRecovery"]> => ({ operation: structuredClone(original), expiresAt: 301_000, state: mountReady ? "ready" : "pending", completedAt: mountReady ? time : null }));
+  const settled = vi.fn(() => { events.push("mount-ready"); mountReady = true; });
+  const decision = { hubId, inspect: () => ({ ...head }), operation: vi.fn(() => structuredClone(original)), mountRecovery: intent, completeMount: settled } as unknown as HubDirectorySettingsDecision;
   const complete = vi.fn(() => ({ token: "fixture-opaque-token", maxAgeMs: 10_000 }));
   const old = { decision, current: () => live } as unknown as HubMountedDirectory;
   const mounted = { decision, current: () => active, sessions: () => ({ completeDirectoryRotation: complete }) } as unknown as HubMountedDirectory;
@@ -29,7 +33,7 @@ function fixture() {
   const proof = { close: vi.fn(), apply: vi.fn<HubDirectorySettingsProof["apply"]>(async (_ref, _input, ctx, _rotation, beforeCommit) => {
     await proofGate?.();
     if (!ctx.current()) throw Error("proof revoked");
-    beforeCommit?.(); if (!ctx.current()) throw Error("proof revoked");
+    deadline = beforeCommit?.(); if (!ctx.current()) throw Error("proof revoked");
     events.push("decision"); live = false; active = false; head.operationId = id; head.directoryEpoch = 1;
     return { receiptId: id, directoryEpoch: 1 };
   }) };
@@ -44,15 +48,27 @@ function fixture() {
   const coordinator = createHubDirectorySaveCoordinator(deps);
   const save = () => coordinator.apply("owned-draft", {}, context, { capture, rotation });
   return { coordinator, context, deps, proof, rotation, response, packets, events, capture, save, id, compensation, head, original, complete,
-    compensate, remount, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
+    compensate, remount, intent, settled, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
     fail: (restore = false) => { failure = true; failRestore = restore; }, proofGate: (gate: () => Promise<void>) => { proofGate = gate; },
     mountGate: (gate: () => Promise<void>) => { mountGate = gate; } };
 }
 
 describe("private directory Save coordinator", () => {
+  it("closes the durable mount intent before releasing any successor cookie", async () => {
+    const r = fixture();
+    r.complete.mockImplementation(() => { expect(r.settled).toHaveBeenCalledOnce(); return { token: "fixture-token", maxAgeMs: 10_000 }; });
+    await expect(r.save()).resolves.toMatchObject({ state: "ready" });
+    expect(r.events).toEqual(["capture", "decision", "remount", "mount-ready"]); await r.coordinator.close();
+  });
+  it("a refused durable completion never releases success or a cookie, and does not guess a rollback", async () => {
+    const r = fixture(); r.intent.mockReturnValue({ operation: r.original, expiresAt: 301_000, state: "pending", completedAt: null });
+    r.settled.mockImplementation(() => { throw Error("completion uncertain"); }); await expect(r.save()).rejects.toThrow("completion uncertain");
+    expect(r.complete).not.toHaveBeenCalled(); expect(r.packets).toEqual([]); expect(r.compensate).not.toHaveBeenCalled(); await r.coordinator.close();
+  });
   it("captures before the synchronous decision and releases only through the exact successor", async () => {
     const r = fixture(); expect(await r.save()).toEqual({ receiptId: r.id, directoryEpoch: 1, state: "ready" });
-    expect(r.events).toEqual(["capture", "decision", "remount"]); expect(r.complete).toHaveBeenCalledOnce();
+    expect(r.deadline).toBe(301_000);
+    expect(r.events).toEqual(["capture", "decision", "remount", "mount-ready"]); expect(r.complete).toHaveBeenCalledOnce();
     expect(r.packets[0]).toMatchObject({ status: 200, cookie: expect.stringContaining("fixture-opaque-token") });
     expect(r.compensate).not.toHaveBeenCalled(); expect(r.rotation.discard).toHaveBeenCalled(); await r.coordinator.close();
   });

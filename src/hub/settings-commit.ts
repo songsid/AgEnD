@@ -100,11 +100,12 @@ interface PreparedDirectory {
   next: Record<string, unknown>; secret: string; generation: string;
   changes: HubDirectoryDecisionRequest["changes"]; recipients: HubDirectoryDecisionRequest["recipients"];
   createdAt: number; expiresAt: number;
+  recoveryDeadline?: number;
 }
 export interface HubDirectorySettingsWriter {
   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
   prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
-  commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation): { receiptId: string; directoryEpoch: number };
+  commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation, recoveryDeadline?: number): { receiptId: string; directoryEpoch: number };
   /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role.
    * An optional orchestration deadline is checked by the writer's final clock, not just before an await. */
   compensate(originalId: string, currentIntent: (original: HubDirectorySettingsOperation) => boolean, expiresAt?: number): { receiptId: string; directoryEpoch: number };
@@ -174,9 +175,10 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     const hub = obj(deps.readHub());
     if (hub.enabled !== true || typeof hub.hubId !== "string" || typeof hub.memberOrigin !== "string") throw new HubSettingsError("unavailable");
     const digest = hubPlanDigest(hub), manifest = readManifest();
-    try { verifyHubInitialization({ home: deps.home, hubId: hub.hubId, memberOrigin: hub.memberOrigin, planDigest: digest }); }
+    let confirmationId: string;
+    try { ({ confirmationId } = verifyHubInitialization({ home: deps.home, hubId: hub.hubId, memberOrigin: hub.memberOrigin, planDigest: digest })); }
     catch { throw new HubSettingsError("unavailable", "the Hub's sealed settings do not verify"); }
-    return { hub, digest, manifest, manifestSha: sha(manifest) };
+    return { hub, digest, manifest, manifestSha: sha(manifest), confirmationId };
   };
   const readJournal = (): Journal | DirectoryJournal | null => {
     if (!existsSync(file(SETTINGS_JOURNAL))) return null;
@@ -279,7 +281,8 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     const id = randomUUID(), at = now(), oldHub = structuredClone(obj(deps.readHub())), oldSecret = readSecret(), oldManifest = readManifest();
     const nextDigest = hubPlanDigest(p.next);
     const receipt = { v: 2, kind: "agend-hub-settings-receipt", id, op: original ? "directory-compensation" : "directory", compensates: original?.id ?? null,
-      actor: p.actor, at, oldDigest: p.before.configDigest, newDigest: nextDigest, expected: p.expected };
+      actor: p.actor, at, oldDigest: p.before.configDigest, newDigest: nextDigest, expected: p.expected,
+      ...(p.recoveryDeadline === undefined ? {} : { recovery: { v: 1 as const, expiresAt: p.recoveryDeadline } }) };
     const receiptText = `${JSON.stringify(receipt, null, 2)}\n`, committedAt = new Date(at).toISOString(), confirmationId = sha(canonical(receipt)).slice(0, 32);
     const signature = sealHubInitialization({ home: deps.home, planDigest: nextDigest, confirmationId, committedAt });
     const manifest = `${JSON.stringify({ v: 1, hubId: oldHub.hubId, planDigest: nextDigest, committedAt, confirmationId, signature }, null, 2)}\n`;
@@ -289,7 +292,8 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     const journal: DirectoryJournal = { v: 2, id, op: "directory", phase: "prepared" };
     writeDirectoryJournal(journal); step("staged");
     const request: HubDirectoryDecisionRequest = { id, expected: p.expected, before: p.before, after, generation: p.generation,
-      receiptSha: sha(receiptText), actor: p.actor, at, changes: p.changes, recipients: p.recipients };
+      receiptSha: sha(receiptText), actor: p.actor, at, changes: p.changes, recipients: p.recipients,
+      ...(p.recoveryDeadline === undefined ? {} : { recovery: { v: 1 as const, expiresAt: p.recoveryDeadline } }) };
     const decisionCheck = () => {
       check();
       if (!same(directoryImage(JSON.parse(readDirectoryFile(id, "old-hub")), readDirectoryFile(id, "old-manifest"), readDirectoryFile(id, "old-secret", 4096)), p.before)
@@ -337,15 +341,26 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt });
       return { ref, expiresAt };
     },
-    commit(ref, actor, current, rotation) {
+    commit(ref, actor, current, rotation, recoveryDeadline) {
       const p = preparedDirectory.get(ref); preparedDirectory.delete(ref);
       if (!p) throw new HubSettingsError("expired");
       const fresh = parseHubDirectoryDecisionMetadata({ actor, changes: p.changes, recipients: p.recipients });
       if (!same({ ...p.actor, requestId: undefined }, { ...fresh.actor, requestId: undefined })) throw new HubSettingsError("denied");
-      return installDirectory({ ...p, actor: fresh.actor }, current, undefined, rotation);
+      if (recoveryDeadline !== undefined && (!Number.isSafeInteger(recoveryDeadline) || recoveryDeadline <= p.createdAt)) throw new HubSettingsError("invalid");
+      const expiresAt = recoveryDeadline === undefined ? p.expiresAt : Math.min(p.expiresAt, recoveryDeadline);
+      return installDirectory({ ...p, actor: fresh.actor, expiresAt, ...(recoveryDeadline === undefined ? {} : { recoveryDeadline: expiresAt }) }, current, undefined, rotation);
     },
     compensate(originalId, currentIntent, expiresAt) {
       const d = decision(), original = d.operation(originalId);
+      if (original.recovery) {
+        const receiptText = readDirectoryFile(original.id, "receipt"), receipt = JSON.parse(receiptText);
+        if (sha(receiptText) !== original.receiptSha || !same(receipt.recovery, original.recovery)) throw new HubSettingsError("recovery");
+        // SQL and a staged receipt can agree with each other without agreeing with the issuer's signed receipt binding.
+        if (receipt.id !== original.id || image().confirmationId !== sha(canonical(receipt)).slice(0, 32)) throw new HubSettingsError("recovery");
+        const intent = d.mountRecovery();
+        if (intent?.operation.id !== original.id || intent.state !== "pending") throw new HubSettingsError("stale");
+        expiresAt = Math.min(expiresAt ?? Infinity, original.recovery.expiresAt);
+      }
       if (d.inspect().operationId !== original.id || original.kind !== "directory" || !currentProof(() => currentIntent(structuredClone(original)))) throw new HubSettingsError("denied");
       if (!same(directoryImage(), original.after)) throw new HubSettingsError("stale");
       const next = JSON.parse(readDirectoryFile(original.id, "old-hub")), secret = readDirectoryFile(original.id, "old-secret", 4096);

@@ -254,7 +254,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-mount-intent", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -1218,6 +1218,11 @@ describe.skipIf(process.platform === "win32")("private Save orchestration with r
         expect(after.prepare("SELECT directory_epoch FROM hub_settings_head").get()).toEqual({ directory_epoch: epoch });
         expect(after.prepare("SELECT count(*) n FROM hub_settings_operations").get()).toEqual({ n: epoch });
         expect(after.prepare("SELECT count(*) n FROM hub_settings_security_notices").get()).toEqual({ n: epoch });
+        const intent = after.prepare("SELECT expires_at,state,completed_at FROM hub_settings_mount_recovery").get() as { expires_at: number; state: string; completed_at: number };
+        expect(intent).toMatchObject({ state: outcome === "ready" ? "ready" : "compensated", completed_at: expect.any(Number) });
+        const original = JSON.parse((after.prepare("SELECT body FROM hub_settings_operations ORDER BY rowid LIMIT 1").get() as { body: string }).body);
+        expect(original.recovery).toEqual({ v: 1, expiresAt: intent.expires_at });
+        expect(intent.expires_at - original.at).toBeGreaterThan(0); expect(intent.expires_at - original.at).toBeLessThanOrEqual(300_000);
         expect(after.prepare("SELECT count(*) n FROM hub_sessions WHERE state='active'").get()).toEqual({ n: outcome === "ready" ? 1 : 0 });
       } finally { after.close(); }
       if (outcome === "ready") {

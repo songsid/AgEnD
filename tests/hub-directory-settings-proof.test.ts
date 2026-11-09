@@ -54,6 +54,11 @@ function fixture() {
 }
 
 describe("directory setting preparation authority", () => {
+  it("propagates the bounded server deadline to the one writer", async () => {
+    const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx);
+    await r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, () => 1600);
+    expect((r.commit.mock.calls[0] as unknown[])[4]).toBe(1600);
+  });
   it("acquires the response only after candidate validation and immediately before the synchronous writer commit", async () => {
     const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx), captured = vi.fn(() => {
       expect(r.prepared).toHaveBeenCalledOnce(); expect(r.next.close).toHaveBeenCalledOnce(); expect(r.commit).not.toHaveBeenCalled();
@@ -69,7 +74,8 @@ describe("directory setting preparation authority", () => {
       if (mode === "throw") throw Error("response disconnected");
       if (mode === "async") return Promise.resolve();
     };
-    await expect(r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, capture)).rejects.toThrow();
+    // Intentionally feed an invalid asynchronous callback across the typed private boundary.
+    await expect(r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, capture as () => void)).rejects.toThrow();
     expect(r.commit).not.toHaveBeenCalled();
     await expect(r.control.apply(p.ref, {}, r.ctx)).rejects.toMatchObject({ code: "expired" });
   });

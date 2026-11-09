@@ -14,6 +14,7 @@ import { HubFileVersionFloor } from "../src/hub/version-floor.js";
 import { readHubSessionEpoch } from "../src/hub/session-epoch.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION, readHubDirectorySettingsHead,
   type HubDirectoryDecisionRequest } from "../src/hub/settings-directory-decision.js";
+import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "../src/hub/settings-directory-recovery-intent.js";
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
 import { createHubDirectoryMountBarrier } from "../src/hub/settings-directory-mount.js";
@@ -35,7 +36,7 @@ function rig(options: { home?: string; hubId?: string } = {}) {
   const home = options.home ?? mkdtempSync(join(tmpdir(), "hub-directory-decision-")); chmodSync(home, 0o700);
   const hubId = options.hubId ?? randomUUID(), key = randomBytes(32);
   const migrations = [HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...HUB_HTTP_MIGRATIONS,
-    groupPolicyMigration(hubId, admin.realm, "generation-old"), HUB_DIRECTORY_SETTINGS_MIGRATION];
+    groupPolicyMigration(hubId, admin.realm, "generation-old"), HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION];
   const floor = new HubFileVersionFloor(home, "hub/floors/test"); floor.initialize();
   let db = openHubDatabase(home, "hub/test.sqlite", { create: true });
   let store: HubTransportStore, decision: ReturnType<typeof createHubDirectorySettingsDecision>;
@@ -651,7 +652,7 @@ describe("cold directory recovery (internal, no production caller)", () => {
     else expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
     expect(() => r.verifies()).not.toThrow();
   });
-  it.each(["new-set", "database", "floor", "key", "key-bytes", "identity", "binding", "registry", "unknown-version", "old-version", "new-version", "head", "epoch", "raised-floor", "notices", "operations", "targets"])("refuses %s before callback and never initializes missing authority", async fault => {
+  it.each(["new-set", "database", "floor", "key", "key-bytes", "identity", "binding", "registry", "unknown-version", "old-version", "new-version", "head", "epoch", "raised-floor", "notices", "operations", "targets", "mount-intent"])("refuses %s before callback and never initializes missing authority", async fault => {
     const { r, options } = await coldRecoveryRig();
     if (fault === "identity") {
       options.hubId = randomUUID();
@@ -670,6 +671,7 @@ describe("cold directory recovery (internal, no production caller)", () => {
     if (fault === "notices") r.db.exec("DROP TABLE hub_settings_security_notices");
     if (fault === "operations") r.db.exec("DROP TABLE hub_settings_operations");
     if (fault === "targets") r.db.exec("DROP TABLE hub_settings_security_targets");
+    if (fault === "mount-intent") r.db.exec("DROP TABLE hub_settings_mount_recovery");
     r.db.close();
     const paths = [options.stateSet.database, ...options.stateSet.floors, ...options.stateSet.keys];
     const absent = fault === "new-set" ? paths : fault === "database" ? [paths[0]!] : fault === "floor" ? [paths[1]!] : fault === "key" ? [paths[2]!] : [];
@@ -693,4 +695,125 @@ describe("cold directory recovery (internal, no production caller)", () => {
     await Promise.resolve(); expect(late).toBeInstanceOf(Error);
     expect(withHubDirectoryRecovery(options, d => d.inspect().directoryEpoch)).toBe(0);
   });
+});
+
+describe("durable bounded directory mount intent", () => {
+  it("records an explicit deadline in the original SQL decision and survives reopening; legacy gets none", () => {
+    const legacy = rig(); legacy.decision.decide(legacy.request(), () => {}); expect(legacy.decision.mountRecovery()).toBeNull();
+    const r = rig(), input = r.request({ recovery: { v: 1, expiresAt: 301_000 } });
+    const saved = r.decision.decide(input, () => 1000); input.recovery!.expiresAt = 999_999;
+    expect(r.decision.mountRecovery()).toEqual({ operation: saved, expiresAt: 301_000, state: "pending", completedAt: null });
+    r.restart(); expect(r.decision.mountRecovery()).toMatchObject({ operation: { id: saved.id }, expiresAt: 301_000, state: "pending" });
+  });
+  it.each([1000, 301_001, NaN])("refuses an invalid deadline %s before effects", expiresAt => {
+    const r = rig(); expect(() => r.decision.decide(r.request({ recovery: { v: 1, expiresAt } }), () => 1000)).toThrow();
+    expect(r.floor.read()).toBe(0); expect(r.counts().hub_settings_operations).toBe(0);
+  });
+  it.each([999, 301_000])("refuses an out-of-window initial clock %s before the floor", at => {
+    const r = rig(); expect(() => r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => at)).toThrow();
+    expect(r.floor.read()).toBe(0); expect(r.decision.inspect().directoryEpoch).toBe(0);
+  });
+  it.each([999, 301_000])("rolls back intent/notice/operation when the audit crosses the clock to %s", final => {
+    const r = rig(); let at = 1000; r.auditOnce(() => { at = final; });
+    expect(() => r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => at)).toThrow();
+    expect(r.db.prepare("SELECT * FROM hub_settings_mount_recovery").all()).toEqual([]);
+    expect(r.counts().hub_settings_operations).toBe(0); expect(r.counts().hub_settings_security_notices).toBe(0);
+    expect(readHubSessionEpoch(r.db)).toBe(0); expect(r.floor.read()).toBe(1);
+    expect(() => r.decision.inspect()).toThrow(); // The raised security floor is never rewound.
+  });
+  it("closes only the exact current allowance after mounted proof and audit, idempotently without changing the epoch", () => {
+    const r = rig(), op = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000), expected = r.decision.inspect();
+    let proofs = 0; r.decision.completeMount(op.id, 1001, () => { proofs++; return true; });
+    expect(proofs).toBe(2); expect(r.decision.mountRecovery()).toMatchObject({ state: "ready", completedAt: 1001 });
+    expect(r.decision.inspect()).toEqual({ ...expected, transportRevision: expected.transportRevision + 1 });
+    const counts = r.counts(); r.restart(); r.decision.completeMount(op.id, 400_000, () => true); expect(r.counts()).toEqual(counts);
+    expect(() => r.decision.completeMount(op.id, 400_001, () => false)).toThrow();
+  });
+  it("a late mounted-proof refusal rolls back completion and leaves the advanced floor uncertain", () => {
+    const r = rig(), op = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000); let live = true;
+    r.auditOnce(() => { live = false; }); expect(() => r.decision.completeMount(op.id, 1001, () => live)).toThrow();
+    expect(r.db.prepare("SELECT state FROM hub_settings_mount_recovery").get()).toEqual({ state: "pending" });
+    expect(readHubSessionEpoch(r.db)).toBe(1); expect(r.floor.read()).toBe(2); expect(() => r.decision.inspect()).toThrow();
+  });
+  it("refuses a changed recovery row after completion audit", () => {
+    const r = rig(), op = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000);
+    r.auditOnce(() => r.db.prepare("UPDATE hub_settings_mount_recovery SET expires_at=300999").run());
+    expect(() => r.decision.completeMount(op.id, 1001, () => true)).toThrow();
+    expect(r.db.prepare("SELECT expires_at,state FROM hub_settings_mount_recovery").get()).toEqual({ expires_at: 301_000, state: "pending" });
+  });
+  it("never selects or completes a retained older intent over a later head", () => {
+    const r = rig(), first = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000);
+    r.decision.decide(r.request({ before: after, after: third, generation: "generation-later" }), () => {});
+    expect(r.decision.mountRecovery()).toBeNull(); expect(() => r.decision.completeMount(first.id, 1001, () => true)).toThrow();
+  });
+  it("refuses nested and asynchronous completion proofs without effects", () => {
+    const r = rig(), op = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000);
+    expect(() => r.db.transaction(() => r.decision.completeMount(op.id, 1001, () => true))()).toThrow();
+    expect(() => r.decision.completeMount(op.id, 1001, (async () => true) as unknown as () => boolean)).toThrow();
+    expect(r.decision.mountRecovery()?.state).toBe("pending"); expect(r.floor.read()).toBe(1);
+  });
+  it("the shared writer seals the deadline and no later restart invents a new one", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200);
+    const receipt = JSON.parse(readFileSync(join(r.home, "hub/settings-receipts", saved.receiptId + ".json"), "utf8"));
+    expect(receipt.recovery).toEqual({ v: 1, expiresAt: 1200 }); r.restart();
+    expect(r.decision.mountRecovery()).toMatchObject({ expiresAt: 1200, state: "pending" });
+    r.decision.completeMount(saved.receiptId, 1001, () => true);
+    expect(() => r.writer().directory!.compensate(saved.receiptId, () => true)).toThrow();
+    expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
+  });
+  it("caps an orchestration deadline at the writer's existing preparation deadline", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    let saved!: { receiptId: string; directoryEpoch: number };
+    expect(() => { saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 999_999); }).not.toThrow();
+    expect(r.decision.operation(saved.receiptId).recovery?.expiresAt).toBe(p.expiresAt);
+  });
+  it("cannot authorize a recursive recovery intent on the compensation", () => {
+    const r = rig(), op = r.decision.decide(r.request({ recovery: { v: 1, expiresAt: 301_000 } }), () => 1000);
+    const next = r.request({ before: after, after: { ...before, manifestSha: third.manifestSha }, actor: op.actor, generation: "generation-old", recovery: { v: 1, expiresAt: 301_000 } });
+    expect(() => r.decision.compensate(op.id, next, () => 1000)).toThrow(); expect(r.floor.read()).toBe(1);
+  });
+  it("recovers a committed crash with the same intent, then compensates forward exactly once", async () => {
+    const r = await writerRig(), old = r.readHub(), secret = r.secret(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    r.crash("directory-decision"); expect(() => w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200)).toThrow("crash:directory-decision");
+    r.restart(); const fresh = r.writer(); fresh.recover(); const original = r.decision.mountRecovery()!;
+    expect(original.expiresAt).toBe(1200); expect(original.state).toBe("pending"); r.tick(100);
+    const done = fresh.directory!.compensate(original.operation.id, () => true);
+    expect(done.directoryEpoch).toBe(2); expect(r.readHub().directory).toEqual(old.directory); expect(r.secret()).toBe(secret); expect(r.verifies()).toMatchObject({ hubId: r.hubId, planDigest: hubPlanDigest(r.readHub()) });
+    expect(r.decision.operation(done.receiptId).recovery).toBeUndefined(); expect(r.decision.mountRecovery()).toBeNull();
+    expect(r.db.prepare("SELECT state,completed_at FROM hub_settings_mount_recovery").get()).toEqual({ state: "compensated", completed_at: 1100 });
+    expect(() => fresh.directory!.compensate(original.operation.id, () => true)).toThrow(); expect(r.counts().hub_settings_security_notices).toBe(2);
+  });
+  it.each([-1, 200])("cannot compensate outside the durable window after a %s clock change", async delta => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200); r.tick(delta);
+    expect(() => r.writer().directory!.compensate(saved.receiptId, () => true)).toThrow();
+    expect(r.readHub().directory.url).toBe("ldaps://new.example.test"); expect(r.floor.read()).toBe(1); expect(r.decision.mountRecovery()?.state).toBe("pending");
+  });
+  it.each(["database-only", "receipt-too"])("a %s extension cannot override the signed receipt deadline", async mode => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200), op = r.decision.operation(saved.receiptId);
+    r.db.prepare("UPDATE hub_settings_operations SET body=? WHERE id=?").run(JSON.stringify({ ...op, recovery: { v: 1, expiresAt: 1300 } }), op.id);
+    r.db.prepare("UPDATE hub_settings_mount_recovery SET expires_at=1300").run();
+    if (mode === "receipt-too") {
+      const path = join(r.home, "hub/settings-staged", op.id + ".directory-receipt"), receipt = JSON.parse(readFileSync(path, "utf8"));
+      writeFileSync(path, JSON.stringify({ ...receipt, recovery: { v: 1, expiresAt: 1300 } }), { mode: 0o600 });
+    }
+    expect(() => r.writer().directory!.compensate(op.id, () => true)).toThrow(); expect(r.floor.read()).toBe(1);
+  });
+  it("refuses a coherent receipt/SQL/hash extension against the unchanged issuer-signed manifest before the floor", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200), op = r.decision.operation(saved.receiptId);
+    const seal = r.manifest(), key = readFileSync(join(r.home, "hub/keys/issuer-key.pem"), "utf8");
+    const path = join(r.home, "hub/settings-staged", op.id + ".directory-receipt"), receipt = JSON.parse(readFileSync(path, "utf8"));
+    const text = JSON.stringify({ ...receipt, recovery: { v: 1, expiresAt: 1300 } }); writeFileSync(path, text, { mode: 0o600 });
+    r.db.prepare("UPDATE hub_settings_operations SET body=? WHERE id=?").run(JSON.stringify({ ...op,
+      recovery: { v: 1, expiresAt: 1300 }, receiptSha: createHash("sha256").update(text).digest("hex") }), op.id);
+    r.db.prepare("UPDATE hub_settings_mount_recovery SET expires_at=1300").run(); r.tick(250);
+    expect(() => r.writer().directory!.compensate(op.id, () => true)).toThrow();
+    expect(r.floor.read()).toBe(1); expect(r.counts().hub_settings_operations).toBe(1); expect(w.pending()).toBe(false);
+    expect(r.manifest()).toBe(seal); expect(readFileSync(join(r.home, "hub/keys/issuer-key.pem"), "utf8")).toBe(key);
+    expect(() => r.verifies()).not.toThrow(); expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
+  });
+
 });

@@ -105,7 +105,7 @@ export interface HubDirectorySettingsProof {
     ref: string; expiresAt: number; trust: null | { challenge: string; server: string; leafFingerprint: string; caFingerprints: string[]; systemRoots: boolean };
   }>;
   test(ref: string, confirmation: string | undefined, context: HubDirectoryProofContext): Promise<void>;
-  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext, rotation?: HubDirectorySessionRotation, beforeCommit?: () => void): Promise<{ receiptId: string; directoryEpoch: number }>;
+  apply(ref: string, input: { confirmation?: string; credentials?: { login: string; password: string } }, context: HubDirectoryProofContext, rotation?: HubDirectorySessionRotation, beforeCommit?: () => void | number): Promise<{ receiptId: string; directoryEpoch: number }>;
   cancel(ref: string, context: HubDirectoryProofContext): void;
   close(): void;
 }
@@ -257,8 +257,9 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
         try { (effect as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
         refuse("invalid");
       }
+      if (effect !== undefined && typeof effect !== "number") refuse("invalid");
       current(d, ctx);
-      return writer.commit(prepared.ref, ctx.actor, proof, rotation);
+      return typeof effect === "number" ? writer.commit(prepared.ref, ctx.actor, proof, rotation, effect) : writer.commit(prepared.ref, ctx.actor, proof, rotation);
     },
     cancel(ref, inputContext) { const ctx = context(inputContext); get(ref, ctx); drafts.delete(ref); },
     close() { stopped = true; drafts.clear(); recent.clear(); attempts.clear(); },
