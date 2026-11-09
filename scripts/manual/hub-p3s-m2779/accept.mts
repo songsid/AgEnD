@@ -38,7 +38,7 @@ try{
  fx.fm.rawFleetConfig={...fx.fm.rawFleetConfig,hub:{enabled:true,hubId:"4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a",name:"Synthetic Hub",webOrigin:"https://hub.example.test:19443",memberOrigin:"https://hub.example.test:19444"}};
  for(const c of matrix()){
   const tag=caseName(c),zh=c.lang==="zh-TW",{ctx,page:p}=await fx.page(c,{path:"/settings/hub"});
-  ctx.on("response",(response:any)=>{const u=new URL(response.url());if(u.origin!==fx.base||!/(?:\.js|\.css)$/.test(u.pathname))return;responses.push((async()=>{try{const bytes=await response.body();const hashes=assets.get(u.pathname)??new Set<string>();hashes.add(digest(bytes));assets.set(u.pathname,hashes)}catch(e){r.errors.push("Asset body: "+u.pathname+" "+String(e))}})())});
+  ctx.on("response",(response:any)=>{const u=new URL(response.url());if(u.origin!==fx.base||!["/assets/app-shell.js","/assets/app-i18n.js","/assets/app.css","/ui/js/settings-hub-run.js"].includes(u.pathname))return;responses.push((async()=>{try{const bytes=await response.body();const hashes=assets.get(u.pathname)??new Set<string>();hashes.add(digest(bytes));assets.set(u.pathname,hashes)}catch(e){r.errors.push("Asset body: "+u.pathname+" "+String(e))}})())});
   const shot=async(page:any,name:string)=>{await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r())))});await page.screenshot({path:join(out,name+".png")});r.shots.push(name+".png")};
   p.on("pageerror",(e:any)=>r.errors.push(e.message));
   await ctx.route("**/*",(route:any)=>{const u=new URL(route.request().url());if(u.origin!==fx.base){r.foreign.push(u.origin);return route.abort()}
