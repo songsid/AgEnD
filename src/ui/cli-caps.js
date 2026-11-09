@@ -4,7 +4,7 @@ export const CLI_CAPS = Object.freeze({
   "claude-code": Object.freeze({ signOut: true, namedAccounts: true, carry: "carries", structuredSignIn: true, structuredNamedSignIn: true, firstRunSignIn: "browser", runtimeInstall: true, runtimeName: "Claude Code" }),
   "codex": Object.freeze({ signOut: true, namedAccounts: true, carry: "keeps", structuredSignIn: true, structuredNamedSignIn: false, firstRunSignIn: "browser", runtimeInstall: true, runtimeName: "Codex" }),
   "kiro-cli": Object.freeze({ signOut: true, namedAccounts: true, carry: "handover", structuredSignIn: true, structuredNamedSignIn: false, firstRunSignIn: "browser", runtimeInstall: false, runtimeName: null }),
-  "antigravity": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: "console", runtimeInstall: false, runtimeName: null }),
+  "antigravity": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: "console", runtimeInstall: true, runtimeName: "Antigravity" }),
   "grok": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: false, runtimeName: null }),
   "muse": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: false, runtimeName: null }),
   "opencode": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: true, runtimeName: "OpenCode" }),

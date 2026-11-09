@@ -110,8 +110,8 @@ export interface HostCapabilities {
 export interface RuntimeCapabilities {
   /** The Runtime can list and (where `supports.execution`) run it. */
   readonly provider: Cap<NativeProviderFacts>;
-  /** The dashboard installs it, from a pinned npm package. (The pins stay in runtime-cli-install.ts.) */
-  readonly install: Cap<{ kind: "npm" }>;
+  /** The dashboard installs it: from a pinned npm package (`npm`), or from one pinned download (`download`: exact address, size, sha512; no npm package exists). (The pins stay in runtime-cli-install.ts.) */
+  readonly install: Cap<{ kind: "npm" | "download" }>;
   /** The dashboard signs it in on that computer: the exact command, and whether it is a named account's sign-in. */
   readonly signIn: Cap<{ argv: readonly string[]; profile: "named" }>;
   /** Named accounts on that computer: the variable that points the CLI at the profile's folder. */
