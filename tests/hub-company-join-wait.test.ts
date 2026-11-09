@@ -60,6 +60,27 @@ describe("company join local wait",()=>{
   expect(reads).toBeGreaterThanOrEqual(4);expect(replace).toHaveBeenCalledWith("/api/hub/member/company-join/bridge?operationId="+handoff);
   expect(p.root.textContent).not.toContain("Fleet connected");
  });
+ it.each(["cancelled", "ended"])("discovers matching B after older %s A, then pins only B",async state=>{
+  const c=clock(),replace=vi.fn(),oldId="11111111-2222-4333-8444-555555555555";let discoveries=0;
+  fetcher(path=>{
+   if(path.endsWith("?operationId="+oldId))return response({error:"conflict"},409);
+   if(path.endsWith("?operationId="+handoff))return response({ok:true,operation:{operationId:handoff,handoffId:handoff,state:"awaiting-sign-in"}});
+   return response({ok:true,operation:++discoveries===1?{operationId:oldId,handoffId:"old",state}:{operationId:handoff,handoffId:handoff,state:"joining"}});
+  });
+  await mount();(globalThis.location as any).replace=replace;
+  await c.next(1500);expect(replace).not.toHaveBeenCalled();
+  await c.next(1500);expect(replace).toHaveBeenCalledWith("/api/hub/member/company-join/bridge?operationId="+handoff);
+  expect(calls.map(x=>x.path)).toEqual(["/api/hub/member/company-join","/api/hub/member/company-join","/api/hub/member/company-join?operationId="+handoff]);
+ });
+ it("Check again discovers B after the local wait for unmatched A has expired, without a new Start",async()=>{
+  const c=clock(),replace=vi.fn(),oldId="11111111-2222-4333-8444-555555555555";let ready=false;
+  fetcher(path=>path.includes("?operationId="+oldId)?response({error:"conflict"},409):response({ok:true,operation:ready?{operationId:handoff,handoffId:handoff,state:"awaiting-sign-in"}:{operationId:oldId,handoffId:"old",state:"ended"}}));
+  const p=await mount();(globalThis.location as any).replace=replace;await c.next(300000);
+  expect(c.count(1500)).toBe(0);ready=true;fire(btn(p,"Check again"),"click");await settle(12);
+  expect(replace).toHaveBeenCalledWith("/api/hub/member/company-join/bridge?operationId="+handoff);
+  expect(calls.map(x=>x.path)).toEqual(["/api/hub/member/company-join","/api/hub/member/company-join"]);
+  expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
+ });
  it("a different handoff never redirects this waiting tab",async()=>{
   const c=clock(),replace=vi.fn();fetcher(()=>response({ok:true,operation:{operationId:handoff,handoffId:"other",state:"awaiting-sign-in"}}));
   await mount();(globalThis.location as any).replace=replace;await c.next(1500);await c.next(1500);expect(replace).not.toHaveBeenCalled();
