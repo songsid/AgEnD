@@ -2,6 +2,8 @@
 import { canonicalArguments } from "./identity.js";
 import { hubSetCookie } from "./sessions.js";
 import { HubProtocolError } from "./validation.js";
+import { HubSettingsError } from "./settings-commit.js";
+import { HubDirectoryProofError } from "./settings-directory-proof.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import type { HubDirectorySettingsDecision, HubDirectorySettingsOperation } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsWriter } from "./settings-commit.js";
@@ -32,6 +34,13 @@ export interface HubDirectorySaveDelivery {
 
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 function fail(code: "revoked" | "backpressure" | "invalid" | "conflict" | "unavailable"): never { throw new HubProtocolError(code); }
+const REFUSAL_STATUS: Readonly<Record<string, number>> = Object.freeze({ invalid: 400, denied: 403, reauthentication: 403,
+  stale: 409, expired: 409, trust: 409, busy: 409, conflict: 409, revoked: 403, unavailable: 503, recovery: 503, uncertain: 503 });
+function refusal(error: unknown): { status: number; code: string } {
+  const code = error instanceof HubSettingsError || error instanceof HubDirectoryProofError || error instanceof HubProtocolError
+    ? error.code : "unavailable";
+  return Object.hasOwn(REFUSAL_STATUS, code) ? { status: REFUSAL_STATUS[code]!, code } : { status: 503, code: "unavailable" };
+}
 
 export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps) {
   const deps = { ...options }, now = deps.now ?? Date.now;
@@ -117,6 +126,25 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
         }, () => { postDecision(); return ready(exact) !== null; });
       }
       return result;
+    } catch (error) {
+      // A captured socket is not evidence of a commit. Only the exact unchanged authority image proves no decision.
+      const unchanged = () => current() && old?.current() === true && old.decision.hubId === deps.hubId
+        && expected !== undefined && same(old.decision.inspect(), expected);
+      if (response && expected !== undefined) {
+        try {
+          if (response.current() && current()) {
+            const proven = await deps.withDecision(decision => current() && decision.hubId === deps.hubId && same(decision.inspect(), expected));
+            if (proven && unchanged()) {
+              const bounded = refusal(error);
+              await response.reply(() => {
+                if (!unchanged()) fail("revoked");
+                return { status: bounded.status, json: JSON.stringify({ ok: false, code: bounded.code, committed: false }) };
+              }, unchanged);
+            }
+          }
+        } catch { /* A changed/uncertain floor or lost response is discarded; never guess an outcome. */ }
+      }
+      throw error;
     } finally {
       rotation?.discard();
       await response?.discard(); response = null;

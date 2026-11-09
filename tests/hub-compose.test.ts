@@ -25,7 +25,7 @@ import { readPrivateFile } from "../src/hub/private-files.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../src/hub/session-epoch.js";
 import { sealHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
-import { createHubSettingsWriter, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
+import { createHubSettingsWriter, HubSettingsError, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
 import { atomicWriteFileSync } from "../src/atomic-write.js";
 import { hubSetCookie } from "../src/hub/sessions.js";
 import { SERVER_SET } from "../src/hub/compose/storage.js";
@@ -707,6 +707,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
   return { hub, get runtime() { return runtime!; }, get writer() { return writer!; }, get deps() { return lastDeps!; }, get http() { return lastHttp!; },
     get creates() { return creates; }, get eligibility() { return eligibility; }, get coldBorrows() { return coldBorrows; },
     atStage(action: () => void) { atStage = action; },
+    crashAt(point: string) { crash = point; },
     refuseNextDirectory() { refuseNextDirectory = true; }, refuseAllDirectories() { refuseAllDirectories = true; },
     withDecision<T>(work: (decision: HubDirectorySettingsDecision) => T): T {
       const mounted = runtime!.directoryDecision(); if (mounted) return work(mounted);
@@ -1187,6 +1188,58 @@ describe.skipIf(process.platform === "win32")("directory response survives its o
 });
 
 describe.skipIf(process.platform === "win32")("private Save orchestration with real SQL and HTTPS", () => {
+  it.each(["refused", "decided", "rollback"] as const)("reports only a proven pre-decision refusal, not a %s uncertain outcome", async phase => {
+    const r = await directoryResponseRig(true), oldDirectory = structuredClone(r.hub.config.hub.directory);
+    let pending: Promise<Awaited<ReturnType<typeof r.begin>> | null> | undefined, coordinator: ReturnType<typeof createHubDirectorySaveCoordinator> | undefined;
+    let commit: ReturnType<typeof vi.spyOn> | undefined;
+    let audit: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1), db = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+      let sessionId: string;
+      try { sessionId = (db.prepare("SELECT id FROM hub_sessions WHERE token_hash=?").get(createHash("sha256").update(token).digest("hex")) as { id: string }).id; }
+      finally { db.close(); }
+      const actor = { kind: "hub-administrator" as const, person: ADMIN.key, sessionId, requestId: randomUUID() };
+      const old = r.runtime.directorySettings()!, sessions = old.sessions(), before = old.decision.inspect();
+      const rotation = sessions.prepareDirectoryRotation(token, actor);
+      const proof = createHubDirectorySettingsProof({ source: old.source, withDirectoryRead: old.withDirectoryRead,
+        recentAuthentication: a => sessions.recentAuthentication(a), writer: () => r.writer.directory!,
+        createDirectory: () => ({ realm: "corp", signIn: async () => { throw Error("personal credentials reached candidate"); },
+          checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }), probeTls: async () => "a".repeat(64) });
+      const remount = vi.fn(() => r.runtime.apply(r.hub.config));
+      coordinator = createHubDirectorySaveCoordinator({ hubId: String(r.hub.config.hub.hubId), proof,
+        mounted: () => r.runtime.directorySettings(), writer: () => r.writer.directory!, withDecision: async work => r.withDecision(work),
+        remount, current: () => true });
+      const candidate = r.candidate(), context = { actor, current: () => true };
+      const draft = await proof.prepare({ ...candidate, changes: [...candidate.changes] }, context);
+      if (phase === "refused") commit = vi.spyOn(r.writer.directory!, "commit").mockImplementation(() => { throw new HubSettingsError("stale"); });
+      else if (phase === "decided") r.crashAt("directory-decision");
+      else audit = vi.spyOn(r.deps.audit, "appendInTransaction").mockImplementationOnce(() => { throw Error("owned audit failure after floor advance"); });
+      pending = r.begin(signed.cookie).catch(() => null); const capture = await r.attempting;
+      await expect(coordinator.apply(draft.ref, { confirmation: draft.trust!.challenge }, context,
+        { capture: () => capture(old.current), rotation })).rejects.toThrow();
+      const result = await pending; pending = undefined;
+      expect(remount).not.toHaveBeenCalled(); expect(r.hub.config.hub.directory).toEqual(oldDirectory);
+      if (phase === "refused") {
+        expect(result).toMatchObject({ status: 409, json: { ok: false, code: "stale", committed: false }, cookie: "" });
+        expect(old.decision.inspect()).toEqual(before);
+        expect((await directoryBrowser(r.hub, signed.cookie)).json).toMatchObject({ signedIn: true, admin: true });
+        expect(r.writer.pending()).toBe(false);
+      } else {
+        expect(result).toBeNull(); expect(old.current()).toBe(false); expect(r.writer.pending()).toBe(true);
+        if (phase === "decided") expect(r.withDecision(d => d.inspect().directoryEpoch)).toBe(1);
+        else {
+          expect(() => r.withDecision(d => d.inspect())).toThrow("uncertain");
+          const rolledBack = new Database(join(r.hub.home, SERVER_SET.database), { readonly: true });
+          try {
+            expect(rolledBack.prepare("SELECT directory_epoch FROM hub_settings_head").get()).toEqual({ directory_epoch: 0 });
+            expect(rolledBack.prepare("SELECT count(*) n FROM hub_settings_operations").get()).toEqual({ n: 0 });
+          } finally { rolledBack.close(); }
+        }
+      }
+    } finally { commit?.mockRestore(); audit?.mockRestore(); await coordinator?.close(); await r.runtime.close(); await pending?.catch(() => {}); }
+  });
+
   it.each(["ready", "restored"] as const)("returns %s on the original response without reviving an old session", async outcome => {
     const r = await directoryResponseRig(true), originalDirectory = structuredClone(r.hub.config.hub.directory);
     let pending: ReturnType<typeof r.begin> | undefined;
