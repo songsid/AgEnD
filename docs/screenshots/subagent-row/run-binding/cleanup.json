@@ -1,0 +1,16 @@
+{
+  "case": "main-run-binding",
+  "head": "38d441bcd6f8ee74e7791f6c882ad27dc2c50533",
+  "commandScript": "scripts/manual/subagent-row/accept.mts",
+  "extras": {
+    "MATRIX": "quick"
+  },
+  "exitCode": 0,
+  "trackedPids": 29,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/saqa-bkjr61_c",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794221100.3476393,
+  "ownedTempRemoved": true,
+  "ownedHomeRemoved": true
+}

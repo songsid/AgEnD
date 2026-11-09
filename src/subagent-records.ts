@@ -111,6 +111,8 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
       if (!meta || meta.id !== id || meta.session_id !== i.sessionId || meta.parent_thread_id !== i.sessionId || meta.cwd !== i.cwd || meta.thread_source !== "subagent"
         || !spawn || spawn.parent_thread_id !== i.sessionId || spawn.depth !== 1) return row;
       const starts = rs.filter(r => r.type === "event_msg" && r.payload?.type === "task_started");
+      // A resumed child can have new instructions. Do not apply its later result to the original spawn task.
+      if (new Set(starts.map(r => r.payload.turn_id)).size !== 1) return row;
       const start = starts.at(-1), t = start?.payload;
       if (!t || !uuid(t.turn_id) || t.turn_attribution?.parent_turn_id !== turn || t.turn_attribution?.root_turn_id !== turn
         || t.root_turn_id !== turn || at(start!.timestamp) < edge.startedAt - 5000) return row;
