@@ -64,7 +64,14 @@
       "checks": 64,
       "png": 24
     },
-    "apiRepliesStubbed": false
+    "apiRepliesStubbed": false,
+    "historicalProvenance": "Original pre-commit matrix lacks capture-time dirty/source hashes; preserved as historical observations, not exact-commit binding.",
+    "pinnedR1": {
+      "cases": 10,
+      "checks": 95,
+      "png": 30,
+      "sourceCommit": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4"
+    }
   },
   "style": {
     "hubSettingsChecks": 62,

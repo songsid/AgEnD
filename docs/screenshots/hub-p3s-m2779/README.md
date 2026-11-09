@@ -17,6 +17,14 @@ For #3512, **Stop remains a service pause**. Its dialog and both client/server c
 
 The main twin carries only the shared renderer, unit tests and narrow wording-scan exception. Its main Settings display fixture is explicitly synthetic, because main has no company-join backend.
 
+## Capture provenance correction (R1)
+
+The original `before`, `after` and `skew` receipts and PNGs are preserved byte-for-byte. The after and retained-asset matrices ran before the source commit, in a modified tree based on `95fbbd1a`. Their receipts recorded only HEAD, not a dirty flag or capture-time source/served-asset hashes. They are historical visual/behavior observations; they do **not** establish an exact committed-candidate provenance binding. The later source equality checks and artifact manifest do not retroactively supply that missing binding.
+
+`pinned-r1/` is a fresh, separately executed control, not a relabeling of those executions. Each receipt records capture start/end, the exact server and runner commits/trees, an empty `src`/`scripts` status before and after, relevant source-file digests, the harness digest, and the browser-observed shell/Run/i18n/CSS response digests. Each substituted static asset records its exact commit, source path and digest. The shell and Run response digests must equal their selected committed source, and the source images must remain fixed. Only static assets are substituted; API replies and pending confirmations are real as before.
+
+The five fresh quick controls pass **10 cases / 95 checks / 30 PNGs** (candidate, old shell, old Run, old i18n and candidate modules on the earlier backend). They cover desktop EN and phone zh-TW, rather than claiming a repeat of the original full EN/zh desktop/phone matrix. Product source is unchanged from reviewed `a58794f9` / source `1903cfe5`. The separate real Stop/Run test and original visual/style limitations above retain their stated scopes. All six fresh candidate images were reviewed; the same phone waiting-page framing limit remains. A preliminary provenance-harness run completed the UI cases but failed reading an unrelated transient asset after navigation. The collector was limited to its four relevant static dependencies before the fresh passing runs; product source did not change.
+
 ## Reproduce
 
 Set owned `PW_DIR`, `CHROME` and a CJK-capable `FONTCONFIG_FILE`, then:

@@ -1,0 +1,65 @@
+{
+  "scope": "Fresh quick controls only; historical full matrix is not relabeled or pinned retroactively. All original PNGs/receipts byte-identical to a58794f9.",
+  "sourceCommit": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+  "productSource": "Byte-identical to reviewed a58794f9",
+  "checks": "Source/tree/harness/input digests and browser-observed chosen static bytes verified against git objects; no API substitutions.",
+  "runs": [
+    {
+      "variant": "candidate",
+      "cases": 2,
+      "checks": 19,
+      "png": 6,
+      "server": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "runner": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "status": "PASS"
+    },
+    {
+      "variant": "old-shell",
+      "cases": 2,
+      "checks": 19,
+      "png": 6,
+      "server": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "runner": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "status": "PASS"
+    },
+    {
+      "variant": "old-run",
+      "cases": 2,
+      "checks": 19,
+      "png": 6,
+      "server": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "runner": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "status": "PASS"
+    },
+    {
+      "variant": "old-i18n",
+      "cases": 2,
+      "checks": 19,
+      "png": 6,
+      "server": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "runner": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "status": "PASS"
+    },
+    {
+      "variant": "old-server",
+      "cases": 2,
+      "checks": 19,
+      "png": 6,
+      "server": "95fbbd1adf98ae861972136ae6efc2162aa7ff61",
+      "runner": "6e58da7cf3ab32ec07d505b4d0b1f2d62cc264e4",
+      "status": "PASS"
+    }
+  ],
+  "totals": {
+    "cases": 10,
+    "checks": 95,
+    "png": 30
+  },
+  "visual": "All six candidate originals reviewed: EN desktop/zh phone readable, complete target/sharing scope, truthful Stop copy. Same pre-existing lower Review button framing on phone wait; no new blank/overflow. Retained controls assert their expected old/new copy.",
+  "ciInitial": {
+    "head": "a58794f9108ef8e469e58f0bc96f7cca8e3760ae",
+    "run": 42634778724,
+    "result": "Shard1: 457 passing files, 9299 passing assertions, 1 skipped, then unhandled write EPIPE in web-terminal-pipe-dd-3212; build aggregate fails. No rerun. Fresh evidence head gets a new run.",
+    "diagnostic": "Terminal implementation and its test unchanged from baseline. Shell-only local cases pass2/2 on candidate and baseline; full local diagnostic additionally hit2 missing bundled-tmux errors. No fixture-fix or cause proof claimed."
+  }
+}
