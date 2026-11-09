@@ -206,7 +206,7 @@ describe("#3061 P2a: Settings → Devices & sign-in", () => {
         .toEqual(["允許這台裝置登入？", "網路（區網或 tailnet）", "只能使用一般的網頁功能，不含擁有者授權；擁有者授權需另外驗證。", "允許", "拒絕"]);
       answers["POST /ui/devices/approve"] = { status: 404, body: { error: "not_found" } };
       await o.click(o.$("#devAllow"));
-      expect(o.text(o.$("#devMsg"))).toBe("沒有等待中的裝置使用這組代碼。請確認新裝置上的代碼；它可能已失效。");
+      expect(o.text(o.$("#devMsg"))).toBe("沒有等待中的裝置使用這組裝置登入碼。請確認新裝置上的裝置登入碼；它可能已失效。");
     } finally { i18n.setLang("en"); }
   });
 });
@@ -343,9 +343,9 @@ describe("#3061 P2b: the signed-in devices", () => {
       const w = await open({ webOnly: true, owner: true, devices: ROWS });
       expect(w.text(w.$("#devicesListTitle"))).toBe("已登入的裝置");
       expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 已驗證擁有者 · 剛剛活動", ""]);
-      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：裝置代碼 · 已登入，尚未驗證擁有者 · 5 分鐘前活動", "登出"]);
+      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 已登入，尚未驗證擁有者 · 5 分鐘前活動", "登出"]);
       expect(rowText(w, "cccccccccccccccc")[1]).toContain("核准方式：驗證器 App");
-      expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：登入碼");
+      expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：一次性裝置登入碼");
       await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
       expect([w.text(w.$(".dlg-title")), w.text(w.$("#devSignOutLead")), w.text(w.$("#devSignOutGo"))]).toEqual(["登出這台裝置？", "Chrome on Android 需要重新登入。", "登出"]);
       await w.click(w.$("#devSignOutGo"));
@@ -436,8 +436,8 @@ describe("#3061 P2b review: the confirm screen — where the request is from and
     i18n.setLang("zh-TW");
     try {
       const w = await toConfirm();
-      expect(w.text(w.$("#devSameCode"))).toBe("只有新裝置的畫面上顯示的是同一組代碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。");
-      expect([...w.$("#devFacts").querySelectorAll("dt")].map((e: any) => w.text(e))).toEqual(["來源", "位址", "代碼", "裝置", "剩餘時間"]);
+      expect(w.text(w.$("#devSameCode"))).toBe("只有新裝置的畫面上顯示的是同一組裝置登入碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。");
+      expect([...w.$("#devFacts").querySelectorAll("dt")].map((e: any) => w.text(e))).toEqual(["來源", "位址", "裝置登入碼", "裝置", "剩餘時間"]);
     } finally { i18n.setLang("en"); }
   });
 });

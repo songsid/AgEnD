@@ -89,6 +89,8 @@ export interface AuthApiContext {
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
+  /** S-117 story 1: web-only, or no chat connected yet — the sign-in page never says "send /web" then. */
+  signinWithoutChat?(): boolean;
   /**
    * #3008: a code from the authenticator app, typed at the outside link's sign-in (FleetManager.outsideSignIn): "ok"
    * only for the link connections from outside opened (`exposureId`), with a code not used before.
@@ -290,12 +292,13 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean; loginQr?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean; loginQr?: boolean; noChat?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
     // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
     // #3061: on this computer's own listener of a web-only fleet (never a public link), it also offers "Sign in with another device".
-    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside && opts.loginQr ? ' data-login-qr="1"' : ""}`;
+    // S-117 story 1: a chat fleet whose chat is not connected yet (data-no-chat) — words only: never "send /web".
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside && opts.loginQr ? ' data-login-qr="1"' : ""}${!opts.webOnly && opts.noChat ? ' data-no-chat="1"' : ""}`;
     const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
@@ -357,7 +360,7 @@ export function handleAuthRequest(
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
     const link = gatewayRequestContext(req);
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, noChat: ctx.signinWithoutChat?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
       deviceLogin: !link && ctx.deviceLoginAvailable?.() === true, loginQr: ctx.loginQrEnabled?.() === true });
     return true;
   }

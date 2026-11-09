@@ -10,11 +10,11 @@
  */
 export const HOST_MESSAGES = [
   // The code page (setup-host.ts redeem / afterFailure / the cookie gate).
-  ["incorrect — {0} attempts left", "代碼不正確 —— 還可以再試 {0} 次"],
-  ["incorrect — {0} attempt left", "代碼不正確 —— 還可以再試 {0} 次"],
+  ["incorrect — {0} attempts left", "設定碼不正確 —— 還可以再試 {0} 次"],
+  ["incorrect — {0} attempt left", "設定碼不正確 —— 還可以再試 {0} 次"],
   ["too many failed attempts — run `agend setup` again on the host", "錯誤次數太多 —— 請在主機上再執行一次 `agend setup`"],
-  ["enter the setup code", "請輸入設定代碼"],
-  ["enter the setup code first", "請先輸入設定代碼"],
+  ["enter the setup code", "請輸入設定碼"],
+  ["enter the setup code first", "請先輸入設定碼"],
   ["cross-site request rejected", "已拒絕跨站請求"],
   ["not found", "找不到"],
   // Finishing (setup-host.ts finishSetup / status).

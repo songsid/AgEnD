@@ -13,14 +13,14 @@ import { cliLabel } from "./cli-picker.js";
 
 register("machineSignin", {
   en: {
-    title: "Sign in {0} account “{1}” on {2}",
-    lead: "AgEnD asks {0}'s Runtime to sign this account in. You get a link here, open it in your browser, and paste back the code it shows. The sign-in is kept on that computer, and anyone who can sign in to that Windows user can use it.",
+    title: "Connect {0} account “{1}” on {2}",
+    lead: "AgEnD asks {0}'s Runtime to connect this account. You get a link here, open it in your browser, finish on the provider's official website, and paste back the authorization code it shows. The connection is kept on that computer, and anyone who can sign in to that Windows user can use it.",
     console: "Using an Anthropic Console account instead? Run this on that computer: {0}",
     close: "Close",
   },
   "zh-TW": {
-    title: "在 {2} 登入 {0} 帳號「{1}」",
-    lead: "AgEnD 會請 {0} 的 Runtime 登入這個帳號。這裡會給你一個連結，在瀏覽器開啟後，把它顯示的代碼貼回來。登入資料保存在那台電腦上，能登入該 Windows 使用者的人都能使用它。",
+    title: "在 {2} 連接 {0} 帳號「{1}」",
+    lead: "AgEnD 會請 {0} 的 Runtime 連接這個帳號。這裡會給你一個連結，在瀏覽器開啟、前往官方網站完成授權後，把它顯示的授權碼貼回來。連接資料保存在那台電腦上，能登入該 Windows 使用者的人都能使用它。",
     console: "要改用 Anthropic Console 帳號嗎？請在那台電腦上執行：{0}",
     close: "關閉",
   },

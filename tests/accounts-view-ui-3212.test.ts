@@ -57,12 +57,12 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(p.root.querySelectorAll(".s-account-card").map((c: any) => c.getAttribute("data-backend"))).toEqual(["claude-code", "codex"]);
     const def = rowOf("claude-code", "default"), work = rowOf("claude-code", "work"), off = rowOf("claude-code", "personal");
     expect([text(def.querySelector(".s-account-title-left strong")), text(def.querySelector(".s-account-identity")), text(def.querySelector(".s-account-used")), text(def.querySelector(".s-account-usage"))])
-      .toEqual(["Default sign-in", "ab***@example.com · Max", "used by 2 agents", "7d37%"]);
+      .toEqual(["Default connection", "ab***@example.com · Max", "used by 2 agents", "7d37%"]);
     expect(text(def.querySelector(".s-account-title-left .s-account-default-tag"))).toBe("fleet default");     // the tag is in the title bar, not in the used-by pill
     expect([text(work.querySelector(".s-account-title-left strong")), text(work.querySelector(".s-account-used")), text(work.querySelector(".s-account-usage"))])
       .toEqual(["Account “work”", "used by 1 agent · 1 ClassicBot room", "7d82%(stale)"]);
-    expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not signed in", "used by no agent"]);
-    expect(text(off.querySelector(".s-actions button"))).toBe("Sign in");
+    expect([text(off.querySelector(".s-auth-state")), text(off.querySelector(".s-account-used"))]).toEqual(["not connected", "used by no agent"]);
+    expect(text(off.querySelector(".s-actions button"))).toBe("Connect");
     expect(off.querySelector(".s-actions").textContent).not.toContain("Move agents here");      // a signed-out account takes no agents
     const team2 = rowOf("codex", "team2");
     expect(team2.querySelector(".s-actions button")?.textContent ?? null).toBe("Move agents here");   // (the box layout drops the trailing "…")
@@ -90,7 +90,7 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     const move = [...rowOf("claude-code", "work").querySelectorAll(".s-actions button")].find((b: any) => b.textContent === "Move agents here");
     fire(move, "click"); await settle(6);
     const items = [...p.root.querySelectorAll(".s-account-move li")] as any[];
-    expect(items.map((li) => [text(li.querySelector("span")), text(li.querySelector("small"))])).toEqual([["rev", "now: Default sign-in"], ["ops", "now: Default sign-in"]]);   // dev is already on it
+    expect(items.map((li) => [text(li.querySelector("span")), text(li.querySelector("small"))])).toEqual([["rev", "now: Default connection"], ["ops", "now: Default connection"]]);   // dev is already on it
     const box = items[1].querySelector("input"); box.checked = true; fire(box, "change"); await settle(4);
     const stageBtn = [...p.root.querySelectorAll("dialog button, .dlg button")].find((b: any) => b.textContent === "Stage") as any;
     fire(stageBtn, "click"); await settle(6);
@@ -121,7 +121,7 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
     expect([text(rowOf("claude-code", "default").querySelector(".s-account-title-left strong")), text(rowOf("claude-code", "work").querySelector(".s-account-used"))])
-      .toEqual(["預設登入", "使用者：1 個 Agent · 1 個 ClassicBot 房間"]);
+      .toEqual(["預設連接", "使用者：1 個 Agent · 1 個 ClassicBot 房間"]);
   });
 
   it("the Agent dialog's Account field: the fleet default first, signed-in accounts choosable, a signed-out one disabled", async () => {
@@ -129,7 +129,7 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     await p.mount(h(A.AccountSelect, { id: "ag-account", backend: "claude-code", value: "", onChange: (v: string) => { picked = v; } }));
     await settle(8);
     const opts = [...p.root.querySelectorAll("#ag-account option")] as any[];
-    expect(opts.map((o) => [o.value ?? o.getAttribute("value") ?? "", text(o), !!o.disabled])).toEqual([["", "Fleet default (default sign-in)", false], ["personal", "personal — not signed in", true], ["work", "work", false]]);
+    expect(opts.map((o) => [o.value ?? o.getAttribute("value") ?? "", text(o), !!o.disabled])).toEqual([["", "Fleet default (default connection)", false], ["personal", "personal — not connected", true], ["work", "work", false]]);
     const sel = p.root.querySelector("#ag-account"); sel.value = "work"; fire(sel, "change"); await settle(2);
     expect(picked).toBe("work");
   });

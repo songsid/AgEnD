@@ -67,7 +67,7 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
   it("says what it does, the end date (a warning in its last ten days), the plan and the last check", async () => {
     await mount();
     const off = ka("claude-code", "default"), on = ka("claude-code", "work"), cx = ka("codex", "default");
-    expect(text(off.querySelector("label"))).toBe("Keep sign-in alive");
+    expect(text(off.querySelector("label"))).toBe("Keep connection alive");
     expect(off.querySelector('input[type="checkbox"]').checked).toBe(false);
     expect(text(off.querySelector('[role="tooltip"]'))).toContain("No model request");
     expect(off.querySelector(".s-keepalive-fallback")).toBeNull();                         // the fallback only once it is on
@@ -188,7 +188,7 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
     const on = ka("claude-code", "work");
-    expect(text(on.querySelector("label"))).toBe("保持登入");
+    expect(text(on.querySelector("label"))).toBe("保持連接");
     expect(text(on.querySelector(".s-keepalive-last"))).toMatch(/：沒有續期$/);
     expect(text(on.querySelector(".s-keepalive-ends"))).toContain("續期無法延後這個日期");
     expect(p.document.querySelectorAll('link[data-accounts-keepalive-css="1"]').length).toBe(1);
