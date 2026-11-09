@@ -1,6 +1,8 @@
 """Focused, isolated private-authority reversals; each must fail an assertion, never collection. Restore bytes."""
 import json,os,pathlib,subprocess
 root=pathlib.Path.cwd();decision='src/hub/settings-directory-decision.ts';writer='src/hub/settings-commit.ts';helper='src/hub/settings-directory-recovery-intent.ts'
+# Canonical issuer authentication supersedes the old receipt-hash tampering reversal; that raw hash
+# remains a SQL byte-consistency check, not the authority anchor. Do not count it as independent.
 cases=[
  ('initial-clock',decision,'if (input.recovery) assertHubDirectoryRecoveryClock(input, initialProof);','', 'out-of-window initial clock'),
  ('final-clock',decision,'assertHubDirectoryRecoveryClock(saved, finalProof);','', 'audit crosses the clock'),
@@ -9,7 +11,7 @@ cases=[
  ('root-completion',decision,'if (db.inTransaction || !Number.isSafeInteger(at))','if (!Number.isSafeInteger(at))', 'nested and asynchronous'),
  ('row-deadline',helper,'row.expires_at !== operation.recovery.expiresAt','false', 'changed recovery row after completion'),
  ('receipt-metadata',writer,' || !same(receipt.recovery, original.recovery)','', 'database-only extension'),
- ('receipt-hash',writer,'sha(receiptText) !== original.receiptSha || ','', 'receipt-too extension'),
+ ('signed-receipt',writer,'image().confirmationId !== sha(canonical(receipt)).slice(0, 32)','false','coherent receipt/SQL/hash'),
  ('writer-deadline-cap',writer,'Math.min(p.expiresAt, recoveryDeadline)','recoveryDeadline', 'caps an orchestration deadline'),
  ('cold-intent-table','src/hub/settings-directory-recovery.ts','SELECT operation_id,expires_at,state,completed_at FROM hub_settings_mount_recovery LIMIT 0','SELECT 1','refuses mount-intent before callback'),
  ('no-recursive-intent',decision,'if (compensation && input.recovery) throw new HubProtocolError("invalid");','', 'recursive recovery intent'),
