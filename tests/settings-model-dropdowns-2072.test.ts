@@ -85,7 +85,7 @@ describe("the pickers on a page", () => {
     const options = [...p.root.querySelector("#b")!.querySelectorAll("option")] as any[];
     const codex = options.find(o => o.value === "codex")!;
     expect(codex.disabled).toBe(true);
-    expect(codex.textContent).toContain("codex — ");
+    expect(codex.textContent).toContain("Codex — ");   // M-2733: its product name; the value stays the id
     expect(options.find(o => o.value === "claude-code")!.disabled).toBe(false);
   });
 

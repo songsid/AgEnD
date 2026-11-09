@@ -171,8 +171,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-app-icon-small { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; }
 /* The fields' placeholders show the defaults: readable, not the browser's faint grey (dark mode). */
 .s-appearance input::placeholder { color: var(--text-3); opacity: 1; }
-/* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. */
-:lang(zh-Hant) .card h3 { text-transform: none; letter-spacing: 0; }
+/* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. M-2733: nor a
+   Settings group heading ("整個 FLEET"). */
+:lang(zh-Hant) .card h3, :lang(zh-Hant) .s-nav-head, :lang(zh-Hant) .s-group-head { text-transform: none; letter-spacing: 0; }
 .s-learn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border);
   color: var(--text-3); font-size: 11px; text-decoration: none; text-transform: none; letter-spacing: 0; line-height: 1; }
 .s-learn:hover, .s-learn:focus-visible { color: var(--text); border-color: var(--text-3); }
@@ -1189,6 +1190,9 @@ img.amb-p { object-fit: contain; }
   .kb-open .tabs { display: none; }
   /* #2478: with the keyboard up the line under the composer goes too — the box sits on the keyboard; back on blur. */
   .kb-open .composer-row { display: none; }
+  /* M-2733: on a phone the line under the composer was flush with the box's rounded edge, 4px under it and on the tab
+     bar: it starts where the box's text does and has room above and below. */
+  .composer-row { margin-top: 0; padding: var(--s-1) var(--s-3) var(--s-2); }
   .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; justify-content: center; font-size: 11px; color: var(--text-2); position: relative; }
   .tab.active { color: var(--text); font-weight: var(--fw-semibold); }
   .tab-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full); background: var(--danger-fill); color: var(--on-danger); font-size: 10px; line-height: 16px; text-align: center; }

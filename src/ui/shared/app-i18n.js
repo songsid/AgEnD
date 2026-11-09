@@ -28,6 +28,10 @@ function initialLang() {
   return deviceLanguage();
 }
 let current = initialLang();
+// M-2733: the page says its language from the start, not only after a change: the host writes <html lang> only from its
+// own prefs, so a language from this browser or the device left "en" — and :lang(zh-Hant) rules (no upper-cased
+// headings in Chinese) and screen readers took the Chinese page for English.
+if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = current === "zh-TW" ? "zh-Hant" : "en";
 
 /** Add a namespace: `register("chat", { en: {...}, "zh-TW": {...} })`. */
 export function register(ns, byLang) {

@@ -46,7 +46,7 @@ const ROWS = [
   ["chat.classic-reply-triggers", "chat", "#g-creply-triggers", "settings.replyTriggers", "classic_defaults.reply_triggers", ["classic native reply"], ["ClassicBot 原生回覆觸發"]],
   ["defaults.reply-guard", "agent-defaults", "#g-reply", "settings.replyCompletionGuard", "defaults.reply_completion_guard", ["delivered reply", "reply guard", "require reply"], ["送達回覆", "回覆保護"]],
   ["defaults.tool-set", "agent-defaults", "#g-ts", "settings.toolSet", "defaults.tool_set", ["tool set", "tools", "mcp"], ["工具組", "工具"]],
-  ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["Dashboard 權限", "權限", "外觀", "任務看板", "網頁設定"]],
+  ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["網頁儀表板權限", "儀表板", "權限", "外觀", "任務看板", "網頁設定"]],
   ["defaults.log-level", "agent-defaults", "#g-ll", "settings.logLevel", "defaults.log_level", ["log level", "debug", "logging"], ["記錄層級", "除錯", "日誌"]],
   ["defaults.agent-mode", "agent-defaults", "#g-am", "settings.agentMode", "defaults.agent_mode", ["agent mode", "mcp", "cli"], ["agent 模式"]],
   ["defaults.hang-on", "agent-defaults", "#g-hang-on", "settings.hangEnabled", "defaults.hang_detector.enabled", ["hang detector", "stuck", "frozen"], ["卡住偵測", "卡住", "當機"]],
