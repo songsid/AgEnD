@@ -154,6 +154,20 @@ it("starts the exact verified child only after a positive idle stop and records 
     [join(f.root, `${b.version}+${b.sha256.slice(0, 8)}`, "dist", "runtime-cli.js"), "--internal-update"], expect.objectContaining({ shell: false, detached: true, windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"] }));
   await controller.close(); expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toHaveLength(1);
 });
+it("a Runtime that runs in the background hands over to one that does too (the switch is in the child's environment); an ordinary one hands over as before", async () => {
+  const previous = process.env.AGEND_RUNTIME_BACKGROUND;
+  try {
+    for (const [value, expected] of [["1", true], [undefined, false], ["0", false]] as const) {
+      if (value === undefined) delete process.env.AGEND_RUNTIME_BACKGROUND; else process.env.AGEND_RUNTIME_BACKGROUND = value;
+      const f = await fixture(), controller = (await f.open())!; await controller.start(); f.clients[0].busy = false;
+      await controller.checkNow(); await controller.wait();
+      const env = (f.controllerOptions.spawn as unknown as { mock: { calls: [string, string[], { env: Record<string, string> }][] } }).mock.calls[0][2].env;
+      expect(env.AGEND_RUNTIME_BACKGROUND, String(value)).toBe(expected ? "1" : undefined);
+      expect(f.controllerOptions.spawn).toHaveBeenCalledWith(process.execPath, [expect.stringMatching(/runtime-cli\.js$/), "--internal-update"], expect.anything());   // the arguments never change, so an older program still understands them
+      await controller.close();
+    }
+  } finally { if (previous === undefined) delete process.env.AGEND_RUNTIME_BACKGROUND; else process.env.AGEND_RUNTIME_BACKGROUND = previous; }
+});
 it("remembers a checksum failure, never stops a client or retries that hash", async () => {
   const f = await fixture(); f.corrupt(); const controller = (await f.open())!; await controller.start();
   await expect(controller.checkNow()).rejects.toThrow(/checksum/);

@@ -1,14 +1,17 @@
 /** Managed Runtime code replacement. Source of truth is the stored paired origin; no CLI installation or task replay. */
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "./child-process.js";
 import { RuntimeClient, describeRuntimeStop, type RuntimeClientOptions } from "./runtime-client.js";
 import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-store.js";
+import { readRuntimeInfo } from "./runtime-build-info.js";
 import { credentialProfilesRoot } from "./runtime-credential-profiles.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
+import { RUNTIME_BACKGROUND_ENV, RotatingLog, captureProcessOutput, clearInstanceMarker, clearStopRequest, runtimeLogDirectory, watchStopRequest, writeInstanceMarker } from "./runtime-background.js";
 import { fetchRuntimeUpdateArchive, fetchRuntimeUpdateMetadata, runtimeUpdateNeeded, RuntimeUpdateArtifactError } from "./runtime-update-artifact.js";
 import { RuntimeUpdateJournal, type RuntimeUpdateBinding } from "./runtime-update-journal.js";
 import type { RuntimeUpdateStatus } from "./runtime-update-status.js";
@@ -375,7 +378,10 @@ export class RuntimeUpdateController {
     const child = (this.options.spawn ?? spawn)(process.execPath, [join(this.install.root, program.folder, "dist", "runtime-cli.js"), "--internal-update"],
       // On Windows an attached console child can die with the outgoing cmd/console owner.
       // This is still an exact registered, unadmitted child; unref follows only its positive arm.
-      { shell: false, detached: true, stdio: ["inherit", "inherit", "inherit", "ipc"], env: nativeCliEnvironment(), windowsHide: true });
+      { shell: false, detached: true, stdio: ["inherit", "inherit", "inherit", "ipc"], windowsHide: true,
+        // A Runtime that runs in the background hands over to a Runtime that also does (its output to the log, its stop request watched); a program that
+        // does not know this variable, such as the previous version a rollback returns to, ignores it.
+        env: { ...nativeCliEnvironment(), ...(process.env[RUNTIME_BACKGROUND_ENV] === "1" ? { [RUNTIME_BACKGROUND_ENV]: "1" } : {}) } });
     const exited = new Promise<void>(done => {
       child.once("close", () => done()); child.once("error", () => { /* close owns physical completion */ });
       if (child.exitCode !== null || child.signalCode !== null) done();
@@ -456,14 +462,31 @@ export async function runtimeUpdateInternalMain(): Promise<void> {
   let controller: RuntimeUpdateController | undefined, cancelled = false;
   const stop = () => { cancelled = true; void controller?.close().catch(() => { process.exitCode = 1; }); };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
+  let background: { restore: () => void; unwatch: () => void; directory: string } | undefined;
   try {
     const init = await channel.next(["init"]); if (init.type !== "init") throw Error("Runtime update initialization required");
-    controller = await RuntimeUpdateController.resume({ store: new RuntimeClientStore(resolve(init.profile)), report: message => process.stdout.write(`${message}\n`) }, init, channel, () => cancelled);
+    const store = new RuntimeClientStore(resolve(init.profile));
+    // the Runtime that handed over was running in the background, so this one does too: same log, same stop request, same marker.
+    if (process.env[RUNTIME_BACKGROUND_ENV] === "1") {
+      const log = new RotatingLog(runtimeLogDirectory(process.env, homedir(), store.directory));
+      background = { restore: captureProcessOutput(log), unwatch: () => {}, directory: store.directory };
+      process.on("uncaughtExceptionMonitor", error => log.write(`The Runtime crashed: ${error.stack ?? error.message}`, "error"));
+    }
+    controller = await RuntimeUpdateController.resume({ store, report: message => process.stdout.write(`${message}\n`) }, init, channel, () => cancelled);
     if (cancelled) return;
+    if (background) {
+      // Taken over only now: the earlier Runtime has exited and this one holds the install ownership. A stop request that arrived during the hand-over
+      // is asked again by `agend-runtime stop` itself, so clearing is safe.
+      clearStopRequest(background.directory); writeInstanceMarker(background.directory, process.pid, Date.now(), readRuntimeInfo().version);
+      background.unwatch = watchStopRequest(background.directory, stop);
+    }
     if (init.role === "helper") await controller.startTrial(init.id); else await controller.start();
     await controller.wait();
   } finally {
     channel.close();
-    try { await controller?.close(); } finally { process.off("SIGINT", stop); process.off("SIGTERM", stop); }
+    try { await controller?.close(); } finally {
+      process.off("SIGINT", stop); process.off("SIGTERM", stop);
+      if (background) { background.unwatch(); clearInstanceMarker(background.directory, process.pid); background.restore(); }
+    }
   }
 }

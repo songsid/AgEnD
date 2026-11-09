@@ -35,7 +35,7 @@ describe("connect-agend.bat exit behaviour", () => {
     "fails with a plain next step when AgEnD ends the connection (%s), so the exit code is non-zero",
     async (kind, next) => {
       stop.reason = { kind }; const { home, program } = paired();
-      await expect(runtimeMain(["connect"], { home, programDirectory: program, env: {} })).rejects.toThrow(next);
+      await expect(runtimeMain(["connect", "--foreground"], { home, programDirectory: program, env: {} })).rejects.toThrow(next);
       await expect(runtimeMain(["run"], { home, programDirectory: program, env: {} })).rejects.toThrow(next);
     });
   it("still returns normally (exit 0) when the person stops it locally", async () => {

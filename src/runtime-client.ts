@@ -36,6 +36,8 @@ import type { RuntimePaneHost } from "./runtime-pane-host.js";
 import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
 export { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
 
+/** The line the client reports each time AgEnD welcomes it; the background launcher waits for it to say "connected". */
+export const RUNTIME_CONNECTED_REPORT = "Connected to AgEnD.";
 export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible" | "reinstall";
 export interface RuntimeStopReason { kind: RuntimeStopKind; /** The close reason AgEnD gave, when it gave one. */ detail?: string }
 const REPAIR = "run .\\agend-runtime.cmd disconnect in this folder (add the same --profile if you used one), then double-click connect-agend.bat and enter a new pairing code, or paste a new one-time install command from AgEnD Settings -> Runtime -> Connect a computer (no pairing code needed).";
@@ -344,7 +346,7 @@ export class RuntimeClient {
       this.updateStatusProtocol = value.updateStatusProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
-      this.report("Connected to AgEnD.");
+      this.report(RUNTIME_CONNECTED_REPORT);
       if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
       this.publishUpdateStatus();
       this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
