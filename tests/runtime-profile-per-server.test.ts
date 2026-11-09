@@ -138,6 +138,63 @@ describe("connect-agend.bat with a default profile paired to another server", ()
   });
 });
 
+describe("--connection-dir: the one-line installer's reconnect folder picks the profile exactly as the ZIP's connect-agend.bat does", () => {
+  const connectDir = (root: string, server: string, name = "reconnect"): string => { const dir = join(root, "connect", name); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, RUNTIME_SERVER_FILE), JSON.stringify({ server }, null, 2) + "\n"); return dir; };
+  const printed = (): string => vi.mocked(process.stdout.write).mock.calls.map(call => String(call[0])).join("");
+  it("pairs a new profile from the folder's address, asks for the code, and never takes the address from anywhere else", async () => {
+    const { home, program, base } = fixture();
+    const dir = connectDir(program, B);
+    await runtimeMain(["connect", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).toHaveBeenCalledTimes(1);
+    const call = pairing.pair.mock.calls[0][0] as { server: string; store: Store; code: string };
+    expect(call.server).toBe(B); expect(call.store.directory).toBe(base); expect(call.code).toBe("ABCD-EFGH");   // the code came from the interactive prompt
+    expect(pairing.started).toHaveBeenCalledWith(base); expect(printed()).toContain(`AgEnD server: ${B}`);
+  });
+  it("reconnects a profile already paired to this AgEnD without asking for a code, and leaves the stored credentials byte for byte alone", async () => {
+    const { home, program, base } = fixture();
+    const before = pairTo(base, B, "a"), dir = connectDir(program, B);
+    await runtimeMain(["connect", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).toHaveBeenCalledWith(base);
+    expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+  });
+  it("gives another AgEnD its own profile and keeps the existing pairing, then finds it again, and run/status/disconnect land there too", async () => {
+    const { home, program, base } = fixture();
+    const before = pairTo(base, A, "a"), dir = connectDir(program, B), own = runtimeServerProfile(base, B);
+    await runtimeMain(["connect", "--connection-dir", dir], { home, env: {} });
+    expect((pairing.pair.mock.calls[0][0] as { store: Store }).store.directory).toBe(own); expect(printed()).toContain(`using a separate profile for this server:\n  ${own}`);
+    expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+    pairing.pair.mockClear(); pairing.started.mockClear();
+    await runtimeMain(["connect", "--connection-dir", dir], { home, env: {} });
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).toHaveBeenCalledWith(own);
+    await runtimeMain(["status", "--connection-dir", dir], { home, env: {} });
+    expect(JSON.parse(String(vi.mocked(process.stdout.write).mock.calls.at(-1)![0]))).toMatchObject({ profile: own, paired: true, server: B });
+    pairing.started.mockClear(); await runtimeMain(["run", "--connection-dir", dir], { home, env: {} }); expect(pairing.started).toHaveBeenCalledWith(own);
+    await runtimeMain(["disconnect", "--connection-dir", dir], { home, env: {} });
+    expect(existsSync(join(own, "connection.json"))).toBe(false); expect(readFileSync(join(base, "connection.json"), "utf8")).toBe(before);
+  });
+  it("is not combined with --server, does not fall back to a stored address when the folder has none, and refuses a bad file", async () => {
+    const { home, program, base } = fixture();
+    pairTo(base, A, "a");
+    await expect(runtimeMain(["connect", "--connection-dir", connectDir(program, B), "--server", B], { home, env: {} })).rejects.toThrow(/cannot be used together/);
+    const empty = join(program, "empty"); mkdirSync(empty);
+    for (const command of ["connect", "run", "status"]) await expect(runtimeMain([command, "--connection-dir", empty], { home, env: {} }), command).rejects.toThrow(/No agend-server\.json in the --connection-dir folder/);
+    const bad = join(program, "bad"); mkdirSync(bad); writeFileSync(join(bad, RUNTIME_SERVER_FILE), JSON.stringify({ server: "http://192.168.1.2:19280", password: "x" }));
+    await expect(runtimeMain(["connect", "--connection-dir", bad], { home, env: {} })).rejects.toThrow(/Invalid agend-server\.json/);
+    expect(pairing.pair).not.toHaveBeenCalled(); expect(pairing.started).not.toHaveBeenCalled();
+  });
+  it("still takes the pairing code only from the interactive prompt: a code in the arguments is refused, and without a console nothing is asked", async () => {
+    const { home, program } = fixture(), dir = connectDir(program, B);
+    for (const argv of [["connect", "--connection-dir", dir, "--code", "ABCD-EFGH"], ["connect", "--connection-dir", dir, "ABCD-EFGH"]]) await expect(runtimeMain(argv, { home, env: {} })).rejects.toThrow(/Pairing codes must be entered interactively/);
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    await expect(runtimeMain(["connect", "--connection-dir", dir], { home, env: {} })).rejects.toThrow(/Pairing requires an interactive terminal/);
+    expect(pairing.pair).not.toHaveBeenCalled();
+  });
+  it("documents the flag in --help", async () => {
+    await runtimeMain(["--help"], { env: {} });
+    expect(printed()).toContain("connect --connection-dir DIRECTORY"); expect(printed()).toContain("--connection-dir and --server are exclusive");
+  });
+});
+
 describe("disconnect and rotate with a stale profile lock", () => {
   const lockFile = (directory: string): string => join(directory, "runtime.lock");
   function stale(directory: string, boot: string): void { writeFileSync(lockFile(directory), JSON.stringify({ pid: process.pid, bootId: "old-run", systemBootId: boot }), { mode: 0o600 }); }

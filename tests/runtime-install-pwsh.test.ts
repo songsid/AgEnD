@@ -5,10 +5,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBundle } from "../src/runtime-bundle.js";
 import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RuntimeInstallService } from "../src/runtime-install.js";
-import { runtimeInstallCommand } from "../src/ui/runtime-commands.js";
+import { runtimeInstallCommand, runtimeInstallOnlyCommand } from "../src/ui/runtime-commands.js";
 import { runtimeFreshInstallCommand } from "../src/ui/runtime-update-commands.js";
 import { extractPsFunction } from "./support/installer-ps-extract.js";
 import { acquireRuntimeInstallLock, parseRuntimeInstallLock, RUNTIME_INSTALL_LOCK } from "../src/runtime-update-lock.js";
@@ -30,6 +30,8 @@ const TEMPLATE = readFileSync("templates/runtime-install/install.ps1", "utf8");
 // Linux fixture only: process/file operations are real; the Windows-only boot source is fixed and never queries the host.
 const BOOT_FIXTURE = "function global:Get-CimInstance { [pscustomobject]@{LastBootUpTime=[DateTime]::new(638980000000000000,[DateTimeKind]::Utc)} }";
 const VERSION = "2.3.5-alpha.7", NEXT = "2.3.6-alpha.1";
+/** SHA-256 of the exact bytes of connect-agend.bat as the installer writes it; see the matching pin in runtime-install-script.test.ts. */
+const BAT_SHA256 = "8862ccd8c9ca4238fa073d42f3594f46fe049d8b2bb9107d9c8f5c7745a05c89";
 const roots: string[] = [];
 let server: Server | undefined;
 const seen: string[] = [];
@@ -51,8 +53,8 @@ function zip(entries: Record<string, string>): Buffer {
   const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(local.length / 3, 8); end.writeUInt16LE(local.length / 3, 10); end.writeUInt32LE(size, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, ...central, end]);
 }
-function makeBundle(version: string, tag = version): RuntimeBundle {
-  const bytes = zip({ "dist/runtime-cli.js": `// fixture runtime ${tag}\n`, "bundle-manifest.json": "{}\n", "package.json": "{}\n" });
+function makeBundle(version: string, tag = version, cli = `// fixture runtime ${tag}\n`): RuntimeBundle {
+  const bytes = zip({ "dist/runtime-cli.js": cli, "bundle-manifest.json": "{}\n", "package.json": "{}\n" });
   return { bytes, filename: `agend-runtime-windows-${version}.zip`, version, sha256: sha(bytes) };
 }
 const serviceFor = (bundle: RuntimeBundle): RuntimeInstallService => new RuntimeInstallService({ bundle: () => bundle, template: () => TEMPLATE, now: () => clock });
@@ -114,11 +116,14 @@ function run(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, mo
     child.on("close", status => { clearTimeout(timer); done({ out, status, code: Number(/LASTEXITCODE=(\d+)/.exec(out)?.[1] ?? NaN), verifyFailed: /install\.ps1 could not be verified/.test(out) }); });
   });
 }
-const LOCK_HELPERS = ["Resolve-AgendOrigin", "Set-AgendFile", "Assert-AgendDirectory", "Read-AgendSmallFile", "Get-AgendBootProof", "Test-AgendOwnerRecord", "Get-AgendProcessMatch", "Read-AgendLock", "Assert-AgendLock", "Remove-AgendLock", "Enter-AgendInstallLock", "Register-AgendInstallOrigin"]
+const LOCK_HELPERS = ["Resolve-AgendOrigin", "Set-AgendFile", "Assert-AgendDirectory", "Read-AgendSmallFile", "Get-AgendBootProof", "Test-AgendOwnerRecord", "Get-AgendProcessMatch", "Read-AgendLock", "Assert-AgendLock", "Remove-AgendLock", "Enter-AgendInstallLock", "Register-AgendInstallOrigin",
+  "Test-AgendSwitch", "Test-AgendInteractive", "Get-AgendConnectMode", "Get-AgendConnectName", "Write-AgendConnectEntry"]
   .map(name => extractPsFunction(TEMPLATE, name)).join("\n");
+/** The script's own `$connectBatText = (...) -join` statement, so a helper run writes exactly the text the installer writes. */
+const BAT_STATEMENT = /\$connectBatText = \([\s\S]*?\) -join "`r`n"/.exec(TEMPLATE)![0];
 function helperRun(s: ReturnType<typeof scratch>, body: string): Promise<string> {
   const file = join(s.root, `helpers-${randomUUID()}.ps1`);
-  writeFileSync(file, `$ErrorActionPreference='Stop'\n${BOOT_FIXTURE}\n${LOCK_HELPERS}\n${body}`);
+  writeFileSync(file, `$ErrorActionPreference='Stop'\n${BOOT_FIXTURE}\n${LOCK_HELPERS}\n${BAT_STATEMENT}\n${body}`);
   return new Promise((done, reject) => {
     const previousMask = process.umask(0o077);
     let child;
@@ -171,6 +176,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     const preset=`$env:PATH=${quoted(old)}+[IO.Path]::PathSeparator+$env:PATH`;
     const r=await run(s,{AGEND_RUNTIME_REPAIR:"1",AGEND_RUNTIME_NO_PATH:"",T_PRESET:preset});
     expect(r.code,r.out).toBe(0); expect(r.out).not.toContain('connect --server'); expect(r.out).not.toContain('one-time pairing code');
+    expect(existsSync(join(s.install,"connect")),"a repair run leaves no reconnect entry and never connects").toBe(false);
     const command=r.out.split(/\r?\n/).find(line=>line.includes('Read-Host')&&line.includes('run --profile'))?.trim(); expect(command,r.out).toBeTruthy();
     const shim=join(s.install,"bin","agend-runtime.cmd");expect(command).toContain(shim.replace(/'/g,"''"));
     const out=await helperRun(s,`${preset}
@@ -184,7 +190,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     expect(out).toContain('OLD-RESOLVES:'+oldCommand);expect(out).toContain('EMPTY-PROFILE-REFUSED');expect((out.match(/NEW:/g)??[])).toHaveLength(1);
     expect(out).toContain('NEW:'+JSON.stringify(['run','--profile',profile]));expect(out).not.toContain('OLD-PATH-RUNTIME');expect(snapshot(profile)).toEqual(before);
   });
-  it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and only prints the connect command", async () => {
+  it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and, with no interactive console, only prints the connect command", async () => {
     const s = scratch(), r = await run(s);
     expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
     expect(readFileSync(join(s.install, FOLDER_A, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${VERSION}\n`);
@@ -194,10 +200,13 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     expect(shim).toContain('set /p AGEND_RT_VERSION=<"%~dp0current.txt"'); expect(shim).not.toContain(VERSION); expect(shim.split("\r\n").length).toBeGreaterThan(8);
     expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);   // version+build, e.g. 2.3.5-alpha.7+1a2b3c4d
     expect(r.out).toContain(`& "${join(s.install, "bin", "agend-runtime.cmd")}" connect --server "${origin()}"`);
-    expect(r.out).toContain("not connected yet and nothing has been paired");
+    expect(r.out).toContain("not connected yet and nothing has been paired"); expect(r.out).toContain("not an interactive console"); expect(r.out).not.toContain("connecting this computer");
+    expect(r.out).toContain("cannot be put in a command, a variable or a file");
+    // the reconnect entry sits beside the Runtime and the output says where, for a person to double-click
+    const [entry] = readdirSync(join(s.install, "connect")); expect(r.out).toContain(join(s.install, "connect", entry, "connect-agend.bat"));
     expect(readRuntimeInstallReceipt(s.install)).toMatchObject({ version: 1, revision: 1, origins: [origin()], shared: false });
     // It touched the install folder and nothing else: no staging folder or temporary file left, nothing beside it.
-    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", FOLDER_A].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
+    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", "connect", FOLDER_A].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
     // Two requests, both static downloads: never a pairing endpoint.
     expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`, `GET ${RUNTIME_BUNDLE_PATH}`]);
   });
@@ -438,7 +447,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       expect(r.code, r.out).toBe(0);
       expect(snapshot(join(s.install, FOLDER_A))).toEqual(first);   // not deleted, not replaced, not even re-written
       expect(readFileSync(join(s.install, NEXT_FOLDER, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${NEXT}\n`);
-      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", "connect", NEXT_FOLDER, FOLDER_A].sort());
       expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(NEXT_FOLDER);
       expect(snapshot(join(s.install, "bin"))["agend-runtime.cmd"]).toBe(shim);   // the shim file was not rewritten
       expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);   // no temporary sibling left behind
@@ -453,7 +462,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       serveNext(rebuilt);
       const r = await run(s, { T_COMMAND: pageCommand(active) });
       expect(r.code, r.out).toBe(0); expect(r.out).not.toContain("exists but does not hold this build");
-      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", FOLDER_A, REBUILT].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", "connect", FOLDER_A, REBUILT].sort());
       expect(snapshot(join(s.install, FOLDER_A))).toEqual(before);
       expect(readFileSync(join(s.install, REBUILT, "dist", "runtime-cli.js"), "utf8")).toBe("// fixture runtime rebuilt with the same version\n");
       expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(REBUILT);
@@ -464,7 +473,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       const next = makeBundle(NEXT), NEXT_FOLDER = folderOf(next); serveNext(next); expect((await run(s, { T_COMMAND: pageCommand(active) })).code).toBe(0);
       active = serviceA; const back = await run(s);
       expect(back.code, back.out).toBe(0); expect(back.out).toContain("is already installed"); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);
-      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(readdirSync(s.install).sort()).toEqual([RUNTIME_INSTALL_RECEIPT, "bin", "connect", NEXT_FOLDER, FOLDER_A].sort());
       expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);   // no archive was downloaded again
     });
     it("leaves a folder that carries this build's own name but does not hold it (changed by hand, or incomplete) completely alone", async () => {
@@ -479,6 +488,154 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       behaviour = (req, res) => { if (req.url !== RUNTIME_BUNDLE_PATH) return false; const wrong = Buffer.concat([bad.bytes, Buffer.from([1])]); res.writeHead(200, { "Content-Length": wrong.length }); res.end(wrong); return true; };
       const r = await run(s, { T_COMMAND: pageCommand(active) });
       expect(r.code, r.out).toBe(1); expect(snapshot(s.install)).toEqual(before); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);
+    });
+  });
+
+  describe("connecting after the install: one pasted command installs and connects, only at an interactive console", () => {
+    // A runtime that records how it was started, so what the installer launches can be checked without Windows.
+    const RECORDER = `const fs=require("fs"),path=require("path");
+const dir=process.argv[process.argv.indexOf("--connection-dir")+1], root=path.dirname(path.dirname(__dirname));
+fs.writeFileSync(process.env.T_MARK,JSON.stringify({argv:process.argv.slice(2),stdinTTY:!!process.stdin.isTTY,stdoutTTY:!!process.stdout.isTTY,lockHeld:fs.existsSync(path.join(root,".agend-runtime-install.lock")),server:JSON.parse(fs.readFileSync(path.join(dir,"agend-server.json"),"utf8")).server,files:fs.readdirSync(dir).sort()}));
+process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.env.T_EXIT||0);\n`;
+    const bundleR = makeBundle("2.3.7-alpha.1", "recorder", RECORDER);
+    const recorded = (s: ReturnType<typeof scratch>) => existsSync(s.marker) ? JSON.parse(readFileSync(s.marker, "utf8")) : undefined;
+    const entryOf = (s: ReturnType<typeof scratch>) => { const [name] = readdirSync(join(s.install, "connect")); return join(s.install, "connect", name); };
+    const EXPECTED_BAT = ["@echo off", "setlocal DisableDelayedExpansion", 'if not exist "%~dp0..\\..\\bin\\agend-runtime.cmd" (',
+      "  echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.", "  pause", "  exit /b 1", ")",
+      'call "%~dp0..\\..\\bin\\agend-runtime.cmd" connect --connection-dir "%~dp0."', 'set "AGEND_EXIT=%errorlevel%"', "echo.",
+      'if not "%AGEND_EXIT%"=="0" (', "  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.", ") else (", "  echo AgEnD Runtime stopped.", ")", "pause", ""].join("\r\n");
+    /**
+     * A real pty (util-linux `script`), so stdin and stdout are a console the way they are when a person pastes the command. The progress bar is
+     * switched off: on a pty with no terminal behind it, PowerShell asks the terminal for the cursor position and waits ten seconds for an answer.
+     */
+    const hasScript = process.platform !== "win32" && spawnSync("script", ["--version"]).status === 0;
+    function runInteractive(s: ReturnType<typeof scratch>, env: Record<string, string> = {}, pwshArgs: string[] = []): Promise<{ out: string; code: number }> {
+      clock += 600_000; seen.length = 0;
+      const quote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+      return new Promise(done => {
+        const previousMask = process.umask(0o077);
+        let child;
+        try {
+          child = spawn("script", ["-qec", [quote(PWSH), "-NoProfile", ...pwshArgs, "-File", quote(s.harness)].join(" "), "/dev/null"],
+            { env: { PATH: process.env.PATH ?? "", HOME: s.root, TERM: "dumb", DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1", LOCALAPPDATA: s.local, AGEND_RUNTIME_NO_PATH: "1", T_FETCH: origin(), T_AGEND: origin(), T_MODE: "command", T_COMMAND: pageCommand(), ...env, T_PRESET: `$ProgressPreference = 'SilentlyContinue'; ${env.T_PRESET ?? ""}` }, stdio: ["ignore", "pipe", "pipe"] });
+        } finally { process.umask(previousMask); }
+        let raw = ""; child.stdout.on("data", d => { raw += d; }); child.stderr.on("data", d => { raw += d; });
+        const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+        const finish = (): void => { clearTimeout(timer); const out = raw.replace(/\r/g, "").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""); done({ out, code: Number(/LASTEXITCODE=(\d+)/.exec(out)?.[1] ?? NaN) }); };
+        child.on("error", error => { raw += `spawn failed: ${error.message}`; finish(); }); child.on("close", finish);
+      });
+    }
+    beforeEach(() => { active = serviceFor(bundleR); });
+
+    it.skipIf(!hasScript)("installs, then connects in the same window with the Runtime's own --connection-dir, after the install lock is gone", async () => {
+      const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker });
+      expect(r.code, r.out).toBe(0);
+      const dir = entryOf(s);
+      // what was started: node, the installed version's own file, `connect --connection-dir <that folder>`; stdin and stdout are the console; the lock was released first
+      expect(recorded(s), r.out).toEqual({ argv: ["connect", "--connection-dir", dir], stdinTTY: true, stdoutTTY: true, lockHeld: false, server: origin(), files: ["agend-server.json", "connect-agend.bat"] });
+      expect(r.out).toContain(`connecting this computer to ${origin()}`); expect(r.out).toContain("RECORDER-CONNECT-RAN");
+      expect(r.out).toContain(`stopped. To reconnect, double-click ${join(dir, "connect-agend.bat")}`);
+      expect(r.out).not.toContain("not connected yet"); expect(r.out).not.toContain("nothing has been paired");
+      // nothing but the two static downloads: the script never touches a pairing endpoint (the Runtime does, and it is not started here)
+      expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`, `GET ${RUNTIME_BUNDLE_PATH}`]);
+      expect(existsSync(join(s.install, RUNTIME_INSTALL_LOCK))).toBe(false);
+    });
+    it.skipIf(!hasScript)("pasting it again on the same computer connects again without downloading the archive: the Runtime itself decides to reconnect", async () => {
+      const s = scratch(); expect((await runInteractive(s, { T_MARK: s.marker })).code).toBe(0); rmSync(s.marker);
+      const again = await runInteractive(s, { T_MARK: s.marker });
+      expect(again.code, again.out).toBe(0); expect(again.out).toContain("is already installed"); expect(recorded(s)?.argv).toEqual(["connect", "--connection-dir", entryOf(s)]);
+      expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+    });
+    it.skipIf(!hasScript)("ends with the Runtime's own exit code and says how to try again when it could not connect", async () => {
+      const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker, T_EXIT: "7" });
+      expect(r.code, r.out).toBe(7); expect(r.out).toContain("could not connect (status 7)"); expect(r.out).toContain(join(entryOf(s), "connect-agend.bat"));
+    });
+    it.skipIf(!hasScript)("installs only, and says why, when $agendNoConnect is set; unset or 0 does not stop the connection", async () => {
+      const off = scratch(), a = await runInteractive(off, { T_MARK: off.marker, T_PRESET: "$agendNoConnect = 1" });
+      expect(a.code, a.out).toBe(0); expect(recorded(off)).toBeUndefined(); expect(a.out).toContain("$agendNoConnect is set in this window"); expect(a.out).toContain("run $agendNoConnect = $null first");
+      expect(a.out).toContain(`& "${join(off.install, "bin", "agend-runtime.cmd")}" connect --server "${origin()}"`); expect(existsSync(join(entryOf(off), "agend-server.json"))).toBe(true);
+      for (const value of ["0", "$false", "''", "'no'", "$null"]) {
+        const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker, T_PRESET: `$agendNoConnect = ${value}` });
+        expect(r.code, `${value}\n${r.out}`).toBe(0);
+        expect(recorded(s)?.argv, `${value}\n${r.out}`).toEqual(["connect", "--connection-dir", entryOf(s)]);
+      }
+    });
+    it.skipIf(!hasScript)("never connects under -NonInteractive (or any abbreviation of it), even with a real console", async () => {
+      for (const flag of ["-NonInteractive", "-noni", "-NonI"]) {
+        const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker }, [flag]);
+        expect(r.code, `${flag}\n${r.out}`).toBe(0); expect(recorded(s), flag).toBeUndefined(); expect(r.out, flag).toContain("not an interactive console");
+        expect(r.out, flag).toContain(`connect --server "${origin()}"`);
+      }
+    });
+    it.skipIf(!hasScript)("never connects on a pseudo-terminal when a usual CI variable is set (an AI agent or CI step gives PowerShell a console): it installs only and prints the manual command", async () => {
+      for (const name of ["CI", "GITHUB_ACTIONS", "TF_BUILD", "BUILD_BUILDID", "JENKINS_URL", "GITLAB_CI", "CIRCLECI", "BUILDKITE", "TEAMCITY_VERSION"]) {
+        const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker, [name]: "true" });
+        expect(r.code, `${name}\n${r.out}`).toBe(0); expect(recorded(s), name).toBeUndefined();
+        expect(r.out, name).toContain("not an interactive console"); expect(r.out, name).toContain(`connect --server "${origin()}"`); expect(r.out, name).not.toContain("connecting this computer");
+      }
+      // the variable's own value is read like $agendNoConnect: empty, 0, false, no and off mean "not set", so a person who has CI=false still connects
+      for (const value of ["", "0", "false", "no", "off"]) {
+        const s = scratch(), r = await runInteractive(s, { T_MARK: s.marker, CI: value });
+        expect(r.code, `CI=${value}\n${r.out}`).toBe(0); expect(recorded(s)?.argv, `CI=${value}\n${r.out}`).toEqual(["connect", "--connection-dir", entryOf(s)]);
+      }
+    });
+    it.skipIf(!hasScript)("a repair run, a failed install and an entry that could not be written never connect", async () => {
+      const repair = scratch(), a = await runInteractive(repair, { T_MARK: repair.marker, AGEND_RUNTIME_REPAIR: "1", AGEND_RUNTIME_NO_PATH: "" });
+      expect(a.code, a.out).toBe(0); expect(recorded(repair)).toBeUndefined(); expect(existsSync(join(repair.install, "connect"))).toBe(false); expect(a.out).not.toContain("connecting this computer");
+      behaviour = (req, res) => { if (req.url !== RUNTIME_BUNDLE_PATH) return false; const wrong = Buffer.concat([bundleR.bytes, Buffer.from([0])]); res.writeHead(200, { "Content-Length": wrong.length }); res.end(wrong); return true; };
+      const failed = scratch(), b = await runInteractive(failed, { T_MARK: failed.marker });
+      expect(b.code, b.out).toBe(1); expect(recorded(failed)).toBeUndefined(); expect(b.out).not.toContain("connecting this computer");
+      behaviour = () => false;
+      // a folder name with % in it cannot be carried by a batch file's `call`, so there is no entry and no automatic connection; the install itself succeeds
+      const odd = scratch(); odd.local = join(odd.root, "local%temp"); odd.install = join(odd.local, "agend-runtime"); mkdirSync(odd.local);
+      const c = await runInteractive(odd, { T_MARK: odd.marker, LOCALAPPDATA: odd.local });
+      expect(c.code, c.out).toBe(0); expect(recorded(odd)).toBeUndefined(); expect(existsSync(join(odd.install, "connect"))).toBe(false);
+      expect(c.out).toContain("the reconnect entry was not written"); expect(c.out).toContain("which a batch file cannot carry safely"); expect(c.out).toContain("did not connect by itself"); expect(c.out).toContain(`connect --server "${origin()}"`);
+      expect(readFileSync(join(odd.install, "bin", "current.txt"), "latin1")).toBe(folderOf(bundleR));
+    });
+    it("does not connect without a console, and the page's install-only command behaves the same as $agendNoConnect", async () => {
+      const piped = scratch(), a = await run(piped, { T_MARK: piped.marker });
+      expect(a.code, a.out).toBe(0); expect(recorded(piped)).toBeUndefined(); expect(a.out).toContain("not an interactive console");
+      const only = scratch(), command = runtimeInstallOnlyCommand(origin(), active.installer().scriptSha256), b = await run(only, { T_COMMAND: command, T_MARK: only.marker });
+      expect(b.code, b.out).toBe(0); expect(recorded(only)).toBeUndefined(); expect(readFileSync(join(only.install, "bin", "current.txt"), "latin1")).toBe(folderOf(bundleR));
+    });
+
+    it("writes only the public address and the pinned connect-agend.bat, one folder per AgEnD, and rewrites nothing when run again", async () => {
+      const s = scratch(); expect((await run(s)).code).toBe(0);
+      const dir = entryOf(s);
+      expect(readdirSync(dir).sort()).toEqual(["agend-server.json", "connect-agend.bat"]);
+      expect(readFileSync(join(dir, "agend-server.json"), "utf8")).toBe(JSON.stringify({ server: origin() }, null, 2) + "\n");   // the same bytes the ZIP carries; no credential, no code
+      expect(readFileSync(join(dir, "connect-agend.bat"), "latin1")).toBe(EXPECTED_BAT);
+      expect(sha(readFileSync(join(dir, "connect-agend.bat")))).toBe(BAT_SHA256);
+      const name = dir.split(sep).pop()!; expect(name).toMatch(/^127\.0\.0\.1-\d+-[a-f0-9]{8}$/);
+      expect(name.split("-").at(-1)).toBe(sha(Buffer.from(origin())).slice(0, 8));
+      const before = snapshot(s.install); expect((await run(s)).code).toBe(0); expect(snapshot(s.install)).toEqual(before);
+      // another AgEnD gets a folder of its own and the first is not touched
+      const second = await helperRun(s, "$e = Write-AgendConnectEntry $env:T_ROOT 'https://second.example.test:10444'; [Console]::Write($e)");
+      expect(second).toBe(join(s.install, "connect", `second.example.test-10444-${sha(Buffer.from("https://second.example.test:10444")).slice(0, 8)}`));
+      expect(readFileSync(join(second, "agend-server.json"), "utf8")).toBe(JSON.stringify({ server: "https://second.example.test:10444" }, null, 2) + "\n");
+      expect(readdirSync(join(s.install, "connect")).sort()).toHaveLength(2); expect(snapshot(dir)).toEqual(Object.fromEntries(Object.entries(snapshot(s.install)).filter(([k]) => k.startsWith(`connect${sep}${name}${sep}`)).map(([k, v]) => [k.slice(`connect${sep}${name}${sep}`.length), v])));
+    });
+    it("refuses an address agend-server.json cannot carry and an install folder a batch file would misread", async () => {
+      const s = scratch(); mkdirSync(s.install, { recursive: true });
+      const out = await helperRun(s, `foreach ($case in @(@($env:T_ROOT, 'https://a"b.example.test'), @($env:T_ROOT, 'https://host.example.test/x y'), @(($env:T_ROOT + '%x'), 'https://host.example.test'), @(($env:T_ROOT + '^x'), 'https://host.example.test'))) {
+        try { $null = Write-AgendConnectEntry $case[0] $case[1]; 'WROTE' } catch { 'REFUSED:' + $_.Exception.Message }
+      }`);
+      expect(out.split(/\r?\n/)).toEqual(["REFUSED:the AgEnD address has characters that agend-server.json does not carry", "REFUSED:the AgEnD address has characters that agend-server.json does not carry",
+        "REFUSED:the install folder name contains % or ^, which a batch file cannot carry safely", "REFUSED:the install folder name contains % or ^, which a batch file cannot carry safely"]);
+      expect(tree(s.install)).toEqual([]);
+    });
+    it("decides in one fixed order: repair, then $agendNoConnect, then no console, then no entry, otherwise connect", async () => {
+      const out = await helperRun(scratch(), `foreach ($r in $false,$true) { foreach ($n in $false,$true) { foreach ($i in $false,$true) { foreach ($h in $false,$true) { '' + [int]$r + [int]$n + [int]$i + [int]$h + '=' + (Get-AgendConnectMode $r $n $i $h) } } } }`);
+      const expected = (r: number, n: number, i: number, h: number): string => r ? "repair" : n ? "switch" : !i ? "noninteractive" : !h ? "noentry" : "connect";
+      const rows = out.split(/\r?\n/); expect(rows).toHaveLength(16);
+      for (const row of rows) { const [bits, mode] = row.split("="); expect(mode, row).toBe(expected(Number(bits[0]), Number(bits[1]), Number(bits[2]), Number(bits[3]))); }
+      expect(rows.filter(row => row.endsWith("=connect"))).toEqual(["0011=connect"]);   // exactly one way to connect
+    });
+    it("reads $agendNoConnect as on for anything but empty, 0, false, no and off; and a redirected console is never interactive", async () => {
+      const out = await helperRun(scratch(), `foreach ($v in @($null, '', ' ', '0', 0, $false, 'false', 'FALSE', 'no', 'Off', 1, '1', $true, 'true', 'yes', 'x')) { [string](Test-AgendSwitch $v) }
+        'interactive=' + (Test-AgendInteractive)`);
+      expect(out.split(/\r?\n/)).toEqual([...Array(10).fill("False"), ...Array(6).fill("True"), "interactive=False"]);
     });
   });
 

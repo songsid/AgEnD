@@ -41,6 +41,10 @@ export function runtimeConnectCommand(server) {
  *   - the first statement (TLS 1.2, which Windows PowerShell 5.1 may not offer by default) touches nothing the check depends on: if it
  *     fails, the rest still runs and the rest still refuses.
  * This differs from the shape in the upstream design review (`if (-not $s -or <hash> -ne …) { throw }; iex $s`) for exactly that reason.
+ *
+ * The script itself decides what happens after the install: in an interactive console it goes on to connect this computer in the same
+ * window; anywhere else (a redirected stdin or stdout, -NonInteractive, an AI agent, CI) it only installs and prints the connect command.
+ * Nothing about that decision is in this command, so the hash pin covers all of it. The pairing code is never part of a command.
  */
 export function runtimeInstallCommand(server, scriptSha256) {
   const origin = safeRuntimeOrigin(server);
@@ -56,4 +60,14 @@ export function runtimeInstallCommand(server, scriptSha256) {
 export function runtimeWindowsConnectCommand(server) {
   const origin = safeRuntimeOrigin(server);
   return origin ? `agend-runtime connect --server "${origin}"` : "";
+}
+/**
+ * The same pinned command, for a person or an agent that wants the install only. `$agendNoConnect = 1` is read by the script (and by nothing
+ * else) before it decides whether to connect, and is cleared again afterwards so it does not stay set in that PowerShell window and quietly
+ * turn the next, normal command into an install-only one. (If the command is refused before it runs, the clearing is skipped with it; the
+ * script says how to clear the variable whenever it is the reason nothing was connected.)
+ */
+export function runtimeInstallOnlyCommand(server, scriptSha256) {
+  const command = runtimeInstallCommand(server, scriptSha256);
+  return command ? `$agendNoConnect = 1; ${command}; $agendNoConnect = $null` : "";
 }
