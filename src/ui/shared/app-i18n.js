@@ -87,7 +87,7 @@ register("app", {
     failed: "That did not work — try again.", close: "Close", more: "More actions", menu: "Menu",
     pendingTitle: "Changes waiting for confirmation", pending_pending: "Waiting for confirmation", pending_applying: "Confirmed — applying…",
     pendingWeb: "Confirmed by your account (this browser is web-verified). General is told.",
-    pending_applied: "Confirmed and applied", pending_rejected: "Not applied", pending_expired: "Expired — nothing was changed",
+    pending_applied: "Confirmed and applied", pending_rejected: "Not applied", pending_expired: "Expired",
     pending_stale: "Not applied — settings changed meanwhile", pending_failed: "Confirmed, but applying it failed",
     pendingLeft: "{0} left", withdraw: "Withdraw",
     // AGEND-118: a change that did not go through says why, in plain words, and can be sent again.
@@ -147,7 +147,7 @@ register("app", {
     failed: "沒有成功，請再試一次。", close: "關閉", more: "更多動作", menu: "選單",
     pendingTitle: "等待確認的變更", pending_pending: "等待確認", pending_applying: "已確認——套用中…",
     pendingWeb: "由你的帳號確認（這個瀏覽器已通過網頁驗證），也會通知 General。",
-    pending_applied: "已確認並套用", pending_rejected: "未套用", pending_expired: "已逾時——沒有任何變更",
+    pending_applied: "已確認並套用", pending_rejected: "未套用", pending_expired: "已逾時",
     pending_stale: "未套用——設定在這期間已變動", pending_failed: "已確認，但套用失敗",
     pendingLeft: "剩 {0}", withdraw: "撤回",
     pendingWhy_withdrawn: "你已撤回這項變更，沒有任何設定被修改。",

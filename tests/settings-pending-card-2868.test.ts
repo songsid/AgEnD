@@ -269,6 +269,15 @@ describe("a change that did not go through says why, and can be sent again", () 
     expect((await card(ended(state, reason))).text()).not.toContain("server words");
     expect((await card(ended(state, reason))).text()).not.toContain("No one confirmed");
   });
+  // The title said "nothing was changed", which is not so for a change confirmed and still applying when the five minutes ran
+  // out (it ends as expired too): the title only says it expired, and the text under it says what to check.
+  it.each([["en", "Expired", "nothing was changed"], ["zh-TW", "已逾時", "沒有任何變更"]])("an expired card's title (%s) does not claim nothing changed", async (lang, title, claim) => {
+    for (const reason of ["expired", "not_found"]) {
+      const c = await card(ended("expired", reason), undefined, lang);
+      const head = c.p.root.querySelector(".pending-card .pending-head strong").textContent.trim();
+      expect([head, head.includes(claim), c.text().includes(claim)]).toEqual([title, false, false]);
+    }
+  });
   it("a failed apply (or a reason a newer server adds) keeps the server's own sentence", async () => {
     expect((await card(ended("failed", "apply_failed", "Change could not be applied."))).text()).toContain("Change could not be applied.");
     expect((await card(ended("rejected", "something_new", "A new reason."))).text()).toContain("A new reason.");
