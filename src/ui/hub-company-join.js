@@ -3,6 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hubClient } from "./hub-client.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
+import * as entryWords from "./hub-company-join-strings.js";
 export function joinRequest() {
   try { const id = new URLSearchParams(location.search).get("join"); return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id || "") ? id : null; }
   catch { return null; }
@@ -78,10 +79,12 @@ export function HubCompanyJoinPage({ session }) {
     ${error ? html`<${ErrorState} message=${error} onRetry=${() => { setError(null); retry(); }} />` : null}
   </section></div></div>`;
 }
-export function CompanyJoinAdminCard() {
+export const companyJoinAdminEntryV1 = entryWords.companyAdminStringsV1 === true;
+export function CompanyJoinAdminCard({ entry = false, groups = false } = {}) {
   const [view, setView] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
   const live = useRef(true), csrf = useRef(null);
   const [inviteLogin, setInviteLogin] = useState(""), [invitation, setInvitation] = useState(null);
+  const [invitationCopied, setInvitationCopied] = useState(false);
   const read = async () => {
     const session = await hubClient().session();
     if (!live.current) return;
@@ -101,8 +104,23 @@ export function CompanyJoinAdminCard() {
     e.preventDefault(); if (busy || !inviteLogin.trim()) return; setBusy(true); setError(null);
     const r = await call("/hub/v1/admin/company-join/invitations", "POST", { login: inviteLogin.trim() }, csrf.current);
     if (!live.current) return; setBusy(false);
-    if (r.ok) setInvitation(r.url); else setError(joinError(r.code === "not-found" ? "denied" : r.code));
+    if (r.ok) { setInvitation(r.url); setInvitationCopied(false); } else setError(joinError(r.code === "not-found" ? "denied" : r.code));
   };
+  if (entry) return html`<section class="card hub-company-join hub-admin-access" data-entry="allowed-groups-people"><h3>${hj("accessTitle")}</h3>
+    <p class="note">${hj("accessLead")}</p>
+    <div class="field-row">${groups ? html`<a class="btn btn-primary" href="/ui/hub/admin?view=groups">${hj("groupOpen")}</a>` : null}
+      <button type="button" class="btn" disabled=${!view?.enabled || !view?.companyLink || busy || !!error} aria-describedby="hubColleagueLinkHint" onClick=${async () => { try { await navigator.clipboard.writeText(view.companyLink); if (live.current) setCopied(true); } catch { if (live.current) setError(hj("copyFailed")); } }}>${hj(copied ? "copied" : "colleagueCopy")}</button></div>
+    <p class="note" id="hubColleagueLinkHint">${hj(view ? view.enabled ? "colleagueHint" : "offHint" : "loading")}</p>
+    ${!view && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}
+    ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
+    ${view ? html`<label class="check"><input type="checkbox" role="switch" class="s-ui-toggle" checked=${view.enabled} disabled=${busy || !!error} onChange=${e => change(e.target.checked)} /><span>${hj("enabled")}</span></label>
+      ${view.companyLink && view.enabled ? html`<details class="s-ui-disclosure"><summary>${hj("linkDetails")}</summary><div class="s-disclosure-body"><label class="field"><span>${hj("companyLink")}</span><textarea rows="4" readonly value=${view.companyLink} /></label></div></details>` : null}` : null}
+    ${view?.enabled ? html`<div class="form hub-admin-individual"><h4>${hj("inviteTitle")}</h4><p class="note">${hj("inviteLead")} ${hj("inviteScope")}</p>
+      <form class="form" onSubmit=${makeInvitation}><label class="field"><span>${hj("inviteLogin")}</span><input autocomplete="off" value=${inviteLogin} onInput=${e => setInviteLogin(e.target.value)} /></label>
+        <div class="field-row"><button class="btn btn-sm" type="submit" disabled=${busy || !!error || !inviteLogin.trim()}>${hj("inviteCreate")}</button></div></form>
+      ${invitation ? html`<label class="field"><span>${hj("inviteTitle")}</span><textarea rows="4" readonly value=${invitation} /></label>
+        <button type="button" class="btn btn-sm" onClick=${async () => { try { await navigator.clipboard.writeText(invitation); if (live.current) setInvitationCopied(true); } catch { if (live.current) setError(hj("copyFailed")); } }}>${hj(invitationCopied ? "copied" : "inviteCopy")}</button>` : null}</div>` : null}
+  </section>`;
   return html`<section class="card hub-company-join"><h3>${hj("adminTitle")}</h3><p class="note">${hj("adminLead")}</p>
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}

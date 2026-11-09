@@ -1,0 +1,123 @@
+{
+  "base": "ffd4eba02",
+  "before": false,
+  "skew": "",
+  "browser": "156.0.8078.4",
+  "checks": [
+    {
+      "name": "desk-light-en access first",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en off copy explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en manual starts folded",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en exact address and identity link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en explicit invitation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en scoped invitation explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en existing group editor",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en manual code retained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en only explicit effects",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW access first",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW off copy explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW manual starts folded",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW exact address and identity link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW explicit invitation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW scoped invitation explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW existing group editor",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW manual code retained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW only explicit effects",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "nonempty matrix",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "cleaned": true,
+  "scope": "Owned Hub HTTPS + recorded LDAPS; actual admin session, CSRF, group navigation, company link, scoped invitation and manual pairing offer. No Fleet/native/model/CLI/pilot/real directory or account. No API replies replaced.",
+  "status": "PASS",
+  "screenshotScope": "Post-sync captures are local diagnostics; published full PNG matrix is after/."
+}

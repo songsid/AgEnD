@@ -1,3 +1,5 @@
+import * as ownerEntryWords from "./hub-owner-strings.js";
+import * as companyViews from "./hub-company-join.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
 import { joinRequest, companyInfoRequest, CompanyJoinInfoPage, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
@@ -927,13 +929,15 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">${view?.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />`
       : html`<section class="card"><h3>${ho("pairSteps")}</h3><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section>`}</div></div>`;
   const fleets = view.fleets || [], pairings = view.pairings || [];
+  const accessEntry = companyJoin && companyViews.companyJoinAdminEntryV1 === true && ownerEntryWords.ownerAdminEntryV1 === true;
+  const ManualFrame = accessEntry ? "details" : "div";
   return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">
-      ${groups ? html`<${GroupPermissionsEntry} />` : null}
-      ${companyJoin ? html`<${CompanyJoinAdminCard} />` : null}
+      ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
+      ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-      <section class="card"><h3>${ho("pairSteps")}</h3>
+      <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
@@ -953,7 +957,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
-      </section>
+      </section></${ManualFrame}>
       <section class="card"><h3>${ho("pairedFleets", fleets.length)}</h3>
         ${fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row">
           <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />

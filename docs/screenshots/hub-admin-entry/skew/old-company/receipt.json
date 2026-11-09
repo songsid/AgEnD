@@ -1,0 +1,42 @@
+{
+  "base": "ffd4eba02",
+  "before": false,
+  "skew": "old-company",
+  "browser": "156.0.8078.4",
+  "checks": [
+    {
+      "name": "desk-light-en retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW retained earlier entry",
+      "ok": true
+    },
+    {
+      "name": "nonempty matrix",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "ok": true
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-en-earlier-entry.png",
+    "phone-dark-zh-TW-earlier-entry.png"
+  ],
+  "errors": [],
+  "cleaned": true,
+  "scope": "Owned Hub HTTPS + recorded LDAPS; actual admin session, CSRF, group navigation, company link, scoped invitation and manual pairing offer. No Fleet/native/model/CLI/pilot/real directory or account. No API replies replaced.",
+  "status": "PASS"
+}
