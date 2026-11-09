@@ -74,6 +74,15 @@ import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
+/**
+ * M-2733: tool_progress in the words its segment says (settings.seg_*; the value saved is the word). Local, not
+ * imported: an open tab may keep an older settings-dialogs.js, and a new named import would fail this lazily loaded
+ * panel. A word with no translation shows as itself.
+ */
+const choiceOptions = (field, values) => values.map((v) => {
+  const key = `settings.seg_${field}_${v}`, said = t(key);
+  return { value: v, label: said === key ? v : said };
+});
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
@@ -1155,7 +1164,7 @@ function General({ ctx, part = "all" }) {
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
-  const fromDefaults = (k, value, target) => ({ text: valueText(value), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
+  const fromDefaults = (k, value, target) => ({ text: valueText(value, k), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
@@ -1169,7 +1178,7 @@ function General({ ctx, part = "all" }) {
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
           <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
-            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
+            <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
         <div class=${fc("field", "classicReplyTriggers", "classicReplyTriggersInherit")}>${L(tn("replyTriggers"), "classic_defaults.reply_triggers")}
           <${Override} inherit=${f.classicReplyTriggersInherit} onInherit=${set("classicReplyTriggersInherit")} inherited=${fromDefaults("reply_triggers", Boolean(d.reply_triggers ?? schema.reply_triggers_default), "#g-reply-triggers")}>
             <label class="check"><input id="g-creply-triggers" type="checkbox" disabled=${f.classicReplyTriggersInherit} checked=${f.classicReplyTriggersInherit ? Boolean(d.reply_triggers ?? schema.reply_triggers_default) : f.classicReplyTriggers} onChange=${(e) => set("classicReplyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>

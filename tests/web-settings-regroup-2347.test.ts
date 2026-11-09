@@ -123,6 +123,15 @@ describe("#2347: every card where it belongs", () => {
     await open(section as string);
     expect([(present as string[]).filter((s) => !has(s)), (absent as string[]).filter(has)]).toEqual([[], []]);
   });
+  it("M-2733: ClassicBot defaults' tool progress says its words in zh-TW; the values stay the config words", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW", { store: false });
+    try {
+      await open("chat");
+      const opts = [...p.root.querySelectorAll("#g-ctp option")] as any[];
+      expect(opts.map((o) => [o.value, o.textContent])).toEqual([["off", "關"], ["standard", "標準"], ["verbose", "詳細"]]);
+    } finally { i18n.setLang("en", { store: false }); }
+  });
   it("an old link to a place in a section goes there once it is drawn (/settings/chat#classicbot)", async () => {
     nav.navigate("/settings/classic");
     const seen: string[] = [];

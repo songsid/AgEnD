@@ -95,7 +95,8 @@ export function backendChoices(known, rows, value, words) {
     const blocked = !!state && BLOCKING_STATES.includes(state) && name !== value;
     const note = state === "not_installed" ? words.notInstalled : state === "not_signed_in" ? words.notSignedIn
       : state === "too_old" ? words.tooOld(row.minVersion ?? "?") : state === "unknown" && name !== value ? words.unchecked : "";
-    return { value: name, label: note ? `${name} — ${note}` : name, disabled: blocked };
+    const shown = words.name ? words.name(name) : name;   // M-2733: its product name ("Claude Code"); the value stays the id
+    return { value: name, label: note ? `${shown} — ${note}` : shown, disabled: blocked };
   };
   const list = known.map(choice);
   return known.includes(value) || !value ? list : [{ value, label: words.removed(value), disabled: false }, ...list];
