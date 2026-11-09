@@ -98,6 +98,7 @@ instances:
     topic_id: "333333333333333333"
 `);
   const fm: any = new FleetManager(dir);
+  vi.spyOn(fm, "startCliEnvProbeWorker").mockReturnValue({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
   vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([]);
   vi.spyOn(TmuxControlClient.prototype, "start").mockImplementation(() => {});
