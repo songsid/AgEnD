@@ -4287,6 +4287,8 @@ export interface AppShellContext {
   hubSetupSession?(req: IncomingMessage): unknown;
   /** Display capability only, local D3 host; the notice routes independently authorize every read/ACK. */
   hubDirectoryNotices?(): Promise<unknown>;
+  /** Display only: AD editing routes reauthorize local D3 on every request. */
+  hubDirectorySettings?(): Promise<unknown>;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4456,6 +4458,8 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   try { setup = !!ctx.hubSetupSession?.(req); } catch { /* unavailable authority never offers setup */ }
   return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "")
     + (setup && !gatewayRequestContext(req) ? ' data-hub-setup="1"' : "")
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-settings="1"' : "")
     + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectoryNotices === "function"
       && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "");
 }

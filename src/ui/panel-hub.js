@@ -857,17 +857,24 @@ function HubAdmin({ admin }) {
   useStore(navStore);                               // ?view= changes without a new route
   const s = useSession();
   if (!admin) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
+  const directory = s?.features?.includes("directory-editor-v1") && hubClient()?.directoryEditorV1 === true;
+  if (directory && adminView() === "directory") return html`<${LazyDirectory} session=${s} />`;
   if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
   const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
   return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
-    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} />`;
+    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} directory=${directory} />`;
+}
+function LazyDirectory({ session }) {
+  const [Page, setPage] = useState(null);
+  useEffect(() => { let live = true; import("./hub-directory-editor.js").then(m => { if (live) setPage(() => m.HubDirectoryPage); }, () => {}); return () => { live = false; }; }, []);
+  return Page ? html`<${Page} client=${hubClient()} offered=${true} login=${session.login} afterSave=${async () => !!(await readSession())} />` : null;
 }
 /** M-2682: Administration → This Hub, its own lazy module (an older server doesn't serve it: then it's left out). */
-function LazyThisHub() {
+function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);
   useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
-  return C ? html`<${C} />` : null;
+  return C ? html`<${C} directory=${directory} />` : null;
 }
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
 function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
@@ -875,7 +882,7 @@ function adminView() { try { return new URLSearchParams(location.search).get("vi
 function GroupPermissionsEntry() {
   return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
 }
-function HubAdminPage({ groups = false, companyJoin = false } = {}) {
+function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -944,7 +951,7 @@ function HubAdminPage({ groups = false, companyJoin = false } = {}) {
             : html`<span class="tag">${ho("revokedTag")}</span>`}
         </div>`)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
-      <${LazyThisHub} />
+      <${LazyThisHub} directory=${directory} />
     </div></div>`;
 }
 

@@ -39,11 +39,12 @@ describe("shared AD settings control", () => {
     const r = fixture();
     try {
       expect(r.control.read(r.context)).toEqual({ directory: { realm: "corp", profile: "openldap", url: "ldaps://old.example.test",
-        baseDn: "dc=example,dc=test", bindDn: "cn=service,dc=example,dc=test" }, bindPasswordSet: true, reauthentication: "recent" });
+        baseDn: "dc=example,dc=test", bindDn: "cn=service,dc=example,dc=test" }, bindPasswordSet: true, reauthentication: "recent", epoch: 0 });
       expect(r.directory.checkEligibility).not.toHaveBeenCalled(); // The listener already acquired admin authority; read does not spend another slot.
       r.sessions.recentAuthentication.mockReturnValue(1000); r.tick(300_000);
       expect(r.control.read(r.context).reauthentication).toBe("required");
       expect(JSON.stringify(r.control.read(r.context))).not.toContain(r.source.bindPassword);
+      r.source.epoch = 7; expect(r.control.read(r.context).epoch).toBe(7);
     } finally { await r.control.close(); }
   });
   it.each(["actor", "hub", "lifetime"])("refuses a mismatched %s even for a direct read", async part => {

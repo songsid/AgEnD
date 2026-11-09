@@ -11,6 +11,7 @@ import { HubDirectorySettingsCaError } from "./settings-directory-ca.js";
 
 export const HUB_DIRECTORY_SETTINGS_FEATURE = "directory-settings-v1";
 export const HUB_DIRECTORY_CA_FEATURE = "directory-ca-v1";
+export const HUB_DIRECTORY_EDITOR_FEATURE = "directory-editor-v1";
 const PREFIX = "/hub/v1/admin/hub/directory";
 const STATUS: Readonly<Record<string, number>> = Object.freeze({ invalid: 400, denied: 403, revoked: 403, reauthentication: 403,
   trust: 409, stale: 409, expired: 409, unchanged: 409, conflict: 409, busy: 409, backpressure: 429, unavailable: 503, recovery: 503, uncertain: 503,

@@ -67,7 +67,7 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
       const at = ctx.actor.kind === "hub-administrator" ? mounted().sessions().recentAuthentication(ctx.actor) : null, time = now();
       const reauthentication = ctx.actor.kind === "host-owner" ? "host" : at !== null && Number.isSafeInteger(time) && time >= at && time - at < 300_000 ? "recent" : "required";
       if (!s.current() || source(ctx).image !== s.image) throw new HubProtocolError("revoked");
-      return { directory, bindPasswordSet: true, reauthentication };
+      return { directory, bindPasswordSet: true, reauthentication, epoch: s.epoch };
     },
     prepare(raw: unknown, input: HubDirectoryProofContext) {
       const request = validated(prepareRequest, raw), ctx = context(input);
