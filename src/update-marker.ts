@@ -176,9 +176,9 @@ function writeMarker(dataDir: string, marker: UpdateMarker): boolean {
   }
 }
 
-/** Persist the channel message that `/update` will edit across process restart. */
-export function beginUpdateProgress(dataDir: string, target: UpdateProgressTarget, now = Date.now()): void {
-  writeMarker(dataDir, {
+/** Persist the channel message that `/update` will edit across process restart. False: it could not be written. */
+export function beginUpdateProgress(dataDir: string, target: UpdateProgressTarget, now = Date.now()): boolean {
+  return writeMarker(dataDir, {
     startedAt: now,
     pid: process.pid,
     progress: { operation: "update", stage: "preparing", target },

@@ -1279,6 +1279,7 @@ img.amb-p { object-fit: contain; }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
+  .s-update .s-update-row .btn { min-height: var(--tap); }   /* M-2738: the Version and update card's buttons */
   .kv { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {

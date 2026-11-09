@@ -2749,7 +2749,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-2738: a web "check now" in flight, and when the last one ran (one a minute at most). */
   private updateCheckNow: { running: Promise<void> | null; lastAt: number } = { running: null, lastAt: 0 };
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
-  private webUpdateStarts = new Map<string, { ok: true } | { ok: false; status: number; error: string }>();
+  private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
+  /**
+   * M-2738 (Prism #3505 P2-2): this fleet's own claim on a web-started update, from admission until its updater exits
+   * (or was never launched). The progress marker expires after 15 minutes so a crashed update cannot silence incident
+   * reports; that expiry never proves the update ended, so it never admits a second one while this is held.
+   */
+  private webUpdateOwned: { startedAt: number } | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
@@ -5701,22 +5707,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<void> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
-      return;
+      return null;
     }
     recordInternalRequest(this.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
-      return;
+      return null;
     }
     if (!stillAllowed()) {
       this.failUpdateProgress(t("not_authorized"));
-      return;
+      return null;
     }
     const logPath = updateLogPath(this.dataDir);
     const ts = new Date().toISOString();
@@ -5727,6 +5733,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (logFd) closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
     watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset, installed.agend);
     child.unref();
+    return child;
   }
 
   private async handleProfileSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
@@ -27432,7 +27439,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
-      startWebUpdate: (key, person) => this.startWebUpdateOnce(key, person),
+      startWebUpdate: (key, person, stillAllowed) => this.startWebUpdateOnce(key, person, stillAllowed),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
     };
   }
@@ -27458,17 +27465,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
-  private async startWebUpdate(person: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private async startWebUpdate(person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
-    // Synchronous with the marker write below: a second start cannot slip in between on the event loop.
-    if (isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
+    // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
+    if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
     const offer = this.updateCheckState?.offer;
     if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
     const startedAt = Date.now();
-    persistUpdateProgress(this.dataDir, webUpdateTarget(startedAt), startedAt);
-    setUpdateProgressStage(this.dataDir, "preparing", { version: offer.version });
+    const claim = { startedAt };
+    this.webUpdateOwned = claim;
+    const release = () => { if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
+    // Its progress must be recorded before anything runs: every other tab, and the next start, read it.
+    if (!persistUpdateProgress(this.dataDir, webUpdateTarget(startedAt), startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: offer.version })) {
+      release();
+      this.logger.error("Web update refused: its progress marker could not be written");
+      return { ok: false, status: 503, error: "progress_not_recorded" };
+    }
     const origin = `web update by ${person}`;
-    void this.launchInstalledUpdate(origin, () => !this.shuttingDown).catch(err => {
+    // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed()).then(child => {
+      if (!child) { release(); return; }
+      child.once("exit", release);
+      child.once("error", release);
+    }, err => {
+      release();
       this.logger.error({ err }, "Web update launch failed");
       this.failUpdateProgress(t("update.failure.launch"));
     });
@@ -27476,10 +27497,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
-  private async startWebUpdateOnce(key: string, person: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    // Prism #3505 P3: reserved before anything is awaited — a concurrent request with the same key shares this answer.
     const known = this.webUpdateStarts.get(key);
     if (known) return known;
-    const answer = await this.startWebUpdate(person);
+    const answer = this.startWebUpdate(person, stillAllowed);
     this.webUpdateStarts.set(key, answer);
     while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
     return answer;

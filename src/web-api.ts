@@ -772,7 +772,9 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
     // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
     if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
-    const r = await host.startWebUpdate(key, now.person);
+    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
+    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
+    const r = await host.startWebUpdate(key, now.person, stillAllowed);
     if (!r.ok) { json(res, r.status, { error: r.error }); return; }
     ctx.logger.info({ person: now.person }, "web: update started");
     json(res, 202, { started: true });
