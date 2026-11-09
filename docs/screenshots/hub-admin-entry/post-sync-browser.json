@@ -115,19 +115,9 @@
       "ok": true
     }
   ],
-  "shots": [
-    "desk-light-en-off.png",
-    "desk-light-en-allowed-and-individual.png",
-    "desk-light-en-advanced-overview.png",
-    "desk-light-en-advanced-code.png",
-    "phone-dark-zh-TW-off.png",
-    "phone-dark-zh-TW-allowed-and-individual.png",
-    "phone-dark-zh-TW-individual-invitation.png",
-    "phone-dark-zh-TW-advanced-overview.png",
-    "phone-dark-zh-TW-advanced-code.png"
-  ],
   "errors": [],
   "cleaned": true,
   "scope": "Owned Hub HTTPS + recorded LDAPS; actual admin session, CSRF, group navigation, company link, scoped invitation and manual pairing offer. No Fleet/native/model/CLI/pilot/real directory or account. No API replies replaced.",
-  "status": "PASS"
+  "status": "PASS",
+  "screenshotScope": "Post-sync captures are local diagnostics; published full PNG matrix is after/."
 }
