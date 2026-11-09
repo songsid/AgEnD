@@ -229,7 +229,7 @@ function RuntimeSwitches({ lease, onChanged, computers }) {
     if (!lease.current()) return;
     setBusy(item.name);setError("");
     try {
-      const res=await confirmedWrite("/api/settings/fleet/runtimes",{method:"PUT",body:{[item.name]:on},label:machineText(item.label),onPending:() => { if (lease.current()) setPending(item.name); }});
+      const res=await confirmedWrite("/api/settings/fleet/runtimes",{method:"PUT",body:{[item.name]:on},resendable:true,label:machineText(item.label),onPending:() => { if (lease.current()) setPending(item.name); }});
       if (!lease.current()) return;
       if (!res.ok) setError(machineText("switchFailed",(res.body && res.body.error) || String(res.status)));
       await load();
@@ -244,7 +244,7 @@ function RuntimeSwitches({ lease, onChanged, computers }) {
     if (busy || !limitValid || limitValue === bounds.value) return;
     setBusy("limit");setError("");setLimitNote("");
     try {
-      const res=await confirmedWrite("/api/settings/fleet/runtimes",{method:"PUT",body:{max_agents_per_machine:limitValue},label:machineText("limit")});
+      const res=await confirmedWrite("/api/settings/fleet/runtimes",{method:"PUT",body:{max_agents_per_machine:limitValue},resendable:true,label:machineText("limit")});
       if (!lease.current()) return;
       if (res.ok) { limitEdited.current=false; setLimitNote(machineText("limitSaved")); } else setError(machineText("switchFailed",(res.body && res.body.error) || String(res.status)));
       await load();
