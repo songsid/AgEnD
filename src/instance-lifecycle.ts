@@ -2594,6 +2594,7 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
     adapterId?: string,
     execution?: SettingsExecution,
+    toolSetCaller?: string,
   ): Promise<void> {
     const check = (): void => execution?.assert(); check();
     if (args.runtime !== undefined && args.runtime !== "wsl" && args.runtime !== "windows") { respond(null,"Unknown instance runtime"); return; }
@@ -2608,6 +2609,7 @@ export class InstanceLifecycle {
       return;
     }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
+    const selfToolSetError = "General cannot change its own tool_set through a tool; use Settings or fleet.yaml (privilege boundary, #804/#814)";
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
     const topicName = args.topic_name || (directory ? basename(directory) : undefined);
@@ -2668,6 +2670,7 @@ export class InstanceLifecycle {
         .find(([_, config]) => expandHome(config.working_directory) === directory);
       if (existingInstance) {
         const [eName, eConfig] = existingInstance;
+        if (eName === toolSetCaller) { respond(null, selfToolSetError); return; }
         respond({
           success: true,
           status: "already_exists",
@@ -2779,6 +2782,7 @@ export class InstanceLifecycle {
         .find(([_, config]) => expandHome(config.working_directory) === workDir);
       if (existingInstance) {
         const [eName, eConfig] = existingInstance;
+        if (eName === toolSetCaller) { respond(null, selfToolSetError); return; }
         respond({
           success: true,
           status: "already_exists",
@@ -2836,6 +2840,12 @@ export class InstanceLifecycle {
           if (adapterId != null && owner.channel_id != null && owner.channel_id !== adapterId) return false;
           return true;
         });
+      }
+      // A retried topic allocation may resolve to an existing General. Its
+      // authenticated caller may set other agents' profiles, never its own.
+      // Check before markers, config or startup; rollback retains referenced topics.
+      if (newInstanceName === toolSetCaller) {
+        throw new Error(selfToolSetError);
       }
       // A recycled name must never inherit a stale pause marker.
       clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));
