@@ -86,7 +86,7 @@ register("settings", {
     changeInDefaults: "到 Agent 共用設定變更",
     hangEnabled: "卡住偵測",
     crossInstanceVisibility: "Agent 之間的訊息",
-    crossInstanceVisibilityHint: "Agent 傳給 Agent 的訊息，要在這個 Agent 的主題裡顯示多少：完整、一行摘要，或不顯示。訊息一律照常送達，Mirror Topic 也照常顯示。",
+    crossInstanceVisibilityHint: "Agent 傳給 Agent 的訊息，要在這個 Agent 的主題裡顯示多少：完整、一行摘要，或不顯示。訊息一律照常送達，鏡像主題也照常顯示。",
     "sec_agent-defaults": "Agent 共用設定",
     updateDefaults: "更新 Agent 共用設定",
     devFormsUnsaved: "請先儲存或捨棄 Agent、Agent 共用設定或連線中未儲存的變更：這個編輯器會寫入相同的設定。",

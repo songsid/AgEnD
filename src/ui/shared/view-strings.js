@@ -442,7 +442,7 @@ register("view", {
   "usage.error.invalid_response": "用量端點回傳了無效資料。",
   "usage.error.invalid_billing_response": "計費端點回傳了無效資料。",
   "usage.error.invalid_kiro_response": "GetUsageLimits 回傳了無效資料。",
-  "usage.error.claude_token_expired": "Access token 已過期；下次啟動任一 Claude Agent 時會重新整理。",
+  "usage.error.claude_token_expired": "Access token 已過期；下次啟動任一使用 Claude Code 的 Agent 時會重新整理。",
   "usage.error.codex_token_expired": "Access token 已過期。請執行一次 `codex` 以重新整理。",
   "usage.error.grok_expired": "Grok session 已過期。請再次執行 `grok login`。",
   "usage.error.grok_response_changed": "Grok 計費回應格式已變更。",
