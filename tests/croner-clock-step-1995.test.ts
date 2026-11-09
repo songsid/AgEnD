@@ -1,14 +1,13 @@
 /**
- * #1995: croner 10.0.1 skips a job's FIRST occurrence when its "is it due?" clock reading falls just before the
- * occurrence and the clock steps forward across it before croner re-derives the next target (a WSL2 host resync or an
- * NTP step; an early timer wake plus the clock moving during the recompute is the same thing). Upstream:
- * https://github.com/hexagon/croner/issues/388 (fixed on croner's 11.0.0 dev line, not in 10.0.1 or the 10.x branch).
- * After a job's first fire croner anchors on that run, so the same step only makes a later occurrence late, not lost.
- * The missed-tick check (#2000) bounds the first-occurrence loss to a few minutes.
+ * #1995 / #2021: croner 10.0.1 skipped a job's FIRST occurrence when its "is it due?" clock reading fell just before
+ * the occurrence and the clock stepped forward across it before croner re-derived the next target (a WSL2 host resync
+ * or an NTP step; an early timer wake plus the clock moving during the recompute is the same thing). Upstream:
+ * https://github.com/hexagon/croner/issues/388 — fixed in croner 11.0.0 (croner#393), which anchors the initial
+ * target run before arming the timer so neither the first nor a later occurrence is silently skipped.
+ * The missed-tick check (#2000) stays as a safety net.
  *
  * Fully deterministic: global Date and setTimeout are replaced for the duration of each test (croner reads them at call
- * time); no real time passes. The first test pins the skip as observed today — when croner is upgraded to a
- * fixed version the first test fails on purpose: then change it to expect the run.
+ * time); no real time passes.
  */
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -65,12 +64,12 @@ function start(wall: number) {
   scheduler.create({ cron: "*/5 * * * *", message: "m", source: "w", target: "w", reply_chat_id: "1", reply_thread_id: null, timezone: "Asia/Taipei" });
 }
 
-it("croner 10.0.1 skips a job's first occurrence when the clock steps across it during the re-arm (upstream #388) — when this fails, croner is fixed: make it expect the run", async () => {
+it("croner 11.0.0 runs a job's first occurrence when the clock steps across it during the re-arm (#1995, #2021, upstream #388)", async () => {
   start(T - 103_000);                              // off the missed-tick check's minute, so the step hits croner's timer
   await run(T + 60_000, T);                        // within a minute; the missed-tick check would only catch it at ~T+4 min
   expect(injected).toBe(true);                     // the step really happened, and its reading was consumed
   expect(queue).toEqual([]);
-  expect(runs).not.toContain(new RealDate(T).toISOString());
+  expect(runs).toEqual([new RealDate(T).toISOString()]);
 });
 
 it("after the first fire, the same step only makes an occurrence late, under its own run id", async () => {
