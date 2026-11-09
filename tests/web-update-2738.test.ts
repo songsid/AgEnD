@@ -203,6 +203,19 @@ describe("M-2738: /ui/update on the dashboard", () => {
   });
 });
 
+describe("M-2738: a failure recorded twice keeps where it failed (rig: the CLI's, then the launch watcher's)", () => {
+  it("failed → failed again: failedStage stays downloading, and the page says nothing was changed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-web-update-f-")); dirs.push(dir);
+    const at = Date.now();
+    beginUpdateProgress(dir, webUpdateTarget(at), at);
+    setUpdateProgressStage(dir, "downloading", { version: "2.3.5-beta.93" });
+    setUpdateProgressStage(dir, "failed", { error: "npm error code ECONNREFUSED" });
+    setUpdateProgressStage(dir, "failed", { error: "/update could not complete (updater exited 1). Cause: npm error code ECONNREFUSED" });
+    expect(readUpdateProgress(dir)!.progress).toMatchObject({ stage: "failed", failedStage: "downloading" });
+    expect(webProgressOf(readUpdateProgress(dir))).toMatchObject({ stage: "failed", failed_stage: "downloading", cause: "network" });
+  });
+});
+
 describe("M-2738: the version the page compares is the running one", () => {
   it("read once as the fleet loads (rig: the file on disk was missing, then the new version, while the old fleet still ran)", async () => {
     const { RUNNING_AGEND_VERSION } = await import("../src/web-update.js");
