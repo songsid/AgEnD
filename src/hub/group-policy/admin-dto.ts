@@ -28,7 +28,9 @@ export const resolveRequest = z.strictObject({ dn });
 export type GroupResolveRequest = z.infer<typeof resolveRequest>;
 export type GroupResolveResponse =
   | { readonly ok: true; readonly realm: string; readonly objectId: string; readonly dn: string }
-  | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" | "unknown" };
+  | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" }
+  /** M-2724: `failure` says which step failed (one of DIRECTORY_FAILURES), so the page can say what to try. */
+  | { readonly ok: false; readonly reason: "unknown"; readonly failure?: import("../directory/groups.js").DirectoryFailure };
 
 /**
  * POST /hub/v1/admin/group-policy/preview `{ policy }` — the whole proposed HubGroupPolicy (its revision is the compare-and-set).
