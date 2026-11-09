@@ -2053,6 +2053,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const runtime = new HubRuntime({
         home: this.dataDir,
         settingsWriter: this.hubSettingsWriter,
+        readConfig: () => this.rawFleetConfig as { hub?: unknown; hub_member?: unknown },
         version: agendVersion(),
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
