@@ -27,6 +27,7 @@ vi.mock("../src/hub/runtime.js", () => ({
     refresh() { return Promise.resolve(); }
     directoryDecision() { return null; }
     directorySettings() { return hub.directory; }
+    acquireDirectorySettings() { return Promise.resolve(hub.directory); }
     withDirectoryDecision(id: string, work: (decision: unknown) => unknown, current: () => boolean) {
       if (!current() || id !== hub.directory.decision.hubId) throw Error("revoked"); return Promise.resolve(work(hub.directory.decision));
     }
@@ -83,6 +84,17 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     expect(hub.controlDeps.mounted()).toBe(hub.directory);
     expect(await hub.controlDeps.withDecision((d: unknown) => d)).toBe(hub.directory.decision);
     expect(hub.controlDeps.current()).toBe(true); fm.shuttingDown = true; expect(hub.controlDeps.current()).toBe(false);
+  });
+  it("creates only the shared runtime and writer for an explicit off-state settings read", async () => {
+    const { fm } = await harness();
+    fm.rawFleetConfig.hub.enabled = false;
+    fm.hubRuntime = null; fm.hubRuntimeInit = null; fm.hubSettingsWriter = null;
+    hub.applied = []; hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    const control = await fm.hubDirectorySettings();
+    expect(control).toBe(hub.controller); expect(hub.applied).toEqual([]);
+    expect(hub.controlDeps.writer()).toBe(hub.options.settingsWriter.directory);
+    await hub.controlDeps.remount();
+    expect(hub.applied.every((c: any) => c.hub.enabled === false)).toBe(true);
   });
   it.each(["Hub identity","runtime"])("replaces an expired directory controller after %s changes",async reason=>{
     const {fm}=await harness(),fence=vi.fn(),close=vi.fn(async()=>{});

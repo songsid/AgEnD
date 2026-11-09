@@ -52,6 +52,10 @@ export class HubMount implements HubMode {
     if (member !== this.memberConfiguration) return this.apply({ hub_member: input.hub_member });
     this.fenceServer(); return this.enqueue(() => this.drain(["server"]));
   }
+  /** Local settings recovery may drain this Hub's server without admitting or changing a member link. */
+  closeServer(): Promise<void> {
+    this.fenceServer(); return this.enqueue(() => this.drain(["server"]));
+  }
   close(): Promise<void> {
     this.fence(); return this.enqueue(() => this.drain());
   }

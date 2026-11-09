@@ -1,5 +1,5 @@
 /** Real private SQLite/FULL/WAL, transport floor and audit; staged-file images are inert hashes, not a file-writer test. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +18,7 @@ import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "../src/hub/settings-directory-
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
 import { createHubDirectoryMountBarrier } from "../src/hub/settings-directory-mount.js";
+import * as directoryRecovery from "../src/hub/settings-directory-recovery.js";
 import { withHubDirectoryRecovery } from "../src/hub/settings-directory-recovery.js";
 import { readHubDirectorySettingsImage, createHubSettingsWriter, SETTINGS_JOURNAL, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
@@ -633,6 +634,101 @@ async function coldRecoveryRig() {
     stateSet: { database: "hub/test.sqlite", floors: ["hub/floors/test"], keys: [key] } };
   return { r, options };
 }
+
+describe("cold settings source without a directory sign-in", () => {
+  const cold = async (owner = () => true, make?: (config: unknown) => HubDirectory) => {
+    const { r, options } = await coldRecoveryRig();
+    const hub = { ...r.readHub(), enabled: false };
+    const driver = { realm: admin.realm, checkEligibility: () => { throw Error("old directory stays offline"); } } as unknown as HubDirectory;
+    const lease = await directoryRecovery.createHubDirectoryColdSettings({ ...options, hub, generation: "generation-old", current: owner,
+      createDirectory: cfg => make ? make(cfg) : driver });
+    return { r, options, hub, lease, driver };
+  };
+  it("keeps the Hub off through the existing directory writer and forward-only compensation", async () => {
+    const r = await writerRig(), hub = { ...r.readHub(), enabled: false };
+    writeFileSync(join(r.home, "hub/test-config.json"), JSON.stringify(hub));
+    const writer = r.writer(), actor = { kind: "host-owner" as const, sessionId: "local-owner", requestId: randomUUID() };
+    let preparation: ReturnType<NonNullable<typeof writer.directory>["prepare"]> | null = null;
+    try { preparation = writer.directory!.prepare(r.candidate(), actor, () => true); } catch { /* explicit behavior assertion below */ }
+    expect(preparation).not.toBeNull();
+    const saved = writer.directory!.commit(preparation!.ref, actor, () => true);
+    expect(saved.directoryEpoch).toBe(1); expect(r.readHub().enabled).toBe(false); r.verifies();
+    const restored = writer.directory!.compensate(saved.receiptId, () => true);
+    expect(restored.directoryEpoch).toBe(2); expect(r.readHub().enabled).toBe(false); r.verifies();
+    expect(() => writer.prepare({ kind: "rename", name: "No unrelated authority" }, actor as never)).toThrow();
+  });
+  it.each(["manifest", "secret", "owner"])("permanently fences changed %s before another proof source", async fault => {
+    let owned = true; const { r, lease } = await cold(() => owned);
+    try {
+      const path = join(r.home, fault === "secret" ? BIND_SECRET_REL : "hub/init-manifest.json"), previous = readFileSync(path);
+      if (fault === "owner") owned = false; else writeFileSync(path, fault === "secret" ? "different secret" : "{}");
+      expect(() => lease.source()).toThrow();
+      owned = true; writeFileSync(path, previous);
+      expect(lease.current()).toBe(false); expect(() => lease.source()).toThrow();
+    } finally { await lease.close(); }
+  });
+  it("retains physical read occupancy through close and refuses a fifth same-person read", async () => {
+    const { lease } = await cold(); let release!: () => void, entered = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const reads = Array.from({ length: 4 }, () => lease.withDirectoryRead(admin, async () => { entered++; await gate; }));
+    let stopped = false;
+    try {
+      expect(await lease.withDirectoryRead(admin, async () => { entered++; return "accepted"; }).catch(error => error.code)).toBe("unavailable");
+      expect(entered).toBe(4);
+      const closing = lease.close().then(() => { stopped = true; });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(stopped).toBe(false); expect(lease.current()).toBe(false);
+      await expect(lease.withDirectoryRead(admin, async () => { entered++; })).rejects.toThrow();
+      release(); await Promise.all(reads); await closing; expect(stopped).toBe(true);
+    } finally { release(); await lease.close(); }
+  });
+  it("awaits the old driver close acknowledgment before releasing its database", async () => {
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), reached = new Promise<void>(resolve => { entered = resolve; });
+    const { r, lease } = await cold(() => true, () => ({ realm: admin.realm, close: async () => { entered(); await held; } }) as unknown as HubDirectory);
+    const closeDb = vi.spyOn(Object.getPrototypeOf(r.db), "close");
+    let done = false; const pending = lease.close().then(() => { done = true; });
+    try {
+      await reached; await new Promise<void>(resolve => setImmediate(resolve));
+      expect(done).toBe(false); expect(lease.current()).toBe(false); expect(closeDb).not.toHaveBeenCalled();
+      release(); await pending; expect(done).toBe(true); expect(closeDb).toHaveBeenCalledOnce();
+    } finally { release(); await lease.close(); closeDb.mockRestore(); }
+  });
+  it("enforces the shared total32 limit, then releases errors and retries", async () => {
+    const { lease } = await cold(); let release!: () => void, entered = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const reads = Array.from({ length: 32 }, () => lease.withDirectoryRead({ realm: admin.realm, objectId: randomUUID() }, async () => { entered++; await gate; }));
+    try {
+      expect(await lease.withDirectoryRead(admin, async () => { entered++; return "accepted"; }).catch(error => error.code)).toBe("unavailable");
+      expect(entered).toBe(32); release(); await Promise.all(reads);
+      await expect(lease.withDirectoryRead(admin, async () => { throw Error("driver failure"); })).rejects.toThrow("driver failure");
+      expect(await lease.withDirectoryRead(admin, async () => "retry")).toBe("retry");
+    } finally { release(); await lease.close(); }
+  });
+  it("refuses construction-time material replacement and drains the created driver", async () => {
+    const { r, options } = await coldRecoveryRig(); let closed = 0;
+    const result = await directoryRecovery.createHubDirectoryColdSettings({ ...options, hub: r.readHub(), generation: "generation-old", current: () => true,
+      createDirectory: () => { writeFileSync(join(r.home, BIND_SECRET_REL), "changed");
+        return { realm: admin.realm, close: async () => { closed++; } } as unknown as HubDirectory; } }).then(lease => ({ ok: true as const, lease }), error => ({ ok: false as const, error }));
+    if (result.ok) await result.lease.close();
+    expect(result.ok).toBe(false); expect(closed).toBe(1);
+  });
+
+  it("reads the sealed existing source while off, without invoking the driver", async () => {
+    const { r, options } = await coldRecoveryRig();
+    const hub = { ...r.readHub(), enabled: false };
+    const eligibility = () => { throw Error("old directory must stay offline"); };
+    const directory = { realm: admin.realm, checkEligibility: eligibility } as unknown as HubDirectory;
+    const create = (directoryRecovery as unknown as { createHubDirectoryColdSettings?: (o: unknown) => any }).createHubDirectoryColdSettings;
+    const lease = await create?.({ ...options, hub, generation: "generation-old", current: () => true, createDirectory: () => directory });
+    try {
+      expect(lease).toBeDefined();
+      expect(lease.source()).toMatchObject({ directory, config: { realm: "fictional", profile: "ad", url: hub.directory.url, baseDn: hub.directory.baseDn, bindDn: hub.directory.bindDn }, administrator: admin, epoch: 0 });
+      expect(lease.current()).toBe(true);
+      expect(() => lease.sessions()).toThrow();
+    } finally { await lease?.close(); }
+  });
+});
 
 describe("cold directory recovery (internal, no production caller)", () => {
   it.each(["staged", "directory-decision", "directory-secret", "manifest", "config"])("recovers %s after the original DB closes, through the same writer", async point => {
