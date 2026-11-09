@@ -7,26 +7,80 @@
 1. 在 **設定 → Runtime** 開啟 **允許其他 Windows 電腦配對**（`fleet.yaml` 的 `runtimes.remote_runtime: true`，預設關閉）。開啟時需要 Fleet 管理員確認，不必重新啟動。這台電腦仍是你的 Fleet；另一台電腦只執行一個小 runner。
 2. 按 **連接電腦**，在步驟 1 確認 **AgEnD 位址**：必須是另一台電腦連得到的位址。遠端位址必須是 HTTPS；只有 `localhost` 這類本機位址可用 HTTP（例如 SSH 轉發）。
 3. 在位址下方的分頁選擇安裝方式：
-   - **Windows（PowerShell）**：複製**安裝指令**（內含頁面上顯示的腳本 SHA-256，先檢查、相符才執行），在另一台 Windows 電腦的 PowerShell 貼上；再複製**連線指令**在那裡執行。
+   - **Windows（PowerShell）**：複製**一次性安裝指令**（內含頁面上顯示的腳本 SHA-256，先檢查、相符才執行，並帶著一個短效、只能用一次的 token），在**任何一台** Windows 電腦的 PowerShell 貼上，或交給在那台電腦上執行的 AI agent。它會安裝 Runtime 並直接連線：不用配對碼，也不用另外核准。token 是什麼、允許什麼，請見[一次性安裝指令](#一次性安裝指令不用配對碼不限電腦ai-agent-也能用)。配對碼放在**手動選項**裡。
    - **其他安裝方式（ZIP）**：下載 ZIP、傳到另一台電腦並解壓縮，雙擊 `connect-agend.bat`。這個流程維持原樣。
 4. 在已安裝並登入各 CLI 的 Windows 使用者底下執行。兩種方式都需要 Windows 上的 Node.js。
-5. 第一次連線時，輸入頁面右側的**一次性配對碼**，比對 Runtime 視窗與頁面上的**配對指紋**，再在 AgEnD 核准這台電腦。配對碼只在終端機輸入，不會出現在任何指令裡。產生配對碼和核准電腦，都需要直接連到的儀表板上的管理員 session（cookie 與 CSRF），也就是頁面上的「連接電腦」和「核准電腦」按鈕；只帶 `X-Agend-Token` 標頭的請求會被拒絕（#3327，見[威脅模型](SECURITY.zh-TW.md#威脅模型)）。
+5. 用**一次性安裝指令**時，不用輸入任何東西，也不用核准：電腦加入後會出現在「已連接的電腦」，並有通知。用 ZIP，或「手動選項」裡的配對碼做法時，第一次連線要輸入頁面上的**一次性配對碼**，比對 Runtime 視窗與頁面上的**配對指紋**，再在 AgEnD 核准這台電腦。配對碼只在終端機輸入，不會出現在任何指令裡。產生配對碼、產生安裝指令和核准電腦，都需要直接連到的儀表板上的管理員 session（cookie 與 CSRF），也就是頁面上的「連接電腦」和「核准電腦」按鈕；只帶 `X-Agend-Token` 標頭的請求會被拒絕（#3327，見[威脅模型](SECURITY.zh-TW.md#威脅模型)）。
 
 ## 一行安裝（Windows PowerShell）
 
-頁面會帶入你確認過的位址。在另一台 Windows 電腦的 PowerShell 執行第一行；不需要系統管理員權限。
+頁面會帶入你確認過的位址。在另一台 Windows 電腦的 PowerShell 貼上這一行指令；不需要系統管理員權限。
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'https://your-agend-host'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq '<頁面上顯示的 SHA-256>') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }
 ```
 
-頁面會填入你的位址與 `install.ps1` 的 SHA-256。指令先下載腳本、計算收到的位元組的雜湊，與頁面上的雜湊比對，**相符才執行**。它只安裝，**不會連線、不會配對**，最後印出下一行要執行的指令：
+頁面會填入你的位址、`install.ps1` 的 SHA-256，**以及**一個一次性 token 和你這台 AgEnD 的伺服器指紋（上面的指令實際顯示為 `$agendEnroll = '…'; $agendFingerprint = '…'; try { … } finally { … }`；token 的部分見下一節）。指令先下載腳本、計算收到的位元組的雜湊，與頁面上的雜湊比對，**相符才執行**。腳本接著安裝 Runtime，並**在同一個視窗**直接連線那台電腦。不需要再打第二個指令。
+
+安裝完之後會怎麼做，取決於指令有沒有帶 token，以及在哪裡執行：
+
+| 執行的地方 | 腳本的行為 |
+|---|---|
+| 任何視窗，只要指令帶有一次性 token（頁面預設的指令）而且沒有設定 `$agendNoConnect` | 連線，**不用配對碼，也沒有核准步驟**，不論視窗是不是互動式（AI agent、CI、被管線串接、`powershell -NonInteractive` 都可以）。它執行 Runtime 自己的 `connect --connection-dir … --enroll-stdin --server-fingerprint …`，token 走 Runtime 的**標準輸入**。見下一節。 |
+| 互動式主控台（沒有 token 時，也就是配對碼這條路：指令裡沒有 `$agendEnroll`）（stdin 與 stdout 都是主控台，不是 `-NonInteractive`，也不是 PowerShell ISE，也沒有設定常見的 CI 環境變數 `CI`、`GITHUB_ACTIONS`、`TF_BUILD`、`BUILD_BUILDID`、`JENKINS_URL`、`GITLAB_CI`、`CIRCLECI`、`BUILDKITE`、`TEAMCITY_VERSION`（空值、`0`、`false`、`no`、`off` 不算）），而且沒有設定 `$agendNoConnect` | 在那個視窗接著連線。它執行 Runtime 自己的 `connect --connection-dir`，邏輯與 ZIP 的 `connect-agend.bat` 相同：**新的 profile** 會要求輸入配對碼、顯示指紋、等待你核准，之後在前景執行；**已配對到這台 AgEnD** 的 profile 直接重連，不再要求配對碼；已配對到**另一台 AgEnD** 的電腦會另開獨立的 profile，原本的配對不受影響。 |
+| 其他沒有 token 的情況：AI agent、CI、被管線串接、`powershell -NonInteractive`、輸入或輸出被導向；或 `$agendNoConnect = 1`（不論有沒有 token） | 只安裝。印出下一步要執行的確切指令（`agend-runtime connect --server "…"`），說明配對碼要由人在互動終端機輸入，結束時 exit code 為 0。 |
+
+**配對碼**只能在互動式終端機輸入，不接受指令參數、環境變數或檔案，所以腳本無法代為傳遞，也看不到它；配對碼這條路的指紋比對與 AgEnD 的核准都沒有改變。**一次性 token** 是另一條有時效的授權，有自己的規則（下一節），不是把配對碼放進參數。`$agend` 只當成伺服器位址使用，沿用原本的來源檢查（HTTPS，或僅限本機的 HTTP；不得含帳密、路徑、查詢或片段）。
+
+**給 AI agent 或腳本使用**：請給它**一次性安裝指令**：它會在任何視窗自己連線，不用輸入任何東西；以 `powershell -Command "<指令>"` 執行時，安裝或連線失敗會讓 exit status 為 1（否則為 0），`$LASTEXITCODE` 則是 Runtime 自己的狀態碼。（Runtime 之後會一直在那個視窗執行，直到被停止；不能等的 agent 請把這個指令當成獨立的背景程序啟動。讓 Runtime 自己在背景常駐是另外的工作。）頁面上預設收合的「手動選項」列出配對碼這條路的兩行。第一行只安裝（它只對那一次指令設定 `$agendNoConnect = 1`，結束後會清掉，免得變數留在視窗裡，讓之後的貼上悄悄變成只安裝）；第二行用配對碼連線，必須由人在互動終端機執行：
 
 ```powershell
+$agendNoConnect = 1; <同一個安裝指令>; $agendNoConnect = $null
 agend-runtime connect --server "https://your-agend-host"
 ```
 
-一次性配對碼是在終端機被詢問時輸入，不會出現在任何指令裡。之後比對**配對指紋**，並在 AgEnD 核准這台電腦。ZIP 流程維持原樣，放在「其他安裝方式（ZIP）」。
+**重新連線。** 安裝程式會在 Runtime 旁邊留下這台 AgEnD 的重連入口 `%LOCALAPPDATA%\agend-runtime\connect\<host>-<port>-<hash>\`，裡面有 `agend-server.json`（只放公開的伺服器位址，不含任何憑證或配對碼）和與 ZIP 相同的 `connect-agend.bat`，並印出位置。雙擊即可重新連線；已存的 profile 不會再要求配對碼。每台 AgEnD 各有自己的資料夾，同一台電腦連到兩台 AgEnD 時不會互相覆蓋。批次檔會呼叫 `agend-runtime.cmd connect --connection-dir <自己所在的資料夾>`（所以會經 `current.txt` 啟動最新安裝的 Runtime）。`--connection-dir DIRECTORY` 讓 Runtime 從 `DIRECTORY\agend-server.json` 讀取位址，並照 ZIP 的 `connect-agend.bat` 的規則選 profile（尚未配對或已配對到這台 AgEnD 時用預設 profile，否則用獨立的 `profiles\<host>-<port>`）；可搭配 `connect`、`run`、`status`、`rotate`、`disconnect`，不能與 `--server` 同時使用。若安裝資料夾名稱含 `%` 或 `^`（批次檔的 `call` 會誤讀），就不寫入入口，腳本改為印出連線指令。修復模式（`AGEND_RUNTIME_REPAIR=1`，更新流程使用）不寫入入口，也不會連線。
+
+### 一次性安裝指令（不用配對碼、不限電腦、AI agent 也能用）
+
+**為什麼。** 指令是從你已經登入的頁面來的，所以可以直接帶著授權。它在**任何**連得到這台 AgEnD 位址的電腦都能用，不限瀏覽器所在的那台（在 A 電腦複製，到 B 電腦貼上，或交給 B 電腦上的 AI CLI 執行），不用配對碼，也不用再按一次核准。做法和 GitHub Actions 的 `config.sh --token`、Tailscale auth key、`kubeadm join --token` 一樣。
+
+**token 是什麼。**
+
+- 256 位元隨機值（`agend_enroll_` 加 43 個 URL-safe 字元）。伺服器**只存它的 SHA-256**；token 只在頁面顯示一次，只存在頁面記憶體（不寫進儲存空間或檔案，重新整理後就消失）。
+- **15 分鐘有效、只能用一次。** 產生新指令會讓之前所有未使用的 token 失效；「撤銷並關閉」和「重新產生」會立刻讓它失效。用過、過期、被撤銷的 token 會各自得到明確的錯誤。
+- 由同一批人、經由同一道檢查產生，和配對碼完全一樣：登入這台 AgEnD 儀表板的管理員（它的 session 和 CSRF：頁面自己的按鈕）。只帶 `X-Agend-Token` 標頭的請求、公開閘道連結、外來的 Origin、guest 或唯讀 session 都會被拒絕（#3327），不論是產生還是撤銷 token。本來無法建立配對碼並核准的人，不會因此多得到任何權限。
+- 綁定這台 AgEnD 的身分：AgEnD 資料夾裡的一把 Ed25519 金鑰（`runtime-server-identity.json`，私有，第一次使用時建立）。指令帶著它的 SHA-256 **伺服器指紋**。
+- 發出、使用、撤銷、被取代都會留下紀錄：寫進機器日誌（有上限）和 AgEnD 的 log，內容有 token 的 id、不透明的操作者代號，以及使用時那台電腦的 id；**對已知 token 的失敗嘗試**（含原因）也會留下。使用或失敗的來源位址只保留**遮罩過的版本**（`203.0.x.x`，IPv6 則是把八組寫完整後只留前兩組，例如 `fe80:0:x:x`；loopback 不記，因為本機 proxy 後面的所有 client 都是它）。不指向任何已知 token 的請求不會逐筆列出：這類 bucket 開始拒絕時，每個 bucket 每分鐘只寫**一筆限流彙總**。不含 token、雜湊或完整位址。
+- **有電腦加入時會主動通知擁有者。** token 本身就核准了電腦，沒有人站在核准按鈕前。有電腦加入時，AgEnD 會走現有的通知管道（General topic、主要聊天頻道，或純網頁 fleet 的網頁通知）發一則訊息，寫明電腦名稱、主機名稱、token id 與撤銷方法（設定 → Runtime → 那台電腦 → 撤銷連線）。電腦的名稱和主機名稱是那台電腦自己說的，所以放進訊息前會先限縮成單純字元和較短的長度，放在引號裡，每個句點換成間隔點（避免長得像網域的名稱被聊天軟體變成連結）。**不做 quarantine**：電腦一加入就能用，這正是一行安裝的目的。
+
+**指令執行時會發生什麼。** `install.ps1` 仍是被頁面雜湊固定的同一份位元組。它讀取 `$agendEnroll` 和 `$agendFingerprint`，立刻從視窗清掉，並在安裝任何東西**之前**檢查格式（格式錯誤的 token 會停下並顯示訊息，exit code 為 1），再把 token 用 Runtime 的**標準輸入**交給它：絕不放在命令列參數（會出現在程序清單）、環境變數或檔案；`agend-server.json` 和 `connect-agend.bat` 仍然只有公開位址。指令的 `try … finally` 即使在頁面的雜湊檢查拒絕執行腳本時，也會再清一次這兩個變數。Runtime 接著：
+
+1. **先證明伺服器、並先和它協商金鑰。** 它帶一個全新的 nonce 和 token 的非秘密 id（SHA-256 的前 64 位元，只是讓 AgEnD 能把這個 token 自己的流量和其他人的流量分開限流）呼叫 `POST /runtime/v1/enroll-hello`。伺服器為這一次請求做一把**全新的 X25519 金鑰**，私鑰只放在記憶體兩分鐘，回傳這把公鑰和**用註冊金鑰對 nonce 與這把新公鑰做的 Ed25519 簽名**。Runtime 要求註冊金鑰的雜湊等於指令裡的指紋、簽名驗證通過。無法簽名的伺服器（被重複使用的位址、接錯網路、根本不是 AgEnD）會在這裡失敗，**這時沒有任何秘密離開那台電腦**，Runtime 會停下並說明。
+2. **用掉 token（加密送出）。** Runtime 做自己的 X25519 金鑰，用 X25519 與 HKDF-SHA256 導出兩把金鑰（每個方向一把，綁定 nonce、token id 與雙方的新公鑰），再呼叫 `POST /runtime/v1/enroll`，請求內容（token、指紋、名稱、主機）以 **AES-256-GCM 加密**；只有持有那把新私鑰的一方讀得到。電腦一建立就已核准（token 就是核准），機器憑證**用另一個方向的金鑰加密**回傳；Runtime 先解開並檢查，才存任何東西。`enroll` 一呼叫，那把新金鑰就用掉了，不論結果如何，所以請求無法重送。機器憑證的保存方式和配對完全一樣。（全部用 Node 內建的 `crypto`，沒有新增依賴。）
+3. **已經連到這台 AgEnD 的 profile 只會重連**，不消耗 token（它會維持有效直到過期；不需要的話可在頁面撤銷）。已經連到**另一台** AgEnD 的 profile 會另開獨立的 profile，做法與 `connect-agend.bat` 相同，原本的配對不受影響。
+
+**頁面上會看到什麼。** 倒數時間，以及「重新產生」和「撤銷並關閉」；有電腦加入時，卡片會說明並寫出它的名稱。Runtime 頁面上會留著「有新電腦透過安裝指令加入」的通知（有「撤銷」和「關閉通知」），直到被關閉，所以沒人盯著時加入的電腦不會被漏掉；它的卡片標示為「以安裝指令加入」。撤銷那台電腦會立刻中斷它的連線。
+
+**錯誤訊息。** 每一種都說明發生什麼事和下一步（開啟 設定 → Runtime → 連接電腦，產生新的安裝指令再執行一次），exit code 不為 0，也不會印出 token：
+
+| 情況 | 訊息開頭 |
+|---|---|
+| token 格式錯誤或不完整 | 「…one-time token… is not valid…」（在安裝任何東西之前） |
+| token 不存在 | 同上（不會和格式錯誤區分） |
+| 過期 | 「…one-time token has expired (it lasts 15 minutes)…」 |
+| 已使用 | 「…already used; each token works once…」 |
+| 已撤銷，或被較新的指令取代 | 「…was revoked in AgEnD…」 |
+| 不同的 AgEnD（指紋不符） | 「…did not prove it is the AgEnD this install command was made for… The one-time token was NOT sent…」 |
+| 電腦數量達上限 | 「…reached its limit of connected computers…」 |
+
+**安全分析（給擁有者判斷）。**
+
+- *權限邊界不變。* 能打開 **設定 → Runtime** 的人，本來就看得到配對碼、也能核准待處理的電腦；同一個頁面發出的 token 不會多給任何權限。
+- *真正新增的風險是指令外洩。* 指令可能留在聊天紀錄、AI 對話紀錄、截圖、PowerShell 的 PSReadLine 歷史（`ConsoleHost_history.txt`）或 CI log 裡。拿到的人只要在它**有效且未使用時**，就能把**他自己的電腦**註冊成你的 Runtime，之後 AgEnD 派的工作（程式碼、提示詞、Agent 可用的 repo 憑證）就會送到那台電腦。緩解措施：15 分鐘、只能用一次、被下一個指令取代、可撤銷、只存雜湊、token 絕不出現在參數、環境變數或檔案、電腦加入後頁面會通知並可一鍵撤銷，且每次使用都有稽核紀錄。剩下的風險是「產生指令到使用或撤銷」之間的空窗：**請把指令當成密碼**，不要貼到聊天或工單，看到不認識的電腦就撤銷。把它貼進 AI agent 的對話，就會留在那段對話的歷史裡；這是讓 agent 代為執行的代價。
+- *用過的 token 無法重送*，請求也無法重送（它的新金鑰已用掉）。無法證明自己是被釘選的 AgEnD 的伺服器收不到 token。而且**夾在中間的伺服器讀不到它**：占用同一位址、又有自己合法憑證的伺服器，可以把 `enroll-hello` 轉給真的 AgEnD、拿到有效的證明，但後面的 token 與憑證是加密給只有真 AgEnD 持有的金鑰，中繼端只看得到密文。它可以丟棄或延遲這次交換（Runtime 會停下並說明，token 不會被用掉），但既讀不到也改不了：任何一個方向改一個位元組，AES-GCM 檢查都會失敗。（以真的中繼端夾在真的 Runtime client 與真的 coordinator 之間做了測試。）
+- *不在保護範圍內：* 執行指令的那台電腦上的 script block logging 或工作階段紀錄會記下貼上的文字；拿到指令的人或工具當然能使用它（這正是它的用途）。**如果指令是透過外層的 `powershell -Command "<指令>"` 執行**（AI agent 或 CI 常這樣做），指令文字（含 token）會出現在**外層** PowerShell 的命令列：在程序清單、Windows 的程序建立事件（4688，若有開命令列稽核）和 script-block 日誌（4104）裡，直到 token 被用掉或過期。Runtime 自己的命令列不會有 token。已被撤銷的 profile 必須先 `agend-runtime disconnect`，新的指令才能再加入。如果交換在 AgEnD 已經用掉 token、答案卻還沒送達時中斷，會留下一台已核准、卻沒有人持有憑證的電腦：請在頁面撤銷它。
+- *配對碼這條路不變：* 配對碼只能在互動式終端機輸入；token 是另一條有時效的授權，不是把配對碼放進參數。
 
 ### 為什麼指令要固定腳本的雜湊
 
@@ -46,7 +100,7 @@ agend-runtime connect --server "https://your-agend-host"
 3. 自己計算壓縮檔的 SHA-256，與**寫在安裝腳本裡**的校驗碼比對；不符就在解壓縮之前停止。
 4. 解壓縮到 `%LOCALAPPDATA%\agend-runtime\<版本>+<build>`，放在既有版本**旁邊**。`<build>` 是壓縮檔 SHA-256 的前 8 個字元，因為同一個版本號可能對應不只一個 build。
 5. 讓 `agend-runtime` 指向它（見下），並把 `%LOCALAPPDATA%\agend-runtime\bin` 加進**你的使用者 PATH**。
-6. 印出連線指令。
+6. 寫入重連入口（見上），然後在同一個視窗連線：帶有一次性 token 時任何視窗都會連線，沒有 token 時只在互動式主控台連線；設定了 `$agendNoConnect` 則絕不連線（此時 token 會被回報為未使用）。否則印出連線指令。Runtime 是在安裝鎖**釋放之後**才啟動，因為執行中的 Runtime 會取這個鎖來更新自己。
 
 **版本並存。** 既有的資料夾永遠不會被刪除或取代，因為它可能就是正在執行的 Runtime（執行中的 Windows 程式會鎖住它的檔案）。安裝資料夾叫 `<版本>+<build>`，所以較新 AgEnD 的 Runtime，以及同一個版本號的不同 build，都只會在舊資料夾旁邊多一個新資料夾；再執行同一個 build 的指令會找到它自己的資料夾，只重新指向 `agend-runtime`。更新時不需要任何人手動刪資料夾。`bin\agend-runtime.cmd` 只寫一次、之後不再改變：它啟動單行檔 `bin\current.txt` 所記的版本，安裝在新版本**完整就位之後**，才用原子取代把這個檔案換掉。所以 `agend-runtime` 啟動的不是舊版就是新版，不會是裝到一半的版本，正在執行的批次檔也不會被改寫。shim 一開始就是 `setlocal DisableDelayedExpansion`，所以安裝資料夾裡的 `!`（可接受的 `AGEND_RUNTIME_INSTALL_DIR` 可以含有）即使在 cmd.exe 開啟延遲展開（`/V:ON` 或登錄檔的 DelayedExpansion 設定）時也會保留。已經在執行的 Runtime 會維持自己的版本，直到你以 Ctrl+C 停止、再用 `agend-runtime run` 啟動。若在切換之前失敗，`current.txt` 仍指向可用的版本。**這個安裝程式不會移除舊資料夾**（其中一個可能正在執行）；清理舊版本留到之後的更新與解除安裝指令。在那之前它們會留著，等沒有 Runtime 使用時你可以自己刪除。腳本唯一會拒絕的情況，是已經有一個資料夾剛好叫這個 build 的名字、內容卻不是它：只有被手動改過或沒裝完才會發生，它會被原樣保留，腳本也會說明。
 
@@ -58,6 +112,8 @@ agend-runtime connect --server "https://your-agend-host"
 
 | 變數 | 作用 |
 |---|---|
+| `$agendNoConnect = 1` | 只安裝：即使在互動式視窗也不連線。除了空值、`0`、`false`、`no`、`off` 之外的任何值都視為已設定；它會留在該視窗，直到你用 `$agendNoConnect = $null` 清除。 |
+| `$agendEnroll`、`$agendFingerprint` | 一次性 token 與 AgEnD 伺服器指紋。由頁面的指令設定，腳本讀取後清除（指令的 `finally` 會再清一次）。你不需要自己設定。 |
 | `AGEND_RUNTIME_NO_PATH=1` | 不修改 PATH；最後會顯示 `agend-runtime.cmd` 的完整路徑。 |
 | `AGEND_RUNTIME_INSTALL_DIR=D:\agend` | 安裝到這個資料夾（須為磁碟機完整路徑），而不是 `%LOCALAPPDATA%\agend-runtime`。 |
 

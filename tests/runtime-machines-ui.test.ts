@@ -3,13 +3,14 @@ import { readFileSync } from "node:fs";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
-let p:AppPage, Panel:any, Create:any, catalog:any, windowsCatalog:any, windowsInventory:any, models:any, app:any, routes:any, connectCommand:any, installCommand:any, windowsConnectCommand:any;
+let p:AppPage, Panel:any, Create:any, catalog:any, windowsCatalog:any, windowsInventory:any, models:any, app:any, routes:any, connectCommand:any, installCommand:any, installOnlyCommand:any, windowsConnectCommand:any, enrollCommand:any;
 const originalFetch=globalThis.fetch;
 const idA="12345678-1234-4321-abcd-123456789012", idB="22345678-1234-4321-abcd-123456789012";
 const requests:Array<{path:string;body:any}>=[];
 const cli=()=>({id:"codex",path:"C:\\tools\\codex.exe",runnable:true,authenticated:true,version:"1.0",readOnlySupport:true,supports:{execution:true,resume:true,mcp:true},models:[]});
 const machine=(id:string,name:string,status="online")=>({id,name,status,...(status==="pending"?{pairingFingerprint:"ABCD-1234-5678"}:{}),platform:"win32",version:"1.0",lastSeenAt:Date.now(),inventoryUpdatedAt:Date.now(),inventory:{home:`C:\\${name}`,clis:[cli(),{id:"muse",path:null,runnable:false}]}});
-let machines:any[], enabled:boolean, installerMode="ok";
+let machines:any[], enabled:boolean, installerMode="ok", enrollments:any[]=[], enrollSeq=0, pairingTtl=60000, enrollSkew=0;
+const TOKEN="agend_enroll_"+"Qw3_-".repeat(9).slice(0,43), FINGERPRINT="cd".repeat(32), ENROLL_ID="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const SCRIPT_SHA="ab".repeat(32);
 const response=(body:any,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const button=(text:string)=>p.root.querySelectorAll("button").find((item:any)=>item.textContent.trim()===text);
@@ -20,7 +21,13 @@ beforeAll(async()=>{
   p=page({url:"http://localhost/settings/runtimes",storage:{agend_lang:"en"}});
   globalThis.fetch=(async(path:string,options:any={})=>{
     const body=options.body?JSON.parse(options.body):null;requests.push({path,body});
-    if(path==="/ui/runtimes")return response({enabled,machines});
+    if(path==="/ui/runtimes")return response({enabled,machines,enrollments});
+    if(path==="/ui/runtimes/enrollment"){
+      enrollSeq++;const issued={id:`${ENROLL_ID.slice(0,-1)}${enrollSeq}`,token:TOKEN,fingerprint:FINGERPRINT,createdAt:Date.now()+enrollSkew,expiresAt:Date.now()+enrollSkew+15*60_000};
+      enrollments=[{id:issued.id,status:"unused",createdAt:issued.createdAt,expiresAt:issued.expiresAt},...enrollments.map(row=>row.status==="unused"?{...row,status:"revoked"}:row)];return response(issued,201);
+    }
+    const enrollRevoke=/^\/ui\/runtimes\/enrollment\/([^/]+)\/revoke$/.exec(path);
+    if(enrollRevoke){enrollments=enrollments.map(row=>row.id===enrollRevoke[1]?{...row,status:"revoked"}:row);return response({enrollment:enrollments.find(row=>row.id===enrollRevoke[1])});}
     if(path==="/ui/windows-cli/probe") {
       if(body?.force) windowsInventory={...windowsInventory,hostname:"REFRESHED-DESKTOP"};
       return response(windowsInventory);
@@ -30,7 +37,7 @@ beforeAll(async()=>{
     if(diagnostic){const target=machines.find(item=>item.id===diagnostic[1]);return response(diagnostic[2]==="tasks"?{tasks:[]}:{inventory:target?.inventory || null});}
     if(path==="/api/settings/runtimes")return response({switches:{windows_cli:{on:false,configured:false,environment:null},remote_runtime:{on:enabled,configured:enabled,environment:null}},max_agents_per_machine:{value:4,min:1,max:16,default:4},local_origin:"http://127.0.0.1:19280"});
     if(path==="/ui/runtimes/installer"){return installerMode==="fail"?response({error:"unavailable"},503):response({version:"2.3.5-alpha.7",scriptSha256:SCRIPT_SHA,scriptBytes:13536,bundleSha256:"c".repeat(64)});}
-    if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+60000});
+    if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+pairingTtl});
     const renaming=/^\/ui\/runtimes\/machines\/([^/]+)\/rename$/.exec(path);
     if(renaming){machines=machines.map(item=>item.id===renaming[1]?{...item,name:body.name}:item);return response({ok:true});}
     const revoking=/^\/ui\/runtimes\/machines\/([^/]+)\/revoke$/.exec(path);
@@ -44,9 +51,9 @@ beforeAll(async()=>{
   const {setLang}=await import("/assets/app-i18n.js");setLang("en",{store:false});
   catalog=await import("/ui/js/runtime-catalog.js");models=await import("/ui/js/settings-catalog.js");app=await import("/assets/app-store.js");
   windowsCatalog=await import("/ui/js/windows-cli-catalog.js");
-  const runtimeUi=await import("/ui/js/panel-runtimes.js");Panel=runtimeUi.RuntimesPanel;connectCommand=runtimeUi.runtimeConnectCommand;installCommand=runtimeUi.runtimeInstallCommand;windowsConnectCommand=runtimeUi.runtimeWindowsConnectCommand;Create=(await import("/ui/js/panel-fleet.js")).CreateInstanceDialog;routes=await import("/assets/app-route.js");
+  const runtimeUi=await import("/ui/js/panel-runtimes.js");Panel=runtimeUi.RuntimesPanel;connectCommand=runtimeUi.runtimeConnectCommand;installCommand=runtimeUi.runtimeInstallCommand;installOnlyCommand=runtimeUi.runtimeInstallOnlyCommand;windowsConnectCommand=runtimeUi.runtimeWindowsConnectCommand;enrollCommand=runtimeUi.runtimeEnrollCommand;Create=(await import("/ui/js/panel-fleet.js")).CreateInstanceDialog;routes=await import("/assets/app-route.js");
 });
-beforeEach(()=>{requests.length=0;enabled=true;installerMode="ok";machines=[machine(idA,"Desktop"),machine(idB,"Laptop","pending")];windowsInventory={home:"C:\\Test",hostname:"WINDOWS-DESK",probedAt:1,clis:[cli()]};windowsCatalog.forgetWindowsCliCatalog();catalog.forgetRuntimeCatalog();models.forgetCatalogs();app.appStore.set({windowsCli:false});});
+beforeEach(()=>{requests.length=0;enabled=true;installerMode="ok";enrollments=[];enrollSeq=0;pairingTtl=60000;enrollSkew=0;machines=[machine(idA,"Desktop"),machine(idB,"Laptop","pending")];windowsInventory={home:"C:\\Test",hostname:"WINDOWS-DESK",probedAt:1,clis:[cli()]};windowsCatalog.forgetWindowsCliCatalog();catalog.forgetRuntimeCatalog();models.forgetCatalogs();app.appStore.set({windowsCli:false});});
 afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();vi.restoreAllMocks();});
 afterAll(()=>{p.restore();globalThis.fetch=originalFetch;});
 
@@ -291,24 +298,54 @@ describe("remote machine UI",()=>{
       expect(tabs()[0].getAttribute("aria-controls")).toBe(panel.id);
       expect(p.root.textContent).not.toMatch(/macOS|Linux tab/i);expect(tabs()).toHaveLength(2);
     });
-    it("shows the install and connect commands with the confirmed address, no code, no ZIP step, and no account option",async()=>{
+    it("shows the one-time install command with the confirmed address, the manual options, no ZIP step and no account option",async()=>{
       await open("runtime-windows-commands");
-      expect(stepTitles()).toEqual(["AgEnD address","Install the Runtime","Connect that computer","Return here to approve"]);
-      expect(commands()).toEqual([`[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'http://localhost'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq '${SCRIPT_SHA}') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }`,'agend-runtime connect --server "http://localhost"']);
-      // The hash the command checks is on the page, and it came from the administrator-only endpoint, not from the script's own response.
-      expect(p.root.querySelector(".runtime-installer-hash code").textContent).toBe(SCRIPT_SHA);
-      expect(requests.filter(item=>item.path==="/ui/runtimes/installer")).toHaveLength(1);
+      expect(stepTitles()).toEqual(["AgEnD address","Copy the one-time install command","Paste it on the other computer"]);
+      // the one-time command first (the same text the page builder makes), then the manual options (install only, connect) in the collapsed block
+      expect(commands()).toEqual([enrollCommand("http://localhost",SCRIPT_SHA,TOKEN,FINGERPRINT),installOnlyCommand("http://localhost",SCRIPT_SHA),'agend-runtime connect --server "http://localhost"']);
+      expect(commands()[0]).toContain(`$agendEnroll = '${TOKEN}'; $agendFingerprint = '${FINGERPRINT}'; try { `);expect(commands()[0]).toContain(installCommand("http://localhost",SCRIPT_SHA));
+      expect(commands()[0]).toContain(" finally { $agendEnroll = $null; $agendFingerprint = $null }; if ($LASTEXITCODE) { Write-Error ");expect(commands()[1]).toBe(`$agendNoConnect = 1; ${installCommand("http://localhost",SCRIPT_SHA)}; $agendNoConnect = $null`);
+      expect(commands()[1]).not.toContain(TOKEN);expect(commands()[2]).not.toContain(TOKEN);
+      const manual=p.root.querySelector(".runtime-install-panel details.runtime-manual-command");
+      expect(manual.querySelector("summary").textContent).toBe("Manual options (pairing code, install only)");expect(manual.hasAttribute("open")).toBe(false);
+      expect(manual.querySelectorAll(".runtime-command-card")).toHaveLength(2);expect(manual.textContent).toContain("Install only (does not connect)");
+      expect(manual.textContent).toContain("cannot be put in a command or a variable");expect(manual.textContent).toContain("use the one-time install command above instead");
+      // The main step says what it does: installs and connects at once, with no pairing code and no approval, on any computer.
+      const installHint=p.root.querySelectorAll(".runtime-pairing .runtime-step")[1].querySelector(".note").textContent;
+      expect(installHint).toContain("connects the computer straight away: no pairing code and no approval step");expect(installHint).toContain("any Windows computer, or hand it to an AI agent");
+      expect(installHint).not.toMatch(/does not connect|not connect, pair|won't connect/i);
+      expect(p.root.querySelector(".runtime-install-panel").textContent).toContain("connect-agend.bat");
+      // The hash the command checks is on the page, and it came from the administrator-only endpoint, not from the script's own response; the server fingerprint is shown too.
+      expect(p.root.querySelector(".runtime-installer-hash code").textContent).toBe(SCRIPT_SHA);expect(p.root.querySelectorAll(".runtime-installer-hash code")[1].textContent).toBe(FINGERPRINT);
+      expect(requests.filter(item=>item.path==="/ui/runtimes/installer")).toHaveLength(1);expect(requests.filter(item=>item.path==="/ui/runtimes/enrollment")).toHaveLength(1);
       expect(requests.some(item=>item.path.includes("install.ps1"))).toBe(false);
-      expect(p.root.querySelector(".runtime-bundle-download")).toBeNull();expect(p.root.textContent).not.toContain("connect-agend.bat");
-      expect(commands().join(" ")).not.toContain("PAIR-TEST-CODE");expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
-      // The multi-account option and its flags are not part of this feature.
+      expect(p.root.querySelector(".runtime-bundle-download")).toBeNull();expect(p.root.textContent).not.toContain("Double-click connect-agend.bat there");
+      // No pairing code is made for this route: the code is made only when the person asks for it (or opens the ZIP route).
+      expect(requests.some(item=>item.path==="/ui/runtimes/pairing")).toBe(false);expect(p.root.querySelector(".runtime-pair-code")).toBeNull();expect(p.root.querySelector(".runtime-enroll-card")).not.toBeNull();
       expect(p.root.textContent).not.toMatch(/another Claude account|claude-config-dir|--profile/i);expect(p.root.querySelectorAll('.runtime-pairing input[type=checkbox]')).toHaveLength(0);
-      expect(p.root.textContent).toContain("never put in the command");expect(p.root.textContent).toContain("22.14");
+      expect(p.root.textContent).toContain("22.14");
     });
-    it("rewrites both commands when the address changes, and shows neither for an unsafe one",async()=>{
+    it.each([
+      ["en",["Copy the one-time install command","Paste it on the other computer"],"connects the computer straight away: no pairing code and no approval step","It can be any computer that can reach this AgEnD's address","Manual options (pairing code, install only)","Install only (does not connect)","Treat this command like a password"],
+      ["zh-TW",["複製一次性安裝指令","在另一台電腦貼上並執行"],"然後立刻連線那台電腦：不用配對碼，也不用另外核准","不限這台電腦，只要能連到這台 AgEnD 的位址都可以","手動選項（配對碼、只安裝）","只安裝（不連線）","請把這行指令當成密碼"],
+    ] as const)("describes the one-time command in %s: copy it, paste it anywhere, nothing to type or approve; the old 'type the pairing code' wording is gone",async(lang,titles,hint,anywhere,manual,installOnly,password)=>{
+      const i18n=await import("/assets/app-i18n.js");i18n.setLang(lang,{store:false});
+      try{
+        await p.mount(h(Panel,{navKey:`runtime-windows-copy-${lang}`}));await settle(8);button(lang==="en" ? "Connect a computer" : "連接電腦").click();await settle(8);
+        expect(stepTitles().slice(1,3)).toEqual(titles);
+        const text=p.root.querySelector(".runtime-install-panel").textContent;
+        expect(text).toContain(hint);expect(text).toContain(anywhere);expect(text).toContain(manual);expect(text).toContain(installOnly);
+        expect(text).toContain("connect-agend.bat");   // the reconnect hint: double-click it next time
+        expect(p.root.querySelector(".runtime-enroll-card").textContent).toContain(password);
+        expect(p.root.textContent).not.toMatch(/Enter the pairing code when the window asks|視窗提示時輸入配對碼|When the PowerShell window asks|PowerShell 視窗要求一次性配對碼|not connect, pair|不會連線、不會配對/);   // (the manual "Install only (does not connect)" label is deliberate)
+        // the connection guide above the steps says the same thing: one pasted command, no code, no approval
+        expect(p.root.querySelector("details.runtime-connect-guide").textContent).toContain(lang==="en" ? "it installs the Runtime and connects, with no pairing code and no approval" : "它會安裝 Runtime 並直接連線，不用配對碼，也不用核准");
+      }finally{i18n.setLang("en",{store:false});}
+    });
+    it("rewrites the commands when the address changes, and shows none for an unsafe one",async()=>{
       await open("runtime-windows-address");
       await setServer("https://fleet.example.test:10443");
-      expect(commands()).toEqual([installCommand("https://fleet.example.test:10443",SCRIPT_SHA),'agend-runtime connect --server "https://fleet.example.test:10443"']);
+      expect(commands()).toEqual([enrollCommand("https://fleet.example.test:10443",SCRIPT_SHA,TOKEN,FINGERPRINT),installOnlyCommand("https://fleet.example.test:10443",SCRIPT_SHA),'agend-runtime connect --server "https://fleet.example.test:10443"']);
       expect(commands()[0]).toContain("$agend = 'https://fleet.example.test:10443'");expect(commands()[0]).toContain(`$h -eq '${SCRIPT_SHA}'`);
       for(const bad of ["http://192.168.1.20:19280","https://user:password@fleet.example.test","https://fleet.example.test/path","https://fleet.example.test/?x=1","https://fleet.example.test'; calc; '"]){
         await setServer(bad);expect(commands(),bad).toEqual([]);expect(p.root.querySelector('.runtime-pairing [role="alert"]').textContent).toContain("Enter an HTTPS origin");
@@ -316,11 +353,11 @@ describe("remote machine UI",()=>{
     });
     it("offers no install command, and says why, when the server cannot supply the installer hash; retrying brings it back",async()=>{
       installerMode="fail";await open("runtime-windows-no-installer");
-      expect(commands()).toEqual(['agend-runtime connect --server "http://localhost"']);   // only the connect command; there is no unpinned install command
+      expect(commands()).toEqual(['agend-runtime connect --server "http://localhost"']);   // only the connect command; there is no unpinned install command, with or without a token
       expect(p.root.querySelector(".runtime-installer-error").textContent).toContain("cannot offer the installer");expect(p.root.querySelector(".runtime-installer-hash")).toBeNull();
       expect(p.root.querySelector(".runtime-install-panel").textContent).not.toMatch(/\birm\b/);
       installerMode="ok";button("Try again").click();await settle(8);
-      expect(commands()).toHaveLength(2);expect(commands()[0]).toBe(installCommand("http://localhost",SCRIPT_SHA));expect(p.root.querySelector(".runtime-installer-error")).toBeNull();
+      expect(commands()).toHaveLength(3);expect(commands()[0]).toBe(enrollCommand("http://localhost",SCRIPT_SHA,TOKEN,FINGERPRINT));expect(commands()[1]).toBe(installOnlyCommand("http://localhost",SCRIPT_SHA));expect(p.root.querySelector(".runtime-installer-error")).toBeNull();
     });
     it("tells the administrator what to do on a TLS error or a restricted PowerShell, and never suggests turning checks off",async()=>{
       await open("runtime-windows-tls");
@@ -344,26 +381,34 @@ describe("remote machine UI",()=>{
       try{
         await open("runtime-windows-copy");
         const copy=(index:number)=>p.root.querySelectorAll(".runtime-command-row .btn")[index];
-        copy(0).click();await settle(6);copy(1).click();await settle(6);
-        expect(written).toEqual(commands());expect(copy(1).textContent).toContain("Copied");
+        copy(0).click();await settle(6);copy(1).click();await settle(6);copy(2).click();await settle(6);
+        expect(written).toEqual(commands());expect(copy(2).textContent).toContain("Copied");
       }finally{Object.defineProperty(globalThis.navigator,"clipboard",{value:undefined,configurable:true});}
     });
-    it("keeps the existing waiting behaviour: the code card waits, the flow moves on once the install command is copied, and to approval when a computer asks",async()=>{
+    it("waits for a computer: the card says so, the flow moves on once the one-time command is copied, and it is done when a computer joins with it",async()=>{
       Object.defineProperty(globalThis.navigator,"clipboard",{value:{writeText:async()=>{}},configurable:true});
       try{
         machines=[machine(idA,"Desktop")];await open("runtime-windows-waiting");
-        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Install the Runtime");
-        expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
+        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Copy the one-time install command");
+        expect(p.root.querySelector(".runtime-enroll-card .runtime-pair-status").textContent).toContain("Waiting for a computer to run the command");
         p.root.querySelectorAll(".runtime-command-row .btn")[0].click();await settle(6);
-        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Connect that computer");
+        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Paste it on the other computer");
+        // a computer joins with the token: the catalog says the token is used and which computer used it
+        const joined={...machine(idB,"Laptop"),enrolledVia:"install-command",approvedAt:Date.now()};machines=[machines[0],joined];
+        enrollments=enrollments.map(row=>({...row,status:"used",usedAt:Date.now(),machineId:idB}));
+        button("Refresh machines").click();await settle(10);
+        expect(p.root.querySelector(".runtime-enroll-card .runtime-pair-status").textContent).toContain("A computer joined with this command; the token is spent.");
+        expect(p.root.textContent).toContain("Laptop joined with this command.");expect(commands().some((text:string)=>text.includes(TOKEN))).toBe(false);   // a spent token is not offered again
+        expect(p.root.querySelectorAll(".runtime-pairing .runtime-step.is-done")).toHaveLength(3);
       }finally{Object.defineProperty(globalThis.navigator,"clipboard",{value:undefined,configurable:true});}
       expect(requests.filter(item=>item.path==="/ui/runtimes").length).toBeGreaterThan(0);
     });
-    it("lands on the approval step with the fingerprint card when a computer is pending, whichever tab is open",async()=>{
+    it("shows a computer waiting for approval (the pairing-code route) on the card, whichever tab is open",async()=>{
       await open("runtime-windows-approval");
-      expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Return here to approve");
-      expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("A computer is waiting for your approval");
+      expect(p.root.querySelector(".runtime-enroll-card .runtime-pair-status").textContent).toContain("A computer is waiting for your approval");
+      expect(p.root.querySelector(".runtime-pairing-fingerprint").textContent).toBe("ABCD-1234-5678");   // the pending computer's card keeps its fingerprint and Approve button
       await zipTab();expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Return here to approve");
+      expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("A computer is waiting for your approval");
     });
     it("switches by click and by arrow, Home and End keys, moving focus with the selection",async()=>{
       await open("runtime-windows-keys");
@@ -375,11 +420,122 @@ describe("remote machine UI",()=>{
       fire(tabs()[1],"keydown",{key:"Home"});await settle(6);expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
       const other=fire(tabs()[0],"keydown",{key:"a"});expect(other.defaultPrevented).toBe(false);
     });
+    it("shows a countdown, makes a new command on request (ending the old one), and offers the command only while the token is unused",async()=>{
+      machines=[machine(idA,"Desktop")];await open("runtime-enroll-lifecycle");
+      expect(p.root.querySelector(".runtime-enroll-clock").textContent).toMatch(/^Expires in 1[45]:\d\d$/);
+      button("New command").click();await settle(8);
+      expect(requests.filter(item=>item.path==="/ui/runtimes/enrollment")).toHaveLength(2);expect(enrollments.map(row=>row.status)).toEqual(["unused","revoked"]);   // the server ended the first one
+      expect(commands()[0]).toBe(enrollCommand("http://localhost",SCRIPT_SHA,TOKEN,FINGERPRINT));
+      // the server reports the token ended (expired, or revoked elsewhere): the command is no longer shown and the card says why
+      enrollments=enrollments.map((row,index)=>index===0?{...row,status:"expired"}:row);button("Refresh machines").click();await settle(10);
+      expect(commands().some((text:string)=>text.includes(TOKEN))).toBe(false);expect(p.root.querySelector(".runtime-enroll-ended").textContent).toContain("This install command has expired. Generate a new one.");
+      expect(p.root.querySelector(".runtime-enroll-card .runtime-pair-status").textContent).toContain("expired");expect(p.root.querySelector(".runtime-enroll-clock")).toBeNull();
+      enrollments=enrollments.map((row,index)=>index===0?{...row,status:"revoked"}:row);button("Refresh machines").click();await settle(10);
+      expect(p.root.querySelector(".runtime-enroll-ended").textContent).toContain("was revoked");
+      button("New command").click();await settle(8);expect(commands()[0]).toContain(TOKEN);expect(p.root.querySelector(".runtime-enroll-ended")).toBeNull();
+    });
+    it("revokes an unused token when the panel is closed, so a command nobody can see does not stay valid",async()=>{
+      await open("runtime-enroll-close");
+      button("Revoke and close").click();await settle(10);
+      const issued=enrollments[0];expect(requests).toContainEqual({path:`/ui/runtimes/enrollment/${issued.id}/revoke`,body:{}});expect(issued.status).toBe("revoked");
+      expect(p.root.querySelector(".runtime-pairing")).toBeNull();expect(p.root.textContent).not.toContain(TOKEN);
+      // a spent token has nothing to revoke: closing just closes
+      await open("runtime-enroll-close-spent");requests.length=0;
+      enrollments=enrollments.map(row=>({...row,status:"used",machineId:idB}));button("Refresh machines").click();await settle(10);
+      button("Hide pairing code").click();await settle(10);
+      expect(requests.some(item=>/\/revoke$/.test(item.path))).toBe(false);expect(p.root.querySelector(".runtime-pairing")).toBeNull();
+    });
+    it("keeps the token in memory only: it reaches no storage, and a reloaded page cannot show it again",async()=>{
+      await open("runtime-enroll-memory");
+      expect(commands()[0]).toContain(TOKEN);
+      expect(JSON.stringify([...(p as any).storage.entries()])).not.toContain(TOKEN);expect(JSON.stringify((globalThis as any).sessionStorage ?? {})).not.toContain(TOKEN);expect(String((globalThis as any).document?.cookie ?? "")).not.toContain(TOKEN);
+      await p.unmount();catalog.forgetRuntimeCatalog();await p.mount(h(Panel,{navKey:"runtime-enroll-memory-reload"}));await settle(10);
+      expect(p.root.textContent).not.toContain(TOKEN);expect(p.root.querySelector(".runtime-pairing")).toBeNull();
+    });
+    it("makes a pairing code only when asked (Manual options) or when the ZIP route is opened, never for the one-time command",async()=>{
+      await open("runtime-enroll-manual-code");
+      expect(requests.some(item=>item.path==="/ui/runtimes/pairing")).toBe(false);
+      button("Show a pairing code").click();await settle(8);
+      expect(requests.filter(item=>item.path==="/ui/runtimes/pairing")).toHaveLength(1);expect(p.root.querySelector(".runtime-manual-command .runtime-pair-code").value).toBe("PAIR-TEST-CODE");
+      expect(commands().join(" ")).not.toContain("PAIR-TEST-CODE");
+      await zipTab();expect(requests.filter(item=>item.path==="/ui/runtimes/pairing")).toHaveLength(1);   // already there: not made twice
+    });
+    it("makes the token visible: the header button on the ZIP tab goes to the Windows tab, and the ZIP route makes no token of its own",async()=>{
+      machines=[machine(idA,"Desktop")];await p.mount(h(Panel,{navKey:"runtime-enroll-header"}));await settle(8);
+      button("Download Windows Runtime (ZIP)").click();await settle(10);
+      expect(tabs()[1].getAttribute("aria-selected")).toBe("true");expect(requests.some(item=>item.path==="/ui/runtimes/enrollment")).toBe(false);   // the ZIP route needs no token
+      expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
+      // switching to Windows shows how to get a command, instead of an empty step; the header button then makes one and shows it
+      tabs()[0].click();await settle(6);expect(commands().some((text:string)=>text.includes(TOKEN))).toBe(false);expect(p.root.querySelector(".runtime-enroll-generate").textContent).toBe("Generate the install command");
+      tabs()[1].click();await settle(6);button("Connect a computer").click();await settle(10);
+      expect(tabs()[0].getAttribute("aria-selected")).toBe("true");expect(requests.filter(item=>item.path==="/ui/runtimes/enrollment")).toHaveLength(1);expect(commands()[0]).toContain(TOKEN);
+    });
+    it("makes a token from the generate button when there is none yet",async()=>{
+      machines=[machine(idA,"Desktop")];await p.mount(h(Panel,{navKey:"runtime-enroll-generate"}));await settle(8);
+      button("Download Windows Runtime (ZIP)").click();await settle(10);tabs()[0].click();await settle(6);
+      p.root.querySelector(".runtime-enroll-generate").click();await settle(10);
+      expect(commands()[0]).toContain(TOKEN);expect(p.root.querySelector(".runtime-enroll-generate")).toBeNull();expect(requests.filter(item=>item.path==="/ui/runtimes/enrollment")).toHaveLength(1);
+    });
+    it("does not make a new pairing code on its own when the shown one expires; the card offers one on request",async()=>{
+      pairingTtl=120;machines=[machine(idA,"Desktop")];await p.mount(h(Panel,{navKey:"runtime-zip-expiry"}));await settle(8);
+      button("Download Windows Runtime (ZIP)").click();await settle(10);expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
+      await new Promise(done=>setTimeout(done,400));await settle(10);
+      expect(p.root.querySelector(".runtime-pair-code")).toBeNull();expect(requests.filter(item=>item.path==="/ui/runtimes/pairing")).toHaveLength(1);   // not re-made behind the administrator's back
+      pairingTtl=60000;button("New code").click();await settle(10);expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");expect(requests.filter(item=>item.path==="/ui/runtimes/pairing")).toHaveLength(2);
+    });
+    it("measures a token's life from when the answer arrived, not by comparing the server's clock with the browser's (a skewed clock does not hide a valid command)",async()=>{
+      enrollSkew=3_600_000;machines=[machine(idA,"Desktop")];await open("runtime-enroll-skew");      // the server's clock is an hour ahead of this browser's
+      expect(commands()[0]).toContain(TOKEN);expect(p.root.querySelector(".runtime-enroll-clock").textContent).toMatch(/^Expires in 1[45]:\d\d$/);expect(p.root.querySelector(".runtime-enroll-ended")).toBeNull();
+      await p.unmount();enrollSkew=-3_600_000;catalog.forgetRuntimeCatalog();await open("runtime-enroll-skew-behind");   // and an hour behind
+      expect(commands()[0]).toContain(TOKEN);expect(p.root.querySelector(".runtime-enroll-clock").textContent).toMatch(/^Expires in 1[45]:\d\d$/);
+    });
     it("keeps the ZIP flow as it was inside its tab: download, connect-agend.bat and the manual command",async()=>{
       await open("runtime-zip-unchanged");await zipTab();
       expect(stepTitles()).toEqual(["AgEnD address","Download the Runtime","Double-click connect-agend.bat there","Return here to approve"]);
       expect(p.root.querySelector(".runtime-command").value).toBe('.\\agend-runtime.cmd connect --server "http://localhost"');
       expect(p.root.querySelector(".runtime-bundle-download").textContent).toContain("Download Windows Runtime");
+    });
+  });
+  describe("a computer that joined with an install command",()=>{
+    const joined=(id=idB,name="Laptop")=>({...machine(id,name),enrolledVia:"install-command",enrollmentId:ENROLL_ID,approvedAt:Date.now()-60_000});
+    const notice=()=>p.root.querySelector(".runtime-joined");
+    beforeEach(()=>{(globalThis as any).localStorage.removeItem("agend.runtime.joined.dismissed");});
+    it.each([
+      ["en","A new computer joined with an install command","no pairing code and no approval step","Revoke","Dismiss","Joined by install command"],
+      ["zh-TW","有新電腦透過安裝指令加入","沒有配對碼，也沒有核准步驟","撤銷","關閉通知","以安裝指令加入"],
+    ] as const)("announces it on the page with a way to revoke it (%s), without opening the connect panel",async(lang,title,body,revoke,dismiss,badge)=>{
+      const i18n=await import("/assets/app-i18n.js");i18n.setLang(lang,{store:false});
+      try{
+        machines=[machine(idA,"Desktop"),joined()];await p.mount(h(Panel,{navKey:`joined-${lang}`}));await settle(12);
+        expect(p.root.querySelector(".runtime-pairing")).toBeNull();
+        expect(notice().getAttribute("role")).toBe("status");expect(notice().textContent).toContain(title);expect(notice().textContent).toContain("Laptop");expect(notice().textContent).toContain(body);
+        expect(notice().querySelectorAll("button").map((item:any)=>item.textContent.trim())).toEqual([revoke,dismiss]);
+        expect(p.root.querySelector(`[data-machine-id="${idB}"] .runtime-kind`).textContent).toBe(badge);expect(p.root.querySelector(`[data-machine-id="${idA}"] .runtime-kind`).textContent).not.toBe(badge);
+      }finally{i18n.setLang("en",{store:false});}
+    });
+    it("does not announce a computer that was paired the usual way",async()=>{
+      await p.mount(h(Panel,{navKey:"joined-none"}));await settle(12);expect(notice()).toBeNull();
+      machines=[machine(idA,"Desktop"),{...joined(),enrolledVia:undefined}];catalog.forgetRuntimeCatalog();await p.unmount();await p.mount(h(Panel,{navKey:"joined-none-2"}));await settle(12);expect(notice()).toBeNull();
+    });
+    it("revokes the computer from the notice, with the same confirmation and request as the card's own menu",async()=>{
+      (globalThis as any).confirm=()=>true;machines=[machine(idA,"Desktop"),joined()];await p.mount(h(Panel,{navKey:"joined-revoke"}));await settle(12);
+      notice().querySelectorAll("button")[0].click();await settle(12);
+      expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/revoke`,body:{}});expect(notice()).toBeNull();
+      expect(p.root.querySelector(`[data-machine-id="${idB}"]`).className).toContain("is-revoked");
+    });
+    it("is dismissed for good in this browser, and a revoked or old one is not announced",async()=>{
+      machines=[machine(idA,"Desktop"),joined()];await p.mount(h(Panel,{navKey:"joined-dismiss"}));await settle(12);
+      notice().querySelectorAll("button")[1].click();await settle(8);expect(notice()).toBeNull();
+      expect(JSON.parse((globalThis as any).localStorage.getItem("agend.runtime.joined.dismissed"))).toEqual([idB]);
+      expect(requests.some(item=>/\/revoke$/.test(item.path))).toBe(false);                   // dismissing only hides the notice; the computer stays connected
+      await p.unmount();catalog.forgetRuntimeCatalog();await p.mount(h(Panel,{navKey:"joined-dismiss-again"}));await settle(12);expect(notice()).toBeNull();
+      await p.unmount();catalog.forgetRuntimeCatalog();(globalThis as any).localStorage.removeItem("agend.runtime.joined.dismissed");
+      machines=[machine(idA,"Desktop"),{...joined(),status:"revoked"},{...joined("32345678-1234-4321-abcd-123456789012","Old"),approvedAt:Date.now()-8*24*3_600_000}];
+      await p.mount(h(Panel,{navKey:"joined-old"}));await settle(12);expect(notice()).toBeNull();
+    });
+    it("ignores a damaged dismissal record",async()=>{
+      (globalThis as any).localStorage.setItem("agend.runtime.joined.dismissed","{not json");machines=[machine(idA,"Desktop"),joined()];
+      await p.mount(h(Panel,{navKey:"joined-damaged"}));await settle(12);expect(notice()).not.toBeNull();
     });
   });
   it("downloads a connection-ready ZIP with the reviewed address in a protected POST and claims one download",async()=>{
@@ -486,8 +642,10 @@ describe("machine snapshot boundary",()=>{
     expect(installCommand("https://runtime.example.com:443",SCRIPT_SHA)).toContain("$agend = 'https://runtime.example.com'; $s = $null; $h = $null; $s = (iwr \"$agend/runtime/install.ps1\" -UseBasicParsing).Content;");
     expect(installCommand("http://localhost:19280",SCRIPT_SHA)).toContain("$agend = 'http://localhost:19280';");
     expect(windowsConnectCommand("https://runtime.example.com:443")).toBe('agend-runtime connect --server "https://runtime.example.com"');
+    // the install-only command is the same pinned command with the switch around it, and nothing else
+    expect(installOnlyCommand("https://runtime.example.com:443",SCRIPT_SHA)).toBe(`$agendNoConnect = 1; ${installCommand("https://runtime.example.com:443",SCRIPT_SHA)}; $agendNoConnect = $null`);
     for(const bad of ["http://192.168.1.2:19280","https://user:password@example.com","https://example.com/?x=$(calc)","https://$(calc)","https://example.com/path","https://example.com;calc","https://exa'mple.com","https://example.com/'; calc; '","",undefined as any]){
-      expect(installCommand(bad,SCRIPT_SHA),String(bad)).toBe("");expect(windowsConnectCommand(bad),String(bad)).toBe("");
+      expect(installCommand(bad,SCRIPT_SHA),String(bad)).toBe("");expect(installOnlyCommand(bad,SCRIPT_SHA),String(bad)).toBe("");expect(windowsConnectCommand(bad),String(bad)).toBe("");
     }
     for(const good of ["https://runtime.example.com","https://[fd7a:115c::1]:8445","http://127.0.0.1:19280"]){
       const text=installCommand(good,SCRIPT_SHA);
@@ -499,7 +657,22 @@ describe("machine snapshot boundary",()=>{
       expect(text).not.toMatch(/\n|SkipCertificateCheck|ServerCertificateValidationCallback|Set-ExecutionPolicy|-ExecutionPolicy|setx|\|\s*iex/i);
     }
     // The command needs the server's hash: without a valid one there is no command to copy (never an unpinned fallback).
-    for(const bad of ["",undefined,null,"A".repeat(64),"abc","g".repeat(64),`${SCRIPT_SHA}'; calc; '`])expect(installCommand("https://runtime.example.com",bad as any),String(bad)).toBe("");
+    for(const bad of ["",undefined,null,"A".repeat(64),"abc","g".repeat(64),`${SCRIPT_SHA}'; calc; '`]){expect(installCommand("https://runtime.example.com",bad as any),String(bad)).toBe("");expect(installOnlyCommand("https://runtime.example.com",bad as any),String(bad)).toBe("");}
+  });
+  it("builds the one-time install command around the same pinned command, with the token and server fingerprint as inert, single-quoted values cleared in a finally",()=>{
+    const origin="https://runtime.example.com", text=enrollCommand(origin,SCRIPT_SHA,TOKEN,FINGERPRINT), base=installCommand(origin,SCRIPT_SHA);
+    expect(text).toMatch(new RegExp(`^\\$global:LASTEXITCODE = 0; \\$agendEnroll = '${TOKEN}'; \\$agendFingerprint = '${FINGERPRINT}'; try \\{ `));
+    expect(text).toContain(` try { ${base} } finally { $agendEnroll = $null; $agendFingerprint = $null }; if ($LASTEXITCODE) { Write-Error '`);   // the status of the last step reaches the shell's exit code
+    expect(text).toMatch(/-ErrorAction SilentlyContinue \}$/);
+    expect(text.match(/\biex\b/g)).toHaveLength(1);expect(text).not.toMatch(/\n|SkipCertificateCheck|Set-ExecutionPolicy|-ExecutionPolicy|setx|\|\s*iex/i);
+    expect(text).not.toContain("agendNoConnect");expect(text).not.toMatch(/--[a-z]/);   // no flag and no argument: the token is read from two variables, handed over on stdin
+    expect(text.split(TOKEN)).toHaveLength(2);                                            // the token appears exactly once, in its own assignment
+    // without the pinned script hash, an address that is not an origin, or a token or fingerprint of the wrong shape, there is no command at all
+    for(const [o,h,t,f] of [["https://example.com/path",SCRIPT_SHA,TOKEN,FINGERPRINT],[origin,"",TOKEN,FINGERPRINT],[origin,SCRIPT_SHA,"",FINGERPRINT],[origin,SCRIPT_SHA,TOKEN+"x",FINGERPRINT],[origin,SCRIPT_SHA,TOKEN.toUpperCase(),FINGERPRINT],[origin,SCRIPT_SHA,`${TOKEN.slice(0,-1)}'`,FINGERPRINT],
+      [origin,SCRIPT_SHA,TOKEN,"nope"],[origin,SCRIPT_SHA,TOKEN,FINGERPRINT.toUpperCase()],[origin,SCRIPT_SHA,TOKEN,`${FINGERPRINT.slice(0,-1)}'`],[origin,SCRIPT_SHA,undefined,FINGERPRINT],[origin,SCRIPT_SHA,TOKEN,undefined]] as const)
+      expect(enrollCommand(o,h as any,t as any,f as any),`${o} ${h} ${t} ${f}`).toBe("");
+    // the commands that carry no token carry none of it
+    for(const other of [base,installOnlyCommand(origin,SCRIPT_SHA),windowsConnectCommand(origin),connectCommand(origin)])expect(other).not.toMatch(/agendEnroll|agend_enroll|agendFingerprint/);
   });
   it("coalesces reads and keeps the last good snapshot after a network failure, clearing it on lost authorization",async()=>{
     let resolve!:(value:any)=>void;let count=0;let mode="pending";

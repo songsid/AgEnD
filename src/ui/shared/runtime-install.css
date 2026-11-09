@@ -28,3 +28,17 @@
 .runtime-update-notice { margin-block: .75rem; padding: .6rem .8rem; border-inline-start: 3px solid var(--border, #777); }
 .runtime-update-notice p { margin-block: .25rem; overflow-wrap: anywhere; }
 .runtime-update-notice[role="alert"] { border-inline-start-color: var(--warning, #b87218); }
+/* the one-time install command's card, and the notice that a computer joined with it. */
+.runtime-enroll-card h4 { margin: 0 0 var(--s-3); font-size: var(--fs-md); }
+.runtime-enroll-card.is-used .runtime-pair-status { color: var(--ok); }
+.runtime-enroll-card.is-expired .runtime-pair-status, .runtime-enroll-card.is-revoked .runtime-pair-status { color: var(--warn); }
+.runtime-enroll-clock { font-variant-numeric: tabular-nums; }
+/* the shared straight bar (.lbar in app.css), with the 3px it takes added to the padding */
+.runtime-enroll-warning { --lbar-color: var(--warn); padding: var(--s-2) var(--s-3) var(--s-2) calc(var(--s-3) + 3px); background: var(--warn-bg); }
+.runtime-enroll-ended { margin: 0 0 var(--s-2); padding: var(--s-3); border: 1px solid var(--warn); border-radius: var(--r-sm); background: var(--warn-bg); }
+.runtime-joined { display: flex; align-items: flex-start; gap: var(--s-3); margin: 0 0 var(--s-3); padding: var(--s-3) var(--s-4); border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-bg); }
+.runtime-joined-text { flex: 1; min-width: 0; }
+.runtime-joined h4 { margin: 0 0 var(--s-1); font-size: var(--fs-md); }
+.runtime-joined .note { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.runtime-joined-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); flex: none; }
+@media (max-width: 600px) { .runtime-joined { flex-wrap: wrap; } .runtime-joined-actions { width: 100%; } }

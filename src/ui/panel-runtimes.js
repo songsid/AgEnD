@@ -11,7 +11,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
-import { runtimeConnectCommand, runtimeInstallCommand, runtimeWindowsConnectCommand } from "./runtime-commands.js";
+import { runtimeConnectCommand, runtimeEnrollCommand, runtimeInstallCommand, runtimeInstallOnlyCommand, runtimeWindowsConnectCommand } from "./runtime-commands.js";
 import { RuntimeUpdateNotice, runtimeUpdateText, runtimeFreshInstallCommand } from "./runtime-update-status.js";
 import { credentialProfileView, credentialProfileState } from "./credential-profile-select.js";
 import { identityText } from "./account-identity.js";
@@ -58,7 +58,7 @@ register("machines", {
     guide:"How another PC connects", guideAddress:"1. Give this fleet an HTTPS address the other PC can reach. Recommended: Tailscale Serve, run on this computer (on Windows, if AgEnD runs in WSL). Then use the https://….ts.net address it prints:",
     guideSsh:"Or: an SSH tunnel, opened on the other PC (replace user@this-computer with your SSH sign-in for this computer). Then use http://localhost:{0}:", guideFunnel:"Never use Tailscale Funnel: it puts this fleet on the internet.",
     guideLan:"A plain http:// address on your network (such as http://192.168.1.20) is refused: it would send the pairing code unencrypted.",
-    guidePair:"2. Click Connect a computer, install the Runtime on the other PC with the PowerShell command it shows (or download the ZIP instead), then run the connect command there.", guideApprove:"3. When that PC asks to join, approve it here.",
+    guidePair:"2. Click Connect a computer, copy the one-time PowerShell command it shows and paste it on the other PC, or give it to an AI agent running there: it installs the Runtime and connects, with no pairing code and no approval. A pairing code (under Manual options) or the ZIP is the alternative.", guideApprove:"3. That PC then appears under Connected computers, with a notice and a Revoke button. Pairing-code and ZIP connections ask you to approve here.",
     turnOff:"Turn off",
   },
   "zh-TW": {
@@ -85,11 +85,11 @@ register("machines", {
     guide:"另一台電腦如何連線", guideAddress:"1. 讓另一台電腦能用 HTTPS 位址連到這個 Fleet。建議在這台電腦上執行 Tailscale Serve（若 AgEnD 在 WSL 中執行，請在 Windows 上執行），再使用它顯示的 https://….ts.net 位址：",
     guideSsh:"或：在另一台電腦上開啟 SSH 通道（把 user@this-computer 換成你登入這台電腦的 SSH 帳號），再使用 http://localhost:{0}：", guideFunnel:"請勿使用 Tailscale Funnel：它會把這個 Fleet 公開到網際網路。",
     guideLan:"網路上的一般 http:// 位址（例如 http://192.168.1.20）會被拒絕：配對碼會以未加密的方式傳送。",
-    guidePair:"2. 按「連接電腦」，在另一台電腦用頁面顯示的 PowerShell 指令安裝 Runtime（或改為下載 ZIP），再在那裡執行連線指令。", guideApprove:"3. 那台電腦要求加入時，在這裡核准它。",
+    guidePair:"2. 按「連接電腦」，複製頁面顯示的一次性 PowerShell 指令，貼到另一台電腦，或交給在那台電腦上執行的 AI agent：它會安裝 Runtime 並直接連線，不用配對碼，也不用核准。配對碼（在手動選項裡）或 ZIP 是另外的做法。", guideApprove:"3. 那台電腦會出現在「已連接的電腦」，並有通知和撤銷按鈕。用配對碼或 ZIP 連線時，要在這裡核准。",
     turnOff:"關閉此功能",
   },
 });
-export { runtimeConnectCommand, runtimeInstallCommand, runtimeWindowsConnectCommand };
+export { runtimeConnectCommand, runtimeEnrollCommand, runtimeInstallCommand, runtimeInstallOnlyCommand, runtimeWindowsConnectCommand };
 export const machineText = (key,...values) => t(`machines.${key}`,...values);
 register("machines", {
   en: { computersTitle:"Computers and CLIs", firstConnection:"Connecting for the first time?", stepDownload:"Download the Runtime", stepRun:"Run it on another computer", stepApprove:"Return here to approve", connectionNote:"Each computer keeps its own CLI sign-ins.", fleetScope:"Entire fleet", nativeWindows:"Native Windows", nativeHint:"CLIs and existing sign-ins on this computer's Windows installation.", inventoryHint:"Open diagnostics to inspect CLI availability and sign-ins." },
@@ -116,13 +116,14 @@ register("machines", {
   "zh-TW": { versionNotReported:"此 Runtime 未提供版本資訊", versionUnreadable:"無法讀取 Runtime 版本資訊", buildId:"程式碼 Build ID", buildUnavailable:"無法取得 Build ID", protocols:"支援的協定", compatibility:"協定相容狀態", compatible:"相容", legacy:"已使用協定 v1 連線，未提供版本資訊。可重新執行安裝指令來更新", incompatible:"與這台 AgEnD 不相容：請在那台電腦重新執行安裝指令", protocolUnknown:"尚未回報協定資訊", capabilities:"回報功能", capability_exec:"單次任務", capability_mcp:"AgEnD 工具（MCP）", capability_panes:"持續終端" },
 });
 register("machines", {
-  en: { downloadBuilding:"Preparing ZIP…", stepZipHint:"Includes the address above. Extract it on the other computer.", stepLaunch:"Double-click connect-agend.bat there", stepLaunchHint:"Enter the pairing code when asked. A saved profile reconnects without it. If that computer is already paired to another AgEnD, this one gets its own profile and the existing pairing is kept. The window stays open and explains what to do if AgEnD disconnects it, including when jobs.json from another pairing must be deleted.",manualMultiHint:"Without agend-server.json, a profile paired to another AgEnD is never reused. Add --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\" (any folder) to keep both, and pass the same --profile to run, status, rotate and disconnect.", stepApproveHint:"Keep the Runtime window open.", pairingApprove:"A computer is waiting for your approval", copyCode:"Copy", codeCopied:"Copied", newCode:"New code", manualCommand:"Manual connection command", downloadedFor:"Downloaded for: {0}", downloadFailed:"Could not download the Runtime", pairingHint:"Follow the four steps. This page updates automatically." },
-  "zh-TW": { downloadBuilding:"正在準備 ZIP…", stepZipHint:"已內含上方位址，請在另一台電腦解壓縮。", stepLaunch:"在那台電腦雙擊 connect-agend.bat", stepLaunchHint:"提示時輸入配對碼；已有配對資料時會直接重連。若那台電腦已配對到另一個 AgEnD，這次會自動使用獨立的資料夾，原本的配對不受影響。若 AgEnD 中斷連線，視窗會保持開啟並說明下一步，包括何時需要刪除另一個配對留下的 jobs.json。",manualMultiHint:"沒有 agend-server.json 時，已配對到其他 AgEnD 的資料夾不會被重複使用。請加上 --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\"（任何資料夾皆可）讓兩個都保留，之後 run、status、rotate、disconnect 也要帶相同的 --profile。", stepApproveHint:"請保持 Runtime 視窗開啟。", pairingApprove:"有電腦正在等待你核准", copyCode:"複製", codeCopied:"已複製", newCode:"重新產生", manualCommand:"手動連線指令", downloadedFor:"已下載，連線位址：{0}", downloadFailed:"無法下載 Runtime", pairingHint:"依下列四步操作，此頁會自動更新。" },
+  en: { downloadBuilding:"Preparing ZIP…", stepZipHint:"Includes the address above. Extract it on the other computer.", stepLaunch:"Double-click connect-agend.bat there", stepLaunchHint:"Enter the pairing code when asked. A saved profile reconnects without it. If that computer is already paired to another AgEnD, this one gets its own profile and the existing pairing is kept. The window stays open and explains what to do if AgEnD disconnects it, including when jobs.json from another pairing must be deleted.",manualMultiHint:"Without agend-server.json, a profile paired to another AgEnD is never reused. Add --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\" (any folder) to keep both, and pass the same --profile to run, status, rotate and disconnect.", stepApproveHint:"Keep the Runtime window open.", pairingApprove:"A computer is waiting for your approval", copyCode:"Copy", codeCopied:"Copied", newCode:"New code", manualCommand:"Manual connection command", downloadedFor:"Downloaded for: {0}", downloadFailed:"Could not download the Runtime", pairingHint:"Generate a one-time install command, paste it on the other computer, and this page shows that computer joining." },
+  "zh-TW": { downloadBuilding:"正在準備 ZIP…", stepZipHint:"已內含上方位址，請在另一台電腦解壓縮。", stepLaunch:"在那台電腦雙擊 connect-agend.bat", stepLaunchHint:"提示時輸入配對碼；已有配對資料時會直接重連。若那台電腦已配對到另一個 AgEnD，這次會自動使用獨立的資料夾，原本的配對不受影響。若 AgEnD 中斷連線，視窗會保持開啟並說明下一步，包括何時需要刪除另一個配對留下的 jobs.json。",manualMultiHint:"沒有 agend-server.json 時，已配對到其他 AgEnD 的資料夾不會被重複使用。請加上 --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\"（任何資料夾皆可）讓兩個都保留，之後 run、status、rotate、disconnect 也要帶相同的 --profile。", stepApproveHint:"請保持 Runtime 視窗開啟。", pairingApprove:"有電腦正在等待你核准", copyCode:"複製", codeCopied:"已複製", newCode:"重新產生", manualCommand:"手動連線指令", downloadedFor:"已下載，連線位址：{0}", downloadFailed:"無法下載 Runtime", pairingHint:"產生一次性安裝指令，貼到另一台電腦執行，這一頁會顯示那台電腦加入。" },
 });
 register("machines", {
   en: { installMethod:"Install method", tabWindows:"Windows (PowerShell)", tabZip:"Other install methods (ZIP)",
-    stepInstall:"Install the Runtime", stepInstallHint:"Paste this into PowerShell on the other Windows computer. It downloads install.ps1 from this AgEnD, checks it against the SHA-256 below and only then runs it. The installer verifies the Runtime's own checksum and installs it for your Windows user only, next to any version already there (nothing already installed is deleted). It does not connect, pair or need administrator rights. Windows Node.js 22.14 or newer is required; if it is missing, the command only tells you how to get it.",
-    stepConnect:"Connect that computer", stepConnectHint:"Run this in the same PowerShell window (or open a new one). It asks for the one-time pairing code on the right, shows a pairing fingerprint, then waits for your approval here. The code is typed there, never put in the command.",
+    stepInstall:"Copy the one-time install command", stepInstallHint:"Paste this into PowerShell on any Windows computer, or hand it to an AI agent running there. It downloads install.ps1 from this AgEnD, checks it against the SHA-256 below and only then runs it. The installer verifies the Runtime's own checksum, installs it for that Windows user only (next to any version already there; nothing already installed is deleted; no administrator rights needed) and connects the computer straight away: no pairing code and no approval step. Windows Node.js 22.14 or newer is required; if it is missing, the command only tells you how to get it.",
+    stepConnect:"Paste it on the other computer", stepConnectHint:"It can be any computer that can reach this AgEnD's address, not only this one. The window installs, checks this AgEnD's server fingerprint, connects and keeps running; there is nothing to type and nothing to approve here. To reconnect later, double-click connect-agend.bat in the install folder (the installer prints where it is). A computer that is already connected to this AgEnD just reconnects, and the token stays unused.",
+    manualCommands:"Manual options (pairing code, install only)", manualCommandsHint:"For a person at an interactive PowerShell window who prefers a pairing code: the first command only installs; the second asks for the one-time pairing code below, shows a pairing fingerprint and waits for your approval here.", installOnlyCommand:"Install only (does not connect)", manualCodeNote:"A pairing code cannot be put in a command or a variable: it is typed at an interactive terminal. For an AI agent or CI, use the one-time install command above instead.",
     installCommand:"Install command", connectCommand:"Connect command", copyCommand:"Copy command", commandCopied:"Copied",
     installerHash:"The command checks install.ps1 against this SHA-256 before it runs anything:", installerLoading:"Preparing the installer hash…",
     installerUnavailable:"This AgEnD cannot offer the installer (for example its Runtime files were not built), so there is no install command. Use Other install methods (ZIP).", installerRetry:"Try again",
@@ -131,8 +132,9 @@ register("machines", {
     needsReinstall:"This computer's Runtime is not compatible with this AgEnD, so it cannot connect or run work. Run the install command from Connect a computer on that computer again: it installs the matching Runtime next to the old one, and the pairing is kept.",
     zipTabHint:"Prefer not to run a command? Download the ZIP here, move it to the other computer and extract it." },
   "zh-TW": { installMethod:"安裝方式", tabWindows:"Windows（PowerShell）", tabZip:"其他安裝方式（ZIP）",
-    stepInstall:"安裝 Runtime", stepInstallHint:"在另一台 Windows 電腦的 PowerShell 貼上這行指令。它會從這台 AgEnD 下載 install.ps1，先用下方的 SHA-256 檢查，相符才執行。安裝程式會再驗證 Runtime 自己的校驗碼，並只為你的 Windows 使用者安裝，放在既有版本旁邊（不會刪除任何已安裝的東西）；不會連線、不會配對，也不需要系統管理員權限。需要 Windows Node.js 22.14 以上；若沒有，指令只會告訴你怎麼取得。",
-    stepConnect:"連接那台電腦", stepConnectHint:"在同一個 PowerShell 視窗（或新開一個）執行。它會要求輸入右側的一次性配對碼、顯示配對指紋，然後等待你在這裡核准。配對碼是在那裡輸入的，不會寫進指令。",
+    stepInstall:"複製一次性安裝指令", stepInstallHint:"在任何一台 Windows 電腦的 PowerShell 貼上這行指令，或交給在那台電腦上執行的 AI agent。它會從這台 AgEnD 下載 install.ps1，先用下方的 SHA-256 檢查，相符才執行。安裝程式會再驗證 Runtime 自己的校驗碼，並只為那個 Windows 使用者安裝，放在既有版本旁邊（不會刪除任何已安裝的東西，也不需要系統管理員權限），然後立刻連線那台電腦：不用配對碼，也不用另外核准。需要 Windows Node.js 22.14 以上；若沒有，指令只會告訴你怎麼取得。",
+    stepConnect:"在另一台電腦貼上並執行", stepConnectHint:"不限這台電腦，只要能連到這台 AgEnD 的位址都可以。視窗會安裝、比對這台 AgEnD 的伺服器指紋、連線並持續執行；不用輸入任何東西，也不用回來核准。之後要重連，請雙擊安裝資料夾裡的 connect-agend.bat（安裝程式會印出它的位置）。已經連到這台 AgEnD 的電腦只會重連，token 不會被用掉。",
+    manualCommands:"手動選項（配對碼、只安裝）", manualCommandsHint:"適合在互動式 PowerShell 視窗前、想用配對碼的人：第一行只安裝；第二行會要求輸入下方的一次性配對碼，顯示配對指紋，並等待你在這裡核准。", installOnlyCommand:"只安裝（不連線）", manualCodeNote:"配對碼不能放進指令或變數，只能在互動式終端機輸入。AI agent 或 CI 請改用上方的一次性安裝指令。",
     installCommand:"安裝指令", connectCommand:"連線指令", copyCommand:"複製指令", commandCopied:"已複製",
     installerHash:"指令會先用這個 SHA-256 檢查 install.ps1，相符才會執行任何東西：", installerLoading:"正在準備安裝程式雜湊…",
     installerUnavailable:"這台 AgEnD 無法提供安裝程式（例如缺少 Runtime 檔案），所以沒有安裝指令。請改用「其他安裝方式（ZIP）」。", installerRetry:"重試",
@@ -140,6 +142,53 @@ register("machines", {
     restrictedHelp:"在受限語言模式（Constrained Language Mode）或 AppLocker 下，這個指令會停下來、什麼都不執行（那裡無法做檢查）：請改用「其他安裝方式（ZIP）」。指令不會變更你的執行原則。",
     needsReinstall:"這台電腦的 Runtime 與這台 AgEnD 不相容，無法連線或執行工作。請在那台電腦再執行一次「連接電腦」頁面上的安裝指令：它會把相符的 Runtime 安裝在舊版旁邊，配對會保留。",
     zipTabHint:"不想執行指令？在這裡下載 ZIP，傳到另一台電腦並解壓縮。" },
+});
+// the one-time install command (a token made by this page), its card, and the notice that a computer joined with it.
+register("machines", {
+  en: {
+    "enrollCardTitle": "One-time install command",
+    "enrollExpiresIn": "Expires in {0}",
+    "enrollExpired": "This install command has expired. Generate a new one.",
+    "enrollUsed": "A computer joined with this command; the token is spent.",
+    "enrollRevoked": "This install command was revoked. Generate a new one.",
+    "enrollWait": "Waiting for a computer to run the command",
+    "enrollNew": "New command",
+    "enrollRevoke": "Revoke and close",
+    "enrollSecurity": "Treat this command like a password. Anyone who gets it before it expires or is used can connect their own computer to this AgEnD, and agent work (code, prompts) would then run there. It works once, for 15 minutes, on any computer. A new command or Revoke ends it. Do not paste it into chats, tickets or screenshots; PowerShell also keeps pasted commands in its history.",
+    "enrollJoinedStep": "{0} joined with this command.",
+    "enrollFingerprint": "AgEnD server fingerprint (the Runtime checks it before it sends the token):",
+    "showPairingCode": "Show a pairing code",
+    "hideEnroll": "Hide this command",
+    "joinedTitle": "A new computer joined with an install command",
+    "joinedBody": "{0} was added {1} with a one-time token from this page: no pairing code and no approval step. If you did not expect it, revoke it now.",
+    "joinedRevoke": "Revoke",
+    "joinedDismiss": "Dismiss",
+    "enrolledBadge": "Joined by install command",
+    "enrollNoInstaller": "The install command appears once the installer information has loaded.",
+    "enrollGenerate": "Generate the install command"
+  },
+  "zh-TW": {
+    "enrollCardTitle": "一次性安裝指令",
+    "enrollExpiresIn": "{0} 後到期",
+    "enrollExpired": "這個安裝指令已經到期，請重新產生。",
+    "enrollUsed": "已有電腦用這個指令加入；token 已用掉。",
+    "enrollRevoked": "這個安裝指令已被撤銷，請重新產生。",
+    "enrollWait": "等待電腦執行這個指令",
+    "enrollNew": "重新產生",
+    "enrollRevoke": "撤銷並關閉",
+    "enrollSecurity": "請把這行指令當成密碼。在它到期或被使用之前，任何拿到的人都能把自己的電腦連到這台 AgEnD，之後 Agent 的工作（程式碼、提示詞）就會在那台電腦上執行。它只能用一次、15 分鐘內有效，在任何電腦都能用。重新產生或撤銷就會讓它失效。請不要貼到聊天、工單或截圖；PowerShell 也會把貼上的指令存進歷史紀錄。",
+    "enrollJoinedStep": "{0} 已用這個指令加入。",
+    "enrollFingerprint": "AgEnD 伺服器指紋（Runtime 會先比對它，才送出 token）：",
+    "showPairingCode": "顯示配對碼",
+    "hideEnroll": "隱藏這個指令",
+    "joinedTitle": "有新電腦透過安裝指令加入",
+    "joinedBody": "{0} 在{1}以這一頁的一次性 token 加入：沒有配對碼，也沒有核准步驟。如果不是你預期的，請立刻撤銷。",
+    "joinedRevoke": "撤銷",
+    "joinedDismiss": "關閉通知",
+    "enrolledBadge": "以安裝指令加入",
+    "enrollNoInstaller": "安裝程式資訊載入完成後，才會顯示安裝指令。",
+    "enrollGenerate": "產生安裝指令"
+  },
 });
 register("machines", {
   en: { profilesTitle:"Claude accounts", profileDefault:"Default", profilesNone:"No Claude accounts reported yet.", profilesHow:"To add one, run agend-runtime login claude-code NAME on that computer, then choose Detect again in CLI diagnostics.", profilesOld:"Update the Runtime on that computer to choose a Claude account for an agent.", profilesList:"Claude accounts on {0}", profileSignedIn:"Signed in", profileSignedOut:"Not signed in", profileUnchecked:"Not checked", capability_credentialProfiles:"Claude accounts (credential profiles)" },
@@ -170,7 +219,7 @@ function MachineCard({ machine, busy, action, openDiagnostics, probe, repairUpda
     !local && status !== "revoked" && {key:"rename",label:machineText("rename"),icon:"edit",onSelect:()=>setEditing(true)},
     !local && status !== "revoked" && {key:"revoke",label:machineText("revoke"),icon:"close",danger:true,onSelect:()=>action(machine,"revoke")}];
   return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}${revoked ? " is-revoked" : ""}`} data-machine-id=${local ? "local" : machine.id}>
-    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText((clis.length) === 1 ? "cliCountOne" : "cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
+    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : machine.enrolledVia ? "enrolledBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText((clis.length) === 1 ? "cliCountOne" : "cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
     ${!local && !revoked && machine.runtimeCompatibility === "incompatible" ? html`<p class="runtime-reinstall" role="alert">${machineText("needsReinstall")}</p>` : null}
     ${!local && !revoked && status !== "pending" ? html`<${RuntimeUpdateNotice} machine=${machine} onRepair=${() => repairUpdate(machine)} />` : null}
     ${revoked ? null : html`<p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>`}
@@ -294,10 +343,28 @@ function RuntimeSwitches({ lease, onChanged, computers }) {
     ${guide}
   </div>`;
 }
+/** The countdown is its own component: it ticks every second without re-rendering the whole Runtime page. */
+function EnrollClock({ lease, expiresAt }) {
+  const [now,setNow]=useState(() => Date.now());
+  useEffect(() => { const timer=lease.interval(() => setNow(Date.now()),1000);return () => lease.clear(timer); },[lease]);
+  const seconds=Math.max(0,Math.ceil((expiresAt-now)/1000));
+  return html`<p class="note runtime-enroll-clock">${machineText("enrollExpiresIn",`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`)}</p>`;
+}
+/** Computers that joined with an install command stay announced on this page until the administrator dismisses the notice (kept in this browser only). */
+const JOINED_SEEN_KEY = "agend.runtime.joined.dismissed";
+function readSeenJoined() {
+  try { const value = JSON.parse(localStorage.getItem(JOINED_SEEN_KEY) || "[]"); return new Set(Array.isArray(value) ? value.filter(id => typeof id === "string").slice(-100) : []); }
+  catch { return new Set(); }
+}
+function writeSeenJoined(set) { try { localStorage.setItem(JOINED_SEEN_KEY, JSON.stringify([...set].slice(-100))); } catch { /* the notice comes back after a reload */ } }
+const JOINED_NOTICE_MS = 7 * 24 * 3_600_000;
 export function RuntimesPanel({navKey}) {
   const lease=useLease(`runtimes:${navKey}`), state=useRuntimeCatalog(), {windowsCli}=useStore(appStore);
   const localInventory=useWindowsCliCatalog(windowsCli);
   const [pairing,setPairing]=useState(null), [busy,setBusy]=useState(""), [error,setError]=useState("");
+  // The one-time install-command token lives here, in memory, and nowhere else (the server keeps only its hash); `open` shows the connect panel.
+  const [open,setOpen]=useState(false), [enroll,setEnroll]=useState(null), [,setTick]=useState(0), [seenJoined,setSeenJoined]=useState(readSeenJoined);
+  const zipAsked=useRef(false);
   const [server,setServer]=useState(() => typeof location === "undefined" ? "" : location.origin);
   const drafts=useRef(new Map()), taskSessions=useRef(new Map()), downloadClaim=useRef(false);
   const [downloadedFor,setDownloadedFor]=useState(""), [copied,setCopied]=useState(false);
@@ -316,6 +383,15 @@ export function RuntimesPanel({navKey}) {
     const timer=lease.timeout(() => setPairing(null),remaining);
     return () => lease.clear(timer);
   },[lease,pairing]);
+  // One re-render at the moment the token ends (the countdown itself is EnrollClock's). Expiry is measured on THIS browser's clock from when the answer arrived,
+  // by the token's length of life, never by comparing the server's clock with this one.
+  useEffect(() => {
+    if (!enroll) return;
+    const remaining=enroll.localExpiresAt-Date.now()+100;
+    if (remaining <= 0) return;
+    const timer=lease.timeout(() => setTick(count => count+1),remaining);
+    return () => lease.clear(timer);
+  },[lease,enroll]);
   const loadInstaller=async() => {
     setInstaller({status:"loading",sha:"",version:""});
     try {
@@ -326,17 +402,38 @@ export function RuntimesPanel({navKey}) {
       else setInstaller({status:"error",sha:"",version:""});
     } catch { if(lease.current())setInstaller({status:"error",sha:"",version:""}); }
   };
-  useEffect(() => { if ((pairing || repairMachine) && installer.status === "idle") void loadInstaller(); },[pairing,repairMachine,installer.status]);
+  useEffect(() => { if ((open || repairMachine) && installer.status === "idle") void loadInstaller(); },[open,repairMachine,installer.status]);
+  // The ZIP route uses a pairing code, made only when that route is shown (or asked for under Manual options), never for the install command.
+  // Once per opening of the panel: an expired code is not replaced behind the administrator's back (the card offers a new one).
+  useEffect(() => { if (open && tab === "zip" && !pairing && !busy && !zipAsked.current) { zipAsked.current=true;void newPairingCode(); } },[open,tab,pairing]);
   const post=async(path,body={}) => {
     const response=await lease.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const value=await response.json();
     if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
     return value;
   };
+  // Makes a one-time install-command token (and ends any earlier unused one). Same authorization as a pairing code.
   const connect=async() => {
+    setBusy("pairing");setError("");
+    try {const value=await post("/ui/runtimes/enrollment");if(lease.current()){setEnroll({...value,localExpiresAt:Date.now()+Math.max(0,value.expiresAt-value.createdAt)});setInstallCopied(false);setTab("windows");setOpen(true);}}catch(e){if(lease.current())setError(e.message);}finally{if(lease.current())setBusy("");}
+  };
+  const newPairingCode=async() => {
     setBusy("pairing");setError("");
     try {const value=await post("/ui/runtimes/pairing");if(lease.current())setPairing(value);}catch(e){if(lease.current())setError(e.message);}finally{if(lease.current())setBusy("");}
   };
+  const openZip=() => { setTab("zip");setOpen(true); };
+  // Closing from the card ends an unused token: nothing on screen can show it again, so it should not stay valid. (Leaving the page without closing does not revoke it:
+  // the command may already be copied, and it ends by itself after 15 minutes.)
+  const closePanel=async() => {
+    if(enroll && enrollStatus === "unused") {
+      setBusy("pairing");setError("");
+      try {await post(`/ui/runtimes/enrollment/${encodeURIComponent(enroll.id)}/revoke`);}catch(e){if(lease.current())setError(e.message);}finally{if(lease.current())setBusy("");}
+    }
+    if(!lease.current())return;
+    setEnroll(null);setPairing(null);setOpen(false);zipAsked.current=false;
+    await state.refresh();
+  };
+  const dismissJoined=id => setSeenJoined(seen => { const next=new Set(seen).add(id); writeSeenJoined(next); return next; });
   const action=async(machine,operation,body={}) => {
     if(operation === "revoke" && !await confirmDialog({message:machineText("revokeAsk"),confirmLabel:machineText("revoke"),danger:true}))return false;
     if(!lease.current())return false;
@@ -366,11 +463,15 @@ export function RuntimesPanel({navKey}) {
   const copyCode=async() => {
     try {await navigator.clipboard.writeText(pairing.code);if(!lease.current())return;setCopied(true);lease.timeout(() => setCopied(false),2000);}catch { /* the code is on screen to copy by hand */ }
   };
-  const command=runtimeConnectCommand(server), installCommand=runtimeInstallCommand(server,installer.sha), windowsConnectCommand=runtimeWindowsConnectCommand(server);
+  const enrollRow=enroll ? (state.data?.enrollments || []).find(row => row.id === enroll.id) : null;
+  const enrollStatus=!enroll ? "none" : enrollRow?.status === "used" ? "used" : enrollRow?.status === "revoked" ? "revoked" : enrollRow?.status === "expired" || enroll.localExpiresAt <= Date.now() ? "expired" : "unused";
+  const enrollCommand=enrollStatus === "unused" ? runtimeEnrollCommand(server,installer.sha,enroll.token,enroll.fingerprint) : "";
+  const joinedMachine=enrollStatus === "used" ? machines.find(machine => machine.id === enrollRow?.machineId) : null;
+  const command=runtimeConnectCommand(server), installCommand=runtimeInstallCommand(server,installer.sha), installOnlyCommand=runtimeInstallOnlyCommand(server,installer.sha), windowsConnectCommand=runtimeWindowsConnectCommand(server);
   const copyCommand=async(key,text) => {
-    try {await navigator.clipboard.writeText(text);if(!lease.current())return;setCopiedCommand(key);if(key === "install")setInstallCopied(true);lease.timeout(() => setCopiedCommand(""),2000);}catch { /* the command is on screen to copy by hand */ }
+    try {await navigator.clipboard.writeText(text);if(!lease.current())return;setCopiedCommand(key);if(key === "install" || key === "enroll")setInstallCopied(true);lease.timeout(() => setCopiedCommand(""),2000);}catch { /* the command is on screen to copy by hand */ }
   };
-  const awaitingApproval=machines.some(machine => machine.status === "pending"), installed=tab === "windows" ? installCopied : !!downloadedFor, currentStep=awaitingApproval ? 4 : installed ? 3 : 2;
+  const awaitingApproval=machines.some(machine => machine.status === "pending"), installed=tab === "windows" ? installCopied : !!downloadedFor, currentStep=tab === "windows" ? (enrollStatus === "used" ? 4 : installed || awaitingApproval ? 3 : 2) : awaitingApproval ? 4 : installed ? 3 : 2;
   const step=(n,title,body) => html`<li class=${`runtime-step${n < currentStep ? " is-done" : ""}`} aria-current=${n === currentStep ? "step" : undefined}><span class="runtime-step-n" aria-hidden="true">${n}</span><div><h4>${title}</h4>${body}</div></li>`;
   const downloadRuntime=async()=>{
     if(downloadClaim.current || !command)return;
@@ -386,7 +487,7 @@ export function RuntimesPanel({navKey}) {
     }catch(error){if(lease.current())setError(error.message || machineText("downloadFailed"));}
     finally{downloadClaim.current=false;if(lease.current())setBusy("");}
   };
-  const download=(setup=false)=>html`<button type="button" class="btn btn-sm runtime-bundle-download" disabled=${!!busy || !setup && !command} onClick=${setup ? connect : downloadRuntime}><${Icon} name="download" size=${15} />${machineText(busy === "download" ? "downloadBuilding" : "download")}</button>`;
+  const download=(setup=false)=>html`<button type="button" class="btn btn-sm runtime-bundle-download" disabled=${!!busy || !setup && !command} onClick=${setup ? openZip : downloadRuntime}><${Icon} name="download" size=${15} />${machineText(busy === "download" ? "downloadBuilding" : "download")}</button>`;
 
   const commandCard=(key,label,text) => html`<div class="runtime-command-card"><span class="runtime-command-label">${label}</span><div class="runtime-command-row"><pre class="runtime-command-text" tabindex="0" aria-label=${label}><code>${text}</code></pre><button type="button" class="btn btn-sm" onClick=${() => copyCommand(key,text)}><${Icon} name="copy" size=${15} />${machineText(copiedCommand === key ? "commandCopied" : "copyCommand")}</button></div></div>`;
   const tabItems=[{id:"windows",label:machineText("tabWindows")},{id:"zip",label:machineText("tabZip")}];
@@ -403,19 +504,28 @@ export function RuntimesPanel({navKey}) {
   const installTabs=html`<div class="s-page-tabs runtime-install-tabs" role="tablist" aria-label=${machineText("installMethod")}>${tabItems.map((item,index) => html`<button key=${item.id} id=${`runtime-install-tab-${item.id}`} type="button" role="tab" class=${tab === item.id ? "on" : ""} aria-selected=${tab === item.id ? "true" : "false"} aria-controls="runtime-install-panel" tabindex=${tab === item.id ? 0 : -1} onClick=${() => setTab(item.id)} onKeyDown=${event => tabKeys(event,index)}>${item.label}</button>`)}</div>`;
   const addressStep=step(1,machineText("server"),html`<div class="field"><input type="url" aria-label=${machineText("server")} value=${server} disabled=${busy === "download"} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></div><p class="note">${machineText("serverHint")}</p>${command ? null : html`<p role="alert">${machineText("serverInvalid")}</p>`}`);
   const approveStep=step(4,machineText("stepApprove"),html`<p class="note">${machineText("stepApproveHint")}</p>`);
+  const enrollNote=enrollStatus === "used" ? "enrollUsed" : enrollStatus === "revoked" ? "enrollRevoked" : "enrollExpired";
+  const pairCodeBlock=() => pairing ? html`<label class="field"><span>${machineText("pairingCode")}</span><div class="runtime-pair-code-row"><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /><button type="button" class="btn btn-sm" onClick=${copyCode}><${Icon} name="copy" size=${15} />${machineText(copied ? "codeCopied" : "copyCode")}</button></div></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p class="runtime-pair-status" role="status"><span class="windows-cli-dot"></span>${machineText(awaitingApproval ? "pairingApprove" : "pairingWait")}</p><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${newPairingCode}>${machineText("newCode")}</button>` : null;
   const windowsSteps=html`${addressStep}
       ${step(2,machineText("stepInstall"),html`<p class="note">${machineText("stepInstallHint")}</p>
         ${installer.status === "loading" || installer.status === "idle" ? html`<${Skeleton} lines=${3} label=${machineText("installerLoading")} />` : null}
         ${installer.status === "error" ? html`<p class="runtime-installer-error" role="alert">${machineText("installerUnavailable")} <button type="button" class="btn btn-ghost btn-sm" onClick=${() => void loadInstaller()}>${machineText("installerRetry")}</button></p>` : null}
-        ${installCommand ? html`${commandCard("install",machineText("installCommand"),installCommand)}<p class="note runtime-installer-hash">${machineText("installerHash")} <code>${installer.sha}</code></p><p class="note">${machineText("tlsHelp")}</p><p class="note">${machineText("restrictedHelp")}</p>` : null}`)}
-      ${step(3,machineText("stepConnect"),html`<p class="note">${machineText("stepConnectHint")}</p>${windowsConnectCommand ? commandCard("connect",machineText("connectCommand"),windowsConnectCommand) : null}`)}
-      ${approveStep}`;
+        ${!enroll ? html`<button type="button" class="btn btn-primary btn-sm runtime-enroll-generate" disabled=${!!busy} onClick=${connect}>${machineText("enrollGenerate")}</button>` : null}
+        ${enrollCommand ? html`${commandCard("enroll",machineText("installCommand"),enrollCommand)}<p class="note runtime-installer-hash">${machineText("installerHash")} <code>${installer.sha}</code></p><p class="note runtime-installer-hash">${machineText("enrollFingerprint")} <code>${enroll.fingerprint}</code></p><p class="note">${machineText("tlsHelp")}</p><p class="note">${machineText("restrictedHelp")}</p>`
+          : enroll && enrollStatus !== "unused" ? html`<p class="note runtime-enroll-ended" role="status">${machineText(enrollNote)}</p>` : null}
+        ${windowsConnectCommand ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommands")}</summary><p class="note">${machineText("manualCommandsHint")}</p>${installOnlyCommand ? commandCard("install-only",machineText("installOnlyCommand"),installOnlyCommand) : null}${commandCard("connect",machineText("connectCommand"),windowsConnectCommand)}${pairing ? pairCodeBlock() : html`<button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${newPairingCode}>${machineText("showPairingCode")}</button>`}<p class="note">${machineText("manualCodeNote")}</p></details>` : null}`)}
+      ${step(3,machineText("stepConnect"),html`<p class="note">${machineText("stepConnectHint")}</p>${joinedMachine ? html`<p class="note" role="status">${machineText("enrollJoinedStep",joinedMachine.name)}</p>` : null}`)}`;
   const zipSteps=html`${addressStep}
       ${step(2,machineText("stepDownload"),html`<p class="note">${machineText("stepZipHint")}</p>${download()}${downloadedFor ? html`<p class="note" role="status">${machineText("downloadedFor",downloadedFor)}</p>` : null}`)}
       ${step(3,machineText("stepLaunch"),html`<p class="note">${machineText("stepLaunchHint")}</p>${command ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommand")}</summary><label class="field"><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label><p class="note">${machineText("manualMultiHint")}</p></details>` : null}`)}
       ${approveStep}`;
 
+  const enrollAside=html`<aside class=${`runtime-pair-card runtime-enroll-card is-${enrollStatus}${awaitingApproval ? " is-pending" : ""}`}><h4>${machineText("enrollCardTitle")}</h4><p class="runtime-pair-status" role="status"><span class="windows-cli-dot"></span>${machineText(awaitingApproval ? "pairingApprove" : enrollStatus === "unused" || enrollStatus === "none" ? "enrollWait" : enrollNote)}</p>${enrollStatus === "unused" ? html`<${EnrollClock} lease=${lease} expiresAt=${enroll.localExpiresAt} />` : null}<p class="note lbar runtime-enroll-warning">${machineText("enrollSecurity")}</p><div class="runtime-pair-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${connect}>${machineText("enrollNew")}</button><button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${closePanel}>${machineText(enrollStatus === "unused" ? "enrollRevoke" : "closeCode")}</button></div></aside>`;
+  const zipAside=html`<aside class=${`runtime-pair-card${awaitingApproval ? " is-pending" : ""}`}>${pairing ? pairCodeBlock() : html`<button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${newPairingCode}>${machineText("newCode")}</button>`}<div class="runtime-pair-actions"><button type="button" class="btn btn-ghost btn-sm" onClick=${closePanel}>${machineText("closeCode")}</button></div></aside>`;
+  const joinedNotices=machines.filter(machine => machine.enrolledVia === "install-command" && machine.status !== "revoked" && !revokedHere.has(machine.id) && !seenJoined.has(machine.id) && Date.now()-(machine.approvedAt || 0) < JOINED_NOTICE_MS)
+    .map(machine => html`<section key=${machine.id} class="runtime-joined" role="status" data-machine-id=${machine.id}><${Icon} name="info" size=${18} /><div class="runtime-joined-text"><h4>${machineText("joinedTitle")}</h4><p class="note">${machineText("joinedBody",machine.name,machineTime(machine.approvedAt))}</p></div><div class="runtime-joined-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${() => action(machine,"revoke")}>${machineText("joinedRevoke")}</button><button type="button" class="btn btn-ghost btn-sm" onClick=${() => dismissJoined(machine.id)}>${machineText("joinedDismiss")}</button></div></section>`);
   const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><div class="note">${state.data ? machineText((allMachines.length) === 1 ? "machineCountOne" : "machineCount",allMachines.length) : !state.error ? html`<${Skeleton} variant="inline" lines=${1} />` : "—"}</div></div>
+    ${joinedNotices}
     <section class="runtime-machines" aria-label=${machineText("machines")}>${!state.data && !state.error ? html`<${Skeleton} variant="cards" lines=${2} label=${machineText("loading")} />` : allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
     ${repairMachine ? html`<${Dialog} title=${runtimeUpdateText("repairTitle")} onClose=${() => setRepairMachine(null)}>
       <p>${runtimeUpdateText("repairHint")}</p>
@@ -427,12 +537,12 @@ export function RuntimesPanel({navKey}) {
     <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("hostLocationNote")}</span></article></section>`;
 
   return html`<section class="runtime-settings">
-    <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !pairing ? download(true) : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
+    <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !open ? download(true) : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
-    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><div class="runtime-install">${installTabs}<div id="runtime-install-panel" class="runtime-install-panel" role="tabpanel" aria-labelledby=${`runtime-install-tab-${tab}`} data-install-method=${tab}><ol class="runtime-steps">
+    ${open ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><div class="runtime-install">${installTabs}<div id="runtime-install-panel" class="runtime-install-panel" role="tabpanel" aria-labelledby=${`runtime-install-tab-${tab}`} data-install-method=${tab}><ol class="runtime-steps">
       ${tab === "windows" ? windowsSteps : zipSteps}
-    </ol></div></div><aside class=${`runtime-pair-card${awaitingApproval ? " is-pending" : ""}`}><label class="field"><span>${machineText("pairingCode")}</span><div class="runtime-pair-code-row"><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /><button type="button" class="btn btn-sm" onClick=${copyCode}><${Icon} name="copy" size=${15} />${machineText(copied ? "codeCopied" : "copyCode")}</button></div></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p class="runtime-pair-status" role="status"><span class="windows-cli-dot"></span>${machineText(awaitingApproval ? "pairingApprove" : "pairingWait")}</p><div class="runtime-pair-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${connect}>${machineText("newCode")}</button><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></div></aside></div></section>` : null}
+    </ol></div></div>${tab === "windows" ? enrollAside : zipAside}</div></section>` : null}
     <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} computers=${computers} />
     ${diagnosticMachineId !== null ? html`<${RuntimeDiagnosticsDialog} key=${diagnosticMachineId || "local"} navKey=${navKey} machineId=${diagnosticMachineId} machine=${target} enabled=${diagnosticMachineId !== "" || windowsCli} drafts=${drafts.current} session=${taskSessions.current.get(diagnosticMachineId)} taskLease=${lease} onChanged=${state.refresh} onClose=${()=>setDiagnosticMachineId(null)} />` : null}
     <p class="note runtime-operations-note">${machineText("operationsNote")}</p>
