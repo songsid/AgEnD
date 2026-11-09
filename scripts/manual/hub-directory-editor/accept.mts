@@ -25,7 +25,8 @@ const api=(port:number,path:string,method="GET",headers:any={},body?:unknown)=>n
 });
 const wait=async(fn:()=>boolean)=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,25));}throw Error("fixture startup timed out");};
 const check=(r:any,name:string,ok:boolean,detail?:unknown)=>{r[name]=ok?"PASS":{FAIL:detail??true};if(!ok)throw Error(name);};
-const buttonText=async(page:any)=>{await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r())));});return page.locator("dialog.hub-directory-editor .btn").evaluateAll((buttons:HTMLElement[])=>buttons.filter(e=>e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1).map(e=>({text:e.textContent,width:e.clientWidth,textWidth:e.scrollWidth,height:e.clientHeight,textHeight:e.scrollHeight})));};
+const painted=async(page:any)=>page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r())));});
+const buttonText=async(page:any)=>{await painted(page);return page.locator("dialog.hub-directory-editor .btn").evaluateAll((buttons:HTMLElement[])=>buttons.filter(e=>e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1).map(e=>({text:e.textContent,width:e.clientWidth,textWidth:e.scrollWidth,height:e.clientHeight,textHeight:e.scrollHeight})));};
 const epoch=()=>{const db=new Database(join(home,"hub/hub.sqlite"),{readonly:true});try{return db.prepare("SELECT epoch FROM hub_directory_epoch").get().epoch;}finally{db.close();}};
 try{
  const users=[{id:PERSON_ID,login:"avery",dn:"CN=Avery,DC=example,DC=test",password:"Dummy-person-only",eligible:true}];
@@ -68,18 +69,35 @@ try{
    }
    if(surface==="hub")await page.locator('a[href="/ui/hub/admin?view=directory"]').click();
    await page.locator("#hubDirectory-url").waitFor();await page.locator("#hubDirectory-bindPassword").waitFor();
+   if(surface==="host"){
+    for(const selector of [".hub-run-settings", ".hub-retention", ".hub-browser-certificate", ".hub-preview-settings"]){await page.locator(selector+" h3").waitFor();check(r,"host:title:"+selector,(await page.locator(selector+" h3").innerText()).trim().length>0);}
+    await page.locator(".hub-retention input").first().waitFor();await painted(page);
+    for(const [selector,label] of [[".s-company-join","company"],[".hub-run-settings","run"],[".hub-retention","retention"]]){
+     const card=page.locator(selector);await card.evaluate((el:HTMLElement)=>el.scrollIntoView({block:"center",behavior:"instant"}));await painted(page);
+     const detail=await card.evaluate((el:HTMLElement)=>{const b=el.getBoundingClientRect(),nav=document.querySelector(".tab-bar, .tabs")?.getBoundingClientRect();const title=el.querySelector("h3")!;return {title:title.textContent?.trim(),top:b.top,bottom:b.bottom,limit:nav&&nav.top>0?nav.top:innerHeight,controls:[...el.querySelectorAll("input,button")].map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};})};});
+     check(r,"host:card-title:"+label,!!detail.title);
+     if(label==="retention"){check(r,"host:retention-visible",detail.controls.every((b:any)=>b.top>=0&&b.bottom<=detail.limit&&b.left>=0&&b.right<=VIEWPORTS[c.device].width),detail);if(c.device==="phone")check(r,"host:retention-tap",detail.controls.every((b:any)=>b.width>=43&&b.height>=43),detail);}
+     if(label==="company")check(r,"host:company-reason",await page.locator("#hubCompanyStartHint").count()===1);
+     await page.screenshot({path:join(OUT,tag+"-host-"+label+".png")});
+    }
+   }
+   await page.locator("#hubDirectory-url").evaluate((el:HTMLElement)=>el.scrollIntoView({block:"center",behavior:"instant"}));await painted(page);
+   check(r,surface+":type-label",await page.locator(".hub-directory-type").innerText()===(zh?"Active Directory（AD）":"Active Directory (AD)"));
+   const aligned=await page.evaluate(()=>{const a=document.querySelector("#hubDirectory-url")!.getBoundingClientRect(),b=document.querySelector("#hubDirectory-ca")!.getBoundingClientRect();return Math.abs(a.left-b.left)<=1&&Math.abs(a.width-b.width)<=1;});check(r,surface+":select-aligned",aligned);
+
    const geometry=async()=>page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,
     bad:[...document.querySelectorAll("#hub-directory-editor button, #hub-directory-editor input, #hub-directory-editor select, dialog.hub-directory-editor button")].filter(e=>{const b=e.getBoundingClientRect();return b.width&&b.height&&((e as HTMLElement).offsetParent!==null||e.closest("dialog[open]"))&&(b.height<43||b.width<43);}).map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height}))}));
    const g=await geometry();check(r,surface+":overflow",!g.overflow);if(c.device==="phone")check(r,surface+":tap",g.bad.length===0,g.bad);
    check(r,surface+":real-shell",await page.locator("#sidebar").count()===1&&(surface!=="host"||await page.locator('.s-nav a[aria-current="page"]').getAttribute("href")==="/settings/hub"));
    await page.screenshot({path:join(OUT,tag+"-"+surface+"-form.png"),fullPage:true});
-   await page.locator("#hub-directory-editor button[type=submit]").scrollIntoViewIfNeeded();await page.screenshot({path:join(OUT,tag+"-"+surface+"-actions.png"),fullPage:true});
+   await page.locator("#hubDirectory-ca").evaluate((el:HTMLElement)=>el.scrollIntoView({block:"center",behavior:"instant"}));await painted(page);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust-source.png")});
+   await page.locator("#hub-directory-editor button[type=submit]").scrollIntoViewIfNeeded();await painted(page);await page.screenshot({path:join(OUT,tag+"-"+surface+"-actions.png"),fullPage:true});
    const oldCookie=surface==="hub"?(await ctx.cookies()).find((x:any)=>x.name.startsWith("__Host-agend_hub_"))?.value:null;
    const before=epoch(),current=fm.getRawFleetConfig().hub.directory.url,target=current.endsWith(":"+peerA.port)?peerB:peerA;
    await page.locator("#hubDirectory-url").fill(`ldaps://127.0.0.1:${target.port}`);await page.locator("#hubDirectory-bindPassword").fill("Dummy-service-only");
    await page.locator("#hub-directory-editor button[type=submit]").click();await page.locator("dialog.hub-directory-editor[open]").waitFor();
    check(r,surface+":no-early-effect",epoch()===before);check(r,surface+":one-dialog",await page.locator("dialog[open]").count()===1);await page.locator("dialog .hub-directory-fingerprint").first().waitFor();
-   const clipped=await buttonText(page);check(r,surface+":trust-text-fits",clipped.length===0,clipped);const bounds=await page.locator("dialog .dlg-actions").evaluate((e:HTMLElement)=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));check(r,surface+":trust-actions-visible",bounds.top>=0&&bounds.bottom<=bounds.height+1,bounds);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust.png")});const t=await geometry();check(r,surface+":trust-overflow",!t.overflow);if(c.device==="phone")check(r,surface+":trust-tap",t.bad.length===0,t.bad);
+   const groupShape=await page.locator("dialog .hub-directory-fingerprint").evaluateAll((values:HTMLElement[])=>values.length>0&&values.every(e=>{const groups=[...e.querySelectorAll("span")];return groups.length===8&&groups.every(g=>/^[A-F0-9]{8}$/.test(g.textContent??"")&&g.scrollWidth<=g.clientWidth+1);}));check(r,surface+":fingerprint-groups",groupShape);const clipped=await buttonText(page);check(r,surface+":trust-text-fits",clipped.length===0,clipped);const bounds=await page.locator("dialog .dlg-actions").evaluate((e:HTMLElement)=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));check(r,surface+":trust-actions-visible",bounds.top>=0&&bounds.bottom<=bounds.height+1,bounds);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust.png")});const t=await geometry();check(r,surface+":trust-overflow",!t.overflow);if(c.device==="phone")check(r,surface+":trust-tap",t.bad.length===0,t.bad);
    await page.getByRole("button",{name:zh?"確認指紋並儲存":"Confirm fingerprints and save",exact:true}).click();
    await page.getByRole("status").filter({hasText:zh?"已儲存 AD 連線。":"AD connection saved."}).waitFor({timeout:25000});
    check(r,surface+":saved",epoch()===before+1);check(r,surface+":secret-cleared",await page.locator("#hubDirectory-bindPassword").inputValue()==="");
@@ -120,7 +138,7 @@ try{
   check(r,"no-page-errors",errors.length===0,errors);check(r,"only-expected-CA-refusal",wire.filter(x=>x.status>=400).every(x=>x.path.endsWith("/ca/fetch")&&x.status===403),wire);
   await ctx.close();contexts.splice(contexts.indexOf(ctx),1);
  }
- check(result,"identity-kept",readFileSync(join(home,"hub/keys/identity.json")).equals(identity));check(result,"certificate-kept",readFileSync(join(home,"hub/web-tls/cert.pem")).equals(browserCert));
+ check(result,"cases-exercised",result.cases.length>0);check(result,"identity-kept",readFileSync(join(home,"hub/keys/identity.json")).equals(identity));check(result,"certificate-kept",readFileSync(join(home,"hub/web-tls/cert.pem")).equals(browserCert));
  const db=new Database(join(home,"hub/hub.sqlite"),{readonly:true});try{check(result,"groups-off",JSON.parse(db.prepare("SELECT body FROM hub_group_policy").get().body).state==="never-enabled");check(result,"known-fixture-credentials-only",[...peerA.bindRecords,...peerB.bindRecords].every(x=>x.password==="Dummy-service-only"||x.password==="Dummy-person-only"||!x.dn&&!x.password));}finally{db.close();}
 }catch(e){result.failure=(e as Error).stack;throw e;}
 finally{for(const c of contexts)await c.close();await browser.close();await fm?.hubSetupController?.close();await fm?.hubDirectoryControl?.close();await fm?.hubRuntime?.close();if(fm?.healthServer){fm.healthServer.closeAllConnections();await new Promise<void>(r=>fm.healthServer.close(()=>r()));}fm?.webSessions?.flush?.();await peerA?.close();await peerB?.close();await peerC?.close();certs.cleanup();if(candidateCerts!==certs)candidateCerts.cleanup();rmSync(home,{recursive:true,force:true});rmSync(envHome,{recursive:true,force:true});result.cleaned=true;writeFileSync(join(OUT,"receipt.json"),JSON.stringify(result,null,2));}

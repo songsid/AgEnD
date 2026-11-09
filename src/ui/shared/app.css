@@ -4130,11 +4130,15 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .hub-setup :is(input:not([type="checkbox"]), select) { min-height: var(--tap); }
 }
 
+.s-hub-section { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+.s-hub-section > .card { flex: none; }
+
 /* Shared AD editor: both the host Settings card and Hub Administration, including the native trust dialog. */
 .hub-directory-editor { min-width: 0; }
 .hub-directory-editor :is(code, .field) { min-width: 0; overflow-wrap: anywhere; }
 .hub-directory-editor textarea { max-width: 100%; resize: vertical; }
-.hub-directory-fingerprint { white-space: normal; overflow-wrap: anywhere; }
+.hub-directory-editor :is(input, select, textarea) { display: block; width: 100%; max-width: 100%; min-width: 0; }
+.hub-directory-fingerprint { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-2); white-space: normal; }
 .hub-directory-fingerprint > span { display: inline-block; white-space: nowrap; }
 @media (max-width: 899px), (pointer: coarse) {
   .hub-directory-editor :is(.btn, .dlg-x) { min-width: var(--tap); min-height: var(--tap); }
@@ -4142,4 +4146,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .hub-directory-editor .dlg-actions .btn-primary { flex: 0 1 auto; }
   .hub-directory-editor :is(input, select) { min-height: var(--tap); font-size: 16px; }
   .hub-directory-editor textarea { font-size: 16px; }
+  .s-hub-section .hub-retention .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .s-hub-section .hub-retention input { min-width: 0; max-width: 100%; min-height: var(--tap); font-size: 16px; }
+  .s-hub-section .hub-retention button { align-self: flex-start; max-width: 100%; min-height: var(--tap); white-space: normal; }
 }

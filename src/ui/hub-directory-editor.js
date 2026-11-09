@@ -27,7 +27,7 @@ export async function directoryCaFingerprints(pem) {
     return [...new Uint8Array(sha)].map(b => b.toString(16).padStart(2, "0").toUpperCase()).join("");
   }))).sort();
 }
-function Fingerprint({ value }) { const f = fingerprint(value); return html`<code class="hub-directory-fingerprint">${(f.match(/.{1,2}/g) || []).map((b, i) => html`<span>${b + (i < 31 ? ":" : "")}</span><wbr />`)}</code>`; }
+function Fingerprint({ value }) { const f = fingerprint(value); return html`<code class="hub-directory-fingerprint">${(f.match(/.{1,8}/g) || []).map((group, i) => html`<span>${group}</span>${i < 7 ? " " : ""}`)}</code>`; }
 const formOf = view => ({ ...view.directory, ca: view.directory.caPem === undefined ? "system" : "paste", caPem: view.directory.caPem || "", bindPassword: "", loginAttribute: view.directory.loginAttribute || "", userFilter: view.directory.userFilter || "", timeoutMs: String(view.directory.timeoutMs || 5000) });
 export function directoryInput(form) {
   const directory = { url: form.url.trim(), baseDn: form.baseDn.trim(), bindDn: form.bindDn.trim(), timeoutMs: Number(form.timeoutMs),
@@ -125,7 +125,8 @@ export function HubDirectoryEditor({ client, offered = false, host = false, logi
   });
   const field = (name, { type = "text", multiline = false, optional = false, max = 2048 } = {}) => html`<label class="field" for=${"hubDirectory-" + name}>${hd(name)}
     ${multiline ? html`<textarea id=${"hubDirectory-" + name} rows="4" value=${form[name]} maxlength=${max} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`
-      : html`<input id=${"hubDirectory-" + name} type=${type} value=${form[name]} required=${!optional} maxlength=${max} autocomplete=${type === "password" ? "new-password" : "off"} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`}
+      : html`<input id=${"hubDirectory-" + name} type=${type} value=${form[name]} required=${!optional} maxlength=${max} placeholder=${name === "bindPassword" && view.bindPasswordSet ? hd("passwordSet") : undefined} autocomplete=${type === "password" ? "new-password" : "off"} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`}
+    ${["baseDn", "bindDn", "caPem"].includes(name) ? html`<small class="note">${hd(name + "Hint")}</small>` : null}
   </label>`;
   const authentication = () => !host && requireAuth ? html`<div class="form hub-directory-auth"><h4>${hd("reauth")}</h4><p class="note">${hd("reauthHint")}</p>
     <label class="field">${hd("login")}<input autocomplete="username" disabled=${busy} value=${auth.login} maxlength="256" onInput=${e => setAuth(a => ({ ...a, login: e.target.value }))} /></label>
@@ -135,7 +136,7 @@ export function HubDirectoryEditor({ client, offered = false, host = false, logi
     ${!form && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}${status}
     ${notice ? html`<p class="note" role="status">${hd(notice)}</p>` : null}
     ${form && !uncertain ? html`<form class="form" onSubmit=${e => { e.preventDefault(); void submit("save"); }}><fieldset class="form" disabled=${busy}>
-      <div class="grid2"><div class="field"><span>${hd("realm")}</span><code>${form.realm}</code></div><div class="field"><span>${hd("profile")}</span><code>${form.profile}</code></div></div>
+      <div class="grid2"><div class="field"><span>${hd("realm")}</span><code>${form.realm}</code></div><div class="field"><span>${hd("profile")}</span><span class="hub-directory-type">${hd(form.profile === "ad" ? "typeAd" : "typeLdap")}</span></div></div>
       ${field("url", { type: "url" })}${field("baseDn", { max: 1024 })}${field("bindDn", { max: 1024 })}${field("bindPassword", { type: "password", optional: true, max: 4096 })}<p class="note">${hd("secretHint")}</p>
       <label class="field">${hd("ca")}<select id="hubDirectory-ca" value=${form.ca} onChange=${e => update("ca", e.target.value)}><option value="system">${hd("system")}</option><option value="paste">${hd("paste")}</option></select><small class="note">${hd("choose")}</small></label>
       ${form.ca === "paste" ? field("caPem", { multiline: true, max: 65536 }) : null}

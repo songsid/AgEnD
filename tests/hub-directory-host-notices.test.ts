@@ -18,6 +18,7 @@ import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WebSessionStore } from "../src/web-session.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { serveAppShell } from "../src/web-api.js";
 import * as directory from "../src/hub/directory/directory.js";
 import * as auditModule from "../src/hub/audit/index.js";
 import { hubServerDatabasePlan } from "../src/hub/compose/server.js";
@@ -107,6 +108,16 @@ describe.skipIf(process.platform === "win32")("host directory notices from exist
     expect(remoteShell).not.toContain('data-hub-directory-notices="1"'); expect(remoteShell).not.toContain('data-hub-directory-settings="1"');
     const publicShell = await shell({ ...r.headers(), "x-forwarded-for": "198.51.100.1" });
     expect(publicShell).not.toContain('data-hub-directory-notices="1"'); expect(publicShell).not.toContain('data-hub-directory-settings="1"');
+    // Isolate the shell's own gateway display gate from the upstream D3 proof (which also refuses gateway authority).
+    const presentation = { getRawFleetConfig: () => r.internal.rawFleetConfig, hubSetupSession: () => ({}), hubDirectorySettings: async () => ({}) };
+    const isolatedShell = (gateway: boolean) => {
+      const req = { method: "GET", url: "/ui/needs", headers: { host: `127.0.0.1:${r.port}` }, socket: { remoteAddress: "127.0.0.1" } } as any;
+      if (gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: r.origin, isCurrent: () => true });
+      let html = ""; serveAppShell(req, { setHeader() {}, writeHead() {}, end(value: string) { html = value; } } as never, presentation, "full");
+      expect(html).toContain("<body"); return html;
+    };
+    expect(isolatedShell(false)).toContain('data-hub-directory-settings="1"');
+    expect(isolatedShell(true)).not.toContain('data-hub-directory-settings="1"');
     const configured = r.internal.rawFleetConfig.hub;
     try { r.internal.rawFleetConfig.hub = undefined; expect(await shell(r.headers())).not.toContain('data-hub-directory-notices="1"'); }
     finally { r.internal.rawFleetConfig.hub = configured; }

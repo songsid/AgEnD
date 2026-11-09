@@ -1,0 +1,267 @@
+{
+  "v": 1,
+  "baseline": {
+    "7d900899a8204e015c67a730280ef50c8acdd2f6afac825fa02f88cee93ef146": "src/ui/settings-hub-directory.js",
+    "250a4c326b939715d1491cc0351e32a9fc69d61c9e019e7ae0c96a93499c2ae3": "src/ui/panel-hub.js",
+    "a190b28efad7751788db7dd357749f2279a9d68b47641329ed72e8df17c09367": "src/hub/settings-directory-control.ts",
+    "d1ffefcc751653b7170652d467413808318f434ca7b28b3a0b552b85056c267e": "src/hub/settings-directory-http.ts",
+    "2601f67ac52b55f9782dca3aad48ffc9f22c3904a80d759863ca5b280f709cf7": "src/ui/hub-directory-editor.js",
+    "4eff92d8715cd2d202187b5d66809ad4c65054b1c8e29ee14111dfc5d3455196": "src/web-api.ts"
+  },
+  "rows": [
+    {
+      "name": "read-compat",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (!directoryView(r)) fail(\"unsupported\");",
+      "passed": 0,
+      "failed": 4,
+      "assertionFailures": 4,
+      "caught": true
+    },
+    {
+      "name": "stale-epoch",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "latest.epoch !== view.epoch || ",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "stale-fields",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": " || !same(latest.directory, view.directory)",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "secret-target",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (input.bindPassword === undefined &&",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "secret-bytes",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "{ bindPassword: form.bindPassword }",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "trust-defer",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (p.trust) setDialog({ phase: \"ready\", p, intent });",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "trust-challenge",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "...(p.trust ? { confirmation: p.trust.challenge } : {})",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "trust-server",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "directoryEndpoint(p.trust.server) !== directoryEndpoint(candidate.url) || ",
+      "passed": 2,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "late-life",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "n === life.current && ",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "late-abort",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "for (const request of requests.current) request.abort();",
+      "passed": 0,
+      "failed": 2,
+      "assertionFailures": 2,
+      "caught": true
+    },
+    {
+      "name": "late-cancel",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (REF.test(p.ref || \"\")) void client.cancelDirectorySettings({ ref: p.ref }).catch(() => {});",
+      "passed": 0,
+      "failed": 2,
+      "assertionFailures": 2,
+      "caught": true
+    },
+    {
+      "name": "single-flight",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "working.current || !current(life.current)",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "uncertain-save",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "setUncertain(true); setForm(f => f &&",
+      "passed": 0,
+      "failed": 3,
+      "assertionFailures": 3,
+      "caught": true
+    },
+    {
+      "name": "stop-uncertain",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (saveSent.current) { setUncertain(true); setFailureCode(\"uncertain\"); }",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "session-refresh",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "if (await afterSave() !== true || !current(n))",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "anonymous-ca",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "...(credentials ? { bindDn: form.bindDn.trim(), bindPassword: form.bindPassword } : {})",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "fresh-probe",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "credentials ? await send(\"inspectDirectoryCa\", { url: form.url.trim() }, signal) : previous",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "retry-pin",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": " || fingerprint(probe.certificate?.fingerprint256) !== fingerprint(previous.certificate?.fingerprint256)",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "bundle-pin",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": " || fingerprint(bundle.leafFingerprint) !== fingerprint(previous.certificate.fingerprint256)",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "prepared-pin",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "fingerprint(p.trust.leafFingerprint) !== fingerprint(previous.certificate.fingerprint256) || ",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "CA-agreement",
+      "path": "src/ui/hub-directory-editor.js",
+      "pattern": "|| JSON.stringify(p.trust.caFingerprints.map(fingerprint).sort()) !== JSON.stringify(fingerprints)",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "host-mark",
+      "path": "src/ui/settings-hub-directory.js",
+      "pattern": "doc?.body?.dataset.hubDirectorySettings === \"1\" && ",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "host-public",
+      "path": "src/ui/settings-hub-directory.js",
+      "pattern": "doc.body.dataset.publicLink !== \"1\" && ",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "read-epoch",
+      "path": "src/hub/settings-directory-control.ts",
+      "pattern": "epoch: s.epoch",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "editor-feature",
+      "path": "src/hub/settings-directory-http.ts",
+      "pattern": "HUB_DIRECTORY_EDITOR_FEATURE = \"directory-editor-v1\"",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "host-page-mark",
+      "path": "src/web-api.ts",
+      "pattern": " data-hub-directory-settings=\"1\"",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "panel-client-mark",
+      "path": "src/ui/panel-hub.js",
+      "pattern": " && hubClient()?.directoryEditorV1 === true",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "name": "gateway-page-mark",
+      "path": "src/web-api.ts",
+      "pattern": "setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings",
+      "passed": 0,
+      "failed": 1,
+      "assertionFailures": 1,
+      "caught": true
+    }
+  ],
+  "restored": true,
+  "stage": "polish-r1"
+}

@@ -21,8 +21,8 @@ function client(view=initial()){
     cancelDirectorySettings:vi.fn(async()=>({ok:true})),inspectDirectoryCa:vi.fn(async()=>({ok:true,ref:probeRef,server:"ldaps://new.example.test:636",certificate:{fingerprint256:leaf}})),
     fetchDirectoryCa:vi.fn(),onSignedOut:(fn:()=>void)=>{ended=fn;return ()=>{};},end:()=>ended?.()};return c;
 }
-async function mount(c=client(),props:any={}){
-  const p=page({url:"https://hub.example.test/ui/hub/admin?view=directory",storage:{agend_lang:"en"}});pages.push(p);i18n.setLang("en");vi.stubGlobal("crypto",webcrypto);
+async function mount(c=client(),props:any={},language="en"){
+  const p=page({url:"https://hub.example.test/ui/hub/admin?view=directory",storage:{agend_lang:language}});pages.push(p);i18n.setLang(language);vi.stubGlobal("crypto",webcrypto);
   await p.mount(h(mod.HubDirectoryEditor,{client:c,offered:true,host:true,...props}));await settle(15);return {p,c};
 }
 function button(p:AppPage,label:string){return [...p.root.querySelectorAll("button")].find((b:any)=>b.textContent===label);}
@@ -42,6 +42,15 @@ describe("AD editor's mounted presentation",()=>{
     const {p}=await mount();expect(p.root.querySelector("#hubDirectory-url").value).toBe(directory.url);expect(p.root.querySelector("#hubDirectory-bindPassword").value).toBe("");
     expect(p.root.textContent).toContain("fictional");expect(p.root.querySelector("#hubDirectory-realm")).toBeNull();expect(p.root.textContent).not.toContain("bindPasswordRef");
   });
+  it("uses clear zh-TW directory, stored-password and SHA-256 trust labels with whole fingerprint groups",async()=>{
+    const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));const {p}=await mount(c,{},"zh-TW");
+    expect(p.root.textContent).toContain("Active Directory（AD）");expect(p.root.textContent).toContain("信任的憑證來源");
+    expect(p.root.querySelector("#hubDirectory-bindPassword").getAttribute("placeholder")).toBe("已設定（留空則不變更）");
+    expect(button(p,"擷取 CA 並儲存…")).toBeTruthy();await changedTarget(p);await submit(p);
+    const dialog=p.root.querySelector("dialog");expect(dialog.textContent).toContain("要信任的伺服器");expect(dialog.textContent).toContain("SHA-256");expect(button(p,"取消")).toBeTruthy();
+    const groups=[...dialog.querySelectorAll(".hub-directory-fingerprint span")];expect(groups).toHaveLength(8);expect(groups.every((g:any)=>/^[A-F0-9]{8}$/.test(g.textContent))).toBe(true);
+    expect(c.saveDirectorySettings).not.toHaveBeenCalled();
+  });
   it("one Save prepares, rechecks the displayed source, saves once, refreshes session before reading the result",async()=>{
     const c=client(),order:string[]=[];const read=c.directorySettings.getMockImplementation();c.directorySettings.mockImplementation(async()=>{order.push("read");return read();});
     const {p}=await mount(c,{afterSave:async()=>{order.push("session");return true;}});await fill(p,"baseDn","OU=People,DC=example,DC=test");await submit(p);
@@ -58,11 +67,11 @@ describe("AD editor's mounted presentation",()=>{
   });
   it("a changed host gets one trust dialog and no Save until the exact displayed fingerprints are confirmed",async()=>{
     const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));const {p}=await mount(c);await changedTarget(p);await submit(p);
-    expect(p.root.querySelectorAll("dialog")).toHaveLength(1);expect(p.root.textContent).toContain("A1:A1:A1");expect(c.saveDirectorySettings).not.toHaveBeenCalled();
+    expect(p.root.querySelectorAll("dialog")).toHaveLength(1);expect(p.root.textContent).toContain("A1A1A1A1");expect(c.saveDirectorySettings).not.toHaveBeenCalled();
     await click(p,"Confirm fingerprints and save");expect(c.saveDirectorySettings.mock.calls[0][0]).toEqual({ref,confirmation:challenge});expect(p.root.querySelector("dialog")).toBeNull();
   });
   it("Stop on a mismatch cancels the draft, clears secrets and never saves",async()=>{
-    const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));const {p}=await mount(c);await changedTarget(p);await submit(p);await click(p,"Stop");
+    const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));const {p}=await mount(c);await changedTarget(p);await submit(p);await click(p,"Cancel");
     expect(c.saveDirectorySettings).not.toHaveBeenCalled();expect(c.cancelDirectorySettings).toHaveBeenCalledWith({ref});expect(p.root.querySelector("dialog")).toBeNull();expect(p.root.querySelector("#hubDirectory-bindPassword").value).toBe("");
   });
   it.each(["epoch","directory"])("a changed displayed %s after preparation refuses before any effect",async fault=>{
@@ -88,7 +97,7 @@ describe("AD editor's mounted presentation",()=>{
   });
   it("Stop while Save is held aborts the request and requires reload even if the late reply says ready",async()=>{
     const c=client(),held=deferred();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));c.saveDirectorySettings.mockReturnValue(held.promise);
-    const {p}=await mount(c);await changedTarget(p);await submit(p);await click(p,"Confirm fingerprints and save");await click(p,"Stop");
+    const {p}=await mount(c);await changedTarget(p);await submit(p);await click(p,"Confirm fingerprints and save");await click(p,"Cancel");
     held.resolve({ok:true,state:"ready",directoryEpoch:1});await settle(20);expect(c.saveDirectorySettings.mock.calls[0][1].aborted).toBe(true);expect(p.root.querySelector("form")).toBeNull();expect(p.root.textContent).toContain("Save could not be confirmed");
   });
   it("admin reauthentication is inline and sent only with Save, never the candidate test",async()=>{
@@ -113,7 +122,7 @@ describe("AD editor's mounted presentation",()=>{
       const ca=new X509Certificate(certs.ca).fingerprint256.replace(/:/g,""),c=client(),held=deferred();
       c.fetchDirectoryCa.mockResolvedValue({ok:true,server:"ldaps://new.example.test:636",leafFingerprint:leaf,caPem:certs.ca});c.prepareDirectorySettings.mockReturnValue(held.promise);
       const {p}=await mount(c);await changedTarget(p);await click(p,"Fetch CA and save…");await click(p,"Fingerprint matches — fetch CA");
-      expect(c.prepareDirectorySettings).toHaveBeenCalledOnce();await click(p,"Stop");held.resolve(prepared(trust({systemRoots:false,caFingerprints:[ca]})));await settle(25);
+      expect(c.prepareDirectorySettings).toHaveBeenCalledOnce();await click(p,"Cancel");held.resolve(prepared(trust({systemRoots:false,caFingerprints:[ca]})));await settle(25);
       expect(c.cancelDirectorySettings).toHaveBeenCalledWith({ref});expect(p.root.querySelector("dialog")).toBeNull();expect(c.saveDirectorySettings).not.toHaveBeenCalled();
     }finally{certs.cleanup();}
   });

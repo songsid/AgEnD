@@ -33,6 +33,10 @@ rows=[
  ('editor-feature','src/hub/settings-directory-http.ts','HUB_DIRECTORY_EDITOR_FEATURE = "directory-editor-v1"','HUB_DIRECTORY_EDITOR_FEATURE = "unavailable"',['tests/hub-compose.test.ts','-t','authorizes the configured administrator before lazily']),
  ('host-page-mark','src/web-api.ts',' data-hub-directory-settings="1"','',['tests/hub-directory-host-notices.test.ts','-t','reads and ACKs the host target']),
 ]
+rows += [
+ ('panel-client-mark','src/ui/panel-hub.js',' && hubClient()?.directoryEditorV1 === true','',['tests/hub-groups-ui-s89.test.ts','-t','new panel with an old cached client']),
+ ('gateway-page-mark','src/web-api.ts','setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings','setup && typeof ctx.hubDirectorySettings',['tests/hub-directory-host-notices.test.ts','-t','reads and ACKs the host target']),
+]
 selected=set(sys.argv[1:]);original={p:(root/p).read_bytes() for p in {r[1] for r in rows}};results=[]
 try:
  for name,path,before,after,tests in rows:
