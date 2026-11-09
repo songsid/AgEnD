@@ -262,7 +262,9 @@ export async function stopRuntimeInstance(store: RuntimeClientStore, options: St
 
 /** Set for the process the launcher starts: the id it looks for in the state file, so it never believes a word from an older start. */
 export const RUNTIME_LAUNCH_ID_ENV = "AGEND_RUNTIME_LAUNCH_ID";
-export const RUNTIME_BACKGROUND_STATE_FILE = "background-state.json";
+/** One file per launch (`background-state-<launch id>.json`): two starts at once each report to their own file, so the loser's word never overwrites the winner's. */
+export const RUNTIME_BACKGROUND_STATE_PREFIX = "background-state-";
+export const backgroundStateFile = (launchId: string): string => `${RUNTIME_BACKGROUND_STATE_PREFIX}${launchId}.json`;
 export type BackgroundStatus = "ready" | "already-running" | "failed";
 export interface BackgroundState { version: 1; launchId: string; pid: number; status: BackgroundStatus; message?: string; at: number }
 const LAUNCH_ID = /^[a-f0-9]{16,64}$/;
@@ -271,14 +273,29 @@ export function reportBackgroundState(directory: string, env: Environment, state
   const launchId = env[RUNTIME_LAUNCH_ID_ENV];
   if (!launchId || !LAUNCH_ID.test(launchId)) return;
   const value: BackgroundState = { version: 1, launchId, pid: state.pid ?? process.pid, status: state.status, ...(state.message ? { message: state.message.slice(0, 1000) } : {}), at: now };
-  try { atomicWriteFileSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE), JSON.stringify(value), { mode: 0o600 }); } catch { /* the launcher then waits out its time and says "not connected yet" */ }
+  try { atomicWriteFileSync(join(directory, backgroundStateFile(launchId)), JSON.stringify(value), { mode: 0o600 }); } catch { /* the launcher then waits out its time and says "not connected yet" */ }
 }
-export function readBackgroundState(directory: string): BackgroundState | undefined {
-  const raw = readSmall(join(directory, RUNTIME_BACKGROUND_STATE_FILE));
-  if (!object(raw) || raw.version !== 1 || typeof raw.launchId !== "string" || !LAUNCH_ID.test(raw.launchId) || !Number.isSafeInteger(raw.pid) || !["ready", "already-running", "failed"].includes(raw.status as string)) return undefined;
+/** What the launch with this id reported; another launch's word is in another file and is never read here. */
+export function readBackgroundState(directory: string, launchId: string): BackgroundState | undefined {
+  if (!LAUNCH_ID.test(launchId)) return undefined;
+  const raw = readSmall(join(directory, backgroundStateFile(launchId)));
+  if (!object(raw) || raw.version !== 1 || raw.launchId !== launchId || !Number.isSafeInteger(raw.pid) || !["ready", "already-running", "failed"].includes(raw.status as string)) return undefined;
   return { version: 1, launchId: raw.launchId, pid: raw.pid as number, status: raw.status as BackgroundStatus, ...(typeof raw.message === "string" ? { message: raw.message } : {}), at: Number(raw.at) || 0 };
 }
-export function clearBackgroundState(directory: string): void { try { unlinkSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE)); } catch { /* none */ } }
+/** Removes one launch's file, or (without an id) every launch's file. */
+export function clearBackgroundState(directory: string, launchId?: string): void {
+  if (launchId !== undefined) { if (LAUNCH_ID.test(launchId)) { try { unlinkSync(join(directory, backgroundStateFile(launchId))); } catch { /* none */ } } return; }
+  try { for (const name of readdirSync(directory)) if (name.startsWith(RUNTIME_BACKGROUND_STATE_PREFIX) && name.endsWith(".json")) { try { unlinkSync(join(directory, name)); } catch { /* none */ } } } catch { /* no folder */ }
+}
+/** Removes launch files nobody is waiting for any more (a launch waits seconds, so anything older than `maxAgeMs` is a leftover). Never touches a launch that is in progress. */
+export function pruneBackgroundStates(directory: string, now = Date.now(), maxAgeMs = 10 * 60_000): void {
+  try {
+    for (const name of readdirSync(directory)) {
+      if (!name.startsWith(RUNTIME_BACKGROUND_STATE_PREFIX) || !name.endsWith(".json")) continue;
+      try { if (now - statSync(join(directory, name)).mtimeMs > maxAgeMs) unlinkSync(join(directory, name)); } catch { /* none */ }
+    }
+  } catch { /* no folder */ }
+}
 
 const forbiddenInStartScript = /["\r\n\0]/;
 /**
@@ -344,21 +361,21 @@ export async function launchBackgroundRuntime(options: BackgroundLaunchOptions):
   let script: string;
   try { script = powershellStartScript({ execPath: options.execPath ?? process.execPath, cliPath: options.cliPath, profile: directory }); }
   catch (error) { return done({ kind: "failed", message: error instanceof Error ? error.message : "The Runtime could not be started" }); }
-  clearBackgroundState(directory);
+  pruneBackgroundStates(directory);   // leftovers only: a launch in progress, ours or a racing one's, keeps its file
   const started = await (options.start ?? startDetachedWindows)({ script, cwd: directory, env: { ...(options.env ?? process.env), [RUNTIME_BACKGROUND_ENV]: "1", [RUNTIME_LAUNCH_ID_ENV]: launchId } });
   if (started.error || !started.pid) return done({ kind: "failed", message: `The Runtime could not be started in the background: ${started.error ?? "no process was created"}. Use connect --foreground to keep it in this window.` });
   const pid = started.pid, alive = options.alive ?? pidAlive, deadline = Date.now() + (options.waitMs ?? 30_000), poll = options.pollMs ?? 200;
   for (;;) {
-    const state = readBackgroundState(directory);
-    if (state?.launchId === launchId) {
+    const state = readBackgroundState(directory, launchId);
+    if (state) {
+      clearBackgroundState(directory, launchId);
       if (state.status === "ready") return done({ kind: "started", pid, connected: true });
       if (state.status === "already-running") return done({ kind: "already-running", ...(state.pid ? { pid: state.pid } : {}) });
       return done({ kind: "failed", message: state.message || "The Runtime stopped before it connected. Run agend-runtime logs to see why." });
     }
     if (!alive(pid)) {
       // it may have written its word just before ending
-      const last = readBackgroundState(directory);
-      if (last?.launchId === launchId && last.status !== "ready") continue;
+      if (readBackgroundState(directory, launchId)) continue;
       return done({ kind: "failed", message: "The background Runtime stopped before it connected. Run agend-runtime logs to see why." });
     }
     if (Date.now() >= deadline) return done({ kind: "started", pid, connected: false });

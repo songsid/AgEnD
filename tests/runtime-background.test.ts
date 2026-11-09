@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,7 @@ import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RUNTIME_AUTOSTART_FILE, RUNTIME_INSTANCE_FILE, RUNTIME_LOG_KEEP, RUNTIME_LOG_MAX_BYTES, RUNTIME_STOP_REQUEST_FILE, RotatingLog, captureProcessOutput, clearInstanceMarker, clearStopRequest,
   discoverRuntimeProfiles, launchBackgroundRuntime, noteRuntimeProfile, powershellStartScript, readAutostartPreference, readBackgroundState, readInstanceMarker, readRuntimeInstance,
   reportBackgroundState, requestRuntimeStop, runtimeDataRoot, runtimeLogDirectory, runtimeProfileLabel, stopRuntimeInstance, watchStopRequest, writeAutostartPreference, writeInstanceMarker,
-  RUNTIME_BACKGROUND_STATE_FILE, RUNTIME_LAUNCH_ID_ENV, clearBackgroundState } from "../src/runtime-background.js";
+  RUNTIME_BACKGROUND_STATE_PREFIX, backgroundStateFile, pruneBackgroundStates, RUNTIME_LAUNCH_ID_ENV, clearBackgroundState } from "../src/runtime-background.js";
 
 /**
  * the pieces that keep the Windows Runtime in the background: a log with a size limit that rotates, one instance per profile (the profile lock),
@@ -195,7 +195,7 @@ function fakeStart(pid = 7000) {
   const start = vi.fn(async (input: { script: string; env: Record<string, string | undefined>; cwd: string }) => { calls.push(input); return { pid }; });
   return { start, calls };
 }
-const reply = (directory: string, state: Record<string, unknown>): void => writeFileSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE), JSON.stringify({ version: 1, launchId: ID, pid: 7000, at: 1, ...state }));
+const reply = (directory: string, state: Record<string, unknown>): void => writeFileSync(join(directory, backgroundStateFile(String(state.launchId ?? ID))), JSON.stringify({ version: 1, launchId: ID, pid: 7000, at: 1, ...state }));
 describe("the PowerShell that starts the Runtime", () => {
   const input = { execPath: "C:\\Program Files\\nodejs\\node.exe", cliPath: "C:\\Users\\me\\AppData\\Local\\agend-runtime\\1.0.0+abc\\dist\\runtime-cli.js", profile: "C:\\Users\\me\\.agend-runtime" };
   it("uses Start-Process (no inherited handle), hidden, with the profile as its folder, and prints the new process id", () => {
@@ -216,17 +216,25 @@ describe("the PowerShell that starts the Runtime", () => {
 describe("the Runtime's word to its launcher (the state file)", () => {
   it("is written only for a start that has a launch id, as a small private file naming that id", () => {
     const directory = scratch();
-    reportBackgroundState(directory, {}, { status: "ready" }); expect(existsSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE))).toBe(false);
-    reportBackgroundState(directory, { [RUNTIME_LAUNCH_ID_ENV]: "not hex!" }, { status: "ready" }); expect(existsSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE))).toBe(false);
+    reportBackgroundState(directory, {}, { status: "ready" }); expect(readdirSync(directory)).toEqual([]);
+    reportBackgroundState(directory, { [RUNTIME_LAUNCH_ID_ENV]: "not hex!" }, { status: "ready" }); expect(readdirSync(directory)).toEqual([]);
     reportBackgroundState(directory, { [RUNTIME_LAUNCH_ID_ENV]: ID }, { status: "failed", message: "revoked" }, 5);
-    expect(readBackgroundState(directory)).toEqual({ version: 1, launchId: ID, pid: process.pid, status: "failed", message: "revoked", at: 5 });
-    clearBackgroundState(directory); expect(readBackgroundState(directory)).toBeUndefined();
+    expect(readdirSync(directory)).toEqual([`${RUNTIME_BACKGROUND_STATE_PREFIX}${ID}.json`]);
+    expect(readBackgroundState(directory, ID)).toEqual({ version: 1, launchId: ID, pid: process.pid, status: "failed", message: "revoked", at: 5 });
+    expect(readBackgroundState(directory, "ff".repeat(12))).toBeUndefined();                  // another launch's id reads another launch's file
+    clearBackgroundState(directory, ID); expect(readBackgroundState(directory, ID)).toBeUndefined();
   });
   it("does not believe a malformed file", () => {
     const directory = scratch();
     for (const bad of ['{"version":2}', '{"version":1,"launchId":"zz","pid":1,"status":"ready"}', '{"version":1,"launchId":"' + ID + '","pid":"x","status":"ready"}', '{"version":1,"launchId":"' + ID + '","pid":3,"status":"fine"}', "not json"]) {
-      writeFileSync(join(directory, RUNTIME_BACKGROUND_STATE_FILE), bad); expect(readBackgroundState(directory), bad).toBeUndefined();
+      writeFileSync(join(directory, backgroundStateFile(ID)), bad); expect(readBackgroundState(directory, ID), bad).toBeUndefined();
     }
+  });
+  it("a launch removes its own file once it has read it, never someone else's, and prunes only leftovers older than ten minutes", () => {
+    const directory = scratch(), old = join(directory, backgroundStateFile("cc".repeat(12))), mine = join(directory, backgroundStateFile("dd".repeat(12)));
+    writeFileSync(old, "{}"); writeFileSync(mine, "{}"); utimesSync(old, new Date(Date.now() - 11 * 60_000), new Date(Date.now() - 11 * 60_000));
+    pruneBackgroundStates(directory); expect(existsSync(old)).toBe(false); expect(existsSync(mine)).toBe(true);   // a launch in progress keeps its file
+    writeFileSync(join(directory, "autostart.json"), "{}"); clearBackgroundState(directory); expect(readdirSync(directory)).toEqual(["autostart.json"]);   // nothing but the state files
   });
 });
 describe("starting a background Runtime", () => {
@@ -248,10 +256,23 @@ describe("starting a background Runtime", () => {
     expect(answer.kind).toBe("started"); expect(JSON.stringify(fake.calls)).not.toContain("c".repeat(64));
   });
   it("ignores a word that is not this launch's, and a stale one left from before", async () => {
-    const store = new RuntimeClientStore(scratch()), fake = fakeStart(); reply(store.directory, { status: "failed", message: "old" });
+    const store = new RuntimeClientStore(scratch()), fake = fakeStart(); reply(store.directory, { launchId: "ee".repeat(12), status: "failed", message: "old" });
     let polls = 0;
-    const launched = await launchBackgroundRuntime(options(store, { start: fake.start, waitMs: 20, sleep: async () => { if (++polls === 1) writeFileSync(join(store.directory, RUNTIME_BACKGROUND_STATE_FILE), JSON.stringify({ version: 1, launchId: "ff".repeat(12), pid: 1, status: "failed", at: 1 })); await new Promise(done => setTimeout(done, 5)); } }) as never);
+    const launched = await launchBackgroundRuntime(options(store, { start: fake.start, waitMs: 20, sleep: async () => { if (++polls === 1) writeFileSync(join(store.directory, backgroundStateFile("ff".repeat(12))), JSON.stringify({ version: 1, launchId: "ff".repeat(12), pid: 1, status: "failed", at: 1 })); await new Promise(done => setTimeout(done, 5)); } }) as never);
     expect(launched).toEqual({ kind: "started", pid: 7000, connected: false });
+  });
+  it("keeps two launches that start at the same moment apart: the loser's word does not overwrite the winner's", async () => {
+    const store = new RuntimeClientStore(scratch()), winner = "aa".repeat(12), loser = "bb".repeat(12);
+    // both launchers are waiting; the loser's Runtime finds the lock held and says so, and the winner's Runtime says it is connected, in either order
+    for (const order of [[winner, loser], [loser, winner]]) {
+      clearBackgroundState(store.directory);
+      const results = await Promise.all([winner, loser].map(launchId => launchBackgroundRuntime(options(store, { launchId, waitMs: 2000, pollMs: 5, sleep: (ms: number) => new Promise<void>(done => setTimeout(done, ms)), start: async () => {
+        setTimeout(() => reportBackgroundState(store.directory, { [RUNTIME_LAUNCH_ID_ENV]: launchId }, launchId === winner ? { status: "ready", pid: 7000 } : { status: "already-running", pid: 7000 }), order.indexOf(launchId) * 15 + 5);
+        return { pid: 7000 };
+      } }) as never)));
+      expect(results[0]).toEqual({ kind: "started", pid: 7000, connected: true });                // the winner is told it is connected, never "not connected yet"
+      expect(results[1]).toEqual({ kind: "already-running", pid: 7000 });
+    }
   });
   it("reports 'already running' and a failure with the Runtime's own words", async () => {
     const store = new RuntimeClientStore(scratch());

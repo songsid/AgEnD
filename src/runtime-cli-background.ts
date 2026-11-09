@@ -227,7 +227,9 @@ export async function removeAutostartForDisconnect(context: BackgroundContext, s
   try {
     if (process.platform === "win32" || context.seams.autostart) { if (await autostartService(context).disable(label)) out(context, "The sign-in task that started this Runtime was removed."); }
   } catch (error) { out(context, `The sign-in task could not be removed: ${error instanceof Error ? error.message : "unknown error"}`); }
-  writeAutostartPreference(store.directory, undefined); clearInstanceMarker(store.directory); forgetRuntimeProfileNote(context.env, context.home, store.directory);
+  // A person who turned the sign-in task off keeps it off: only a preference that was never chosen (or was "on") goes back to "never chosen", so a later connect starts afresh.
+  if (readAutostartPreference(store.directory) !== false) writeAutostartPreference(store.directory, undefined);
+  clearInstanceMarker(store.directory); forgetRuntimeProfileNote(context.env, context.home, store.directory);
 }
 
 /* ------------------------------------------------------------------ the background Runtime itself */

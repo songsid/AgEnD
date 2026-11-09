@@ -274,6 +274,20 @@ describe("status, stop, restart and logs", () => {
     expect(existsSync(join(store.directory, RUNTIME_AUTOSTART_FILE))).toBe(false); expect(existsSync(join(store.directory, RUNTIME_INSTANCE_FILE))).toBe(false);
     expect(output).toMatch(/sign-in task that started this Runtime was removed/);
   });
+  it("disconnect keeps a person's \"autostart off\": after disconnect and a new connect the sign-in task is not made again", async () => {
+    const f = fixture(), store = pairTo(f.base); writeAutostartPreference(store.directory, false);
+    await call(["disconnect"], f);
+    expect(existsSync(join(store.directory, "connection.json"))).toBe(false); expect(readAutostartPreference(store.directory)).toBe(false);   // the choice outlives the pairing
+    autostartCalls.length = 0; pairTo(f.base); output = "";
+    await call(["connect", "--server", A], f);
+    expect(autostartCalls).toEqual([]); expect(output).not.toMatch(/starts again by itself/); expect(readAutostartPreference(store.directory)).toBe(false);
+  });
+  it("disconnect still forgets a preference that was on (or never chosen), so a new pairing starts afresh", async () => {
+    for (const before of [true, undefined]) {
+      const f = fixture(), store = pairTo(f.base); writeAutostartPreference(store.directory, before);
+      await call(["disconnect"], f); expect(readAutostartPreference(store.directory)).toBeUndefined();
+    }
+  });
   it("disconnect that cannot stop the Runtime in time changes nothing", async () => {
     const f = fixture(), store = pairTo(f.base); lockFile(store.directory, 4242); writeInstanceMarker(store.directory, 4242);
     await expect(call(["disconnect"], f)).rejects.toThrow(/did not stop in time, so nothing was disconnected/);
@@ -285,7 +299,7 @@ describe("the detached Runtime itself (run with the background switch)", () => {
   const ID = "ab12cd34ef56ab78cd90ef12";
   const background = (f: ReturnType<typeof fixture>, launchId: string | null = ID) => ({ ...f.env, [RUNTIME_BACKGROUND_ENV]: "1", ...(launchId ? { [RUNTIME_LAUNCH_ID_ENV]: launchId } : {}) });
   const logOf = (f: ReturnType<typeof fixture>): string => { const file = join(runtimeLogDirectory(f.env, f.home, f.base), "runtime.log"); return existsSync(file) ? readFileSync(file, "utf8") : ""; };
-  const word = (f: ReturnType<typeof fixture>) => readBackgroundState(f.base);
+  const word = (f: ReturnType<typeof fixture>) => readBackgroundState(f.base, ID);
 
   it("writes its output to the profile's log instead of the window, and tells the launcher (state file, under the launch's id) when AgEnD welcomed it", async () => {
     const f = fixture(); pairTo(f.base);
