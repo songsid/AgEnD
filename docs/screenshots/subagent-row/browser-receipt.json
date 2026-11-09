@@ -1,0 +1,304 @@
+{
+  "kind": "real product web; filesystem fixtures from audited mock CLI records; inert lifecycle source only",
+  "source": [
+    {
+      "file": "src/subagent-records.ts",
+      "sha256": "fd41325f1960a2479ad108f142a2ff5104d3e5fa6130fa385182228041fdada1"
+    },
+    {
+      "file": "src/subagent-service.ts",
+      "sha256": "74d32b3ce656d1f9bd74c8be0cb0b7173ba4ecabf16f691af3b9d3afdee3a0f0"
+    },
+    {
+      "file": "src/ui/subagent-row.js",
+      "sha256": "026f637913550041a987b3b471938e197917b46bb906d04156e6fe4757959898"
+    },
+    {
+      "file": "src/ui/panel-chat.js",
+      "sha256": "a1e2548f92b9776ae0c0709241c568deb5d6710e9976960793371e384601af75"
+    },
+    {
+      "file": "src/ui/shared/subagent-row.css",
+      "sha256": "91ebc191891ec01bb4460c22e53c85c60f92c7419b498b85d10d4102437c99b8"
+    },
+    {
+      "file": "src/web-api.ts",
+      "sha256": "160d2a660d0bd1bbec94b3c811aa917488c8a3abe6b5e096cd739cfc8646da40"
+    }
+  ],
+  "cases": [
+    {
+      "name": "desk-light-en",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "desk-dark-en",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "desk-dark-zh-TW",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 766,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "phone-light-en",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "phone-light-zh-TW",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "phone-dark-en",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW",
+      "placement": {
+        "ledger": false,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "style": {
+          "targetWidth": 372,
+          "targetHeight": 44,
+          "tap": 44,
+          "roundedAccent": false,
+          "inlineStyles": 0
+        },
+        "css": true
+      },
+      "errors": [],
+      "violations": [],
+      "parentOver2MiB": true,
+      "quiet": [
+        "no-source",
+        "unreadable",
+        "mature-no-child"
+      ],
+      "states": [
+        "collapsed",
+        "completed+running",
+        "missing unknown",
+        "Codex completed"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "mode": "old-panel",
+      "composer": true,
+      "pageErrors": []
+    },
+    {
+      "mode": "old-css",
+      "composer": true,
+      "pageErrors": []
+    },
+    {
+      "mode": "old-server",
+      "composer": true,
+      "pageErrors": []
+    },
+    {
+      "mode": "missing-module",
+      "composer": true,
+      "pageErrors": []
+    }
+  ],
+  "cleanup": {
+    "fixtureClosed": true
+  }
+}
