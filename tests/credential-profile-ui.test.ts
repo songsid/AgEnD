@@ -71,7 +71,7 @@ describe("account identity: the e-mail and plan of each sign-in", () => {
   const withIdentity = (over: any = {}) => machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, identity: identity("default.fixture@example.com", "pro") }], credentialProfiles: { default: "work", profiles: [
     { name: "work", loggedIn: true, identity: identity("alice.fixture@example.com", "team") }, { name: "home", loggedIn: true, identity: identity("bob.fixture@example.org", "max") },
     { name: "key", loggedIn: true, identity: { apiKey: true } }, { name: "odd", loggedIn: true, identity: identity("ca***@example.net", "platinum") }, { name: "old", loggedIn: false }, { name: "none", loggedIn: true }] }, ...over } });
-  it("the computer card shows `name · e-mail · Plan` for each profile and the default sign-in's own account", async () => {
+  it("the computer card shows `name · e-mail · Plan` for each profile and the default connection's own account", async () => {
     machines = [withIdentity()]; await p.mount(h(Panel, { navKey: "identity-card" })); await settle(12);
     const card = p.root.querySelector(`[data-machine-id="${idA}"]`), rows = card.querySelectorAll(".runtime-profile-list li");
     const accountOf = (name: string) => rows.find((row: any) => row.getAttribute("data-profile") === name).querySelector(".runtime-account")?.textContent ?? null;
@@ -98,9 +98,9 @@ describe("account identity: the e-mail and plan of each sign-in", () => {
   it("the Claude account select shows the same, for each profile and for the default choice", async () => {
     machines = [withIdentity()]; await p.mount(h(Create, { onClose() {} })); await settle(8); await choose(idA);
     const options = p.root.querySelectorAll("#native-create-claude-account option").map((node: any) => node.textContent.trim());
-    expect(options[0]).toBe("This computer's default sign-in · alice.fixture@example.com · Team");
+    expect(options[0]).toBe("This computer's default connection · alice.fixture@example.com · Team");
     expect(options).toContain("work · alice.fixture@example.com · Team · default"); expect(options).toContain("home · bob.fixture@example.org · Max");
-    expect(options).toContain("key · No account email (API key)"); expect(options).toContain("old · not signed in");
+    expect(options).toContain("key · No account email (API key)"); expect(options).toContain("old · not connected");
     expect(options.join("\n")).not.toMatch(/Alice Fixture|xxxxxxxx/);
   });
   it("is in zh-TW too: plan names stay product names, the labels are translated", async () => {
@@ -147,7 +147,7 @@ describe("new remote agent: Claude account", () => {
     await open(idA);
     const field = "#native-create-claude-account", options = (): Array<{ value: string; disabled: boolean; text: string }> => p.root.querySelectorAll(`${field} option`).map((node: any) => ({ value: node.value, disabled: !!node.disabled, text: node.textContent }));
     expect(options().map(o => o.value)).toEqual(["", "work", "home", "old", "fresh"]);
-    expect(options().find(o => o.value === "old")).toMatchObject({ disabled: true }); expect(options().find(o => o.value === "old")!.text).toContain("not signed in");
+    expect(options().find(o => o.value === "old")).toMatchObject({ disabled: true }); expect(options().find(o => o.value === "old")!.text).toContain("not connected");
     expect(options().find(o => o.value === "work")!.text).toContain("default");
     await select(field, "home"); button("Next").click(); await settle(8);
     const name = p.root.querySelectorAll(".agent-runtime-fields input")[1]; name.value = "Home helper"; fire(name, "input"); await settle();

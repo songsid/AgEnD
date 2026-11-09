@@ -70,14 +70,14 @@ describe("a computer's accounts under its name", () => {
     const def = mrow("default"), by = mrow("by-hand"), work = mrow("work");
     // The default: the Windows user's own sign-in. No Sign in, Sign out, Switch or Remove; the reason in words.
     expect(actions(def)).toEqual([]);
-    expect(text(def.querySelector(".s-account-why"))).toBe("This is the Windows user's own sign-in on Desk PC. It is never changed from here: add an account instead.");
+    expect(text(def.querySelector(".s-account-why"))).toBe("This is the Windows user's own connection on Desk PC. It is never changed from here: add an account instead.");
     expect(text(def.querySelector(".s-account-identity"))).toBe("cd***@example.com · Pro");
     // A profile its Runtime did not create: read-only, why, and the command to run on that computer.
     expect(actions(by)).toEqual([]);
     expect(text(by.querySelector(".s-account-why"))).toBe("This account was not created by AgEnD's Runtime, so it can only be handled on Desk PC.");
-    expect([text(by.querySelector("summary")), text(by.querySelector("code"))]).toEqual(["Sign in on that computer", "agend-runtime login claude-code by-hand"]);
+    expect([text(by.querySelector("summary")), text(by.querySelector("code"))]).toEqual(["Connect on that computer", "agend-runtime login claude-code by-hand"]);
     // One it did create: Sign in again, Sign out, Remove — never Move agents here or Switch account.
-    expect(actions(work)).toEqual(["Sign in again", "Sign out", "Remove"]);
+    expect(actions(work)).toEqual(["Reconnect", "Disconnect", "Remove"]);
     expect(text(work.querySelector(".s-account-identity"))).toBe("ab***@example.com · Max");
     expect(text(work.querySelector(".s-account-used"))).toBe("used by 1 agent");
     expect(text(work.querySelector(".s-account-default-tag"))).toBe("this computer's default");      // the tag sits in the title bar, beside the name and state
@@ -92,7 +92,7 @@ describe("a computer's accounts under its name", () => {
   it("the host's own rows and their buttons are as they were", async () => {
     await mount();
     const host = card().querySelector('.s-account-rows .s-account-row[data-account="default"]');
-    expect(actions(host)).toEqual(expect.arrayContaining(["Sign in again", "Switch account", "Sign out"]));
+    expect(actions(host)).toEqual(expect.arrayContaining(["Reconnect", "Switch account", "Disconnect"]));
     expect(card().querySelectorAll(".s-account-machine")).toHaveLength(1);
     // Ridge #3321 S08: beside "On Desk PC", the host's rows are named as the host's, before them.
     const head = card().querySelector(".s-account-host-head strong");
@@ -124,7 +124,7 @@ describe("a computer's accounts under its name", () => {
     i18n.setLang("zh-TW", { store: false }); await mount();
     expect(text(machineBox().querySelector(".s-account-machine-head strong"))).toBe("在 Desk PC");
     expect(text(mrow("by-hand").querySelector(".s-account-why"))).toBe("這個帳號不是 AgEnD 的 Runtime 建立的，只能在 Desk PC 上處理。");
-    expect(actions(mrow("work"))).toEqual(["重新登入", "登出", "移除"]);
+    expect(actions(mrow("work"))).toEqual(["重新連接", "撤銷連接", "移除"]);
     expect(text(mrow("default").querySelector(".s-account-usage"))).toBe("—");
   });
 });
@@ -132,10 +132,10 @@ describe("a computer's accounts under its name", () => {
 describe("Sign in on a computer", () => {
   it("opens that computer's sign-in dialog for that profile (the host's own Sign in still opens the host's)", async () => {
     await mount();
-    btn(mrow("work"), "Sign in again").click(); await settle(6);
+    btn(mrow("work"), "Reconnect").click(); await settle(6);
     expect(shell.shellStore.get().dialog?.props).toEqual({ machine: { id: "m1", name: "Desk PC" }, profile: "work" });
     shell.shellStore.set({ dialog: null });
-    btn(card().querySelector('.s-account-rows .s-account-row[data-account="default"]'), "Sign in again").click(); await settle(6);
+    btn(card().querySelector('.s-account-rows .s-account-row[data-account="default"]'), "Reconnect").click(); await settle(6);
     expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code" });
   });
   // The dialog itself, mounted as the shell would show it (showDialog needs the whole shell; the dialog is a component of its own).
@@ -144,16 +144,16 @@ describe("Sign in on a computer", () => {
     await mountDialog();
     const d = dialog() ?? p.root;
     expect(gets.some(url => url === "/ui/browser-backend-signins?machine=m1&profile=work")).toBe(true);
-    expect(text(d)).toContain("Sign in Claude Code account “work” on Desk PC");
+    expect(text(d)).toContain("Connect Claude Code account “work” on Desk PC");
     expect(text(d)).toContain("Run this on that computer: agend-runtime login claude-code work");
-    expect(text(d)).not.toContain("Sign in later"); expect(text(d)).not.toContain("Sign in your AI backends");
-    expect(btn(d, "Sign in")).toBeTruthy();       // the state is "invalid" in the snapshot: Sign in (not 'again')
+    expect(text(d)).not.toContain("Connect later"); expect(text(d)).not.toContain("Connect your AI accounts");
+    expect(btn(d, "Connect account")).toBeTruthy();       // the state is "invalid" in the snapshot: Sign in (not 'again')
     i18n.setLang("zh-TW", { store: false }); await mountDialog();
-    expect(text(dialog() ?? p.root)).toContain("在 Desk PC 登入 Claude Code 帳號「work」");
+    expect(text(dialog() ?? p.root)).toContain("在 Desk PC 連接 Claude Code 帳號「work」");
   });
   it("Sign in posts a start for Claude Code to that endpoint and nothing about a method, command or path", async () => {
     await mountDialog();
-    await btn(dialog() ?? p.root, "Sign in").onclick(); await settle(8);      // the sign-in cards assign `onclick`, as the setup page's do
+    await btn(dialog() ?? p.root, "Connect account").onclick(); await settle(8);      // the sign-in cards assign `onclick`, as the setup page's do
     const start = calls.find(c => c.method === "POST" && c.url.startsWith("/ui/browser-backend-signins"))!;
     expect(start.url).toBe("/ui/browser-backend-signins?machine=m1&profile=work");
     expect(start.body).toEqual({ operation: "start", backend: "claude-code", relogin: false });
@@ -161,17 +161,17 @@ describe("Sign in on a computer", () => {
   it("a refusal from the server is said in words with the command to run on that computer", async () => {
     answer = (_m, url) => (url.startsWith("/ui/browser-backend-signins") ? { status: 409, body: { error: "machine_accounts_off" } } : { status: 200, body: {} });
     await mountDialog();
-    await btn(dialog() ?? p.root, "Sign in").onclick(); await settle(10);
+    await btn(dialog() ?? p.root, "Connect account").onclick(); await settle(10);
     expect(text((dialog() ?? p.root).querySelector("[role=alert]"))).toBe("The owner of that computer has not allowed this. On that computer run: agend-runtime remote-setup accounts on");
   });
   it("Sign in is disabled while a sign-in on a computer is running; the view reads again when it ends", async () => {
     await mount();
     M.machineSignInStore.set({ phase: "code", reason: "" }); await settle(6);
-    expect(btn(mrow("work"), "Sign in again").disabled).toBe(true); expect(card().querySelector(".s-account-rows .btn[disabled]")).toBeTruthy();
+    expect(btn(mrow("work"), "Reconnect").disabled).toBe(true); expect(card().querySelector(".s-account-rows .btn[disabled]")).toBeTruthy();
     const before = gets.filter(u => u === "/ui/accounts").length;
     M.machineSignInStore.set({ phase: "done", reason: "" }); await settle(8);
     expect(gets.filter(u => u === "/ui/accounts").length).toBeGreaterThan(before);
-    expect(btn(mrow("work"), "Sign in again").disabled).toBe(false);
+    expect(btn(mrow("work"), "Reconnect").disabled).toBe(false);
   });
 });
 
@@ -207,11 +207,11 @@ describe("+ Add account on a computer", () => {
 describe("Remove and Sign out on a computer", () => {
   it("Sign out names the computer, asks its Runtime (the body carries the computer), and offers no Switch", async () => {
     await mount();
-    btn(mrow("work"), "Sign out").click(); await settle(6);
+    btn(mrow("work"), "Disconnect").click(); await settle(6);
     const d = dialog();
-    expect(text(d)).toContain("AgEnD asks Desk PC's Runtime to run Claude Code's own logout for this account.");
+    expect(text(d)).toContain("AgEnD asks Desk PC's Runtime to run Claude Code's own logout command for this account.");
     expect(labels(d)).not.toContain("Sign out and sign in");
-    btn(d, "Sign out").click(); await settle(12);
+    btn(d, "Disconnect").click(); await settle(12);
     expect(calls).toEqual([{ method: "POST", url: "/ui/accounts/claude-code/signout", body: { profile: "work", confirm: true, machine: "m1" } }]);
   });
   it("Remove: the account's users are listed (an agent there with Move…, the computer's own default without one — changing it is done on that computer); typing the name enables it; the body carries the computer", async () => {

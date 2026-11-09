@@ -64,7 +64,7 @@ describe("the account box: three layers (#3212)", () => {
     const work = rowOf("claude-code", "work");
     const bar = work.querySelector(".s-account-title-bar"), meta = work.querySelector(".s-account-meta-bar");
     expect([text(bar.querySelector(".s-account-title-left strong")), text(bar.querySelector(".s-account-title-left .s-auth-state")), text(bar.querySelector(".s-account-title-left .s-account-default-tag"))])
-      .toEqual(["Account “work”", "signed in", "fleet default"]);
+      .toEqual(["Account “work”", "connected", "fleet default"]);
     expect(bar.querySelector(".s-actions")).toBeTruthy();                                    // the buttons are in the title bar
     expect([text(meta.querySelector(".s-account-identity")), text(meta.querySelector(".s-account-used"))]).toEqual(["te***@company.example · Team", "used by 2 agents"]);
     expect(meta.querySelector(".s-account-usage")).toBeNull();                                 // the usage has a block of its own, below the meta bar
@@ -104,7 +104,7 @@ describe("the account box: three layers (#3212)", () => {
       expect(labels.length, lang).toBeGreaterThan(4);
       expect(labels.filter((l: string) => /[….]$/.test(l)), lang).toEqual([]);
     }
-    expect(p.root.querySelectorAll(".s-actions button").map((b: any) => text(b))).toEqual(expect.arrayContaining(["重新登入", "移入 Agent", "切換帳號", "登出", "移除"]));
+    expect(p.root.querySelectorAll(".s-actions button").map((b: any) => text(b))).toEqual(expect.arrayContaining(["重新連接", "移入 Agent", "切換帳號", "撤銷連接", "移除"]));
   });
 
   it("a computer's account is a box too, with its default tag in the title bar", async () => {
@@ -309,10 +309,10 @@ describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3
       expect([text(btn), btn.tagName, btn.getAttribute("aria-describedby") === body.getAttribute("id"), body.hidden]).toEqual(["i", "BUTTON", true, true]);
       expect(tip.className).toContain("s-i");
     }
-    expect(text(tips[0].querySelector('[role="tooltip"]'))).toBe("Once a day, if no agent is using it, AgEnD renews this sign-in with Claude Code's own status check. No model request.");
-    expect(tipBtn(tips[0]).getAttribute("aria-label")).toBe("About “Keep sign-in alive”");
+    expect(text(tips[0].querySelector('[role="tooltip"]'))).toBe("Once a day, if no agent is using it, AgEnD renews this connection with Claude Code's own status check. No model request.");
+    expect(tipBtn(tips[0]).getAttribute("aria-label")).toBe("About “Keep connection alive”");
     expect(text(work.querySelector(".s-keepalive-fallback label"))).toBe("Backup renewal (a tiny request if the status check doesn't renew)");
-    expect(text(work.querySelector(".s-keepalive-fallback .s-tipwrap [role=\"tooltip\"]"))).toBe("When the regular status check can't extend the sign-in, allow one very short request on the smallest model (a few dozen tokens) to keep it signed in.");
+    expect(text(work.querySelector(".s-keepalive-fallback .s-tipwrap [role=\"tooltip\"]"))).toBe("When the regular status check can't extend the sign-in, allow one very short request on the smallest model (a few dozen tokens) to keep it connected.");
     expect(ka("claude-code", "personal").querySelectorAll(".s-tipwrap")).toHaveLength(1);       // off: no fallback switch
     expect(ka("codex", "default").querySelectorAll(".s-tipwrap")).toHaveLength(1);              // Codex has no fallback
     const ids = p.root.querySelectorAll('.s-account-keepalive [role="tooltip"]').map((x: any) => x.getAttribute("id"));
@@ -343,8 +343,8 @@ describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3
     i18n.setLang("zh-TW", { store: false }); await mount();
     const work = ka("claude-code", "work");
     expect(text(work.querySelector(".s-keepalive-fallback label"))).toBe("備援續期（狀態檢查未續期時改送極小請求）");
-    expect(text(work.querySelector('.s-keepalive-fallback [role="tooltip"]'))).toBe("當一般狀態檢查未能延長登入效期時，允許改用最小模型送一次極短請求（約數十 token）來維持登入。");
-    expect(tipBtn(work.querySelector(".s-tipwrap")).getAttribute("aria-label")).toBe("「保持登入」的說明");
+    expect(text(work.querySelector('.s-keepalive-fallback [role="tooltip"]'))).toBe("當一般狀態檢查未能延長登入效期時，允許改用最小模型送一次極短請求（約數十 token）來維持連接。");
+    expect(tipBtn(work.querySelector(".s-tipwrap")).getAttribute("aria-label")).toBe("「保持連接」的說明");
   });
 });
 

@@ -59,8 +59,8 @@ async function page(language: string, opts: { outside?: boolean; webOnly?: boole
 const WORDS = {
   en: { label: "Authenticator code", lead: "Open your authenticator app and enter the 6-digit code for AgEnD.", hint: "Lost your phone? On the AgEnD computer, choose “Set up again”.",
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.", wait: "Too many wrong codes. Try again in 15 minutes.", wait2h: "Too many wrong codes. Try again in 2 hours." },
-  "zh-TW": { label: "驗證器代碼", lead: "打開驗證器 App，輸入 AgEnD 的 6 位數代碼。", hint: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
-    wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。", wait: "錯誤次數太多，請 15 分鐘 後再試。", wait2h: "錯誤次數太多，請 2 小時 後再試。" },
+  "zh-TW": { label: "6 位數驗證碼（驗證器 App）", lead: "打開驗證器 App，輸入 AgEnD 的 6 位數驗證碼。", hint: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
+    wrong: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。", wait: "錯誤次數太多，請 15 分鐘 後再試。", wait2h: "錯誤次數太多，請 2 小時 後再試。" },
 } as const;
 
 describe("#3008 ② the sign-in page from outside", () => {

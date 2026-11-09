@@ -96,7 +96,7 @@ describe("#2726 every message the host can answer with has its 繁體中文", ()
     for (const text of ["incorrect — 3 attempts left", "incorrect — 1 attempt left", "Discord replied 401", "Telegram replied 502",
       "This bot token is already being polled by the running fleet. Enter the group id by hand, or stop AgEnD first.",
       "Another process is already reading this bot's updates. Stop it, or enter the group id by hand."]) translated(text);
-    expect(zh.trHost("incorrect — 3 attempts left")).toBe("代碼不正確 —— 還可以再試 3 次");
+    expect(zh.trHost("incorrect — 3 attempts left")).toBe("設定碼不正確 —— 還可以再試 3 次");
   });
   it("the confirmation gate's codes are words in both languages; an unknown text stays as it came", () => {
     for (const code of Object.keys(SETUP_HOST_CODES.en)) { expect(en.trHost(code)).toBe(SETUP_HOST_CODES.en[code]); expect(zh.trHost(code)).toBe(SETUP_HOST_CODES["zh-TW"][code]); }
@@ -217,10 +217,10 @@ describe("#2726 the code page in a language", () => {
     const p = codePage("zh-Hant-TW");
     expect(p.document.title).toBe("設定 AgEnD");
     const lead = p.node("lead").children;
-    expect([lead[0], lead[1].textContent, lead[2]]).toEqual(["請輸入執行 ", "agend setup", " 的終端機上顯示的設定代碼。"]);
+    expect([lead[0], lead[1].textContent, lead[2]]).toEqual(["請輸入執行 ", "agend setup", " 的終端機上顯示的設定碼。"]);
     await p.node("f").submit({ preventDefault() {} });
     for (let n = 0; n < 10; n++) await Promise.resolve();
-    expect(p.node("msg").textContent).toBe("代碼不正確 —— 還可以再試 4 次");
+    expect(p.node("msg").textContent).toBe("設定碼不正確 —— 還可以再試 4 次");
   });
 });
 

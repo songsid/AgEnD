@@ -207,7 +207,7 @@ describe("Remove (#3212 PR 2)", () => {
     rowOf("claude-code", "work").querySelector(".s-account-remove").click(); await settle(6);
     const d = dialog();
     expect(text(d.querySelector("h2, .dlg-title, header"))).toContain("Remove the Claude Code account “work”?");
-    expect(text(d)).toContain("its sign-in and its own copies of conversations");
+    expect(text(d)).toContain("its connection and its own copies of conversations");
     expect([...d.querySelectorAll(".s-account-inuse li")].map((li: any) => text(li.querySelector("span")))).toEqual(["Agent dev", "The fleet default for Claude Code agents", "ClassicBot room room1"]);
     expect([d.querySelector("#acctRemoveName"), btn(d, "Remove").disabled]).toEqual([null, true]);
     expect(text(d.querySelector(".s-account-inuse li:last-child small"))).toContain("ClassicBot settings");
@@ -238,7 +238,7 @@ describe("Remove (#3212 PR 2)", () => {
     answer = () => ({ status: 409, body: { error: "signing_in" } });
     await type(dialog().querySelector("#acctRemoveName"), "personal");
     btn(dialog(), "Remove").click(); await settle(10);
-    expect(text(dialog().querySelector(".err"))).toBe("A sign-in for this account is running. Wait for it to end, or cancel it.");
+    expect(text(dialog().querySelector(".err"))).toBe("This account is being connected. Wait for that to end, or cancel it.");
     answer = () => ({ status: 409, body: { error: "in_use", users: { agents: ["late"], classic: [], fleetDefault: false } } });
     btn(dialog(), "Remove").click(); await settle(10);
     expect([...dialog().querySelectorAll(".s-account-inuse li span")].map(text)).toEqual(["Agent late"]);
@@ -250,6 +250,6 @@ describe("Remove (#3212 PR 2)", () => {
     expect(text(card("codex").querySelector(".s-account-add"))).toBe("＋ 新增帳號");
     rowOf("claude-code", "personal").querySelector(".s-account-remove").click(); await settle(6);
     expect(text(dialog().querySelector("label"))).toBe("輸入 personal 以確認");
-    expect(text(dialog())).toContain("這會刪除這台主機上該帳號的資料夾：它的登入，以及它自己的對話副本。之後 Agent 就不能使用它");
+    expect(text(dialog())).toContain("這會刪除這台主機上該帳號的資料夾：它的連接，以及它自己的對話副本。之後 Agent 就不能使用它");
   });
 });

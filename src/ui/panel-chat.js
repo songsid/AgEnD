@@ -26,6 +26,7 @@ import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
+import { openUpdateDialog } from "/assets/app-update.js";
 // cc3ce4fe: registered here, not in the shared chat strings, so a newer panel never shows a bare key on an older page.
 register("nativecli", {
   en: { unverified:"Not yet verified", unverifiedHint:"{0} {1}: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you." },
@@ -91,7 +92,7 @@ import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
 import { PreviewPanel, claimPanel, openMarkdown, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
-import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
+import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMAND } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
@@ -573,12 +574,26 @@ function Thread({ name, label = name, th }) {
   </div>`;
 }
 
+// Missing optional chunks on an older server never prevent chat from loading. No shared export added.
+function SubagentProgress({ name }) {
+  const [Component, setComponent] = useState(null);
+  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage() && !publicLinkPage();
+  useEffect(() => {
+    if (!offered) return;
+    let live = true;
+    import("./subagent-row.js").then(m => { if (live && typeof m.SubagentRow === "function") setComponent(() => m.SubagentRow); }, () => {});
+    return () => { live = false; };
+  }, [offered]);
+  return offered && Component ? html`<${Component} key=${name} name=${name} />` : null;
+}
+
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
 function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   useChatTick(name, ["state"]);
   const s = store.state;
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
+    <${SubagentProgress} name=${name} />
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
@@ -698,7 +713,9 @@ function Composer({ name, inst, label = name, lease, busy }) {
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments"), commandsSupported = supportsInstanceFeature(inst,"commands");
   const machineUnavailable = !!inst?.machine_id && inst.machine_status !== "online";
   const sendingBlocked = machineUnavailable || inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
-  const palette = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  const palette0 = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  // M-2738 (D3): /update is the fleet's, not the agent's: offered (never to a guest) and it opens the app's Update dialog.
+  const palette = palette0 && !guest && UPDATE_COMMAND.name.startsWith(value.slice(1)) ? [...palette0, UPDATE_COMMAND] : palette0;
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   useEffect(() => { if (input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
@@ -713,6 +730,8 @@ function Composer({ name, inst, label = name, lease, busy }) {
   // #2342: a completion is a step Ctrl+Z goes back from (to what was typed); a command that runs consumes the line.
   const complete = (c) => { recordEdit(input.current); setValue(`/${c.name}${c.arg ? " " : ""}`); };
   const submit = () => {
+    // M-2738 (D3): AgEnD's own Update, whatever the agent's runtime can take (it never reaches the agent).
+    if (!guest && !files.length && isUpdateLine(value)) { setValue(""); openUpdateDialog(); return; }
     if (sendingBlocked) return;
     if (!attachmentsSupported && files.length) { toast(t("chat.runtimeNoAttachments"),false); return; }
     if (!commandsSupported && parseCommandLine(value)) { toast(t("chat.runtimeNoCommands"),false); return; }

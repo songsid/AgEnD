@@ -95,7 +95,7 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     expect(process.env.PATH!.split(":")[0]).toBe(profileBin);
     expect(checkBinaryInstalled("grok")).toBe(true);
     expect(resolveBinary("grok")).toBe(join(profileBin, "grok"));
-    expect(await grokLabel()).toMatch(/Installed.*Auth/);
+    expect(await grokLabel()).toMatch(/Installed.*Connect/);
   });
 
   it("#1699 part 2: an install that a `/login <backend> <profile>` started signs that profile in, not the default login", async () => {

@@ -297,6 +297,19 @@ describe("discovery and gating", () => {
       await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore(); client.setHubClient(null); panel.resetHubSession();
     }
   });
+  it("a new panel with an old cached client withholds the AD editor despite the server feature",async()=>{
+    let checked=0;
+    for(const [mark,clientHas,shown] of [[true,true,true],[false,true,false],[true,false,false]] as const){
+      const base=fake(),read=vi.fn(async()=>({ok:true,epoch:0,bindPasswordSet:true,reauthentication:"recent",directory:{realm:"fictional",profile:"ad",url:"ldaps://directory.example.test:636",baseDn:"DC=example,DC=test",bindDn:"CN=Reader,DC=example,DC=test"}}));
+      const c={...base.c,directoryEditorV1:clientHas?true:undefined,...(clientHas?{directorySettings:read}:{}),
+        session:async()=>({ok:true,signedIn:true,displayName:"Avery",login:"avery",admin:true,csrf:"x",features:mark?["directory-editor-v1"]:[]})};
+      const pg=await mountWith(c,h(panel.HubPanel,{route:{panel:"hub",tab:"admin"}}),"http://127.0.0.1:19290/ui/hub/admin?view=directory");
+      await until(()=>pg.root.querySelector("#hub-directory-editor, .hub-admin"),200);await settle(15);
+      expect(!!pg.root.querySelector("#hub-directory-editor"),`${mark}/${clientHas}`).toBe(shown);expect(read.mock.calls.length).toBe(shown?1:0);checked++;
+      await pg.unmount();mounted.splice(mounted.indexOf(pg),1);pg.restore();client.setHubClient(null);panel.resetHubSession();
+    }
+    expect(checked).toBe(3);
+  });
   it("the editor's address on a Hub without group permissions says so (the fleet's Settings link may arrive before the Hub is updated)", async () => {
     const base = fake();
     const c = { ...base.c, session: async () => ({ ok: true, signedIn: true, displayName: "Ada", login: "ada", admin: true, csrf: "x" }) };

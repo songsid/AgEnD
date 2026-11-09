@@ -29,6 +29,7 @@ import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
 import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
+import { UpdatePillMark, UpdateSection } from "./settings-update.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
@@ -431,7 +432,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
     : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
-    : html`<${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
+    : html`<${UpdateSection} /><${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
   const wanted = useRef(null);
@@ -509,7 +510,7 @@ export function SettingsPanel({ route, navKey }) {
   // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
   return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
-    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} />` : null}>
+    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} /><${UpdatePillMark} />` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>

@@ -29,6 +29,7 @@ import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -477,6 +478,8 @@ export interface WebApiContext {
   readonly ownerCss?: OwnerCssStore;
   /** #2308: the person's own app icon; changed by a signed-in admin only (never the public link, a guest or the token). */
   readonly appIcon?: AppIconStore;
+  /** M-2738: updating AgEnD from the web (src/web-update.ts); absent: /ui/update is not offered. */
+  readonly webUpdate?: WebUpdateHost;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
@@ -534,6 +537,7 @@ export interface WebApiContext {
   /** #1918: in-flight and recently finished cross-instance traffic, bounded (fleet-traffic.ts). */
   trafficSnapshot?(): { now: string; items: unknown[]; delegations?: unknown[] };
   /** #1218: an instance's Log steps, read on demand (null: no such instance; `{ enabled: false }`: the Log is off). */
+  subagentRuns?(name: string): Promise<import("./subagent-service.js").SubagentAnswer>;
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
@@ -711,6 +715,73 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
     try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * M-2738 (#3332): updating AgEnD from the web.
+ *   GET  /ui/update        { admin, current, offer?, checked_at?, check_failed?, progress?, now } — an admin session; a
+ *                          read-only session gets { admin: false, current } (its stale-tab reload line)
+ *   POST /ui/update/check  look now (one a minute) → the GET's answer
+ *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
+ *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
+ * Signed-in sessions only (never the CLI's token, a guest or the public link: none of these is a public route); an
+ * admin's for all but the version. Asked again once a body is in.
+ */
+function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const host = ctx.webUpdate;
+  if (!host) { json(res, 404, { error: "not found" }); return true; }
+  const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
+  if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
+  if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 404, { error: "not found" }); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "update_needs_a_signed_in_person" };
+    const owner = verdict.session.owner;
+    return { admin: verdict.session.tier === "admin", person: owner ? webPersonKey(owner) : "admin-session" };
+  };
+  const view = (admin: boolean) => {
+    const st = host.updateState();
+    if (!admin) return { admin: false, current: st.current };
+    const progress = host.updateProgress();
+    return { admin: true, current: st.current, offer: st.offer, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  if (path === "/ui/update") { json(res, 200, view(first.admin)); return true; }
+  if (!first.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return true; }
+  if (path === "/ui/update/log") { const l = host.updateLog(); json(res, 200, { text: l.text, error: l.error }); return true; }
+  (async () => {
+    let body: Record<string, unknown> = {};
+    try { body = await parseBody(req); } catch { if (path === "/ui/update/start") { json(res, 400, { error: "Invalid JSON" }); return; } }
+    if (!permitWebContinuation(req, res, ctx) || res.destroyed) return;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!now.admin) { json(res, 403, { error: "update_needs_an_admin_session" }); return; }
+    if (path === "/ui/update/check") {
+      const r = await host.checkUpdateNow();
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      json(res, 200, view(true));
+      return;
+    }
+    const header = req.headers["idempotency-key"];
+    const key = typeof header === "string" ? header : "";
+    if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) { json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" }); return; }
+    // A literal, not a boolean: a stray `true` in a replayed body never means "update AgEnD".
+    if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
+    // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
+    const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
+    const r = await host.startWebUpdate(key, now.person, stillAllowed);
+    if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+    ctx.logger.info({ person: now.person }, "web: update started");
+    json(res, 202, { started: true });
+  })().catch((err) => {
+    ctx.logger.error({ err: (err as Error).message }, "Web update request failed");
+    try { json(res, 500, { error: "update_request_failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2261,6 +2332,22 @@ export function handleWebRequest(
   // An instance's steps, read on demand from its own transcript (log-service.ts). Read-only, and offered on the public
   // link on purpose (the user's decision): the same masking applies to every viewer. Passive (web-auth.ts).
 
+
+  // Deliberately absent from public gateway, guest, View and Hub projections.
+  if (method === "GET" && path === "/ui/subagents") {
+    const admission = adminAdmissionOf(req, url, ctx), name = url.searchParams.get("instance") ?? "";
+    if (!admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    if (!name || name.length > 128 || !safeInstanceSegment(name)) { json(res, 400, { error: "invalid instance" }); return true; }
+    if (!ctx.subagentRuns) { json(res, 404, { error: "not available" }); return true; }
+    void ctx.subagentRuns(name).then(answer => {
+      if (res.destroyed) return;
+      if (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
+      if (answer.status === "busy") { res.setHeader("Retry-After", "2"); json(res, 429, { error: "busy" }); return; }
+      json(res, 200, answer);
+    }).catch(() => { if (!res.destroyed) json(res, 503, { error: "unavailable" }); });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/steps") {
     const p = url.searchParams;
     const instance = p.get("instance") ?? "";
@@ -2727,6 +2814,7 @@ export function handleWebRequest(
 
   // #2308: the app icon (handleAppIcon: its state for a signed-in person; changing it, an admin's session only).
   if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
+  if (path === "/ui/update" || path.startsWith("/ui/update/")) return handleWebUpdate(req, res, url, ctx, path, method);
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
@@ -3816,7 +3904,7 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string; limi
   // M-2297: the per-PC agent limit — say so, with the agents holding its slots (names only: no path, no id).
   if (err instanceof MachineSlotLimitError) return { reason: "machine_limit", error: message, limit: err.limit, holders: err.holders.map(h => ({ name: h.name, unknown: h.unknown })) };
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
-  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Sign it in from Settings → Agents → AI sign-ins and API keys → Accounts, or send /login in chat, then retry." };
+  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Connect its AI account in Settings → Agents → AI accounts and API keys → Accounts, or send /login in chat, then retry." };
   if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status in Fleet." };
   if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it from the agent's chat menu → Start instance, then retry." };
   return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status in Fleet, then retry." };
@@ -4216,6 +4304,8 @@ export interface AppShellContext {
   hubSetupSession?(req: IncomingMessage): unknown;
   /** Display capability only, local D3 host; the notice routes independently authorize every read/ACK. */
   hubDirectoryNotices?(): Promise<unknown>;
+  /** Display only: AD editing routes reauthorize local D3 on every request. */
+  hubDirectorySettings?(): Promise<unknown>;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4385,6 +4475,8 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   try { setup = !!ctx.hubSetupSession?.(req); } catch { /* unavailable authority never offers setup */ }
   return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "")
     + (setup && !gatewayRequestContext(req) ? ' data-hub-setup="1"' : "")
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-settings="1"' : "")
     + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectoryNotices === "function"
       && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "");
 }
@@ -4402,7 +4494,11 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
+    && (admission.via !== "session" || admission.session.tier === "admin");
+
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`

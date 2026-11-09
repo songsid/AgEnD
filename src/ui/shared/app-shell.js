@@ -21,6 +21,7 @@ import { usageRailStore } from "./header-tools.js";
 import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 import { initSettingsContentWidth } from "./settings-width.js";
 
@@ -751,16 +752,16 @@ register("pendingHost", {
     post_failed_do: "請到「設定 → 聊天與連線」檢查 General 的連線，再重新做一次這項變更。",
     unknown: "這項變更沒有 General 可以接收確認卡。",
     go: "前往",
-    codeLead: "輸入驗證器 App 的 6 位數代碼，就能確認這項變更。",
-    codeLabel: "驗證器代碼", codeGo: "確認",
-    codeWrong: "代碼不正確，請使用驗證器 App 目前顯示的代碼。",
+    codeLead: "輸入驗證器 App 的 6 位數驗證碼，就能確認這項變更。",
+    codeLabel: "6 位數驗證碼（驗證器 App）", codeGo: "確認",
+    codeWrong: "驗證碼不正確，請使用驗證器 App 目前顯示的 6 位數驗證碼。",
     codePaused: "錯誤次數太多，請 {0} 分鐘後再試。",
-    codeNotHere: "這個頁面已無法用代碼確認這項變更。",
-    codeUnavailable: "無法檢查代碼，請再試一次。",
+    codeNotHere: "這個頁面已無法用驗證碼確認這項變更。",
+    codeUnavailable: "無法檢查驗證碼，請再試一次。",
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     applyLead: "按「立即套用」，就能在這個瀏覽器確認這項變更。", applyRefused: "這個瀏覽器現在無法直接套用，請改用其他確認方式。",
     cantHere: "你目前在這台裝置還無法直接確認這項變更。",
-    setupLead: "請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數代碼。若倒數結束前還沒完成，請重新送出這項變更。",
+    setupLead: "請先綁定驗證器 App。這張卡會留在這裡：綁好之後，直接在卡片上輸入 App 的 6 位數驗證碼。若倒數結束前還沒完成，請重新送出這項變更。",
     setupGo: "綁定驗證器",
     onHost: "你目前在這台裝置無法透過連結確認這項變更，請到執行 AgEnD 的那台電腦操作。",
     hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
@@ -1105,6 +1106,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub || !hubMarks().member || (nav.route?.panel === "settings" && nav.route.section === "hub") ? null : html`<${MemberPairingNoticesSlot} />`}
       ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest || hub ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

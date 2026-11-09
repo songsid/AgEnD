@@ -112,7 +112,7 @@ is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
 Set `credential_profile` with `update_instance_config` or web Settings: the
-agent's **Account** field, or **Settings → Agents → AI sign-ins and API keys →
+agent's **Account** field, or **Settings → Agents → AI accounts and API keys →
 Accounts** (**Move agents here…**, and each CLI's **Fleet default**). Settings
 refuses a signed-out profile and names its login command.
 Never hand-edit `fleet.yaml`.
