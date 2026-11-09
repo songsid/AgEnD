@@ -15,7 +15,7 @@
     },
     {
       "file": "src/ui/panel-chat.js",
-      "sha256": "a1e2548f92b9776ae0c0709241c568deb5d6710e9976960793371e384601af75"
+      "sha256": "9429899f683749ff7386834d6521966d9add0f3f8ca25262d73aeb0845db19fc"
     },
     {
       "file": "src/ui/shared/subagent-row.css",
@@ -23,7 +23,7 @@
     },
     {
       "file": "src/web-api.ts",
-      "sha256": "160d2a660d0bd1bbec94b3c811aa917488c8a3abe6b5e096cd739cfc8646da40"
+      "sha256": "cf7bf53ae5a475ad1c77fb2522657c3660dc8ffd9cc7f3ef4c1a780f66af2f29"
     }
   ],
   "cases": [

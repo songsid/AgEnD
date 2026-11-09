@@ -22,5 +22,6 @@ describe("only the current owned transcript supplies child evidence",()=>{
   const {d,root,sid,setPath}=world();if(condition==="no-monitor")d.transcriptMonitor=null;if(condition==="no-tmux")d.tmux=null;if(condition==="stopped")d.processStatus="stopped";if(condition==="spawning")d.spawning=true;if(condition==="frozen")d.runtimeMonitorsFrozen=true;if(condition==="bad-session")setPath(join(root,"arbitrary.jsonl"));if(condition==="wrong-claude-filename")setPath(join(root,"rollout-"+sid+".jsonl"));expect(d.subagentSource()).toBeNull();
  });
  it.each(["kiro","opencode","muse"])("does not widen unsupported %s history",backend=>{expect(world(backend).d.subagentSource()).toBeNull();});
+ it("does not reuse the host tmux reader for either native or paired Runtime panes",()=>{const {d}=world("codex");d.nativePaneLifecycle={current:()=>true};expect(d.subagentSource()).toBeNull();});
  it("derives the Codex UUID only from its selected rollout, not cwd latest discovery",()=>{const {d,root,sid,setPath}=world("codex");setPath(join(root,"rollout-2026-11-09T15-18-16-"+sid+".jsonl"));expect(d.subagentSource()).toMatchObject({backend:"codex",sessionId:sid,cwd:root});expect(d.subagentSource().root).toMatch(/sessions$/);});
 });

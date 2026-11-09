@@ -45,8 +45,8 @@ try{
   seed('codex');await page.reload();await page.locator('.subagent-progress>summary').click();await page.waitForFunction(()=>document.querySelectorAll('.subagent-report').length===2);await page.screenshot({path:join(out,name+'-codex.png')});
   const violations=await csp();if(errors.length||violations.length)throw Error(JSON.stringify({errors,violations}));receipt.cases.push({name,placement,errors,violations,states:['collapsed','completed+running','missing unknown','Codex completed']});await ctx.close();
  }
- const oldPanel=execFileSync('git',['show','170d0a60:src/ui/panel-chat.js'],{cwd:process.env.REPO!,encoding:'utf8'});
- const oldCss=execFileSync('git',['show','170d0a60:src/ui/shared/app.css'],{cwd:process.env.REPO!,encoding:'utf8'});
+ const oldPanel=execFileSync('git',['show','da70c790:src/ui/panel-chat.js'],{cwd:process.env.REPO!,encoding:'utf8'});
+ const oldCss=execFileSync('git',['show','da70c790:src/ui/shared/app.css'],{cwd:process.env.REPO!,encoding:'utf8'});
  for(const mode of ['old-panel','old-css','old-server','missing-module']){
   seed('claude-code');const c={device:'phone',theme:'dark',lang:'zh-TW'}as const;const {ctx,page}=await fx.page(c,{path:'/ui/chat/general'});const errors:string[]=[];page.on('pageerror',(e:any)=>errors.push(String(e)));
   if(mode==='old-panel')await page.route('**/ui/js/panel-chat.js',r=>r.fulfill({status:200,contentType:'text/javascript',body:oldPanel}));
