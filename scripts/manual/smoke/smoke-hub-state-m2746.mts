@@ -76,6 +76,10 @@ try {
     if (errors.length || (await csp()).length) throw Error(JSON.stringify({ errors, csp: await csp() })); await ctx.close();
     const hc = await fx.browser.newContext({ viewport: { width: c.device === "desk" ? 1366 : 390, height: c.device === "desk" ? 900 : 844 }, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true, isMobile: c.device === "phone", hasTouch: c.device === "phone" });
     await hc.addInitScript({ content: `localStorage.setItem('agend_lang',${JSON.stringify(c.lang)}); localStorage.setItem('agend_tour_done','1')` });
+    await hc.addInitScript(() => {
+      (window as any).__m2746Csp = [];
+      document.addEventListener("securitypolicyviolation", event => (window as any).__m2746Csp.push({ directive: event.effectiveDirective, blocked: event.blockedURI }));
+    });
     const hp = await hc.newPage(); const hubErrors: string[] = []; hp.on("pageerror", (e: any) => hubErrors.push(String(e))); await prepare(hp);
     await hp.goto(origin + "/ui/hub"); await hp.fill("#hubLogin", "alex"); await hp.fill("#hubPassword", "pw-alex"); await hp.click(".hub-signin button[type=submit]");
     await hp.waitForSelector(".hub-home");
@@ -105,7 +109,8 @@ try {
       await hp.locator(".hub-banner button").click(); await hp.waitForSelector(".hub-chat-head .tag.ok", { timeout: 15000 });
       if (await hp.locator("#msgIn").inputValue() !== (en ? "May I ask now?" : "現在可以提問嗎？")) throw Error("draft lost");
     }
-    if (hubErrors.length) throw Error(JSON.stringify(hubErrors)); await hc.close();
+    const hubCsp = await hp.evaluate(() => (window as any).__m2746Csp);
+    if (hubErrors.length || hubCsp.length) throw Error(JSON.stringify({ errors: hubErrors, csp: hubCsp })); await hc.close();
   }
 } catch (error) {
   for (const context of fx.browser.contexts()) for (const page of context.pages()) { try { await page.screenshot({path:join(out, "failure.png")}); writeFileSync(join(out, "failure.txt"), await page.locator("body").innerText()); } catch {} }
