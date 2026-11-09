@@ -38,6 +38,12 @@ import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quo
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+register("hubAccess", {
+  en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
+  "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
+});
+const ha = key => t(`hubAccess.${key}`);
+
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
 // The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
@@ -564,16 +570,20 @@ function HubRoomView({ room: given }) {
     return () => { off(); release(); };
   }, [store]);
   const closed = store.closed() || room.state === "closed";
+  const denied = store.accessDenied?.() === true;
+  useEffect(() => {
+    if (!denied) setMsg(current => current === errText({ code: "denied" }) ? null : current);
+  }, [denied]);
   const frozen = !closed && room.exposureState === "frozen";
   const working = store.working();
   const name = room.exposureName || "";
   const client = hubClient();
   const pageFiles = pageCarriesFiles(client, store);
-  const takesFiles = pageFiles && roomTakesFiles(room) && !closed && !frozen;
+  const takesFiles = pageFiles && roomTakesFiles(room) && !closed && !frozen && !denied;
   const uploading = files.some((f) => f.state === "uploading");
   const send = async () => {
     const q = draft.trim();
-    if (!q || sending || closed || frozen) return;
+    if (!q || sending || closed || frozen || denied) return;
     if (uploading) { setMsg(hf("waitUpload")); return; }
     // Chosen files are never dropped quietly: while the room can't take them, the question waits (or they are removed).
     const chosen = filesRef.current.filter((f) => f.state === "ready");
@@ -600,9 +610,9 @@ function HubRoomView({ room: given }) {
     setRail((v) => { setRailPref(!v); return !v; });
   };
   const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
-    : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
+    : denied ? html`<span class="tag warn">${ha("tag")}</span>` : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
   const back = !wide ? html`<a class="icon-btn hub-back" href="/ui/hub" aria-label=${hc("back")} title=${hc("back")}><${Icon} name="back" /></a>` : null;
-  const info = html`<${HubRoomInfo} room=${room} closed=${closed} />`;
+  const info = html`<${HubRoomInfo} room=${room} closed=${closed} denied=${denied} />`;
   // The panel takes the info rail's place while it shows a page (the rail's button brings the rail back).
   const showRail = wide && rail && !panelOpen;
   return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
@@ -617,15 +627,16 @@ function HubRoomView({ room: given }) {
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
+        ${denied && !closed ? html`<p class="hub-banner warn" role="status">${ha("refused")} <button type="button" class="btn btn-sm" onClick=${() => store.refresh()}>${ha("check")}</button></p>` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
-        ${!closed && !frozen && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
+        ${!closed && !frozen && !denied && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
         ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
           formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
           <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
           onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
-          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || uploading, label: hc("send"), onClick: send }} /></div>`}
+          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || denied || uploading, label: hc("send"), onClick: send }} /></div>`}
         ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>
@@ -699,13 +710,13 @@ function HubThread({ store, name, panelKey, threadRef }) {
 }
 
 /** The right-hand panel's cards (the usage rail's look): the agent, its quota (G), your access, who sees it, what is not here. */
-function HubRoomInfo({ room, closed = false }) {
+function HubRoomInfo({ room, closed = false, denied = false }) {
   const name = room.exposureName || "", owner = room.ownerName || "";
   return html`<section class="u-provider hub-card hub-agent-card"><${Avatar} name=${name} size="lg" /><strong>${name}</strong>
       ${owner ? html`<span class="note">${hc("answersFor", owner)}</span>` : null}</section>
     <${QuotaCard} room=${room} />
     ${room.grantExpiresAt && !closed ? html`<section class="u-provider hub-card"><div class="u-head"><strong>${hc("yourAccess")}</strong></div>
-      <dl class="hub-kv"><dt>${hc("canDo")}</dt><dd>${hc("canDoValue")}</dd><dt>${hc("until")}</dt><dd>${dateOnly(room.grantExpiresAt)} <span class="tag">${daysLeft(room.grantExpiresAt)}</span></dd></dl>
+      <dl class="hub-kv"><dt>${hc("canDo")}</dt><dd>${denied ? ha("limited") : hc("canDoValue")}</dd><dt>${hc("until")}</dt><dd>${dateOnly(room.grantExpiresAt)} <span class="tag">${daysLeft(room.grantExpiresAt)}</span></dd></dl>
     </section>` : null}
     <section class="u-provider hub-card"><div class="u-head"><strong>${hc("whoSees")}</strong></div>
       <ul class="hub-aud" role="list">
