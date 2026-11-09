@@ -574,12 +574,26 @@ function Thread({ name, label = name, th }) {
   </div>`;
 }
 
+// Missing optional chunks on an older server never prevent chat from loading. No shared export added.
+function SubagentProgress({ name }) {
+  const [Component, setComponent] = useState(null);
+  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage() && !publicLinkPage();
+  useEffect(() => {
+    if (!offered) return;
+    let live = true;
+    import("./subagent-row.js").then(m => { if (live && typeof m.SubagentRow === "function") setComponent(() => m.SubagentRow); }, () => {});
+    return () => { live = false; };
+  }, [offered]);
+  return offered && Component ? html`<${Component} key=${name} name=${name} />` : null;
+}
+
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
 function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   useChatTick(name, ["state"]);
   const s = store.state;
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
+    <${SubagentProgress} name=${name} />
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
