@@ -1,0 +1,22 @@
+{
+  "reversal": "remove 44px touch minimum",
+  "caught": true,
+  "failures": {
+    "phone-en:host-tap": {
+      "FAIL": [
+        {
+          "text": "Acknowledge",
+          "width": 105.25,
+          "height": 30
+        },
+        {
+          "text": "Refresh",
+          "width": 70.984375,
+          "height": 30
+        }
+      ]
+    }
+  },
+  "cleanup": "PASS",
+  "restored": true
+}

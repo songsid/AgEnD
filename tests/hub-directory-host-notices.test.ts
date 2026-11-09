@@ -95,6 +95,18 @@ async function fixture() {
 describe.skipIf(process.platform === "win32")("host directory notices from existing held state", () => {
   it("reads and ACKs the host target after a real mount refusal without starting Hub, directory or setup", async () => {
     const r = await fixture(), page = await r.request(); expect(page.status).toBe(200); expect(page.headers["cache-control"]).toBe("no-store");
+    const shell = (headers: Record<string, string>) => new Promise<string>((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port: r.port, path: "/ui/needs", headers }, res => {
+        let html = ""; res.on("data", data => { html += data; }); res.on("end", () => resolve(html));
+      }); req.on("error", reject); req.end();
+    });
+    expect(await shell(r.headers())).toContain('data-hub-directory-notices="1"');
+    const other = await r.signIn(r.fm.issueDashboardLogin()!.display);
+    expect(await shell(r.headers(other.id))).not.toContain('data-hub-directory-notices="1"');
+    expect(await shell({ ...r.headers(), "x-forwarded-for": "198.51.100.1" })).not.toContain('data-hub-directory-notices="1"');
+    const configured = r.internal.rawFleetConfig.hub;
+    try { r.internal.rawFleetConfig.hub = undefined; expect(await shell(r.headers())).not.toContain('data-hub-directory-notices="1"'); }
+    finally { r.internal.rawFleetConfig.hub = configured; }
     expect(page.body.items).toHaveLength(1); expect(page.body.items[0]).toMatchObject({ kind: "directory", phase: "applying", acknowledged: false });
     const id = page.body.items[0].id;
     expect((await r.request("POST", `/${id}/ack`)).status).toBe(200);

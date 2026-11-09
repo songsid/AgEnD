@@ -1,0 +1,57 @@
+[
+  {
+    "name": "server-feature",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "client-feature",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "read-generation",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "ack-generation",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "explicit-ack-result",
+    "caught": true,
+    "assertionFailures": 2
+  },
+  {
+    "name": "exact-ack-id",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "single-write",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "read-authority-clear",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "timer-clear",
+    "caught": true,
+    "assertionFailures": 3
+  },
+  {
+    "name": "host-mark",
+    "caught": true,
+    "assertionFailures": 1
+  },
+  {
+    "name": "host-public-link",
+    "caught": true,
+    "assertionFailures": 1
+  }
+]
