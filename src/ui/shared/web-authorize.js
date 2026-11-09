@@ -276,7 +276,7 @@ export function Rebind() {
   return html`<form class="webauth-rebind-form" onSubmit=${submit}>
     <p class="note">${tn("rebindHow")}</p>
     <div class="row"><input type="text" class="webauth-rebind-code" value=${code} onInput=${(e) => setCode(e.target.value)} autocomplete="off" autocapitalize="characters" spellcheck=${false}
-      aria-label=${tn("rebindCode")} placeholder=${tn("rebindCode")} disabled=${busy} />
+      aria-label=${tn("rebindCode")} placeholder="XXXX-XXXX" disabled=${busy} />
       <button type="submit" class="btn btn-sm" disabled=${busy || !code.trim()}>${busy ? tn("rebindWorking") : tn("rebindGo")}</button></div>
     ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
   </form>`;
