@@ -25,7 +25,7 @@
 使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他呼叫者（含 coordinator）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
 - 能做什麼：使用 coordinator 除了儲存庫租約以外的工具（含唯讀除錯工具），並直接將其他 agent 的 `tool_set` 設為可寫入的工具組：`full`、`standard`、`worker`、`coordinator` 或 `minimal`。
-- 不能做什麼：預設 General 工具組不含 `checkout_repo`、`release_repo`；不能指定由角色決定的 `general` 工具組，也不能經這兩個設定工具傳入 `skipPermissions`。General 不得透過工具修改自己的 `tool_set`（建立操作最後指向自己時也一樣）；人員仍可在設定頁或 fleet.yaml 修改。若管理員明確縮限 General 的工具組，縮限仍生效。
+- 不能做什麼：預設 General 工具組不含 `checkout_repo`、`release_repo`；不能指定由角色決定的 `general` 工具組，也不能經這兩個設定工具傳入 `skipPermissions`。General 不得透過工具修改自己的 `tool_set`（建立操作最後指向自己時也一樣）；人員仍可在設定頁或 fleet.yaml 修改。若管理員明確縮限 General 的工具組，縮限仍生效。這項直接設定的例外僅適用於 portable／本機 agent。原生 Windows 的建立，以及顯示名稱、說明或模型修改，仍需原有的管理員核准；其 `tool_set` 請由人員在主機上的設定頁修改。
 - 程式碼：`src/tool-permissions.ts`、`src/general-instance.ts`、`src/outbound-handlers.ts`。
 - 相關決議：9e3bea6c、36525f1b。
 

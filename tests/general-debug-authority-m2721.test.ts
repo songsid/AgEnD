@@ -119,6 +119,29 @@ describe("General debug and tool-set authority (36525f1b)", () => {
     expect(r.saveFleetConfig).not.toHaveBeenCalled(); expect(r.handleCreate).not.toHaveBeenCalled();
   });
 
+  it.each(configTools)("%s refuses General's native Windows tool_set before dispatch, preserving the ordinary admin request", async tool => {
+    const r = rig(); Object.assign(r.config.instances.worker!, { runtime: "windows" });
+    const requestWindowsCreate = vi.fn(async (_caller: string, _args: Record<string, unknown>) => ({ id: "native-create", state: "pending" }));
+    const requestWindowsConfig = vi.fn(async (_caller: string, _name: string, _patch: Record<string, unknown>) => ({ id: "native-config", state: "pending" }));
+    Object.assign(r.fm, { requestWindowsCreate, requestWindowsConfig });
+    const nativeArgs = (extra: Record<string, unknown>) => tool === "create_instance"
+      ? { runtime: "windows", topic_name: "native-agent", ...extra }
+      : { name: "worker", config: extra };
+    const before = structuredClone(r.config.instances);
+    for (const tool_set of ["full", "worker", "unknown", null]) {
+      const out = await r.call("admin", tool, nativeArgs({ tool_set, description: "must not apply" }));
+      expect(out.result).toBeNull(); expect(out.error).toMatch(/Windows.*tool_set.*Settings.*host/);
+    }
+    expect(requestWindowsCreate).not.toHaveBeenCalled(); expect(requestWindowsConfig).not.toHaveBeenCalled();
+    expect(r.config.instances).toEqual(before); expect(r.saveFleetConfig).not.toHaveBeenCalled(); expect(r.handleCreate).not.toHaveBeenCalled();
+
+    const control = await r.call("admin", tool, nativeArgs({ description: "an admin must confirm this" }));
+    expect(control.error).toBeUndefined(); expect(control.result).toMatchObject({ state: "pending" });
+    const request = tool === "create_instance" ? requestWindowsCreate : requestWindowsConfig;
+    expect(request).toHaveBeenCalledOnce(); expect(request.mock.calls[0]![0]).toBe("admin");
+    expect(r.config.instances).toEqual(before); expect(r.saveFleetConfig).not.toHaveBeenCalled(); expect(r.handleCreate).not.toHaveBeenCalled();
+  });
+
   it.each(["checkout_repo", "release_repo"])("keeps %s out of General", async tool => {
     const r = rig(); const out = await r.call("admin", tool, {});
     expect(out.result).toBeNull(); expect(out.error).toMatch(/not available/);

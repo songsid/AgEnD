@@ -6,7 +6,7 @@ roles: [general]
 
 ## Create with a tool profile
 
-General may supply `tool_set` to `create_instance` directly, without a confirmation card, or change another agent’s profile through `update_instance_config`. See the fleet-config skill for valid profiles. `skipPermissions` remains refused even for General. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. Do not add a redundant reload after creation; the fleet reconciles itself.
+General may supply `tool_set` to `create_instance` directly, without a confirmation card, or change another agent’s profile through `update_instance_config`. See the fleet-config skill for valid profiles. `skipPermissions` remains refused even for General. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. Do not add a redundant reload after creation; the fleet reconciles itself. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
 
 ## Restart vs Replace vs Stop / Delete
 
