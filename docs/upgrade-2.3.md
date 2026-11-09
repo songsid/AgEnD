@@ -111,3 +111,9 @@ agend doctor      # service, runtime and backend checks
 ```
 
 Then open the dashboard (`/web` in General). Your instances should be there, and each one's chat should open.
+
+## Starting 2.3 after a raw downgrade
+
+If the newer bundled-tmux line's private server is still running, 2.3 refuses to start any agents beside it. `agend fleet start` prints the reason and recovery steps once, cleans up, and exits with status 1. A service can retry; each attempt prints the same plain refusal. This is an expected refusal, so it sends no generic “unhandled error” notice. Chat adapters have not started at this point, so no topic notice is available.
+
+Use `agend rollback` from the newer version, or close its private server using that version's `agend tmux kill-server`, then retry. The refusal does not close that server or bypass the downgrade guard.

@@ -8360,13 +8360,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // main / the 2.3 line ONLY: on the 2.4 line (release/2.3.5-alpha) AgEnD's own server IS the one on `agend` — a
     // main → alpha sync must keep alpha's side of this block, never both.
     {
-      const { newerTmuxServer, realGuardDeps, guardMessage } = await import("./bundled-tmux-guard.js");
+      const { newerTmuxServer, realGuardDeps, BundledTmuxStartupError } = await import("./bundled-tmux-guard.js");
       const hit = await newerTmuxServer(realGuardDeps(getAgendHome(), isDefaultAgendHome(), getSocket()));
-      if (hit) {
-        const message = guardMessage(hit);
-        this.logger.error({ socket: hit.socket, confirmed: hit.confirmed }, message);
-        throw new Error(message);
-      }
+      if (hit) throw new BundledTmuxStartupError(hit);
     }
 
     await TmuxManager.ensureSession(getTmuxSession());
