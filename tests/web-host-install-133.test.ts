@@ -90,7 +90,7 @@ describe("progress and the verdict", () => {
     expect(lines.length).toBeLessThanOrEqual(12);
     expect(lines.at(-1)).toBe("line 79");
   });
-  it("success: ok, with the version the probe read and whether the binary was found; Sign in is offered only for a verified CLI that has one", async () => {
+  it("success: ok, with the version the probe read and whether the binary was found; the connect step is offered only for a verified CLI that has one", async () => {
     const t = make();
     await t.installs.begin(WHO, "codex");
     t.reporters[0]!.done({ ok: true, detail: "clean exit", verified: true, version: "0.166.0", signIn: true });

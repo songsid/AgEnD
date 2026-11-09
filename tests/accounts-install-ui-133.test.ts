@@ -95,12 +95,12 @@ describe("the Install button", () => {
     fire(cancel, "click"); await settle(6);
     expect(post()).toEqual([{ method: "POST", url: "/ui/host-install/cancel", body: {} }]);
   });
-  it("success: the verdict with the version, Dismiss clears it; Sign in is then the row's own", async () => {
+  it("success: the verdict with the version, Dismiss clears it; Connect (the sign-in) is then the row's own", async () => {
     run = RUN({ phase: "ok", endedAt: 2, verified: true, version: "0.4.2", signIn: true });
     view = { clis: [CODEX, { ...GROK, installed: true, rows: [hostRow("grok", "not_signed_in", { signIn: true })] }, OPENCODE] };
     await mount();
     expect(text(card("grok").querySelector(".s-account-install-run"))).toContain("Grok 0.4.2 is installed.");
-    expect(text(card("grok").querySelector(".s-actions button"))).toBe("Sign in");
+    expect(text(card("grok").querySelector(".s-actions button"))).toBe("Connect");
     expect(installBtn("grok")).toBeUndefined();
     const dismiss = card("grok").querySelectorAll("button").find((x: any) => x.textContent.trim() === "Dismiss");
     fire(dismiss, "click"); await settle(6);
