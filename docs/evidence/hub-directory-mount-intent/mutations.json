@@ -35,7 +35,7 @@
     "failures": 1
   },
   {
-    "name": "receipt-hash",
+    "name": "signed-receipt",
     "caughtByAssertion": true,
     "failures": 1
   },

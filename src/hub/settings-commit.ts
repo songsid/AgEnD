@@ -175,9 +175,10 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     const hub = obj(deps.readHub());
     if (hub.enabled !== true || typeof hub.hubId !== "string" || typeof hub.memberOrigin !== "string") throw new HubSettingsError("unavailable");
     const digest = hubPlanDigest(hub), manifest = readManifest();
-    try { verifyHubInitialization({ home: deps.home, hubId: hub.hubId, memberOrigin: hub.memberOrigin, planDigest: digest }); }
+    let confirmationId: string;
+    try { ({ confirmationId } = verifyHubInitialization({ home: deps.home, hubId: hub.hubId, memberOrigin: hub.memberOrigin, planDigest: digest })); }
     catch { throw new HubSettingsError("unavailable", "the Hub's sealed settings do not verify"); }
-    return { hub, digest, manifest, manifestSha: sha(manifest) };
+    return { hub, digest, manifest, manifestSha: sha(manifest), confirmationId };
   };
   const readJournal = (): Journal | DirectoryJournal | null => {
     if (!existsSync(file(SETTINGS_JOURNAL))) return null;
@@ -354,6 +355,8 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       if (original.recovery) {
         const receiptText = readDirectoryFile(original.id, "receipt"), receipt = JSON.parse(receiptText);
         if (sha(receiptText) !== original.receiptSha || !same(receipt.recovery, original.recovery)) throw new HubSettingsError("recovery");
+        // SQL and a staged receipt can agree with each other without agreeing with the issuer's signed receipt binding.
+        if (receipt.id !== original.id || image().confirmationId !== sha(canonical(receipt)).slice(0, 32)) throw new HubSettingsError("recovery");
         const intent = d.mountRecovery();
         if (intent?.operation.id !== original.id || intent.state !== "pending") throw new HubSettingsError("stale");
         expiresAt = Math.min(expiresAt ?? Infinity, original.recovery.expiresAt);

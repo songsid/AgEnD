@@ -3,28 +3,28 @@
   "base": "dcebb09c67dae7631f0ec36e2b914dad2a39ce00",
   "focused": {
     "command": "npx vitest run tests/hub-directory-settings-decision.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-save.test.ts",
-    "passed": 198,
+    "passed": 199,
     "failed": 0,
     "skipped": 0
   },
   "https": {
-    "command": "npx vitest run tests/hub-compose.test.ts -t 'private Save orchestration with real SQL and HTTPS'",
-    "passed": 2,
+    "command": "npx vitest run tests/hub-compose.test.ts -t 'composes S1|private Save orchestration with real SQL and HTTPS'",
+    "passed": 3,
     "failed": 0,
-    "deselected": 59,
-    "scope": "owned CA-verified HTTPS and SQLite; no real directory"
+    "deselected": 58,
+    "scope": "exact registry fixture plus owned CA-verified SQLite/HTTPS ready/restored Save"
   },
   "types": [
     "npx tsc --noEmit: passed",
     "npx tsc -p tsconfig.test.json --noEmit: passed"
   ],
   "mutations": {
-    "command": "python3 scripts/manual/hub-directory-recovery-intent/mutations.py",
     "caught": 14,
     "total": 14,
     "independent": true,
     "restored": true,
-    "note": "Final mutant was rerun alone after the harness learned the Vitest rejected .resolves matcher wording. No collection errors counted. Recursive-intent fixture corrected to use matching actor before its isolated rerun."
+    "revision": "R1",
+    "note": "R1 replaces the historical raw-receipt-hash reversal with the required signed-manifest binding reversal. All fourteen current runner cases were rerun individually after the fix. The raw hash remains secondary byte consistency, not the issuer authority anchor."
   },
   "rollback": "New s5-directory-mount-intent registry component: older binaries refuse migrated state. Use a matching build or authorized stopped pre-upgrade backup; do not delete migration rows or rewind security state.",
   "limitations": [
@@ -37,5 +37,16 @@
     "numPassedTests": 75,
     "numFailedTests": 0,
     "numPendingTests": 0
+  },
+  "revision": "R1: issuer-authenticated receipt + exact schema-list fixture",
+  "r1Regression": {
+    "failFirst": 1,
+    "fixture": "unchanged valid signed manifest/key; coherent staged receipt/SQL receiptSha/recovery row 1200 to 1300; clock1250; refusal before floor/journal/operation effect"
+  },
+  "rename": {
+    "command": "npx vitest run tests/hub-settings-commit-m2682.test.ts",
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0
   }
 }

@@ -801,4 +801,19 @@ describe("durable bounded directory mount intent", () => {
     }
     expect(() => r.writer().directory!.compensate(op.id, () => true)).toThrow(); expect(r.floor.read()).toBe(1);
   });
+  it("refuses a coherent receipt/SQL/hash extension against the unchanged issuer-signed manifest before the floor", async () => {
+    const r = await writerRig(), w = r.writer(), p = w.directory!.prepare(r.candidate(), r.actor, () => true);
+    const saved = w.directory!.commit(p.ref, r.actor, () => true, undefined, 1200), op = r.decision.operation(saved.receiptId);
+    const seal = r.manifest(), key = readFileSync(join(r.home, "hub/keys/issuer-key.pem"), "utf8");
+    const path = join(r.home, "hub/settings-staged", op.id + ".directory-receipt"), receipt = JSON.parse(readFileSync(path, "utf8"));
+    const text = JSON.stringify({ ...receipt, recovery: { v: 1, expiresAt: 1300 } }); writeFileSync(path, text, { mode: 0o600 });
+    r.db.prepare("UPDATE hub_settings_operations SET body=? WHERE id=?").run(JSON.stringify({ ...op,
+      recovery: { v: 1, expiresAt: 1300 }, receiptSha: createHash("sha256").update(text).digest("hex") }), op.id);
+    r.db.prepare("UPDATE hub_settings_mount_recovery SET expires_at=1300").run(); r.tick(250);
+    expect(() => r.writer().directory!.compensate(op.id, () => true)).toThrow();
+    expect(r.floor.read()).toBe(1); expect(r.counts().hub_settings_operations).toBe(1); expect(w.pending()).toBe(false);
+    expect(r.manifest()).toBe(seal); expect(readFileSync(join(r.home, "hub/keys/issuer-key.pem"), "utf8")).toBe(key);
+    expect(() => r.verifies()).not.toThrow(); expect(r.readHub().directory.url).toBe("ldaps://new.example.test");
+  });
+
 });
