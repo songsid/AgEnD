@@ -244,6 +244,23 @@ describe("host AD HTTP boundaries", () => {
     expect(r.peer.bindRecords).toHaveLength(0);
   },20_000);
 
+  it.each(["current","revoked"])("a settled Save result under %s D3 authority never promises an uncommitted outcome",async state=>{
+    const r=await fixture(),entered=held(),resume=held();let current=true,committed=false;
+    const actual=r.fm.hubSetupSession.bind(r.fm);
+    vi.spyOn(r.fm,"hubSetupSession").mockImplementation(req=>{const owner=actual(req);return owner&&{...owner,current:()=>current&&owner.current()};});
+    const result={state:"ready",receiptId:"settled-fixture",directoryEpoch:1};
+    const apply=vi.fn(async()=>{committed=true;entered.release();await resume.promise;return result;});
+    vi.spyOn(r.fm,"hubDirectorySettings").mockResolvedValue({apply} as any);
+    const response=request(r.port,"POST",directoryPrefix+"/save",r.headers(),JSON.stringify({ref:"fixture"}));
+    try{
+      await entered.promise;expect(committed).toBe(true);current=state==="current";resume.release();
+      const saved=await response;expect(apply).toHaveBeenCalledOnce();
+      expect(saved.status).toBe(state==="current"?200:403);
+      expect(saved.body).toEqual(state==="current"?result:{ok:false,code:"revoked"});
+      expect(saved.body.committed).not.toBe(false); // A revoked response says nothing about the durable Save outcome.
+    }finally{resume.release();await response;}
+  },20_000);
+
   it("a revoked authority during a held body cannot acquire the control",async()=>{
     const r=await fixture(),create=vi.spyOn(r.fm,"hubDirectorySettings"),source=vi.spyOn(r.fm,"hubSetupSession");
     let client!:ReturnType<typeof httpRequest>;

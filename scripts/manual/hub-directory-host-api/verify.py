@@ -18,6 +18,7 @@ rows = [
  ('post-factory', 'const control = await create();\n    if (!current()) throw new HubProtocolError("revoked");', 'const control = await create();', 'a held factory'),
  ('host-actor', 'kind: "host-owner" as const', 'kind: "hub-administrator" as const', 'AD settings from the local host session'),
  ('restored-status', 'action === "/save" && "state" in result && result.state === "restored" ? 503 : 200', '200', 'routes save through'),
+ ('post-result', 'if (!current()) throw new HubProtocolError("revoked");\n    send(res, action', 'send(res, action', 'a settled Save result'),
  ('retry-after', '...(status === 429 ? { "Retry-After": "10" } : {})', '...{}', 'reports only a bounded error'),
 ]
 selected = set(sys.argv[1:])

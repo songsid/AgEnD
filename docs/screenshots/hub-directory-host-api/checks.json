@@ -41,5 +41,16 @@
     "AD form and UI acceptance/PNG/SKEW"
   ],
   "operations": "No real directory/account/pilot/native/live fleet operation.",
-  "counts": "35 original focused tests +1 added held-body test; the3 held-factory controls were rechecked after deterministic abort cleanup, overlapping the35. Do not add overlapping counts."
+  "counts": "35 original focused tests +1 added held-body test; the3 held-factory controls were rechecked after deterministic abort cleanup, overlapping the35. Do not add overlapping counts.",
+  "r1": {
+    "scope": "Test/docs/evidence only; production source byte-identical to a0f9c929.",
+    "tests": {
+      "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'a settled Save result'",
+      "passed": 2,
+      "failed": 0,
+      "deselected": 24
+    },
+    "proof": "Contract-faithful held apply marks its effect settled before D3 proof revocation. Revoked gets403 without committed:false; current gets the ready result. This particular control is not a SQL-commit claim; the original outage journey owns real SQL/wire coverage.",
+    "types": "npx tsc --noEmit -p tsconfig.test.json passed."
+  }
 }

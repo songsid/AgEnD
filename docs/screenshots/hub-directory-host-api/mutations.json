@@ -73,6 +73,13 @@
       "passed": 0,
       "failed": 1,
       "deselected": 23
+    },
+    {
+      "name": "post-result",
+      "exit": 1,
+      "passed": 1,
+      "failed": 1,
+      "deselected": 24
     }
   ],
   "restored": true,
