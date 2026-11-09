@@ -1306,6 +1306,45 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
+  /**
+   * A message the owner must get (a computer joined with an install-command token, so nobody approved it) that could not be delivered because there is no place for it yet
+   * (a chat-connected fleet with no General and no primary notice target, or adapters that are not up). It is kept in `pending-owner-notices.json` (bounded, private), survives a
+   * restart, and is tried again every minute until `notifyFleetError` takes it. A web-only fleet never gets here: its Notices take the message at once.
+   */
+  private ownerNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingOwnerNoticesFile(): string | null { return this.dataDir ? join(this.dataDir, "pending-owner-notices.json") : null; }
+  private readPendingOwnerNotices(): string[] {
+    const file = this.pendingOwnerNoticesFile();
+    try { const value: unknown = file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : []; return Array.isArray(value) ? value.filter((row): row is string => typeof row === "string" && row.length > 0 && row.length <= 4000).slice(-50) : []; }
+    catch { return []; }
+  }
+  private writePendingOwnerNotices(rows: string[]): void {
+    const file = this.pendingOwnerNoticesFile(); if (!file) return;
+    try { if (rows.length) atomicWriteFileSync(file, JSON.stringify(rows.slice(-50)), { mode: 0o600 }); else rmSync(file, { force: true }); }
+    catch (error) { this.logger.warn({ err: error }, "Could not keep a pending owner notice"); }
+  }
+  holdOwnerNotice(text: string): void {
+    this.writePendingOwnerNotices([...this.readPendingOwnerNotices(), text]);
+    this.logger.warn("A notice for the owner has no place to go yet; it is kept and will be delivered when a chat destination exists");
+    this.scheduleOwnerNoticeFlush();
+  }
+  /** Delivers what was kept, oldest first, and stops at the first one that still has nowhere to go. Returns how many are left. */
+  flushOwnerNotices(): number {
+    const rows = this.readPendingOwnerNotices();
+    let sent = 0;
+    for (const text of rows) { let ok = false; try { ok = this.notifyFleetError(text, { throttle: false }); } catch { ok = false; } if (!ok) break; sent++; }
+    const left = rows.slice(sent); if (sent) this.writePendingOwnerNotices(left);
+    return left.length;
+  }
+  private scheduleOwnerNoticeFlush(delayMs = 60_000): void {
+    if (this.ownerNoticeTimer || !this.pendingOwnerNoticesFile()) return;
+    this.ownerNoticeTimer = setTimeout(() => {
+      this.ownerNoticeTimer = null;
+      let left = 0; try { left = this.flushOwnerNotices(); } catch (error) { this.logger.warn({ err: error }, "Could not deliver a pending owner notice"); left = 1; }
+      if (left > 0) this.scheduleOwnerNoticeFlush();
+    }, delayMs);
+    this.ownerNoticeTimer.unref?.();
+  }
   private runtimeInstall: RuntimeInstallService | undefined;
   /** One service for the public installer routes and the administrator API: the hash the dashboard shows is the hash of what is sent. */
   runtimeInstaller(): RuntimeInstallService { return this.runtimeInstall ??= new RuntimeInstallService(); }
@@ -1315,6 +1354,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
   runtimeCoordinator(): RuntimeCoordinator {
     if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
+    if(!this.runtimeHub && this.readPendingOwnerNotices().length)this.scheduleOwnerNoticeFlush(30_000);   // a notice kept before a restart is delivered once the fleet is up
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
@@ -1325,7 +1365,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // A computer that joined with a token was approved by the token alone: tell the owner out of band (never lets a failure here change the join).
         if(entry.event==="used")try{
           const text=enrolledRuntimeNotice(entry,entry.machineId ? this.runtimeHub?.machine(entry.machineId) ?? null : null);
-          if(text)this.notifyFleetError(text,{throttle:false});
+          // No chat destination yet (no General, no primary channel, adapters not up) and not a web-only fleet: keep the notice and deliver it when one exists.
+          if(text && !this.notifyFleetError(text,{throttle:false}))this.holdOwnerNotice(text);
         }catch(error){this.logger.warn({err:error},"Could not announce a computer that joined with an install-command token");}
       },
       changed:event=>{
@@ -25255,6 +25296,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
     this.fleetWindowsRuntime=null;
     this.runtimeHub?.close();this.runtimeHub=null;
+    if(this.ownerNoticeTimer){clearTimeout(this.ownerNoticeTimer);this.ownerNoticeTimer=null;}
     this.localPaneRelay?.stop(); this.localPaneRelay = null;
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {

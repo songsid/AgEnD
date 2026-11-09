@@ -61,6 +61,9 @@ export async function launchInBackground(context: BackgroundContext, input: Laun
   const { store } = input, label = runtimeProfileLabel(store.directory, context.home), log = logFor(context, store);
   const existing = await readRuntimeInstance(store, instanceDeps(context));
   let pid: number | undefined = existing.pid;
+  // Autostart is turned on by default only for a Runtime that is connected (or already runs in the background): not while the one just started is still connecting,
+  // not when a window's Runtime was found (the person chose a window), and not when another start won the race and its state is unknown here.
+  let connected = existing.state === "running" && existing.mode === "background";
   if (existing.state === "running") {
     log.write(`start: a Runtime already runs for this profile (process ${existing.pid}); nothing started.`);
     out(context, `AgEnD Runtime is already running for this profile (${label}, process ${existing.pid}${existing.mode === "foreground" ? ", in a window" : ", in the background"}). Nothing was started.`);
@@ -71,13 +74,13 @@ export async function launchInBackground(context: BackgroundContext, input: Laun
     if (result.kind === "failed") throw new Error(result.message);
     if (result.kind === "already-running") out(context, `AgEnD Runtime is already running for this profile (${label}${result.pid ? `, process ${result.pid}` : ""}). Nothing was started.`);
     else {
-      pid = result.pid;
+      pid = result.pid; connected = result.connected === true;
       out(context, result.connected
         ? `AgEnD Runtime is connected and running in the background (${label}, process ${result.pid}). Closing this window does not disconnect it.`
         : `AgEnD Runtime was started in the background (${label}, process ${result.pid}) but has not connected yet. It keeps trying by itself, and closing this window does not stop it. If it stays offline, run ${runtimeCommandName(context.cliPath, context.env)} logs to see why.`);
     }
   }
-  if (input.enableAutostartByDefault && readAutostartPreference(store.directory) === undefined) {
+  if (input.enableAutostartByDefault && connected && readAutostartPreference(store.directory) === undefined) {
     try { await enableAutostart(context, store); }
     catch (error) { out(context, `Autostart could not be turned on: ${error instanceof Error ? error.message : "unknown error"}`); }
   }
@@ -234,7 +237,8 @@ export async function removeAutostartForDisconnect(context: BackgroundContext, s
 
 /* ------------------------------------------------------------------ the background Runtime itself */
 
-export interface BackgroundRun { run: (report: (text: string) => void) => Promise<void> }
+/** `control.onStopAttempt` hands over the Runtime's own stop attempt (it settles when the attempt did, whether or not the shutdown was confirmed), so a stop request is one attempt at a time. */
+export interface BackgroundRun { run: (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }) => Promise<void> }
 /**
  * What the detached `run` process does around the normal Runtime: its output goes to the log, a stop request ends it the way Ctrl+C would, the launcher is told
  * when AgEnD welcomed it (or that it failed, or that another Runtime already holds the profile) through the state file, and the marker `status` reads is kept while it runs.
@@ -244,7 +248,7 @@ export async function runBackgroundInstance(context: BackgroundContext, store: R
   // A crash prints its stack to a stderr nobody reads here; the log is where someone will look. The monitor only observes: Node still ends the process as it would.
   const crashed = (error: Error): void => log.write(`The Runtime crashed: ${error.stack ?? error.message}`, "error");
   process.on("uncaughtExceptionMonitor", crashed);
-  let unwatch = (): void => {}, markerTimer: ReturnType<typeof setInterval> | undefined, told = false;
+  let stopAttempt: (() => Promise<void>) | undefined, unwatch = (): void => {}, markerTimer: ReturnType<typeof setInterval> | undefined, told = false;
   const tell = (message: Parameters<typeof reportBackgroundState>[2]): void => { if (!told) { told = true; reportBackgroundState(store.directory, context.env, message); } };
   try {
     const existing = await readRuntimeInstance(store, instanceDeps(context));
@@ -255,9 +259,13 @@ export async function runBackgroundInstance(context: BackgroundContext, store: R
     }
     clearStopRequest(store.directory);
     process.stdout.write(`AgEnD Runtime starting in the background (process ${process.pid}).\n`);
-    const finished = body.run(text => { process.stdout.write(`${text}\n`); if (text === RUNTIME_CONNECTED_REPORT) tell({ status: "ready", pid: process.pid }); });
+    const finished = body.run(text => { process.stdout.write(`${text}\n`); if (text === RUNTIME_CONNECTED_REPORT) tell({ status: "ready", pid: process.pid }); }, { onStopAttempt: attempt => { stopAttempt = attempt; } });
     // Listeners for SIGINT/SIGTERM are in place once `run` has been called, so a stop request can end the Runtime the same way Ctrl+C does.
-    unwatch = watchStopRequest(store.directory, () => { process.stdout.write("Stop requested (agend-runtime stop); stopping.\n"); process.emit("SIGTERM", "SIGTERM"); }, context.seams.watchMs ?? 1000);
+    // The watch keeps going after an attempt: a shutdown that is not confirmed leaves the Runtime up, and the next `stop` / `restart` must be able to retry. One attempt at a time.
+    unwatch = watchStopRequest(store.directory, async () => {
+      process.stdout.write("Stop requested (agend-runtime stop); stopping.\n");
+      if (stopAttempt) await stopAttempt(); else process.emit("SIGTERM", "SIGTERM");   // the update controller's own handlers, when it runs the Runtime
+    }, context.seams.watchMs ?? 1000);
     // The marker says "this PID is a background Runtime"; it is written only once this process holds the profile lock, so a second start that loses the race never claims it.
     markerTimer = setInterval(() => { if (store.lockInfo()?.pid === process.pid) { writeInstanceMarker(store.directory, process.pid, Date.now(), runtimeVersion); if (markerTimer) clearInterval(markerTimer); markerTimer = undefined; } }, 200);
     markerTimer.unref();

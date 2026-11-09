@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeClientStore as Store } from "../src/runtime-client-store.js";
 import type { BackgroundLaunchOptions, BackgroundLaunchResult } from "../src/runtime-background.js";
 
-const world = vi.hoisted(() => ({ pair: vi.fn(), enroll: vi.fn(), started: vi.fn(), startError: undefined as unknown, stopReason: undefined as unknown, endAtOnce: false, clients: [] as { stop(): Promise<void> }[], boot: "b".repeat(64) }));
+const world = vi.hoisted(() => ({ pair: vi.fn(), enroll: vi.fn(), started: vi.fn(), startError: undefined as unknown, stopReason: undefined as unknown, endAtOnce: false, stopFailures: 0, stopCalls: 0, clients: [] as { stop(): Promise<void> }[], boot: "b".repeat(64) }));
 vi.mock("../src/runtime-pane-boot.js", async importOriginal => ({ ...await importOriginal<typeof import("../src/runtime-pane-boot.js")>(), readPaneSystemBootId: async () => world.boot }));
 vi.mock("../src/runtime-client.js", async importOriginal => ({
   ...await importOriginal<typeof import("../src/runtime-client.js")>(),
@@ -15,7 +15,7 @@ vi.mock("../src/runtime-client.js", async importOriginal => ({
     stopReason: unknown; private done: (() => void) | undefined;
     constructor(private readonly options: { store: Store; report?: (text: string) => void }) { world.clients.push(this); }
     async start() { world.started(this.options.store.directory); if (world.startError) throw world.startError; this.options.report?.("Connected to AgEnD."); this.stopReason = world.stopReason; }
-    async stop() { this.done?.(); }
+    async stop() { world.stopCalls++; if (world.stopFailures > 0) { world.stopFailures--; throw new Error("An account process was not confirmed ended"); } this.done?.(); }
     waitUntilStopped() { return world.endAtOnce ? Promise.resolve() : new Promise<void>(resolve => { this.done = resolve; }); }
   },
 }));
@@ -26,7 +26,7 @@ import { runtimeMain } from "../src/runtime-cli.js";
 import { RUNTIME_AUTOSTART_FILE, RUNTIME_BACKGROUND_ENV, RUNTIME_INSTANCE_FILE, RUNTIME_LAUNCH_ID_ENV, RUNTIME_STOP_REQUEST_FILE, RotatingLog, clearBackgroundState, readAutostartPreference, readBackgroundState, runtimeLogDirectory, runtimeProfileLabel, writeAutostartPreference, writeInstanceMarker } from "../src/runtime-background.js";
 import { runtimeCommandName } from "../src/runtime-cli-background.js";
 import { RUNTIME_SERVER_FILE } from "../src/runtime-connection.js";
-import type { AutostartService } from "../src/runtime-autostart.js";
+import { autostartTaskName, type AutostartService } from "../src/runtime-autostart.js";
 import { generateEnrollToken } from "../src/runtime-enrollment.js";
 
 /**
@@ -156,6 +156,17 @@ describe("autostart: on by default after the first background connect, and the p
     expect(output).toMatch(/starts again by itself when you sign in to Windows \(turn that off: agend-runtime autostart disable\)/);
     await call(["connect", "--server", A], f); expect(autostartCalls).toHaveLength(1);                // once the choice exists, connect leaves it alone
   });
+  it("is turned on only for a Runtime that is connected: not while the one just started is still connecting, not for a window's Runtime, not when another start won the race", async () => {
+    const f = fixture(), store = pairTo(f.base);
+    launchResult = { kind: "started", pid: 9, connected: false }; await call(["connect", "--server", A], f);
+    expect(autostartCalls, "still connecting").toEqual([]); expect(readAutostartPreference(store.directory)).toBeUndefined(); expect(output).not.toMatch(/starts again by itself/);
+    lockFile(store.directory, 4242);                                                                    // a Runtime in a window (no background marker)
+    await call(["connect", "--server", A], f); expect(autostartCalls, "a window's Runtime").toEqual([]); expect(readAutostartPreference(store.directory)).toBeUndefined();
+    rmSync(join(store.directory, "runtime.lock")); launchResult = { kind: "already-running", pid: 31 };
+    await call(["connect", "--server", A], f); expect(autostartCalls, "the race").toEqual([]);
+    lockFile(store.directory, 4242); writeInstanceMarker(store.directory, 4242);                         // a background Runtime that is already up: connected
+    await call(["connect", "--server", A], f); expect(autostartCalls).toEqual([`enable default ${f.base}`]); expect(readAutostartPreference(store.directory)).toBe(true);
+  });
   it("never turns it back on after the person turned it off", async () => {
     const f = fixture(), store = pairTo(f.base); writeAutostartPreference(store.directory, false);
     await call(["connect", "--server", A], f); expect(autostartCalls).toEqual([]); expect(output).not.toMatch(/starts again by itself/);
@@ -192,7 +203,7 @@ describe("status, stop, restart and logs", () => {
     lockFile(one.directory, 4242); writeInstanceMarker(one.directory, 4242, Date.UTC(2026, 10, 8, 3, 0, 0)); writeAutostartPreference(one.directory, true);
     await call(["status"], f);
     expect(output).toMatch(/^default\n {2}state: {6}running in the background \(process 4242, since /m); expect(output).toMatch(/server: {5}https:\/\/fleet\.example\.test:10443 \(this computer: Office PC\)/);
-    expect(output).toMatch(/autostart: {2}on \(scheduled task "AgEnD Runtime - default"\)/); expect(output).toMatch(/^preview\.example\.test-8445\n {2}state: {6}not running/m);
+    expect(output).toMatch(new RegExp(`autostart: {2}on \\(scheduled task "${autostartTaskName("default")}"\\)`)); expect(output).toMatch(/^preview\.example\.test-8445\n {2}state: {6}not running/m);
     expect(output).toContain(runtimeLogDirectory(f.env, f.home, one.directory));
     output = ""; await call(["status", "--json"], f);
     const json = JSON.parse(output) as { runtimeInfo: unknown; profiles: Record<string, any>[] };
@@ -323,6 +334,17 @@ describe("the detached Runtime itself (run with the background switch)", () => {
     expect(logOf(f)).toMatch(/Stop requested \(agend-runtime stop\); stopping\./); expect(logOf(f)).toMatch(/process ended/);
     expect(existsSync(join(store.directory, RUNTIME_INSTANCE_FILE))).toBe(false); expect(existsSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
     expect(process.exitCode ?? 0).toBe(0);
+  });
+  it("a first stop that is not confirmed leaves the Runtime up and watching: the next stop request retries and ends it, one attempt at a time", async () => {
+    const f = fixture(), store = pairTo(f.base); world.endAtOnce = false; world.stopFailures = 1; world.stopCalls = 0; lockFile(store.directory, process.pid);
+    let settled = false; const run = call(["run", "--profile", f.base], f, { env: background(f) }).then(() => { settled = true; });
+    await vi.waitFor(() => expect(existsSync(join(store.directory, RUNTIME_INSTANCE_FILE))).toBe(true));
+    writeFileSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE), JSON.stringify({ version: 1, at: 1 }));
+    await vi.waitFor(() => expect(world.stopCalls).toBe(1)); await vi.waitFor(() => expect(existsSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false));
+    await new Promise(resolve => setTimeout(resolve, 100)); expect(settled, "the Runtime is still up after the failed stop").toBe(false);
+    writeFileSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE), JSON.stringify({ version: 1, at: 2 }));      // agend-runtime stop asks again
+    await expect(run).resolves.toBeUndefined();
+    expect(world.stopCalls).toBe(2); expect(existsSync(join(store.directory, RUNTIME_INSTANCE_FILE))).toBe(false);
   });
   it("a stop request left over from before it started does not stop it", async () => {
     const f = fixture(), store = pairTo(f.base); world.endAtOnce = false; writeFileSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE), JSON.stringify({ version: 1, at: 1 }));

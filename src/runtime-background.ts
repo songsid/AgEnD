@@ -42,7 +42,18 @@ export function runtimeDataRoot(env: Environment, home: string): string {
 }
 export function runtimeLogsRoot(env: Environment, home: string): string { return join(runtimeDataRoot(env, home), "logs"); }
 const comparable = (path: string): string => resolve(path).replace(/[\\/]+$/, "").toLowerCase();
-function labelPart(text: string): string { return text.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_").slice(0, 64) || "profile"; }
+const LABEL_PART_MAX = 64;
+const digestOf = (directory: string): string => createHash("sha256").update(comparable(directory)).digest("hex").slice(0, 8);
+/**
+ * A file-name-safe piece of a profile's name. A name that is kept whole (only letters, digits, `.`, `_` and `-`, at most 64 characters) is returned as it is; one that had to be
+ * shortened or had characters replaced would collide with another profile that differs only in what was cut or replaced, so it carries 8 hex characters of the
+ * **whole canonical folder path** (the complete profile identity), which the cut-off part used to be the only difference.
+ */
+function labelPart(text: string, directory: string): string {
+  const safe = text.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_");
+  if (safe === text && text.length > 0 && text.length <= LABEL_PART_MAX) return text;
+  return `${safe.slice(0, LABEL_PART_MAX - 9) || "profile"}-${digestOf(directory)}`;
+}
 /**
  * A short, stable, file-name-safe name for a profile folder: `default` for `~\.agend-runtime`, the per-server folder name (`host-port`) for
  * `~\.agend-runtime\profiles\<name>`, and `custom-<folder>-<8 hex of the full path>` for anything chosen with --profile or AGEND_RUNTIME_HOME.
@@ -51,8 +62,8 @@ function labelPart(text: string): string { return text.replace(/[^A-Za-z0-9._-]/
 export function runtimeProfileLabel(directory: string, home: string): string {
   const base = resolve(join(home, ".agend-runtime")), dir = resolve(directory);
   if (comparable(dir) === comparable(base)) return "default";
-  if (comparable(dirname(dir)) === comparable(join(base, "profiles"))) return labelPart(basename(dir));
-  return `custom-${labelPart(basename(dir))}-${createHash("sha256").update(comparable(dir)).digest("hex").slice(0, 8)}`;
+  if (comparable(dirname(dir)) === comparable(join(base, "profiles"))) return labelPart(basename(dir), dir);
+  return `custom-${basename(dir).replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_").slice(0, LABEL_PART_MAX) || "profile"}-${digestOf(dir)}`;
 }
 export function runtimeLogDirectory(env: Environment, home: string, directory: string): string { return join(runtimeLogsRoot(env, home), runtimeProfileLabel(directory, home)); }
 
@@ -226,13 +237,20 @@ export function requestRuntimeStop(directory: string, now = Date.now()): void {
   atomicWriteFileSync(join(directory, RUNTIME_STOP_REQUEST_FILE), JSON.stringify({ version: 1, at: now }), { mode: 0o600 });
 }
 export function clearStopRequest(directory: string): void { try { unlinkSync(join(directory, RUNTIME_STOP_REQUEST_FILE)); } catch { /* none */ } }
-/** Polls for a stop request. It is consumed (deleted) before `onStop` runs, so one request stops one Runtime. Returns the function that ends the watch. */
-export function watchStopRequest(directory: string, onStop: () => void, intervalMs = 1000): () => void {
+/**
+ * Polls for stop requests. Each request is consumed (deleted) before `onStop` runs, so one request is one stop attempt. The watch does **not** end after an attempt:
+ * a shutdown that cannot be confirmed (an account process is still running) leaves the Runtime up and holding its lock, and `agend-runtime stop`, `restart` and
+ * `disconnect` must be able to ask again. It ends only when the caller ends it (the process is shutting down for good). While an attempt that returned a promise is still
+ * in flight no further request is consumed, so two cleanups never overlap; a request that arrives meanwhile waits in its file and is taken when the attempt has settled.
+ */
+export function watchStopRequest(directory: string, onStop: () => void | Promise<void>, intervalMs = 1000): () => void {
   const file = join(directory, RUNTIME_STOP_REQUEST_FILE);
+  let attempting = false;
   const timer = setInterval(() => {
-    if (!existsSync(file)) return;
+    if (attempting || !existsSync(file)) return;
     try { unlinkSync(file); } catch { return; }
-    clearInterval(timer); onStop();
+    attempting = true;
+    void Promise.resolve().then(onStop).catch(() => { /* the caller reports its own failure */ }).finally(() => { attempting = false; });
   }, intervalMs);
   return () => clearInterval(timer);
 }

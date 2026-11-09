@@ -359,16 +359,18 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     await launchInBackground(context, { store, enableAutostartByDefault: command === "connect" });
     return;
   }
-  const runHere = async (report: (text: string) => void): Promise<void> => {
+  const runHere = async (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }): Promise<void> => {
     if (await runRuntimeWithUpdates({ store, report })) return;
     const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report });
-    const stop = (): void => {
-      void client.stop().catch(error => {
-        // An account process was not confirmed ended: the Runtime keeps its lock, so say so and let the next Ctrl+C try again.
-        process.exitCode = 1; process.stderr.write(`${error instanceof Error ? error.message : "Runtime stop was not completed"}. Press Ctrl+C to try again.\n`);
-        process.once("SIGINT", stop); process.once("SIGTERM", stop);
-      });
-    };
+    // One attempt at a time: a signal or a stop request that arrives while one is in flight joins it. An account process that was not confirmed ended leaves the Runtime up
+    // holding its lock, so the next Ctrl+C or `agend-runtime stop` tries again.
+    let attempting: Promise<void> | undefined;
+    const attempt = (): Promise<void> => attempting ??= client.stop().catch(error => {
+      process.exitCode = 1; process.stderr.write(`${error instanceof Error ? error.message : "Runtime stop was not completed"}. Press Ctrl+C to try again.\n`);
+      process.once("SIGINT", stop); process.once("SIGTERM", stop);
+    }).finally(() => { attempting = undefined; });
+    const stop = (): void => { void attempt(); };
+    control?.onStopAttempt(attempt);
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
     try { await client.start(); await client.waitUntilStopped(); }
     finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }

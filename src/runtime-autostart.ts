@@ -11,6 +11,7 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 import { execFile } from "./child-process.js";
 
@@ -18,9 +19,15 @@ export const AUTOSTART_TASK_PREFIX = "AgEnD Runtime - ";
 /** The trigger waits a little after sign-in so the network (a VPN such as Tailscale) has a chance to be up; the Runtime reconnects by itself either way. */
 export const AUTOSTART_DELAY_SECONDS = 20;
 
-export function autostartTaskName(label: string): string {
+/**
+ * The task's name. Task names are unique across the whole computer (the Principal in the XML does not make a separate namespace), so on a computer that several people
+ * use, Alice's `default` and Bob's `default` must not both be "AgEnD Runtime - default": the name carries 8 hex characters of the signed-in Windows account (DOMAIN\\user,
+ * case-insensitive) as well as the profile's label, and creating, querying and removing all use this one name.
+ */
+export function autostartTaskName(label: string, user: string = currentWindowsUser()): string {
   if (!/^[A-Za-z0-9._-]{1,120}$/.test(label)) throw new Error("Invalid Runtime profile name for a scheduled task");
-  return `${AUTOSTART_TASK_PREFIX}${label}`;
+  if (!user || /[\r\n\0]/.test(user)) throw new Error("The Windows user name is unavailable");
+  return `${AUTOSTART_TASK_PREFIX}${createHash("sha256").update(user.toLowerCase()).digest("hex").slice(0, 8)} - ${label}`;
 }
 export interface AutostartAction { command: string; args: string }
 const forbidden = /["%\r\n\0<>|&^]/;
@@ -121,8 +128,9 @@ export function createAutostartService(deps: AutostartDeps = {}): AutostartServi
    * tell the two apart. Only a task LIST that Windows produced (exit 0) and that does not name the task is "no task"; if even the list fails, this throws instead of
    * answering, and the caller says so rather than pretending there was nothing to remove.
    */
+  const taskFor = (label: string): string => autostartTaskName(label, (deps.user ?? currentWindowsUser)());
   const exists = async (label: string): Promise<boolean> => {
-    const name = autostartTaskName(label);
+    const name = taskFor(label);
     if ((await run(["/Query", "/TN", name])).code === 0) return true;
     const list = await run(["/Query", "/FO", "CSV", "/NH"]);
     if (list.code !== 0) throw new Error(`Windows did not say whether the sign-in task "${name}" exists (${list.output || `exit status ${list.code}`}). Open Task Scheduler and look for it in the library's root.`);
@@ -131,7 +139,7 @@ export function createAutostartService(deps: AutostartDeps = {}): AutostartServi
   return {
     exists,
     async enable(input) {
-      const name = autostartTaskName(input.label);
+      const name = taskFor(input.label);
       const action = autostartAction({ cliPath: input.cliPath, execPath: input.execPath, profile: input.profile, ...(deps.shimExists ? { shimExists: deps.shimExists } : {}) });
       const definition = encodeTaskXml(buildAutostartTaskXml({ label: input.label, user: (deps.user ?? currentWindowsUser)(), action, workingDirectory: input.profile }));   // the profile folder, not a version folder: those may be cleaned up later, the task must keep working
       mkdirSync(input.workFolder, { recursive: true });
@@ -144,8 +152,8 @@ export function createAutostartService(deps: AutostartDeps = {}): AutostartServi
     },
     async disable(label) {
       if (!await exists(label)) return false;
-      const result = await run(["/Delete", "/TN", autostartTaskName(label), "/F"]);
-      if (result.code !== 0) throw new Error(`Windows did not remove the sign-in task "${autostartTaskName(label)}" (${result.output || `exit status ${result.code}`}). Remove it in Task Scheduler (it is in the library's root), or run agend-runtime autostart disable again.`);
+      const result = await run(["/Delete", "/TN", taskFor(label), "/F"]);
+      if (result.code !== 0) throw new Error(`Windows did not remove the sign-in task "${taskFor(label)}" (${result.output || `exit status ${result.code}`}). Remove it in Task Scheduler (it is in the library's root), or run agend-runtime autostart disable again.`);
       return true;
     },
   };

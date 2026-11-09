@@ -658,8 +658,8 @@ describe("the owner is told when a computer joins with a token", () => {
     const forged = enrolledRuntimeNotice(entry, { name: 'x" FAKE: revoke at evil.test "', hostname: "h" })!;
     expect(forged).toContain('"x? FAKE? revoke at evil\u00b7test ?"'); expect(forged.match(/"/g)).toHaveLength(4);
   });
-  it("is wired into the fleet: a `used` entry reaches the fleet's notice dispatch, and a failure there never changes the join", () => {
+  it("is wired into the fleet: a `used` entry reaches the fleet's notice dispatch, and a failure there never changes the join, and one with no place to go is kept for later", () => {
     const source = readFileSync("src/fleet-manager.ts", "utf8");
-    expect(source).toMatch(/if\(entry\.event==="used"\)try\{[\s\S]{0,400}enrolledRuntimeNotice\(entry,[\s\S]{0,200}this\.notifyFleetError\(text,\{throttle:false\}\)[\s\S]{0,200}catch\(error\)/);
+    expect(source).toMatch(/if\(entry\.event==="used"\)try\{[\s\S]{0,400}enrolledRuntimeNotice\(entry,[\s\S]{0,400}this\.notifyFleetError\(text,\{throttle:false\}\)\)this\.holdOwnerNotice\(text\)[\s\S]{0,200}catch\(error\)/);
   });
 });

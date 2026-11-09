@@ -31,6 +31,18 @@ describe("profile names and folders", () => {
     expect(runtimeProfileLabel(join(base, "profiles", "..", "..", "x y&z"), home)).toMatch(/^custom-x_y_z-[a-f0-9]{8}$/);   // file-name safe
     for (const label of [runtimeProfileLabel(join(base, "profiles", "a b"), home), a]) expect(label).toMatch(/^[A-Za-z0-9._-]+$/);
   });
+  it("keeps two server profiles apart when their folder names are too long to keep whole: the label carries the complete profile identity", () => {
+    const home = scratch(), base = join(home, ".agend-runtime"), host = "a".repeat(63);
+    const one = join(base, "profiles", `${host}.example.test-8443`), two = join(base, "profiles", `${host}.example.test-9443`);
+    const a = runtimeProfileLabel(one, home), b = runtimeProfileLabel(two, home);
+    expect(a).not.toBe(b); for (const label of [a, b]) { expect(label).toMatch(/^[A-Za-z0-9._-]{1,64}$/); expect(label).toMatch(/-[a-f0-9]{8}$/); }
+    expect(runtimeProfileLabel(one, home)).toBe(a);                                                      // stable
+    const env = { LOCALAPPDATA: join(home, "local") };
+    expect(runtimeLogDirectory(env, home, one)).not.toBe(runtimeLogDirectory(env, home, two));
+    // a name that is kept whole keeps its plain label, and replaced characters do not make two names one
+    expect(runtimeProfileLabel(join(base, "profiles", "fleet.example.test-8445"), home)).toBe("fleet.example.test-8445");
+    expect(runtimeProfileLabel(join(base, "profiles", "a b"), home)).not.toBe(runtimeProfileLabel(join(base, "profiles", "a_b"), home));
+  });
   it("puts logs under %LOCALAPPDATA%\\agend-runtime\\logs\\<profile>, or the same place under the home folder when there is none", () => {
     const home = scratch();
     expect(runtimeDataRoot({ LOCALAPPDATA: join(home, "local") }, home)).toBe(join(home, "local", "agend-runtime"));
@@ -155,15 +167,28 @@ describe("is a Runtime running for this profile", () => {
 });
 
 describe("stop: a request file instead of a signal", () => {
-  it("is consumed once by the Runtime that watches for it, and only then does it stop", () => {
+  it("is consumed once by the Runtime that watches for it, and only then does it stop", async () => {
     vi.useFakeTimers();
     const directory = scratch(), stop = vi.fn(), unwatch = watchStopRequest(directory, stop, 100);
     vi.advanceTimersByTime(500); expect(stop).not.toHaveBeenCalled();
     requestRuntimeStop(directory, 1);
     expect(JSON.parse(readFileSync(join(directory, RUNTIME_STOP_REQUEST_FILE), "utf8"))).toEqual({ version: 1, at: 1 });
-    vi.advanceTimersByTime(150); expect(stop).toHaveBeenCalledTimes(1); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
-    requestRuntimeStop(directory); vi.advanceTimersByTime(1000); expect(stop).toHaveBeenCalledTimes(1);   // one request, one stop: the watch ended
-    unwatch(); clearStopRequest(directory); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
+    await vi.advanceTimersByTimeAsync(150); expect(stop).toHaveBeenCalledTimes(1); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
+    unwatch(); requestRuntimeStop(directory); vi.advanceTimersByTime(1000); expect(stop).toHaveBeenCalledTimes(1);   // the caller ended the watch: nothing more is consumed
+    clearStopRequest(directory); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
+  });
+  it("keeps watching after an attempt, so a shutdown that was not confirmed can be asked again, and never runs two attempts at once", async () => {
+    vi.useFakeTimers();
+    const directory = scratch(); let release: () => void = () => {}, calls = 0, running = 0, overlap = 0;
+    const stop = vi.fn(async () => { calls++; running++; overlap = Math.max(overlap, running); await new Promise<void>((resolve, reject) => { release = calls === 1 ? () => reject(new Error("an account process is still running")) : resolve; }).finally(() => { running--; }); });
+    const unwatch = watchStopRequest(directory, stop, 100);
+    requestRuntimeStop(directory, 1); await vi.advanceTimersByTimeAsync(150); expect(stop).toHaveBeenCalledTimes(1);
+    requestRuntimeStop(directory, 2); await vi.advanceTimersByTimeAsync(500);
+    expect(stop, "a request during an attempt waits for it").toHaveBeenCalledTimes(1); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(true);
+    release(); await vi.advanceTimersByTimeAsync(150);                                   // the first attempt fails: the waiting request is taken
+    expect(stop).toHaveBeenCalledTimes(2); expect(existsSync(join(directory, RUNTIME_STOP_REQUEST_FILE))).toBe(false);
+    release(); await vi.advanceTimersByTimeAsync(300); expect(overlap).toBe(1);
+    unwatch();
   });
   it("stop waits until the lock's process is gone, and says not-running when there is nothing to stop", async () => {
     const store = new RuntimeClientStore(scratch());

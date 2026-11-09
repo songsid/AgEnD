@@ -373,6 +373,8 @@
 
     $tmp = $null; $installLock = $null
     $doConnect = $false; $connectDir = $null; $cliJs = $null; $restartCli = $null
+    # Tracked apart: the restart below runs only after an installation that finished (the end of the try block was reached) and whose lock was released and confirmed.
+    $installFinished = $false; $lockReleased = $true
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }
 
@@ -550,21 +552,24 @@
                 if ($mode -eq 'noentry') { $global:LASTEXITCODE = 1 }
             }
         }
+        $installFinished = $true
     } catch {
         Write-Problem ('install failed: ' + $_.Exception.Message)
         $global:LASTEXITCODE = 1
+        $doConnect = $false
     } finally {
         if ($tmp -and (Test-Path -LiteralPath $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
-        if ($installLock) { try { Remove-AgendLock $installLock } catch { Write-Problem 'Installation cleanup is unconfirmed; ownership was retained.'; $global:LASTEXITCODE = 1; $doConnect = $false } }
+        if ($installLock) { try { Remove-AgendLock $installLock } catch { Write-Problem 'Installation cleanup is unconfirmed; ownership was retained.'; $global:LASTEXITCODE = 1; $doConnect = $false; $lockReleased = $false } }
         # A run that installed nothing leaves nothing: the install folder this run created is removed again, but only while it is still empty.
         if ($createdRoot -and $root -and (Test-Path -LiteralPath $root) -and -not (Get-ChildItem -LiteralPath $root -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $root -Force -ErrorAction SilentlyContinue }
     }
 
     # restart Runtimes that run in the background (repair run, or a different build was just selected). After the install lock is gone: a
     # Runtime takes that lock itself. Only background Runtimes are touched; one that runs in a window is reported and left alone. A failure is a
-    # warning, never "install failed": the install itself is complete.
-    if ($restartCli -and (Test-Path -LiteralPath $restartCli)) {
-        $previousPreference = $ErrorActionPreference
+    # warning, never "install failed": the install itself is complete. If the installation failed after the build was selected, or its lock could not be confirmed released,
+    # nothing is stopped or restarted and the failure status stays.
+    if ($restartCli -and $installFinished -and $lockReleased -and (Test-Path -LiteralPath $restartCli)) {
+        $previousPreference = $ErrorActionPreference; $statusBeforeRestart = $global:LASTEXITCODE
         try {
             $ErrorActionPreference = 'Continue'
             Write-Step 'restarting any Runtime that runs in the background so it uses this version.'
@@ -573,7 +578,7 @@
         } catch {
             Write-Host ('AgEnD Runtime: warning: could not restart a background Runtime: ' + $_.Exception.Message) -ForegroundColor Yellow
         } finally { $ErrorActionPreference = $previousPreference }
-        $global:LASTEXITCODE = 0
+        $global:LASTEXITCODE = $statusBeforeRestart   # a restart that failed is the warning above; it never turns a finished install into a failure, or a success into one
     }
 
     # Connect in this window, after the install lock is gone (a running Runtime takes that lock to update itself). This is the Runtime's own

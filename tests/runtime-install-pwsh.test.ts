@@ -584,6 +584,28 @@ process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.
       expect(r.code, r.out).toBe(0); expect(r.out).toContain("warning: a background Runtime could not be restarted"); expect(r.out).toContain("restart refused");
       expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(folderOf(failing));
     });
+    it("never stops or restarts a Runtime when the installation fails after the build was selected, and the status stays a failure", async () => {
+      const others = (s: ReturnType<typeof scratch>): string[][] => existsSync(s.marker + ".other") ? readFileSync(s.marker + ".other", "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
+      const s = scratch(); expect((await run(s, { T_MARK: s.marker })).code).toBe(0);
+      const nextBundle = makeBundle("2.3.7-alpha.8", "recorder", RECORDER); active = serviceFor(nextBundle);
+      // Control: the same build switch with a successful installation does restart (the test above). Here the PATH step, which comes after the build is selected, cannot run
+      // (there is no Windows registry here), so the installation fails: nothing may be stopped or restarted, nothing connected, and the exit status is the failure.
+      const r = await run(s, { T_MARK: s.marker, T_COMMAND: pageCommand(active), AGEND_RUNTIME_NO_PATH: "" });
+      expect(r.out).toContain("install failed"); expect(r.code, r.out).toBe(1);
+      expect(others(s), r.out).toEqual([]); expect(r.out).not.toContain("restarting any Runtime"); expect(recorded(s)).toBeUndefined();
+    });
+    it.skipIf(process.getuid?.() === 0)("never stops or restarts a Runtime when the install lock cannot be confirmed released, and the status stays a failure", async () => {
+      const others = (s: ReturnType<typeof scratch>): string[][] => existsSync(s.marker + ".other") ? readFileSync(s.marker + ".other", "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
+      const s = scratch(); expect((await run(s, { T_MARK: s.marker })).code).toBe(0);
+      const nextBundle = makeBundle("2.3.7-alpha.9", "recorder", RECORDER); active = serviceFor(nextBundle);
+      // The lock folder is made read-only the moment it exists, so deleting its owner file fails: the cleanup is unconfirmed while the installation itself completes.
+      const lock = join(s.install, ".agend-runtime-install.lock"); let held = false;
+      const watcher = setInterval(() => { try { if (!held && existsSync(lock)) { chmodSync(lock, 0o555); held = true; } } catch { /* not there yet */ } }, 1);
+      let r; try { r = await run(s, { T_MARK: s.marker, T_COMMAND: pageCommand(active) }); } finally { clearInterval(watcher); try { chmodSync(lock, 0o755); } catch { /* gone */ } }
+      expect(held, "the lock folder was seen and held").toBe(true);
+      expect(r.out).toContain("Installation cleanup is unconfirmed"); expect(r.code, r.out).toBe(1);
+      expect(others(s), r.out).toEqual([]); expect(r.out).not.toContain("restarting any Runtime"); expect(recorded(s)).toBeUndefined();
+    });
     it.skipIf(!hasScript)("installs only, and says why, when $agendNoConnect is set; unset or 0 does not stop the connection", async () => {
       const off = scratch(), a = await runInteractive(off, { T_MARK: off.marker, T_PRESET: "$agendNoConnect = 1" });
       expect(a.code, a.out).toBe(0); expect(recorded(off)).toBeUndefined(); expect(a.out).toContain("$agendNoConnect is set in this window"); expect(a.out).toContain("run $agendNoConnect = $null first");
