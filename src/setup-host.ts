@@ -186,7 +186,7 @@ export class SetupHost {
         && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs,
       installed: this.opts.signInDeps?.installed ?? (async () => detectWizardBackends()),
       checkAuth: this.opts.signInDeps?.checkAuth ?? (backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!)),
-      checkConsoleAuth: this.opts.signInDeps ? this.opts.signInDeps.checkConsoleAuth : () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
+      checkConsoleAuth: this.opts.signInDeps ? this.opts.signInDeps.checkConsoleAuth : backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       transport: this.opts.signInDeps?.transport ?? (() => createStructuredSignInTransport()),
       changed: event => this.log(`Backend sign-in: ${JSON.stringify(event)}`),
     });

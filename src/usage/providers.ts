@@ -46,6 +46,7 @@ import {
   type StatuslineWindow,
 } from "./statusline-usage.js";
 import type { UsageI18nKey } from "./i18n-keys.js";
+import { hostFacts, hostIds, hostIdsByRank } from "../cli-registry.js";
 
 export interface UsageMetric {
   /** Per-window local observation; null means legacy/unknown, never fresh evidence. */
@@ -1685,14 +1686,18 @@ type UsageProvider = { id: string; name: string; profile?: string; defaultLogin?
 
 type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 
-const DEFAULT_PROVIDERS: UsageProvider[] = [
-  { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
-  { id: "codex", name: "Codex", fetch: fetchCodexUsage },
-  { id: "muse", name: "Muse", fetch: fetchMuseUsage },
-  { id: "grok", name: "Grok", fetch: fetchGrokUsage },
-  { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
-  { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
-];
+/** How each provider's usage is read (behaviour, keyed by the provider id the registry gives each CLI: cli-registry.ts `host.usage.providerId`). */
+const USAGE_FETCHERS: Readonly<Record<string, UsageProvider["fetch"]>> = {
+  claude: fetchClaudeUsage, codex: fetchCodexUsage, muse: fetchMuseUsage, grok: fetchGrokUsage, kiro: fetchKiroUsage, antigravity: fetchAntigravityUsage,
+};
+/** The usage panel's providers, in its order: the registry's CLIs with a usage row, each with the function that reads it. */
+const DEFAULT_PROVIDERS: UsageProvider[] = hostIdsByRank("usage").map(cli => {
+  const { providerId, name } = hostFacts(cli, "usage")!, fetch = USAGE_FETCHERS[providerId];
+  if (!fetch) throw new Error(`usage: ${cli} has a usage row in the registry (${providerId}) but nothing reads it`);
+  return { id: providerId, name, fetch };
+});
+/** The ids of the providers the panel reads by default, in its order (tests check each has a reader, and the registry says the same). */
+export function defaultUsageProviderIds(): string[] { return DEFAULT_PROVIDERS.map(provider => provider.id); }
 
 const MUSE_SESSION_MS = 5 * 60 * 60 * 1000;
 
@@ -1961,12 +1966,9 @@ function bindingProfile(
   return instance.classicProfile !== undefined ? instance.classicProfile : instanceCredentialProfile(instance, defaults, backendName);
 }
 
-/** The backend a usage row reads its credentials from. */
+/** The backend whose named accounts have a usage row of their own under this provider id (cli-registry.ts: `host.usage.profileRows`); null for any other. */
 function usageBackendForProviderId(id: string): string | null {
-  if (id === "kiro") return "kiro-cli";
-  if (id === "codex") return "codex";
-  if (id === "claude") return "claude-code";
-  return null;
+  return hostIds("usage").find(cli => { const usage = hostFacts(cli, "usage")!; return usage.providerId === id && usage.profileRows; }) ?? null;
 }
 
 let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;

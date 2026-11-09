@@ -14,13 +14,14 @@
  */
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { hostIds, hostIdsByRank, runtimeIds } from "./cli-registry.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
 import type { SignInTarget } from "./web-backend-login.js";
 
-/** The CLIs the Accounts view shows, in its order. */
-export const ACCOUNT_CLIS = Object.freeze(["claude-code", "codex", "kiro-cli", "antigravity", "grok", "muse"] as const);
-/** The CLIs that can have named credential profiles (src/backend/credential-profile.ts). */
-export const PROFILE_CLIS: ReadonlySet<string> = new Set(["claude-code", "codex", "kiro-cli"]);
+/** The CLIs the Accounts view shows, in its order (cli-registry.ts: `host.accountCard`). */
+export const ACCOUNT_CLIS = Object.freeze(hostIdsByRank("accountCard"));
+/** The CLIs that can have named credential profiles (src/backend/credential-profile.ts; cli-registry.ts: `host.namedAccounts`). */
+export const PROFILE_CLIS: ReadonlySet<string> = new Set(hostIds("namedAccounts"));
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export type AccountScope = { kind: "host" } | { kind: "machine"; id: string; name: string; online: boolean; readOnlyReason?: string };
@@ -30,8 +31,8 @@ export type AccountScope = { kind: "host" } | { kind: "machine"; id: string; nam
  */
 export const MACHINE_READ_ONLY_REASONS = Object.freeze(["offline", "runtime_old", "accounts_off", "switch_unreadable", "not_installed", "not_created", "default_login"] as const);
 export type MachineReadOnlyReason = typeof MACHINE_READ_ONLY_REASONS[number];
-/** The CLIs a paired computer's accounts are shown for (Claude Code first; Codex waits for #3212 PR 4). */
-export const MACHINE_ACCOUNT_CLIS: ReadonlySet<string> = new Set(["claude-code"]);
+/** The CLIs a paired computer's accounts are shown for (cli-registry.ts: `runtime.accountRows`; Claude Code first, Codex waits for #3212 PR 4). */
+export const MACHINE_ACCOUNT_CLIS: ReadonlySet<string> = new Set(runtimeIds("accountRows"));
 export interface AccountUsage { percent: number; resetsAt?: string; windowMs?: number; stale?: boolean }
 export interface AccountRow {
   scope: AccountScope;

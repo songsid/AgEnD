@@ -17,6 +17,7 @@ import type { StructuredSignInLaunch, StructuredSignInTransport } from "./struct
 import type { AuthCheckResult } from "./login-flows.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 import { reduceClaudeLoginScreen } from "./runtime-signin.js";
+import { runtimeFacts, runtimeIds } from "./cli-registry.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import type { RuntimeRemoteOperation, RuntimeRemotePayloads } from "./runtime-protocol.js";
 
@@ -24,7 +25,8 @@ import type { RuntimeRemoteOperation, RuntimeRemotePayloads } from "./runtime-pr
 export type AccountCaller = <K extends RuntimeRemoteOperation>(machineId: string, operation: K, payload: RuntimeRemotePayloads[K], timeoutMs?: number) => Promise<unknown>;
 
 /** The sign-ins a computer can run for the dashboard: the CLI's id, and the exact argv `StructuredSignIn` launches for it. Only subscription sign-ins (the Runtime refuses Console). */
-export const RUNTIME_SIGNIN_CLIS: Readonly<Record<string, readonly string[]>> = Object.freeze({ "claude-code": Object.freeze(["claude", "auth", "login"]) });
+export const RUNTIME_SIGNIN_CLIS: Readonly<Record<string, readonly string[]>> = Object.freeze(
+  Object.fromEntries(runtimeIds("signIn").map(id => [id, Object.freeze([...runtimeFacts(id, "signIn")!.argv])])));   // cli-registry.ts: `runtime.signIn`; pinned, literally, by tests/cli-registry-golden.test.ts
 const MAX_SCREEN = 16 * 1024;
 const SESSION_ID = /^[a-f0-9]{32}$/;
 /** What the Runtime says when a sign-in it is asked about is not (or no longer) the one it is running: the child is gone, which is what `close()` must prove. */

@@ -25,6 +25,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ProcessNotConfirmedEnded, killTree } from "./runtime-signin.js";
+import type { RuntimeCliWith } from "./cli-registry.js";
 // Types only: the lock module reaches windows-cli-worker, which imports this module, so its values are loaded when the first install starts (see `lockModule`).
 import type { RuntimeInstallLock, RuntimeProcessObservation, RuntimeProcessProof, acquireRuntimeInstallLock as AcquireRuntimeInstallLock } from "./runtime-update-lock.js";
 
@@ -39,7 +40,8 @@ export const MANAGED_CLI_ROOT_ENV = "AGEND_MANAGED_CLI_ROOT";
 /** `<pairing folder>\cli`: the one place this Runtime installs CLIs into. */
 export const managedCliRoot = (pairingDirectory: string): string => join(pairingDirectory, "cli");
 
-export type InstallableCliId = "claude-code" | "codex";
+/** The CLIs this Runtime installs (cli-registry.ts: `runtime.install`); the table below must have a pinned entry for each, and for no other. */
+export type InstallableCliId = RuntimeCliWith<"install">;
 export interface InstallableCli {
   id: InstallableCliId;
   /** The package to install and the exact version, never "latest". Its hashes below belong to exactly this version. */
