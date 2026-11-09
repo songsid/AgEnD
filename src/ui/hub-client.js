@@ -265,6 +265,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
     revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
     pairingNotices() { return call("GET", "/hub/v1/notices?v=2"); },
+    directorySecurityNoticesV1: true,
+    directorySecurityNotices({ before, limit = 25 } = {}) {
+      const query = new URLSearchParams({ limit: String(limit) });
+      if (before) query.set("before", before);
+      return call("GET", `/hub/v1/security-notices/directory?${query}`);
+    },
+    acknowledgeDirectorySecurityNotice(noticeId) { return call("POST", `/hub/v1/security-notices/directory/${id(noticeId)}/ack`); },
     /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },

@@ -17,6 +17,8 @@ import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
+import { dn } from "./hub-directory-notice-strings.js";
+import { DirectoryNotices, directoryNoticesOffered } from "./hub-directory-notices.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
@@ -117,8 +119,9 @@ export function HubPanel({ route }) {
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
-      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${hc("noticesLead")}</p>
-        <${PairingNotices} admin=${!!s.admin} empty=${html`<${Empty} icon="bell" title=${hc("noNotices")} />`} /></div></div></div>`;
+      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
+        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
+        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages. The panel's header names the page once, its scope
@@ -261,7 +264,8 @@ const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
 /** cid-hub-shell-parity: the Notices page is /ui/hub?view=notices (the path every Hub listener and router already serves). */
 const viewParam = () => { try { return new URLSearchParams(location.search).get("view"); } catch { return null; } };
 export const NOTICES_PATH = "/ui/hub?view=notices";
-const noticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
+const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
+const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };

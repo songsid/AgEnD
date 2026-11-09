@@ -39,7 +39,7 @@ async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[];
     const key = `${init.method || "GET"} ${path.split("?")[0]}`;
     calls.push(key);
     const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
-      : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : {};
+      : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
   } });
   if (o.features?.includes("quick-pairing-v1")) c.quickPairingV1 = true;
@@ -179,5 +179,20 @@ describe("Argon's review of the Hub shell (cid-hub-ux-fixes)", () => {
       expect([h1, again, pg.document.title], path).toEqual([name, [], `${name} · AgEnD`]);
       await pg.unmount(); mounted.splice(0); pg.restore();
     }
+  });
+});
+
+
+describe("directory notices in the current Hub shell", () => {
+  it("a recipient with no group/admin role gets the Notices entry and history, without adding a stream", async () => {
+    const pg = await hub({ features: ["directory-security-notices-v1"], path: "/ui/hub?view=notices" });
+    expect(rows(pg)).toContain("Notices"); expect(rows(pg)).not.toContain("Administration");
+    expect(pg.root.querySelector(".p-hub-notices .hub-directory-notices")).toBeTruthy();
+    expect(calls.filter(path => path === "GET /hub/v1/security-notices/directory")).toHaveLength(1);
+    expect(calls.some(path => path.includes("/notices/events") || path === "GET /hub/v1/notices")).toBe(false);
+  });
+  it("welcome startup does not read directory history", async () => {
+    await hub({ features: ["directory-security-notices-v1"] });
+    expect(calls.some(path => path.includes("security-notices/directory"))).toBe(false);
   });
 });

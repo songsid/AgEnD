@@ -1,7 +1,7 @@
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
-// A renderer only (#1386 §4.2, the user's Discord-first rule): the list is the server's one derivation, the app
+// The shared list is a renderer only (#1386 §4.2, the user's Discord-first rule): the list is the server's one derivation, the app
 // store's `needs`, which arrives over the passive channels (SSE `needs`, the /ui/poll field). This panel reads
 // nothing (#1374: no new GET, no timer that asks the server); its writes are a person's actions:
 // - a prompt's own buttons, through the page's chat store (appStore.chatOwner — whichever chat import booted, a Retry's
@@ -27,6 +27,7 @@ import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
+import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
@@ -36,7 +37,7 @@ register("app", {
 
 register("needs", {
   en: {
-    title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
+    otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "Fleet sign-ins", signIn: "Sign in",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
     ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
@@ -61,7 +62,7 @@ register("needs", {
     e_confirmation_not_pending: "This request was already decided or ran out.", e_not_found: "This request is no longer here.",
   },
   "zh-TW": {
-    title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
+    otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "Fleet 登入", signIn: "登入",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
@@ -208,11 +209,12 @@ export function NeedsPanel({ navKey }) {
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
       ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
-        : !items.length && !asks.length && !decidedHere.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
+        : !items.length && !asks.length && !decidedHere.length ? hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config", !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
           <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
+      <${HostDirectoryNotices} />
       <${NotifyToggle} />
     </div></div>
   </div>`;
