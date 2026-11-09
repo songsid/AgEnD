@@ -9,6 +9,14 @@ import { HubFileVersionFloor } from "./version-floor.js";
 import { createHubDirectorySettingsDecision, type HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import { createHubDirectoryNotices, type HubDirectoryNotices } from "./settings-directory-notices.js";
 import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "./settings-directory-recovery-intent.js";
+import { createHubDirectoryMountBarrier } from "./settings-directory-mount.js";
+import { createHubGroupPolicyStore } from "./group-policy/store.js";
+import { parseGroupPolicy } from "./group-policy/model.js";
+import { readPrivateFile } from "./private-files.js";
+import { BIND_PASSWORD_REF, BIND_SECRET_REL } from "./init/layout.js";
+import type { HubDirectory, HubDirectoryConfig } from "./directory/index.js";
+import type { HubMountedDirectory } from "./settings-directory-runtime.js";
+import type { PersonKey } from "./types.js";
 
 export interface HubDirectoryRecoveryOptions {
   home: string; hubId: string; memberOrigin: string;
@@ -17,9 +25,7 @@ export interface HubDirectoryRecoveryOptions {
   /** Internal layout seam for isolated composition tests. Production uses SERVER_SET. */
   stateSet?: HubStateSet;
 }
-function withState<T>(options: HubDirectoryRecoveryOptions, work: (participant: {
-  decision: HubDirectorySettingsDecision; db: ReturnType<typeof openHubDatabase>; transport: HubTransportStore; audit: ReturnType<typeof createHubAudit>;
-}) => T): T {
+function openState(options: HubDirectoryRecoveryOptions) {
   const { home, hubId, memberOrigin } = options, set = structuredClone(options.stateSet ?? SERVER_SET);
   if (set.floors.length !== 1 || set.keys.length !== 1 || inspectStateSet(home, set) !== "complete") {
     throw new HubStateError("hub-state-mismatch", "directory recovery requires the complete existing state set");
@@ -45,13 +51,19 @@ function withState<T>(options: HubDirectoryRecoveryOptions, work: (participant: 
       appendAudit: (record, owning) => audit.appendInTransaction(record, owning) });
     const decision = createHubDirectorySettingsDecision({ db, transport, hubId });
     decision.inspect(); // A raised/missing floor, lost head or browser epoch is never initialized to zero.
-    const result = work({ decision, db, transport, audit });
+    return { decision, db, transport, audit, close() { try { db.close(); } finally { key?.fill(0); } } };
+  } catch (error) { try { db.close(); } finally { key?.fill(0); } throw error; }
+}
+function withState<T>(options: HubDirectoryRecoveryOptions, work: (participant: ReturnType<typeof openState>) => T): T {
+  const state = openState(options);
+  try {
+    const result = work(state);
     if (result && (typeof result === "object" || typeof result === "function") && typeof (result as { then?: unknown }).then === "function") {
       try { (result as unknown as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
       throw new HubStateError("hub-storage", "directory recovery must be synchronous");
     }
     return result;
-  } finally { db.close(); key?.fill(0); }
+  } finally { state.close(); }
 }
 
 export function withHubDirectoryRecovery<T>(options: HubDirectoryRecoveryOptions, work: (decision: HubDirectorySettingsDecision) => T): T {
@@ -69,4 +81,73 @@ export function withHubDirectoryNoticeRecovery<T>(options: HubDirectoryRecoveryO
     try { return work(Object.freeze({ forHost: notices.forHost, acknowledgeHost: notices.acknowledgeHost })); }
     finally { notices.close(); }
   });
+}
+
+/** Private physical owner retained by the runtime when construction failed but driver cleanup is unconfirmed. */
+export class HubDirectoryColdCleanupError extends HubStateError {
+  constructor(readonly close: () => Promise<void>) { super("service-unavailable", "Directory construction cleanup is unconfirmed"); }
+}
+
+/** Explicit local settings access only. No listener, migration, state creation, or directory network at construction. */
+export async function createHubDirectoryColdSettings(options: HubDirectoryRecoveryOptions & {
+  hub: Record<string, unknown>; generation: string; current(): boolean;
+  createDirectory(config: HubDirectoryConfig, secrets: { bindPassword: string }): HubDirectory;
+}): Promise<HubMountedDirectory & { fence(): void; close(): Promise<void> }> {
+  const hub = structuredClone(options.hub), owner = options.current.bind(options);
+  if (owner() !== true || hub.hubId !== options.hubId || hub.memberOrigin !== options.memberOrigin) throw new HubStateError("service-unavailable", "The directory settings source changed");
+  const state = openState(options), active = new Set<Promise<unknown>>();
+  let directory: HubDirectory | undefined, closed = false, closing: Promise<void> | null = null;
+  try {
+    const barrier = createHubDirectoryMountBarrier({ home: options.home, hub, decision: state.decision, current: () => !closed && owner() === true });
+    const config = structuredClone(hub.directory) as HubDirectoryConfig;
+    if (config.bindPasswordRef !== BIND_PASSWORD_REF) throw new HubStateError("hub-directory-secret", "The directory secret reference is invalid");
+    const bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096, { preserveBom: true });
+    const { bindPasswordRef: _ref, ...directoryConfig } = config;
+    directory = options.createDirectory(directoryConfig as HubDirectoryConfig, { bindPassword });
+    const acceptedDirectory = directory;
+    const policy = createHubGroupPolicyStore({ db: state.db, audit: state.audit, hubId: options.hubId, realm: config.realm,
+      generation: options.generation, directory, current: barrier.current });
+    const fence = () => { closed = true; barrier.close(); };
+    const lease = Object.freeze({
+      decision: state.decision,
+      recoveryMode: hub.enabled === false ? "off" as const : "held" as const,
+      current: barrier.current,
+      source: () => state.db.transaction(() => {
+        const stamp = barrier.capture();
+        const previous = state.decision.proofBasis()?.policy ?? parseGroupPolicy(JSON.parse(
+          (state.db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body));
+        return { directory: acceptedDirectory, config: structuredClone(directoryConfig) as HubDirectoryConfig, bindPassword,
+          administrator: structuredClone(hub.administrator) as PersonKey,
+          groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: barrier.current };
+      })(),
+      sessions(): never { throw new HubStateError("service-unavailable", "A local recovery source has no Hub browser sessions"); },
+      withDirectoryRead<T>(person: PersonKey, work: () => Promise<T>): Promise<T> {
+        // Register ownership before dispatch: the callback may synchronously re-enter close().
+        let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void;
+        const pending = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); active.add(pending);
+        void pending.finally(() => active.delete(pending)).catch(() => {});
+        void policy.withDirectoryRead(person, work).then(resolve, reject); return pending;
+      },
+      fence,
+      close(): Promise<void> {
+        fence();
+        return closing ??= (async () => {
+          await Promise.allSettled([...active]);
+          await (acceptedDirectory as HubDirectory & { close?(): Promise<void> }).close?.();
+          state.close();
+        })().catch(error => { closing = null; throw error; });
+      },
+    });
+    barrier.assertCurrent(); // Construction callbacks cannot publish changed material.
+    return lease;
+  } catch (error) {
+    closed = true;
+    const cleanup = async () => {
+      await (directory as (HubDirectory & { close?(): Promise<void> }) | undefined)?.close?.();
+      state.close();
+    };
+    try { await cleanup(); }
+    catch { throw new HubDirectoryColdCleanupError(cleanup); }
+    throw error;
+  }
 }

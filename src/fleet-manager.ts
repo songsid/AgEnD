@@ -1656,9 +1656,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.hubDirectoryControl = null; this.hubDirectoryInit = null; this.hubDirectoryCurrent = null;
       }
     }
+    if (this.shuttingDown) throw Error("The Hub directory is unavailable");
+    const runtime = this.hubRuntime ?? await this.hubRuntimeCreated();
+    // The controller outlives individual mounted sources. Refresh can retire its source without changing its owner.
+    await runtime.acquireDirectorySettings();
+    if (this.shuttingDown || runtime !== this.hubRuntime) throw Error("The Hub directory changed");
     const pending = this.hubDirectoryInit ??= (async () => {
-      const runtime = this.hubRuntime;
-      if (this.shuttingDown || !runtime?.directorySettings() || !this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
+      if (!this.hubSettingsWriter?.directory) throw Error("The Hub directory is unavailable");
       const { createHubDirectorySettingsControl } = await import("./hub/settings-directory-control.js");
       const { createHubDirectory } = await import("./hub/directory/index.js");
       const mounted = runtime.directorySettings();
@@ -1668,7 +1672,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         && (this.rawFleetConfig as { hub?: { hubId?: unknown } })?.hub?.hubId === hubId;
       const control = createHubDirectorySettingsControl({ hubId, mounted: () => runtime.directorySettings(),
         writer: () => this.hubSettingsWriter!.directory!, createDirectory: createHubDirectory, current,
-        withDecision: work => runtime.withDirectoryDecision(hubId, work, current), remount: () => this.applyHubSwitches() });
+        withDecision: work => runtime.withDirectoryDecision(hubId, work, current), remount: async () => {
+          await this.applyHubSwitches();
+          // A stopped Hub is still stopped after Save; a headless source may confirm that outcome only while off.
+          if ((this.rawFleetConfig as { hub?: { enabled?: unknown } })?.hub?.enabled === false) await runtime.acquireDirectorySettings();
+        } });
       if (!current()) { await control.close(); throw Error("The Hub directory changed"); }
       this.hubDirectoryControl = control; this.hubDirectoryCurrent = current; return control;
     })();

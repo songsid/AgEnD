@@ -8,6 +8,8 @@ export type HubDirectoryBrowserSessions = Pick<HubSessions, "recentAuthenticatio
 
 export interface HubMountedDirectory {
   readonly decision: HubDirectorySettingsDecision;
+  /** A headless source cannot certify a running listener; an explicitly stopped Hub may finish Save while off. */
+  readonly recoveryMode?: "off" | "held";
   current(): boolean;
   source(): HubDirectoryProofSource;
   /** Bound to this exact HTTP/session generation; absent entries refuse rather than fabricate a handoff. */

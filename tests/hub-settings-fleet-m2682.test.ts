@@ -27,6 +27,7 @@ vi.mock("../src/hub/runtime.js", () => ({
     refresh() { return Promise.resolve(); }
     directoryDecision() { return null; }
     directorySettings() { return hub.directory; }
+    acquireDirectorySettings() { return Promise.resolve(hub.directory); }
     withDirectoryDecision(id: string, work: (decision: unknown) => unknown, current: () => boolean) {
       if (!current() || id !== hub.directory.decision.hubId) throw Error("revoked"); return Promise.resolve(work(hub.directory.decision));
     }
@@ -84,6 +85,17 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     expect(await hub.controlDeps.withDecision((d: unknown) => d)).toBe(hub.directory.decision);
     expect(hub.controlDeps.current()).toBe(true); fm.shuttingDown = true; expect(hub.controlDeps.current()).toBe(false);
   });
+  it("creates only the shared runtime and writer for an explicit off-state settings read", async () => {
+    const { fm } = await harness();
+    fm.rawFleetConfig.hub.enabled = false;
+    fm.hubRuntime = null; fm.hubRuntimeInit = null; fm.hubSettingsWriter = null;
+    hub.applied = []; hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    const control = await fm.hubDirectorySettings();
+    expect(control).toBe(hub.controller); expect(hub.applied).toEqual([]);
+    expect(hub.controlDeps.writer()).toBe(hub.options.settingsWriter.directory);
+    await hub.controlDeps.remount();
+    expect(hub.applied.every((c: any) => c.hub.enabled === false)).toBe(true);
+  });
   it.each(["Hub identity","runtime"])("replaces an expired directory controller after %s changes",async reason=>{
     const {fm}=await harness(),fence=vi.fn(),close=vi.fn(async()=>{});
     hub.controller={fence,close};hub.directory={decision:{hubId:fm.rawFleetConfig.hub.hubId}};
@@ -113,6 +125,21 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
       if(mode==="Stop"){expect(results.every(x=>x.status==="rejected")).toBe(true);expect(hub.controls).toBe(1);}
       else{expect(results).toEqual([{status:"fulfilled",value:replacement},{status:"fulfilled",value:replacement}]);expect(hub.controls).toBe(2);}
     }finally{release();await Promise.allSettled(calls);}
+  });
+  it.each(["Stop", "runtime replacement"])("a cached controller cannot escape %s during source reacquisition", async mode => {
+    const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
+    await fm.hubDirectorySettings();
+    let release!: () => void, enter!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    vi.spyOn(fm.hubRuntime, "acquireDirectorySettings").mockImplementation(async () => { enter(); await held; return hub.directory; });
+    const pending = fm.hubDirectorySettings(); void pending.catch(() => {});
+    try {
+      await entered;
+      if (mode === "Stop") fm.shuttingDown = true;
+      else fm.hubRuntime = Object.create(Object.getPrototypeOf(fm.hubRuntime));
+      release(); const error = await pending.then(() => null, (error: unknown) => error);
+      expect(error).toBeInstanceOf(Error); expect(error.message).toContain("changed"); expect(hub.controls).toBe(1);
+    } finally { release(); await pending.catch(() => {}); }
   });
   it("Stop during the lazy import refuses before constructing a directory control", async () => {
     const { fm } = await harness(); hub.directory = { decision: { hubId: fm.rawFleetConfig.hub.hubId } };
