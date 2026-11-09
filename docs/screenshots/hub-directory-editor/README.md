@@ -1,6 +1,15 @@
 # AD connection editor evidence
 
-Current R1 evidence (leader UI polish plus Fable’s two display-guard regressions):
+Current R2 evidence (final leader copy/layout/port consistency):
+
+- `after/` contains **88 PNGs from one final run**, `matrix-r2.json`: desktop/390px phone × light/dark × EN/zh-TW, both actual shells, **420 checks**. Every candidate form and trust dialog uses the same generated loopback endpoint; the rig asserts the edited URL, displayed server and persisted URL agree, including the port. Before each surface, the fixture restores its source through the supported D3 settings API and shared writer. No browser replies are replaced.
+- The old gallery was also one run, but its form was captured before the edit and each surface switched to the opposite endpoint. It mixed saved and candidate phases. R2 captures the candidate form before its matching trust dialog. A same-host/different-port response regression catches removal of the existing endpoint guard.
+- Stored-password state is visible beside the field label, not a placeholder. The hint names URL/CA/service account changes, and says the password will not be shown after saving. The CA action uses the single `…` glyph. Realm/type typography matches. The native trust dialog displays SHA-256 as exactly two rows of four whole eight-character groups. Phone geometry includes the stored-state label above navigation.
+- `checks-r2.json`: **395/395**, zero skips, twelve related files; both types pass. `mutations-r2.json`: **29/29** assertion-caught reversals, every source byte restored. The R1 CI CSS-token and wording violations are fixed, with both checks included.
+- `recovery/` and `recovery-r2.json` are a separate refreshed recovery run: AD down, pinned service-only CA bootstrap, actual local Run/Stop, Test/Save while off and Run again. Different generated ports in that separate scenario are expected. No real AD sign-in is required to open the local form.
+- The genuine sixteen `before/` PNGs are unchanged. R1 full UI gates and three SKEW receipts retain their original scope; static imports/capability/authority boundaries are unchanged in R2. The ordinary gate rigs omit the new editor; its own fresh matrix measures its fields, status, four-plus-four fingerprints, text, footer, tap sizes and overflow.
+
+R1 evidence retained at `f4e9f156` (first leader polish plus Fable’s two display-guard regressions):
 
 - `after/`: the fresh full desktop/phone × light/dark × EN/zh-TW matrix on both real shells, recorded by `matrix-r1.json`. Each surface has form, trust-source, lower-action and native trust dialog. Host Run/retention/company cards have separate settled viewport captures, with full retention controls above phone navigation.
 - `before/`: the same eight cases on actual pre-editor server/UI `31a973af`, without API or module replacement (`before-first.json` plus `before-remaining.json`).
@@ -8,6 +17,6 @@ Current R1 evidence (leader UI polish plus Fable’s two display-guard regressio
 - The three `skew-*-r1.json` receipts freshly check retained modules, retained host HTML, and an actual earlier server with candidate static modules. Old-shell keeps a current Hub positive control. No API replies are stubbed.
 - `checks-r1.json` records the restored related suites, types and both full UI gates. `mutations-r1.json` records a fresh complete 28-guard pass, including the new-panel/old-client and gateway-shell checks requested by Fable.
 
-R0 receipts (`checks.json`, `mutations.json`, `matrix-original.json`, `phone-english-final.json`, and un-suffixed recovery/SKEW receipts) retain their original scope at `bc10ddfed`. The original mutation receipt combines25 first-pass reversals plus its targeted lifetime rerun; it is superseded for the current source by the fresh28 in R1. To view the old PNGs, use that commit; `after/` and `recovery/` now hold current captures. The earlier isolated local compose timeout is disclosed in `checks.json` without a confirmed-flake claim.
+R0 receipts (`checks.json`, `mutations.json`, `matrix-original.json`, `phone-english-final.json`, and un-suffixed recovery/SKEW receipts) retain their original scope at `bc10ddfed`. The original mutation receipt combines25 first-pass reversals plus its targeted lifetime rerun; it is superseded for the current source by the fresh28 in R1. To view the old PNGs, use that commit; `after/` and `recovery/` now hold R2 captures. The earlier isolated local compose timeout is disclosed in `checks.json` without a confirmed-flake claim.
 
 The browser rig and copyable recipe are in `scripts/manual/hub-directory-editor/`. Every run closes its own browser, listeners, controller/runtime and scratch home. No real directory, account, pilot, live fleet, CLI, native service or production deployment was used. Passwords are dummy fixture inputs; screenshots show them only empty or masked. Public endpoints are generated loopback fixtures.

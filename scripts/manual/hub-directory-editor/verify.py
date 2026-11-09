@@ -13,6 +13,7 @@ rows=[
  ('secret-bytes',ui,'{ bindPassword: form.bindPassword }','{ bindPassword: form.bindPassword.trim() }',test('explicit new service password')),
  ('trust-defer',ui,'if (p.trust) setDialog({ phase: "ready", p, intent });','if (false) setDialog({ phase: "ready", p, intent });',test('one trust dialog')),
  ('trust-challenge',ui,'...(p.trust ? { confirmation: p.trust.challenge } : {})','...{}',test('one trust dialog')),
+ ('trust-server-port',ui,'directoryEndpoint(p.trust.server) !== directoryEndpoint(candidate.url) || ','',test('incompatible trust reply.*1636')),
  ('trust-server',ui,'directoryEndpoint(p.trust.server) !== directoryEndpoint(candidate.url) || ','',test('incompatible trust reply')),
  ('late-life',ui,'n === life.current && ','',test('Stop while CA preparation')),
  ('late-abort',ui,'for (const request of requests.current) request.abort();','',test('held prepare after')),

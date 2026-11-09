@@ -17,7 +17,7 @@ register("companyJoinWait", {
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
-    startHint: "請先填入 Hub 位址與 Fleet 名稱，再以公司帳號登入。",
+    startHint: "請先填入 Hub 位址與 Fleet 名稱以繼續。",
     checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
     pending: "需要先完成本機確認，Hub 登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",

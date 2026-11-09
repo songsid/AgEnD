@@ -32,7 +32,7 @@ try{
  const users=[{id:PERSON_ID,login:"avery",dn:"CN=Avery,DC=example,DC=test",password:"Dummy-person-only",eligible:true}];
  peerA=await groupWirePeer(certs.leaf,users);peerB=await groupWirePeer(candidateCerts.leaf,users,RECOVERY?{dn:CA_DN,pem:candidateCerts.ca,requireBind:true}:undefined);
  writeFileSync(join(home,"fleet.yaml"),"# Scratch editor fixture\ninstances: {}\nweb:\n  verified_authority:\n    enabled: true\n",{mode:0o600});
- fm=new FleetManager(home);const sink=()=>{};fm.logger={info:sink,warn:sink,error:sink,debug:sink,trace:sink,fatal:sink,child:()=>fm.logger};fm.loadConfig(join(home,"fleet.yaml"));fm.initializeWebAuthTokens();fm.startHealthServer(0);await wait(()=>fm.getDashboardAccess().ready);
+ fm=new FleetManager(home);const sink=()=>{},log=(...args:unknown[])=>{(result.diagnostics??=[]).push(args);};fm.logger={info:sink,warn:log,error:log,debug:sink,trace:sink,fatal:log,child:()=>fm.logger};fm.loadConfig(join(home,"fleet.yaml"));fm.initializeWebAuthTokens();fm.startHealthServer(0);await wait(()=>fm.getDashboardAccess().ready);
  const port=fm.healthServer.address().port,origin=`http://127.0.0.1:${port}`,issued=await api(port,"/auth/issue-code","POST",{"x-agend-token":fm.getDashboardAccess().token,origin});
  const signed=await api(port,"/auth/login","POST",{"content-type":"application/json",origin},{code:issued.body().code});if(signed.status!==200)throw Error("host fixture sign-in");
  const [cookieName,cookieValue]=signed.headers["set-cookie"][0].split(";")[0].split("="),headers={origin,"content-type":"application/json",cookie:`${cookieName}=${cookieValue}`,[WEB_CSRF_HEADER]:csrfTokenFor(cookieValue)};
@@ -43,11 +43,27 @@ try{
  const p=await api(port,"/api/settings/hub/setup/prepare","POST",headers,input);if(p.status!==200)throw Error("fixture prepare");
  for(const action of ["test","commit"]){const r=await api(port,"/api/settings/hub/setup/"+action,"POST",headers,{ref:p.body().ref});if(r.status!==200)throw Error("fixture "+action);}
  fm.hubEffectsReady=true;await fm.applyHubSwitches();await wait(()=>fm.hubRuntime.serverHealth(fm.getRawFleetConfig().hub)==="ready");
+ // Every presentation journey starts from A via the supported D3 settings writer,
+ // then edits to B. This keeps the candidate form, trust dialog and saved endpoint
+ // identical across both surfaces and all screenshots, without reply stubs or DB edits.
+ const resetDirectory=async()=>{
+  if(fm.getRawFleetConfig().hub.directory.url===input.directory.url)return;
+  const view=await api(port,"/api/settings/hub/directory","GET",headers);if(view.status!==200)throw Error("fixture reset read "+view.text);
+  const {realm:_realm,profile:_profile,...directory}=view.body().directory;directory.url=input.directory.url;
+  const prepared=await api(port,"/api/settings/hub/directory/prepare","POST",headers,{directory,bindPassword:input.bindPassword});
+  if(prepared.status!==200)throw Error("fixture reset prepare "+prepared.text);
+  const draft=prepared.body(),saved=await api(port,"/api/settings/hub/directory/save","POST",headers,{ref:draft.ref,...(draft.trust?{confirmation:draft.trust.challenge}:{})});
+  if(saved.status!==200||saved.body().state!=="ready")throw Error("fixture reset save "+saved.text);
+  await wait(()=>fm.hubRuntime.serverHealth(fm.getRawFleetConfig().hub)==="ready");
+  if(fm.getRawFleetConfig().hub.directory.url!==input.directory.url)throw Error("fixture reset endpoint");
+ };
+ const galleryServer=`ldaps://127.0.0.1:${peerB.port}`;result.gallery={server:galleryServer,sequence:"supported D3 reset to A before each journey; candidate form → trust → saved B on both surfaces"};
  const identity=readFileSync(join(home,"hub/keys/identity.json")),browserCert=readFileSync(join(home,"hub/web-tls/cert.pem"));
  const nodeHealth=await new Promise<number>((resolve,reject)=>{const q=httpsRequest({host:"127.0.0.1",port:webPort,path:"/ui/hub",ca:browserCert,agent:false},r=>{r.resume();r.on("end",()=>resolve(r.statusCode!));});q.on("error",reject);q.end();});if(nodeHealth!==200)throw Error("verified HTTPS");
  for(const c of RECOVERY?[]:matrix()){
   const tag=caseName(c),r:any={case:tag};result.cases.push(r);const zh=c.lang==="zh-TW";
   for(const surface of ["host","hub"]){
+   if(!BEFORE&&!SKEW)await resetDirectory();
    const ctx=await browser.newContext({viewport:VIEWPORTS[c.device],colorScheme:c.theme,locale:zh?"zh-TW":"en-US",isMobile:c.device==="phone",hasTouch:c.device==="phone",ignoreHTTPSErrors:true});contexts.push(ctx);
    await ctx.addInitScript({content:`localStorage.setItem("agend_lang",${JSON.stringify(c.lang)});localStorage.setItem("agend_theme",${JSON.stringify(c.theme)});localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");localStorage.setItem("agend_usage_rail","0");`});
    if(surface==="host"){await ctx.addCookies([{name:cookieName,value:cookieValue,url:origin}]);fm.webPrefs.write("operator",new Map([["theme",c.theme],["lang",c.lang]]));}
@@ -89,18 +105,25 @@ try{
     bad:[...document.querySelectorAll("#hub-directory-editor button, #hub-directory-editor input, #hub-directory-editor select, dialog.hub-directory-editor button")].filter(e=>{const b=e.getBoundingClientRect();return b.width&&b.height&&((e as HTMLElement).offsetParent!==null||e.closest("dialog[open]"))&&(b.height<43||b.width<43);}).map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height}))}));
    const g=await geometry();check(r,surface+":overflow",!g.overflow);if(c.device==="phone")check(r,surface+":tap",g.bad.length===0,g.bad);
    check(r,surface+":real-shell",await page.locator("#sidebar").count()===1&&(surface!=="host"||await page.locator('.s-nav a[aria-current="page"]').getAttribute("href")==="/settings/hub"));
+   // Frame the URL and the password field together above any fixed phone navigation.
+   await page.locator("#hubDirectory-bindPassword").evaluate((e:HTMLElement)=>{const nav=document.querySelector(".tab-bar, .tabs")?.getBoundingClientRect(),limit=nav&&nav.top>0?nav.top:innerHeight;const delta=Math.max(0,e.getBoundingClientRect().bottom-limit+16);if(delta)for(let p=e.parentElement;p;p=p.parentElement){if(p.scrollHeight>p.clientHeight&&/(auto|scroll)/.test(getComputedStyle(p).overflowY)){p.scrollTop+=delta;break;}}});await painted(page);
+   check(r,surface+":stored-password-visible",await page.locator("#hubDirectory-password-state").isVisible()&&(await page.locator("#hubDirectory-password-state").innerText())===(zh?"已設定（留空則不變更）":"Configured (leave blank to keep it)"));
+   const statusBounds=await page.locator("#hubDirectory-password-state").evaluate((e:HTMLElement)=>{const b=e.getBoundingClientRect(),nav=document.querySelector(".tab-bar, .tabs")?.getBoundingClientRect();return {top:b.top,bottom:b.bottom,limit:nav&&nav.top>0?nav.top:innerHeight};});check(r,surface+":stored-password-in-viewport",statusBounds.top>=0&&statusBounds.bottom<=statusBounds.limit,statusBounds);
+   const metadata=await page.locator(".hub-directory-value").evaluateAll((values:HTMLElement[])=>values.map(e=>{const s=getComputedStyle(e);return {font:s.fontFamily,size:s.fontSize,weight:s.fontWeight};}));check(r,surface+":metadata-style",metadata.length===2&&JSON.stringify(metadata[0])===JSON.stringify(metadata[1]),metadata);
+   const before=epoch(),targetUrl=galleryServer;
+   await page.locator("#hubDirectory-url").fill(targetUrl);await page.locator("#hubDirectory-bindPassword").fill("Dummy-service-only");
+   await page.locator("#hubDirectory-url").evaluate((el:HTMLElement)=>el.scrollIntoView({block:"center",behavior:"instant"}));await painted(page);
    await page.screenshot({path:join(OUT,tag+"-"+surface+"-form.png"),fullPage:true});
    await page.locator("#hubDirectory-ca").evaluate((el:HTMLElement)=>el.scrollIntoView({block:"center",behavior:"instant"}));await painted(page);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust-source.png")});
    await page.locator("#hub-directory-editor button[type=submit]").scrollIntoViewIfNeeded();await painted(page);await page.screenshot({path:join(OUT,tag+"-"+surface+"-actions.png"),fullPage:true});
    const oldCookie=surface==="hub"?(await ctx.cookies()).find((x:any)=>x.name.startsWith("__Host-agend_hub_"))?.value:null;
-   const before=epoch(),current=fm.getRawFleetConfig().hub.directory.url,target=current.endsWith(":"+peerA.port)?peerB:peerA;
-   await page.locator("#hubDirectory-url").fill(`ldaps://127.0.0.1:${target.port}`);await page.locator("#hubDirectory-bindPassword").fill("Dummy-service-only");
    await page.locator("#hub-directory-editor button[type=submit]").click();await page.locator("dialog.hub-directory-editor[open]").waitFor();
    check(r,surface+":no-early-effect",epoch()===before);check(r,surface+":one-dialog",await page.locator("dialog[open]").count()===1);await page.locator("dialog .hub-directory-fingerprint").first().waitFor();
-   const groupShape=await page.locator("dialog .hub-directory-fingerprint").evaluateAll((values:HTMLElement[])=>values.length>0&&values.every(e=>{const groups=[...e.querySelectorAll("span")];return groups.length===8&&groups.every(g=>/^[A-F0-9]{8}$/.test(g.textContent??"")&&g.scrollWidth<=g.clientWidth+1);}));check(r,surface+":fingerprint-groups",groupShape);const clipped=await buttonText(page);check(r,surface+":trust-text-fits",clipped.length===0,clipped);const bounds=await page.locator("dialog .dlg-actions").evaluate((e:HTMLElement)=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));check(r,surface+":trust-actions-visible",bounds.top>=0&&bounds.bottom<=bounds.height+1,bounds);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust.png")});const t=await geometry();check(r,surface+":trust-overflow",!t.overflow);if(c.device==="phone")check(r,surface+":trust-tap",t.bad.length===0,t.bad);
+   const dialogServer=await page.locator("dialog .field code").first().innerText();check(r,surface+":trust-server-matches-candidate",dialogServer===targetUrl&&await page.locator("#hubDirectory-url").inputValue()===targetUrl,{dialogServer,targetUrl});
+   const groupShape=await page.locator("dialog .hub-directory-fingerprint").evaluateAll((values:HTMLElement[])=>values.length>0&&values.every(e=>{const groups=[...e.querySelectorAll("span")];return groups.length===8&&[...new Set(groups.map(g=>Math.round(g.getBoundingClientRect().top)))].length===2&&groups.slice(0,4).every(g=>Math.abs(g.getBoundingClientRect().top-groups[0].getBoundingClientRect().top)<1)&&groups.slice(4).every(g=>Math.abs(g.getBoundingClientRect().top-groups[4].getBoundingClientRect().top)<1)&&groups.every(g=>/^[A-F0-9]{8}$/.test(g.textContent??"")&&g.scrollWidth<=g.clientWidth+1);}));check(r,surface+":fingerprint-groups",groupShape);const clipped=await buttonText(page);check(r,surface+":trust-text-fits",clipped.length===0,clipped);const bounds=await page.locator("dialog .dlg-actions").evaluate((e:HTMLElement)=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));check(r,surface+":trust-actions-visible",bounds.top>=0&&bounds.bottom<=bounds.height+1,bounds);await page.screenshot({path:join(OUT,tag+"-"+surface+"-trust.png")});const t=await geometry();check(r,surface+":trust-overflow",!t.overflow);if(c.device==="phone")check(r,surface+":trust-tap",t.bad.length===0,t.bad);
    await page.getByRole("button",{name:zh?"確認指紋並儲存":"Confirm fingerprints and save",exact:true}).click();
    await page.getByRole("status").filter({hasText:zh?"已儲存 AD 連線。":"AD connection saved."}).waitFor({timeout:25000});
-   check(r,surface+":saved",epoch()===before+1);check(r,surface+":secret-cleared",await page.locator("#hubDirectory-bindPassword").inputValue()==="");
+   check(r,surface+":saved",epoch()===before+1);check(r,surface+":saved-server-matches-dialog",fm.getRawFleetConfig().hub.directory.url===dialogServer);check(r,surface+":secret-cleared",await page.locator("#hubDirectory-bindPassword").inputValue()==="");
    check(r,surface+":no-failed-request",wire.every(x=>x.status<400),wire);check(r,surface+":no-js-error",errors.length===0,errors);check(r,surface+":healthy",fm.hubRuntime.serverHealth(fm.getRawFleetConfig().hub)==="ready");
    if(surface==="hub")check(r,"hub:rotated-session",(await ctx.cookies()).some((x:any)=>x.name===`__Host-agend_hub_${fm.getRawFleetConfig().hub.hubId}`&&x.value!==oldCookie));
    await ctx.close();contexts.splice(contexts.indexOf(ctx),1);

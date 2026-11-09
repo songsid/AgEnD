@@ -123,9 +123,9 @@ export function HubDirectoryEditor({ client, offered = false, host = false, logi
       || JSON.stringify(p.trust.caFingerprints.map(fingerprint).sort()) !== JSON.stringify(fingerprints)) fail("trust");
     setForm(candidate); setDialog({ phase: "ready", p, intent: "save" });
   });
-  const field = (name, { type = "text", multiline = false, optional = false, max = 2048 } = {}) => html`<label class="field" for=${"hubDirectory-" + name}>${hd(name)}
+  const field = (name, { type = "text", multiline = false, optional = false, max = 2048 } = {}) => html`<label class="field" for=${"hubDirectory-" + name}>${name === "bindPassword" ? html`<span class="hub-directory-password-label">${hd(name)}${view.bindPasswordSet ? html`<small class="note" id="hubDirectory-password-state">${hd("passwordSet")}</small>` : null}</span>` : hd(name)}
     ${multiline ? html`<textarea id=${"hubDirectory-" + name} rows="4" value=${form[name]} maxlength=${max} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`
-      : html`<input id=${"hubDirectory-" + name} type=${type} value=${form[name]} required=${!optional} maxlength=${max} placeholder=${name === "bindPassword" && view.bindPasswordSet ? hd("passwordSet") : undefined} autocomplete=${type === "password" ? "new-password" : "off"} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`}
+      : html`<input id=${"hubDirectory-" + name} type=${type} value=${form[name]} required=${!optional} maxlength=${max} aria-describedby=${name === "bindPassword" && view.bindPasswordSet ? "hubDirectory-password-state" : undefined} autocomplete=${type === "password" ? "new-password" : "off"} spellcheck=${false} onInput=${e => update(name, e.target.value)} />`}
     ${["baseDn", "bindDn", "caPem"].includes(name) ? html`<small class="note">${hd(name + "Hint")}</small>` : null}
   </label>`;
   const authentication = () => !host && requireAuth ? html`<div class="form hub-directory-auth"><h4>${hd("reauth")}</h4><p class="note">${hd("reauthHint")}</p>
@@ -136,7 +136,7 @@ export function HubDirectoryEditor({ client, offered = false, host = false, logi
     ${!form && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}${status}
     ${notice ? html`<p class="note" role="status">${hd(notice)}</p>` : null}
     ${form && !uncertain ? html`<form class="form" onSubmit=${e => { e.preventDefault(); void submit("save"); }}><fieldset class="form" disabled=${busy}>
-      <div class="grid2"><div class="field"><span>${hd("realm")}</span><code>${form.realm}</code></div><div class="field"><span>${hd("profile")}</span><span class="hub-directory-type">${hd(form.profile === "ad" ? "typeAd" : "typeLdap")}</span></div></div>
+      <div class="grid2"><div class="field"><span>${hd("realm")}</span><span class="hub-directory-value">${form.realm}</span></div><div class="field"><span>${hd("profile")}</span><span class="hub-directory-value hub-directory-type">${hd(form.profile === "ad" ? "typeAd" : "typeLdap")}</span></div></div>
       ${field("url", { type: "url" })}${field("baseDn", { max: 1024 })}${field("bindDn", { max: 1024 })}${field("bindPassword", { type: "password", optional: true, max: 4096 })}<p class="note">${hd("secretHint")}</p>
       <label class="field">${hd("ca")}<select id="hubDirectory-ca" value=${form.ca} onChange=${e => update("ca", e.target.value)}><option value="system">${hd("system")}</option><option value="paste">${hd("paste")}</option></select><small class="note">${hd("choose")}</small></label>
       ${form.ca === "paste" ? field("caPem", { multiline: true, max: 65536 }) : null}

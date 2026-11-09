@@ -45,7 +45,12 @@ describe("AD editor's mounted presentation",()=>{
   it("uses clear zh-TW directory, stored-password and SHA-256 trust labels with whole fingerprint groups",async()=>{
     const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust()));const {p}=await mount(c,{},"zh-TW");
     expect(p.root.textContent).toContain("Active Directory（AD）");expect(p.root.textContent).toContain("信任的憑證來源");
-    expect(p.root.querySelector("#hubDirectory-bindPassword").getAttribute("placeholder")).toBe("已設定（留空則不變更）");
+    expect(p.root.querySelector("#hubDirectory-password-state").textContent).toBe("已設定（留空則不變更）");
+    expect(p.root.querySelector("#hubDirectory-bindPassword").getAttribute("aria-describedby")).toBe("hubDirectory-password-state");
+    expect(p.root.querySelector("#hubDirectory-bindPassword").getAttribute("placeholder")).toBeNull();
+    expect(p.root.textContent).toContain("儲存後不會再顯示");
+    expect(p.root.textContent).toContain("伺服器網址、CA 或服務帳號變更時請重新輸入密碼");
+    expect(p.root.querySelectorAll(".hub-directory-value")).toHaveLength(2);
     expect(button(p,"擷取 CA 並儲存…")).toBeTruthy();await changedTarget(p);await submit(p);
     const dialog=p.root.querySelector("dialog");expect(dialog.textContent).toContain("要信任的伺服器");expect(dialog.textContent).toContain("SHA-256");expect(button(p,"取消")).toBeTruthy();
     const groups=[...dialog.querySelectorAll(".hub-directory-fingerprint span")];expect(groups).toHaveLength(8);expect(groups.every((g:any)=>/^[A-F0-9]{8}$/.test(g.textContent))).toBe(true);
@@ -78,7 +83,7 @@ describe("AD editor's mounted presentation",()=>{
     const c=client();c.directorySettings.mockResolvedValueOnce(initial()).mockResolvedValue({...initial(),...(fault==="epoch"?{epoch:1}:{directory:{...directory,baseDn:"OU=Other"}})});
     const {p}=await mount(c);await fill(p,"baseDn","OU=People");await submit(p);expect(c.saveDirectorySettings).not.toHaveBeenCalled();expect(c.testDirectorySettings).not.toHaveBeenCalled();expect(c.cancelDirectorySettings).toHaveBeenCalledWith({ref});expect(p.root.textContent).toContain("changed while");
   });
-  it.each([{server:"ldaps://other.example.test:636"},{leafFingerprint:"invalid"},{caFingerprints:["invalid"]}])("refuses an incompatible trust reply %j",async bad=>{
+  it.each([{server:"ldaps://other.example.test:636"},{server:"ldaps://new.example.test:1636"},{leafFingerprint:"invalid"},{caFingerprints:["invalid"]}])("refuses an incompatible trust reply %j",async bad=>{
     const c=client();c.prepareDirectorySettings.mockResolvedValue(prepared(trust(bad)));const {p}=await mount(c);await changedTarget(p);await submit(p);expect(p.root.querySelector("dialog")).toBeNull();expect(c.saveDirectorySettings).not.toHaveBeenCalled();
   });
   it.each(["unmount","signout"])("a held prepare after %s cannot display a draft or save",async mode=>{
