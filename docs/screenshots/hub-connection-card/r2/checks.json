@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "numTotalTests": 96,
+    "numPassedTests": 96,
+    "numFailedTests": 0
+  },
+  "suites": [
+    "hub-connection-card-ui.test.ts",
+    "named-link-test-2906.test.ts",
+    "web-settings-search-2347.test.ts"
+  ],
+  "productSource": "unchanged from 621f3a726b57124b546433b827a8c9b8e7ec92ab"
+}

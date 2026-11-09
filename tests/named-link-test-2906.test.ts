@@ -354,13 +354,30 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     const visit = (node: ts.Node) => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
       if (ts.isStringLiteralLike(node)) { add(node.text); return; }
-      if (ts.isTemplateExpression(node)) { add(node.head.text); for (const part of node.templateSpans) { add(part.literal.text); visit(part.expression); } return; }
+      if (ts.isTemplateExpression(node)) {
+        add(node.head.text); let preceding = node.head.text;
+        for (const part of node.templateSpans) {
+          // An interpolated CSS class is a technical attribute too; visible title/ARIA expressions remain inspected.
+          const classAttribute = ts.isTaggedTemplateExpression(node.parent) && ts.isIdentifier(node.parent.tag) && node.parent.tag.text === "html" && /\bclass(?:Name)?\s*=\s*$/.test(preceding);
+          if (!classAttribute) visit(part.expression);
+          add(part.literal.text); preceding = part.literal.text;
+        }
+        return;
+      }
       ts.forEachChild(node, visit);
     };
     visit(ast); return out;
   };
   it("checks visible copy rather than imports or interpolation variables, and still catches network marketing copy", () => {
     const copy = literalCopy('import x from "./hub-company-join.js"; const a = html`<p>${company.message}</p>`; const b = "Company network";');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it("ignores conditional CSS class strings while retaining interpolated visible attributes", () => {
+    const copy = literalCopy('const a = html`<${Frame} class=${embedded ? "form s-company-join" : "card s-company-join"} title=${"Company network"} />`;');
+    expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
+  });
+  it("still inspects a non-HTML template with text that resembles a class attribute", () => {
+    const copy = literalCopy('const message = `class=${"Company network"}`;');
     expect(copy.filter(s => /公司|\bcompany\b|\bcorporate\b/i.test(s))).toEqual(["Company network"]);
   });
   it.each(["placeholder", "title", "aria-label"])("keeps visible %s copy while ignoring technical HTML attributes", attribute => {
