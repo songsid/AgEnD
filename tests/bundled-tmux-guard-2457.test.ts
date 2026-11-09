@@ -3,9 +3,10 @@
  * skipped `agend rollback`). The real home: anything on the `agend` socket. Another home: anything on 2.4's own name
  * (`<hashed>-b`) or the socket server.json records; on a shared hashed socket only the server 2.4 recorded, or one this
  * version's tmux can't talk to — never this version's own server.
- * Isolation: temp dirs; the real-socket case uses a private TMUX_TMPDIR and -S under it.
+ * Isolation: temp HOME/AGEND_HOME; the real-socket case owns a foreground child on a private TMUX_TMPDIR/-S.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -82,23 +83,32 @@ describe.skipIf(!TMUX)("a real server on the real home's `agend` socket", () => 
     process.env.TMUX_TMPDIR = dir;
     const path = socketFile("agend");
     mkdirSync(join(dir, `tmux-${process.getuid!()}`), { recursive: true, mode: 0o700 });
+    const home = scratch();
+    const agendHome = join(home, ".agend");
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, AGEND_HOME: agendHome };
+    delete env.TMUX; delete env.TMUX_PANE;
+    let server: ReturnType<typeof spawn> | undefined;
+    let closed: Promise<unknown[]> | undefined;
     try {
-      const d = realGuardDeps(scratch(), true, null);
+      const d = realGuardDeps(agendHome, true, null);
       expect(await newerTmuxServer(d)).toBeNull();
-      execFileSync(TMUX!, ["-S", path, "-f", "/dev/null", "new-session", "-d", "sleep 60"]);
+      // -D keeps the server itself as our child: SIGKILL + close proves that the listener exited.
+      // A daemon PID probe can exhaust its retries without proving shutdown (scheduled Ubuntu 26.04 CI).
+      server = spawn(TMUX!, ["-D", "-S", path, "-f", "/dev/null"], { env, stdio: "ignore" });
+      closed = once(server, "close");
+      await expect.poll(() => d.accepts("agend"), { timeout: 5000 }).toBe(true);
       expect(await newerTmuxServer(d)).toEqual({ socket: "agend", confirmed: true });
       // Fable #3274: a 2.4 server that died (SIGKILL, OOM, a crash) leaves its socket file behind — that is no server.
-      const pid = Number(execFileSync(TMUX!, ["-S", path, "display-message", "-p", "#{pid}"], { encoding: "utf8" }).trim());
-      process.kill(pid, "SIGKILL");
-      for (let i = 0; i < 50; i++) { try { process.kill(pid, 0); } catch { break; } await new Promise(r => setTimeout(r, 50)); }
+      expect(server.kill("SIGKILL")).toBe(true);
+      expect(await closed).toEqual([null, "SIGKILL"]);
       expect(existsSync(path)).toBe(true);                       // the stale socket file is still there
       expect([await d.accepts("agend"), await newerTmuxServer(d)]).toEqual([false, null]);
       // And a plain file where the socket would be.
       rmSync(path); writeFileSync(path, "");
       expect([await d.accepts("agend"), await newerTmuxServer(d)]).toEqual([false, null]);
     } finally {
-      try { execFileSync(TMUX!, ["-S", path, "kill-server"], { stdio: "ignore" }); } catch { /* gone */ }
-      if (prev === undefined) delete process.env.TMUX_TMPDIR; else process.env.TMUX_TMPDIR = prev;
+      try { server?.kill("SIGKILL"); await closed; }
+      finally { if (prev === undefined) delete process.env.TMUX_TMPDIR; else process.env.TMUX_TMPDIR = prev; }
     }
   });
 });
