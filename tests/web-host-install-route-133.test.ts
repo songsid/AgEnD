@@ -6,7 +6,9 @@
 import { ServerResponse, createServer, request, type IncomingMessage, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
+import { createSettingsReplay } from "../src/settings-request-capability.js";
+import { SettingsExecution } from "../src/settings-transaction.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 import { WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
@@ -15,8 +17,21 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 const servers: Server[] = [];
 afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => s.close(() => r())); });
 
+/**
+ * A store whose answer to "who is this session?" can be bent by a test, to reach what the real store would never hand the route: a record on the wrong surface
+ * (the real `authenticate` already refuses a public-link session on the local listener — the route's own `surface` check is the second lock), a session demoted
+ * or swapped for another person's while a body is in flight.
+ */
+class BendableSessions extends WebSessionStore {
+  bend: ((r: SessionRecord) => SessionRecord) | null = null;
+  override authenticate(...args: Parameters<WebSessionStore["authenticate"]>): SessionRecord | null {
+    const r = super.authenticate(...args);
+    return r && this.bend ? this.bend(r) : r;
+  }
+}
+
 async function setup(over: { start?: (backend: string, r: HostInstallReporter) => Promise<HostInstallStart> } = {}) {
-  const token = "install-scratch-token", sessions = new WebSessionStore({});
+  const token = "install-scratch-token", sessions = new BendableSessions({});
   const start = vi.fn(over.start ?? (async () => ({ started: true }) as HostInstallStart));
   const cancel = vi.fn(async () => true);
   const installs = new WebHostInstalls({ isLocalAdmin: handle => !!sessions.findByHandle(handle) && sessions.findByHandle(handle)!.tier === "admin" && sessions.findByHandle(handle)!.surface === "local",
@@ -36,7 +51,8 @@ async function setup(over: { start?: (backend: string, r: HostInstallReporter) =
       const c: Buffer[] = []; res.on("data", x => c.push(x)); res.on("end", () => { const raw = Buffer.concat(c).toString(); let parsed: any = null; try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = raw; } resolve({ status: res.statusCode!, body: parsed, headers: res.headers }); });
     }); r.on("error", reject); r.end(data ?? undefined);
   });
-  return { token, sessions, start, cancel, installs, ctx, as, call, origin };
+  const begin = vi.spyOn(installs, "begin");
+  return { token, sessions, start, cancel, installs, begin, ctx, as, call, origin };
 }
 
 describe("who may ask", () => {
@@ -91,6 +107,74 @@ describe("who may ask", () => {
       if (method === "GET") expect([res.status, JSON.parse(res.body).error]).toEqual([404, "install_not_over_public_link"]);
       else expect(res.status, `${method} ${path}`).toBeGreaterThanOrEqual(401);
     }
+    expect(t.start).not.toHaveBeenCalled();
+  });
+  it("an admin session of the public link that reaches the local listener is refused (403) — the route's own surface check, behind the store's", async () => {
+    const t = await setup();
+    const admin = t.as("admin");
+    // The real store refuses a gateway-surface session on a non-gateway request (401). Make it hand the record over anyway: the route must still say no.
+    t.sessions.bend = r => ({ ...r, surface: "gateway", exposureId: "e".repeat(32) });
+    for (const [method, path, body] of [["GET", "/ui/host-install", undefined], ["POST", "/ui/host-install", { backend: "grok" }], ["POST", "/ui/host-install/cancel", {}]] as const) {
+      const r = await t.call(method, path, admin, body);
+      expect([r.status, r.body.error], `${method} ${path}`).toEqual([403, "install_needs_a_local_admin"]);
+    }
+    expect(t.begin).not.toHaveBeenCalled();
+    expect(t.start).not.toHaveBeenCalled();
+    expect(t.cancel).not.toHaveBeenCalled();
+  });
+  /** A POST whose body arrives in two pieces; `between` runs while the server is waiting for the second. */
+  async function slowPost(t: Awaited<ReturnType<typeof setup>>, headers: Record<string, string>, between: () => void) {
+    return new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const r = request(`${t.origin}/ui/host-install`, { method: "POST", headers: { ...headers, "content-length": "20" } }, res => {
+        const c: Buffer[] = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(Buffer.concat(c).toString() || "null") }));
+      });
+      r.on("error", reject); r.write('{"backend":'); setTimeout(() => { between(); r.end('"grok"}  '); }, 50);
+    });
+  }
+  it("a session revoked while the body is read: 401 from the route's own re-check, and begin is never called", async () => {
+    const t = await setup();
+    const m = t.sessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(t.token) });
+    const headers = { cookie: `agend_session=${m.sessionId}`, origin: t.origin, "x-agend-csrf": csrfTokenFor(m.sessionId), "content-type": "application/json" };
+    const r = await slowPost(t, headers, () => { t.sessions.revokeById(m.sessionId); });
+    expect(r.status).toBe(401);
+    expect(t.begin).not.toHaveBeenCalled();
+    expect(t.start).not.toHaveBeenCalled();
+  });
+  it("a session demoted while the body is read: 403, and begin is never called", async () => {
+    const t = await setup();
+    const admin = t.as("admin");
+    const r = await slowPost(t, admin, () => { t.sessions.bend = rec => ({ ...rec, tier: "read" }); });
+    expect([r.status, r.body.error]).toEqual([403, "install_needs_a_local_admin"]);
+    expect(t.begin).not.toHaveBeenCalled();
+    expect(t.start).not.toHaveBeenCalled();
+  });
+  it("a different person's session behind the same cookie once the body is in: 409, begin is never called", async () => {
+    const t = await setup();
+    const admin = t.as("admin");
+    const r = await slowPost(t, admin, () => { t.sessions.bend = rec => ({ ...rec, handle: "f".repeat(16) }); });
+    expect([r.status, r.body.error]).toEqual([409, "install_session_changed"]);
+    expect(t.begin).not.toHaveBeenCalled();
+  });
+  it("a continuation the settings store no longer allows (permitWebContinuation) never reaches begin", async () => {
+    const t = await setup();
+    const admin = t.as("admin");
+    // Live while the body is taken (that reader asks once, and refuses a stale one itself); stale by the time the route asks again.
+    let asked = 0;
+    const execution = new SettingsExecution({ current: () => ++asked <= 1, snapshot: () => ({}) });
+    // A server-made replay carrying this execution. Its headers are only a cookie jar here, so the session gate would let it through: the check
+    // under test is the one that asks the execution, after the body and before the second who().
+    const req = createSettingsReplay({ method: "POST", url: "/ui/host-install", body: Buffer.from('{"backend":"grok"}'), binding: "owned" }, execution);
+    req.headers = { ...admin, host: new URL(t.origin).host };
+    Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
+    const sent = await new Promise<{ status: number; body: string }>(resolve => {
+      const out = { status: 0, body: "" };
+      const res = new ServerResponse(req);
+      res.writeHead = ((code: number) => { out.status = code; return res; }) as never;
+      res.end = ((chunk?: unknown) => { out.body += String(chunk ?? ""); resolve(out); return res; }) as never;
+      expect(handleWebRequest(req, res, new URL("/ui/host-install", "http://localhost"), t.ctx)).toBe(true);
+    });
+    expect(sent.status).toBe(500);
+    expect(t.begin).not.toHaveBeenCalled();
     expect(t.start).not.toHaveBeenCalled();
   });
   it("a session that ends while the body is read starts nothing (checked again after it)", async () => {
