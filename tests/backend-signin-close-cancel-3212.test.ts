@@ -98,7 +98,7 @@ describe("closing the Sign in dialog before the terminal is opened ends the back
 describe("“Cancel sign-in” ends it and closes the dialog (#3212)", () => {
   it("posts the cancel, says so, and closes", async () => {
     const closed = await resumed(RUNNING);
-    fire(btn("Cancel sign-in"), "click"); await settle(8);
+    fire(btn("Cancel connecting"), "click"); await settle(8);
     expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: {} }]);        // once: the close that follows must not cancel a second time; the button's own cancel stays the plain one
     expect(closed).toEqual([1]);
   });

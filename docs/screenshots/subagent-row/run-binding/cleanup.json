@@ -1,0 +1,17 @@
+{
+  "case": "alpha-run-binding",
+  "head": "54e190bb123b68ff5ed127676b7394bab7608d50",
+  "commandScript": "scripts/manual/subagent-row/accept.mts",
+  "extras": {
+    "MATRIX": "quick",
+    "HP": "48782"
+  },
+  "exitCode": 0,
+  "trackedPids": 29,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/saqa-m3aw4o4u",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794221139.450436,
+  "ownedTempRemoved": true,
+  "ownedHomeRemoved": true
+}

@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-service.test.ts (9 tests | 2 failed) 234ms
+     × reads recent claude-code launch evidence from a mature parent without reading the whole file 33ms
+     × reads recent codex launch evidence from a mature parent without reading the whole file 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-service.test.ts > bounded optional sub-Agent filesystem observation > reads recent claude-code launch evidence from a mature parent without reading the whole file
+ FAIL  tests/subagent-service.test.ts > bounded optional sub-Agent filesystem observation > reads recent codex launch evidence from a mature parent without reading the whole file
+AssertionError: expected [] to deeply equal [ 'completed', 'completed' ]
+
+- Expected
++ Received
+
+- [
+-   "completed",
+-   "completed",
+- ]
++ []
+
+ ❯ tests/subagent-service.test.ts:51:212
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 7 passed (9)
+   Start at  18:57:20
+   Duration  589ms (transform 100ms, setup 80ms, import 74ms, tests 234ms, environment 0ms)

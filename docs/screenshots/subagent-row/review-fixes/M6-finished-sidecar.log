@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-records.test.ts (37 tests | 2 failed) 103ms
+     × a matching notification without finished sidecar (false) remains unconfirmed 16ms
+     × a matching notification without finished sidecar (undefined) remains unconfirmed 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > a matching notification without finished sidecar (false) remains unconfirmed
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > a matching notification without finished sidecar (undefined) remains unconfirmed
+AssertionError: expected [ 'completed', 'completed' ] to deeply equal [ 'unknown', 'unknown' ]
+
+- Expected
++ Received
+
+  [
+-   "unknown",
+-   "unknown",
++   "completed",
++   "completed",
+  ]
+
+ ❯ tests/subagent-records.test.ts:70:51
+     68|   it.each([false, undefined])("a matching notification without finishe…
+     69|     const f = fixture("claude-code"); for (const c of f.children.value…
+     70|     expect(projectSubagents(f).map(r => r.state)).toEqual(["unknown", …
+       |                                                   ^
+     71|   });
+     72|   it("a notification's correct call ID cannot stand in for its differe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 35 passed (37)
+   Start at  18:57:14
+   Duration  778ms (transform 311ms, setup 286ms, import 95ms, tests 103ms, environment 0ms)

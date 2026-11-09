@@ -6,6 +6,7 @@ import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-to
 import { windowsAgentsFor } from "./windows-agents.js";
 import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { SubagentService } from "./subagent-service.js";
 import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
 import { quotaNoticeRule } from "./quota-notice-config.js";
 import { onUsageSnapshot } from "./usage/usage-api.js";
@@ -6245,6 +6246,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
   logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
+  private subagentReader = new SubagentService(name => this.lifecycle.daemons.get(name)?.subagentSource() ?? null);
+  subagentRuns(name: string) { return this.subagentReader.read(name); }
+
 
   /**
    * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
@@ -13514,6 +13518,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2910: no Discord or Telegram connection at all (src/web-only-fleet.ts). */
   isWebOnlyFleet(): boolean {
     return isWebOnlyFleetConfig(this.fleetConfig);
+  }
+
+  /**
+   * S-117 story 1: the sign-in page's "no chat" words (no /web to send) — a web-only fleet, or one whose chat is not
+   * connected yet (a fresh install whose bot is still being set up, or is down): /web cannot answer there.
+   */
+  signinWithoutChat(): boolean {
+    return this.isWebOnlyFleet() || ![...this.adapterState.values()].some(state => state.status === "connected");
   }
 
   /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
@@ -27788,7 +27800,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), noChat: this.signinWithoutChat(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);

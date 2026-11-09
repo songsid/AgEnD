@@ -1,0 +1,50 @@
+[
+  {
+    "name": "M1-parent-sidechain",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "M2-assistant-call",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "M6-finished-sidecar",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "M7-notification-child",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "M16-client-visibility",
+    "file": "src/ui/panel-chat.js",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "F2-quiet-unproved",
+    "file": "src/ui/subagent-row.js",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "F2-bounded-tail",
+    "file": "src/subagent-service.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  },
+  {
+    "name": "distinct-child-run",
+    "file": "src/subagent-records.ts",
+    "exitCode": 1,
+    "assertionFailure": true
+  }
+]

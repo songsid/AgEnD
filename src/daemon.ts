@@ -1,5 +1,7 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
+import type { SubagentSource } from "./subagent-service.js";
+import { codexMetadataHomes } from "./backend/codex-metadata.js";
 import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
@@ -109,7 +111,7 @@ import {
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
-import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeProfileConfigDir, claudeProjectKey, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { MuseBackend } from "./backend/muse.js";
 import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
@@ -1422,6 +1424,19 @@ export class Daemon extends EventEmitter {
   private transcriptMonitor: TranscriptMonitor | null = null;
   /** #1218: the transcript this instance's monitor follows now (the Log tab reads it on demand; nothing runs for it here). */
   logTranscriptPath(): string | null { return this.transcriptMonitor?.currentPath() ?? null; }
+  /** Optional read-only child lane: only a current owned tmux launch, never stopped/native/cwd discovery. */
+  subagentSource(): SubagentSource | null {
+    const backend = this.config.backend ?? "claude-code", path = this.logTranscriptPath();
+    if (this.nativePaneLifecycle || (backend !== "claude-code" && backend !== "codex") || !path || !this.tmux || this.processStatus !== "running"
+      || this.spawning || this.runtimeMonitorsFrozen) return null;
+    const cwd = this.config.working_directory || process.cwd();
+    const match = /([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\.jsonl$/i.exec(path);
+    if (!match || (backend === "claude-code" && basename(path) !== match[1] + ".jsonl")) return null;
+    return { backend, path, sessionId: match[1], cwd,
+      root: backend === "claude-code" ? join(this.claudeConfigDir(), "projects", claudeProjectKey(cwd)) : join(codexMetadataHomes(this.instanceDir).sharedHome, "sessions"),
+      owner: JSON.stringify(this.getInteractionSnapshot().owner) };
+  }
+
   /** #1218 (kiro): the launch this daemon's backend last built, for the Log's reason only (kiro-log-gate.ts). */
   logLaunch(): KiroLogLaunch | null { return this.backend?.logLaunch?.() ?? null; }
   async kiroMigrationIdle(): Promise<boolean> {

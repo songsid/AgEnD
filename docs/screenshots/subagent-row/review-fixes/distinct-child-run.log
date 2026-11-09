@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/subagent-row-main
+
+ ❯ tests/subagent-records.test.ts (37 tests | 1 failed) 54ms
+     × does not relabel a second Codex child run with the original spawn task 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/subagent-records.test.ts > read-only captured sub-Agent records > does not relabel a second Codex child run with the original spawn task
+AssertionError: expected 'completed' to be 'unknown' // Object.is equality
+
+Expected: "unknown"
+Received: "completed"
+
+ ❯ tests/subagent-records.test.ts:89:61
+     87|     child.records = child.records.filter((r: any) => r.payload?.type !…
+     88|     child.records.push(start, finish);
+     89|     const rows = projectSubagents(f); expect(rows[0].state).toBe("unkn…
+       |                                                             ^
+     90|     const replay = fixture("codex"); for (const c of replay.children.v…
+     91|     expect(projectSubagents(replay).map(r => r.state)).toEqual(["compl…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 passed (37)
+   Start at  18:57:21
+   Duration  756ms (transform 430ms, setup 120ms, import 372ms, tests 54ms, environment 0ms)

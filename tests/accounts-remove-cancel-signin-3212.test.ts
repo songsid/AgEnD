@@ -65,11 +65,11 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     await mount();
     rowOf("CHY").querySelector(".s-account-remove").click(); await settle(6);
     await type(dialog().querySelector("#acctRemoveName"), "CHY");
-    expect(btn(dialog(), "Cancel sign-in and remove")).toBeUndefined();
+    expect(btn(dialog(), "Cancel connecting and remove")).toBeUndefined();
     answer = () => SIGNING_IN;
     btn(dialog(), "Remove").click(); await settle(10);
-    expect(text(dialog().querySelector(".err"))).toBe("A sign-in for this account is running. Wait for it to end, or cancel it.");
-    const cr = btn(dialog(), "Cancel sign-in and remove");
+    expect(text(dialog().querySelector(".err"))).toBe("This account is being connected. Wait for that to end, or cancel it.");
+    const cr = btn(dialog(), "Cancel connecting and remove");
     expect(cr).toBeTruthy();
     expect([cr.disabled, btn(dialog(), "Remove").disabled, btn(dialog(), "Cancel").disabled]).toEqual([false, false, false]);
   });
@@ -78,7 +78,7 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     await removeChy(() => SIGNING_IN);
     calls.length = 0;
     answer = () => ({ status: 200, body: {} });
-    btn(dialog(), "Cancel sign-in and remove").click(); await settle(14);
+    btn(dialog(), "Cancel connecting and remove").click(); await settle(14);
     // Never the generic cancel of whatever sign-in is running: that is the other admin's too.
     expect(calls).toEqual([{ method: "DELETE", url: DELETE_CHY, body: { confirm: "CHY", cancelSignIn: true } }]);
     expect(dialog()?.querySelector("#acctRemoveName") ?? null).toBe(null);                                                                // closed
@@ -87,19 +87,19 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
   it("if the account is still refused after the cancel, the refusal is said and nothing loops", async () => {
     await removeChy(() => SIGNING_IN);
     calls.length = 0;
-    btn(dialog(), "Cancel sign-in and remove").click(); await settle(14);
+    btn(dialog(), "Cancel connecting and remove").click(); await settle(14);
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`DELETE ${DELETE_CHY}`]);
-    expect(text(dialog().querySelector(".err"))).toContain("A sign-in for this account is running");
-    expect(btn(dialog(), "Cancel sign-in and remove")).toBeTruthy();                                                                       // still there to try again
+    expect(text(dialog().querySelector(".err"))).toContain("This account is being connected");
+    expect(btn(dialog(), "Cancel connecting and remove")).toBeTruthy();                                                                       // still there to try again
   });
 
   it("editing the name takes it away (the refusal was about that name); a different refusal never offers it", async () => {
     await removeChy(() => SIGNING_IN);
     await type(dialog().querySelector("#acctRemoveName"), "CH");
-    expect(btn(dialog(), "Cancel sign-in and remove")).toBeUndefined();
+    expect(btn(dialog(), "Cancel connecting and remove")).toBeUndefined();
     await p.unmount(); view = VIEW(); A.accountsStore.set({ loaded: false, failed: false, view: null });
     await removeChy(() => ({ status: 500, body: { error: "failed" } }));
-    expect(btn(dialog(), "Cancel sign-in and remove")).toBeUndefined();
+    expect(btn(dialog(), "Cancel connecting and remove")).toBeUndefined();
     expect(text(dialog().querySelector(".err"))).toBe("That didn't work. Try again.");
   });
 
@@ -109,8 +109,8 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     await type(dialog().querySelector("#acctRemoveName"), "win");
     answer = () => SIGNING_IN;
     btn(dialog(), "Remove").click(); await settle(10);
-    expect(text(dialog().querySelector(".err"))).toContain("A sign-in for this account is running");
-    expect(btn(dialog(), "Cancel sign-in and remove")).toBeUndefined();
+    expect(text(dialog().querySelector(".err"))).toContain("This account is being connected");
+    expect(btn(dialog(), "Cancel connecting and remove")).toBeUndefined();
     expect(calls.every((c) => c.url !== CANCEL)).toBe(true);
   });
 
@@ -121,7 +121,7 @@ describe("Remove on an account whose sign-in is running (#3212)", () => {
     await type(dialog().querySelector("#acctRemoveName"), "CHY");
     answer = () => SIGNING_IN;
     btn(dialog(), "移除").click(); await settle(10);
-    expect(text(dialog().querySelector(".err"))).toBe("這個帳號正在登入。請等它結束，或取消它。");
-    expect(btn(dialog(), "取消登入並移除")).toBeTruthy();
+    expect(text(dialog().querySelector(".err"))).toBe("這個帳號正在連接。請等它結束，或取消它。");
+    expect(btn(dialog(), "取消連接並移除")).toBeTruthy();
   });
 });
