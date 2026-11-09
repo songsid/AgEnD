@@ -36,3 +36,29 @@ describe("the shared model field's explicit refresh", () => {
     expect(p.root.querySelectorAll("option").map((x: any) => x.value)).toContain("gpt"); expect(p.root.querySelectorAll("option").map((x: any) => x.value)).not.toContain("private-old");
   });
 });
+
+// A slow passive read must not replace or evict the explicit rediscovery in the shared 30 s cache.
+it.each(["success", "failure"])("a late passive GET %s cannot undo refresh when the picker remounts", async outcome => {
+  p=page();(await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs();
+  let release!:(value:any)=>void;const held=new Promise(r=>{release=r;});let reads=0;
+  vi.stubGlobal("fetch",async(_url:string,opts:any={})=>{
+    if(opts.method==="POST")return {ok:true,json:async()=>({refreshed:true,models:[{id:"fresh",label:"Fresh"}],source:"cli-list"})};
+    reads++;return reads===1?held:{ok:true,json:async()=>({models:[{id:"old",label:"Old"}]})};
+  });
+  const {ModelSelect}=await import("/ui/js/settings-dialogs.js"),render=()=>p.mount(h(ModelSelect,{backend:"codex",value:"",onChange(){}}));
+  await render();await settle();fire(p.root.querySelector(".model-refresh button")!,"click");await settle(8);
+  expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
+  release({ok:outcome==="success",json:async()=>({models:[{id:"old",label:"Old"}]})});await settle(8);
+  await p.unmount();await render();await settle(8);
+  expect(reads).toBe(1);expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
+  expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).not.toContain("old");
+});
+
+it("reopening before the old passive GET settles uses the refreshed shared snapshot",async()=>{
+  p=page();(await import("/ui/js/model-picker.js")).forgetModelPickerCatalogs();let release!:(v:any)=>void;let reads=0;
+  vi.stubGlobal("fetch",async(_url:string,opts:any={})=>opts.method==="POST"?{ok:true,json:async()=>({refreshed:true,models:[{id:"fresh",label:"Fresh"}]})}:(reads++,new Promise(r=>{release=r;})));
+  const {ModelSelect}=await import("/ui/js/settings-dialogs.js"),render=()=>p.mount(h(ModelSelect,{backend:"codex",value:"",onChange(){}}));
+  await render();fire(p.root.querySelector(".model-refresh button")!,"click");await settle(8);await p.unmount();await render();await settle(8);
+  const visible=p.root.querySelectorAll("option").map((o:any)=>o.value);release({ok:true,json:async()=>({models:[{id:"old",label:"Old"}]})});await settle(8);
+  expect(reads).toBe(1);expect(visible).toContain("fresh");expect(p.root.querySelectorAll("option").map((o:any)=>o.value)).toContain("fresh");
+});

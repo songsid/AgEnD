@@ -32,7 +32,7 @@ export function useRefreshableModels(backend, instance) {
     if (!fresh) { answers.set(key, { promise }); if (answers.size > 64) answers.delete(answers.keys().next().value); }
     set({ key, models: [], phase: "loading" }); flight.current = null;
     promise.finally(() => { if (answers.get(key)?.promise === promise) answers.delete(key); }).catch(() => {});
-    promise.then(models => { if (live && gen === generation.current) set({ key, models, phase: "idle" }); }, () => { answers.delete(key); if (live && gen === generation.current) set({ key, models: [], phase: "error" }); });
+    promise.then(models => { if (live && gen === generation.current) set({ key, models, phase: "idle" }); }, () => { if (answers.get(key)?.promise === promise) answers.delete(key); if (live && gen === generation.current) set({ key, models: [], phase: "error" }); });
     return () => { live = false; };
   }, [key]);
   const shown = state.key === key ? state : { key, models: [], phase: "loading" };
@@ -45,6 +45,7 @@ export function useRefreshableModels(backend, instance) {
       const data = await r.json();
       if (!r.ok || data.refreshed !== true || !Array.isArray(data.models)) throw Error();
       if (!mounted.current || current.current !== key || flight.current !== token) return;
+      answers.delete(key); // Retire the earlier passive flight before a remount can borrow it.
       catalogStore.rememberModelCatalog?.(target, data);
       set({ key, models: data.models, phase: "done" });
     } catch { if (mounted.current && current.current === key && flight.current === token) set({ ...shown, phase: "error" }); }
