@@ -1,0 +1,21 @@
+{
+  "rows": [
+    {
+      "name": "status-retirement",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "one Hub connection card an acknowledged Pause followed by a failed read clears Connected and active controls; Retry reads without another write"
+      ]
+    },
+    {
+      "name": "known-pause-mark",
+      "caught": true,
+      "failed": 1,
+      "assertions": [
+        "one Hub connection card an acknowledged Pause followed by a failed read clears Connected and active controls; Retry reads without another write"
+      ]
+    }
+  ],
+  "restored": true
+}

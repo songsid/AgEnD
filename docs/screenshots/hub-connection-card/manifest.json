@@ -97,7 +97,8 @@
     "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-resumed.png"
   ],
   "f161936494284a0716a68dd9a213a7f29f71c6a37f753e6ba117ce52c8abcaf6": [
-    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-unconnected.png"
+    "docs/screenshots/hub-connection-card/after/phone-dark-zh-TW-unconnected.png",
+    "docs/screenshots/hub-connection-card/r1/phone-dark-zh-TW-unconnected.png"
   ],
   "240126fee2f02a84247da531cf4d838a8e109471f16be14c484ab16dcaf4a874": [
     "docs/screenshots/hub-connection-card/after/phone-light-en-agents-chosen.png",
@@ -261,6 +262,48 @@
   "ce0e9c3ab377a991bdabb6637b7c494042deecd9ec2dd9184a6308046b05622c": [
     "docs/screenshots/hub-connection-card/pending/receipt.json"
   ],
+  "e13059be6c801f6eb3eb9fd8026c24536f1fd7a6e3eabf04b7c074b2f0686e66": [
+    "docs/screenshots/hub-connection-card/r1/README.md"
+  ],
+  "d67a59ce60cfb09625071ff07f5543b0dec938119d0ef922921f021535b75815": [
+    "docs/screenshots/hub-connection-card/r1/checks.json"
+  ],
+  "129e2765530bf84057f56a13faa91d02c8027f356473a912c7faea0e74cd60dc": [
+    "docs/screenshots/hub-connection-card/r1/desk-light-en-agents-chosen.png"
+  ],
+  "982f7587177c724c87492a65ea9492003187a894938d615f3c627dc93768edde": [
+    "docs/screenshots/hub-connection-card/r1/desk-light-en-connected.png"
+  ],
+  "c6b9bf2535d44f45ac36ee02b5166b42f250604e19f7bb591430f8cbefe6974f": [
+    "docs/screenshots/hub-connection-card/r1/desk-light-en-paused-reloaded.png"
+  ],
+  "3fa7fb4c97b7d3fb7ece609a74e93f838d06241d0c6442bc39fbd35622be3ca9": [
+    "docs/screenshots/hub-connection-card/r1/desk-light-en-resumed.png"
+  ],
+  "7d4f3fab37125be24bdb3dd619f7ca99fa3d71c42a1586306cea70692be70112": [
+    "docs/screenshots/hub-connection-card/r1/desk-light-en-unconnected.png"
+  ],
+  "ea315c0e1de88dd17ee22ddc9ad3481de7d1feeca25c71be2cef901c75ab2d41": [
+    "docs/screenshots/hub-connection-card/r1/fail-first.json"
+  ],
+  "bfe344f06b796204e9c2d9e8cb22316c4a265a0b14cf015ef7fce6208910dd96": [
+    "docs/screenshots/hub-connection-card/r1/phone-dark-zh-TW-agents-chosen.png"
+  ],
+  "429325ceb0683797e2a3dfa0dce8d1696e8732490069953cd1b7588d71935217": [
+    "docs/screenshots/hub-connection-card/r1/phone-dark-zh-TW-connected.png"
+  ],
+  "6ac92a60075e7749fc6e8dd7772864e1ceb7a17e2a8bfcf61afee14370c1cc42": [
+    "docs/screenshots/hub-connection-card/r1/phone-dark-zh-TW-paused-reloaded.png"
+  ],
+  "69da42fabcb827c2674d1545035a04b384516e7be88d39d0675070e04828f0b2": [
+    "docs/screenshots/hub-connection-card/r1/phone-dark-zh-TW-resumed.png"
+  ],
+  "fc9d903d40b8f2ff1ff4daccc9457fcbd54662183760a76c161c03b6739ba361": [
+    "docs/screenshots/hub-connection-card/r1/receipt.json"
+  ],
+  "efeec6bba5a5c2f7b00092b485e2c4aeff5ce637b89114fbc71729ccb4a9538b": [
+    "docs/screenshots/hub-connection-card/r1/reversals.json"
+  ],
   "0b1c172dca99578fbeb85de165465ca537bea49f8c08c791b2b2e5bbb2db74c3": [
     "docs/screenshots/hub-connection-card/skew/old-company/desk-light-en-skew-old-company.png"
   ],
@@ -342,7 +385,7 @@
   "3a55ff8cf0ae958c442da7704bc309e12b38df54427b0c94f7a61a36ee1cccb9": [
     "src/ui/settings-hub-company-join.js"
   ],
-  "25cae5b4fd88217f4ee432c7cf4099f5804005a29daac4ab5871aa8835c366d9": [
+  "77ec3cdfbf5e06f360f9ce9c8995c9bc8aa567de4e5ff96a990a9b3852ec435d": [
     "src/ui/settings-hub-connection.js"
   ],
   "9f1cee540f4b0295c08223fa66bf73e706552388b04c33e71b181592cfcd7569": [
@@ -360,10 +403,13 @@
   "926d2e07eafab22e89df5699ddfce097f80e5776ed6a5c330888b0cb3549c45a": [
     "tests/hub-connection-card-api.test.ts"
   ],
-  "8157e95c9fb4279fb893e9063e47d0a1310324970e4f3369d98c683ee43a720c": [
+  "21bb6302e70a457c94e599b9f1433c59e3a88fd1469e3b9d3f7f7692b7af1da9": [
     "tests/hub-connection-card-ui.test.ts"
   ],
   "c17f7e3a0bdfdc8af334dcc11e3a8c26da12d9b796464cc3f57a0318e888e06c": [
     "tests/settings-hub-section-a7b.test.ts"
+  ],
+  "efdeea7e34d0fd4aee4ee5614f79eafef1df7860d5946ec747bf6d4c310b7b67": [
+    "tests/web-settings-search-2347.test.ts"
   ]
 }

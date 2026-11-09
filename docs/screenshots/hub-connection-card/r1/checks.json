@@ -1,0 +1,34 @@
+{
+  "focused": {
+    "numTotalTests": 211,
+    "numPassedTests": 211,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "suites": [
+    "changelog-fragments.test.ts",
+    "hub-company-join-ui.test.ts",
+    "hub-company-join-wait.test.ts",
+    "hub-connection-card-api.test.ts",
+    "hub-connection-card-ui.test.ts",
+    "hub-membership-api.test.ts",
+    "hub-membership-ui.test.ts",
+    "hub-ui-s3c.test.ts",
+    "i18n-ui-literals-2390.test.ts",
+    "settings-hub-section-a7b.test.ts",
+    "ui-css-literals-ratchet.test.ts",
+    "web-settings-search-2347.test.ts"
+  ],
+  "types": {
+    "source": "PASS",
+    "tests": "PASS"
+  },
+  "browser": {
+    "cases": 2,
+    "checks": 27
+  },
+  "newReversals": {
+    "caught": 2,
+    "total": 2
+  }
+}

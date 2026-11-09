@@ -18,11 +18,11 @@ afterEach(async () => {
   for (const p of pages.splice(0)) { await p.unmount(); p.restore(); }
   confirmations.resetConfirmations(); clientModule.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
-async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any } = {}) {
+async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number } = {}) {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: options.language ?? "en" } }); pages.push(p);
   vi.stubGlobal("crypto", webcrypto); if (options.public) p.document.body.dataset.publicLink = "1";
   words.setLang(options.language ?? "en");
-  let enabled = options.enabled ?? false, pairing = options.pairing ?? { state: "unpaired" };
+  let enabled = options.enabled ?? false, pairing = options.pairing ?? { state: "unpaired" }, changed = false, failures = options.failedAfterWrite ?? 0;
   const calls: any[] = [], listeners = new Set<(p: any) => void>(), off = vi.fn();
   let rows = [{ agent: "atlas", display: "Atlas", revision: 0, state: "private", exposureId: null, enforceable: true }];
   const c = { stub: false, pairing: vi.fn(async () => pairing), subscribe: vi.fn((fn: any) => { listeners.add(fn); return () => { off(); listeners.delete(fn); }; }),
@@ -36,8 +36,9 @@ async function fixture(options: { enabled?: boolean; pairing?: any; language?: s
       if (init.method === "PUT") {
         if (options.write) return options.write;
         if (options.pending) return response({ result: "pending_confirmation", pending_change: { id: pendingId, state: "pending", can_self_confirm: true, can_withdraw: true, remaining_ms: 60000 } }, 202);
-        enabled = JSON.parse(init.body).enabled; return response({ ok: true, enabled });
+        enabled = JSON.parse(init.body).enabled; changed = true; return response({ ok: true, enabled });
       }
+      if (changed && failures-- > 0) return response({ error: "unavailable" }, 503);
       if (options.heldRead) return options.heldRead;
       return response(options.bad ?? { ok: true, enabled, ...(!options.legacy && path.includes("?v=2") ? { connectionCardV1: true, pairing } : {}) });
     }
@@ -78,6 +79,16 @@ describe("one Hub connection card", () => {
     expect(f.p.root.textContent).toContain("Example Hub"); expect(f.p.root.textContent).toContain("existing conversations are kept");
     expect(f.p.root.querySelector(".hub-exposures")).toBeNull(); expect(f.off).toHaveBeenCalled();
     const writes = f.calls.filter(c => c.init.method); expect(writes).toHaveLength(1); expect(JSON.parse(writes[0].init.body)).toEqual({ enabled: false }); expect(f.c.disconnect).not.toHaveBeenCalled();
+  });
+  it("an acknowledged Pause followed by a failed read clears Connected and active controls; Retry reads without another write", async () => {
+    const f = await fixture({ enabled: true, pairing: paired(), failedAfterWrite: 1 }); await until(() => f.p.root.querySelector(".hub-exposures"));
+    await click(f.p, "Pause connection"); await until(() => f.p.root.textContent.includes("could not be read"));
+    expect(f.p.root.querySelector("#hub-connection").getAttribute("data-state")).not.toBe("connected");
+    expect(f.p.root.querySelector(".dot.ok")).toBeNull(); expect(f.p.root.querySelector(".hub-exposures")).toBeNull(); expect(f.off).toHaveBeenCalled();
+    expect(f.p.document.body.dataset.hub).not.toBe("member");
+    expect(button(f.p, "Pause connection")).toBeFalsy(); expect(f.calls.filter(c => c.init.method === "PUT")).toHaveLength(1);
+    await click(f.p, "Try again"); await until(() => f.p.root.querySelector("#hub-connection").getAttribute("data-state") === "paused");
+    expect(f.calls.filter(c => c.init.method === "PUT")).toHaveLength(1); expect(f.c.disconnect).not.toHaveBeenCalled(); expect(f.c.setExposed).not.toHaveBeenCalled();
   });
   it("a fresh paused page retains its Hub, starts no member client and resumes through confirmed membership", async () => {
     const f = await fixture({ pairing: paired("offline") }); expect(f.p.root.querySelector("#hub-connection").getAttribute("data-state")).toBe("paused");

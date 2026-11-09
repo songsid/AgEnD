@@ -82,6 +82,8 @@ export function HubConnectionSettings() {
         onPending: id => { if (life.current.live) setPending(id); } });
       if (!life.current.live) return;
       if (!result.ok) { setView(null); setFailureCode("failed"); return; }
+      // An acknowledged write retires the old status and embedded member controls before verification.
+      setView(null); if (!enabled) legacy.markMember(false);
       await life.current.read;
       if (life.current.live) await read();
     } catch { if (life.current.live) { setView(null); setFailureCode("failed"); } }
@@ -97,7 +99,7 @@ export function HubConnectionSettings() {
   const p = view?.pairing, paired = p?.state === "paired", paused = paired && !view.enabled;
   const online = paired && view.enabled && p.link === "online", bound = p && p.state !== "unpaired";
   const status = paused ? "paused" : online ? "connected" : paired ? "connecting" : bound ? "attention" : "unconnected";
-  const mode = paused ? "paused" : online ? "connected" : paired ? "connecting" : "unconnected";
+  const mode = !view ? "unknown" : paused ? "paused" : online ? "connected" : paired ? "connecting" : "unconnected";
   const connected = Connect ? html`<${Connect} embedded=${true} labels=${{ settings: hc("settings"), pair: hc("pair"), disconnect: hc("disconnect") }} onPairing=${pairing => setView(v => v ? { ...v, pairing } : v)} />`
     : html`<${Skeleton} variant="form" lines=${3} />`;
   return html`<section class="card s-group s-hub-connection" id="hub-connection" data-state=${mode}>
