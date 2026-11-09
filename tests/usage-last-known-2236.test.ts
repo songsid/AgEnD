@@ -262,7 +262,7 @@ describe("the page (the dialog and the rail)", () => {
     const [claude, codex, kiro] = pg.root.querySelectorAll(".u-provider") as any[];
     const mark = claude.querySelector(".u-stale"), detail = claude.querySelector(".u-stale-detail");
     expect([claude.className, mark.textContent, detail.textContent, mark.getAttribute("title")])
-      .toEqual(["u-provider is-stale", `已過期 · 快取於 ${usage.usageClock(iso(now - 20 * 60_000))}`, "Access token 已過期；下次啟動任一 Claude instance 時會重新整理。", "Access token 已過期；下次啟動任一 Claude instance 時會重新整理。"]);
+      .toEqual(["u-provider is-stale", `已過期 · 快取於 ${usage.usageClock(iso(now - 20 * 60_000))}`, "Access token 已過期；下次啟動任一 Claude Agent 時會重新整理。", "Access token 已過期；下次啟動任一 Claude Agent 時會重新整理。"]);
     const [session, weekly] = claude.querySelectorAll(".u-metric");
     expect([session.className, session.querySelector(".u-meter"), session.querySelector(".u-val").textContent])
       .toEqual(["u-metric u-reset-since", null, `已於 ${usage.usageClock(iso(now - 10 * 60_000))} 重置`]);
