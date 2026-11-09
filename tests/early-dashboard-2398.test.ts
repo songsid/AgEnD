@@ -118,6 +118,8 @@ instances:
   const guestSession = guests ? new WebSessionStore({ dataDir: dir }).create({ tier: "guest", surface: "local",
     label: "synthetic visitor", tokenEpoch: tokenEpoch(loadOrCreateWebToken(dir)), owner: visitor }) : null;
   const fm: any = new FleetManager(dir);
+  // #3526 runs discovery even without an adapter; this boot fixture keeps its worker inert too.
+  vi.spyOn(fm, "startCliEnvProbeWorker").mockReturnValue({ promise: Promise.resolve(null), stopped: Promise.resolve(), terminate() {} });
   calls.readyProbe = () => ({ complete: fm.startupComplete, startup: fm.startupDashboard, names: [...fm.daemons.keys()] });
   vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
   vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([]);
