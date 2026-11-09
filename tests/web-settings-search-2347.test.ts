@@ -36,6 +36,8 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
     if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
     if (path === "/api/fleet") return { version: "2.4.0", instances: [] };
     if (path === "/ui/owner-css/state") return { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } };
+    // M-2738: an admin's page — Advanced draws its "Version and update" card (advanced.update).
+    if (path === "/ui/update") return { admin: true, current: "2.4.0", offer: null, checked_at: null, check_failed: false, progress: null, now: Date.now() };
     if (path.startsWith("/ui/")) return {};
     return [];
   })();
