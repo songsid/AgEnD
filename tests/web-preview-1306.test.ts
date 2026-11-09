@@ -154,7 +154,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       expect(r.headers["x-frame-options"]).toBe("DENY");
       expect(bodyAttrs(r.body)).toEqual({
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
-        "data-mode": "full", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
+        "data-mode": "full", "data-subagents": "1", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
         "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0",
         // #1937: the upload limits in force (the defaults here).
         "data-upload-limits": "{&#34;maxFileBytes&#34;:52428800,&#34;maxFiles&#34;:5,&#34;maxTotalBytes&#34;:104857600}",

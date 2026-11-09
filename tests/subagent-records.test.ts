@@ -62,6 +62,17 @@ describe("read-only captured sub-Agent records", () => {
     c.records.push({ ...(c.records[0] as any), promptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
     expect(projectSubagents(f)[0].state).toBe("unknown");
   });
+  it("does not relabel a second Codex child run with the original spawn task", () => {
+    const f = fixture("codex"), child = f.children.values().next().value!;
+    const start = structuredClone(child.records.find((r: any) => r.payload?.type === "task_started")) as any;
+    const finish = structuredClone(child.records.find((r: any) => r.payload?.type === "task_complete")) as any;
+    start.payload.turn_id = finish.payload.turn_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    child.records = child.records.filter((r: any) => r.payload?.type !== "task_complete");
+    child.records.push(start, finish);
+    const rows = projectSubagents(f); expect(rows[0].state).toBe("unknown"); expect(rows[0].summary).toBeUndefined(); expect(rows[1].state).toBe("completed");
+    const replay = fixture("codex"); for (const c of replay.children.values()) c.records.push(...structuredClone(c.records));
+    expect(projectSubagents(replay).map(r => r.state)).toEqual(["completed", "completed"]);
+  });
   it("keeps one child open when only the other has completed; stale/disconnected observations stop running", () => {
     const f = fixture("claude-code"), c = f.children.get("a9947907a82e086d7")!;
     delete (c.meta as any).finished;
