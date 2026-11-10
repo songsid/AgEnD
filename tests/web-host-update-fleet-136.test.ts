@@ -153,6 +153,30 @@ describe("startWebInstall — update", () => {
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.72", "1.0.77");
   });
+  // AGEND-148 (Prism R3 on #3539, P2-3): the admission decides on the NEWEST observation. The old order read freshVersion, then awaited a forced refresh (a second probe, published) and
+  // still decided with the earlier number — a Grok upgraded to 1.0.78 meanwhile was "updated" to the audited 1.0.77.
+  it("a newer version observed while the update is prepared is not discarded: 1.0.70 first, 1.0.78 after the refresh — refused as up_to_date, nothing opens", async () => {
+    writeGrok("1.0.70"); onPath();
+    const { fm, reporter } = fleet();
+    const reads = vi.spyOn(hostAvailabilityProbes, "version");
+    reads.mockReset();
+    reads.mockImplementationOnce(async () => "1.0.70").mockImplementation(async () => "1.0.78");   // time-ordered observations of the one executable
+    const update = vi.fn();
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ refused: "up_to_date" });
+    expect(update).not.toHaveBeenCalled();
+    expect(fakeSessions).toHaveLength(0);
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+  it("the control: the later of the two reads decides in the other direction too (1.0.78 first, then 1.0.70) and the update starts from 1.0.70", async () => {
+    writeGrok("1.0.78"); onPath();
+    const { fm, reporter } = fleet();
+    const reads = vi.spyOn(hostAvailabilityProbes, "version");
+    reads.mockReset();
+    reads.mockImplementationOnce(async () => "1.0.78").mockImplementation(async () => "1.0.70");
+    const update = vi.fn<(from: string | null, target: string) => void>();
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
+  });
   it("freshVersion is not a published value: no executable, or no answer, is null; nothing is cached", async () => {
     const { fm } = fleet();
     rmSync(join(profileBin, "grok"));

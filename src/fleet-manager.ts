@@ -22217,8 +22217,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // AGEND-144 (Prism on #3539, P2-3): that reading must be FRESH, SUCCESSFUL and of the executable that resolves now. The published row is not enough: a forced refresh keeps the previous
       // version when the new probe fails for the same path (right for the pickers, which fail open), so a replaced binary whose version cannot be read would still carry the old
       // number and an update to an older release would be accepted. Unreadable refuses. (The published row is refreshed too, as before, for the pickers and the page.)
-      const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
+      // AGEND-148 (Prism R3 on #3539, P2-3): the admission's reading comes AFTER the other awaited preparation (the forced refresh publishes a probe of its own), so it is the newest
+      // observation — a version published while this update was being prepared is never discarded for an earlier one.
       await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
       versionBefore = fresh?.version ?? null;
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
       if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
