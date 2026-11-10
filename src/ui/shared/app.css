@@ -4225,3 +4225,50 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .s-hub-connection .hub-fp .btn { white-space: normal; }
 }
 
+/* AGEND-161 — the menu of Settings and of an agent's Details & settings page (both are `.p-settings` with a `.s-nav`):
+   what is a menu and what is content has to read at a glance. These five rules change the shared Settings page too. */
+/* S1. A hairline under the page header, so the header (with the instance tabs) no longer runs into the content. */
+.p-settings > .panel-head { border-bottom: 1px solid var(--border); }
+/* S2. A group title is a label, not a link: smaller, dim, not hoverable; a hairline starts the next group; its items are what you click. */
+.p-settings .s-nav .s-nav-head { font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.06em; color: var(--text-3); cursor: default; user-select: none; pointer-events: none; }
+.p-settings .s-nav .s-nav-group + .s-nav-group { border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.p-settings .s-nav .seg-item .icon { color: var(--text-3); }
+.p-settings .s-nav .seg-item.active .icon { color: inherit; }
+.p-settings .s-nav .seg-item .count { color: var(--warn); font-size: var(--fs-xs); }
+/* S3. Wide (≥1100px): the category column is its own panel — the sidebar's tone and a divider on its right edge. */
+@media (min-width: 1100px) {
+  .p-settings > .s-nav { background: var(--bg-sidebar); border-right: 1px solid var(--border); padding: var(--s-4) var(--s-3) var(--s-4) var(--s-3); }
+  .p-settings > .s-nav .seg-item { padding-left: var(--s-4); min-height: 38px; }
+  .p-settings > .s-nav .s-nav-head { padding-left: var(--s-4); }
+}
+/* S4. Middle (900–1099px): the row becomes real tabs — an underline for the current one, no group titles (a divider instead),
+   and a fade at the right edge that says it scrolls. */
+@media (min-width: 900px) and (max-width: 1099px) {
+  .p-settings > .s-nav { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 var(--s-4); }
+  .p-settings > .s-nav .s-nav-head { display: none; }
+  .p-settings > .s-nav .s-nav-groups { align-items: stretch; column-gap: 0; flex-wrap: nowrap; overflow-x: auto; -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent); mask-image: linear-gradient(to right, black calc(100% - 32px), transparent); }
+  .p-settings > .s-nav .s-nav-group { align-items: stretch; flex-wrap: nowrap; flex-shrink: 0; gap: 0; }
+  .p-settings > .s-nav .s-nav-group + .s-nav-group { border-top: 0; padding-top: 0; border-left: 1px solid var(--border); margin-left: var(--s-2); padding-left: var(--s-2); }
+  .p-settings > .s-nav .seg-item { min-height: 46px; padding: 0 var(--s-3); border-radius: 0; border-bottom: 2px solid transparent; background: none; font-weight: var(--fw-medium); }
+  .p-settings > .s-nav .seg-item:hover { background: var(--surface); }
+  .p-settings > .s-nav .seg-item.active { background: none; color: var(--accent); border-bottom-color: var(--accent); }
+  .p-settings > .s-nav .seg-item.active::before { display: none; }
+}
+/* S5. Phone: "‹ Settings" becomes a full-width bar under the header (tinted, bordered, 48px, the section's name at its right). */
+@media (max-width: 899px) {
+  .p-settings > .panel-body .s-back { min-height: 48px; margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-4)) var(--s-4); padding: 0 var(--s-4); background: var(--surface); border-bottom: 1px solid var(--border); font-weight: var(--fw-semibold); }
+  .p-settings .s-back .s-back-here { font-weight: var(--fw-semibold); }
+  .p-settings[data-view="index"] > .s-nav .s-nav-group + .s-nav-group { border-top: 0; padding-top: 0; }
+}
+/* The agent page's cards: two columns on a wide page (`.ap-span2` across both), one column when it is narrow. */
+.ap-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@container settings-page (min-width: 820px) { .ap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ap-grid > .card { margin-bottom: 0; }
+.ap-grid > .ap-span2 { grid-column: 1 / -1; }
+.ap-danger { border-color: var(--danger-line); }
+.ap-panel[hidden] { display: none; }
+.p-details .d-actions .field-row { flex-wrap: wrap; }
+/* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */
+.inst-gear { flex: none; width: 28px; height: 28px; padding: 0; color: var(--text-3); display: inline-grid; place-items: center; }
+@media (hover: hover) { .inst-nav .v-li:not(:hover):not(:focus-within) > .inst-gear:not(:focus-visible) { visibility: hidden; } .inst-nav .v-li:has(> .inst.active) > .inst-gear { visibility: visible; } }
+.v-li.two-line > .inst-gear { align-self: flex-start; margin-top: 6px; }
