@@ -1,0 +1,146 @@
+{
+ "desk-light-en": {
+  "got": {
+   "labels": [
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Weekly"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "desk-light-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "desk-dark-en": {
+  "got": {
+   "labels": [
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Weekly"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "desk-dark-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "phone-light-en": {
+  "got": {
+   "labels": [
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Weekly"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "phone-light-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "phone-dark-en": {
+  "got": {
+   "labels": [
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Session",
+    "Weekly",
+    "Fable (weekly)",
+    "Weekly"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ },
+ "phone-dark-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": []
+ }
+}
