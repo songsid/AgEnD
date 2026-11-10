@@ -46,7 +46,9 @@ captures() { local n=0; rss_at 0 || return 1
 if [ "$VIA" = cli ]; then captures
 else captures | T -C attach -f ignore-size -t m > "$WORK/control.out"; fi
 [ ! -f "$WORK/norss" ] || die "no RSS for server pid $P after $(cat "$WORK/norss") captures (did it exit?)"
-if [ "$VIA" = cli ]; then done_n=$( [ -f "$WORK/ok" ] && wc -l < "$WORK/ok" || echo 0 ); else done_n=$(grep -c '^%end' "$WORK/control.out" 2>/dev/null || true); fi
+if [ "$VIA" = cli ]; then done_n=$( [ -f "$WORK/ok" ] && wc -l < "$WORK/ok" || echo 0 ); else done_n=$(grep -cE '^%end [0-9]+ [0-9]+ 1$' "$WORK/control.out" 2>/dev/null || true); fi
+# (control: a reply block's last field is its flags — 1 for a command this client sent, 0 for the attach handshake's
+# own block, which is no capture; a failed capture ends in %error, which never counts.)
 done_n=$((${done_n:-0} + 0))
 [ "$done_n" -ge "$C" ] || die "only $done_n of $C captures were answered"
 echo "captures answered: $done_n"
