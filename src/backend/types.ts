@@ -498,6 +498,15 @@ export interface RuntimeDialog {
    * Absent retains the existing per-visible-dialog behavior.
    */
   oncePerLaunch?: boolean;
+  /**
+   * The keys are safe to send AGAIN on the same screen (every meaning they can have there keeps the session — e.g.
+   * Escape on Claude's cold-resume prompt). A CLI that paints a menu before it takes input drops a key sent too early;
+   * a one-shot answer would then leave the dialog up for good. With this set, the claimed answer may be re-sent — at
+   * most `max` sends in all while the dialog stays visible, each only once the same dialog is still on screen at least
+   * `afterMs` after the previous send. Requires verifyAfterKeys and a code-owned autoResolutionKey; never with
+   * oncePerLaunch. The dialog's own isActive must be exact: anything else on screen is never sent these keys.
+   */
+  retrySafe?: { max: number; afterMs: number };
 }
 
 /**

@@ -398,6 +398,13 @@ const coldResumeUnknown = (pane: string): boolean => { const s = claudeColdResum
 
 const COLD_RESUME_TITLE_ANY = /^[ \t]*Resume this conversation\?[ \t]*$/m;
 const COLD_RESUME_DESCRIPTION = "Claude cold-cache resume prompt — Escape (its own 'resume', or 'dismiss' on 2.1.304's idle trigger): keep the full context";
+/**
+ * 2.1.322 audit: with the server's summary option and new-conversation focus, the prompt paints before it takes keys,
+ * and an Escape sent on first sight was dropped (live: 5 of 6 launches on 2.1.322, 1 of 6 on 2.1.319). Escape here
+ * only ever means the prompt's own "resume" or "dismiss" — both keep the conversation — so a dropped one is sent again:
+ * three sends at most, each only when the same exact prompt is still up a second after the last.
+ */
+const COLD_RESUME_RETRY = { max: 3, afterMs: 1_000 } as const;
 const COLD_RESUME_HOLD_DESCRIPTION = "Claude cold-cache resume prompt (unrecognised shape) — holding for a human, never 'Start a new conversation'";
 
 
@@ -1466,7 +1473,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // the default and drop the full context. Hold the pane, report for a human.
       { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, parkedAdvice: "claude-resume", description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
       // 2.1.295's cold-cache resume prompt on a resumed launch: Escape (the dialog's own "resume") keeps the context.
-      { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt" },
+      { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt", retrySafe: COLD_RESUME_RETRY },
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeUnknown, keys: [], holdOnly: true, blocksDelivery: true, description: COLD_RESUME_HOLD_DESCRIPTION },
       // First-run onboarding. The theme picker's `❯ ✔ Dark mode` satisfies the
       // ready pattern, so without these entries a first launch was declared
@@ -1526,6 +1533,7 @@ export class ClaudeCodeBackend implements CliBackend {
         inputBlocked: true,
         verifyAfterKeys: true,
         autoResolutionKey: "claude-cold-resume-prompt",
+        retrySafe: COLD_RESUME_RETRY,
       },
       {
         pattern: COLD_RESUME_TITLE_ANY,
