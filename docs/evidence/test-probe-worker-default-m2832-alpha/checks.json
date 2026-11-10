@@ -1,0 +1,34 @@
+{
+  "alpha-focused": {
+    "passed": 411,
+    "failed": 1,
+    "skipped": 0,
+    "files": 24
+  },
+  "alpha-fixture-followup": {
+    "passed": 43,
+    "failed": 0,
+    "skipped": 0,
+    "files": 4
+  },
+  "alpha-save-callers": {
+    "passed": 517,
+    "failed": 0,
+    "skipped": 0,
+    "files": 26
+  },
+  "integration-focused": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "files": 1
+  },
+  "alpha-final-focused": {
+    "passed": 412,
+    "failed": 0,
+    "skipped": 0,
+    "files": 24
+  },
+  "scope": "Initial modified-tree run had one 10-second first-test timeout. Fixture import moved to collection without deadline/assertion changes; targeted follow-up passed, then final 412-case run passed at committed source. Groups overlap, not full-suite evidence.",
+  "testTypesExit": 0
+}

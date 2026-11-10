@@ -1,0 +1,40 @@
+{
+  "sourceCommit": "de7057390f5a1deac144251ff35f10496525ddf2",
+  "sourceTree": "c5a1cff0ac408ff086540abbe5be56e70a953cc4",
+  "base": "1cebc9b06d042bff3f0160131de9b09341320e50",
+  "mainMerged": "3ec84c79a6c486efdbd41400b50e19c36e2f2491",
+  "mainParityFiles": [
+    "tests/helpers/probe-worker.ts",
+    "tests/support/probe-worker-default.ts",
+    "tests/setup-probe-worker.ts",
+    "tests/probe-worker-default.test.ts",
+    "changes/2832-test-probe-worker-default.md",
+    "changes/2832-test-probe-worker-default.zh-TW.md"
+  ],
+  "changedFiles": [
+    "changes/2832-test-probe-worker-default.md",
+    "changes/2832-test-probe-worker-default.zh-TW.md",
+    "docs/development.md",
+    "tests/accounts-confirmation-3335.test.ts",
+    "tests/accounts-settings-3212.test.ts",
+    "tests/agent-credential-generation.test.ts",
+    "tests/backend-command-1806.test.ts",
+    "tests/cli-env-probe-guard.test.ts",
+    "tests/fleet-model-probes-3526.test.ts",
+    "tests/fleet-probe-workers.test.ts",
+    "tests/helpers/probe-worker.ts",
+    "tests/list-models.test.ts",
+    "tests/model-menu-refresh.test.ts",
+    "tests/model-stale-refresh.test.ts",
+    "tests/probe-worker-default.test.ts",
+    "tests/profile-model-catalogs-2072.test.ts",
+    "tests/setup-probe-worker.ts",
+    "tests/support/probe-worker-default.ts",
+    "tests/switch-drops-model-1808.test.ts",
+    "tests/sysinfo-backend-versions.test.ts",
+    "tests/web-model-refresh-m2731.test.ts",
+    "vitest.config.integration.ts",
+    "vitest.config.ts"
+  ],
+  "guardAndProduct": "Identical to the alpha base; no workflow/retry/deadline changes."
+}
