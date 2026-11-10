@@ -2287,9 +2287,13 @@ export class InstanceLifecycle {
     const epoch = this.epochOf(name);
     let daemon = this.daemons.get(name);
     if (daemon?.waitForPauseWakeTransition) {
-      await daemon.waitForPauseWakeTransition();
-      if (this.epochOf(name) !== epoch || this.daemons.get(name) !== daemon) throw new SupersededStartError(name);
-      assertNoSessionOomStop(this.ctx.getInstanceDir(name));
+      do {
+        await daemon.waitForPauseWakeTransition();
+        if (this.epochOf(name) !== epoch || this.daemons.get(name) !== daemon) throw new SupersededStartError(name);
+        assertNoSessionOomStop(this.ctx.getInstanceDir(name));
+        // An admission may have started in the caller's await gap. No yield
+        // after this check until the cold stop's existing retirement fence.
+      } while (daemon.hasPendingPauseWake);
     }
     const instances = this.ctx.fleetConfig?.instances;
     const next = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
