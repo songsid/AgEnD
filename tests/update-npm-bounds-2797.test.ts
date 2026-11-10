@@ -75,7 +75,9 @@ describe("M-2797: a failure that is the network is said plainly", () => {
   it("npm's own timeout codes are the network too", () => {
     for (const e of ["npm error code EIDLETIMEOUT — npm error Idle timeout reached for host `registry.npmjs.org:443`",
       "npm error code ECONNECTIONTIMEOUT", "npm error code ERESPONSETIMEOUT", "npm error code ETRANSFERTIMEOUT",
-      "npm error network timeout at: https://registry.npmjs.org/@songsid%2fagend"]) expect(failureCause(e), e).toBe("network");
+      "npm error network timeout at: https://registry.npmjs.org/@songsid%2fagend",
+      // the rig's registry that never answers: what the marker keeps is the code line and the next one
+      "Cause: npm error code FETCH_ERROR — npm error errno FETCH_ERROR."]) expect(failureCause(e), e).toBe("network");
   });
 
   let dir: string;
@@ -98,6 +100,11 @@ describe("M-2797: a failure that is the network is said plainly", () => {
     expect(m).toMatch(/^Could not reach the update source, so nothing was changed and the current version keeps running/);
     expect(m).not.toContain("could not finish the update automatically");
     expect(m).toContain("Cause: npm error code EIDLETIMEOUT");             // the detail stays, after the plain words
+  });
+
+  it("a registry that never answers (npm FETCH_ERROR, the rig's 16-minute baseline) is the network too", () => {
+    const m = run("npm error code FETCH_ERROR\nnpm error errno FETCH_ERROR\nnpm error network timeout at: http://127.0.0.1:4875/@songsid%2fagend\n");
+    expect(m).toMatch(/^Could not reach the update source/);
   });
 
   it("anything else keeps its own words", () => {

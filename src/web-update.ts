@@ -60,8 +60,9 @@ export function updateOffer(current: string, target: string | null | undefined, 
 export type WebUpdateCause = "network" | "permission" | "other";
 export function failureCause(error: string | undefined): WebUpdateCause {
   const e = error ?? "";
-  // M-2797: npm's own agent names its timeouts too (a silent connection, one that never connects or answers).
-  if (/\bE(NOTFOUND|AI_AGAIN|TIMEDOUT|CONNREFUSED|CONNRESET|NETUNREACH|HOSTUNREACH|IDLETIMEOUT|CONNECTIONTIMEOUT|RESPONSETIMEOUT|TRANSFERTIMEOUT)\b|getaddrinfo|socket hang up|network|fetch failed|registry|timeout reached/i.test(e)) return "network";
+  // M-2797: npm's own agent names its timeouts too (a silent connection, one that never connects or answers), and npm
+  // reports a registry that never answers as FETCH_ERROR ("network timeout at: …" is on the line the cause leaves out).
+  if (/\bE(NOTFOUND|AI_AGAIN|TIMEDOUT|CONNREFUSED|CONNRESET|NETUNREACH|HOSTUNREACH|IDLETIMEOUT|CONNECTIONTIMEOUT|RESPONSETIMEOUT|TRANSFERTIMEOUT)\b|\bFETCH_ERROR\b|getaddrinfo|socket hang up|network|fetch failed|registry|timeout reached/i.test(e)) return "network";
   if (/\bE(ACCES|PERM)\b|permission denied|operation not permitted/i.test(e)) return "permission";
   return "other";
 }
