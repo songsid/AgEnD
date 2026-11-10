@@ -60,7 +60,8 @@ export function updateOffer(current: string, target: string | null | undefined, 
 export type WebUpdateCause = "network" | "permission" | "other";
 export function failureCause(error: string | undefined): WebUpdateCause {
   const e = error ?? "";
-  if (/\bE(NOTFOUND|AI_AGAIN|TIMEDOUT|CONNREFUSED|CONNRESET|NETUNREACH|HOSTUNREACH)\b|getaddrinfo|socket hang up|network|fetch failed|registry/i.test(e)) return "network";
+  // M-2797: npm's own agent names its timeouts too (a silent connection, one that never connects or answers).
+  if (/\bE(NOTFOUND|AI_AGAIN|TIMEDOUT|CONNREFUSED|CONNRESET|NETUNREACH|HOSTUNREACH|IDLETIMEOUT|CONNECTIONTIMEOUT|RESPONSETIMEOUT|TRANSFERTIMEOUT)\b|getaddrinfo|socket hang up|network|fetch failed|registry|timeout reached/i.test(e)) return "network";
   if (/\bE(ACCES|PERM)\b|permission denied|operation not permitted/i.test(e)) return "permission";
   return "other";
 }
