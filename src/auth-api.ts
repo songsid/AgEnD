@@ -771,7 +771,14 @@ export function handleAuthRequest(
     const endable = (): ((r: SessionRecord) => boolean) | undefined => (own === undefined ? ctx.endableSessions?.(req) : undefined);
 
     if (path === "/auth/sessions" && method === "GET") {
-      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own), ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
+      // AGEND-138: on a chat fleet an admin's rows say which it may sign out (the same rule as DELETE and /ui/devices/signout);
+      // `canEndOthers` stays "may end any other at all". No narrowing (a web-only fleet, a non-admin): rows as they were.
+      const scope = endable();
+      const rows = sessions.list(sessionIdHash(sessionId), own).map(r => {
+        const record = scope && !r.current ? sessions.findByHandle(r.handle) : null;
+        return record ? { ...r, canSignOut: scope!(record) } : r;
+      });
+      json(res, 200, { sessions: rows, ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
       return true;
     }
 

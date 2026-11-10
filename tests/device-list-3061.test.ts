@@ -335,7 +335,8 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     const body = await list(h, owner);
     expect(body.owner).toBe(false);
     expect(body.authority).toBe(false);                                                   // …and the page is told why, to say so (settings-devices-3061)
-    expect((body.devices as Array<{ ownerVerified: boolean }>).every(r => !r.ownerVerified)).toBe(true);
+    expect(body.devices.length).toBeGreaterThan(1);                                         // (an empty list would pass `every` too)
+    expect((body.devices as Array<{ verified: boolean }>).every(r => r.verified === false)).toBe(true);
     expect((await signOut(h, owner, handleOf(h, other))).status).toBe(403);
     expect((await h.local(owner, "DELETE", `/auth/sessions/${handleOf(h, other)}`)).status).toBe(403);
     expect(await h.alive(other)).toBe(true);
@@ -484,6 +485,36 @@ describe("AGEND-138 (#3486): one device list and one sign-out rule on a fleet wi
     h.any.revokeWebSessions();
     expect([await h.alive(a), await h.alive(b), await h.alive(host)]).toEqual([false, false, false]);
   }, 60_000);
+
+  it("a caller that is not an admin session (the header token, no session) is told owner_required — never other_admin; GET /auth/sessions rows carry canSignOut", async () => {
+    const { h, a, a2, b, guest } = await chatFleet();
+    const bare = { method: "POST", headers: { host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } };
+    expect(h.any.webDeviceSignOut(bare, handleOf(h, a))).toEqual({ status: 403, body: { error: "owner_required" } });
+    const cli = await raw(h.port, "POST", "/ui/devices/signout", { "x-agend-token": h.token, origin: h.origin, "content-type": "application/json" }, JSON.stringify({ handle: handleOf(h, a) }));
+    expect([401, 403]).toContain(cli.status);
+    expect(parse(cli)?.error).not.toBe("other_admin");
+    // The older list carries the same verdict per row on a chat fleet (the one rule), and none where there is no narrowing.
+    const rows = parse(await raw(h.port, "GET", "/auth/sessions", { cookie: a.cookie, origin: h.origin })).sessions as Array<{ handle: string; current: boolean; canSignOut?: boolean }>;
+    const by = (s: Signed) => rows.find(r => r.handle === handleOf(h, s))!;
+    expect([by(a).canSignOut, by(a2).canSignOut, by(b).canSignOut, by(guest).canSignOut]).toEqual([undefined, true, false, true]);
+    const web = await startFleet();
+    const owner = await web.hostSignIn(), other = web.stored({ label: "Plain code" });
+    const wrows = parse(await raw(web.port, "GET", "/auth/sessions", { cookie: owner.cookie, origin: web.origin })).sessions as Array<{ canSignOut?: boolean }>;
+    expect(wrows.every(r => r.canSignOut === undefined)).toBe(true);
+    expect(other).toBeTruthy();
+  }, 60_000);
+
+  it("with `loopback_only` the session menu's verdict (/ui/authorization) and the list's `verified` for the reader's own row agree — here and from the network", async () => {
+    const h = await startFleet({ chat: true, web: { verified_authority: { enabled: true, loopback_only: true } } });
+    vi.spyOn(h.any, "adminGate").mockReturnValue("ok");
+    const a = h.stored({ label: "Admin A", owner: { adapterId: "tg", userId: "1" } });
+    expect(h.fm.authorizeWebSession(h.sessionOf(a)!, "loopback", false).ok).toBe(true);        // confirmed in chat, from this computer
+    for (const [where, extra] of [["this computer", {}], ["the network", { "x-forwarded-for": "10.0.0.9" }]] as const) {
+      const menu = parse(await h.local(a, "GET", "/ui/authorization", undefined, extra));
+      const row = ((parse(await h.local(a, "GET", "/ui/devices", undefined, extra))).devices as Array<{ current: boolean; verified: boolean }>).find(r => r.current)!;
+      expect([where, menu.state === "verified", row.verified], where).toEqual([where, where === "this computer", where === "this computer"]);
+    }
+  }, 40_000);
 });
 
 describe("#3061 P2b: the sign-in page's QR switch (web.login_qr)", () => {

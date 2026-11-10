@@ -3817,8 +3817,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const authorizations = this.sessionAuthorizationStore();
     return this.webSessions.list(rule.session.idHash, () => true).map(summary => {
       const record = this.webSessions!.findByHandle(summary.handle);
-      const gateway = summary.surface === "gateway";
-      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : authorizations?.get(summary.handle)?.peer ?? "lan";
+      // The reader's own row is judged on the request that asks (as the session menu's /ui/authorization is: tests/…-138), another
+      // session as it signed in (we cannot know where it is now).
+      const gateway = summary.current ? !!gatewayRequestContext(req) : summary.surface === "gateway";
+      const peer: WebPeer = summary.current ? webPeerOf(req)
+        : gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : authorizations?.get(summary.handle)?.peer ?? "lan";
       const verified = summary.tier === "admin" && !!record && !this.webAuthority({ session: record, gateway, peer }).refusal;
       const may = !summary.current && !!record && rule.may(record);
       return { handle: summary.handle, label: summary.label, tier: summary.tier, via: summary.via, verified, current: summary.current, surface: summary.surface,
@@ -3849,7 +3852,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
     if (!this.webSessions) return { status: 404, body: { error: "not_found" } };
     const rule = this.sessionEndRule(req);
-    if (!rule) return { status: 403, body: { error: this.isWebOnlyFleet() ? "owner_required" : "other_admin" } };
+    if (!rule) return { status: 403, body: { error: "owner_required" } };        // not an admin session at all: the header token, a guest
     if (this.isWebOnlyFleet() && !rule.any) return { status: 403, body: { error: "owner_required" } };
     if (handle === rule.session.handle) return { status: 400, body: { error: "this_device" } };
     const target = this.webSessions.findByHandle(handle);
@@ -9063,11 +9066,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A single-use login code for the dashboard, for a channel only the operator
    * can read (`/dashboard`). Null while the panel is closed (no web.token).
    */
-  issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
+  issueDashboardLogin(recipient?: { adapterId: string; userId: string; username?: string }): { display: string; expiresAt: number; ttlMinutes: number } | null {
     const token = this.webToken;
     if (!token) return null;
     this.initializeWebSessions();
-    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token) });
+    // AGEND-138 (#3486): given the admin it is for, the session this code makes is that admin's own (auth-api binds the session's
+    // `owner` to the recipient) — so the devices rule (sessionEndRule) tells two admins apart. Without one: no account, the host's.
+    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token), ...(recipient ? { recipient } : {}) });
     return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
   }
 
