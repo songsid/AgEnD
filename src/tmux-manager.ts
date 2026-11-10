@@ -284,7 +284,7 @@ export class TmuxManager implements Pane {
   /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
   private pendingWindowName: string | null = null;
 
-  async createWindow(command: string, cwd: string, windowName?: string): Promise<string> {
+  async createWindow(command: string, cwd: string, windowName?: string, launch?: () => void): Promise<string> {
     this.pendingWindowName = windowName ?? null;
     if (windowName) {
       // Strict listing: a tmux that cannot answer must not be read as "no
@@ -303,7 +303,7 @@ export class TmuxManager implements Pane {
           await new TmuxManager(this.sessionName, stale.id, this.logicalSize).killWindow();
         }
         this.windowId = survivor.id;
-        await this.respawnWindow(command, cwd);
+        await this.respawnWindow(command, cwd, undefined, launch);
         await exec(tmuxBinary(), TmuxManager.tmuxArgs([
           "set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
           "allow-rename", "off",
@@ -316,6 +316,7 @@ export class TmuxManager implements Pane {
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
     // Hard bound: a wedged tmux must not hold a login/install teardown open forever.
+    launch?.();
     const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs(args), { timeout: 15_000 });
     this.windowId = stdout.trim();
     try {
@@ -335,13 +336,14 @@ export class TmuxManager implements Pane {
   }
 
   /** Restart the process inside the existing window, preserving its window id. */
-  async respawnWindow(command: string, cwd: string, admission?: () => void): Promise<void> {
+  async respawnWindow(command: string, cwd: string, admission?: () => void, launch?: () => void): Promise<void> {
     if (!this.windowId) throw new Error("Cannot respawn tmux window without a window id");
     // Apply before respawn so the new CLI sees the intended COLUMNS/LINES from
     // its first frame. Reapplying is idempotent and repairs external drift.
     admission?.();
     await this.applyLogicalSize();
     admission?.();
+    launch?.();
     await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "-c", cwd, command,

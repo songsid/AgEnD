@@ -23,6 +23,7 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+  "host_cli.install_confirm": "Install {0} on the AgEnD host",
     "logs.capped_tail": "Capped at {0} lines; only the recent log tail is available here.",
     "config.general_missing": "no general_topic instance for connection \"{0}\" — messages there outside an agent’s topic have no dispatcher (in Settings → Agents, open an agent’s settings → Advanced, enable General topic (fleet dispatcher), and select this connection)",
   "general_location.offline": "General’s Windows PC is offline. AgEnD is still running here. Reconnect that PC, or switch General back to this host in Settings. Pending or uncertain requests will not be sent again automatically.",
@@ -1648,6 +1649,7 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+  "host_cli.install_confirm": "在 AgEnD 主機上安裝 {0}",
     "logs.capped_tail": "最多顯示 {0} 行；這裡僅提供最近的日誌末段。",
     "config.general_missing": "連線「{0}」沒有 general_topic Agent，因此不在 Agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 Agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
   "general_location.offline": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。待處理或結果不明的請求不會自動重送。",
