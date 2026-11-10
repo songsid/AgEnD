@@ -1,0 +1,100 @@
+{
+  "base": "d841d54d3452f1bd876f161ac8f126105285fefa",
+  "scope": "fake Grok only; no vendor/backend CLI, credentials or fleet execution",
+  "focused": {
+    "files": 10,
+    "passed": 497,
+    "skipped": 0
+  },
+  "typecheck": true,
+  "testTypes": true,
+  "build": true,
+  "mutations": [
+    {
+      "name": "shared-leader",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "binding",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "directory",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "fingerprint",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "same-fleet",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "generated-only",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "user-bytes",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "edit-fence",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "private-cleanup",
+      "types": 0,
+      "test": 1,
+      "assertionFailure": true
+    },
+    {
+      "name": "directory-tightening",
+      "types": 0,
+      "test": 1,
+      "semanticFailure": true
+    },
+    {
+      "name": "multiline-quoted-value",
+      "types": 0,
+      "test": 1,
+      "semanticFailure": true
+    }
+  ],
+  "notes": [
+    "same-fleet initially survived a weaker fixture; corrected canonical generated fixture now catches it",
+    "failure logs stay private; no random private binding is committed"
+  ],
+  "sha256": {
+    "src/backend/grok.ts": "7bccfa27b0ae95512c3a36d0d36a3eafdfeab42e91fb8087cb9f95ec89102531",
+    "src/backend/grok-mcp.ts": "ef75274d725531fdb4b3ffbb66f51106e207373dcf9588bcdbd6840fb2080659",
+    "tests/grok-mcp-isolation-1411.test.ts": "3cf8be820f4c594e249ce5a52db662c6a0915d2ca87b6fa65f951081387cddc3",
+    "tests/owned-children-1450.test.ts": "4069bc24a138056e38c8c8293940abd32feb5bd3185eca0f72b4fde085ae712b",
+    "scripts/manual/grok-mcp-isolation/accept.mts": "54c3e377b876d743972ffcec913e73907e11f1281f02004d962b8e58b869094d"
+  },
+  "reviewRound1": {
+    "ciFirstRed": "private-dir.test.ts requires ensureInstanceDir; fixed without changing the guard",
+    "finding": "canonical legacy quoted multiline values must migrate; positive regression and extra-script/foreign negatives pass",
+    "failFirst": [
+      "existing loose directory stays0755 instead of0700",
+      "properly quoted multiline legacy values refused before grammar fix"
+    ]
+  },
+  "mainTwin": "3609 @b10c4d06a05ccdbc5763db3c616687b7c0fcc6a3"
+}

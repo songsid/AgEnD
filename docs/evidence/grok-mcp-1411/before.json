@@ -1,0 +1,62 @@
+{
+  "source": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "scope": "production GrokBackend.writeConfig/buildCommand; fake Grok models project MCP discovery and actually executes only owned fixture wrappers; no real Grok/account/vendor",
+  "checks": [
+    {
+      "name": "single-agent control",
+      "expected": [
+        "single-worker"
+      ],
+      "actual": [
+        {
+          "key": "agend-single-worker",
+          "instance": "single-worker",
+          "toolSet": "developer"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "same-cwd worker-a only own identity/config",
+      "expected": [
+        "worker-a"
+      ],
+      "actual": [
+        {
+          "key": "agend-worker-a",
+          "instance": "worker-a",
+          "toolSet": "developer"
+        },
+        {
+          "key": "agend-worker-b",
+          "instance": "worker-b",
+          "toolSet": "reader"
+        }
+      ],
+      "pass": false
+    },
+    {
+      "name": "same-cwd worker-b only own identity/config",
+      "expected": [
+        "worker-b"
+      ],
+      "actual": [
+        {
+          "key": "agend-worker-a",
+          "instance": "worker-a",
+          "toolSet": "developer"
+        },
+        {
+          "key": "agend-worker-b",
+          "instance": "worker-b",
+          "toolSet": "reader"
+        }
+      ],
+      "pass": false
+    }
+  ],
+  "cleanup": {
+    "privateSocketClosed": true,
+    "rootRemoved": true
+  }
+}

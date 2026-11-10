@@ -84,7 +84,7 @@ describe("MCP wrapper scripts quote the command and every argument (kiro, grok, 
     backend.write(config(root, srv.command));
     const wrapper = backend.wrapper(root);
     expect(existsSync(wrapper), wrapper).toBe(true);
-    const run = spawnSync("bash", [wrapper], { cwd: root, encoding: "utf8", timeout: 20_000, env: { PATH: pathWithoutNode(root), HOME: root } });
+    const run = spawnSync("bash", [wrapper], { cwd: root, encoding: "utf8", timeout: 20_000, env: { PATH: pathWithoutNode(root), HOME: root, ...(_name === "grok" ? { AGEND_GROK_MCP_DIR: join(root,"inst"), AGEND_GROK_MCP_BINDING: JSON.parse(readFileSync(join(root,"inst","grok-mcp.json"),"utf8")).binding } : {}) } });
     expect(run.status, run.stderr).toBe(0);
     expect(srv.seen()).toEqual(ARGS);
     expect(existsSync(join(root, "PWNED"))).toBe(false);
