@@ -1,0 +1,103 @@
+[
+  {
+    "id": "M1-compiled-probe-default",
+    "exit": 1,
+    "passed": 5,
+    "failed": 3,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default fakes compiled probe workers without a suite-local mock",
+      "shared model-probe Worker default resets opt-in, answers, errors and worker history before the next test",
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  },
+  {
+    "id": "M2-ts-bootstrap-entry",
+    "exit": 1,
+    "passed": 7,
+    "failed": 1,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default fakes tsx probe workers without a suite-local mock"
+    ]
+  },
+  {
+    "id": "M3-other-worker-passthrough",
+    "exit": 1,
+    "passed": 6,
+    "failed": 2,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default leaves unrelated Workers real",
+      "shared model-probe Worker default keeps the same TS bootstrap real when its entry is another Worker kind"
+    ]
+  },
+  {
+    "id": "M4-explicit-native-opt-in",
+    "exit": 1,
+    "passed": 6,
+    "failed": 2,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default opts in to real probe Workers for this test only",
+      "shared model-probe Worker default keeps the real process guard on after explicit probe opt-in"
+    ]
+  },
+  {
+    "id": "M5-shared-beforeEach-reset",
+    "exit": 1,
+    "passed": 6,
+    "failed": 2,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default resets opt-in, answers, errors and worker history before the next test",
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  },
+  {
+    "id": "M6-shared-afterEach-drain",
+    "exit": 1,
+    "passed": 1,
+    "failed": 7,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default fakes tsx probe workers without a suite-local mock",
+      "shared model-probe Worker default leaves unrelated Workers real",
+      "shared model-probe Worker default keeps the same TS bootstrap real when its entry is another Worker kind",
+      "shared model-probe Worker default opts in to real probe Workers for this test only",
+      "shared model-probe Worker default resets opt-in, answers, errors and worker history before the next test",
+      "shared model-probe Worker default keeps the real process guard on after explicit probe opt-in",
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  },
+  {
+    "id": "M7-acknowledged-termination",
+    "exit": 1,
+    "passed": 7,
+    "failed": 1,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  },
+  {
+    "id": "M8-late-answer-disposal",
+    "exit": 1,
+    "passed": 7,
+    "failed": 1,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  },
+  {
+    "id": "M9-owned-worker-registration",
+    "exit": 1,
+    "passed": 7,
+    "failed": 1,
+    "skipped": 1,
+    "failedCases": [
+      "shared model-probe Worker default drains the acknowledged fake stop and fences late answer callbacks"
+    ]
+  }
+]

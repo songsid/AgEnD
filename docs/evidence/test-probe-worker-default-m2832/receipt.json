@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "69fba95774606e2491462619d4276c1d69ebd066",
+  "sourceTree": "d5bd85752cf217678bf7ba4780876d6102a60cff",
+  "base": "5dc51afcf35ba539928b82e75ba9155d7e65d4cb",
+  "changedFiles": [
+    "changes/2832-test-probe-worker-default.md",
+    "changes/2832-test-probe-worker-default.zh-TW.md",
+    "docs/development.md",
+    "tests/agent-credential-generation.test.ts",
+    "tests/backend-command-1806.test.ts",
+    "tests/cli-env-probe-guard.test.ts",
+    "tests/fleet-model-probes-3526.test.ts",
+    "tests/fleet-probe-workers.test.ts",
+    "tests/helpers/probe-worker.ts",
+    "tests/list-models.test.ts",
+    "tests/model-menu-refresh.test.ts",
+    "tests/model-stale-refresh.test.ts",
+    "tests/probe-worker-default.test.ts",
+    "tests/profile-model-catalogs-2072.test.ts",
+    "tests/setup-probe-worker.ts",
+    "tests/support/probe-worker-default.ts",
+    "tests/switch-drops-model-1808.test.ts",
+    "tests/sysinfo-backend-versions.test.ts",
+    "tests/tmux-startup-refusal-3437.test.ts",
+    "tests/web-model-refresh-m2731.test.ts",
+    "vitest.config.integration.ts",
+    "vitest.config.ts"
+  ],
+  "scope": "No browser/CLI/native-account acceptance. Real guarded Workers only run owned inert fixture bodies; deliberate guard refusal is consumed and asserted."
+}

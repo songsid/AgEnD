@@ -10,7 +10,6 @@ const guard = vi.hoisted(() => ({ hit: { socket: "agend-owned-b", confirmed: tru
 vi.mock("../src/bundled-tmux-guard.js", async original => ({
   ...await original<typeof import("../src/bundled-tmux-guard.js")>(), newerTmuxServer: async () => guard.hit,
 }));
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({ createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger, rotateLogIfNeeded: vi.fn() }));
 vi.mock("node:child_process", async original => {
   const real = await original<typeof import("node:child_process")>();

@@ -13,7 +13,6 @@ import { join } from "node:path";
  * Now `/model` re-probes once the cache passes a staleness threshold, under a
  * deadline, and falls back to the cached list when the probe cannot answer.
  */
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
   rotateLogIfNeeded: vi.fn(),

@@ -15,7 +15,6 @@ import { join } from "node:path";
  * The Worker transport is mocked: no isolate or CLI binary is started; cache
  * admission and merge run through the real bounded probe path.
  */
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
   rotateLogIfNeeded: vi.fn(),

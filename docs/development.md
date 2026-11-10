@@ -84,6 +84,24 @@ do not start a live fleet to test a unit path. Tests that intentionally need rea
 tmux or child processes belong in the integration configuration and must use
 temporary data directories, private sockets, test ports and cleanup.
 
+Unit, integration and inherited PowerShell tests use `tests/setup-probe-worker.ts`.
+Only the backend model/environment probe isolate is replaced with `FakeProbeWorker`;
+an ordinary test gets an asynchronous `null` result, without constructing a backend
+or launching a CLI. This also covers discovery started indirectly by
+`saveFleetConfig()`. Other Worker types and the native process guard remain real.
+Shared hooks reset fake answers/history and drain owned probes after each test,
+including queued probes and late fake answers. Specialized probe suites can still
+set `FakeProbeWorker.answer`, or call `reset()` and supply manual replies.
+
+A test of the native probe boundary can explicitly call
+`useRealProbeWorkers()` from `tests/support/probe-worker-default.ts` before
+constructing its Workers. The opt-in lasts only for that test and never disables
+the process guard. Use inert private fixtures or registered executables and stop
+owned fleet pools before removing their temporary files. No current model-probe
+suite needs a native isolate; the opt-in controls themselves verify it with inert
+fixtures. Intentional standalone child programs and the separate CLI e2e runners
+keep their own guarded execution environment.
+
 Container rehearsals: never `--privileged`; binfmt_misc is host-global on WSL. A systemd container sources
 `scripts/manual/lib/systemd-container.sh` (masked binfmt image, non-privileged flags, a guard that refuses an image that
 could register binfmt entries).

@@ -1,0 +1,92 @@
+{
+  "e53694da827d9d6925ccd6bedc8e50d4d81fb7787f06d6153dc1e41ce72161c3": [
+    "changes/2832-test-probe-worker-default.md"
+  ],
+  "4e66e43c715668438382a3943dd2e5b2ded75c1d7364ee649c90b325132602b9": [
+    "changes/2832-test-probe-worker-default.zh-TW.md"
+  ],
+  "ab2083f21f08ef74912021f52b703c24151779d0a476ff25a188c06409ab62fb": [
+    "docs/development.md"
+  ],
+  "3011b4219a51222d4c1237eaee0b77778f53946da78057df1fb4e7dede00c01b": [
+    "docs/evidence/test-probe-worker-default-m2832/README.md"
+  ],
+  "41c1b3beb2d13af9e245e2468fddc51b94c04bf3e9eb80bc790f4023603e71f8": [
+    "docs/evidence/test-probe-worker-default-m2832/checks.json"
+  ],
+  "c7cb9c184c744bdee1ca51b7a3350d56b95177e288495a9789499140582d8968": [
+    "docs/evidence/test-probe-worker-default-m2832/fail-first.json"
+  ],
+  "b8a1b37b9d4da101b1e36f93da33a22ad50ef435afcedf9a6a727438fdca3c60": [
+    "docs/evidence/test-probe-worker-default-m2832/inventory.json"
+  ],
+  "541449fb87874a6848b6a04a815d6a54c41eb781d617f302556813a2052580f8": [
+    "docs/evidence/test-probe-worker-default-m2832/inventory.mjs"
+  ],
+  "08ccce825a0cd284f48a57c0fd5ac08fc3c3c4d2040cfe94a61ee49f9ab2ce8c": [
+    "docs/evidence/test-probe-worker-default-m2832/mutate-default.py"
+  ],
+  "857342132ffe15c01ecefba60e3c7895378f8f73a305fa8d00ff7e21e4b96053": [
+    "docs/evidence/test-probe-worker-default-m2832/mutations.json"
+  ],
+  "999b017e63c8ed302fd1b04e723d44a917f422174a8a70d8606384f63b6a7e35": [
+    "docs/evidence/test-probe-worker-default-m2832/receipt.json"
+  ],
+  "90af09f220129182eb690f3c76ec3864ef502ab27ba5792d98f3a7c97b7357a0": [
+    "tests/agent-credential-generation.test.ts"
+  ],
+  "99aaa71d66b09d35876519f9641289724b22a86814df47456edb30170e3ade29": [
+    "tests/backend-command-1806.test.ts"
+  ],
+  "79591517376994387ca251838a83003eb42477bc1e36084f09d71888eb45f194": [
+    "tests/cli-env-probe-guard.test.ts"
+  ],
+  "f6f87428a8d174b26dac787fcecc21393a44f4da34c3769ac0cb09bd1270277d": [
+    "tests/fleet-model-probes-3526.test.ts"
+  ],
+  "d65c51f9371e09b765f6876536b4058ccbb40f7e7422d5e5057093da30a4d10a": [
+    "tests/fleet-probe-workers.test.ts"
+  ],
+  "6f5fb6eee782fb36f81ffb985b10c28fcb1bd7bfb56760bf38174ac113be55be": [
+    "tests/helpers/probe-worker.ts"
+  ],
+  "04869fdbc253b4cafc78e7afcbf61bed4c932a8cfc3ad2cffa2f4e1c7f133a96": [
+    "tests/list-models.test.ts"
+  ],
+  "0b1e8031f35e0719fcac49347ebce522be8ded788c543fec0110095824f2ed89": [
+    "tests/model-menu-refresh.test.ts"
+  ],
+  "d5b99be14301dcfbdd647f0c8fe067f6390774eac9499e3e91677e486b328abf": [
+    "tests/model-stale-refresh.test.ts"
+  ],
+  "9f0ce1069b4ba3e146bc69e6bfd7c52c493d990245d32f28d8c63a3aee62d8d2": [
+    "tests/probe-worker-default.test.ts"
+  ],
+  "aa464c7b13927e1deba655ec243545d4b12266ee6a433bc25c2987c7d54750ac": [
+    "tests/profile-model-catalogs-2072.test.ts"
+  ],
+  "170992d77037fef9861204499b94774fe03f38f1bed651afd1ee7bd430f83a24": [
+    "tests/setup-probe-worker.ts"
+  ],
+  "787e6377a852a158c37b1efa7b041637295c4e8f4bb41318602e7defcb1b882f": [
+    "tests/support/probe-worker-default.ts"
+  ],
+  "0ed286e29a7b2fe5db7ba5b384c32b3aa0377c6d14360b40798ce27fd46cbcf4": [
+    "tests/switch-drops-model-1808.test.ts"
+  ],
+  "77af74fb8a75afe6fcdd5f92aebf93d9431e9a4ff9b7a01913bb329a99949935": [
+    "tests/sysinfo-backend-versions.test.ts"
+  ],
+  "d7c440388a35e89b0d4868d9061cb2e0e91a0077f5e55df17ee6aefe72444a91": [
+    "tests/tmux-startup-refusal-3437.test.ts"
+  ],
+  "9f207a9aabf78133e9041086820015a61643e85269e6a52d040154fd1c320f2a": [
+    "tests/web-model-refresh-m2731.test.ts"
+  ],
+  "f73de459dec88c2531b2813d030f547488c73f0aec939be3522c4c93203b09bf": [
+    "vitest.config.integration.ts"
+  ],
+  "c118421ab8f4c8e0c030469e4d016daec3b61babe0bb9b508eceb6d957f57350": [
+    "vitest.config.ts"
+  ]
+}
