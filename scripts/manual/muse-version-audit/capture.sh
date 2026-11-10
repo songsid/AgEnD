@@ -1,5 +1,5 @@
 #!/bin/bash
-# Offline muse capture run (1.4.14 audit, 2026-10-28). Run INSIDE a disposable container as an unprivileged user `u`:
+# Offline muse capture run (1.4.14 audit 2026-10-28; 1.4.15 additions 2026-11-10). Run INSIDE a disposable container as an unprivileged user (1.4.15: the image's `rh`, uid 1000, with /home/u owned by it):
 #   docker run -d --name m --network none --memory 2g --cpus 2 --pids-limit 256 \
 #     -v <dir with this script and mock.py>:/rig:ro -v <binary dir>:/opt/musebin:ro -v <out>:/home/u/out <node+tmux+python3 image> sleep infinity
 #   docker exec m sh -c 'mkdir -p /home/u/bin && cp /opt/musebin/muse /home/u/bin/muse && chmod +x /home/u/bin/muse'
@@ -37,6 +37,26 @@ fresh appr; start "$KEY" $META --trust-workspace; sleep 9; paste "do it"; sleep 
 fresh untr; args '{"command":"ls -la"}'; start "$KEY" $META --trust-workspace --approval-mode untrusted; sleep 9; paste "do it"; sleep 8; cap approval-untrusted-staged; $T send-keys -t m 1; sleep 6; cap approval-untrusted-after-1; paste "/quit"; sleep 2
 fresh rl; mode 429; start "$KEY" $META $PROD; sleep 9; paste "do it"; sleep 7; cap prod-rate-limited; $T send-keys -t m Escape; sleep 1; paste "/quit"; sleep 2
 fresh ul; mode 402; start "$KEY" $META $PROD; sleep 9; paste "do it"; sleep 7; cap prod-usage-limit; paste "/quit"; sleep 2
+# 1.4.15 audit: the memory-write approval ("Would you like to allow this memory write?"), under AgEnD's production
+# flags and with approval on (the prompt itself), via muse.add_memory / muse.edit_memory.
+memtool(){ printf '%s' "$1" > $A/mocktool; }
+fresh memprod; mode tool; memtool add_memory; args '{"path":"notes.md","content":"remember the audit"}'; start "$KEY" $META $PROD; sleep 9; paste "save a note about the audit"; sleep 8; cap prod-memory-write; paste "/quit"; sleep 2
+fresh memappr; memtool add_memory; args '{"path":"notes.md","content":"remember the audit"}'; start "$KEY" $META --trust-workspace; sleep 9; paste "save a note about the audit"; sleep 8; cap approval-memory-write; $T send-keys -t m Escape; sleep 4; cap approval-memory-write-after-esc; paste "/quit"; sleep 2
+fresh memok; memtool add_memory; args '{"path":"notes.md","content":"remember the audit"}'; start "$KEY" $META --trust-workspace; sleep 9; paste "save a note about the audit"; sleep 8; $T send-keys -t m Enter; sleep 5; cap approval-memory-write-after-enter; paste "/quit"; sleep 2
+for sc in project personal; do
+  fresh mp$sc; memtool add_memory; args "{\"path\":\"notes.md\",\"content\":\"remember\",\"scope\":\"$sc\"}"; start "$KEY" $META --trust-workspace; sleep 9; paste "save a note about the audit"; sleep 8; cap approval-memory-$sc; $T send-keys -t m Escape; sleep 3; paste "/quit"; sleep 2
+  fresh pp$sc; start "$KEY" $META $PROD; sleep 9; paste "save a note about the audit"; sleep 8; cap prod-memory-$sc; paste "/quit"; sleep 2
+done
+fresh mu; memtool add_memory; args '{"path":"notes.md","content":"remember"}'; start "$KEY" $META --trust-workspace --approval-mode untrusted; sleep 9; paste "save a note about the audit"; sleep 8; cap approval-memory-untrusted; $T send-keys -t m Escape; sleep 3; paste "/quit"; sleep 2
+fresh memedit; memtool edit_memory; args '{"path":"notes.md","old_str":"a","new_str":"b"}'; start "$KEY" $META $PROD; sleep 9; paste "fix the note please"; sleep 8; cap prod-memory-edit; paste "/quit"; sleep 2
+rm -f $A/mocktool
+# 1.4.15 audit: the transient post-turn "Double checking" phase (echo, captured at 10 / 15 s after the reply).
+fresh dbl; start "" --provider echo $PROD --echo-delay-ms 3000; sleep 8; paste "hello echo"; sleep 1.2; sleep 10; cap echo-double-checking; sleep 5; cap echo-done-later; paste "/quit"; sleep 2
+# 1.4.15 audit: the post-turn feature tip drawn in the empty composer (the mock answers the tip picker with tipid).
+for tip in side-chat resume effort; do
+  printf '%s' "$tip" > $A/tipid; fresh tip$tip; mode text; start "$KEY" $META $PROD; sleep 9; paste "summarise the readme please"; sleep 14; cap tip-$tip; paste "/quit"; sleep 2
+done
+rm -f $A/tipid
 orphan(){ local name=$1 m=$2 a=$3; fresh $name; mode $m; [ -n "$a" ] && args "$a"; start "$KEY" $META $PROD --disable-sandbox; sleep 9; paste "please do the long thing"; sleep 6; cap $name-inflight
   local id=$(sid); pkill -9 -f "^$MUSE"; sleep 2; mode text; start "$KEY" $META $PROD --disable-sandbox resume $id; sleep 9; cap $name-resumed
   paste "carry on"; sleep 7; cap $name-after-turn; paste "/quit"; sleep 3; cap $name-quit
