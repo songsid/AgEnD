@@ -1,0 +1,14 @@
+[
+  {
+    "file": "claude-full-agent-a9947907a82e086d7.jsonl",
+    "records": 17,
+    "rawSha256": "1fde62ccf839762ce0c1807960ed63ed48b2bef6c3cf5794859f06b809ef394b",
+    "normalization": "No records removed. Owned paths normalized; environment/API payloads omitted, identity/field presence preserved."
+  },
+  {
+    "file": "claude-full-agent-ab5b36ac3f402d58b.jsonl",
+    "records": 17,
+    "rawSha256": "59cd179128f41e8b931ace0d032ce68e6662b7aa82c1f88fd5f14001bc2779eb",
+    "normalization": "No records removed. Owned paths normalized; environment/API payloads omitted, identity/field presence preserved."
+  }
+]

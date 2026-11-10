@@ -14,12 +14,19 @@
  */
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { hostIds, hostIdsByRank, runtimeIds } from "./cli-registry.js";
+import { hostFacts, hostIds, hostIdsByRank, runtimeIds } from "./cli-registry.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
+import { cliUpdateView, versionOf, type CliUpdateView } from "./cli-audited.js";
 import type { SignInTarget } from "./web-backend-login.js";
 
 /** The CLIs the Accounts view shows, in its order (cli-registry.ts: `host.accountCard`). */
 export const ACCOUNT_CLIS = Object.freeze(hostIdsByRank("accountCard"));
+/**
+ * AGEND-133: every CLI the Accounts view can list: the account-card CLIs in their order, then the ones that only have an install (the registry's `host.install`
+ * without an `accountCard`: OpenCode today).
+ */
+const ACCOUNT_CLI_SET: ReadonlySet<string> = new Set(ACCOUNT_CLIS);
+const VIEW_CLIS: readonly string[] = Object.freeze([...ACCOUNT_CLIS, ...hostIds("install").filter(id => !ACCOUNT_CLI_SET.has(id))]);
 /** The CLIs that can have named credential profiles (src/backend/credential-profile.ts; cli-registry.ts: `host.namedAccounts`). */
 export const PROFILE_CLIS: ReadonlySet<string> = new Set(hostIds("namedAccounts"));
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -46,6 +53,10 @@ export interface AccountRow {
   hostCommand?: string;
   install?: string;
   update?: string;
+  /** AGEND-136: the version the binary probe read for an installed host CLI (a host default row only). */
+  version?: string;
+  /** AGEND-136: where that version stands against AgEnD's audited release (cli-audited.ts), and whether the dashboard can update it (`button`). `via`: "dashboard", or "self" for a CLI that updates itself. */
+  cliUpdate?: CliUpdateInfo;
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   /** The week's usage (the window closest to a week; see `weeklyUsage`). */
   usage?: AccountUsage;
@@ -56,7 +67,13 @@ export interface AccountRow {
 }
 /** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
 export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
-export interface AccountsCli { backend: string; profiles: boolean; installed: boolean; fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>; rows: AccountRow[] }
+export interface CliUpdateInfo extends CliUpdateView { via: "dashboard" | "self" }
+export interface AccountsCli {
+  backend: string; profiles: boolean; installed: boolean;
+  /** AGEND-133: a CLI with no account card of its own (OpenCode) is listed only to be installed (or while its install is shown); it has no sign-in rows. */
+  installOnly?: boolean;
+  fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>; rows: AccountRow[];
+}
 export interface AccountsView { clis: AccountsCli[] }
 
 /** One paired computer's accounts for the view, as its Runtime reported them (names, signed in or not, a masked identity) and what its owner allows. */
@@ -98,6 +115,10 @@ export interface AccountsInput {
    * computer's profile of that name (and for `claude-code\0` of the host's default and a computer's), so the one would show the other's setting.
    */
   keepAlive?: ReadonlyMap<string, AccountKeepAlive>;
+  /** AGEND-133: the CLI whose dashboard install the page is showing (running, or ended within its keep time): its card stays even once it is installed, so the result stays beside it. */
+  installShown?: string | null;
+  /** AGEND-136: what the binary probe printed for each installed host CLI's `--version`, by backend (the availability snapshot's own reading). */
+  versions?: ReadonlyMap<string, string | null>;
 }
 
 const key = (backend: string, profile: string | null) => `${backend}\0${profile ?? ""}`;
@@ -135,15 +156,23 @@ function machineRows(backend: string, m: MachineAccountsInput): AccountRow[] {
 /** Build the view. Pure. */
 export function buildAccountsView(input: AccountsInput): AccountsView {
   const clis: AccountsCli[] = [];
-  for (const backend of ACCOUNT_CLIS) {
+  for (const backend of VIEW_CLIS) {
+    const installOnly = !ACCOUNT_CLI_SET.has(backend);
     const def = input.targets.find(t => t.backend === backend && !t.profile);
     const agents = input.agents.filter(a => a.backend === backend);
     const classic = input.classic.filter(c => c.backend === backend);
     const fleetDefault = PROFILE_CLIS.has(backend) ? input.fleetDefaults.get(backend) ?? null : null;
-    // A CLI nobody uses and that is not installed is left out (its install lives in the backend list, not here).
+    // AGEND-133 (#3521): a CLI that is not installed is listed with its Install button — the dashboard's way in for a host that has no chat. One with no account
+    // card (OpenCode) is listed for that alone: only while it is not installed, or while its install is shown.
     const installed = !!def && def.state !== "not_installed";
-    const machines = MACHINE_ACCOUNT_CLIS.has(backend) ? input.machines ?? [] : [];
-    const hostRelevant = installed || agents.length > 0 || classic.length > 0;
+    const installable = !!def && def.state === "not_installed" && !!def.install;
+    const machines = !installOnly && MACHINE_ACCOUNT_CLIS.has(backend) ? input.machines ?? [] : [];
+    // AGEND-136: what the installed CLI's version is, and where it stands against the audited release (and whether an Update is offered).
+    const printed = installed ? input.versions?.get(backend) ?? null : null;
+    const canUpdate = hostFacts(backend, "update") !== null;
+    const updateView = installed ? cliUpdateView(backend, printed, canUpdate) : null;
+    const cliUpdate: CliUpdateInfo | null = updateView ? { ...updateView, via: canUpdate ? "dashboard" : "self" } : null;
+    const hostRelevant = installOnly ? installable || (installed && !!cliUpdate) || (input.installShown === backend && !!def) : installed || installable || agents.length > 0 || classic.length > 0 || input.installShown === backend;
     if (!hostRelevant && !machines.length) continue;
     const rows: AccountRow[] = [];
     const usedBy = (profile: string | null) => ({
@@ -159,6 +188,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
+      ...(installed && versionOf(printed) ? { version: versionOf(printed)! } : {}), ...(cliUpdate ? { cliUpdate } : {}),
       usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...(shortOf(null) ? { shortUsage: shortOf(null) } : {}), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {
@@ -181,7 +211,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
     }
     // A paired computer's rows come after the host's, each computer's together (the page groups them by scope).
     for (const m of machines) rows.push(...machineRows(backend, m));
-    clis.push({ backend, profiles: PROFILE_CLIS.has(backend), installed, fleetDefault, agents: agents.map(a => ({ name: a.name, profile: a.profile })), rows });
+    clis.push({ backend, profiles: PROFILE_CLIS.has(backend), installed, ...(installOnly ? { installOnly: true } : {}), fleetDefault, agents: agents.map(a => ({ name: a.name, profile: a.profile })), rows });
   }
   return { clis };
 }

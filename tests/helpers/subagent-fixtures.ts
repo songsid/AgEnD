@@ -15,5 +15,5 @@ export function subagentFixture(backend: SubagentProjection["backend"]): Subagen
     const r = records(file); children.set(r[0].payload.id, { records: r });
   }
   return { backend, sessionId: "01a1bf2c-0674-7b81-be8e-36e9fc503cc7", cwd: "$RIG/work",
-    parent: records("codex-rollout-2026-11-09T15-18-16-01a1bf2c-0674-7b81-be8e-36e9fc503cc7.jsonl"), children, now: Date.parse("2026-11-09T07:18:47Z"), live: true };
+    parent: records("codex-rollout-2026-11-09T15-18-16-01a1bf2c-0674-7b81-be8e-36e9fc503cc7.jsonl"), children, now: Date.parse("2026-11-09T07:18:45.400Z"), live: true };
 }

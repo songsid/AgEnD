@@ -1,0 +1,105 @@
+{
+  "source": "1be11da9186914756d12fb021e8d8822cc70ab86",
+  "before": false,
+  "browser": "156.0.8078.4",
+  "scope": "Actual shell/HTTP/settings/TOTP core; synthetic inventory+installer, no real CLI/fleet/account. Cached shared assets only, current lazy host-install/settings-confirm modules.",
+  "results": [
+    {
+      "name": "after-desk-light-en",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/3fb5273d78f0b893dea93997292380f0/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/3fb5273d78f0b893dea93997292380f0/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "skew-desk-light-en",
+      "starts": 1,
+      "oldReads": 8,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/b7f6f1bb04de4e8ad235a2b8ddd6006f/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/b7f6f1bb04de4e8ad235a2b8ddd6006f/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "after-desk-light-zh-TW",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/414471b810073ede50d2e5cbaaafa8b5/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/414471b810073ede50d2e5cbaaafa8b5/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "skew-desk-light-zh-TW",
+      "starts": 1,
+      "oldReads": 8,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/36f5f8ee0a674cfd5d752b921298218c/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/36f5f8ee0a674cfd5d752b921298218c/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "after-phone-dark-en",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/d0298c8a6e784bb14835ded370a97ce7/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/d0298c8a6e784bb14835ded370a97ce7/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "skew-phone-dark-en",
+      "starts": 1,
+      "oldReads": 8,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/bb13e9fd31e7d85a35028ccd3005bfe7/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/bb13e9fd31e7d85a35028ccd3005bfe7/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "after-phone-dark-zh-TW",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/6fe4cd8cd46e9a3e509d639b35c63758/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/6fe4cd8cd46e9a3e509d639b35c63758/confirm-totp"
+      ],
+      "pass": true
+    },
+    {
+      "name": "skew-phone-dark-zh-TW",
+      "starts": 1,
+      "oldReads": 8,
+      "expectedWrong": [
+        "http://dashboard.lan.example:47684/api/settings/pending/01e2f635a161e08e9c279856a9c7e62e/confirm-totp"
+      ],
+      "observedErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://dashboard.lan.example:47684/api/settings/pending/01e2f635a161e08e9c279856a9c7e62e/confirm-totp"
+      ],
+      "pass": true
+    }
+  ],
+  "workingTreeProductionSHA256Manifest": "PRODUCTION_SHA256SUMS"
+}

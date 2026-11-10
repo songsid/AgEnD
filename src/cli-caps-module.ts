@@ -24,6 +24,8 @@ export interface UiCliCaps {
   /** A Windows Runtime can install it from the dashboard, and the name it lists it by (`runtime.install`, `runtime.provider.name`). */
   runtimeInstall: boolean;
   runtimeName: string | null;
+  /** A Windows Runtime can UPDATE it from the dashboard (`runtime.update`): install and update are separate facts — a CLI may be install-only (it updates itself, or Update is not built). */
+  runtimeUpdate: boolean;
 }
 
 export function uiCliCaps(): Record<CliId, UiCliCaps> {
@@ -37,6 +39,7 @@ export function uiCliCaps(): Record<CliId, UiCliCaps> {
       structuredNamedSignIn: structured?.named === true,
       firstRunSignIn: hostFacts(id, "firstRunSignIn")?.mode ?? null,
       runtimeInstall: runtimeFacts(id, "install") !== null,
+      runtimeUpdate: runtimeFacts(id, "update") !== null,
       runtimeName: runtimeFacts(id, "install") ? runtimeFacts(id, "provider")?.name ?? null : null,
     };
     return [id, caps] as const;

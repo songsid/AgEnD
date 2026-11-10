@@ -106,6 +106,23 @@ describe("host lists, as they were", () => {
     });
   });
 
+  // AGEND-136: the commands the dashboard's Update button runs, literally. `{version}` is filled with the newest AUDITED release (src/cli-audited.ts), never "latest".
+  it("host.update: the update commands, each with the audited release in it", () => {
+    expect(Object.fromEntries(hostIds("update").map(id => [id, hostFacts(id, "update")]))).toEqual({
+      "claude-code": { support: "yes", binary: "claude", command: "curl -fsSL https://claude.ai/install.sh | bash -s {version}" },
+      "codex": { support: "yes", binary: "codex", command: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release {version}" },
+      "kiro-cli": { support: "yes", binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash -s -- --version {version} --force" },
+      "grok": { support: "yes", binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash -s {version}" },
+      "opencode": { support: "yes", binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash -s -- --version {version}" },
+    });
+    // The CLIs that update themselves in the background have no button.
+    expect(CLI_IDS.filter(id => !hostIds("update").includes(id))).toEqual(["antigravity", "muse"]);
+  });
+  it("runtime.update: only the CLIs the Runtime installs from its pinned table; the update is that same install", () => {
+    expect(runtimeIds("update")).toEqual(["claude-code", "codex"]);
+    expect(runtimeIds("update").every(id => runtimeIds("install").includes(id))).toBe(true);
+  });
+
   it("the usage panel's provider ids, names and order, and which have a row per named account", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, usageProviderIdForBackend(id)]))).toEqual({
       "claude-code": "claude", "codex": "codex", "kiro-cli": "kiro", "antigravity": "antigravity", "grok": "grok", "muse": "muse", "opencode": null,
@@ -156,8 +173,13 @@ describe("the Windows Runtime's lists, as they were", () => {
     expect(RUNTIME_SIGNIN_CLIS).toEqual({ "claude-code": ["claude", "auth", "login"] });
     expect(Object.isFrozen(RUNTIME_SIGNIN_CLIS)).toBe(true);
     expect(CREDENTIAL_PROFILE_CLIS).toEqual({ "claude-code": "CLAUDE_CONFIG_DIR" });
-    expect(Object.keys(INSTALLABLE_CLIS)).toEqual(["claude-code", "codex"]);
-    expect(runtimeIds("install")).toEqual(["claude-code", "codex"]);
+    expect(Object.keys(INSTALLABLE_CLIS)).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
+    expect(runtimeIds("install")).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
+    // What each pin vouches for, written out (the page says "Not yet verified by AgEnD" only for `integrity`): the npm CLIs are pinned to audited releases, and so is Antigravity's download — its 1.5.3 is on
+    // the maintainer-confirmed ledger (AGEND-148; before #3539 it was `integrity`). A pin that is not on the ledger is `integrity`.
+    expect(Object.fromEntries(runtimeIds("install").map(id => [id, [runtimeFacts(id, "install")!.kind, runtimeFacts(id, "install")!.pin]]))).toEqual({
+      "claude-code": ["npm", "audited"], "codex": ["npm", "audited"], "antigravity": ["download", "audited"], "opencode": ["npm", "audited"],
+    });
     expect(runtimeIds("signIn")).toEqual(["claude-code"]);
     expect(runtimeFacts("claude-code", "signIn")).toMatchObject({ argv: ["claude", "auth", "login"], profile: "named" });
     expect(runtimeIds("identity")).toEqual(["claude-code"]);
@@ -192,7 +214,7 @@ describe("the dashboard scripts' lists, as they were", () => {
 
   it("an agent's settings offer an account choice for these CLIs, and the Runtime page lists these CLIs to install", () => {
     expect(ids(c => c.namedAccounts)).toEqual(["claude-code", "codex", "kiro-cli"]);
-    expect(INSTALL_CLIS).toEqual([{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }]);
+    expect(INSTALL_CLIS).toEqual([{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }, { id: "antigravity", label: "Antigravity" }, { id: "opencode", label: "OpenCode" }]);
   });
 
   it("asks about a name that is not a CLI and gets nothing, whatever the name", () => {

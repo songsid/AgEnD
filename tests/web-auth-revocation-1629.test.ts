@@ -58,6 +58,20 @@ describe("#1629 synchronous auth revocation observations", () => {
     const h = fixture(), fn = vi.fn(); h.auth.onSessionEnd(fn); h.nativeFetch.mockResolvedValueOnce(reply(401)); await h.win.fetch("https://other.example/data");
     h.nativeFetch.mockResolvedValueOnce(reply(401)); await h.win.fetch("/auth/session"); expect(fn).not.toHaveBeenCalled(); expect(h.auth.sessionEnded()).toBe(false);
   });
+  it.each([
+    ["POST", `/api/settings/pending/${"a".repeat(32)}/confirm-totp`, "wrong_code", false],
+    ["POST", `/api/settings/pending/${"a".repeat(32)}/confirm-totp`, "session_required", true],
+    ["GET", `/api/settings/pending/${"a".repeat(32)}/confirm-totp`, "wrong_code", true],
+    ["POST", "/ui/instances", "wrong_code", true],
+    ["POST", "/api/settings/pending/not-an-id/confirm-totp", "wrong_code", true],
+  ] as const)("M2793: only an exact POST wrong-TOTP response preserves the session (%s %s %s)", async (method, path, error, ended) => {
+    const h = fixture(); await h.auth.sessionHandle();
+    h.nativeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ error }), { status: 401, headers: { "Content-Type": "application/json" } }));
+    const response = await h.win.fetch(path, { method });
+    expect(h.auth.sessionEnded()).toBe(ended);
+    expect(await response.json()).toEqual({ error });
+    expect(h.bars.length).toBe(ended ? 1 : 0);
+  });
   it("transient session reads and failed data fetches do not fabricate revocation", async () => {
     const h = fixture(), fn = vi.fn(); h.auth.onSessionEnd(fn); h.nativeFetch.mockRejectedValueOnce(Error("network")); expect(await h.auth.sessionHandle()).toBeNull();
     h.nativeFetch.mockRejectedValueOnce(Error("network")); await expect(h.win.fetch("/ui/instances")).rejects.toThrow("network"); expect(fn).not.toHaveBeenCalled(); expect(h.auth.sessionEnded()).toBe(false);

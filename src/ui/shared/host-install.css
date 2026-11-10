@@ -1,0 +1,10 @@
+/* Feature-owned support for the existing confirmation card, including a cached shell/stylesheet. */
+@media (max-width: 899px), (pointer: coarse) {
+  .pending-stack .pending-code-input,
+  .pending-stack .pending-code .btn,
+  .pending-stack .pending-actions .btn {
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
+  .pending-stack .pending-code-input { font-size: var(--fs-lg); }
+}

@@ -69,7 +69,7 @@ export function runtimeCap<K extends keyof RuntimeCapabilities>(id: unknown, key
 /** The facts of a supported capability, or null when the CLI is unknown or does not support it. */
 export function hostFacts<K extends keyof HostCapabilities>(id: unknown, key: K): Extract<HostCapabilities[K], { support: "yes" }> | null {
   const cap = hostCap(id, key);
-  return cap && isYes(cap as Cap) ? cap as Extract<HostCapabilities[K], { support: "yes" }> : null;
+  return cap && (cap as { support: string }).support === "yes" ? cap as unknown as Extract<HostCapabilities[K], { support: "yes" }> : null;
 }
 export function runtimeFacts<K extends keyof RuntimeCapabilities>(id: unknown, key: K): Extract<RuntimeCapabilities[K], { support: "yes" }> | null {
   const cap = runtimeCap(id, key);

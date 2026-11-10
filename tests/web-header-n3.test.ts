@@ -262,7 +262,7 @@ describe("#1563 review: View's Help says the new cycle", () => {
 describe("#1585: the usage footer says how old the numbers are, and replaces a refreshing snapshot", () => {
   const foot = (pg: AppPage) => pg.root.querySelector("dialog .u-foot .note")?.textContent ?? null;
   const names = (pg: AppPage) => [...pg.root.querySelectorAll("dialog .u-provider strong")].map((e: any) => e.textContent);
-  it.each([["en", "Updated 3 min ago · Refreshing…"], ["zh-TW", "3 分鐘前更新 · 更新中…"]])("%s: the age and that a fresh one is coming", async (lang, want) => {
+  it.each([["en", "Updating…"], ["zh-TW", "更新中…"]])("%s: updating replaces the age while a fresh snapshot is coming", async (lang, want) => {
     const pg = await app("/view/web-dev");
     (await import("/assets/app-i18n.js")).setLang(lang); await settle(4);
     usageHeld = [Promise.resolve({ providers: [{ id: "p", name: "STALE", status: "ok", metrics: [] }], fetchedAt: new Date(Date.now() - 3 * 60_000).toISOString(), refreshing: true })];
@@ -276,7 +276,7 @@ describe("#1585: the usage footer says how old the numbers are, and replaces a r
       Promise.resolve({ providers: [{ id: "p", name: "FRESH", status: "ok", metrics: [] }], fetchedAt: new Date().toISOString() }),
     ];
     pg.root.querySelector(".panel-head .hd-usage").click(); await settle(6);
-    expect([names(pg), foot(pg)?.includes("Refreshing")]).toEqual([["STALE"], true]);
+    expect([names(pg), foot(pg)?.includes("Updating")]).toEqual([["STALE"], true]);
     await new Promise((r) => setTimeout(r, 4_300)); await settle(6);
     expect([names(pg), foot(pg)]).toEqual([["FRESH"], "Updated just now"]);
   }, 15_000);

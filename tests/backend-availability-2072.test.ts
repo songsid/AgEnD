@@ -189,9 +189,11 @@ describe("#2078 review: a probe never lets a CLI change itself or reach a vendor
     const dir = scratch(), marker = join(dir, "ran");
     writeFileSync(join(dir, "muse"), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\necho 9.9.9\n`, { mode: 0o755 });
     writeFileSync(join(dir, ".muse-version"), "1.4.10-R6427.1\n");
-    expect(await probeBackendVersion("muse", join(dir, "muse"))).toBe("1.4.10");
+    expect(await probeBackendVersion("muse", join(dir, "muse"))).toBe("1.4.10-R6427.1");      // AGEND-144: with its build — the full release identity
     expect(existsSync(marker)).toBe(false);
     expect(await probeBackendVersion("muse", join(scratch(), "muse"))).toBeNull();      // no file: unknown, still not started
+    writeFileSync(join(dir, ".muse-version"), "1.4.6\n");                                // a launcher that wrote no build: the x.y.z alone, as before
+    expect(await probeBackendVersion("muse", join(dir, "muse"))).toBe("1.4.6");
   });
   it("`--version` runs with no network and with the no-update switches (null where namespaces are not allowed)", async () => {
     const { probeBackendVersion } = await import("../src/backend-availability.js");

@@ -70,19 +70,21 @@ codex runtime.usage not_yet_built undecided
 kiro-cli host.identity needs_verification
 kiro-cli host.keepAlive needs_verification
 kiro-cli runtime.install by_design
+kiro-cli runtime.update by_design
 kiro-cli runtime.signIn not_yet_built undecided
 kiro-cli runtime.namedAccounts not_yet_built undecided
 kiro-cli runtime.accountRows not_yet_built undecided
 kiro-cli runtime.authStatus not_yet_built undecided
 kiro-cli runtime.identity not_applicable
 kiro-cli runtime.usage not_yet_built undecided
+antigravity host.update by_design
 antigravity host.dashboardSignIn by_design
 antigravity host.structuredSignIn not_yet_built undecided
 antigravity host.identity not_yet_built undecided
 antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
-antigravity runtime.install by_design
+antigravity runtime.update by_design
 antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
 antigravity runtime.accountRows not_yet_built undecided
@@ -96,12 +98,14 @@ grok host.namedAccounts needs_verification
 grok host.signOut needs_verification
 grok host.keepAlive needs_verification
 grok runtime.install by_design
+grok runtime.update by_design
 grok runtime.signIn not_yet_built undecided
 grok runtime.namedAccounts needs_verification
 grok runtime.accountRows not_yet_built undecided
 grok runtime.authStatus not_yet_built undecided
 grok runtime.identity not_applicable
 grok runtime.usage not_yet_built undecided
+muse host.update cli_has_none
 muse host.chatLogin cli_has_none
 muse host.dashboardSignIn not_applicable
 muse host.structuredSignIn not_applicable
@@ -112,6 +116,7 @@ muse host.namedAccounts needs_verification
 muse host.signOut needs_verification
 muse host.keepAlive needs_verification
 muse runtime.install by_design
+muse runtime.update cli_has_none
 muse runtime.signIn not_applicable
 muse runtime.namedAccounts needs_verification
 muse runtime.accountRows not_yet_built undecided
@@ -127,7 +132,7 @@ opencode host.signOut needs_verification
 opencode host.keepAlive needs_verification
 opencode host.accountCard cli_has_none
 opencode host.usage cli_has_none
-opencode runtime.install by_design
+opencode runtime.update not_yet_built #3521
 opencode runtime.signIn not_applicable
 opencode runtime.namedAccounts needs_verification
 opencode runtime.accountRows cli_has_none
@@ -154,7 +159,7 @@ describe("a CLI that leaves something out is caught", () => {
     const keepAlive: HostCliWith<"keepAlive">[] = ["claude-code", "codex"];
     // @ts-expect-error — Kiro's spec says no to keep-alive, so it is not one of the CLIs that have it
     const notKiro: HostCliWith<"keepAlive"> = "kiro-cli";
-    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex"];
+    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex", "antigravity", "opencode"];
     // @ts-expect-error — Grok's spec says no to a Runtime install
     const notGrok: RuntimeCliWith<"install"> = "grok";
     expect([keepAlive, notKiro, runtimeInstall, notGrok]).toHaveLength(4);
@@ -248,7 +253,7 @@ describe("a CLI that leaves something out is caught", () => {
     specs.codex.runtime.signIn = yes({ argv: ["codex", "login"], profile: "named" });
     specs.codex.runtime.namedAccounts = notYetBuilt("undecided", "taken away to see the Runtime's sign-in notice it");
     specs.codex.runtime.accountRows = yes();
-    specs.opencode.runtime.install = yes({ kind: "npm" });
+    specs.opencode.runtime.install = yes({ kind: "npm", pin: "audited" });
     specs.opencode.runtime.provider = byDesign("taken away to see the install notice it");
     specs["claude-code"].runtime.namedAccounts = yes({ env: "SOMETHING_ELSE" });
     const problems = checkCliRegistry(specs);
@@ -346,6 +351,8 @@ describe("every \"yes\" has the behaviour it promises, every \"no\" has none", (
         expect(d.authProbe, id).toEqual(status?.argv ?? null);
       }
       expect(isInstallableCli(id), id).toBe(!!install);
+      // The registry says HOW it is installed (a pinned npm package, or one pinned download) and the Runtime's table must be that kind.
+      if (install) expect(INSTALLABLE_CLIS[id as keyof typeof INSTALLABLE_CLIS].kind, id).toBe(install.kind);
       expect(RUNTIME_SIGNIN_CLIS[id] ?? null, id).toEqual(signIn?.argv ?? null);
       expect(isCredentialProfileCli(id), id).toBe(!!named);
       if (named) expect(CREDENTIAL_PROFILE_CLIS[id as keyof typeof CREDENTIAL_PROFILE_CLIS], id).toBe(named.env);

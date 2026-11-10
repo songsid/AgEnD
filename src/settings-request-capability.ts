@@ -3,21 +3,24 @@ import { Readable } from "node:stream";
 import type { JoinLocalAuthority, JoinLocalSession } from "./hub/join/local-journal.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 
-interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }
+export interface SettingsRequester { readonly handle: string; readonly label: string }
+interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean; requester?: SettingsRequester; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }
 const continuations = new WeakMap<object, Continuation>();
 const bodies = new WeakMap<object, Buffer>();
 const replays = new WeakSet<object>();
 export function isSettingsReplay(req: object): boolean { return replays.has(req); }
 /** Only server code creates a replay; bearer cookies/tokens are never replayed. */
-export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }, execution: SettingsExecution): IncomingMessage {
+export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean; requester?: SettingsRequester; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean }, execution: SettingsExecution): IncomingMessage {
   const req = Readable.from([]) as unknown as IncomingMessage;
   req.method = input.method; req.url = input.url; replays.add(req);
   req.headers = input.key ? { "idempotency-key": input.key } : {};
-  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin, localSession: input.localSession, confirmedCurrent: input.confirmedCurrent });
+  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin, requester: input.requester ? { ...input.requester } : undefined, localSession: input.localSession, confirmedCurrent: input.confirmedCurrent });
   return req;
 }
 export function settingsRequestExecution(req: object): SettingsExecution | undefined { return continuations.get(req)?.execution; }
 export function settingsRequestBinding(req: object): string | undefined { return continuations.get(req)?.binding; }
+/** Non-secret original requester of a server-created replay; never recovered from replayed credentials. */
+export function settingsRequestRequester(req: object): SettingsRequester | undefined { return continuations.get(req)?.requester; }
 /** A server-owned continuation retains authority through a current non-secret principal, never replayed headers. */
 export function settingsRequestLocalAdmin(req: object): boolean {
   const continuation = continuations.get(req);

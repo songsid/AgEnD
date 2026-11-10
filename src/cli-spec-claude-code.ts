@@ -5,6 +5,7 @@ export const CLAUDE_CODE_SPEC = {
   id: "claude-code",
   host: {
     install: yes({ binary: "claude", command: "curl -fsSL https://claude.ai/install.sh | bash" }),
+    update: yes({ binary: "claude", command: "curl -fsSL https://claude.ai/install.sh | bash -s {version}" }),
     chatLogin: yes({ aliases: ["claude"], mode: "paste-code" }),
     dashboardSignIn: yes({ named: true }),
     structuredSignIn: yes({ argv: ["claude", "auth", "login"], rank: 1, named: true }),
@@ -24,7 +25,8 @@ export const CLAUDE_CODE_SPEC = {
       permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Workspace accepts file edits inside the working directory only. Every other permission request (shell, network, other folders) is denied in headless mode unless Claude Code's own settings already allow it.",
       promptTransport: "stdin-text", modelProbe: null, rank: 1,
     }),
-    install: yes({ kind: "npm" }),
+    install: yes({ kind: "npm", pin: "audited" }),
+    update: yes({ kind: "pinned" }),
     signIn: yes({ argv: ["claude", "auth", "login"], profile: "named" }),
     namedAccounts: yes({ env: "CLAUDE_CONFIG_DIR" }),
     accountRows: yes(),

@@ -11,7 +11,7 @@ import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
-import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
+import { settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
 import { APP_ICON_MAX_BYTES, type AppIconStore } from "./web-app-icon.js";
@@ -32,6 +32,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
 import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { HOST_CLI_PATHS, isRuntimeCliInstallPath } from "./settings-effect.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -389,6 +390,8 @@ export interface WebApiContext {
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
+  /** AGEND-133: the Install button of Settings → Agents → AI sign-ins (FleetManager.webHostInstalls); absent in a hand-built context. */
+  readonly webHostInstalls?: import("./web-host-install.js").WebHostInstalls;
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts), reached through the same `/ui/browser-backend-signins` with `?machine=&profile=`. */
   readonly machineSignIns?: import("./machine-signins.js").MachineSignIns;
@@ -1357,6 +1360,61 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 }
 
 /**
+ * AGEND-133 (upstream #3521): installing a CLI on the AgEnD host from the dashboard (web-host-install.ts). The gate is the sign-in routes' own — a signed-in admin
+ * session on the local surface; never the CLI's header token (an agent's), a guest, a read session, or the public link (refused before the body is read, and again
+ * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
+ * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
+ */
+const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, busy: 409, shutting_down: 503, failed: 500 };
+function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    if (isSettingsReplay(req)) {
+      const requester = settingsRequestRequester(req);
+      if (!requester || !settingsRequestLocalAdmin(req)) return { error: "install_needs_a_local_admin", status: 403 };
+      return requester;
+    }
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "install_needs_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  const installs = ctx.webHostInstalls;
+  if (!installs) { json(res, 404, { error: "install_unavailable" }); return true; }
+  if (reading && path === "/ui/host-install" && [...url.searchParams.keys()].length === 0) {
+    try { json(res, 200, { install: installs.view() }); } catch { json(res, 503, { error: "install_unavailable" }); }
+    return true;
+  }
+  // Cancel only takes something away (any local admin may stop it, as `/login cancel`): it is not a held change. Install and Update (AGEND-136) are, and run only as the gate's confirmed replay.
+  if (method !== "POST" || (path !== "/ui/host-install/cancel" && !HOST_CLI_PATHS.has(path))) { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "install_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "install_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "install_json" }); return; }
+    if (path === "/ui/host-install/cancel") {
+      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "install_args" }); return; }
+      json(res, 200, { cancelled: await installs.cancel() });
+      return;
+    }
+    const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
+    if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
+    if (!isSettingsReplay(req) || !settingsRequestExecution(req)) { json(res, 403, { error: "install_confirmation_required" }); return; }
+    // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
+    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req), path === "/ui/host-update" ? "update" : "install");
+    if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
+    else json(res, 200, result);
+  })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
  * #3212 PR 2: Settings → Accounts — `POST /ui/accounts/<backend>` `{ name }` adds a named account (a credential profile's
  * folder); `DELETE /ui/accounts/<backend>/<name>` `{ confirm: <name> }` removes one (accounts-profiles.ts: every refusal
  * deletes nothing). PR 3: `POST /ui/accounts/<backend>/signout` `{ profile: <name> | null, confirm: true }` signs an
@@ -1941,7 +1999,7 @@ export function handleWebRequest(
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     const approved = isSettingsReplay(req) && method === "POST"
-      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path) || HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path))
       ? settingsRequestExecution(req) : undefined;
     if (approved) {
       try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }
@@ -2858,6 +2916,7 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
+  if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update") return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);

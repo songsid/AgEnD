@@ -502,11 +502,12 @@ Header: version, **Setup wizard**, **Help**.
 adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
 AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
 link an admin can change the fleet's settings too (not the dashboard's own web settings, Guests or Web authority).
-Confirmations (e.g. opening access) are asked at Apply. A change that loosens access waits for a fleet admin to confirm
-in the General chat ("Waiting for confirmation", **Withdraw**) — unless the browser is web-verified (#2170): an
-account that is a fleet admin of every connection the change affects, on their platform, confirms it by its own Apply
-("Confirmed by your account"; General gets a notice; every check runs again at execution). Not for a guest, the public
-link, an unverified browser or a change that needs the host CLI. After a failure, unapplied changes are staged again
+Confirmations (e.g. opening access) are asked at Apply. A change that loosens access is confirmed by a signed-in fleet
+admin's own Apply, from any device (AGEND-122): no DM step and no browser authorization ("Confirmed by your account —
+applying."; every check runs again at execution). It waits ("Waiting for confirmation", **Withdraw**) only where that
+admin turned on **Ask for my authenticator code to confirm changes from other devices** (Owner verification; the card
+takes the 6-digit code) or **Only this computer can authorize** is on. Guests, read-only sessions and agents never
+confirm. After a failure, unapplied changes are staged again
 (secrets must be re-entered). **Restart AgEnD** restarts every agent
 (never automatic); until then every page shows **N saved change(s) take effect after AgEnD restarts** · **Restart now** ·
 **Later**. Preferences and Look save with the same bar (**Your preferences**; device-only switches count on their own; Restore defaults saves at once).

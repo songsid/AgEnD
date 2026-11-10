@@ -22,6 +22,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { RuntimeCpuProfiler } from "../src/runtime-cpu-profile.js";
 import { startCpuProfileFromEnvironment } from "../src/cpu-profile.js";
 import { setLocale, t } from "../src/locale.js";
+import { dropUpdateNpmBounds } from "../src/update-npm-env.js";   // M-2797: a free name of the extracted CLI code
 
 /** Exact production CLI callback, never import/execute the self-starting CLI. */
 function cli(manager: FleetManager) {
@@ -42,7 +43,7 @@ function cli(manager: FleetManager) {
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
     loadRawFleetConfig: () => ({ hub: { enabled: false } }),
-    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
+    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", dropUpdateNpmBounds, redirectToService: () => false, claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
   });
   runInContext(script, context);

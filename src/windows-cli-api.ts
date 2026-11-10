@@ -9,6 +9,7 @@ import { windowsAgentsFor } from "./windows-agents.js";
 import { nativeAgentId } from "./native-instance-registry.js";
 import type { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
 import { isSettingsReplay, settingsRequestLocalAdmin } from "./settings-request-capability.js";
+import { isRuntimeCliInstallPath } from "./settings-effect.js";
 import { withNativePaneVerification } from "./runtime-pane-native.js";
 
 export interface WindowsCliApiContext {
@@ -31,7 +32,7 @@ export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: Wind
   // Confirmed creation replays intentionally carry no browser cookies or bearer headers. Only the server-owned,
   // still-current administrator capability may continue this exact operation; it grants no other native route.
   if (isSettingsReplay(req)) {
-    try { return req.method === "POST" && url.pathname === "/ui/instances" && settingsRequestLocalAdmin(req); }
+    try { return req.method === "POST" && (url.pathname === "/ui/instances" || isRuntimeCliInstallPath(url.pathname)) && settingsRequestLocalAdmin(req); }
     catch { return false; }
   }
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });

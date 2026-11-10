@@ -5,6 +5,7 @@ export const ANTIGRAVITY_SPEC = {
   id: "antigravity",
   host: {
     install: yes({ binary: "agy", command: "curl -fsSL https://antigravity.google/cli/install.sh | bash" }),
+    update: byDesign("Antigravity updates itself in the background and its `agy update` has no way to choose a release, so the dashboard only shows the installed and the audited versions."),
     chatLogin: yes({ aliases: ["agy"], mode: "declined" }),
     dashboardSignIn: byDesign("Bare `agy` is the whole agent CLI, not a login command, so it never gets the browser terminal (login-flows.ts: `remoteLogin: \"unsupported\"`)."),
     structuredSignIn: notYetBuilt("undecided", "`agy acp --login` (agy 1.5.0 and later) can be driven by the structured sign-in; not built on this registry yet."),
@@ -24,7 +25,13 @@ export const ANTIGRAVITY_SPEC = {
       permission: "native-policy", permissionNote: "Uses the native CLI permission policy. Plan mode and terminal sandboxing do not guarantee read-only workspace access.",
       promptTransport: "stdin-json", modelProbe: ["models"], rank: 2,
     }),
-    install: byDesign("Antigravity installs with a vendor PowerShell script, not an npm package (runtime-cli-install.ts); the dashboard shows the official command for the computer's owner."),
+    // AGEND-135 (#3521), measured 2026-11-09: there is no npm package (`agy` / `antigravity-cli` on npm are not Google's), but the vendor script downloads a versioned, immutable file named by a
+    // manifest (https://storage.googleapis.com/antigravity-public/antigravity-cli/<version>/windows-x64/cli_windows_x64.exe, manifest `sha512`), and that file IS Authenticode-signed
+    // (Google LLC, status Valid; its sha512 matches the manifest). The Runtime pins the exact URL, size and sha512, downloads that one file itself (the vendor script is not run), checks all
+    // of them, then the signer, and refuses on any mismatch (runtime-cli-install.ts, `kind: "download"`). Windows x64 only.
+    // AGEND-148: 1.5.3 is on the maintainer-confirmed audited ledger (cli-audited.ts), so this download is pinned to an AUDITED release, not for its integrity only.
+    install: yes({ kind: "download", pin: "audited" }),
+    update: byDesign("Antigravity updates itself in the background and is not updated by the Runtime (its pinned download is an install, and the CLI then updates itself); the dashboard only shows the installed and the audited versions."),
     signIn: notYetBuilt("undecided", "Antigravity signs in as the computer's own login, with no profile; not built on this registry yet."),
     namedAccounts: toVerify("Whether `agy` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "No row per computer for Antigravity's own login yet."),

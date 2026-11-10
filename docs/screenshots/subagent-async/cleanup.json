@@ -1,0 +1,16 @@
+{
+  "namespaceAudit": "net:[4026533351]",
+  "case": "final-browser",
+  "head": "b5ca6823aa772bc0f56479eb2b6d7c29eab4435a",
+  "commandScript": "scripts/manual/subagent-row/async-accept.mts",
+  "extras": {
+    "AUDIT_NAMESPACE": "1"
+  },
+  "exitCode": 0,
+  "trackedPids": 38,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/b3qa-uvn1kuuy",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794281363.455302,
+  "ownedTempRemoved": true
+}

@@ -23,6 +23,7 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+  "host_cli.install_confirm": "Install {0} on the AgEnD host",
     "logs.capped_tail": "Capped at {0} lines; only the recent log tail is available here.",
     "config.general_missing": "no general_topic instance for connection \"{0}\" — messages there outside an agent’s topic have no dispatcher (in Settings → Agents, open an agent’s settings → Advanced, enable General topic (fleet dispatcher), and select this connection)",
   "general_location.offline": "General’s Windows PC is offline. AgEnD is still running here. Reconnect that PC, or switch General back to this host in Settings. Pending or uncertain requests will not be sent again automatically.",
@@ -174,6 +175,12 @@ const enMessages = {
     // #3008: connections from outside (a web-only fleet's Notices; the leader's approved wording, cid-alpha3-design).
     "outside.notice_signed_in": "Signed in from outside: {0}.",
     "outside.notice_paused": "Sign-in from outside is paused for {0} after {1} wrong codes.",
+    // #3486: a new browser signs in with an admin's own authenticator code.
+    "signin.totp_notice_signed_in": "🔐 {0} signed in from a new browser with their authenticator code ({1}, {2}). If this was not them, they can sign it out in Settings → Access & security, and remove or replace their authenticator app.",
+    "signin.totp_notice_paused": "🔐 Signing in with authenticator codes is paused for {0} after wrong codes. If this was not you, someone may be guessing codes. New devices are held; devices you have already signed in from are usually not affected.",
+    "signin.totp_notice_attempts": "🔐 Someone keeps trying to sign in with wrong authenticator codes. If this was not you, someone may be guessing codes; the sign-in will pause if it goes on.",
+    "signin.totp_where_direct": "direct connection",
+    "signin.totp_where_link": "through the public link",
     "outside.notice_ended": "The outside link has ended ({0}). Turn it on again on the AgEnD computer, in Settings → Access & security.",
     "outside.reason_expired": "its time ran out",
     "outside.reason_failed": "it could not be reopened",
@@ -355,6 +362,8 @@ const enMessages = {
     "hub.membership.disable": "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
     "hub.retention.events": "Hub event records: keep {0} days",
     "hub.retention.purge": "Shorter periods can permanently remove older records at the next daily cleanup.",
+    "runtime_cli.install": "Install {0} {1} on the paired Windows computer {2}: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it.",
+    "host_cli.update": "Update {0} on the AgEnD computer to {1}, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run.",
     "hub.run.start": "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume.",
     "hub.run.stop": "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted.",
     "hub.preview.on": "Serve HTML previews on this Hub at port {0}.",
@@ -799,6 +808,7 @@ const enMessages = {
     "update.progress.already_current": "✅ Already up to date — v{0} ({1}s)",
     "update.progress.failed": "❌ Update failed during {0}: {1} ({2}s)",
     "update.failure.shell": "AgEnD could not finish the update automatically. Manual repair is not available here.",
+    "update.failure.network": "Could not reach the update source, so nothing was changed and the current version keeps running. Try again once the network is back.",
     "update.failure.installed": "/update cannot verify the installed AgEnD ({0}).",
     "update.failure.independent": "/update cannot prepare an independent updater ({0}).",
     "update.failure.summary": "/update could not complete ({0}).",
@@ -885,7 +895,7 @@ const enMessages = {
     "login.confirm_posted": "⚠️ The account is still connected — confirmation buttons posted.",
     "login.still_valid_precommand": "⚠️ {0} authentication currently works. Re-login runs `{1}` first, so every running {0} instance loses its sign-in until the new login completes (they restart automatically). Continue?",
     "login.web_dashboard_notice": "🔐 A sign-in to {0} was started from the web dashboard ({1}, session {2}).",
-    "login.web_dashboard_not_installed": "{0} is not installed on this computer. This page cannot install a local CLI.",
+    "login.web_dashboard_not_installed": "{0} is not installed on this computer. Press Install on its row in Settings → Agents → AI accounts and API keys, then connect an AI account.",
     "login.web_started": "🔐 {0} login started in a browser terminal. The link is posted here; the access token is sent to you privately — you need both.",
     "login.web_listener_failed": "the browser terminal listener stopped; run /login again. If it repeats, check fleet.log and the host's available resources",
     "login.web_listener_start_failed": "The browser terminal could not listen ({0}). Check web_terminal.bind is an address on this machine and the host allows a listening port, then run /login again.",
@@ -1648,6 +1658,7 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+  "host_cli.install_confirm": "在 AgEnD 主機上安裝 {0}",
     "logs.capped_tail": "最多顯示 {0} 行；這裡僅提供最近的日誌末段。",
     "config.general_missing": "連線「{0}」沒有 general_topic Agent，因此不在 Agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 Agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
   "general_location.offline": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。待處理或結果不明的請求不會自動重送。",
@@ -1797,6 +1808,12 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "web_auth.refusal_outside_sign_in": "它是從外面登入的，而從外面連線現在已關閉或授權已結束（請用新的 6 位數驗證碼重新登入）。",
     "outside.notice_signed_in": "有人從外面登入：{0}。",
     "outside.notice_paused": "從外面登入連錯 {1} 次，已暫停 {0}。",
+    // #3486：新瀏覽器用管理員自己的驗證器驗證碼登入。
+    "signin.totp_notice_signed_in": "🔐 {0} 用驗證器驗證碼從新的瀏覽器登入（{1}，{2}）。如果不是本人，請本人到「設定 → 存取與安全」登出該裝置，並移除或更換驗證器。",
+    "signin.totp_notice_paused": "🔐 用驗證器驗證碼登入連續輸錯，已暫停 {0}。如果不是你，可能有人在猜驗證碼。新裝置被擋；已登入過的裝置通常不受影響。",
+    "signin.totp_notice_attempts": "🔐 有人一直用錯誤的驗證器驗證碼嘗試登入。如果不是你，可能有人在猜驗證碼；再繼續下去登入會被暫停。",
+    "signin.totp_where_direct": "直接連線",
+    "signin.totp_where_link": "公開連結",
     "outside.notice_ended": "從外面連線的連結已結束（{0}）。請在 AgEnD 電腦上，到「設定 → 存取與安全」重新開啟。",
     "outside.reason_expired": "時間已到",
     "outside.reason_failed": "無法重新開啟",
@@ -1977,6 +1994,8 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "hub.membership.disable": "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
     "hub.retention.events": "Hub 事件紀錄：保留 {0} 天",
     "hub.retention.purge": "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。",
+    "runtime_cli.install": "在已配對的 Windows 電腦 {2} 上安裝 {0} {1}：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
+    "host_cli.update": "在 AgEnD 這台電腦上把 {0} 更新到 {1}（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。",
     "hub.run.start": "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。",
     "hub.run.stop": "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
     "hub.preview.on": "在這個 Hub 的連接埠 {0} 提供 HTML 預覽。",
@@ -2421,6 +2440,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "update.progress.already_current": "✅ 已是最新版本 — v{0} ({1}s)",
     "update.progress.failed": "❌ 更新在「{0}」階段失敗：{1} ({2}s)",
     "update.failure.shell": "AgEnD 無法自動完成更新。這裡尚無手動修復功能。",
+    "update.failure.network": "連不上更新來源，沒有做任何變更，目前的版本仍在執行。網路恢復後再試一次。",
     "update.failure.installed": "/update 無法驗證已安裝的 AgEnD（{0}）。",
     "update.failure.independent": "/update 無法準備獨立的更新程序（{0}）。",
     "update.failure.summary": "/update 未完成（{0}）。",
@@ -2507,7 +2527,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "login.confirm_posted": "⚠️ 帳號仍是連接狀態——已送出確認按鈕。",
     "login.still_valid_precommand": "⚠️ {0} 目前的登入仍有效。重新登入會先執行 `{1}`，所有執行中的 {0} instance 會暫時失去登入，直到新登入完成（會自動重啟）。繼續？",
     "login.web_dashboard_notice": "🔐 已從網頁主控台啟動 {0} 的登入（{1}，session {2}）。",
-    "login.web_dashboard_not_installed": "這台電腦還沒安裝 {0}。這個頁面無法安裝本機 CLI。",
+    "login.web_dashboard_not_installed": "這台電腦還沒安裝 {0}。請先在「設定 → Agents → AI 帳號與 API 金鑰」該列按「安裝」，再連接 AI 帳號。",
     "login.web_started": "🔐 已在瀏覽器終端啟動 {0} 登入。連結發在這裡；存取 token 會私訊給你 —— 兩者都需要。",
     "login.web_listener_failed": "瀏覽器終端的監聽服務已停止；請重新執行 /login。若持續發生，請檢查 fleet.log 與主機可用資源",
     "login.web_listener_start_failed": "瀏覽器終端無法監聽（{0}）。請確認 web_terminal.bind 是本機擁有的位址，且主機允許監聽連接埠，再重新執行 /login。",

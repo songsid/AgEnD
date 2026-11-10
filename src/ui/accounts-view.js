@@ -27,6 +27,12 @@ import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
 import { machineSignInStore, openMachineSignIn } from "./machine-signin.js";   // #3190 Part 3c
 import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
+// AGEND-133 (#3521). AGEND-144 (Prism on #3539, P2-5): `VersionLine` is new in #3539's host-install.js. A static named import of it fails to LINK against a retained older host-install.js (a tab or
+// cache that still holds #3536's module: "does not provide an export named 'VersionLine'") and takes the whole page with it. A namespace import links with either; the names both modules
+// have are read as before, and a copy of host-install.js without the version line simply shows no version line (the Install button and the run are all it ever had).
+import * as hostInstall from "./host-install.js";
+const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } = hostInstall;
+const VersionLine = typeof hostInstall.VersionLine === "function" ? hostInstall.VersionLine : () => null;
 
 register("accounts", {
   en: {
@@ -113,7 +119,8 @@ export function listenAccountsEvent() {
   if (accountsEventOff) return;
   const on = appStore.get().streamOn;
   if (typeof on !== "function") return;
-  accountsEventOff = on("backend_login", () => { if (accountsStore.get().loaded) void refreshAccounts({ fresh: true }); }) || (() => {});
+  // AGEND-133: the same event moves a dashboard install (started, ended): its run is read again with the accounts, on this one listener.
+  accountsEventOff = on("backend_login", () => { if (accountsStore.get().loaded) { void refreshAccounts({ fresh: true }); void refreshHostInstall(); } }) || (() => {});
 }
 let reading = null, started = 0, applied = 0;
 /**
@@ -211,13 +218,15 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const interaction = useRef(0);
   const begin = (fn) => (...a) => { interaction.current++; fn(...a); };
   // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
-  useEffect(() => { linkAccountsCss(); listenAccountsEvent(); void refreshAccounts(); void refreshSignIn(); }, []);
+  useEffect(() => { linkAccountsCss(); listenAccountsEvent(); void refreshAccounts(); void refreshSignIn(); void refreshHostInstall(); }, []);
   // A sign-in that ends may be another account now: read again.
-  const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}:${machineLogin.phase || ""}`;
+  const install = useStore(hostInstallStore);
+  const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}:${machineLogin.phase || ""}:${(install.run && install.run.phase) || ""}`;
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
   const active = structured && structured.login;
   const machineActive = !!machineLogin.phase && machineLogin.phase !== "done" && !(machineLogin.phase === "failed" && machineLogin.reason);
-  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) || machineActive);
+  // AGEND-133: the host's login window is one — an install running holds Sign in, and a sign-in running holds Install.
+  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) || machineActive || installRunning(install));
   if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
@@ -290,6 +299,13 @@ function Card({ cli, running, openAgent, onMove, stageDefault, onAdd, onRemove, 
   const machines = new Map();
   for (const r of cli.rows) if (r.scope && r.scope.kind === "machine") { const k = r.scope.id; if (!machines.has(k)) machines.set(k, { scope: r.scope, rows: [] }); machines.get(k).rows.push(r); }
   const signedIn = host.filter((r) => r.profile && r.state !== "not_signed_in");
+  // AGEND-133: a CLI with no account card of its own (OpenCode) is listed only to be installed: its state, Install, and the install's progress and verdict.
+  if (cli.installOnly) {
+    const row = host[0];
+    return html`<div class="card s-account-card s-account-install-only" data-backend=${cli.backend}>
+      <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong></div>
+      <div class="s-account-rows"><${InstallOnlyRow} row=${row} running=${running} /></div></div>`;
+  }
   return html`<div class="card s-account-card" data-backend=${cli.backend}>
     <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong>
       ${cli.profiles && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" onClick=${() => onAdd()}>${manageWords.add()}</button>` : null}</div>
@@ -303,6 +319,23 @@ function Card({ cli, running, openAgent, onMove, stageDefault, onAdd, onRemove, 
         ${signedIn.map((r) => html`<option value=${r.profile}>${r.profile}</option>`)}
         ${cli.fleetDefault && !signedIn.some((r) => r.profile === cli.fleetDefault) ? html`<option value=${cli.fleetDefault}>${cli.fleetDefault}</option>` : null}
       </select><small class="note">${tx("fleetDefaultHint")}</small></label>` : null}
+  </div>`;
+}
+
+/** AGEND-133: the row of a CLI that has no sign-in to show (OpenCode): not installed → Install; the install's progress and verdict under it. */
+function InstallOnlyRow({ row, running }) {
+  const state = useStore(hostInstallStore);
+  const run = runFor(state, row.backend);
+  const installingNow = !!run && run.phase === "running";
+  const canInstall = row.state === "not_installed" && !!row.install;
+  return html`<div class="s-row s-account-row" data-account="default">
+    <div class="s-account-title-bar">
+      <div class="s-account-title-left"><span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(run.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span></div>
+      <span class="s-actions">${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}</span>
+    </div>
+    ${canInstall && !run ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
+    <${VersionLine} row=${row} label=${cliLabel(row.backend)} blocked=${running} />
+    <${HostInstallRun} backend=${row.backend} label=${cliLabel(row.backend)} />
   </div>`;
 }
 
@@ -342,6 +375,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   const manageable = !machine || (row.signIn && !!row.profile);
   const canSignOut = manageable && typeof onSignOut === "function" && row.state === "usable" && SIGN_OUT_CLIS.has(row.backend);
   const who = identityText(row.identity);
+  // AGEND-133 (#3521): a CLI that is not installed on the host gets Install on its default row (the server looks up the command; the page sends the CLI's id).
+  const canInstall = !machine && !row.profile && row.state === "not_installed" && !!row.install;
+  const installState = useStore(hostInstallStore);
+  const installRun = !machine && !row.profile ? runFor(installState, row.backend) : null;
+  const installingNow = !!installRun && installRun.phase === "running";
   // The week's usage and the short window's (the "5h"), as the server gives them; a CLI that reports one shows one.
   const windows = [row.shortUsage ? ["short", row.shortUsage] : null, row.usage ? ["weekly", row.usage] : null].filter(Boolean);
   const stale = windows.some(([, w]) => w.stale);
@@ -350,11 +388,12 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
-        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${tx(`state_${row.state || "unknown"}`)}</span>
+        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span>
         ${row.usedBy.fleetDefault && cli.profiles ? html`<span class="tag s-account-default-tag">${machine ? tx("machineDefaultTag") : tx("fleetDefaultTag")}</span>` : null}</div>
       ${readOnly ? null : html`<span class="s-actions">
+        ${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}
         ${row.signIn && typeof onSignIn === "function" ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}), ...(machine ? { machine } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
-        ${!machine && cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
+        ${!machine && cli.profiles && row.state !== "not_signed_in" && row.state !== "not_installed" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
         ${canSignOut && !machine && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
         ${canSignOut ? html`<button type="button" class="btn btn-sm btn-ghost s-account-signout" disabled=${running} onClick=${() => onSignOut(row, "signout")}>${manageWords.signOut()}</button>` : null}
         ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
@@ -370,8 +409,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
       ${stale ? html`<small class="s-usage-stale">${tx("winStale")}</small>` : null}
     </div>` : null}
     ${why ? html`<p class="note s-account-why">${why}</p>` : null}
+    ${canInstall && !installRun ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
+    ${!machine && !row.profile && !readOnly ? html`<${VersionLine} row=${row} label=${cliLabel(row.backend)} blocked=${running} />` : null}
+    ${!machine && !row.profile ? html`<${HostInstallRun} backend=${row.backend} label=${cliLabel(row.backend)} />` : null}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${machine ? tx("machineCommand") : tx("hostCommand")}</summary><p class="note">${machine ? tx("machineCommandHint", machine.name) : tx("hostCommandHint")}</p>${machine ? html`<p class="s-host-cli-command"><code>${row.hostCommand}</code></p>` : null}</details>` : null}
-    ${!readOnly && row.keepAlive && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}
+    ${!readOnly && row.keepAlive && row.state !== "not_installed" && (!row.scope || row.scope.kind === "host") ? html`<${KeepAliveControl} row=${row} onSaved=${() => refreshAccounts({ fresh: true })} />` : null}
   </div>`;
 }
 

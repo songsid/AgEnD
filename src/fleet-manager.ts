@@ -321,7 +321,7 @@ import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permis
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
-import { LoginSession } from "./login-manager.js";
+import { LoginSession, type LoginSessionEvents } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
@@ -339,6 +339,8 @@ import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } 
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
+import { WebHostInstalls, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
+import { cliUpdateView, versionOf } from "./cli-audited.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { BrowserBackendSignIns } from "./browser-backend-signins.js";
@@ -402,13 +404,14 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
-import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
-import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
+import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.js";
+import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -3428,7 +3431,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
-        return { localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+        return { requester: { handle: record.handle, label: record.label }, localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
           localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
@@ -3438,6 +3441,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       remote: req => this.settingsPageIsRemote(req),
       directCreationPolicy: req => this.settingsDirectCreationAllowed(req),
       directAgentCreation: true,
+      directHostInstall: true,
       directCompanyJoin: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
@@ -18733,6 +18737,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the outside switch, a wait in force and the link — its address only to this computer.
    */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; manage: boolean; codeNeeded: boolean; strict: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
+    /** #3486: what THIS admin types as the name at a new browser's authenticator sign-in (their own, never anyone else's); null: a web-only fleet needs none, or no app yet. */
+    signinName: string | null;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
     const store = this.webRemoteAccess();
     const manager = this.authenticatorOwner(req);
@@ -18741,7 +18747,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
     const mine = !!open && isOutsideLinkOwner(open.owner);
     const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
-    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
+    const signinName = manager && manager.who !== HOST_ADMIN_KEY && status?.enrolled
+      ? this.signinHandleOf({ adapterId: manager.actor.adapter_id, userId: manager.actor.user_id }) ?? manager.actor.user_id : null;
+    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null, signinName,
       manage: !!manager, codeNeeded: !!manager && !!store && this.authenticatorCodeAsked(manager, store), strict: !!status?.strict,
       outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
       link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
@@ -18950,29 +18958,105 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #3008 (auth-api POST /auth/totp): a sign-in through the outside link with the authenticator's code. "ok": the caller
-   * makes the session (SessionRecord.remote) and then calls authorizeOutsideSession. Each wrong code counts; a wait that
-   * starts is a Notice; a code that matches a step just outside the window logs how far this clock seems to be off.
+   * #3486 (per admin; auth-api POST /auth/totp): a browser that is not signed in yet signs in as ONE admin, with
+   * the code of THAT admin's own authenticator — the same per-admin app their confirmations use. Who is not found by trying the code
+   * against everyone: the person types a name (`account`), which resolves — among the admins that have an app and are still admins —
+   * to at most one; the page lists nobody. A name that resolves to nobody (no such name, an admin with no app, a name two admins
+   * share, one no longer an admin) is answered exactly as a wrong code is, after the same work and the same counting (store.signIn).
+   * A web-only fleet has one admin (the host operator): its one app, no name needed.
+   *
+   * Where it works: a direct connection (LAN, tailnet, the owner's own proxy — and this computer's own browser) on any fleet; on a
+   * chat fleet also a public link (TOTP_SIGNIN_OVER_PUBLIC_LINK, the one switch that takes that back); on a web-only fleet a link
+   * only as before (#3008): the one "Allow connections from outside" opened. "Only this computer can authorize" closes all of it.
+   * What it makes: a chat admin's session is that account's own (owner), exactly as a sign-in code from the chat makes it; a web-only
+   * fleet's is that fleet's admin session (and over the outside link the #3008 `remote` one, authorized as before). No authority beyond
+   * that: no "Authorize this browser", nothing an agent would take as a go-ahead. Every success tells every admin (a Notice).
    */
-  outsideSignIn(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" } {
-    const link = this.outsideLink(), store = this.webRemoteAccess();
-    if (!link || !store || !exposureId || link.exposureId !== exposureId) return { kind: "closed" };
-    const v = store.verify(code);
-    if (v.kind === "ok") return { kind: "ok" };
-    if (v.kind === "paused") return v;
-    if (v.kind === "not_enrolled") return { kind: "closed" };
+  totpSignIn(input: { exposureId: string | undefined; peer: WebPeer; account: string | undefined; code: string; browser: { id: string; address: string | undefined }; knownCookie: string | undefined }): TotpSignInResult {
+    const store = this.webRemoteAccess(), webOnly = this.isWebOnlyFleet(), { exposureId, peer } = input;
+    if (!store || !this.webToken || !this.totpSignInOpen(exposureId, peer)) return { kind: "closed" };
+    const { who, ident } = this.resolveSignInAdmin(store, webOnly, input.account);
+    const enrollment = who ? store.enrollmentOf(who) : null;
+    const epoch = this.webAuthorityState().epoch, now = Date.now();
+    // This browser: its cookie id, and on a direct connection the address too (over a link the gateway's peer is the tunnel, so the cookie alone).
+    // A browser with a valid mark is counted by the MARK (a thief cannot shed it by dropping the cookie id), else by cookie id and address.
+    const mark = findSigninKnownEntry(this.webToken, input.knownCookie, who, enrollment, epoch, now);
+    const browser = mark ? { key: createHash("sha256").update(`agend-signin-mark\0${mark}`).digest("hex"), known: true }
+      : { key: createHash("sha256").update(`agend-signin-browser\0${input.browser.id}\0${input.browser.address ?? "link"}`).digest("hex"), known: false };
+    const v = store.signIn(who, ident, input.code, browser);
     if (v.kind === "unavailable") return v;
-    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
-    if (v.paused) {
-      this.logger.warn({ waitMs: v.retryAfterMs }, "Sign-in from outside paused after wrong codes");
-      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
-      return { kind: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind !== "ok") {
+      // Half-way through a real admin's count, or the whole sign-in's: said once per cycle — nothing of the code or the name typed in it.
+      if (v.began.halfFleet || v.began.halfAdmin) this.postFleetSecurityNotice(t("signin.totp_notice_attempts"));
+      // A shared wait that starts is said to the admins when it is the whole sign-in's or a real admin's — never for a name that is nobody's (a flood of those must not be a flood of Notices).
+      if (v.began.fleet || v.began.admin) {
+        this.logger.warn({ fleet: v.began.fleet }, "Sign-in with authenticator codes paused after wrong codes");
+        this.postFleetSecurityNotice(t("signin.totp_notice_paused", outsideDuration(v.began.waitMs)));
+      }
+      if (v.kind === "paused") return { kind: "paused", retryAfterMs: v.retryAfterMs };
+      if (v.skewSteps !== undefined) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+      this.logger.debug("Sign-in with an authenticator code refused");
+      return { kind: "wrong" };
     }
-    return { kind: "wrong" };
+    if (!who || !enrollment) return { kind: "wrong" };
+    const actor = who === HOST_ADMIN_KEY ? null : (() => { const [adapterId, userId] = who.split("\u0000"); return adapterId && userId ? { adapterId, userId } : null; })();
+    if (!actor && who !== HOST_ADMIN_KEY) return { kind: "wrong" };
+    const outside = webOnly && exposureId !== undefined;
+    return {
+      kind: "ok",
+      knownCookie: addSigninKnownDevice(this.webToken, input.knownCookie, who, enrollment, epoch, now),
+      session: outside ? { remote: "totp" } : actor ? { owner: actor } : {},
+      // Asked again as the session is made: the same app, still an admin, still allowed here.
+      commit: (record, label) => {
+        if (!this.totpSignInOpen(exposureId, peer) || store.enrollmentOf(who) !== enrollment) return false;
+        if (actor ? this.adminGate(actor.userId, actor.adapterId) !== "ok" : !webOnly) return false;
+        if (outside) return this.authorizeOutsideSession(record, peer, label);
+        const name = actor ? this.webPerson({ adapterId: actor.adapterId, userId: actor.userId }).name : t("settings_confirm.host_operator_label");
+        this.logger.info({ handle: record.handle, surface: record.surface }, "Web sign-in with an admin's authenticator code");
+        this.postFleetSecurityNotice(t("signin.totp_notice_signed_in", name, label, t(exposureId === undefined ? "signin.totp_where_direct" : "signin.totp_where_link")));
+        return true;
+      },
+    };
+  }
+  /** The platform handle (Discord / Telegram user name) an account last signed in to the web with, exactly as the platform gave it; undefined when none is known. */
+  private signinHandleOf(owner: { adapterId: string; userId: string }): string | undefined {
+    const handle = this.webPrefs.profile(webPersonKey(owner))?.platformName;
+    return typeof handle === "string" && handle ? handle : undefined;
+  }
+  /** Where the new-device authenticator sign-in is open: the owner's knobs and the link rules in one place (asked again as the session is made). */
+  private totpSignInOpen(exposureId: string | undefined, peer: WebPeer): boolean {
+    // "Only this computer can authorize" closes this too: only this computer's own browser, never a link.
+    if (this.webAuthorityState().loopbackOnly && (exposureId !== undefined || peer !== "loopback")) return false;
+    if (exposureId === undefined) return true;
+    if (this.isWebOnlyFleet()) return this.outsideLink()?.exposureId === exposureId;
+    return TOTP_SIGNIN_OVER_PUBLIC_LINK && this.publicWebLink?.openSignin()?.exposureId === exposureId;
+  }
+  /**
+   * The admin a typed name stands for, among the chat admins that have an authenticator AND are still admins of their connection: by
+   * the platform user name they sign in with (Discord / Telegram handle, no "@", any case), their user id, or `connection:id`. Exactly
+   * one: a name two of them answer to is nobody's here (they use `connection:id`). The loop never stops early, so it takes as long
+   * for a name that is nobody's. `ident` is the normalized text, for the limiter.
+   */
+  private resolveSignInAdmin(store: WebRemoteAccess, webOnly: boolean, account: string | undefined): { who: string | null; ident: string } {
+    // A web-only fleet has one admin and one app: no name to give, nothing to tell apart.
+    if (webOnly) return { who: store.isEnrolled(HOST_ADMIN_KEY) ? HOST_ADMIN_KEY : null, ident: "host" };
+    const norm = (v: unknown): string => (typeof v === "string" ? v.normalize("NFKC").trim().replace(/^@+/, "").toLowerCase().slice(0, 128) : "");
+    const ident = norm(account), found: string[] = [];
+    for (const key of store.adminKeys) {
+      const [adapterId, userId] = key.split("\u0000");
+      if (!adapterId || !userId) continue;
+      let platformName = "";
+      try { platformName = norm(this.signinHandleOf({ adapterId, userId })); } catch { /* no handle known: the id still works */ }
+      const answers = [norm(userId), norm(`${adapterId}:${userId}`), platformName].includes(ident) && ident !== "";
+      // Asked of every key, whether or not the name matches it: a name that belongs to a record does no more work than one that belongs to nobody.
+      const admin = this.adminGate(userId, adapterId) === "ok";
+      if (answers && admin) found.push(key);
+    }
+    return { who: found.length === 1 ? found[0]! : null, ident };
   }
 
   /**
-   * #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. False: it
+   * #3008: a session just made by totpSignIn's "ok" over the outside link is this computer's admin for its authorization's life. False: it
    * could not be admitted (its handle not saved, #3015 review r3) — the caller ends it.
    */
   authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): boolean {
@@ -21051,7 +21135,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
+      versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)) });
   }
 
   /**
@@ -21993,11 +22078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // machine — an install is a login flow with no auth hints): run the
   // installer, judge by exit code, verify the binary on a fresh login shell,
   // then sign in (the hand-off below).
-  private activeInstall: {
-    session: LoginSession;
-    backend: string;
-    chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
-  } | null = null;
+  private activeInstall: { session: LoginSession; backend: string } | null = null;
   /** M-2281: how long `/login`'s install window may run (a field so a smoke can shorten it). */
   installTimeoutMs = INSTALL_TIMEOUT_MS;
   /** An install that succeeded, between its success line and the sign-in it hands over to (#1131). */
@@ -22016,35 +22097,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claim && await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return t("install.already", backend, info.binary); }
     if (!claim) return this.loginWindow.busyMessage();
 
-    let tmux: TmuxManager;
-    try {
-      const sessionName = getTmuxSession();
-      await TmuxManager.ensureSession(sessionName);
-      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return t("login.web_shutting_down"); }
-      tmux = new TmuxManager(sessionName, "");
-    } catch (err) {
-      this.loginWindow.release(claim);
-      return t("install.failed", backend, (err as Error).message);
-    }
-    // A synthetic flow: success is decided by the installer's exit code
-    // (LoginSession treats a clean exit as success), never by pane text. The
-    // session only judges that verdict; it does not read the output for URLs or prompts.
-    // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
-    // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
-    const shell = (await loginShell()) ?? null;
-    if (!this.loginWindow.isCurrent(claim)) {
-      this.loginWindow.release(claim);
-      return t("login.web_shutting_down");
-    }
-    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
-    const exitMarker = installExitMarker();
-    const flow: LoginFlow = {
-      backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
-      exitMarker,
-      successPattern: /$^/,
-      timeoutMs: this.installTimeoutMs,
-    };
     // M-2281: the installer's output, live, in the chat that asked — no page shows this window.
     // Telegram gets its own <pre> (its markdown conversion keeps a fence as literal backticks); others a fenced block.
     const frameStyle = chat.adapter.type === "telegram" ? "html" as const : "markdown" as const;
@@ -22054,7 +22106,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warn: (message, err) => this.logger.debug({ backend, err: (err as Error)?.message ?? String(err) }, message),
     }, t("install.stream_running", backend), undefined, undefined, frameStyle);
     const minutes = String(Math.max(1, Math.round(this.installTimeoutMs / 60_000)));
-    const session = new LoginSession(flow, tmux, {
+    const opened = await this.openInstallWindow(backend, info, claim, {
       onProgress: pane => stream.update(pane),
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22086,7 +22138,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // fresh login shell sees that, the fleet process's PATH may not.
         // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
         // then the installer's own directories through backend-availability's check (a killable child tests each one).
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
+        const installedAt = await this.locateInstalledCli(backend, info.binary);
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -22130,29 +22182,169 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             .catch(err => this.logger.warn({ err, backend }, "Could not post the sign-in step after an install"));
         }
       },
-    }, this.logger);
+    });
+    if ("failure" in opened) {
+      if (opened.failure === "shutting_down") return t("login.web_shutting_down");
+      if (opened.failure === "cancelled") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      const text = t("install.failed", backend, opened.message);
+      return opened.cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
+    }
+    return t("install.started", backend);
+  }
 
-    this.activeInstall = { session, backend, chat };
+  /**
+   * The install window itself, for `/login`'s chat install and the dashboard's Install button alike (AGEND-133): a tmux window running the registry's
+   * command through `unattendedInstallCommand` (no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL), judged by the installer's
+   * own exit code. The caller holds `claim` (taken before its first await) and gets it released here on every failure; once the session is running,
+   * `events.onDone` owns the release. `activeInstall` is set while it runs, so `/login cancel`, the dashboard's Cancel and a fleet stop all reach it.
+   */
+  private async openInstallWindow(backend: string, info: { install: string; unattended?: string }, claim: import("./login-window-lock.js").LoginWindowClaim,
+    events: LoginSessionEvents, execution?: SettingsExecution): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
+    let tmux: TmuxManager;
     try {
-      await session.start();
+      const sessionName = getTmuxSession();
+      await TmuxManager.ensureSession(sessionName);
+      execution?.assert();
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { failure: "shutting_down" }; }
+      tmux = new TmuxManager(sessionName, "");
+    } catch (err) {
+      this.loginWindow.release(claim);
+      return { failure: "start", message: (err as Error).message, cleanupFailed: false };
+    }
+    // A synthetic flow: success is decided by the installer's exit code
+    // (LoginSession treats a clean exit as success), never by pane text. The
+    // session only judges that verdict; it does not read the output for URLs or prompts.
+    // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
+    // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim) || (execution && !execution.current())) {
+      this.loginWindow.release(claim);
+      return { failure: "shutting_down" };
+    }
+    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
+    const exitMarker = installExitMarker();
+    const flow: LoginFlow = {
+      backend,
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
+      exitMarker,
+      successPattern: /$^/,
+      timeoutMs: this.installTimeoutMs,
+    };
+    const session = new LoginSession(flow, tmux, events, this.logger);
+    this.activeInstall = { session, backend };
+    try {
+      // Admission ends at the actual tmux command dispatch, after its own asynchronous preparation.
+      if (execution) await session.start(() => execution.complete());
+      else await session.start();
     } catch (err) {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      const text = t("install.failed", backend, (err as Error).message);
-      return (err as { cleanupFailed?: boolean }).cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
+      return { failure: "start", message: (err as Error).message, cleanupFailed: !!(err as { cleanupFailed?: boolean }).cleanupFailed };
     }
     if (session.state === "done") {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      return { failure: "cancelled" };
     }
     if (!this.loginWindow.isCurrent(claim)) {
       await session.cancel("cancelled").catch(() => { /* already finished */ });
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      return t("login.web_shutting_down");
+      return { failure: "shutting_down" };
     }
-    return t("install.started", backend);
+    return { session };
+  }
+
+  /** AGEND-133: the dashboard's Install button — what the Accounts page asks of `/login`'s install, with no chat to report in. */
+  private webHostInstallsInstance: WebHostInstalls | null = null;
+  get webHostInstalls(): WebHostInstalls {
+    this.webHostInstallsInstance ??= new WebHostInstalls({
+      isLocalAdmin: handle => this.isLocalAdminSession(handle),
+      installable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend],
+      updatable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend] && !!hostUpdatePlan(backend),
+      start: (backend, reporter, execution, mode) => this.startWebInstall(backend, reporter, execution, mode),
+      cancel: async () => { if (!this.activeInstall) return false; await this.cancelInstallSession(); return true; },
+      // No details in the event: each page reads GET /ui/host-install. The Accounts list reads itself again on the same event (the CLI is installed now).
+      changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+    });
+    return this.webHostInstallsInstance;
+  }
+
+  /**
+   * AGEND-133: install a CLI for the dashboard. Only the CLI's id arrives (the caller validated it against the registry's table); the command is
+   * `info.unattended ?? info.install` read here, the window and its judgement are `/login`'s (openInstallWindow). The verdict is then checked the way chat's
+   * is — a fresh login shell, else the installer's own directories — and the availability probe reads the version for the page. Everything is
+   * reported through `reporter`; nothing is posted to any chat, and no sign-in is started (the page offers Sign in itself).
+   */
+  async startWebInstall(backendArg: string, reporter: HostInstallReporter, execution?: SettingsExecution, mode: HostInstallMode = "install"): Promise<HostInstallStart> {
+    execution?.assert();
+    const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    const base = BACKEND_INSTALLATION_INFO[backend];
+    if (!base || isRemovedBackend(backend)) return { refused: "unsupported" };
+    // AGEND-136: an update runs the registry's `host.update` command with the audited release in it (hostUpdatePlan); the window, its judgement and its release are the install's.
+    const plan = mode === "update" ? hostUpdatePlan(backend) : null;
+    if (mode === "update" && !plan) return { refused: "unsupported" };
+    const info = plan ? { install: plan.command } : base;
+    // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
+    const claim = this.loginWindow.tryClaim("install", backend);
+    if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
+    // #3542 / AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The confirmed change's own execution (its session, role, confirmation and the settings it was held
+    // against) is asked again after each wait (the binary check, the version refresh), and its admission ends at the tmux command that starts the installer (openInstallWindow → `launch`).
+    const asker = (): boolean => { try { return !execution || execution.current(); } catch { return false; } };
+    const present = await checkBinaryInstalledAsync(base.binary);
+    if (mode === "install" && present) { this.loginWindow.release(claim); return { refused: "already" }; }
+    // An update needs the CLI where the Accounts page found it: on the fleet's PATH, else (a fresh login shell, then) the installer's own directories (~/.grok/bin, ~/.opencode/bin …).
+    if (mode === "update" && !present && !(await this.locateInstalledCli(backend, base.binary).catch(() => null))) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
+    if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
+    let versionBefore: string | null = null;
+    if (plan) {
+      // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
+      // AGEND-144 (Prism on #3539, P2-3): that reading must be FRESH, SUCCESSFUL and of the executable that resolves now. The published row is not enough: a forced refresh keeps the previous
+      // version when the new probe fails for the same path (right for the pickers, which fail open), so a replaced binary whose version cannot be read would still carry the old
+      // number and an update to an older release would be accepted. Unreadable refuses. (The published row is refreshed too, as before, for the pickers and the page.)
+      // AGEND-148 (Prism R3 on #3539, P2-3): the admission's reading comes AFTER the other awaited preparation (the forced refresh publishes a probe of its own), so it is the newest
+      // observation — a version published while this update was being prepared is never discarded for an earlier one.
+      await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
+      versionBefore = fresh?.version ?? null;
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
+      if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
+      if (!fresh) { this.loginWindow.release(claim); return { refused: "version_unreadable" }; }
+      if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
+      try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
+    } else this.recordLoginFlow(backend, "install_only", "web");
+    const opened = await this.openInstallWindow(backend, info, claim, {
+      onProgress: pane => { try { reporter.progress(pane); } catch { /* a view never stops the install */ } },
+      onDone: async ({ ok, detail, cleanupFailed }) => {
+        this.activeInstall = null;
+        this.loginWindow.release(claim);
+        let verified = false, version: string | null = null;
+        if (ok) {
+          // The installer may only have added the binary to a profile PATH; a fresh login shell sees that, the fleet's own PATH may not.
+          const installedAt = await this.locateInstalledCli(backend, base.binary).catch(() => null);
+          if (installedAt) {
+            verified = true;
+            this.adoptBinaryDirectory(installedAt, backend);
+            // The binary probe: the same refresh that makes the pickers know it (#2072) — awaited here, for the version the page shows.
+            await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+            version = this.backendAvailabilityRows().find(row => row.backend === backend)?.version ?? null;
+          }
+        }
+        this.logger.info({ backend, mode, ok, verified, ...(plan ? { to: plan.target } : {}), ...(ok ? {} : { detail }) }, mode === "update" ? "Dashboard update ended" : "Dashboard install ended");
+        try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend) }); } catch { /* a view never stops the install */ }
+      },
+    }, execution);
+    if ("failure" in opened) {
+      if (opened.failure === "shutting_down") return { refused: "shutting_down" };
+      if (opened.failure === "cancelled") return { refused: this.loginWindow.isClosed ? "shutting_down" : "failed", message: "cancelled" };
+      return { refused: "failed", message: opened.message };
+    }
+    return { started: true };
+  }
+
+  /** A fresh login shell's answer for `binary`, else the installer's own directories (see locateBinaryOnLoginShell / locateInstalledBackend). */
+  private async locateInstalledCli(backend: string, binary: string): Promise<string | null> {
+    return (await this.locateBinaryOnLoginShell(binary)) ?? (await this.locateInstalledBackend(backend));
   }
 
   /** Whether this backend's CLI is on the fleet's PATH (what `/login` installs when it is not). */
