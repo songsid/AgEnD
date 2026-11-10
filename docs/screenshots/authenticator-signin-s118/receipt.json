@@ -1,0 +1,237 @@
+{
+  "base": "b394feedc1ce7619a607b0fd114604c8bdd7ebdf",
+  "browser": "156.0.8078.4",
+  "scope": "Presentation-only proposal in actual sign-in shell; auth POSTs refused. Per-admin LAN/chat sign-in is not supplied by #3503. No production source/auth core changed.",
+  "captures": [
+    {
+      "file": "desk-light-zh-TW-primary.png",
+      "sha256": "fe297c02ca96f0163ad51fef97aab30e56ed662cd8618fbc24a1ff46da77bc4a",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 212,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "desk-light-zh-TW-reach.png",
+      "sha256": "dd52c1c1543210e33af46e55167f5948870b706fec8dcace46362c44bb86b9c1",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 112,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "desk-light-zh-TW-fallback.png",
+      "sha256": "762614de869ffdb28adc02a3861bbfef61e8f1ebc7263974e96bc4b870202d8c",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 200,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用驗證器登入",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "desk-light-zh-TW-wrong.png",
+      "sha256": "78a752db7ed3e9bb6dd7bbd3d581b12d231b8f0f6485565374178ab201d6c89d",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 180,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-primary.png",
+      "sha256": "71da06fab3198809f3ba11a5dbd46e1c3ed37e1bdbaaf96a7e415640592c47b9",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 184,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-reach.png",
+      "sha256": "04c5fff79f5094f9559545cab54429a9c60a0829495e8aa449ad48a6d34851f8",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 84,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-fallback.png",
+      "sha256": "612ee7c7eb84b23511900a85589e8f8effddf263272b5ea40be4e84bd04bc1c9",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 172,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用驗證器登入",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-wrong.png",
+      "sha256": "4f8182d9071db5178db0b317c447b23dd878f83080b8c5f5c4c2b0712710c738",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 152,
+        "buttons": [
+          {
+            "text": "登入",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "desk-light-en-primary.png",
+      "sha256": "2c55a606b536ae7af9422258a51d3e823a3ff543be0a4643e1e430ffddf03708",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 188,
+        "buttons": [
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ]
+      }
+    },
+    {
+      "file": "phone-dark-en-primary.png",
+      "sha256": "a27ec946cc7e4652319a8f3c55357ac62bf889c4deb4e00ec1fa3f2b159f17c9",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 160,
+        "buttons": [
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ]
+      }
+    }
+  ]
+}
