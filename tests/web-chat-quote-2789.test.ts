@@ -193,3 +193,57 @@ describe("the composer shows the newest quote", () => {
     expect(field.scrollTop).toBe(900);
   });
 });
+
+// ── M-2813 (Fable's note on #3556): the chat panel's own wiring, mounted — the module's install, its field, its composer
+//    box, its input path into the draft, and its removal with the thread. Each line of that wiring goes red here alone.
+describe("the chat panel's 「引用」 wiring (panel-chat.js, mounted)", () => {
+  it("a passage in a mounted chat: the pill; its click goes through the composer's own input path; a phone's pill sits above the composer box; gone with the thread", async () => {
+    const { page, h, settle } = await import("./helpers/app-harness.js");
+    const p = page({ storage: { agend_tour_done: "1" } });
+    const g = globalThis as any;
+    try {
+      const chat = await import("/ui/js/panel-chat.js") as any;
+      const { createStream } = await import("/assets/app-stream.js") as any;
+      const { applyStatus } = await import("/assets/app-store.js") as any;
+      const real = createStream({ mode: "view" });
+      const on: Record<string, Array<(d: any) => void>> = {};
+      const stream = { ...real, on(n: string, f: any) { (on[n] ||= []).push(f); return real.on(n, f); } };
+      const fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+      const store = chat.boot({ stream, deps: { fetch, toast() {} } });
+      applyStatus({ instances: [{ name: "wq", status: "running", state: "idle", execution_state: "idle" }], uptime: 1 });
+      await p.mount(h(chat.ChatPanel, { route: { instance: "wq" }, navKey: "wq" }));
+      await settle();
+      for (const f of on.message ?? []) f({ instance: "wq", boot: "ab12", id: 1, role: "agent", sender: "wq", text: "first part. second part", ts: "2026-11-10T10:00:00Z" });
+      await settle(); await settle();
+      const doc = p.document as any;
+      let words: any = doc.querySelector('.msg[data-key] .md'); while (words && words.nodeType !== 3) words = words.firstChild;
+      expect(!!words, "the message's words are drawn").toBe(true);
+      let sel: any = { isCollapsed: true, rangeCount: 0, toString: () => "" };
+      doc.getSelection = () => sel;
+      const choose = async (text: string) => {
+        sel = { isCollapsed: false, rangeCount: 1, toString: () => text, removeAllRanges() { sel = { isCollapsed: true, rangeCount: 0, toString: () => "" }; },
+          getRangeAt: () => ({ startContainer: words, endContainer: words, getClientRects: () => [{ left: 100, right: 200, top: 300, bottom: 320, width: 100, height: 20 }] }) };
+        doc.dispatchEvent(new MiniEvent("selectionchange"));
+        await new Promise((r) => setTimeout(r, 200));
+      };
+      // A phone: the pill docks above the composer's whole box (its own rect here), in the gutter.
+      const mm = g.matchMedia; g.matchMedia = (q: string) => ({ matches: /pointer:\s*coarse/.test(q), addEventListener() {}, removeEventListener() {} });
+      doc.querySelector(".composer-box").getBoundingClientRect = () => ({ top: 700, left: 8, right: 382, bottom: 840, width: 374, height: 140 });
+      await choose("second part");
+      const pill = doc.querySelector(".quote-pop");
+      expect([!!pill, pill?.classList.contains("is-phone"), parseFloat(pill?.style.top)]).toEqual([true, true, 700 - 0 - 12]);
+      pill.querySelector("button").click();
+      await settle();
+      const field = doc.getElementById("msgIn");
+      // Through the composer's input path: the field and the store's draft both hold the quote.
+      expect([field.value, store.state.drafts.wq]).toEqual(["> second part\n", "> second part\n"]);
+      g.matchMedia = mm;
+      // Gone with the thread: no listener left behind — even with a composer on the page again (another chat's), the
+      // old thread's selection would otherwise still draw its pill.
+      await p.unmount(); await settle();
+      const again = doc.createElement("textarea"); again.id = "msgIn"; doc.body.append(again);
+      await choose("first part");
+      expect(doc.querySelector(".quote-pop")).toBe(null);
+    } finally { p.restore(); }
+  });
+});
