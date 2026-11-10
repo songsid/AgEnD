@@ -398,7 +398,7 @@ signed in this way is the verified owner, the same as the host operator.
   approve a new device and sign other devices out (maintainer ruling, #3165).
 - Can't: use it on main today — alpha only; set up, re-bind or remove the
   authenticator (each signed-in admin's own, over a direct connection; connections from outside stay this computer's).
-- Also (#3486): a browser that is not signed in yet can sign in as one admin with that admin's own app (`/auth/totp` with a name and the code; `TOTP_SIGNIN_OVER_PUBLIC_LINK`); see SECURITY.md.
+- Also (#3486): a browser that is not signed in yet can sign in as one admin with that admin's own app (`/auth/totp` with the 6-digit code alone — the server works out whose it is; `TOTP_SIGNIN_OVER_PUBLIC_LINK`); see SECURITY.md.
 - Code (alpha branch): `src/auth-api.ts` (`/auth/totp`);
   `src/authority/web-authority.ts`; `src/fleet-manager.ts` (`deviceApprovalOwner`).
 - Refs: #3008, #3165, fleet decision 0471da59.

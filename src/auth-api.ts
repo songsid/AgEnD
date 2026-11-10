@@ -391,8 +391,7 @@ export function handleAuthRequest(
     if (!ctx.totpSignIn) { json(res, 404, { error: "not_found" }); return true; }
     try {
       const page = readFileSync(join(__dirname, "ui", "signin-authenticator.html"), "utf-8");
-      const html = ctx.isWebOnlyFleet?.() === true ? page.replace("<body>", '<body data-web-only="1">') : page;
-      sendPanelHtml(res, withAppIconLinks(html), 200, { "Cache-Control": "no-store" });
+      sendPanelHtml(res, withAppIconLinks(page), 200, { "Cache-Control": "no-store" });
     } catch { json(res, 500, { error: "signin-authenticator.html not found" }); }
     return true;
   }
@@ -411,10 +410,11 @@ export function handleAuthRequest(
   }
 
   // ── POST /auth/totp — a new browser signs in as ONE admin, with the code of that admin's own authenticator (#3486; #3008) ──
-  // Body `{ "code": "123456", "account": "<name>" }`. `account` names the admin (FleetManager.totpSignIn: never listed, never guessed
-  // from the code alone); a web-only fleet has one admin and needs none. Same-origin, JSON, Origin required, as the sign-in code's own
-  // exchange. A direct connection or a link where it is open (the fleet decides; a link it does not allow is a 404 as if the route
-  // were not there); a name that is nobody's, an admin with no app and a wrong code all answer 401 `wrong_code`, alike.
+  // Body `{ "code": "123456" }` — the code alone: the server works out which admin's it is (FleetManager.totpSignIn compares it with
+  // every admin's app; exactly one match signs that admin in). `account` is still accepted (a name, as before) but nothing sends it.
+  // Same-origin, JSON, Origin required, as the sign-in code's own exchange. A direct connection or a link where it is open (the fleet
+  // decides; a link it does not allow is a 404 as if the route were not there); a code that is right for nobody, for an admin who is
+  // no longer one, already used, or right for two apps at once all answer 401 `wrong_code`, alike.
   if (path === "/auth/totp") {
     if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
     if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
@@ -425,7 +425,7 @@ export function handleAuthRequest(
     const peer: WebPeer = gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
     void readJsonBody(req).then(body => {
       if (!body || typeof body.code !== "string" || body.code.length > 32 || (body.account !== undefined && (typeof body.account !== "string" || body.account.length > 256))) {
-        json(res, 400, { error: "expected {\"code\": \"123456\", \"account\": \"name\"}" }); return;
+        json(res, 400, { error: "expected {\"code\": \"123456\"}" }); return;
       }
       if (!isWebRequestCurrent(req) || ctx.webToken !== token) { json(res, 401, { error: "wrong_code" }); return; }
       // This browser's id (for its own wrong-code limit): the one it sent, else a new one handed out with the answer. Never trusted for
