@@ -1,12 +1,13 @@
 {
   "base": "d8dd79910a643f9546cd07045015208aafb42ed6",
   "chrome": "156.0.8078.4",
-  "scope": "Owned scratch real web-only core; before/SKEW routed exact base UI assets; no chat/double-match proof",
+  "scope": "Owned scratch real web-only core; before/SKEW routed exact base UI assets; no chat/uniform-collision proof",
   "checks": {
     "desk-light-en:before:no-script-or-csp-errors": "PASS",
     "desk-light-en-after-primary:no-overflow": "PASS",
     "desk-light-en-after-primary:tap-input-and-top": "PASS",
     "desk-light-en:hint-and-help-contrast": "PASS",
+    "desk-light-en:one-line-fallback": "PASS",
     "desk-light-en:code-only-body": "PASS",
     "desk-light-en-after-wrong:no-overflow": "PASS",
     "desk-light-en-after-wrong:tap-input-and-top": "PASS",
@@ -42,6 +43,7 @@
     "desk-dark-en-after-primary:no-overflow": "PASS",
     "desk-dark-en-after-primary:tap-input-and-top": "PASS",
     "desk-dark-en:hint-and-help-contrast": "PASS",
+    "desk-dark-en:one-line-fallback": "PASS",
     "desk-dark-en:code-only-body": "PASS",
     "desk-dark-en-after-wrong:no-overflow": "PASS",
     "desk-dark-en-after-wrong:tap-input-and-top": "PASS",
@@ -77,9 +79,11 @@
     "phone-light-en-after-primary:no-overflow": "PASS",
     "phone-light-en-after-primary:tap-input-and-top": "PASS",
     "phone-light-en:hint-and-help-contrast": "PASS",
+    "phone-light-en:one-line-fallback": "PASS",
     "phone-light-en:code-only-body": "PASS",
     "phone-light-en-after-wrong:no-overflow": "PASS",
     "phone-light-en-after-wrong:tap-input-and-top": "PASS",
+    "phone-light-en:two-line-401-copy": "PASS",
     "phone-light-en-after-paused:no-overflow": "PASS",
     "phone-light-en-after-paused:tap-input-and-top": "PASS",
     "phone-light-en:disabled-text-contrast": "PASS",
@@ -98,6 +102,7 @@
     "phone-light-zh-TW:code-only-body": "PASS",
     "phone-light-zh-TW-after-wrong:no-overflow": "PASS",
     "phone-light-zh-TW-after-wrong:tap-input-and-top": "PASS",
+    "phone-light-zh-TW:two-line-401-copy": "PASS",
     "phone-light-zh-TW-after-paused:no-overflow": "PASS",
     "phone-light-zh-TW-after-paused:tap-input-and-top": "PASS",
     "phone-light-zh-TW:disabled-text-contrast": "PASS",
@@ -112,9 +117,11 @@
     "phone-dark-en-after-primary:no-overflow": "PASS",
     "phone-dark-en-after-primary:tap-input-and-top": "PASS",
     "phone-dark-en:hint-and-help-contrast": "PASS",
+    "phone-dark-en:one-line-fallback": "PASS",
     "phone-dark-en:code-only-body": "PASS",
     "phone-dark-en-after-wrong:no-overflow": "PASS",
     "phone-dark-en-after-wrong:tap-input-and-top": "PASS",
+    "phone-dark-en:two-line-401-copy": "PASS",
     "phone-dark-en-after-paused:no-overflow": "PASS",
     "phone-dark-en-after-paused:tap-input-and-top": "PASS",
     "phone-dark-en:disabled-text-contrast": "PASS",
@@ -133,6 +140,7 @@
     "phone-dark-zh-TW:code-only-body": "PASS",
     "phone-dark-zh-TW-after-wrong:no-overflow": "PASS",
     "phone-dark-zh-TW-after-wrong:tap-input-and-top": "PASS",
+    "phone-dark-zh-TW:two-line-401-copy": "PASS",
     "phone-dark-zh-TW-after-paused:no-overflow": "PASS",
     "phone-dark-zh-TW-after-paused:tap-input-and-top": "PASS",
     "phone-dark-zh-TW:disabled-text-contrast": "PASS",
@@ -203,14 +211,6 @@
     "phone-dark-zh-TW-skew-old-js-primary.png",
     "phone-dark-zh-TW-skew-old-html-primary.png"
   ],
-  "captureBoundary": "Precommit working-source hashes in PRODUCTION_SHA256SUMS; final original PNGs. Source tree not a released build. Browser driver itself uses __name identity helper for tsx instrumentation only.",
-  "limitations": [
-    "Only real web-only core with account omitted; chat code-only and double-match are NOT RUN pending Junsion core.",
-    "Before is exact base UI HTML/JS/tokens routed to owned current listener, not a separate base daemon.",
-    "SKEW old HTML keeps its centered layout and lacks the new nowrap class; phone zh can split 自動登入. Functional sign-in is verified.",
-    "No real account, live fleet, CLI, model, tunnel, native host or public-link creation."
-  ],
-  "polish": "English helper shortened after original-size inspection so code is not left alone on a second phone line; fresh full matrix recaptured.",
   "sourceFiles": [
     "src/auth-api.ts",
     "src/ui/signin.html",
@@ -218,5 +218,15 @@
     "src/ui/settings-devices.js",
     "src/ui/settings-access-strings.js"
   ],
-  "sourceManifest": "PRODUCTION_SHA256SUMS"
+  "sourceManifest": "PRODUCTION_SHA256SUMS",
+  "captureBoundary": "Precommit working-source hashes in PRODUCTION_SHA256SUMS; final original PNGs. Source tree not a released build. Browser driver itself uses __name identity helper for tsx instrumentation only.",
+  "alignedAlpha": "636328df9",
+  "mergeCommit": "2ab453a78",
+  "limitations": [
+    "Only real web-only core with account omitted; chat code-only and actual collision are NOT RUN pending #3563. Uniform401 presentation is covered by UI tests, not a core-collision claim.",
+    "Before is exact base UI HTML/JS/tokens routed to owned current listener, not a separate base daemon.",
+    "SKEW old HTML keeps its centered layout and lacks the new nowrap class; phone zh can split 自動登入. Functional sign-in is verified.",
+    "No real account, live fleet, CLI, model, tunnel, native host or public-link creation."
+  ],
+  "polish": "Uniform401 next-code/recovery hint with the normal Sign in button; no separate collision state. English error fits one line, 8-character stays intact; phone error and recovery paragraphs each fit at most two lines. All eight wrong-state originals inspected at full resolution."
 }

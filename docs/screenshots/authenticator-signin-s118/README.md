@@ -2,9 +2,9 @@
 
 Actual signin.html shell in Chromium 156.0.8078.4. Eight EN/zh × desk1366/phone390 × light/dark cases. Originals are committed PNGs, not build artifacts.
 
-**HOLD:** Junsion’s code-only core must land before this PR can be reviewed/merged. These captures and the real success check exercise the existing web-only route only; chat and double-match are NOT RUN. The server’s authentication core is unchanged.
+**HOLD:** Junsion’s code-only core must land before this PR can be reviewed/merged. These captures and the real success check exercise the existing web-only route only; chat and actual collision are NOT RUN. #3563 @701c6dcf remains OPEN; its collision is the same401 as a wrong code, with no separate waiting state. The server’s authentication core is unchanged.
 
-514/514 tests across24 related suites; both typechecks;329 fragments; six independent intended mutation failures followed by restored green. The first UI fail-first run was34red/6controls; the temporary-entry test also failed only its old-page control before replacement. Browser:141 checks,56 PNGs; hint/help/disabled text≥4.5:1, visible controls≥44px, no horizontal overflow.
+613/613 tests across29 related suites; both typechecks;330 fragments; six independent intended mutation failures followed by restored green. The first UI fail-first run was34red/6controls; the temporary-entry test also failed only its old-page control before replacement. Browser:149 checks,56 PNGs; hint/help/disabled text≥4.5:1, visible controls≥44px, no horizontal overflow.
 
 Before/SKEW route exact base d8dd79910a643f9546cd07045015208aafb42ed6 UI assets into the scratch listener. This is not a separate base-daemon rehearsal. Current source hashes and every PNG hash are pinned in receipt.json/PRODUCTION_SHA256SUMS/SHA256SUMS. All listeners and scratch state are closed/removed by the driver.
 
@@ -36,10 +36,14 @@ No independent real-account, chat-code-only, double-match, public-link or native
 
 Required scan initially flagged two public source digests as generic API keys. Current evidence uses digest-first PRODUCTION_SHA256SUMS. Only the two exact historical commit/path/rule/line fingerprints are recorded in .gitleaksignore; no rule/path/future finding is exempted. Product source and PNG bytes are unchanged by this correction.
 
-CI bootstrap correction: the earlier UI gate timed out clicking #go after auto-submit had already navigated. The shared fixture now dispatches input and requestSubmit in one browser task through the real form, then requires the same dashboard URL. GATE=ci passes114checks with all assertions intact. A dedicated real-browser control passes four current-auto/cached-manual × EN-desktop/zh-phone cases, each with exactly one /auth/login POST and a valid session; see fixture-validation.json and FIXTURE_SHA256SUMS. Product and56PNG bytes carry unchanged. This is fixture compatibility, not the pending code-only core acceptance.
+CI bootstrap correction: the earlier UI gate timed out clicking #go after auto-submit had already navigated. The shared fixture now dispatches input and requestSubmit in one browser task through the real form, then requires the same dashboard URL. Fresh aligned GATE=ci passes114checks with all assertions intact. A dedicated real-browser control passes four current-auto/cached-manual × EN-desktop/zh-phone cases, each with exactly one /auth/login POST and a valid session; see fixture-validation.json and FIXTURE_SHA256SUMS. After the plain alpha636328df9 merge, all56 original PNGs and current source manifests were refreshed; all eight wrong-state originals were inspected at full resolution. This is fixture compatibility, not the pending code-only core acceptance.
 
 ```sh
 REPO="$PWD" PW_DIR="$PWD/node_modules/playwright-core" CHROME=/path/to/chrome \
   OUT="$PWD/.artifacts/s118/fixture-bootstrap" \
   npx tsx scripts/manual/smoke/smoke-signin-fixture-s118.mts
 ```
+
+Latest continuation: uniform401 next-code/recovery guidance is shared by every refused authenticator code. The normal Sign in button stays available; no collision enum, timer or disabled state exists. At390px the error and recovery paragraphs each fit at most two lines (not two combined); the one-line fallback helper, contrast and44px controls are checked in the real browser.
+
+CI42775357648 on olde061 failed two old-copy expectations. Both were reproduced (2red/30controls), then updated while retaining /web in chat/device recovery and the complete one-home byte comparison except the approved8碼→8字元 phrase. Final aligned29files613/613 and both typechecks pass. A prior concurrent run hit the unchanged S-117 cold-import20s timeout; isolated and final single-worker reruns passed without a timeout change. No early review or merge request.

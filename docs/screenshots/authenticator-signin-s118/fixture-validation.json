@@ -1,6 +1,6 @@
 {
-  "scope": "CI bootstrap continuation; product source and original56 PNG bytes unchanged. Not code-only/chat/double-match acceptance.",
-  "oldFailure": "42774465284 ui-gate: smoke-fixture page.click(#go) timed out after new complete-input auto navigation.",
+  "scope": "Fresh aligned-alpha636328df9 UI/bootstrap continuation; not code-only chat or actual collision acceptance.",
+  "oldFailure": "42774465284 ui-gate: smoke-fixture page.click(#go) timed out after complete-input auto navigation.",
   "gate": {
     "gate": "ci",
     "gate:left-accent-self-test": "PASS",
@@ -117,7 +117,7 @@
     "phone-dark-zh-TW:advanced:left-accent": "PASS",
     "phone-dark-zh-TW:advanced:tap": "PASS",
     "phone-dark-zh-TW:no-errors": "PASS",
-    "seconds": 60
+    "seconds": 99
   },
   "bootstrap": {
     "base": "d8dd79910a643f9546cd07045015208aafb42ed6",

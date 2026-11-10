@@ -102,9 +102,11 @@ describe("PR #3553 review: one home for each word, and every reader imports it",
     const ph = (s: string) => (s.match(/\{\d+\}/g) ?? []).sort().join(",");
     for (const k of KEYS) expect(ph(t["zh-TW"][k]!), k).toBe(ph(t.en[k]!));
   });
-  it("a key is in this file only: not in settings-strings.js, settings-layout.js or settings-access-strings.js (the base copy of the last is untouched)", () => {
+  it("a key is in this file only: not in settings-strings.js, settings-layout.js or settings-access-strings.js (only the approved S-118 character-wording changes in the base copy)", () => {
     for (const other of ["settings-strings.js", "settings-access-strings.js"]) for (const lang of LANGS) expect(registerBlock(other)[lang].filter((k) => KEYS.includes(k)), `${other} ${lang}`).toEqual([]);
-    expect(readFileSync(join(UI, "settings-access-strings.js"), "utf8")).toBe(readFileSync(join(__dirname, "fixtures", "skew", "settings-access-strings.base-d5e2a3c87.js"), "utf8"));
+    // S-118's approved glossary correction changes this one phrase; preserve byte equality for every other base word.
+    const base = readFileSync(join(__dirname, "fixtures", "skew", "settings-access-strings.base-d5e2a3c87.js"), "utf8");
+    expect(readFileSync(join(UI, "settings-access-strings.js"), "utf8")).toBe(base.replace("8 碼裝置登入碼", "8 字元裝置登入碼"));
   });
   const modules = (d = UI): string[] => readdirSync(d).flatMap((n) => {
     const q = join(d, n);
