@@ -26,8 +26,24 @@ import type { ChannelAdapter } from "../src/channel/types.js";
 import { describeSignalSource, gateFleetControl } from "../src/fleet-control-audit.js";
 
 const dirs: string[] = [];
+const cgroupFixture = vi.hoisted(() => ({ text: undefined as string | undefined, reads: 0 }));
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+      if (args[0] === "/proc/self/cgroup" && cgroupFixture.text !== undefined) {
+        cgroupFixture.reads++;
+        return cgroupFixture.text;
+      }
+      return actual.readFileSync(...args);
+    },
+  };
+});
 
 afterEach(() => {
+  cgroupFixture.text = undefined;
+  cgroupFixture.reads = 0;
   vi.useRealTimers();
   vi.restoreAllMocks();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -37,6 +53,12 @@ function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "agend-restart-full-"));
   dirs.push(dir);
   return dir;
+}
+
+function completion() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 function inbound(text: string, userId = "admin") {
@@ -141,21 +163,34 @@ describe("/restart full command surface", () => {
     await adapter.stop();
   });
 
-  it("SIGUSR2 and SIGUSR1 log who asked, from the CLI's audit line (#1120)", async () => {
+  it.each([
+    ["ordinary shell", "0::/user.slice/user-1000.slice/session-3.scope\n", 0],
+    ["AgEnD service", "0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n", 75],
+  ])("SIGUSR2 and SIGUSR1 log who asked, from the CLI's audit line (#1120), under %s", async (_name, cgroup, expectedExit) => {
     const auditDir = tempDir();
+    cgroupFixture.text = cgroup;
     const fleet = new FleetManager(auditDir) as any;
     const info = vi.spyOn(fleet.logger, "info");
     vi.spyOn(fleet, "restartInstances").mockResolvedValue(undefined);
-    vi.spyOn(fleet, "gracefulShutdownForReload").mockResolvedValue(undefined);
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const shutdown = completion();
+    vi.spyOn(fleet, "gracefulShutdownForReload").mockReturnValue(shutdown.promise);
+    const exited = completion();
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => { exited.resolve(); }) as never);
     gateFleetControl(auditDir, "fleet-restart", {}, { AGEND_INSTANCE_NAME: "agend-leader" , AGEND_ALLOW: "x" } as any);   // refused → not blamed
     gateFleetControl(auditDir, "fleet-restart-reload", { yes: true }, { AGEND_INSTANCE_NAME: "agend-leader" });
 
-    const rearm = vi.fn();
+    const rearmed = completion();
+    const rearm = vi.fn(() => rearmed.resolve());
     fleet.onGracefulRestartSignal(rearm);
-    await vi.waitFor(() => expect(rearm).toHaveBeenCalledOnce());
+    await rearmed.promise;
+    expect(rearm).toHaveBeenCalledOnce();
     fleet.onFullRestartSignal();
-    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(exit).not.toHaveBeenCalled();
+    shutdown.resolve();
+    await exited.promise;
+    expect(exit).toHaveBeenCalledExactlyOnceWith(expectedExit);
+    expect(cgroupFixture.reads).toBe(1);
 
     const said = info.mock.calls.map(call => String(call[0]));
     expect(said.find(m => m.startsWith("Received SIGUSR2"))).toContain("from agent session agend-leader");
