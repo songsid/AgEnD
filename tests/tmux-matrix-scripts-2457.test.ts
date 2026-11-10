@@ -146,6 +146,9 @@ describe("raw-309.sh", () => {
  * A stub tmux for the leak/stress legs: new-session starts a real `sleep` as the "server" (its pid answers
  * `display -p '#{pid}'`, so /proc/<pid>/status has a VmRSS), `-C attach` answers each command line with %begin/%end,
  * capture-pane succeeds. STUB_REFUSE=1: every command fails. STUB_SILENT=1: the control client answers nothing.
+ * STUB_SLOW=1: each CLI capture takes 0.3 s (a loaded runner). STUB_DROP=1: every third CLI capture fails.
+ * The control client answers as real tmux does (3.7b, captured): its attach handshake's own block first, flags 0, then a
+ * block per command, flags 1, ending %end — or %error for the first command when STUB_CTL_ERROR=1.
  */
 function stubTmuxDir() {
   const d = scratch();
@@ -158,8 +161,13 @@ case "$args" in
   *" -V "*) echo "tmux 3.8" ;;
   *" new-session "*|*" new-window "*) [ -f "$S/server.pid" ] || { sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$S/server.pid"; } ;;
   *" display "*) cat "$S/server.pid" ;;
-  *" -C attach "*) while read -r line; do [ -n "\${STUB_SILENT:-}" ] || printf '%%begin 1 1 0\\n%%end 1 1 0\\n'; done ;;
-  *" capture-pane "*) echo "frame" ;;
+  *" -C attach "*) [ -n "\${STUB_SILENT:-}" ] || printf '%%begin 1 1 0\\n%%end 1 1 0\\n'; k=1
+    while read -r line; do k=\$((k + 1)); [ -n "\${STUB_SILENT:-}" ] && continue
+      if [ -n "\${STUB_CTL_ERROR:-}" ] && [ "\$k" -eq 2 ]; then printf '%%begin 1 %s 1\\n%%error 1 %s 1\\n' "\$k" "\$k"; else printf '%%begin 1 %s 1\\nframe\\n%%end 1 %s 1\\n' "\$k" "\$k"; fi
+    done ;;
+  *" capture-pane "*) [ -z "\${STUB_SLOW:-}" ] || sleep 0.3
+    if [ -n "\${STUB_DROP:-}" ]; then n=\$(( \$(cat "$S/caps" 2>/dev/null || echo 0) + 1 )); echo \$n > "$S/caps"; [ \$((n % 3)) -ne 0 ] || exit 1; fi
+    echo "frame" ;;
   *" kill-server "*) [ -f "$S/server.pid" ] && kill "$(cat "$S/server.pid")" 2>/dev/null; rm -f "$S/server.pid" ;;
 esac
 exit 0
@@ -189,7 +197,32 @@ describe.skipIf(process.platform !== "linux")("leak-repro.sh (reads /proc)", () 
   it("negative control: a control client that answers no capture — exit 1", () => {
     const r = go("control", { STUB_SILENT: "1" });
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/only 0 captures were answered/);
+    expect(r.stderr).toMatch(/only 0 of 20 captures were answered/);
+  });
+
+  // M-2849: count-driven, so the verdict cannot follow the runner's speed (CI answered 4 of a fixed 10-in-2-s floor,
+  // alpha run 42835278244). A slow machine takes longer and still passes; a capture that is not answered still fails.
+  it("a slow runner (0.3 s per capture) still measures every capture and passes", () => {
+    const r = go("cli", { STUB_SLOW: "1", CAPTURES: "5" });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/after 5 of 5 captures: VmRSS=\d+ kB/);
+    expect(r.stdout).toContain("captures answered: 5");
+  });
+
+  it("negative control (control client): one capture answered %error — exit 1; the handshake's own %end is no capture", () => {
+    // Prism #3597: counting every %end let the attach handshake's block stand in for a failed capture.
+    const r = go("control", { STUB_CTL_ERROR: "1", CAPTURES: "3" });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/only 2 of 3 captures were answered/);
+    const ok = go("control", { CAPTURES: "3" });
+    expect(ok.status, ok.stdout + ok.stderr).toBe(0);
+    expect(ok.stdout).toContain("captures answered: 3");
+  });
+
+  it("negative control: one capture in three lost — exit 1, every capture must be answered", () => {
+    const r = go("cli", { STUB_DROP: "1", CAPTURES: "6" });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/only 4 of 6 captures were answered/);
   });
 });
 
