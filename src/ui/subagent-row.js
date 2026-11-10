@@ -8,6 +8,12 @@ register("subagents", {
 });
 const copy = (key, ...args) => t("subagents." + key, ...args);
 const uncertain = rows => rows.map(({ summary, durationMs, ...row }) => ({ ...row, state: "unknown" }));
+// New servers supply immutable evidence deadlines. An old cached server must also stay bounded:
+// use the original launch time, never a client arrival/retry/page-open time.
+const visible = (rows, now) => rows.filter(r => {
+  const deadline = Number.isFinite(r.expiresAt) ? r.expiresAt : Number.isFinite(r.startedAt) ? r.startedAt + 120000 : 0;
+  return now < deadline;
+});
 /** One physical fetch at a time; unmount/name changes retire the continuation, not just the timer. */
 export function observeSubagents(name, { fetcher = fetch, changed, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
   let live = true, busy = false, timer = null, abort = null, state = { owner: null, runs: [], error: false };
@@ -47,11 +53,13 @@ export function SubagentRow({ name }) {
   const [value, setValue] = useState({ owner: null, runs: [], error: false }), [tick, setTick] = useState(Date.now());
   const observer = useRef(null);
   useEffect(() => { styles(); setValue({ owner: null, runs: [], error: false }); const o = observeSubagents(name, { changed: setValue }); observer.current = o; return () => { o.stop(); observer.current = null; }; }, [name]);
-  useEffect(() => { if (!value.runs.some(r => r.state === "running")) return; const id = setInterval(() => setTick(Date.now()), 1000); return () => clearInterval(id); }, [value]);
-  if (!value.runs.length && !value.error) return null;
-  const counts = ["completed", "running", "unknown"].map(s => { const n = value.runs.filter(r => r.state === s).length; return n ? copy(s, n) : null; }).filter(Boolean);
+  const runs = visible(value.runs, Date.now());
+  useEffect(() => { if (!runs.length) return; const id = setInterval(() => setTick(Date.now()), 1000); return () => clearInterval(id); }, [value, runs.length]);
+  // An error cannot keep expired work alive. The next ordinary poll can reveal newly proved work.
+  if (!runs.length) return null;
+  const counts = ["completed", "running", "unknown"].map(s => { const n = runs.filter(r => r.state === s).length; return n ? copy(s, n) : null; }).filter(Boolean);
   const groups = new Map();
-  for (const row of value.runs) { if (!groups.has(row.parentTurn)) groups.set(row.parentTurn, []); groups.get(row.parentTurn).push(row); }
+  for (const row of runs) { if (!groups.has(row.parentTurn)) groups.set(row.parentTurn, []); groups.get(row.parentTurn).push(row); }
   return html`<details class="subagent-progress" data-trust="subagent-observation"><summary><span>${copy("title")}</span><span class="note">${counts.join(" · ")}</span></summary><p class="note subagent-scroll-hint">${copy("scroll")}</p><div class="subagent-scroll">
     ${value.error ? html`<${ErrorState} message=${copy("failed")} onRetry=${() => observer.current?.retry()} />` : null}
     ${[...groups].map(([turn, rows]) => html`<section key=${turn} class="subagent-group"><p class="note subagent-parent">${rows[0].parentTask ? copy("parent", rows[0].parentTask) : copy("turn", new Date(Math.min(...rows.map(r => r.parentStartedAt))).toLocaleString())}</p>
@@ -59,6 +67,6 @@ export function SubagentRow({ name }) {
         <p>${r.task}</p>${r.state === "completed" && Number.isFinite(r.durationMs) ? html`<p class="note">${copy("seconds", (r.durationMs / 1000).toFixed(1).replace(/\.0$/, ""))}</p>` : r.state === "running" ? html`<p class="note">${copy("elapsed", Math.max(0, Math.floor((tick - r.startedAt) / 1000)))}</p>` : null}
         ${r.state === "completed" && r.summary ? html`<p class="subagent-report">${r.summary}</p>` : null}</article>`)}
     </section>`)}
-    ${value.runs.some(r => r.state === "unknown") ? html`<p class="note">${copy("gap")}</p>` : null}<p class="note">${copy("note")}</p>${value.runs.length >= 16 ? html`<p class="note">${copy("bound")}</p>` : null}
+    ${runs.some(r => r.state === "unknown") ? html`<p class="note">${copy("gap")}</p>` : null}<p class="note">${copy("note")}</p>${runs.length >= 16 ? html`<p class="note">${copy("bound")}</p>` : null}
   </div></details>`;
 }

@@ -32,3 +32,25 @@ describe("cached child component visibility defence",()=>{
   runInNewContext(wrapper+"\nglobalThis.result=SubagentProgress({name:'dev'})",scope);expect(scope.result).toEqual(kind==="admin"?{rendered:true}:null);
  });
 });
+
+describe("progress retirement uses evidence deadlines, including old-server and error states",()=>{
+ function render(runs:any[],at:number,error=false) {
+  class Clock extends Date { static now() { return at; } }
+  const scope:any={register:()=>{},t:(s:string)=>s,Date:Clock,Map,Number,Array,Object,useRef:()=>({current:null}),useEffect:()=>{},useState:(initial:any)=>typeof initial==="object"?[{owner:"same-owner",runs,error},()=>{}]:[at,()=>{}],html:()=>({shown:true})};
+  runInNewContext(raw.replace(/^import .*;$/gm,"").replace(/export /g,"")+"\nglobalThis.result=SubagentRow({name:'dev'})",scope);return scope.result;
+ }
+ it.each(["completed","unknown","running"])("%s hides on the deadline even before another HTTP poll",state=>{
+  const r={...row,state,startedAt:1000,expiresAt:15000};
+  expect(render([r],14999)).toEqual({shown:true});expect(render([r],15000)).toBeNull();
+  expect(render([r],15000,true)).toBeNull();expect(render(structuredClone([r]),16000,true)).toBeNull();
+ });
+ it("new work can appear after old work expires; an error alone cannot resurrect it",()=>{
+  expect(render([{...row,startedAt:1000,expiresAt:15000}],20000,true)).toBeNull();
+  expect(render([{...row,key:"new",startedAt:19000,expiresAt:139000}],20000)).toEqual({shown:true});
+ });
+ it("cached old servers without deadlines use original launch time, never page-open time",()=>{
+  expect(render([{...row,startedAt:1000}],120999)).toEqual({shown:true});
+  expect(render([{...row,startedAt:1000}],121000)).toBeNull();
+  expect(render([{...row,startedAt:1000}],181000)).toBeNull();expect(render([row],181000)).toBeNull();
+ });
+});
