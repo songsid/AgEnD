@@ -524,7 +524,8 @@ function Thread({ name, th }) {
         // Through the composer's own typing path (its onInput: the draft, the palette, the box's height), as a keystroke
         // would — the store alone doesn't redraw the box. No composer on screen: the draft, for when it is.
         if (field) {
-          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, r.value);
+          const set = typeof HTMLTextAreaElement === "function" ? Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set : null;
+          if (set) set.call(field, r.value); else field.value = r.value;
           field.dispatchEvent(new Event("input", { bubbles: true }));
         } else store.setDraft(name, r.value);
         const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;

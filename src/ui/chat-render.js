@@ -122,13 +122,16 @@
   var MAX_TABLE_COLUMNS = 20;
 
   /** Leading whitespace as columns: a tab counts four. */
+  var LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
   function indentOf(ws) { var n = 0; for (var i = 0; i < ws.length; i++) n += ws[i] === "\t" ? 4 : 1; return n; }
 
   /**
    * A run of list items as nested lists. An item indented deeper than the one before opens a list inside that
    * item; a shallower one closes lists back to its level; at the same level a change of kind (- vs 1.) starts a
    * new list. Every tag is the renderer's own; item text goes through inline() like any other text.
+   * M-2811: a numbered list keeps its first number ("3." after a paragraph reads 3 — `start`, digits only).
    */
+  function openList(it) { return it.tag === "ol" && it.num > 1 ? '<ol start="' + it.num + '">' : "<" + it.tag + ">"; }
   function renderList(items, store) {
     var html = "";
     var stack = [];   // { indent, tag }
@@ -137,10 +140,10 @@
       while (stack.length && it.indent < stack[stack.length - 1].indent) html += "</li></" + stack.pop().tag + ">";
       var top = stack[stack.length - 1];
       if (!top || (it.indent > top.indent && stack.length < MAX_LIST_DEPTH)) {
-        html += "<" + it.tag + ">";
+        html += openList(it);
         stack.push({ indent: it.indent, tag: it.tag });
       } else if (top.tag !== it.tag) {
-        html += "</li></" + top.tag + "><" + it.tag + ">";
+        html += "</li></" + top.tag + ">" + openList(it);
         top.tag = it.tag;
       } else {
         html += "</li>";
@@ -211,7 +214,16 @@
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
       var m;
-      if (/^\s*$/.test(line)) { flushAll(); continue; }
+      if (/^\s*$/.test(line)) {
+        // M-2811: a blank line between list items (a "loose" list: "1. a\n\n2. b") keeps one list — its numbering runs
+        // on instead of starting at 1 again for every item.
+        if (list.length) {
+          var k = i + 1;
+          while (k < lines.length && /^\s*$/.test(lines[k])) k++;
+          if (k < lines.length && LIST_ITEM.test(lines[k])) { i = k - 1; continue; }
+        }
+        flushAll(); continue;
+      }
       // A table: a header row with a pipe, then a separator row with the same number of columns.
       if (line.indexOf("|") !== -1 && i + 1 < lines.length) {
         var aligns = tableAligns(lines[i + 1]);
@@ -229,9 +241,9 @@
       if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) { flushAll(); var n = Math.min(m[1].length + 2, 6); out.push("<h" + n + ">" + inline(m[2], store) + "</h" + n + ">"); continue; }
       if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flushAll(); out.push("<hr>"); continue; }
       if ((m = /^&gt;\s?(.*)$/.exec(line))) { flushPara(); flushList(); quote.push(m[1]); continue; }
-      if ((m = /^([ \t]*)([-*+]|\d{1,9}[.)])\s+(.*)$/.exec(line))) {
+      if ((m = LIST_ITEM.exec(line))) {
         flushPara(); flushQuote();
-        list.push({ indent: indentOf(m[1]), tag: /\d/.test(m[2]) ? "ol" : "ul", text: m[3] });
+        list.push({ indent: indentOf(m[1]), tag: /\d/.test(m[2]) ? "ol" : "ul", num: /\d/.test(m[2]) ? parseInt(m[2], 10) : 0, text: m[3] });
         continue;
       }
       flushList(); flushQuote();
