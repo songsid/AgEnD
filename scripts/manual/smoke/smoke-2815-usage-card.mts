@@ -1,7 +1,8 @@
 // M-2815 on the realistic fixture, in Chromium: the usage rail (desk 1366) and the phone sheet (390), light and dark,
 // English and zh-TW. Each Claude login's card lists "Fable (weekly)" even at 0% (as the vendor reports it on every
 // login today), a Codex login's unused per-model quota stays hidden, and no card shows the capacity footnote although
-// the server still serves `capacity` on the weekly bar (get_usage keeps it). No account and no vendor call: the usage
+// the server still serves `capacity` on the weekly bar (get_usage keeps it). Then the compact view (the user's): each Claude
+// login's line carries a third labelled bar, "Fable", under its 5h and 7d ones; Codex keeps two. No account and no vendor call: the usage
 // read and the estimate are the product's own seams (setUsageFetcherForTests, setCapacityLookup).
 // Then a stale tab (quality rule 3), both ways: the previous usage-dialog.js with this server and CSS (it still draws the
 // capacity it is served, unstyled — nothing broken, Fable listed), and this dialog with the previous app.css.
@@ -62,6 +63,19 @@ for (const c of matrix()) {
   check(o.errs.length === 0 && (r[tag] as any).csp.length === 0, `${tag}: no page error, no CSP violation (${o.errs.join(" | ")})`);
   const box = await o.page.locator(o.scope).first().boundingBox().catch(() => null);
   if (box) await o.page.screenshot({ path: shotPath("2815-card", c, o.kind), clip: { x: box.x, y: box.y, width: box.width, height: Math.min(box.height, 900) } });
+  // Compact: the header's switch (a synced preference — switched back below, so the next case starts on the full cards).
+  await o.page.click(`${o.scope} .u-compact-toggle`); await o.page.waitForTimeout(800);
+  const lines = await o.page.evaluate((sel: string) => [...document.querySelectorAll(sel + " .u-crow")].map((r) => ({
+    tags: [...r.querySelectorAll(".u-cm-tag")].map((t) => t.textContent), cls: r.getAttribute("class"),
+    clipped: [...r.querySelectorAll(".u-cm-tag, .u-cm-pct")].some((d) => d.scrollWidth > d.clientWidth + 1) })), o.scope) as Array<{ tags: string[]; cls: string; clipped: boolean }>;
+  (r[tag] as any).compact = lines;
+  check(lines.length === 3, `${tag} compact: three lines (${lines.length})`);
+  check(JSON.stringify(lines.map((l) => l.tags)) === JSON.stringify(zh ? [["5小時", "7天", "Fable"], ["5小時", "7天", "Fable"], ["7天"]] : [["5h", "7d", "Fable"], ["5h", "7d", "Fable"], ["7d"]]), `${tag} compact: a Fable bar on each Claude line (${JSON.stringify(lines.map((l) => l.tags))})`);
+  check(lines.every((l) => !l.clipped), `${tag} compact: no tag or percent clipped`);
+  check(o.errs.length === 0, `${tag} compact: no page error (${o.errs.join(" | ")})`);
+  const cbox = await o.page.locator(o.scope).first().boundingBox().catch(() => null);
+  if (cbox) await o.page.screenshot({ path: shotPath("2815-card", c, `${o.kind}-compact`), clip: { x: cbox.x, y: cbox.y, width: cbox.width, height: Math.min(cbox.height, 600) } });
+  await o.page.click(`${o.scope} .u-compact-toggle`); await o.page.waitForTimeout(600);
   await o.ctx.close();
 }
 
