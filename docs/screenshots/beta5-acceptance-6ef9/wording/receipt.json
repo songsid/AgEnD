@@ -1,0 +1,138 @@
+{
+  "source": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "srcTree": "720d3c98b1954d118d9ed75b2a57677c736f37e1",
+  "startedAt": "2026-11-10T16:12:40.465Z",
+  "harnessDigest": "48dfb19ca966947b0f47d6dc3cbf7b1b2b14df7f11a233fb4e96403ae2cae157",
+  "protectedInputsClean": true,
+  "assertions": 54,
+  "results": [
+    {
+      "name": "phone-light-zh-TW-not_admin",
+      "ok": true,
+      "failed": []
+    },
+    {
+      "name": "phone-dark-en-not_admin",
+      "ok": true,
+      "failed": []
+    },
+    {
+      "name": "desk-dark-zh-TW-not_admin",
+      "ok": true,
+      "failed": []
+    },
+    {
+      "name": "desk-light-en-not_admin",
+      "ok": true,
+      "failed": []
+    }
+  ],
+  "geo": {
+    "phone-light-zh-TW-not_admin": {
+      "tip": [
+        8,
+        657,
+        214,
+        684
+      ],
+      "composer": [
+        9,
+        688,
+        381,
+        742
+      ],
+      "attach": [
+        17,
+        698,
+        53,
+        734
+      ],
+      "box": [
+        57,
+        696,
+        333,
+        734
+      ]
+    },
+    "phone-dark-en-not_admin": {
+      "tip": [
+        8,
+        657,
+        244,
+        684
+      ],
+      "composer": [
+        9,
+        688,
+        381,
+        742
+      ],
+      "attach": [
+        17,
+        698,
+        53,
+        734
+      ],
+      "box": [
+        57,
+        696,
+        333,
+        734
+      ]
+    },
+    "desk-dark-zh-TW-not_admin": {
+      "tip": [
+        429,
+        779,
+        635,
+        806
+      ],
+      "composer": [
+        429,
+        810,
+        1197,
+        864
+      ],
+      "attach": [
+        437,
+        820,
+        473,
+        856
+      ],
+      "box": [
+        477,
+        818,
+        1149,
+        856
+      ]
+    },
+    "desk-light-en-not_admin": {
+      "tip": [
+        429,
+        779,
+        665,
+        806
+      ],
+      "composer": [
+        429,
+        810,
+        1197,
+        864
+      ],
+      "attach": [
+        437,
+        820,
+        473,
+        856
+      ],
+      "box": [
+        477,
+        818,
+        1149,
+        856
+      ]
+    }
+  },
+  "guardViolations": [],
+  "scope": "Fresh mock-account web fixture only; network/PID namespaces, no live fleet/vendor/account. Desktop/phone EN/zh-TW composer admin reason; no full Settings matrix."
+}

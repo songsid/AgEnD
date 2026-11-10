@@ -1,0 +1,36 @@
+{
+  "productChanges": false,
+  "earlierRuns": [
+    {
+      "stage": "initial focused namespace",
+      "result": "159 pass,19 wake-fixture failures before launch",
+      "cause": "User namespace maps UID0; documented sandbox flag needed for inert wake recorder."
+    },
+    {
+      "stage": "sandbox-flag focused run",
+      "result": "159 pass,19 wake-fixture child setup failures",
+      "cause": "TMPDIR inside a type=module package made the extensionless CommonJS recorder ESM. Owned short scratch gets type=commonjs."
+    },
+    {
+      "stage": "initial browser boot",
+      "result": "No browser case executed",
+      "cause": "Long TMPDIR exceeded Chromium SingletonSocket length. Short owned scratch fixes launcher only."
+    },
+    {
+      "stage": "initial four-case browser smoke",
+      "result": "54 DOM checks passed; final process-guard drain was unreachable after process.exit",
+      "correction": "Final published harness drains before exit, records source/harness receipt and fresh cases. No earlier guard-clean claim used."
+    },
+    {
+      "stage": "additional catalog observation harness",
+      "result": "Harness JSON trailing comma then regex syntax error before final observation",
+      "correction": "Only owned harness parsing corrected; frozen product and existing 80 Muse tests unchanged."
+    }
+  ],
+  "historicalReplay": {
+    "elapsedMs": 323,
+    "source": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+    "scope": "Earlier replay, not relabelled as final campaign."
+  },
+  "final": "One combined reproducible campaign:178/178, recorded-tmux receipt319ms/noextraEnter, recorded parser assertions,4browser cases/54checks, zero guard violations, scratch removed."
+}

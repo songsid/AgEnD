@@ -1,0 +1,71 @@
+{
+  "abf57291ccdbf9fad6bcf0824b06bc6f07ff9e1a1040b78a68e0274d0e0e0082": [
+    "docs/screenshots/beta5-acceptance-6ef9/README.md"
+  ],
+  "c657b2cce86df24290899063317521c221377ee18d3eab64b50d7cd7b82186be": [
+    "docs/screenshots/beta5-acceptance-6ef9/campaign-receipt.json"
+  ],
+  "1d51b94c7598a7ac1928ffe585db1c743681c1daa085e58bb80242cf3a5b68a2": [
+    "docs/screenshots/beta5-acceptance-6ef9/ci-summary.json"
+  ],
+  "bf12b29167b8e4be3fa645b4f8b5bb9a804c1b8df56ba3b018d0f7a96c978929": [
+    "docs/screenshots/beta5-acceptance-6ef9/ci-test-inventory.json"
+  ],
+  "2ea1199f58772bfdfb643d0c463a704c9e0d294944ad069138cf688a056f74f2": [
+    "docs/screenshots/beta5-acceptance-6ef9/cleanup.json"
+  ],
+  "bfbf29b96861e407734e8e7f6d2d77f0c7100a4d6f62ac5559d076d431a6992b": [
+    "docs/screenshots/beta5-acceptance-6ef9/codex-replay.json"
+  ],
+  "abf9f984be1d177281841deb4a17b9e1935a92755aad65104865167e89580377": [
+    "docs/screenshots/beta5-acceptance-6ef9/diagnostics.json"
+  ],
+  "d45c9206747491b6d25ae698300e055158ee0ba9887c5c371c93a86dbb23ec12": [
+    "docs/screenshots/beta5-acceptance-6ef9/focused-tests.json"
+  ],
+  "731b46205b2cec618a2efb18c84fbb8144531eb7ecec87260b6e315a256fec31": [
+    "docs/screenshots/beta5-acceptance-6ef9/harness/recorded-stories.mts"
+  ],
+  "4796efd1e6f70553b3c6eed3f385489be27b7c695efcecaa0080a4a2147c9c5a": [
+    "docs/screenshots/beta5-acceptance-6ef9/harness/run.py"
+  ],
+  "48dfb19ca966947b0f47d6dc3cbf7b1b2b14df7f11a233fb4e96403ae2cae157": [
+    "docs/screenshots/beta5-acceptance-6ef9/harness/wording.mts"
+  ],
+  "9aeff10ad90b48c832b8889e276cf733873a6e878595a52a818442efd8512f22": [
+    "docs/screenshots/beta5-acceptance-6ef9/recorded-stories.json"
+  ],
+  "69ae2201bd9dff085eb87befb670c81ced12d7c6f5af5ff3c7da2ae88314c18c": [
+    "docs/screenshots/beta5-acceptance-6ef9/source.json"
+  ],
+  "cbd876a05ce5fd4059d0f262e260829563ef9c00b9f19b4b0dd82f47be47572a": [
+    "docs/screenshots/beta5-acceptance-6ef9/visual-review.json"
+  ],
+  "17f32f0c855e8d99248f63c802ac411d31475619453bdd9a545daee44d037506": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-desk-dark-zh-TW-not_admin-row.png"
+  ],
+  "864a1089997f0db768e796864e5c16d72f33376134c3882ddb973ab74a19c652": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-desk-dark-zh-TW-not_admin-tapped.png"
+  ],
+  "fc7cdfe2aa1bffc59aff9765ab48753740685192751aa2568cc67a26cea1bd62": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-desk-light-en-not_admin-row.png"
+  ],
+  "fec56060d63500d53a3add9fca6ce54f71517c06e23083dd88eefc8bf88c099b": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-desk-light-en-not_admin-tapped.png"
+  ],
+  "7bdfe57c1c170e6a1e5d9a109f87894f55fdd03c98bc36c5e31d576b74746728": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-phone-dark-en-not_admin-row.png"
+  ],
+  "f76f7ae0990d838960eb23f9fd127a240e77312440ae853ab415708d5be122c3": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-phone-dark-en-not_admin-tapped.png"
+  ],
+  "66a3a0cac2e5877cddfb184469a5d7851676aa2477dd378b9ae1939afd4b72b0": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-phone-light-zh-TW-not_admin-row.png"
+  ],
+  "3cd178eb506d3701d58350473e4633d9d8cc6e9a0d1fef30061158db567e76fd": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/after-phone-light-zh-TW-not_admin-tapped.png"
+  ],
+  "25e1d44a2712228e8f118c59ef4a52c66b0675d8a5714510d09b20655986a9cb": [
+    "docs/screenshots/beta5-acceptance-6ef9/wording/receipt.json"
+  ]
+}

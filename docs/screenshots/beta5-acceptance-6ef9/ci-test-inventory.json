@@ -1,0 +1,89 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "ciRun": 42833531804,
+  "expected": [
+    "tests/agent-credential-generation.test.ts",
+    "tests/backend-command-1806.test.ts",
+    "tests/cli-env-probe-guard.test.ts",
+    "tests/fleet-model-probes-3526.test.ts",
+    "tests/fleet-probe-workers.test.ts",
+    "tests/list-models.test.ts",
+    "tests/model-menu-refresh.test.ts",
+    "tests/model-stale-refresh.test.ts",
+    "tests/probe-worker-default.test.ts",
+    "tests/profile-model-catalogs-2072.test.ts",
+    "tests/switch-drops-model-1808.test.ts",
+    "tests/sysinfo-backend-versions.test.ts",
+    "tests/tmux-startup-refusal-3437.test.ts",
+    "tests/web-model-refresh-m2731.test.ts",
+    "tests/restart-full.test.ts",
+    "tests/claude-cold-resume-startup-1435.test.ts"
+  ],
+  "found": {
+    "tests/backend-command-1806.test.ts": {
+      "job": 129890158229,
+      "line": "2026-11-10T14:25:41.0771767Z  \u2713 tests/backend-command-1806.test.ts (53 tests) 1444ms"
+    },
+    "tests/profile-model-catalogs-2072.test.ts": {
+      "job": 129890158229,
+      "line": "2026-11-10T14:27:42.2681290Z  \u2713 tests/profile-model-catalogs-2072.test.ts (12 tests) 95ms"
+    },
+    "tests/web-model-refresh-m2731.test.ts": {
+      "job": 129890158229,
+      "line": "2026-11-10T14:28:32.5398361Z  \u2713 tests/web-model-refresh-m2731.test.ts (8 tests) 28ms"
+    },
+    "tests/tmux-startup-refusal-3437.test.ts": {
+      "job": 129890158229,
+      "line": "2026-11-10T14:28:51.8738883Z  \u2713 tests/tmux-startup-refusal-3437.test.ts (3 tests) 180ms"
+    },
+    "tests/list-models.test.ts": {
+      "job": 129890157822,
+      "line": "2026-11-10T14:27:57.4444435Z  \u2713 tests/list-models.test.ts (16 tests) 36ms"
+    },
+    "tests/model-menu-refresh.test.ts": {
+      "job": 129890157822,
+      "line": "2026-11-10T14:28:28.2658058Z  \u2713 tests/model-menu-refresh.test.ts (6 tests) 31ms"
+    },
+    "tests/probe-worker-default.test.ts": {
+      "job": 129890157822,
+      "line": "2026-11-10T14:28:34.1986960Z  \u2713 tests/probe-worker-default.test.ts (9 tests) 407ms"
+    },
+    "tests/model-stale-refresh.test.ts": {
+      "job": 129890157943,
+      "line": "2026-11-10T14:27:10.9299716Z  \u2713 tests/model-stale-refresh.test.ts (18 tests) 936ms"
+    },
+    "tests/sysinfo-backend-versions.test.ts": {
+      "job": 129890157943,
+      "line": "2026-11-10T14:27:50.8730546Z  \u2713 tests/sysinfo-backend-versions.test.ts (10 tests) 864ms"
+    },
+    "tests/claude-cold-resume-startup-1435.test.ts": {
+      "job": 129890157943,
+      "line": "2026-11-10T14:28:09.9031091Z  \u2713 tests/claude-cold-resume-startup-1435.test.ts (7 tests) 2920ms"
+    },
+    "tests/restart-full.test.ts": {
+      "job": 129890157896,
+      "line": "2026-11-10T14:26:49.4436523Z  \u2713 tests/restart-full.test.ts (22 tests) 266ms"
+    },
+    "tests/switch-drops-model-1808.test.ts": {
+      "job": 129890157896,
+      "line": "2026-11-10T14:27:53.8443402Z  \u2713 tests/switch-drops-model-1808.test.ts (23 tests) 72ms"
+    },
+    "tests/fleet-probe-workers.test.ts": {
+      "job": 129890157896,
+      "line": "2026-11-10T14:27:55.7796193Z  \u2713 tests/fleet-probe-workers.test.ts (18 tests) 59ms"
+    },
+    "tests/agent-credential-generation.test.ts": {
+      "job": 129890157896,
+      "line": "2026-11-10T14:28:21.6092925Z  \u2713 tests/agent-credential-generation.test.ts (16 tests) 354ms"
+    },
+    "tests/fleet-model-probes-3526.test.ts": {
+      "job": 129890157896,
+      "line": "2026-11-10T14:28:40.1445807Z  \u2713 tests/fleet-model-probes-3526.test.ts (10 tests) 882ms"
+    },
+    "tests/cli-env-probe-guard.test.ts": {
+      "job": 129890157589,
+      "line": "2026-11-10T14:25:34.9929845Z  \u2713 tests/cli-env-probe-guard.test.ts (4 tests) 2508ms"
+    }
+  },
+  "allExpectedRan": true
+}

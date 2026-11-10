@@ -1,0 +1,762 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "passed": 178,
+  "failed": 0,
+  "skipped": 0,
+  "suites": [
+    {
+      "file": "claude-cold-resume-retry-2322.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "fixtures the live prompt is the exact retrySafe entry (Escape); the variant is the hold; the after-frame is ready",
+          "status": "passed"
+        },
+        {
+          "name": "startup scan: a dropped Escape on the cold-resume prompt is sent again (\u2265 1 s later) and the scan ends ready on the conversation",
+          "status": "passed"
+        },
+        {
+          "name": "startup scan: a dropped Escape on the cold-resume prompt never more than 3 sends, and a prompt that stays up is never read as ready",
+          "status": "passed"
+        },
+        {
+          "name": "startup scan: a dropped Escape on the cold-resume prompt control: the first Escape took \u2014 one send, nothing more",
+          "status": "passed"
+        },
+        {
+          "name": "startup scan: a dropped Escape on the cold-resume prompt control: the screen became a different prompt after the first Escape \u2014 no further key at all",
+          "status": "passed"
+        },
+        {
+          "name": "startup scan: a dropped Escape on the cold-resume prompt control: a one-shot answer (no retrySafe) is never repeated \u2014 and its still-visible screen is not ready either",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) a dropped Escape is re-sent on a later poll, at most 3 sends in all, \u2265 1 s apart",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) the second send takes: the prompt is gone and nothing more is sent",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) a prompt that comes back later (a new episode) gets a fresh budget of 3 sends",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) #3589 review: failed key ACKs (which release the one-shot claim) never bypass the budget \u2014 at most 3 attempts",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) #3589 review control: a one-shot answer (no retrySafe) after a failed ACK keeps its old behaviour \u2014 re-sent on the next poll",
+          "status": "passed"
+        },
+        {
+          "name": "runtime scanner: the prompt painted after startup (idle trigger or a late resume) control: a different prompt after the first Escape gets no key",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "claude-file-send-card-2322.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "2.1.322 file-send card (Gap A) claude-2.1.322-file-send-plain is held for a person: no keys, never the dangerous-command prompt",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) claude-2.1.322-file-send-plain-two is held for a person: no keys, never the dangerous-command prompt",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) claude-2.1.322-file-send-lookalike is held for a person: no keys, never the dangerous-command prompt",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) the plain card carries none of the 2.1.317 marks: the lead row is what makes it the card",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) the look-alike card is held by its warning row alone too (2.1.322 wording)",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) the lead row counts only as a row of its own: the words inside a tool's arguments on an ordinary MCP card do not",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) negative control: the live 2.1.322 dangerous-command card is still declined (Down, Enter), never held as a file send",
+          "status": "passed"
+        },
+        {
+          "name": "2.1.322 file-send card (Gap A) negative control: the lead row quoted in the transcript above a dangerous-command card does not make it a file send",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "codex-receipt-latency-3578.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) confirms a retained post-Enter frame once the real busy capture proves the receipt, without waiting for idle or sending Enter again",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) never confirms a permanently stranded message; the existing one-Enter retry still waits for positive readiness",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) unreadable is not positive delivery evidence during a busy wait",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) wrong-id is not positive delivery evidence during a busy wait",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) output-only is not positive delivery evidence during a busy wait",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) a replacement generation retires the wait without crediting its pane or pressing Enter",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) a replacement window retires the wait without crediting its pane or pressing Enter",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) a held proof read stays single-flight and loses settlement authority when its readiness wait expires",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) does not confirm if its generation changes after positive evidence but before the wait returns",
+          "status": "passed"
+        },
+        {
+          "name": "Codex confirmation during the stranded-readiness wait (#3578) does not confirm if its window changes after positive evidence but before the wait returns",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "delivery-forwards-1756.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "explicit row-scoped forwards (#1756) send_to_instance gives the receiver read-only access to the explicitly forwarded row",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) delegate_task gives the receiver read-only access to the explicitly forwarded row",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) refuses an invisible reference before any outgoing admission or turn-start effect",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a plain mention grants no read permission",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a second hop needs another explicit forward",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) queued is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) delivering is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) submission_started is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) retry_wait is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) uncertain is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) failed is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) cancelled is not proof of a delivered reference",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) one bad member rolls back the complete forward set",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a forwarded row does not grant correlation siblings or cursor anchors",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a duplicate retry preserves its original grant without adding another edge",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a forwarded operation cannot retry for a different recipient",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) an unchanged forwarded steer retry reuses its admitted idle mode after the predecessor clears",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) a forwarded operation cannot retry for a different session",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) an originally admitted steer mode stays steer even when a later predecessor appears",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) reopening preserves operation pinning even after its notification is pruned",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) ordinary no-forward broadcasts still admit each recipient under one operation",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) database reopen retains the explicit ACL",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) typed admission persists its own reference set without a metadata mirror",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) pruning the forwarding notification preserves the reference grant; pruning the reference removes it",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) malformed/beyond-bound IDs refuse before effects (\"xmsg-original\")",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) malformed/beyond-bound IDs refuse before effects (\"\")",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) malformed/beyond-bound IDs refuse before effects (\"xmsg-\\nheader\")",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) malformed/beyond-bound IDs refuse before effects (\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\")",
+          "status": "passed"
+        },
+        {
+          "name": "explicit row-scoped forwards (#1756) malformed/beyond-bound IDs refuse before effects (\"xmsg-0\")",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) send_to_instance refuses an owned queued human reference with pending guidance, then admits the same forward only after positive delivery",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) delegate_task refuses an owned queued human reference with pending guidance, then admits the same forward only after positive delivery",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) an owned queued delivery is pending, never forwardable",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) an owned delivering delivery is pending, never forwardable",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) an owned submission_started delivery is pending, never forwardable",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) an owned retry_wait delivery is pending, never forwardable",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) an owned reconciliation_pending delivery is pending, never forwardable",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden queued human receipts reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden delivered human receipts reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden uncertain human receipts reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden queued normal references reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden delivered normal references reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden uncertain normal references reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden failed normal references reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) hidden cancelled normal references reveal no pending/existence distinction",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) a mixed delivered/pending list admits no delivery or partial grant",
+          "status": "passed"
+        },
+        {
+          "name": "pending forwarded receipts (#3578) ambiguous visible references remain unavailable rather than exposing one queued duplicate",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "muse-1.4.15-audit.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-idle proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-done-later proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-resumed proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured meta-idle proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured meta-done proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured prod-escalation-denied proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-escalated-after-esc proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-untrusted-after-1 proves an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured busy is busy; Escape restores the cancelled draft; /quit names the session; resume of an unknown id is recognised",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured workspace trust is answered by the startup handler and blocks readiness, as on 1.4.14",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured the logged-out menu blocks readiness without sending a key, as on 1.4.14",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-escalated is a held human permission request, never auto-approved (same identity as 1.4.14)",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-untrusted-staged is a held human permission request, never auto-approved (same identity as 1.4.14)",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured HTTP 429's retry row is a rate-limit failover; an injected 402 usage limit is a quota notification",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-idle has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-busy has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured echo-after-escape has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured meta-idle has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured meta-done has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured prod-escalation-denied has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured prod-rate-limited has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured prod-usage-limit has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-escalated has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-escalated-after-esc has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-untrusted-staged has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured approval-untrusted-after-1 has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured logged-out has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the 1.4.14 surfaces, re-captured first-run-trust-dialog has the same detector verdict on 1.4.14 and 1.4.15",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) orphan-stream: `resume <id>` lands on the same session at an empty idle composer, no dialog",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) orphan-tool: `resume <id>` lands on the same session at an empty idle composer, no dialog",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) orphan-bg: `resume <id>` lands on the same session at an empty idle composer, no dialog",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) the in-flight frames were busy (or running background work) before the process was lost, as on 1.4.14",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) the next turn after the resume completes, and /quit names the same session id",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss) the reconcile records in session.jsonl keep 1.4.14's shape and are read as turn evidence",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn \"Double checking\" phase (already in 1.4.14) busy while \"\u25c8 Double checking (Ns \u00b7 esc to interrupt)\" is shown, an empty idle composer once it ends",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-side-chat: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-resume: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-effort: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-side-chat-on-1.4.14: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-resume-on-1.4.14: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) tip-effort-on-1.4.14: the tip in the composer is an empty idle composer, not a draft",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Type @ to search and insert workspace file paths is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Start a message with ! to run a shell command yourself is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Paste an image with Ctrl+V \u2014 file paths and URLs work too is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Press Alt+V to dictate instead of typing is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Tab queues or steers while a run is active is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Press ? on an empty composer to see keyboard shortcuts is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Press Ctrl+O to expand collapsed tool output is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /side asks a quick question without touching this thread is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /fork branches the conversation from the latest point is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /goal pins a session objective with a progress bar is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /resume reopens a past session (--last for the latest) is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Ask to 'use a workflow' to fan out parallel agents on big tasks is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Say 'use a workflow' to fan out agents on big tasks is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Ask to monitor a running build or log and get pinged on changes is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /agent opens the subagent command center is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /tasks shows workflows, subagents and terminals in one place is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /loop 10m <prompt> schedules a recurring prompt is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip Ctrl+B sends the selected task to the background queue is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /skills browses ready-made skills for repeatable procedures is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /plugins marketplace installs new commands and skills is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /effort adjusts reasoning depth vs speed is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /usage shows this session's token usage is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) catalog tip /export saves the conversation to a text file is empty",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the post-turn feature tip in the empty composer (#3588; the same on 1.4.14) a prefix of a tip, or a tip with more after it, is typed text",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the escalated approval's third option (#3588) 1.4.15 adds \"Always allow outside the sandbox\" between Yes and No; still the same held request as 1.4.14's two-option prompt",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the escalated approval's third option (#3588) a near miss is not the prompt: the third row is not No",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the escalated approval's third option (#3588) a near miss is not the prompt: the second row is a different always-allow",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) prod-memory-write: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) prod-memory-project: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) prod-memory-personal: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-write: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-project: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-personal: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-untrusted: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-write-after-esc: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) approval-memory-write-after-enter: the write is saved without a prompt and the pane settles at an empty idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: memory writes (the new \"Would you like to allow this memory write?\" prompt) a failed memory edit is a tool result, not an error AgEnD acts on",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the strings new in this release (binary text) Would you like to allow this memory write? trips no error, dialog or resume-missing detector, even printed above an idle composer",
+          "status": "passed"
+        },
+        {
+          "name": "Muse 1.4.15: the strings new in this release (binary text) Name: Resume this session; address it in Peer messages. trips no error, dialog or resume-missing detector, even printed above an idle composer",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "wake-saved-config.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake saved profile reaches the next child, without an explicit restart",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake saved model reaches the next child, without an explicit restart",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake saved both reaches the next child, without an explicit restart",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake delivery-coordinator wakes use the saved config too, and concurrent wakes join one replacement",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a changed inherited model is resolved at wake as it is at a cold start",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a failed replacement preserves the pause and can retry the saved profile",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a stop requested during replacement cleanup cannot be revived by the old wake",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake settles a held real pause before replacing, then reads the latest saved profile and model",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake joins an admitted real pause still reading its pane before the transition is published",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a wake stays pending while its admitted real pause still holds the pane read",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a held pane read that no longer admits a pause keeps its active daemon",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake rechecks a real pause admitted in the settlement caller's await gap",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake retirement refuses a fresh real pause before it reads a pane",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake retirement during an admitted pane read prevents publishing a pause",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a Stop during a held real pause supersedes the waiting cold wake",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake an owner change while a real pause settles cannot retire the replacement",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake joins a real wake already in progress without replacing or launching twice",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake an unchanged wake preserves the resident daemon and its window path",
+          "status": "passed"
+        },
+        {
+          "name": "a paused fleet Agent adopts saved launch settings at wake a hot-only edit does not turn wake into a cold replacement",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "zh-admin-word-2820.test.ts",
+      "result": "passed",
+      "assertions": [
+        {
+          "name": "M-2820: one zh-TW word for admin no \u7ba1\u7406\u8005 in src, docs, the website, change fragments or manual scripts (the glossary's rule line and the released CHANGELOG aside)",
+          "status": "passed"
+        },
+        {
+          "name": "M-2820: one zh-TW word for admin the glossary names \u7ba1\u7406\u54e1 for admin",
+          "status": "passed"
+        },
+        {
+          "name": "M-2820: one zh-TW word for admin the strings that said \u7ba1\u7406\u8005 now say \u7ba1\u7406\u54e1 (keys unchanged: an older page still finds them)",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

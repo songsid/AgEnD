@@ -1,0 +1,12 @@
+{
+  "result": "PASS",
+  "originals": [
+    "after-desk-dark-zh-TW-not_admin-tapped.png",
+    "after-desk-light-en-not_admin-tapped.png",
+    "after-phone-dark-en-not_admin-tapped.png",
+    "after-phone-light-zh-TW-not_admin-tapped.png"
+  ],
+  "observed": "Both zh-TW reasons use the required admin term; English readable; tooltips inside viewport; Attach/input/Send visibly unobscured.",
+  "phoneScopeNote": "The open tooltip overlays the upper pill label and part of the adjacent dropdown label. This does not establish a new regression or inaccessible controls.",
+  "scope": "Four originals inspected by built-in visual subagent; not a separate browser rerun, native phone interaction or full Settings review."
+}

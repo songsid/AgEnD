@@ -1,0 +1,156 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "checks": [
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129893678289",
+      "name": "build",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890158533",
+      "name": "install-smoke (ubuntu-24.04, 22)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890158229",
+      "name": "test-shard (4)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157980",
+      "name": "install-smoke (ubuntu-24.04, 24)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157958",
+      "name": "install-smoke (ubuntu-24.04, 22.14.0)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157943",
+      "name": "test-shard (1)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157896",
+      "name": "test-shard (3)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157874",
+      "name": "install-smoke (ubuntu-24.04, 26)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157822",
+      "name": "test-shard (2)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157727",
+      "name": "test-pwsh",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157589",
+      "name": "test-integration",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129890157579",
+      "name": "release-rollback-smoke",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531729/job/129890052237",
+      "name": "Data downgrade compatibility",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531740/job/129889844280",
+      "name": "npm rollback proof",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889743246",
+      "name": "ui-gate",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889743137",
+      "name": "setup",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889743061",
+      "name": "docs-tests",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531729/job/129889571518",
+      "name": "data-downgrade",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889562716",
+      "name": "detect-changes",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889562701",
+      "name": "changelog",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531804/job/129889562367",
+      "name": "actions-pinned",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531913/job/129889561775",
+      "name": "signatures",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531717/job/129889561167",
+      "name": "scan",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531740/job/129889560725",
+      "name": "rollback (ubuntu-24.04, 10.9.9)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "details_url": "https://github.com/songsid/AgEnD/actions/runs/42833531740/job/129889560195",
+      "name": "rollback (ubuntu-24.04, 11.6.2)",
+      "status": "completed"
+    }
+  ],
+  "total": 25
+}

@@ -1,0 +1,43 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "beta4Baseline": "5d27248ab117f81f0c3573abb910702ebc91d781",
+  "protectedProductInputsUnchanged": true,
+  "changesSinceBeta4": [
+    {
+      "commit": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+      "subject": "test(claude): the cold-resume startup control clears the prompt on its Escape \u2014 deterministic (main red, run 42830490312) (#3595)"
+    },
+    {
+      "commit": "55df0b4ccf7a7b5744c06dfabdd967abb627ad84",
+      "subject": "muse 1.4.15: recognise the escalated approval's third option; every post-turn feature tip is an empty composer (#3588) (#3591)"
+    },
+    {
+      "commit": "0cc386a54ada0e9eb187db8bf55414e396ef9a9c",
+      "subject": "fix(claude): retry a dropped Escape on the cold-resume prompt; an answered dialog still on screen is never ready (2.1.322 audit) (#3589)"
+    },
+    {
+      "commit": "6cc8846ac20e415fea31963b956ed62c8bfa4fe7",
+      "subject": "fix(claude): hold the 2.1.319+ connector file-send card for an ordinary file name (2.1.322 audit) (#3590)"
+    },
+    {
+      "commit": "922cc35032ec3884bdcf00738f7e307a15413d39",
+      "subject": "test: isolate restart signal audit from the host cgroup (#3586)"
+    },
+    {
+      "commit": "3ec84c79a6c486efdbd41400b50e19c36e2f2491",
+      "subject": "test: isolate backend probe Workers by default (#3583)"
+    },
+    {
+      "commit": "5dc51afcf35ba539928b82e75ba9155d7e65d4cb",
+      "subject": "fix(delivery): confirm Codex receipts while the accepted turn is busy (#3578) (#3580)"
+    },
+    {
+      "commit": "e2af0dd13f5dcec6fe6b1041e62bcf01f8e1a921",
+      "subject": "fix(i18n): one zh-TW word for admin \u2014 \u7ba1\u7406\u54e1 everywhere (M-2820) (#3571)"
+    },
+    {
+      "commit": "04ab9e39b1dd62d541e3f55612707fc1f7e7d59d",
+      "subject": "fix(wake): apply saved profile and model when a paused Agent starts (#3568)"
+    }
+  ]
+}

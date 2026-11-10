@@ -1,0 +1,7 @@
+{
+  "finalCampaignNamespacesExited": true,
+  "finalCampaignScratchRemoved": true,
+  "earlierOwnedHomeAndTempRemoved": true,
+  "residualOwnedProcessesMatchingArgs": [],
+  "scope": "Final user/network/PID namespaces have exited; kernel terminates namespace descendants. Earlier private tmux explicitly closed its owned server; browser fixtures closed; exact-owned-prefix process check empty. No live fleet/account/service touched."
+}

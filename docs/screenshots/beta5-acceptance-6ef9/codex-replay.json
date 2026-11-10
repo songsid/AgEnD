@@ -1,0 +1,24 @@
+{
+  "source": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "mode": "after",
+  "scope": "offline recorded-stream replay in private tmux; real production judge/readiness timers; no CLI/model/network",
+  "trace": [
+    {
+      "atMs": 12,
+      "verdict": "stranded"
+    },
+    {
+      "atMs": 68,
+      "verdict": "stranded"
+    },
+    {
+      "atMs": 319,
+      "verdict": "submitted"
+    }
+  ],
+  "elapsedMs": 319,
+  "confirmation": true,
+  "lateProof": null,
+  "captures": 3,
+  "recoveryEnters": 0
+}

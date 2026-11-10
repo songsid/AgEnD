@@ -1,0 +1,119 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "head": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "startedAt": "2026-11-10T16:12:29Z",
+  "inputs": {
+    "src": "720d3c98b1954d118d9ed75b2a57677c736f37e1",
+    "tests": "1b1fa09c034221b90a5db0613a6736a1fe3e1223",
+    "scripts": "32f19597f7c539d94e8e279376e26374bc2054a1",
+    "package.json": "9952e700ef32e78d3e9b438a13f768392540def9",
+    "package-lock.json": "b479f85ecf9c7c8e738761b82822f88e605889f9",
+    "vitest.config.ts": "ab27a3d45d18a577b5988369b923eb24ed949876"
+  },
+  "harnesses": {
+    "run.py": "4796efd1e6f70553b3c6eed3f385489be27b7c695efcecaa0080a4a2147c9c5a",
+    "recorded-stories.mts": "731b46205b2cec618a2efb18c84fbb8144531eb7ecec87260b6e315a256fec31",
+    "wording.mts": "48dfb19ca966947b0f47d6dc3cbf7b1b2b14df7f11a233fb4e96403ae2cae157"
+  },
+  "namespace": "unshare user + network + PID + private /proc; only loopback enabled; PID1 exit ends descendants",
+  "environmentKeys": [
+    "CHROME",
+    "FONTCONFIG_FILE",
+    "HOME",
+    "IS_SANDBOX",
+    "LANG",
+    "PATH",
+    "PW_DIR",
+    "REPO",
+    "TMPDIR",
+    "TZ",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME"
+  ],
+  "browser": "Google Chrome for Testing 156.0.8078.4",
+  "fontconfigDigest": "2d747c0e1655b139285ce27e5e4e532e59b9188b06bf19d8d3eecafe8d1040c0",
+  "runs": [
+    {
+      "name": "focused",
+      "exit": 0,
+      "command": [
+        "unshare",
+        "-Urnpf",
+        "--mount-proc",
+        "/bin/sh",
+        "-c",
+        "ip link set lo up; exec \"$@\"",
+        "acceptance",
+        "<installed-node>",
+        "<candidate-checkout>/node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/codex-receipt-latency-3578.test.ts",
+        "tests/delivery-forwards-1756.test.ts",
+        "tests/wake-saved-config.test.ts",
+        "tests/claude-cold-resume-retry-2322.test.ts",
+        "tests/claude-file-send-card-2322.test.ts",
+        "tests/muse-1.4.15-audit.test.ts",
+        "tests/zh-admin-word-2820.test.ts",
+        "--maxWorkers=3",
+        "--reporter=json",
+        "--outputFile=<candidate-checkout>/.artifacts/final-campaign/focused.json"
+      ]
+    },
+    {
+      "name": "codex-replay",
+      "exit": 0,
+      "command": [
+        "unshare",
+        "-Urnpf",
+        "--mount-proc",
+        "/bin/sh",
+        "-c",
+        "ip link set lo up; exec \"$@\"",
+        "acceptance",
+        "<installed-node>",
+        "--import",
+        "tsx",
+        "scripts/manual/codex-receipt-3578/replay.mts"
+      ]
+    },
+    {
+      "name": "recorded-stories",
+      "exit": 0,
+      "command": [
+        "unshare",
+        "-Urnpf",
+        "--mount-proc",
+        "/bin/sh",
+        "-c",
+        "ip link set lo up; exec \"$@\"",
+        "acceptance",
+        "<installed-node>",
+        "--import",
+        "tsx",
+        "<candidate-checkout>/docs/screenshots/beta5-acceptance-6ef9/harness/recorded-stories.mts"
+      ]
+    },
+    {
+      "name": "wording",
+      "exit": 0,
+      "command": [
+        "unshare",
+        "-Urnpf",
+        "--mount-proc",
+        "/bin/sh",
+        "-c",
+        "ip link set lo up; exec \"$@\"",
+        "acceptance",
+        "<installed-node>",
+        "--import",
+        "tsx",
+        "<candidate-checkout>/docs/screenshots/beta5-acceptance-6ef9/harness/wording.mts"
+      ]
+    }
+  ],
+  "protectedInputsCleanAfter": true,
+  "scratchRemoved": true,
+  "finishedAt": "2026-11-10T16:13:00Z",
+  "publicReceiptRedactions": "Only absolute local checkout and Node-executable prefixes. Source/tree/harness digests and results unchanged.",
+  "originalReceiptDigest": "551b742ac5e4657b3e8d78e6c7c26ed656174369643ddd75b133f1045c55a945"
+}

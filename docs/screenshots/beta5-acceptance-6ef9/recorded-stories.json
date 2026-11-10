@@ -1,0 +1,194 @@
+{
+  "candidate": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "scope": "Production backend parsers with recorded fixtures, no CLI/model/account/network. Retry timing and answered-dialog readiness exercised separately by the 12-test Daemon suite.",
+  "coldResume": {
+    "keys": [
+      "Escape"
+    ],
+    "holdOnly": false,
+    "blocksDelivery": true,
+    "inputBlocked": true,
+    "interactionKind": null,
+    "retrySafe": {
+      "max": 3,
+      "afterMs": 1000
+    }
+  },
+  "fileCards": [
+    {
+      "name": "claude-2.1.322-file-send-plain",
+      "keys": [],
+      "holdOnly": true,
+      "blocksDelivery": true,
+      "inputBlocked": true,
+      "interactionKind": "permission",
+      "retrySafe": null
+    },
+    {
+      "name": "claude-2.1.322-file-send-plain-two",
+      "keys": [],
+      "holdOnly": true,
+      "blocksDelivery": true,
+      "inputBlocked": true,
+      "interactionKind": "permission",
+      "retrySafe": null
+    },
+    {
+      "name": "claude-2.1.322-file-send-lookalike",
+      "keys": [],
+      "holdOnly": true,
+      "blocksDelivery": true,
+      "inputBlocked": true,
+      "interactionKind": "permission",
+      "retrySafe": null
+    }
+  ],
+  "dangerousCommand": {
+    "keys": [
+      "Down",
+      "Enter"
+    ],
+    "holdOnly": false,
+    "blocksDelivery": true,
+    "inputBlocked": true,
+    "interactionKind": "dangerous_command",
+    "retrySafe": null
+  },
+  "museEscalated": {
+    "keys": [],
+    "holdOnly": true,
+    "blocksDelivery": true,
+    "inputBlocked": true,
+    "interactionKind": "permission",
+    "retrySafe": null,
+    "identity": "echo hi"
+  },
+  "tips": [
+    {
+      "tip": "Type @ to search and insert workspace file paths",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Start a message with ! to run a shell command yourself",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Paste an image with Ctrl+V \u2014 file paths and URLs work too",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Press Alt+V to dictate instead of typing",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Tab queues or steers while a run is active",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Press ? on an empty composer to see keyboard shortcuts",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Press Ctrl+O to expand collapsed tool output",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/side asks a quick question without touching this thread",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/fork branches the conversation from the latest point",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/goal pins a session objective with a progress bar",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/resume reopens a past session (--last for the latest)",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Ask to 'use a workflow' to fan out parallel agents on big tasks",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Say 'use a workflow' to fan out agents on big tasks",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Ask to monitor a running build or log and get pinged on changes",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/agent opens the subagent command center",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/tasks shows workflows, subagents and terminals in one place",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/loop 10m <prompt> schedules a recurring prompt",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "Ctrl+B sends the selected task to the background queue",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/skills browses ready-made skills for repeatable procedures",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/plugins marketplace installs new commands and skills",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/effort adjusts reasoning depth vs speed",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/usage shows this session's token usage",
+      "idle": true,
+      "draftRows": []
+    },
+    {
+      "tip": "/export saves the conversation to a text file",
+      "idle": true,
+      "draftRows": []
+    }
+  ],
+  "typedControls": 2,
+  "inputs": {
+    "tests/fixtures/claude-2.1.322-cold-resume-live-summary-newfocus.pane.txt": "668e2c8a449067e8552cdb04bd7a28cafbb4cd4be62619b57b66d71cf3afad2a",
+    "tests/fixtures/claude-2.1.322-file-send-plain.pane.txt": "14a4ae4cd238fec152700bfee4e57c84fbd363f4fb69b580cb5d1e54e82130d0",
+    "tests/fixtures/claude-2.1.322-file-send-plain-two.pane.txt": "67804836efb05df5db4c4c0ab89cf561386cd143827718eb25f5dc8d6cbadd41",
+    "tests/fixtures/claude-2.1.322-file-send-lookalike.pane.txt": "4e1d252e9e2ac27cca903b815431ed5faf48e97a46bcc9a7daa87da0b05cdd6c",
+    "tests/fixtures/claude-2.1.322-bypass-dangerous-rm-prompt.pane.txt": "683a8b6dd877c43623155170839405c2d6fc1fc28f908e51b9c0d73e934b46c2",
+    "tests/fixtures/muse-1.4.15/approval-escalated.pane.txt": "16fc6822ed467fdca8b2853c606afdddf51ee658ea500a1575a181bb35a1c67c",
+    "tests/muse-1.4.15-audit.test.ts": "950a5fadbc7f33557b9b02cf710d76e0da3bf1ad3fc3a3d7d89f5c765f65a270",
+    "tests/fixtures/muse-1.4.15/meta-done.pane.txt": "91a1fb334564bc0713cc7c5d7a89344509e9e32faf8dedb4d22d21dbb0f4707a"
+  }
+}
