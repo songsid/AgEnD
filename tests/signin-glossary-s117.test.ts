@@ -141,14 +141,14 @@ describe("S-117 story 1: signing in again on this computer; no /web without a ch
     it(`${lang}: on this computer the hint signs in again here (agend web as <code>), with or without a chat`, async () => {
       for (const noChat of [false, true]) {
         const p = await signin(lang, { noChat });
-        expect(p.text("hint"), `noChat=${noChat}`).toBe(lang === "en" ? "You can also paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
+        expect(p.text("hint"), `noChat=${noChat}`).toBe(lang === "en" ? "Paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
         expect(p.help[0].hidden, "the \"No chat bot?\" help is the hint here").toBe(true);
         expect(await p.submit()).not.toContain("/web");
       }
     });
     it(`${lang}: on a Windows browser on this computer, the desktop shortcut first`, async () => {
       const p = await signin(lang, { ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" });
-      expect(p.text("hint")).toBe(lang === "en" ? "You can also paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
+      expect(p.text("hint")).toBe(lang === "en" ? "Paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
       expect(await p.submit()).toContain(lang === "en" ? "shortcut" : "捷徑");
     });
   }

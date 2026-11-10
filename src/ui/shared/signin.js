@@ -14,7 +14,7 @@
       signout_unsaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
       checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
       label: "Authenticator or device sign-in code", submit: "Sign in", working: "Signing in…",
-      hint: "You can also paste an 8-character device sign-in code",
+      hint: "Paste an 8-character device sign-in code",
       nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
       safe: "Page looks wrong after signing in?", safe_body: "Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Look.",
       refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",

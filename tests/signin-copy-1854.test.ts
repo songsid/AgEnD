@@ -14,7 +14,7 @@ const HTML = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8
 const COPY = {
   en: {
     lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
-    hint: "You can also paste an 8-character device sign-in code",
+    hint: "Paste an 8-character device sign-in code",
     nobot: "No chat bot?",
     nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
     refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
