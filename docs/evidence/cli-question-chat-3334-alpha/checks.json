@@ -1,0 +1,38 @@
+{
+  "base": "33d2ac3f6b864b4d84f49634e83937fd5f9df639",
+  "scope": "Alpha modified working tree before commit; manifest binds tested inputs. Main R1 mutations retain main-only historical scope.",
+  "mainApprovedHead": "73637b66e0c842d6717189f4bbee97969f457abb",
+  "productionPatchId": "a303055be57911e6a2aef0e31903707807134ce8",
+  "mainProductionPatchId": "a303055be57911e6a2aef0e31903707807134ce8",
+  "byteIdenticalToMain": {
+    "src/selection-card.ts": true,
+    "tests/cli-question-chat-3334.test.ts": true,
+    "tests/web-only-dialogs-2910.test.ts": true
+  },
+  "testFiles": [
+    "tests/admin-gate-754.test.ts",
+    "tests/changelog-fragments.test.ts",
+    "tests/claude-file-send-card-2322.test.ts",
+    "tests/cli-question-chat-3334.test.ts",
+    "tests/kiro-remote-card-2675.test.ts",
+    "tests/kiro-remote-card-chat-2675.test.ts",
+    "tests/needs-you-derive-1386.test.ts",
+    "tests/needs-you-fleet-1386.test.ts",
+    "tests/needs-you-web-1386.test.ts",
+    "tests/nonce-button-shutdown.test.ts",
+    "tests/tool-progress.test.ts",
+    "tests/web-chat-c4.test.ts",
+    "tests/web-only-dialogs-2910.test.ts"
+  ],
+  "tests": {
+    "passed": 351,
+    "failed": 0,
+    "skipped": 0,
+    "files": 13
+  },
+  "sourceTypes": "passed",
+  "testTypes": "passed",
+  "diffCheck": "passed",
+  "mainMerge": "a53ceff487461ccf5ad6d4ce646a2d4e441f481c",
+  "mainAncestryVerified": true
+}

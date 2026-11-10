@@ -1,8 +1,8 @@
 /**
  * #2910 D4: a CLI's own numbered-choice dialog (Claude Code's Bash or tool permission, its trust / Bypass screens it
  * did not recognise, "Background work is running", "Switch model?"; Codex's selections; any numbered prompt the
- * #1691 catch-all holds), read from the pane as a #2675 question card — so that on a web-only fleet the person answers it
- * from the dashboard: the card's own options as buttons, keyed in by remote-card-answer.ts on a verified cursor.
+ * #1691 catch-all holds), read from the pane as a #2675 question card. #3334 offers its own options to an admin on the
+ * dashboard or in the agent's chat, keyed in by remote-card-answer.ts on a verified cursor.
  *
  * Pure. Bottom-anchored like unrecognised-prompt.ts: the cursor (`❯`/`›`) is on a numbered option in a run of
  * consecutive options at the bottom of the screen (at most a short footer below), so a transcript quoting a dialog is
@@ -38,7 +38,8 @@ const AUTO_DENY_ROW = /^[ \t]*⚠[ \t]+Claude Code will automatically (?:deny|bl
 
 /**
  * The numbered-choice dialog at the bottom of `pane`, as a question card titled `title` (the CLI's name), or null.
- * `rowWidth` is unused here (no typed answer); the card offers no Esc (`noSkip`) and is posted only on a web-only fleet.
+ * `rowWidth` is unused here (no typed answer); the card offers no Esc (`noSkip`). Its legacy `webOnly` marker requires
+ * owning-adapter fleet-admin authority when the answer comes from chat.
  */
 export function selectionCard(pane: string, title: string): RemoteQuestionCard | null {
   if (pane.length > SELECTION_REQUEST_MAX) return null;
