@@ -1,40 +1,48 @@
-# S-118: code-only authenticator sign-in proposal
+# S-118: one box for authenticator and device sign-in codes
 
-繁中摘要：依使用者決策 a690be6b，登入只需驗證器 App 的 6 位數驗證碼。移除姓名欄與 Settings「你的登入名稱」列，保留「8 字元裝置登入碼」備援。401 不再提姓名；另有中性的「等待下一組驗證碼」提案狀態。這版只更新 PNG，須等使用者核准、junsion 核心 PR 合併及 Leader GO 才實作。
+繁中摘要：最新使用者指示取代「改用裝置登入碼」切換。只有一個輸入框，接受 6 位數驗證碼或 8 字元裝置登入碼；完整輸入後自動送出，仍保留可見的「登入」按鈕。備援提示固定一行「也可以貼上 8 字元裝置登入碼」。本次只更新 PNG；須等使用者核准、junsion 核心 PR 合併及 Leader GO 才實作。另有字元集造成的逐字輸入歧義，見下文，實作前須確認處理規則。
 
-## Decision and core boundary
+## Current UI
 
-Decision a690be6b supersedes the name/account UI and earlier name guidance, including the rule that the UI must always supply an account on chat fleets. Both chat fleets and web-only fleets now show only the six-digit authenticator field. No new name row is added in Settings. The previous name-based mockups remain historical in commit95a496778; they are not the current proposal.
+- One empty input, text keyboard and autocomplete=one-time-code. No name/account field, Settings name row, mode selector or fallback switch. The text keyboard can type the device-code alphabet; do not force a numeric-only keyboard.
+- Primary label: 驗證碼或裝置登入碼. The introduction explains automatic sign-in using the authenticator app's six-digit code. The one-line helper is exactly 也可以貼上 8 字元裝置登入碼.
+- Keep a visible Sign in button for accessibility, form submission and an explicit retry. The input handler and form button must share the same validator and in-flight fence. The PNGs do not implement either handler.
+- Shown wrong-code PNGs are specifically the POST /auth/totp 401 case: check the newest authenticator-app code and its device's clock. Device-code /auth/login refusals must retain their existing used/expired/unconfirmed guidance, not the authenticator-clock message; add a distinct route-specific regression when building. Additional text is now neutral: 若驗證碼正確仍無法登入，請貼上 8 字元裝置登入碼，或使用先前登入過的裝置. No lockout claim or account inference.
+- 429: plain waiting words, duration once, actual core retryAfterMs/Retry-After rather than the five-minute illustration. A paused form sends nothing; expiry does not automatically replay a failed value.
+- Next-code: neutral waiting text, no admin name or match count. The exact HTTP answer remains Junsion's core contract, not an invented enum/status/countdown. The disabled button uses existing text/background tokens (--text-2, --surface-2), without fading its text through opacity. Resolved contrast is5.57:1 in light and5.49:1 in dark. No dedicated disabled colour token exists in the captured tokens.css.
+- Reach help stays three short choices: same Wi-Fi local address, a shared private network (e.g. Tailscale), or an admin-provided outside address. No bare localhost/Tailnet jargon or automatically opened link.
 
-The real sign-in shell/assets are from merged #3548 (alpha d5e2a3c873da04a72de4def25c2e53db2889a381). Its existing API is not evidence that code-only matching is implemented. Junsion owns the core follow-up on #3486 (comment6760191119): fresh eligible admins, exactly-one-match sign-in, uniform no-match refusal, multiple-match waiting, replay/limits/notices and the tighter whole-sign-in ceiling. S-118 consumes the merged core only; it does not add matching, eligibility, credential storage or rate-limit policy.
+## Confirmed alphabet and routes
 
-The exact HTTP response for multiple matches is pending Junsion's PR/review. The next-code PNG is a visual proposal, not an invented status code, error enum, retry timer or account disclosure. No core implementation or live authentication is performed here.
+Read from the owned #3548-source checkout:
 
-## Proposed states
+- src/auth/one-time-code.ts: CODE_ALPHABET is `ABCDEFGHIJKLMNOPQRSTUVWXYZ234567`; ONE_TIME_CODE_LENGTH is8. formatOneTimeCode displays4+dash+4. normalizeOneTimeCode uppercases and strips non-ASCII alphanumerics, including the presentation dash. WebLoginCodes uses generateOneTimeCode.
+- src/ui/shared/signin.js and src/auth-api.ts: an existing web/device sign-in code is redeemed via POST /auth/login `{code}`. POST /auth/device-login creates an approval request; it is not the endpoint for this box's already-issued code.
+- Six ASCII digits go only to POST /auth/totp `{code}`. A full eight-character alphabet-valid device code, with or without its middle dash and in any case, goes only to POST /auth/login. Never try both routes after a failure.
+- UI validation must reject partial/invalid values before any request. Support the specified dash/case formatting; do not use the core's permissive stripping to turn arbitrary punctuation into an apparently complete input. No core route, alphabet or matching change belongs to S-118.
 
-| State | UI |
-| --- | --- |
-| Primary | Empty six-digit authenticator input, one Sign in action, secondary 8-character device sign-in-code fallback. No account/name field on any fleet. |
-| Success | Navigate to /ui after the core creates the session. |
-| 401 wrong_code | Check the latest authenticator-app code and the clock on the authenticator device. If the code is right, sign-in may be limited temporarily; use an 8-character device sign-in code or a previously signed-in device. Never infer an account or policy reason. |
-| 429 paused | Plain waiting words, with the duration once. Illustration: five minutes. A future consumer uses the actual core retryAfterMs/Retry-After, not this example, and never automatically resubmits a code. |
-| Wait for next code | Neutral “Wait for the next code to appear in your authenticator app, then try again.” No admin names, match count, guessed HTTP status or fixed wait. Exact retry behavior is bound to the core answer before implementation. |
-| Unavailable / network | Plain cannot-sign-in or cannot-reach message, in-place retry and existing fallback; no implied successful session. |
-| Fallback | Existing single-use 8-character device sign-in-code form. Preserve chat/web-only capability gates and instructions. No Devices overview or QR flow is added. |
-| Reachability | Three short choices: same Wi-Fi local address, the same private network (e.g. Tailscale), or an admin-provided outside address. No bare localhost/Tailnet jargon, tunnel opening, link creation or automatic navigation. |
+### Real incremental-input ambiguity — needs a rule before implementation
 
-## Copy and layout
+Full six-digit and eight-character values are disjoint by length. The alphabet is not letters-only: it contains2–7. Therefore a legal eight-character code can start with six digits, or even contain eight digits. For example, the synthetic alphabet-valid `234567AB` has prefix `234567`, which is also a complete TOTP-shaped value.
 
-- Use “8 字元裝置登入碼” consistently in new copy. Existing Settings wording “8 碼裝置登入碼” is separate: settings-devices.js52 and settings-access-strings.js26. It is not silently fixed in this design-only change.
-- Short Chinese terms and 每組／立即／直接／核准 stay whole where used. No numeric placeholder suggests a pre-filled code. Previous-device wording is always 使用之前登入過的裝置. App references say 驗證器 App.
-- Top alignment stays64px desktop and32px phone across states. Theme remains actual light on desktop and dark on phone. Settings has no new name row and needs no new screenshot in this revision. Carry the earlier build goal of at most two phone lines for banner/toggle summaries; underlying enforcement remains core-owned.
-- Existing shell notes remain outside this card: phone 待處理 versus desktop 等你處理; English sidebar labels; narrow search/version clipping.
+A handler cannot know at the sixth digit whether the person has finished a TOTP or paused halfway through typing a device code. A short quiet-input debounce covers ordinary continuous typing but cannot prove “never send a partial device code” across an arbitrary pause. Aborting a request after character7 does not undo a server attempt. The proposal does not hide this limitation or silently alter the core alphabet.
 
-## PNG scope and reproduction
+Before implementation, confirm whether a short quiet-input delay with this residual ambiguity is acceptable, or whether ambiguous numeric prefixes need an explicit submit exception / a separately authorized code-generation constraint. Those alternatives affect the user's automatic-submit promise or the UI-only scope. The PNGs remain useful independently of that choice.
 
-24 actual-Chrome captures: EN/zh-TW ×1366×900 desktop light/390×844 phone dark × primary/wrong/paused/next-code/reach/fallback. The six requested zh primary/wrong/paused files keep their names; the next-code frames are supplementary. There are no Settings-name captures in the current gallery.
+## Planned auto-submit fences (not implemented in this design branch)
 
-The generator serves the actual signin.html, signin.js, theme/tokens/loading assets, plus a proposal-only self stylesheet and presentation-only DOM projection. Its static loopback listener refuses every POST; it contacts no real account, fleet, CLI or tunnel. The API is not mocked as successful. These are design images, not functional, security, SKEW or release acceptance.
+- Validate the entire raw value before dispatch. Normalize only accepted formatting, then key attempts by route+canonical value; dash/case-only changes are the same value.
+- An auto-attempt is recorded synchronously before awaiting the request. A per-page set prevents A→B→A, rerender, focus/blur or error recovery from repeatedly auto-submitting A. Failed auto-submit does not loop. An explicit Sign in click can be a deliberate retry, still respecting pause/in-flight rules.
+- No composition/partial/invalid input, active request, paused state or timer completion dispatches a request. Re-evaluate current input and generation after asynchronous work; an older response cannot settle a newer input's view.
+- Keep all server CSRF, session, matching, replay, rate-limit and notices policy unchanged. The code-only matching follow-up is owned by Junsion; S-118 only consumes the merged interface. The input-prefix question above remains a separate pre-build decision.
+
+## Copy, scope and PNG evidence
+
+Keep whole Chinese terms, including 每組／立即／直接／核准 where present. Use 驗證器 App and 8 字元裝置登入碼 consistently. In the eventual implementation PR, align the existing 8 碼 wording in settings-devices.js52 and settings-access-strings.js26 to8字元 as requested; there is no product source edit in this PNG revision. Keep the phone Settings banner/toggle summary goal of at most two lines when that copy is implemented. Devices overview remains outside scope.
+
+20 real-Chrome captures: EN/zh ×1366×900 desktop light/390×844 phone dark × primary/wrong/paused/next-code/reach. The six requested zh primary/wrong/paused files retain their names. Prior fallback-mode and Settings-name images are removed from the current gallery and remain only in git history.
+
+The generator serves actual #3548 signin.html/theme/tokens/loading/signin.js with a presentation-only DOM projection and self stylesheet. Every POST is refused, so these images do not demonstrate automatic submission, authentication, security, SKEW or release acceptance. No real account, fleet, CLI, tunnel or matching operation runs. receipt.json pins the source boundary, browser and geometry; SHA256SUMS pins originals. No authored src delta.
 
 ```sh
 PW_DIR="$PWD/node_modules" CHROME=/path/to/owned/chrome \
@@ -42,5 +50,3 @@ PW_DIR="$PWD/node_modules" CHROME=/path/to/owned/chrome \
   systemd-run --user --scope -q -p MemoryMax=3G -- \
   node scripts/manual/mockup-authenticator-signin-s118.mjs
 ```
-
-PNG paths: docs/screenshots/authenticator-signin-s118/. SHA256SUMS pins originals; receipt.json records the precommit base, pending-core boundary, browser and geometry, including zero name inputs. No authored production src delta. User PNG approval, Junsion core merge and explicit Leader GO are all required before implementation.

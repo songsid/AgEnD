@@ -1,8 +1,8 @@
 {
-  "base": "95a4967784d4b13270a99fff45cd046272b8d116",
-  "contract": "Decision a690be6b code-only; shell #3548 d5e2a3c8; code-only/next-code core response pending",
+  "base": "68392df6241331bd37959ca17be854f0cfccbed7",
+  "contract": "Unified-input UI revision; decision a690be6b; shell #3548 d5e2a3c8; code-only/next-code core response pending",
   "browser": "156.0.8078.4",
-  "scope": "Code-only design projection in actual signin.html. No name field or Settings name row. Static sign-in POSTs refused. Next-code is presentation only: its exact HTTP answer waits for Junsion core. No production/core/SKEW/live-auth acceptance.",
+  "scope": "Unified-input design projection in actual signin.html. One field, no switch/name/Settings name row. All POSTs refused; no auto-submit implementation. Alphabet/route read from owned source; six-digit numeric-prefix ambiguity disclosed in design. Next-code API waits Junsion core. No production/core/SKEW/live-auth acceptance.",
   "captures": [
     {
       "file": "desk-light-zh-TW-primary.png",
@@ -21,10 +21,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -32,7 +28,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -52,10 +55,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -63,38 +62,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
-      }
-    },
-    {
-      "file": "desk-light-zh-TW-fallback.png",
-      "kind": "signin",
-      "geometry": {
-        "scroll": 1366,
-        "width": 1366,
-        "top": 64,
-        "buttons": [
-          {
-            "text": "code",
-            "height": 51
-          },
-          {
-            "text": "登入",
-            "height": 45
-          },
-          {
-            "text": "改用驗證器 App 登入",
-            "height": 47
-          },
-          {
-            "text": "如何在手機開啟 AgEnD？",
-            "height": 44
-          }
-        ],
-        "nameInputs": 0,
-        "codeEmpty": true,
-        "placeholder": "XXXX-XXXX",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -114,10 +89,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -125,7 +96,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -145,10 +123,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -156,7 +130,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(93, 93, 93)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -176,10 +157,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -187,7 +164,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(93, 93, 93)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -207,10 +191,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -218,7 +198,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -238,10 +225,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -249,38 +232,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
-      }
-    },
-    {
-      "file": "phone-dark-zh-TW-fallback.png",
-      "kind": "signin",
-      "geometry": {
-        "scroll": 390,
-        "width": 390,
-        "top": 32,
-        "buttons": [
-          {
-            "text": "code",
-            "height": 51
-          },
-          {
-            "text": "登入",
-            "height": 45
-          },
-          {
-            "text": "改用驗證器 App 登入",
-            "height": 47
-          },
-          {
-            "text": "如何在手機開啟 AgEnD？",
-            "height": 44
-          }
-        ],
-        "nameInputs": 0,
-        "codeEmpty": true,
-        "placeholder": "XXXX-XXXX",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -300,10 +259,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -311,7 +266,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -331,10 +293,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -342,7 +300,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(180, 180, 180)",
+        "disabledBackground": "rgb(58, 58, 58)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -362,10 +327,6 @@
             "height": 45
           },
           {
-            "text": "改用 8 字元裝置登入碼",
-            "height": 47
-          },
-          {
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
@@ -373,7 +334,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(180, 180, 180)",
+        "disabledBackground": "rgb(58, 58, 58)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -393,10 +361,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -404,7 +368,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -424,10 +395,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -435,38 +402,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
-      }
-    },
-    {
-      "file": "desk-light-en-fallback.png",
-      "kind": "signin",
-      "geometry": {
-        "scroll": 1366,
-        "width": 1366,
-        "top": 64,
-        "buttons": [
-          {
-            "text": "code",
-            "height": 51
-          },
-          {
-            "text": "Sign in",
-            "height": 45
-          },
-          {
-            "text": "Use my authenticator",
-            "height": 47
-          },
-          {
-            "text": "How does my phone reach AgEnD?",
-            "height": 44
-          }
-        ],
-        "nameInputs": 0,
-        "codeEmpty": true,
-        "placeholder": "XXXX-XXXX",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -486,10 +429,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -497,7 +436,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(255, 255, 255)",
+        "disabledBackground": "rgb(13, 13, 13)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -517,10 +463,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -528,7 +470,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(93, 93, 93)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -548,10 +497,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -559,7 +504,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(255, 255, 255)"
+        "background": "rgb(255, 255, 255)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(93, 93, 93)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -579,10 +531,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -590,7 +538,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -610,10 +565,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -621,38 +572,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
-      }
-    },
-    {
-      "file": "phone-dark-en-fallback.png",
-      "kind": "signin",
-      "geometry": {
-        "scroll": 390,
-        "width": 390,
-        "top": 32,
-        "buttons": [
-          {
-            "text": "code",
-            "height": 51
-          },
-          {
-            "text": "Sign in",
-            "height": 45
-          },
-          {
-            "text": "Use my authenticator",
-            "height": 47
-          },
-          {
-            "text": "How does my phone reach AgEnD?",
-            "height": 44
-          }
-        ],
-        "nameInputs": 0,
-        "codeEmpty": true,
-        "placeholder": "XXXX-XXXX",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -672,10 +599,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -683,7 +606,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": false,
+        "disabledText": "rgb(13, 13, 13)",
+        "disabledBackground": "rgb(236, 236, 236)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -703,10 +633,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -714,7 +640,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(180, 180, 180)",
+        "disabledBackground": "rgb(58, 58, 58)",
+        "disabledOpacity": "1"
       }
     },
     {
@@ -734,10 +667,6 @@
             "height": 45
           },
           {
-            "text": "Use an 8-character device sign-in code",
-            "height": 47
-          },
-          {
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
@@ -745,7 +674,14 @@
         "nameInputs": 0,
         "codeEmpty": true,
         "placeholder": "",
-        "background": "rgb(33, 33, 33)"
+        "background": "rgb(33, 33, 33)",
+        "visibleInputs": 1,
+        "switchPresent": false,
+        "hintLines": 1,
+        "disabled": true,
+        "disabledText": "rgb(180, 180, 180)",
+        "disabledBackground": "rgb(58, 58, 58)",
+        "disabledOpacity": "1"
       }
     }
   ]
