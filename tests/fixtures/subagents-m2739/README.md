@@ -5,3 +5,6 @@ Selected bytes from research commit `6380b4cec734bc1e28051f849afd04c948942c44`, 
 Positive: Claude parent and two sidechain/meta pairs; Codex parent spawn and two explicitly parent-bound children. Negative: refused create_thread and successful independent create_thread/child, which lack the parent binding this slice requires. The task/summary contents are synthetic marker checks, not real-user conversations. The feature never treats parent final prose as child evidence.
 
 The browser recipe reads these actual records from private files through SubagentService and the real admin HTTP route. It shifts timestamps only to exercise a currently open observation; it does not start CLIs or assert native Runtime support.
+# Full mixed-stream regression
+
+`claude-full-agent-*.jsonl` retains every row of the original saved 2.1.319 child file, including API diagnostics and attachments. No records are filtered out. Only owned paths, API request payloads and environment attachments are normalized/omitted; identity fields, field absence, record order, timestamps, call/message/meta/notification evidence remain. `claude-full-manifest.json` binds original raw hashes. Private acceptance also replays the actual unredacted saved parent/child/meta files through the production bounded reader, without launching a CLI or using an account.

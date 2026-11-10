@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,15 @@ async function rig() {
  return {source,f};
 }
 describe("bounded optional sub-Agent filesystem observation",()=>{
+ it("projects complete mixed-record files and expires them across reader recreation",async()=>{
+  const {source,f}=await rig();
+  for(const[id]of f.children)await writeFile(join(source.root,source.sessionId,`subagents/agent-${id}.jsonl`),await readFile(new URL(`./fixtures/subagents-m2739/claude-full-agent-${id}.jsonl`,import.meta.url)));
+  let now=f.now;
+  const s=new SubagentService(()=>source,readSubagentFile,()=>now);
+  expect((await s.read("dev")).runs.map(r=>r.state)).toEqual(["completed","completed"]);
+  now+=120_000;expect((await s.read("dev")).runs).toEqual([]);
+  expect((await new SubagentService(()=>source,readSubagentFile,()=>now).read("dev")).runs).toEqual([]);
+ });
  it("reads real parent/child files and only caches the current owner",async()=>{
   const {source,f}=await rig(); let owner=source; const read=vi.fn(readSubagentFile); let now=f.now;
   const s=new SubagentService(()=>owner,read,()=>now);
@@ -38,7 +47,7 @@ describe("bounded optional sub-Agent filesystem observation",()=>{
   expect(await readSubagentFile(source.root,source.root)).toBeNull();
  });
  it("keeps partial parent data unavailable and missing/partial children unconfirmed",async()=>{
-  const {source}=await rig(); const s=new SubagentService(()=>source);
+  const {source,f:clock}=await rig(); const s=new SubagentService(()=>source,readSubagentFile,()=>clock.now);
   await writeFile(source.path,'{"incomplete":'); expect((await s.read("dev")).status).toBe("unavailable");
   const f=subagentFixture("claude-code"); await writeFile(source.path,f.parent.map(r=>JSON.stringify(r)).join("\n")+"\n");
   await writeFile(join(source.root,source.sessionId,"subagents/agent-ab5b36ac3f402d58b.meta.json"),'{');

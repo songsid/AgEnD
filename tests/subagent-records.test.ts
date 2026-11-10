@@ -96,7 +96,7 @@ describe("read-only captured sub-Agent records", () => {
     f.parent = f.parent.filter((r: any) => !r.message?.content?.includes?.("<task-id>a9947907a82e086d7</task-id>"));
     expect(projectSubagents(f).map(r => r.state)).toEqual(["completed", "running"]);
     expect(projectSubagents({ ...f, live: false }).map(r => r.state)).toEqual(["completed", "unknown"]);
-    expect(projectSubagents({ ...f, now: f.now + 31000 })[1].state).toBe("unknown");
+    expect(projectSubagents({ ...f, now: f.now + 31000 }).map(r => r.state)).toEqual(["unknown"]); // completed sibling has retired
   });
   it("does not expose child reasoning, tool bodies, system instructions or unbounded secrets", () => {
     const f = fixture("codex"); for (const child of f.children.values()) child.records.push({ type: "response_item", payload: { type: "reasoning", text: "HIDDEN_SYSTEM_PRIVATE" } });

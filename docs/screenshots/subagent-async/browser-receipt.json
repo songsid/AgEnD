@@ -1,0 +1,124 @@
+{
+  "scope": "Real Fleet web/admin sign-in and production bounded reader; saved mock CLI mixed records, derived live phases, fixed observation/browser clock. No API response stubs outside SKEW.",
+  "source": [
+    {
+      "file": "src/subagent-records.ts",
+      "sha256": "febf682dae0a5a4ed3e025a50329a2a81e829e11d99ba35135a53c0e7ce84d25"
+    },
+    {
+      "file": "src/subagent-service.ts",
+      "sha256": "74d32b3ce656d1f9bd74c8be0cb0b7173ba4ecabf16f691af3b9d3afdee3a0f0"
+    },
+    {
+      "file": "src/ui/subagent-row.js",
+      "sha256": "5578156bf7f288c2aa1be77b16e05ff6eb593c3186ff85b087fe5f0e99b47ef1"
+    },
+    {
+      "file": "src/ui/panel-chat.js",
+      "sha256": "a1e2548f92b9776ae0c0709241c568deb5d6710e9976960793371e384601af75"
+    }
+  ],
+  "cases": [
+    {
+      "name": "desk-light-zh-TW",
+      "baseline": "full mixed streams unknown",
+      "candidate": "running/completed",
+      "retiredCompleted": true,
+      "retiredUnknown": true,
+      "noReopenRevival": true,
+      "parentYieldRetainsRunning": true,
+      "style": {
+        "outsideLedger": true,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "tap": 44,
+        "inline": 0
+      },
+      "errors": [],
+      "violations": []
+    },
+    {
+      "name": "desk-dark-en",
+      "baseline": "full mixed streams unknown",
+      "candidate": "running/completed",
+      "retiredCompleted": true,
+      "retiredUnknown": true,
+      "noReopenRevival": true,
+      "parentYieldRetainsRunning": true,
+      "style": {
+        "outsideLedger": true,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "tap": 44,
+        "inline": 0
+      },
+      "errors": [],
+      "violations": []
+    },
+    {
+      "name": "phone-light-en",
+      "baseline": "full mixed streams unknown",
+      "candidate": "running/completed",
+      "retiredCompleted": true,
+      "retiredUnknown": true,
+      "noReopenRevival": true,
+      "parentYieldRetainsRunning": true,
+      "style": {
+        "outsideLedger": true,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "tap": 44,
+        "inline": 0
+      },
+      "errors": [],
+      "violations": []
+    },
+    {
+      "name": "phone-dark-zh-TW",
+      "baseline": "full mixed streams unknown",
+      "candidate": "running/completed",
+      "retiredCompleted": true,
+      "retiredUnknown": true,
+      "noReopenRevival": true,
+      "parentYieldRetainsRunning": true,
+      "style": {
+        "outsideLedger": true,
+        "composer": true,
+        "overflow": false,
+        "buttons": 0,
+        "tap": 44,
+        "inline": 0
+      },
+      "errors": [],
+      "violations": []
+    }
+  ],
+  "skew": [
+    {
+      "mode": "old-panel",
+      "composer": true,
+      "errors": []
+    },
+    {
+      "mode": "old-client",
+      "composer": true,
+      "errors": []
+    },
+    {
+      "mode": "old-server",
+      "composer": true,
+      "errors": []
+    },
+    {
+      "mode": "missing-module",
+      "composer": true,
+      "errors": []
+    }
+  ],
+  "cleanup": {
+    "fixtureClosed": true
+  }
+}
