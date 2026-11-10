@@ -15,7 +15,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7d"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "desk-light-zh-TW": {
   "got": {
@@ -33,7 +60,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "desk-dark-en": {
   "got": {
@@ -51,7 +105,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7d"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "desk-dark-zh-TW": {
   "got": {
@@ -69,7 +150,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "phone-light-en": {
   "got": {
@@ -87,7 +195,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7d"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "phone-light-zh-TW": {
   "got": {
@@ -105,7 +240,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "phone-dark-en": {
   "got": {
@@ -123,7 +285,34 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5h",
+     "7d",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7d"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  },
  "phone-dark-zh-TW": {
   "got": {
@@ -141,6 +330,33 @@
    "clipped": false
   },
   "errs": [],
-  "csp": []
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
  }
 }
