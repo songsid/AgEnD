@@ -49,7 +49,7 @@ export interface HostInstallReporter {
    */
   done(result: { ok: boolean; detail: string; cleanupFailed?: boolean; verified: boolean; version: string | null; signIn: boolean }): void;
   /** An update: the version the binary probe read before it started, and the audited release it goes to (null: not read). Told once, when the window is open. */
-  update?(from: string | null, target: string): void;
+  update?(from: string | null, target: string | null): void;
 }
 
 export interface WebHostInstallDeps {
@@ -80,9 +80,11 @@ export interface HostInstallView {
   backend: string;
   /** AGEND-136: "install", or "update" (a CLI taken to the audited release). */
   mode: HostInstallMode;
-  /** An update: the version before it started (null: not read) and the audited release it goes to. */
+  /** An update: the version before it started (null: not read) and the audited release it goes to (null: the named exception, which goes to the vendor's newest release). */
   fromVersion: string | null;
   targetVersion: string | null;
+  /** AGEND-153: an update that is the registry's named exception — it goes to the vendor's newest release, which AgEnD has not audited (`targetVersion` is null). */
+  latest: boolean;
   phase: HostInstallPhase;
   startedOn: string;
   startedAt: number;
@@ -108,6 +110,7 @@ interface Run {
   mode: HostInstallMode;
   fromVersion: string | null;
   targetVersion: string | null;
+  latest: boolean;
   label: string;
   startedAt: number;
   phase: HostInstallPhase;
@@ -124,12 +127,31 @@ interface Run {
 /**
  * AGEND-136: what an update runs for `backend`: the registry's `host.update` command with its `{version}` filled with the newest audited release (cli-audited.ts), and that
  * release. Null when the CLI has no update (it updates itself, or has no way to reach a chosen release), or has no audited release. The release is checked once more
- * against a plain x.y.z before it goes into a command.
+ * against a plain x.y.z before it goes into a command. AGEND-153: the registry's one named exception (`release: "latest-unaudited"`) is the command as written and a null `target`.
  */
-export function hostUpdatePlan(backend: string): { command: string; target: string } | null {
-  const facts = hostFacts(backend, "update"), target = auditedVersion(backend);
-  if (!facts || !target || !AUDITED_VERSION.test(target)) return null;
+export function hostUpdatePlan(backend: string): { command: string; target: string | null } | null {
+  const facts = hostFacts(backend, "update");
+  if (!facts) return null;
+  // AGEND-153: the named exception goes to the newest release the vendor serves, so there is no release of ours to put in the command and none to check afterwards (`target` is null): the registry's
+  // command runs as it is (the registry's own check says it has no `{version}`), and the page says "latest, not audited".
+  if (facts.release === "latest-unaudited") return { command: facts.command, target: null };
+  const target = auditedVersion(backend);
+  if (!target || !AUDITED_VERSION.test(target)) return null;
   return { command: facts.command.replace("{version}", target), target };
+}
+
+/**
+ * AGEND-154 (Prism P2-1 on #3552): the one named exception (`release: "latest-unaudited"`) is only ever started by a request that SAYS so — `acceptLatestUnaudited: true` beside the CLI's id — which is
+ * what a page that knows the exception ("Update to latest (not audited by AgEnD)") sends and a page that does not (a retained older module that labels the same button "Update to 1.5.3" and sends
+ * `{ backend }`) cannot. The shared confirmation core is unchanged; this only decides, before anything is proposed or run, whether the request and the registry agree. Null: they agree.
+ * `latest_ack_required`: the CLI's update is the exception and the page did not say it knew (refuse; the page must be refreshed). `latest_ack_mismatch`: the page claims the exception for a CLI whose update is pinned.
+ */
+export function hostUpdateAckError(backend: string, ack: unknown): "latest_ack_required" | "latest_ack_mismatch" | null {
+  const exception = hostFacts(backend, "update")?.release === "latest-unaudited";
+  if (ack !== undefined && ack !== true) return "latest_ack_mismatch";
+  if (exception && ack !== true) return "latest_ack_required";
+  if (!exception && ack === true) return "latest_ack_mismatch";
+  return null;
 }
 
 /** "CLI exited with code 3 — …" (login-manager.ts) → 3. */
@@ -161,7 +183,7 @@ export class WebHostInstalls {
     if (!this.deps.isLocalAdmin(who.handle)) return { error: "not_allowed" };
     if (!(mode === "update" ? this.deps.updatable?.(backend) === true : this.deps.installable(backend))) return { error: "unsupported" };
     const run: Run = {
-      id: randomBytes(16).toString("hex"), backend, mode, fromVersion: null, targetVersion: null, label: who.label, startedAt: this.now(), phase: "running", endedAt: null,
+      id: randomBytes(16).toString("hex"), backend, mode, fromVersion: null, targetVersion: null, latest: mode === "update" && hostFacts(backend, "update")?.release === "latest-unaudited", label: who.label, startedAt: this.now(), phase: "running", endedAt: null,
       lines: [], exitCode: null, verified: null, version: null, signIn: false, cleanupFailed: false, reached: null,
     };
     // Published only once the start is accepted (a refused start leaves what was shown before exactly as it was). A fast installer's `done` may land before that: it
@@ -209,7 +231,7 @@ export class WebHostInstalls {
 
   private viewOf(run: Run): HostInstallView {
     return {
-      id: run.id, backend: run.backend, mode: run.mode, fromVersion: run.fromVersion, targetVersion: run.targetVersion, phase: run.phase, startedOn: run.label, startedAt: run.startedAt, endedAt: run.endedAt,
+      id: run.id, backend: run.backend, mode: run.mode, fromVersion: run.fromVersion, targetVersion: run.targetVersion, latest: run.latest, phase: run.phase, startedOn: run.label, startedAt: run.startedAt, endedAt: run.endedAt,
       lines: [...run.lines], exitCode: run.exitCode, verified: run.verified, version: run.version, signIn: run.signIn, cleanupFailed: run.cleanupFailed, reached: run.reached,
     };
   }

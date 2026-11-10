@@ -63,6 +63,9 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** AGEND-154 (Prism P2-1 on #3552): the field of an Update request that says "I know this goes to the vendor's latest, which AgEnD has not audited" (web-host-install.ts, runtime-api.ts, the pages). */
+export const LATEST_ACK_FIELD = "acceptLatestUnaudited";
+
 /** The newest audited release of a CLI, or null for an id with none. */
 export function auditedVersion(id: string): string | null {
   const list = Object.hasOwn(AUDITED_CLI_VERSIONS, id) ? AUDITED_CLI_VERSIONS[id as CliId] : undefined;
@@ -84,17 +87,25 @@ export interface CliUpdateView {
   audited: string;
   /** The version read from the installed CLI; null when it could not be read. */
   installed: string | null;
-  /** The Update button is offered: the CLI is behind and has an update the registry knows (`host.update`/`runtime.update`). */
+  /** The Update button is offered: the CLI is behind and has an update the registry knows (`host.update`/`runtime.update`); for the named exception (`latest`), whenever its version could be read. */
   button: boolean;
+  /**
+   * AGEND-153: the update is the named exception (the registry's `release: "latest-unaudited"` / `kind: "latest-unaudited"`): it goes to the newest release the vendor serves, NOT to `audited`,
+   * so it is offered at, below or above the audited release, and the page labels it "not audited by AgEnD".
+   */
+  latest: boolean;
 }
 
-/** Pure. `printed`: what the binary probe read; `canUpdate`: the registry has an update for this CLI on this side. Null for an id with no audited release. */
-export function cliUpdateView(id: string, printed: unknown, canUpdate: boolean): CliUpdateView | null {
+/**
+ * Pure. `printed`: what the binary probe read; `canUpdate`: the registry has an update for this CLI on this side; `latest`: that update is the named exception that goes to the vendor's
+ * newest release (AGEND-153), so the audited release does not decide whether it is offered. Null for an id with no audited release.
+ */
+export function cliUpdateView(id: string, printed: unknown, canUpdate: boolean, latest = false): CliUpdateView | null {
   const audited = auditedVersion(id);
   if (!audited) return null;
-  const installed = versionOf(printed);
-  if (!installed) return { state: "unknown", audited, installed: null, button: false };
+  const installed = versionOf(printed), exception = canUpdate && latest;
+  if (!installed) return { state: "unknown", audited, installed: null, button: false, latest: exception };
   const order = compareVersions(installed, audited);
   const state: CliUpdateState = order < 0 ? "behind" : order > 0 ? "newer" : "current";
-  return { state, audited, installed, button: state === "behind" && canUpdate };
+  return { state, audited, installed, button: canUpdate && (exception || state === "behind"), latest: exception };
 }

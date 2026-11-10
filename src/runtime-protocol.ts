@@ -154,7 +154,7 @@ export type RuntimeOperation = "probe" | "workspace" | "run" | "cancel" | "recon
  * a command, a path or an environment. Replies carry only what the dashboard may show: a switch's state, a signed-in yes/no with the masked
  * identity, a sign-in's reduced screen. No token, and no raw CLI output.
  */
-export const RUNTIME_REMOTE_OPERATIONS = ["models.refresh", "accounts.switches", "signin.start", "signin.capture", "signin.status", "signin.write", "signin.close", "accounts.check", "accounts.signout", "accounts.remove", "cli.install"] as const;
+export const RUNTIME_REMOTE_OPERATIONS = ["models.refresh", "accounts.switches", "signin.start", "signin.capture", "signin.status", "signin.write", "signin.close", "accounts.check", "accounts.signout", "accounts.remove", "cli.install", "cli.update"] as const;
 export type RuntimeRemoteOperation = typeof RUNTIME_REMOTE_OPERATIONS[number];
 export function isRuntimeRemoteOperation(value: unknown): value is RuntimeRemoteOperation {
   return typeof value === "string" && (RUNTIME_REMOTE_OPERATIONS as readonly string[]).includes(value);
@@ -173,10 +173,12 @@ export interface RuntimeRemotePayloads {
   "accounts.signout": { cli: string; profile: string; actor: string };
   "accounts.remove": { cli: string; profile: string; actor: string };
   "cli.install": { cli: string; actor: string };
+  /** AGEND-153: take an installed CLI to the vendor's newest release — only for a CLI whose registry `runtime.update` is the named exception (`latest-unaudited`); the same two fields as an install. */
+  "cli.update": { cli: string; actor: string };
 }
 const REMOTE_KEYS: { [K in RuntimeRemoteOperation]: readonly (keyof RuntimeRemotePayloads[K])[] } = {
   "models.refresh": ["cli", "profile", "actor"], "accounts.switches": [], "signin.start": ["cli", "profile", "method", "actor"], "signin.capture": ["sessionId"], "signin.status": ["sessionId"], "signin.write": ["sessionId", "input"],
-  "signin.close": ["sessionId"], "accounts.check": ["cli", "profile"], "accounts.signout": ["cli", "profile", "actor"], "accounts.remove": ["cli", "profile", "actor"], "cli.install": ["cli", "actor"],
+  "signin.close": ["sessionId"], "accounts.check": ["cli", "profile"], "accounts.signout": ["cli", "profile", "actor"], "accounts.remove": ["cli", "profile", "actor"], "cli.install": ["cli", "actor"], "cli.update": ["cli", "actor"],
 };
 /**
  * Closed check of a remote-operation payload: exactly the fields listed, each a short string of its own shape, and nothing else. The error names

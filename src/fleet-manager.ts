@@ -22310,7 +22310,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
       if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
       if (!fresh) { this.loginWindow.release(claim); return { refused: "version_unreadable" }; }
-      if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
+      // AGEND-153: the named exception (`release: "latest-unaudited"`) is offered at any readable version (it goes to the vendor's newest, not to our audited release), so "behind" does not decide it.
+      if (cliUpdateView(backend, versionBefore, true, plan.target === null)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
       try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
     } else this.recordLoginFlow(backend, "install_only", "web");
     const opened = await this.openInstallWindow(backend, info, claim, {

@@ -29,7 +29,9 @@ export const OPENCODE_SPEC = {
     }),
     // AGEND-133 (#3521): pinned npm package (opencode-ai + its Windows x64 packages) with the registry's sha512 of each, `npm audit signatures` and the Authenticode signer of the binary.
     install: yes({ kind: "npm", pin: "audited" }),
-    update: notYetBuilt("#3521", "OpenCode's Windows install is pinned (runtime.install), but its Update button is not wired and audited for a computer yet; until then the dashboard shows the installed and the audited versions."),
+    // AGEND-153 (#3539, the maintainer's follow-up): the Update button, wired. It is this same pinned install over an older copy (exact version, the registry's sha512 of every package, `npm audit signatures`,
+    // the Authenticode signer), and the pin is the newest AUDITED release (cli-audited.ts; tests/cli-audited-136.test.ts fails if it is not), so an update never goes to "latest".
+    update: yes({ kind: "pinned" }),
     signIn: notApplicable("AgEnD has no sign-in flow for OpenCode."),
     namedAccounts: toVerify("Whether `opencode` on Windows can keep more than one set of credentials side by side has not been checked."),
     accountRows: none("OpenCode has no card on Settings → Accounts."),

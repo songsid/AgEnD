@@ -208,7 +208,8 @@ describe("who may not, and what never becomes a held change", () => {
 });
 
 describe("Update takes the same path (the audited release is the server's, shown in the held change)", () => {
-  const update = (h: ReturnType<typeof harness>, s: { req: any; gateway?: boolean; host?: string }, backend = "grok") => h.send(s, "POST", "/ui/host-update", { backend });
+  // AGEND-154: `acknowledged` — the page that knows the named exception says so in the request (`acceptLatestUnaudited`).
+  const update = (h: ReturnType<typeof harness>, s: { req: any; gateway?: boolean; host?: string }, backend = "grok", acknowledged = backend === "antigravity") => h.send(s, "POST", "/ui/host-update", acknowledged ? { backend, acceptLatestUnaudited: true } : { backend });
   it("an admin: applied at once in update mode; the held change names the audited release; the page's body carried only the CLI's id", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "lan");
     const r = await update(h, s);
@@ -227,6 +228,44 @@ describe("Update takes the same path (the audited release is the server's, shown
     expect(ok.status).toBe(202);
     await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
     expect(h.starts.map(x => x.mode)).toEqual(["update"]);
+  });
+  // AGEND-153: the named exception takes the very same path — held change, the asker's own code, no public link, no guest — and its held change says LATEST and "not audited".
+  it("AGEND-153 Antigravity (the named exception): an admin's update is held and applied like any other, and the held change says it goes to the LATEST release, not audited", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    const r = await update(h, s, "antigravity");
+    await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
+    expect(h.starts.map(x => [x.backend, x.mode])).toEqual([["antigravity", "update"]]);
+    const text = h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ");
+    expect(text).toMatch(/Update antigravity .*LATEST release \(not audited by AgEnD\)/);
+    expect(text).not.toMatch(/to \d+\.\d+\.\d+/);
+  });
+  it("AGEND-154 fail-first: an older page's `{ backend: \"antigravity\" }` (the button it labels 'Update to 1.5.3') is refused 409 latest_ack_required BEFORE it is proposed — nothing is held, nothing starts; a pinned CLI that claims the exception is refused too", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    const old = await update(h, s, "antigravity", false);
+    expect([old.status, old.body.error]).toEqual([409, "latest_ack_required"]);
+    const claimed = await update(h, s, "grok", true);
+    expect([claimed.status, claimed.body.error]).toEqual([409, "latest_ack_mismatch"]);
+    await h.settle();
+    expect(h.store.list(s.record.idHash)).toEqual([]);
+    expect(h.starts.length).toBe(0);
+  });
+  it("AGEND-153 Antigravity: a strict admin takes their own digest-bound code first; the public link, a guest and a hand-built POST start nothing", async () => {
+    const strict = harness({ enrolled: true, strict: true }), s = strict.session("code", "lan");
+    const r = await update(strict, s, "antigravity");
+    expect([r.body.pending_change.state, r.body.pending_change.totp]).toEqual(["pending", "ready"]);
+    await strict.settle();
+    expect(strict.starts.length).toBe(0);
+    const ok = await strict.send(s, "POST", `/api/settings/pending/${r.body.pending_change.id}/confirm-totp`, { code: codeAt(Date.now()), digest: r.body.pending_change.confirm_digest });
+    expect(ok.status).toBe(202);
+    await vi.waitFor(() => expect(strict.stateOf(r, s)).toBe("applied"));
+    expect(strict.starts.map(x => [x.backend, x.mode])).toEqual([["antigravity", "update"]]);
+    const h = harness({ enrolled: true });
+    const link = h.session("code", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");
+    expect((await update(h, link, "antigravity")).body.error).toBe("install_not_over_public_link");
+    expect((await update(h, guest, "antigravity")).body.error).toBe("install_needs_a_local_admin");
+    expect((await h.send(admin, "POST", "/ui/host-update", { backend: "antigravity" }, "route")).body.error).toBe("install_confirmation_required");
+    expect(h.store.list(admin.record.idHash)).toEqual([]);
+    expect(h.starts.length).toBe(0);
   });
   it("the public link, a guest and a hand-built POST start nothing; a CLI with no update is refused before it is proposed", async () => {
     const h = harness({ enrolled: true });

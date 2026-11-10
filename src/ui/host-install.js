@@ -30,6 +30,7 @@ register("hostinstall", {
     err_failed: "The install could not start.", err_other: "That did not work.",
     cardLabelUpdate: "Update {0} on this AgEnD computer", err_expired: "The install was not confirmed in time.", err_rejected: "The install was turned down.", err_stale: "Settings changed before the install could start. Try again.",
     err_install_confirmation_required: "The install must be confirmed first.",
+    err_latest_ack_required: "This page is out of date for this update. Refresh the page and try again.", err_latest_ack_mismatch: "This page is out of date for this update. Refresh the page and try again.",
   },
   "zh-TW": {
     install: "安裝", installing: "安裝中…", cancel: "取消安裝", dismiss: "關閉",
@@ -50,6 +51,7 @@ register("hostinstall", {
     err_failed: "安裝無法開始。", err_other: "沒有成功。",
     cardLabelUpdate: "在這台 AgEnD 電腦上更新 {0}", err_expired: "安裝沒有在時限內確認。", err_rejected: "安裝已被拒絕。", err_stale: "安裝開始前設定已經改變。請再試一次。",
     err_install_confirmation_required: "安裝必須先經過確認。",
+    err_latest_ack_required: "這個頁面的版本已過期，無法進行這次更新。請重新整理頁面再試一次。", err_latest_ack_mismatch: "這個頁面的版本已過期，無法進行這次更新。請重新整理頁面再試一次。",
   },
 });
 // AGEND-136 (#3521): the Update button beside Install. The page names the CLI and nothing else (POST /ui/host-update { backend }); the server picks the command and the
@@ -82,6 +84,30 @@ register("hostinstall", {
     failedUpdate: "{0} 沒有更新完成。", failedUpdateCode: "{0} 的更新以結束碼 {1} 結束。",
     cancelledUpdate: "已取消 {0} 的更新。", timeoutUpdate: "{0} 的更新花太久，已停止。",
     err_not_installed: "這台主機沒有安裝 {0}。", err_version_unreadable: "AgEnD 剛才讀不到 {0} 目前安裝的版本，所以沒有更新。請稍後再試。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
+  },
+});
+// AGEND-153 (the maintainer's decision on #3539): the one named exception — a CLI that updates itself and whose own updater cannot choose a release (Antigravity). Its button goes to the LATEST
+// release, which AgEnD has not audited, and says so on the button and in the line above it. Every other rule of an update (the held change, the asker's code, no public link) is the same.
+register("hostinstall", {
+  en: {
+    updateLatest: "Update to latest (not audited by AgEnD)", cardLabelUpdateLatest: "Update {0} on this AgEnD computer to the latest release (not audited by AgEnD)",
+    verLatestCurrent: "{0} is installed — the version AgEnD has audited ({1}). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned.",
+    verLatestBehind: "{0} is installed. The newest version AgEnD has audited is {1}. Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned.",
+    verLatestNewer: "{0} is installed. That is newer than {1}, the newest version AgEnD has audited: not verified by AgEnD yet. Update goes to the latest release the vendor serves, also not audited.",
+    runningUpdateLatest: "Updating {0} to the latest release, not audited by AgEnD (started on {2}).",
+    updatedLatestSame: "{0} is already at {1}, the latest release the vendor serves (not audited by AgEnD).",
+    updatedLatest: "{0} was updated from {1} to {2}, the latest release the vendor serves (not audited by AgEnD).", updatedLatestNoFrom: "{0} was updated to {1}, the latest release the vendor serves (not audited by AgEnD).",
+    updatedLatestNoVersion: "The {0} updater finished (exit code 0), but the installed version could not be read afterwards, so it is not known which release it is now.",
+  },
+  "zh-TW": {
+    updateLatest: "更新到最新版（未經盤點）", cardLabelUpdateLatest: "在這台 AgEnD 電腦上把 {0} 更新到最新版（未經 AgEnD 盤點）",
+    verLatestCurrent: "已安裝 {0}，是 AgEnD 稽核過的版本（{1}）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。",
+    verLatestBehind: "已安裝 {0}。AgEnD 稽核過的最新版本是 {1}。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。",
+    verLatestNewer: "已安裝 {0}，比 AgEnD 稽核過的最新版本 {1} 還新：尚未經 AgEnD 驗證。按「更新」會更新到廠商釋出的最新版，同樣未經稽核。",
+    runningUpdateLatest: "正在把 {0} 更新到最新版，未經 AgEnD 盤點（從 {2} 啟動）。",
+    updatedLatestSame: "{0} 已經是 {1}，也就是廠商釋出的最新版（未經 AgEnD 盤點）。",
+    updatedLatest: "{0} 已從 {1} 更新到 {2}，廠商釋出的最新版（未經 AgEnD 盤點）。", updatedLatestNoFrom: "{0} 已更新到 {1}，廠商釋出的最新版（未經 AgEnD 盤點）。",
+    updatedLatestNoVersion: "{0} 的更新程式已結束（結束碼 0），但之後讀不到已安裝的版本，不確定現在是哪個版本。",
   },
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
@@ -138,12 +164,12 @@ const refusalOf = (r) => {
  * both are held changes like any other that acts on the host. Where the lenient default applies the change is applied at once; for an administrator who asked for their own code the
  * card asks for it, bound to the digest of this change. Whatever the gate answers, the run shown is the server's. (Which release an update goes to and which command runs are the server's.)
  */
-async function startHostCli(path, backend, labelKey) {
+async function startHostCli(path, backend, labelKey, extra = {}) {
   installStyles();
   if (hostInstallStore.get().starting) return false;
   hostInstallStore.set({ starting: backend });
   let r;
-  try { r = await confirmedWrite(path, { body: { backend }, label: th(labelKey, backend), displaySummary: () => [th(labelKey, backend)], onPending: revealPending }); }
+  try { r = await confirmedWrite(path, { body: { backend, ...extra }, label: th(labelKey, backend), displaySummary: () => [th(labelKey, backend)], onPending: revealPending }); }
   catch { r = { ok: false, body: null }; }
   finally { hostInstallStore.set({ starting: null }); }
   if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
@@ -153,7 +179,8 @@ async function startHostCli(path, backend, labelKey) {
 }
 export const startHostInstall = (backend) => startHostCli("/ui/host-install", backend, "confirm");
 /** Update `backend` on the host to the audited release (AGEND-136). */
-export const startHostUpdate = (backend) => startHostCli("/ui/host-update", backend, "cardLabelUpdate");
+/** AGEND-154 (Prism P2-1 on #3552): the update to the vendor's latest (`latest`, the one named exception) says so in the request — `acceptLatestUnaudited: true` — which is what lets the server run it; a page without this line sends `{ backend }`, and the server refuses. */
+export const startHostUpdate = (backend, latest = false) => startHostCli("/ui/host-update", backend, latest ? "cardLabelUpdateLatest" : "cardLabelUpdate", latest ? { acceptLatestUnaudited: true } : {});
 
 export async function cancelHostInstall() {
   const r = await post("/ui/host-install/cancel", {});
@@ -198,16 +225,18 @@ export function VersionLine({ row, label, blocked = false }) {
   const u = row.cliUpdate;
   if (!u || !hostInstallOffered()) return null;
   const installed = u.installed || row.version || "?";
-  const text = u.state === "current" ? th("verCurrent", installed, u.audited)
+  const text = u.latest ? th(u.state === "current" ? "verLatestCurrent" : u.state === "newer" ? "verLatestNewer" : "verLatestBehind", installed, u.audited)
+    : u.state === "current" ? th("verCurrent", installed, u.audited)
     : u.state === "newer" ? th("verNewer", installed, u.audited)
     : u.state === "unknown" ? th("verUnknown", u.audited)
     : u.via === "self" ? th("verSelf", installed, u.audited)
     : th("verBehind", installed, u.audited);
   const run = runFor(state, row.backend);
   const updating = !!run && run.phase === "running" && run.mode === "update";
-  return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via}>
+  const buttonLabel = u.latest ? th("updateLatest") : th("update", u.audited);
+  return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via} data-latest=${u.latest ? "1" : "0"}>
     <p class="note s-account-why">${text}</p>
-    ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${th("update", u.audited)}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend); }}>${updating ? th("updating") : th("update", u.audited)}</button></span>` : null}
+    ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${buttonLabel}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend, !!u.latest); }}>${updating ? th("updating") : buttonLabel}</button></span>` : null}
   </div>`;
 }
 
@@ -227,12 +256,17 @@ export function HostInstallRun({ backend, label }) {
   const lines = Array.isArray(run.lines) ? run.lines : [];
   let text, cls = "";
   const update = run.mode === "update";
-  if (run.phase === "running") text = update ? th("runningUpdate", label, run.targetVersion || "?", run.startedOn) : th("running", label, run.startedOn);
+  if (run.phase === "running") text = update ? (run.latest ? th("runningUpdateLatest", label, "", run.startedOn) : th("runningUpdate", label, run.targetVersion || "?", run.startedOn)) : th("running", label, run.startedOn);
   else if (run.phase === "ok" && update) {
     // An update says the version before and after (the binary probe's own readings). Exit code 0 is not enough: when the version read afterwards is not the audited release (`reached`
     // false), or could not be read (null), it is a warning that names the installed and the audited version, not a success.
     const target = run.targetVersion || "?";
     if (!run.verified) { cls = "signin-message"; text = th("okUnverified", label); }
+    // The named exception goes to the vendor's newest release, so there is no audited release to have reached: the page says what was read before and after, and that it is not audited.
+    else if (run.latest) {
+      if (!run.version) { cls = "signin-warn"; text = th("updatedLatestNoVersion", label); }
+      else { cls = "signin-ok"; text = run.fromVersion === run.version ? th("updatedLatestSame", label, run.version) : run.fromVersion ? th("updatedLatest", label, run.fromVersion, run.version) : th("updatedLatestNoFrom", label, run.version); }
+    }
     else if (run.reached === false) { cls = "signin-warn"; text = th("updatedWarn", label, run.version || "?", target); }
     else if (run.reached === null || !run.version) { cls = "signin-warn"; text = th("updatedNoVersion", label, target); }
     else { cls = "signin-ok"; text = run.fromVersion ? th("updated", label, run.fromVersion, run.version) : th("updatedNoFrom", label, run.version); }

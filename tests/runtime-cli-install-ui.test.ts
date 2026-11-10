@@ -87,47 +87,80 @@ describe("F1: what the CLI printed is compared by its version number", () => {
   });
 });
 
-describe("AGEND-152 (Prism R4 on #3539): Update is offered only where the registry's runtime.update says so", () => {
+describe("AGEND-152 / AGEND-153: Update is offered where the registry's runtime.update says so — pinned to the audited release, or the one named exception", () => {
   // The panel is mounted for real, as the reviewer did: the computer has an OLDER copy of the CLI installed, and the catalog has the audited pin.
   const olderCopy = async (cliId: string, version: string, navKey: string) => {
     machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, id: cliId, version }] } })];
     await p.mount(h(Panel, { navKey })); await settle(14);
   };
-  it("Antigravity 1.3.5 installed (audited 1.5.3): it shows both versions and has NO Update button — it updates itself", async () => {
-    await olderCopy("antigravity", "1.3.5", "r4-agy");
-    expect(rowOf("antigravity").textContent).toContain("Installed 1.3.5");
-    expect(rowOf("antigravity").textContent).toContain("1.5.3");
-    expect(rowOf("antigravity").textContent).toContain("not updated from here");
-    expect(installButton("antigravity")).toBeNull();
-    expect(rowOf("antigravity").textContent).not.toContain("Update to");
-  });
-  it("OpenCode 1.18.34 installed (audited 1.19.5): it shows both versions and has NO Update button — Update is not built for it", async () => {
+  it("AGEND-153 OpenCode 1.18.34 installed (audited 1.19.5): 'Update to 1.19.5' — the pinned install over the older copy, sending only the CLI id", async () => {
     await olderCopy("opencode", "1.18.34", "r4-opencode");
     expect(rowOf("opencode").textContent).toContain("Installed 1.18.34");
     expect(rowOf("opencode").textContent).toContain("1.19.5");
-    expect(installButton("opencode")).toBeNull();
-    expect(rowOf("opencode").textContent).not.toContain("Update to");
+    expect(installButton("opencode").textContent).toBe("Update to 1.19.5");
+    fire(installButton("opencode"), "click"); await settle(14);
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "opencode" } }]);
   });
-  it("an install-only CLI whose version cannot be read has no button either (nothing to reinstall over)", async () => {
+  it("AGEND-153 OpenCode already at the audited release: up to date, no button", async () => {
+    await olderCopy("opencode", "1.19.5", "r4-opencode-current");
+    expect(rowOf("opencode").textContent).toContain("up to date"); expect(installButton("opencode")).toBeNull();
+  });
+  it("AGEND-153 OpenCode newer than the audited release: not verified by AgEnD yet, no button", async () => {
+    await olderCopy("opencode", "1.19.6", "r4-opencode-newer");
+    expect(rowOf("opencode").textContent).toContain("not verified by AgEnD yet"); expect(installButton("opencode")).toBeNull();
+  });
+  it("an installed CLI whose version cannot be read is offered the pinned install (nothing to compare), not an Update", async () => {
     await olderCopy("opencode", "unknown", "r4-opencode-unknown");
-    expect(installButton("opencode")).toBeNull();
+    expect(installButton("opencode").textContent).toBe("Install pinned 1.19.5");
   });
-  it("control: Codex 0.161.0 installed (audited 0.167.0) still has Update, because the registry says runtime.update is supported", async () => {
+  it.each([["1.3.5", "below"], ["1.5.3", "at"], ["1.5.9", "above"]])("AGEND-153 Antigravity %s (%s the audited release): the named exception — 'Update to latest (not audited by AgEnD)', with the warning in its line", async (version, _where) => {
+    await olderCopy("antigravity", version, `r4-agy-${version}`);
+    expect(installButton("antigravity").textContent).toBe("Update to latest (not audited by AgEnD)");
+    expect(rowOf("antigravity").textContent).toContain(`Installed ${version}`);
+    expect(rowOf("antigravity").textContent).toContain("NOT audited");
+    expect(rowOf("antigravity").textContent).toContain("1.5.3");
+  });
+  it("AGEND-153 Antigravity: the click asks in words that say 'latest' and 'not audited', then sends only the CLI id", async () => {
+    const asked: string[] = [];
+    (globalThis as any).confirm = (message: string) => { asked.push(message); return true; };
+    await olderCopy("antigravity", "1.5.3", "r4-agy-click");
+    fire(installButton("antigravity"), "click"); await settle(14);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("LATEST"); expect(asked[0]).toContain("NOT audited"); expect(asked[0]).toContain("the vendor's update program is not run");
+    // AGEND-154 (Prism P2-1 on #3552): the id and the one explicit sentence that this is the latest exception (the server refuses the request without it) — no version, no address, no command.
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "antigravity", acceptLatestUnaudited: true } }]);
+    expect(JSON.stringify(posts)).not.toMatch(/1\.5|http|\.exe/);
+  });
+  it("AGEND-154: Antigravity NOT installed yet is the pinned install — the body is the CLI's id alone, no acknowledgement of the latest exception", async () => {
+    await p.mount(h(Panel, { navKey: "r4-agy-install" })); await settle(14);
+    expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
+    fire(installButton("antigravity"), "click"); await settle(14);
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "antigravity" } }]);
+  });
+  it("AGEND-153 Antigravity waits for the owner's switch like any update", async () => {
+    setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };
+    await olderCopy("antigravity", "1.5.3", "r4-agy-off");
+    expect(installButton("antigravity").disabled).toBe(true);
+  });
+  it("control: Codex 0.161.0 installed (audited 0.167.0) still has the pinned Update", async () => {
     await olderCopy("codex", "codex-cli 0.161.0", "r4-codex");
     expect(installButton("codex").textContent).toBe("Update to 0.167.0");
   });
-  it("an install-only CLI that is not installed still has Install", async () => {
+  it("an install-only CLI that is not installed still has Install — Antigravity is installed from the PINNED audited download, never from 'latest'", async () => {
     await p.mount(h(Panel, { navKey: "r4-install" })); await settle(14);
     expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
     expect(installButton("opencode").textContent).toBe("Install 1.19.5");
   });
-  it("the no-update sentence is in zh-TW too", async () => {
+  it("the named exception is in zh-TW too: 更新到最新版（未經盤點）", async () => {
     i18n.setLang("zh-TW", { store: false });
-    await olderCopy("antigravity", "1.3.5", "r4-agy-zh");
-    expect(rowOf("antigravity").textContent).toContain("不從這裡更新"); expect(installButton("antigravity")).toBeNull();
-    i18n.setLang("en", { store: false });
+    try {
+      await olderCopy("antigravity", "1.3.5", "r4-agy-zh");
+      expect(installButton("antigravity").textContent).toBe("更新到最新版（未經盤點）");
+      expect(rowOf("antigravity").textContent).toContain("尚未稽核");
+    } finally { i18n.setLang("en", { store: false }); }
   });
 });
+
 
 describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("lists Claude Code and Codex with their state; one at the audited version has no button, one that is not installed has Install", async () => {

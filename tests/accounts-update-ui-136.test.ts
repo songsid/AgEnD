@@ -190,3 +190,80 @@ describe("who sees it, and in which words", () => {
     expect(text(updateBtn("grok"))).toBe("更新到 1.0.77");
   });
 });
+
+// AGEND-153 (the maintainer's decision on #3539): Antigravity's Update is the one named exception — it goes to the vendor's LATEST release, which AgEnD has not audited, and says so on the button.
+describe("AGEND-153: the named exception (Antigravity — update to the latest, not audited)", () => {
+  const AGY = (state: string, installed: string) => ({ backend: "antigravity", profiles: true, installed: true, fleetDefault: null, agents: [], rows: [hostRow("antigravity", "usable", { signIn: true, version: installed, cliUpdate: upd(state, installed, "1.5.3", { button: true, latest: true }) })] });
+  const LABEL = "Update to latest (not audited by AgEnD)";
+  const AGY_RUN = (over: Record<string, unknown> = {}) => RUN({ backend: "antigravity", fromVersion: "1.5.3", targetVersion: null, latest: true, ...over });
+  it.each([["behind", "1.3.5"], ["current", "1.5.3"], ["newer", "1.5.9"]])("%s (%s): the button is there and says 'latest, not audited'; the line says the version AgEnD audited and that the update is not audited", async (state, installed) => {
+    view = { clis: [AGY(state, installed)] };
+    await mount();
+    expect(text(updateBtn("antigravity"))).toBe(LABEL);
+    expect(text(line("antigravity"))).toContain(`${installed} is installed`);
+    expect(text(line("antigravity"))).toContain("1.5.3");
+    expect(text(line("antigravity"))).toMatch(/not audited/i);
+    expect(line("antigravity").getAttribute("data-latest")).toBe("1");
+    expect(line("antigravity").getAttribute("data-via")).toBe("dashboard");
+  });
+  it("another CLI's button is the audited release as before, and says nothing about 'latest'", async () => {
+    await mount();
+    expect(text(updateBtn("grok"))).toBe("Update to 1.0.77");
+    expect(line("grok").getAttribute("data-latest")).toBe("0");
+    expect(text(line("grok"))).not.toContain("NOT audited");
+  });
+  it("pressing it posts the CLI's id and the explicit `acceptLatestUnaudited` to /ui/host-update, nothing else — no version, no command (AGEND-154: the server refuses the request without it)", async () => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    postAnswer = () => ({ body: { install: AGY_RUN() } });
+    await mount();
+    fire(updateBtn("antigravity"), "click"); await settle(8);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-update", body: { backend: "antigravity", acceptLatestUnaudited: true } }]);
+    expect(JSON.stringify(post())).not.toMatch(/agy|1\.5|\.exe/);
+  });
+  it("AGEND-154: an audited (pinned) update — Grok — posts `{ backend }` alone, never the acknowledgement", async () => {
+    postAnswer = () => ({ body: { install: RUN() } });
+    await mount();
+    fire(updateBtn("grok"), "click"); await settle(8);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-update", body: { backend: "grok" } }]);
+  });
+  it("while it runs: it says 'the latest release, not audited by AgEnD' (and no audited target)", async () => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    run = AGY_RUN({ lines: ["checking for updates"] });
+    await mount();
+    expect(text(card("antigravity").querySelector(".s-account-install-run"))).toContain("Updating Antigravity to the latest release, not audited by AgEnD");
+    expect(text(card("antigravity").querySelector(".s-account-install-run"))).not.toContain("to ?");
+  });
+  it.each([
+    ["moved on", { version: "1.6.0" }, "Antigravity was updated from 1.5.3 to 1.6.0, the latest release the vendor serves (not audited by AgEnD).", "signin-ok"],
+    ["already the newest", { version: "1.5.3" }, "Antigravity is already at 1.5.3, the latest release the vendor serves (not audited by AgEnD).", "signin-ok"],
+    ["version unreadable after", { version: null }, "could not be read afterwards", "signin-warn"],
+  ])("success, %s: the version before and after, never the 'did not reach the audited version' warning", async (_name, over, words, cls) => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    run = AGY_RUN({ phase: "ok", endedAt: 2, verified: true, reached: null, ...over });
+    await mount();
+    const box = card("antigravity").querySelector(".s-account-install-run");
+    expect(text(box)).toContain(words);
+    expect(box.querySelector(`.${cls}`)).not.toBeNull();
+    expect(text(box)).not.toContain("audited version is");
+  });
+  it("a failure is the exit code and the last lines, as for any update", async () => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    run = AGY_RUN({ phase: "failed", endedAt: 2, exitCode: 1, lines: ["no network"] });
+    await mount();
+    expect(text(card("antigravity").querySelector(".s-account-install-run"))).toContain("The Antigravity update exited with code 1.");
+  });
+  it("in zh-TW the button is 更新到最新版（未經盤點）", async () => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    i18n.setLang("zh-TW", { store: false });
+    await mount();
+    expect(text(updateBtn("antigravity"))).toBe("更新到最新版（未經盤點）");
+    expect(text(line("antigravity"))).toContain("尚未稽核");
+    expect(text(card("antigravity"))).not.toMatch(/hostinstall\./);
+  });
+  it("the public link's page shows neither", async () => {
+    view = { clis: [AGY("current", "1.5.3")] };
+    document.body.setAttribute("data-public-link", "1");
+    try { await mount(); expect(updateBtn("antigravity")).toBeUndefined(); expect(line("antigravity")).toBeNull(); }
+    finally { document.body.removeAttribute("data-public-link"); }
+  });
+});

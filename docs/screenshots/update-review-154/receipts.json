@@ -1,0 +1,1065 @@
+{
+  "capturedHead": "188b2de5fc51cba25bc9df024fab890c81944a42",
+  "beforeHead": "7198c63dd03b90c47a6f093d93eed3ec3a609c9e",
+  "variants": {
+    "after": {
+      "port": 19863,
+      "head": "188b2de5fc51cba25bc9df024fab890c81944a42",
+      "dirty": false,
+      "served": {
+        "/ui/js/host-install.js": "200 18a6da06ecfef4b973d6e1413d8dac278eaff9e9eb694270ad84df52b8ba250e",
+        "/ui/js/runtime-cli-install.js": "200 91e78717871978fdebed44815a2f2b554419d279b97b01edaca8b90619a41981",
+        "/ui/js/accounts-view.js": "200 c80c3a14bd107848231b94f3c9a6a860e459ba95c4952f9f175369351c62574a",
+        "/ui/js/panel-runtimes.js": "200 484771b55207fcb99a54c2adbd5d3606462a7acd4c059a24a74fc2b9c442cb8d",
+        "/ui/js/cli-caps.js": "200 6d47437e2342f42ca646b8b297b45cc89c392d3a40ef5a153dc39b2df41986a4",
+        "/assets/app.css": "200 1ca99ab5f6f118ee6bd3c57b1fb898e1aeafaa3872ac1b0d82eeaa1caac5a4aa",
+        "/assets/runtime-install.css": "200 b0990ff3d911cccd3ad093789e14c56ea7d419c29eea6713eb69aeab0c2b7df7",
+        "/assets/host-install.css": "200 ec7164a35f3a5d6ba257be2a2f6b9eeb85145aaae6211c82e1e6f8d318055daa"
+      }
+    },
+    "before": {
+      "port": 19864,
+      "head": "7198c63dd03b90c47a6f093d93eed3ec3a609c9e",
+      "dirty": false,
+      "served": {
+        "/ui/js/host-install.js": "200 71d5cb698ef185c7b5e70eb6c4e476e0cac13ee4700f68cb1da6a371d00ca35e",
+        "/ui/js/runtime-cli-install.js": "200 58a2533c04600fd4699b132bf5921dd057067da869bc0c73f3daf91050094a51",
+        "/ui/js/accounts-view.js": "200 c80c3a14bd107848231b94f3c9a6a860e459ba95c4952f9f175369351c62574a",
+        "/ui/js/panel-runtimes.js": "200 484771b55207fcb99a54c2adbd5d3606462a7acd4c059a24a74fc2b9c442cb8d",
+        "/ui/js/cli-caps.js": "200 d06aaee218e4063ed8e960e5b8112c595465ceabb268af59c475ea0728dc24bc",
+        "/assets/app.css": "200 1ca99ab5f6f118ee6bd3c57b1fb898e1aeafaa3872ac1b0d82eeaa1caac5a4aa",
+        "/assets/runtime-install.css": "200 d351a880f9f9c042d8afc30353cbae26ed0ea94afa537f5da2d9d99269e31a54",
+        "/assets/host-install.css": "200 ec7164a35f3a5d6ba257be2a2f6b9eeb85145aaae6211c82e1e6f8d318055daa"
+      }
+    }
+  },
+  "shots": [
+    {
+      "name": "after-flow-1-idle-light-en",
+      "sha256": "e6118a0f998ed4474d5e8e9c16471162567d4319c5b35b8365fbd68db5971e58",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "host-flow"
+    },
+    {
+      "name": "after-flow-2-running-light-en",
+      "sha256": "47829ae394adaac168cbab18013319ea7fff3cf47dc4f3f3750850ea228b1397",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "host-flow",
+      "text": "Antigravity Default connection Updating… used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Updating… Updating Antigravity to the latest release, not audited by AgEnD (started on Chrome on Linux). Waiting for the installer to print something… Can"
+    },
+    {
+      "name": "after-flow-3-done-light-en",
+      "sha256": "7bdebae53cbc5d554e909614b4d95394344ebb194f81f12769b3e3841e592cb4",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "host-flow",
+      "text": "Antigravity Default connection not connected used by no agent 1.6.0 is installed. That is newer than 1.5.3, the newest version AgEnD has audited: not verified by AgEnD yet. Update goes to the latest release the vendor serves, also not audited. Update to latest (not audited by AgEnD) Antigravity was updated from 1.5.3 to 1.6.0, the latest release the vendor serves (not audited by AgEnD). Checking f"
+    },
+    {
+      "name": "after-flow-4-runtime-confirm-light-en",
+      "sha256": "d5028de8a46761611eda2331ac0cb896d6807da4a64df27a9ae46504aa5d06aa",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "page": "runtime-confirm",
+      "text": "Please confirm Update Antigravity on Dev laptop (Windows) to the vendor's LATEST release, which AgEnD has NOT audited? This computer downloads the release the vendor's own manifest names (the vendor's update program is not run), checks its checksum and the publisher's Windows signature, and keeps it in this Runtime's folder. If any of them does not match, nothing changes. The update is recorded there. Cancel Update to latest (not audited by AgEnD)"
+    },
+    {
+      "name": "after-flow-1-idle-dark-en",
+      "sha256": "d3cc40cff66f30b97e84e4f19a2f8cb4b20e6d375b3d61214b8c7db647b22fe8",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host-flow"
+    },
+    {
+      "name": "after-flow-2-running-dark-en",
+      "sha256": "ece0c7c6c9d2cec84ff32232542a902509e1555e3e2ba0127a187212fbf19343",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host-flow",
+      "text": "Antigravity Default connection Updating… used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Updating… Updating Antigravity to the latest release, not audited by AgEnD (started on Chrome on Linux). Checking for updates... Cancel update Connect fro"
+    },
+    {
+      "name": "after-flow-3-done-dark-en",
+      "sha256": "afb23ac1f55cf7ec5d788f000913d7f35c958833f49d9fe9959609c642bf700b",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host-flow",
+      "text": "Antigravity Default connection not connected used by no agent 1.6.0 is installed. That is newer than 1.5.3, the newest version AgEnD has audited: not verified by AgEnD yet. Update goes to the latest release the vendor serves, also not audited. Update to latest (not audited by AgEnD) Antigravity was updated from 1.5.3 to 1.6.0, the latest release the vendor serves (not audited by AgEnD). Checking f"
+    },
+    {
+      "name": "after-flow-4-runtime-confirm-dark-en",
+      "sha256": "0731a04ec40c08589a38b622bff22c0b52c7a92e0b67eeed09caf0f0a5d171f1",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "page": "runtime-confirm",
+      "text": "Please confirm Update Antigravity on Dev laptop (Windows) to the vendor's LATEST release, which AgEnD has NOT audited? This computer downloads the release the vendor's own manifest names (the vendor's update program is not run), checks its checksum and the publisher's Windows signature, and keeps it in this Runtime's folder. If any of them does not match, nothing changes. The update is recorded there. Cancel Update to latest (not audited by AgEnD)"
+    },
+    {
+      "name": "after-flow-1-idle-light-zh-TW",
+      "sha256": "308024bea343af72d739a9b5a03bc1070f73f022dccc0446a78aef460cbe4e3d",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host-flow"
+    },
+    {
+      "name": "after-flow-2-running-light-zh-TW",
+      "sha256": "06a839edfc22a20fdccfbef71b75c24a40bc7697667b3b50f5b0998d37beceb7",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host-flow",
+      "text": "Antigravity 預設連接 更新中… 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新中… 正在把 Antigravity 更新到最新版，未經 AgEnD 盤點（從 Chrome on Linux 啟動）。 Checking for updates... 取消更新 從聊天連接"
+    },
+    {
+      "name": "after-flow-3-done-light-zh-TW",
+      "sha256": "f61f0d4d9e24e592f927efd652692825f3838c058f927880a8eee6ac443fd89e",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host-flow",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.6.0，比 AgEnD 稽核過的最新版本 1.5.3 還新：尚未經 AgEnD 驗證。按「更新」會更新到廠商釋出的最新版，同樣未經稽核。 更新到最新版（未經盤點） Antigravity 已從 1.5.3 更新到 1.6.0，廠商釋出的最新版（未經 AgEnD 盤點）。 Checking for updates... Downloading agy 1.6.0 (windows-independent, linux-x64) ... Updated agy 1.5.3 -> 1.6.0 關閉 從聊天連接"
+    },
+    {
+      "name": "after-flow-4-runtime-confirm-light-zh-TW",
+      "sha256": "4cfe4ee4a1c82828c8253ce6cf1364f319db7f9e106995a01e6d7be6c66bf01c",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "page": "runtime-confirm",
+      "text": "請確認 要在 Dev laptop (Windows) 把 Antigravity 更新到廠商的「最新版」嗎？這個版本 AgEnD 尚未稽核。那台電腦會下載廠商自己的 manifest 指定的版本（不執行廠商的更新程式），比對檔案雜湊與發行者的 Windows 數位簽章，並放在 Runtime 自己的資料夾。任何一項不符就不會改變任何東西。那台電腦會留下更新紀錄。 取消 更新到最新版（未經盤點）"
+    },
+    {
+      "name": "after-flow-1-idle-dark-zh-TW",
+      "sha256": "34b1935d1d9e85af54b96ed8f5a6012f88c14519dd9efca4652bc999f565c962",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host-flow"
+    },
+    {
+      "name": "after-flow-2-running-dark-zh-TW",
+      "sha256": "1c5be34819e307774d06509a4af039067958d0719906ae2c2be046ffd66546e3",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host-flow",
+      "text": "Antigravity 預設連接 更新中… 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新中… 正在把 Antigravity 更新到最新版，未經 AgEnD 盤點（從 Chrome on Linux 啟動）。 等安裝程式印出內容… 取消更新 從聊天連接"
+    },
+    {
+      "name": "after-flow-3-done-dark-zh-TW",
+      "sha256": "15e7dabef5b204e95388d78654246b6dc7d063f31445021d26be9b8340df76be",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host-flow",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.6.0，比 AgEnD 稽核過的最新版本 1.5.3 還新：尚未經 AgEnD 驗證。按「更新」會更新到廠商釋出的最新版，同樣未經稽核。 更新到最新版（未經盤點） Antigravity 已從 1.5.3 更新到 1.6.0，廠商釋出的最新版（未經 AgEnD 盤點）。 Checking for updates... Downloading agy 1.6.0 (windows-independent, linux-x64) ... Updated agy 1.5.3 -> 1.6.0 關閉 從聊天連接"
+    },
+    {
+      "name": "after-flow-4-runtime-confirm-dark-zh-TW",
+      "sha256": "8cbb3b1ee6d7415189e9559702fa92a75112a49d8bcef150b628232c34d1ebf1",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "page": "runtime-confirm",
+      "text": "請確認 要在 Dev laptop (Windows) 把 Antigravity 更新到廠商的「最新版」嗎？這個版本 AgEnD 尚未稽核。那台電腦會下載廠商自己的 manifest 指定的版本（不執行廠商的更新程式），比對檔案雜湊與發行者的 Windows 數位簽章，並放在 Runtime 自己的資料夾。任何一項不符就不會改變任何東西。那台電腦會留下更新紀錄。 取消 更新到最新版（未經盤點）"
+    },
+    {
+      "name": "after-host-antigravity-desk-light-en",
+      "sha256": "660298967950a050fe4b34751aafb4730a75ef1f0e66245c1177e8bd76737777",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Update to latest (not audited by AgEnD) Connect fr"
+    },
+    {
+      "name": "after-runtime-desk-light-en",
+      "sha256": "2e946d15613755c140e9916b322a7a2c8da66f0e92ce83e0813b7aa3dd5cbef8",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-desk-light-zh-TW",
+      "sha256": "3bd283badd043e37632c3f980d4d9c5d6fcbd4206fec3d7e3a8ccd58a74c83d0",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新到最新版（未經盤點） 從聊天連接"
+    },
+    {
+      "name": "after-runtime-desk-light-zh-TW",
+      "sha256": "573febd7f76ba40f97b9130f234f1fbafadbbc908e146322475ab49ce7b99219",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-desk-dark-en",
+      "sha256": "140cca7dcb6351ec884135d0c9af9079ab15071aa5f86831738bff15bd01c69f",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Update to latest (not audited by AgEnD) Connect fr"
+    },
+    {
+      "name": "after-runtime-desk-dark-en",
+      "sha256": "ff30ca08b46bbc227d8a9bc2a74832629c44f029a206215a5e0e7b31ead8171a",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-desk-dark-zh-TW",
+      "sha256": "b759743d32b8a1665d50a9d0db028c9f7781e9132f728a51916ac2a68cd66823",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新到最新版（未經盤點） 從聊天連接"
+    },
+    {
+      "name": "after-runtime-desk-dark-zh-TW",
+      "sha256": "126d670127970afbf2b8171a17249ab2ec65fc9eee94a94a790fd64438405e39",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-phone-light-en",
+      "sha256": "a7e6bfdc80b352997ab794c8adc001f218f9abb0cb8bd9f9e7c1af91d5e61aba",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Update to latest (not audited by AgEnD) Connect fr"
+    },
+    {
+      "name": "after-runtime-phone-light-en",
+      "sha256": "7259808b46ac3e28b8400d567b629e8a2a85d3015b3e37f2ab55888798c5335b",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-phone-light-zh-TW",
+      "sha256": "4682cfb4774d5ec893fd4b03feed752f3db39fbe79f3ea180ca0a84849459d29",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新到最新版（未經盤點） 從聊天連接"
+    },
+    {
+      "name": "after-runtime-phone-light-zh-TW",
+      "sha256": "5c587b551b996eb8435cdd94324134eb4860d01c3f1d5e1fc0a442990b4f9668",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-phone-dark-en",
+      "sha256": "9249f103f1cf0d8a125f4ca296b2e9e36d0600faad0d830af28272862dd446c7",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — the version AgEnD has audited (1.5.3). Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned. Update to latest (not audited by AgEnD) Connect fr"
+    },
+    {
+      "name": "after-runtime-phone-dark-en",
+      "sha256": "92a1eab6af81deabf5c0d5ad868933e6642ad4bdf48de5f2ee244edde0745412",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "after-host-antigravity-phone-dark-zh-TW",
+      "sha256": "2887f130ed0c497650c8ed0dbf0237cf5a692b4b45dc5371c78c7b40df835d1d",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是 AgEnD 稽核過的版本（1.5.3）。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。 更新到最新版（未經盤點） 從聊天連接"
+    },
+    {
+      "name": "after-runtime-phone-dark-zh-TW",
+      "sha256": "534771fb5e7ea6261da21f20b02d2f070e73507cc27ff53c0c278332dba2577b",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "after",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-desk-light-en",
+      "sha256": "b2b550cf34fa175a6bb2f162cfc98e8dfd31417661bd161c7d5eb196e78a333d",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — up to date. The newest version AgEnD has audited: 1.5.3. Connect from chat"
+    },
+    {
+      "name": "before-runtime-desk-light-en",
+      "sha256": "1dfc3f136d31110b8302d8e358c3404b9179b06fffa47c8a498dfe3d854035d3",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-desk-light-zh-TW",
+      "sha256": "3b09acdf433a48af29033e73f6d2f53ab9b1e59beefa0dd0e95c32fb866cd4fb",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是最新的。AgEnD 稽核過的最新版本：1.5.3。 從聊天連接"
+    },
+    {
+      "name": "before-runtime-desk-light-zh-TW",
+      "sha256": "a8b9a79ee26e5d8b004a9973b01367ee4a50e0b9e3302af776601b84c06676a8",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-desk-dark-en",
+      "sha256": "f5ae0881046e7fefab44c613363447ce3e0e8a27b18a4548120cb5826722550b",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — up to date. The newest version AgEnD has audited: 1.5.3. Connect from chat"
+    },
+    {
+      "name": "before-runtime-desk-dark-en",
+      "sha256": "67dfcfdb0ec72e8052cff9d83bf7aa452d84c547a2f86efa80021b1bd5f2d1cf",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-desk-dark-zh-TW",
+      "sha256": "e468b8cdedc1823af9672b820d60e28c52ecb0193675c2d839070826889cac71",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是最新的。AgEnD 稽核過的最新版本：1.5.3。 從聊天連接"
+    },
+    {
+      "name": "before-runtime-desk-dark-zh-TW",
+      "sha256": "ed01e104cd5481a813675ecad9759878cce5b76932f54a3e11fd810636e8c423",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-phone-light-en",
+      "sha256": "4a940844235800816fb1a466e09ed0926397aa9ade28e7beeacda630d02f7b92",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — up to date. The newest version AgEnD has audited: 1.5.3. Connect from chat"
+    },
+    {
+      "name": "before-runtime-phone-light-en",
+      "sha256": "fe64c1b515e57b55c1d6d607b4e4506b5f0d362bea4f7893beca29d1e3eebc51",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-phone-light-zh-TW",
+      "sha256": "d95d0a72b1d4a0600be2ef2bd4e80bebc06ed4c21bbbf6a32f21411025a6005f",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是最新的。AgEnD 稽核過的最新版本：1.5.3。 從聊天連接"
+    },
+    {
+      "name": "before-runtime-phone-light-zh-TW",
+      "sha256": "680c1cdaf1657611298086bf139b8fa9e9335a406b02576dc682b6d475fdd32e",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-phone-dark-en",
+      "sha256": "7afafe252e22cfed4073fb92ec40e8434e442a827958268cb1253749bd308f8d",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "page": "host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — up to date. The newest version AgEnD has audited: 1.5.3. Connect from chat"
+    },
+    {
+      "name": "before-runtime-phone-dark-en",
+      "sha256": "deab130989af96c93869233c92a6691eddecc61368f56249571d198710ab00d6",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "page": "runtime"
+    },
+    {
+      "name": "before-host-antigravity-phone-dark-zh-TW",
+      "sha256": "b7155b014c8b2b2910ffc2d6c11a74f649266832125c3f525042a8e76817c5a3",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是最新的。AgEnD 稽核過的最新版本：1.5.3。 從聊天連接"
+    },
+    {
+      "name": "before-runtime-phone-dark-zh-TW",
+      "sha256": "246bb2026337fb4ff9106564a153a14adb7903c9366357b0c5842d2641862333",
+      "painted": {
+        "attr": "dark",
+        "bg": "rgb(33, 33, 33)"
+      },
+      "variant": "before",
+      "shape": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "page": "runtime"
+    },
+    {
+      "name": "skew-host-1-retained-label-en",
+      "sha256": "8a25d2846230af35f437b10697f020db2b038b54a19a9ba015b86c82c6d8ccf6",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-host-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "skew-host",
+      "text": "Antigravity Default connection not connected used by no agent 1.5.3 is installed — up to date. The newest version AgEnD has audited: 1.5.3. Update to 1.5.3 Connect from chat"
+    },
+    {
+      "name": "skew-host-2-after-click-en",
+      "sha256": "aac2bcd6ac206801f8802a53352b43aaa7b9da1f664474c470e4107424b00026",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-host-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "skew-host-click",
+      "text": ""
+    },
+    {
+      "name": "skew-runtime-1-retained-label-en",
+      "sha256": "86a52bb72bd124d52481d1f8a48cfaa979fc3bce9bfc1d7b8f89e582847bc410",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-runtime-cli-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "skew-runtime",
+      "text": "Antigravity Installed 1.3.5. AgEnD has audited 1.5.3: Update installs exactly that, with the same checks as an install. Update to 1.5.3"
+    },
+    {
+      "name": "skew-runtime-2-dialog-en",
+      "sha256": "2ae1a4835f5332f0b42cd2be42030078c71149af3a94f1007aae51aaa4ae8289",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "page": "skew-runtime-dialog",
+      "text": "Please confirm Install Antigravity 1.5.3 on Dev laptop (Windows)? AgEnD downloads that exact version from the vendor's own address (the vendor's install script is not run), checks its size, its checksum and the publisher's Windows signature, and keeps it in this Runtime's folder on that computer. If any of them does not match, nothing is installed. The install is recorded there. Cancel Update to 1.5.3"
+    },
+    {
+      "name": "skew-runtime-3-after-click-en",
+      "sha256": "3a77fa089b9abbc0d92dd7d6d7725bf3739a10ad0db2fba6a288ddbca8fdb569",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-runtime-cli-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "en",
+      "page": "skew-runtime-click",
+      "text": "Install a CLI Installs the fixed version AgEnD pins, into this Runtime's own folder on that computer. No administrator, no PATH change, no vendor script. Claude Code Installed 2.1.319 — up to date. The newest version AgEnD has audited: 2.1.319. Codex Installed 0.167.0 — up to date. The newest version AgEnD has audited: 0.167.0. Antigravity Installed 1.3.5. AgEnD has audited 1.5.3: Update installs exactly that, with the same checks as an install. Update to 1.5.3 OpenCode Installed 1.18.34. AgEnD "
+    },
+    {
+      "name": "skew-host-1-retained-label-zh-TW",
+      "sha256": "446bbd43c1559a58e904e2e9276b8191f37534870f5f2a323ed835b8a273a835",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-host-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "skew-host",
+      "text": "Antigravity 預設連接 尚未連接 沒有 Agent 使用 已安裝 1.5.3，是最新的。AgEnD 稽核過的最新版本：1.5.3。 更新到 1.5.3 從聊天連接"
+    },
+    {
+      "name": "skew-host-2-after-click-zh-TW",
+      "sha256": "fd387dae258d5b25fd37eb169f4722d3c0d6143ddbbbd797dad97d720e28527c",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-host-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "skew-host-click",
+      "text": ""
+    },
+    {
+      "name": "skew-runtime-1-retained-label-zh-TW",
+      "sha256": "49a58ce222a4db9dc4cd8cbc15cd0c1a90d47d572ffa76d6f07c2f2ea63bcebe",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-runtime-cli-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "skew-runtime",
+      "text": "Antigravity 已安裝 1.3.5。AgEnD 稽核過的版本是 1.5.3：按「更新」會裝這個版本，檢查和安裝完全一樣。 更新到 1.5.3"
+    },
+    {
+      "name": "skew-runtime-2-dialog-zh-TW",
+      "sha256": "3af3bdc6c97eaaa89cb8adfe163411eb359b1117ef2466bdb94abd421de11d4c",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "page": "skew-runtime-dialog",
+      "text": "請確認 要在 Dev laptop (Windows) 安裝 Antigravity 1.5.3 嗎？AgEnD 會從廠商自己的網址下載這個固定版本（不執行廠商的安裝腳本），比對檔案大小、雜湊與發行者的 Windows 數位簽章，並放在那台電腦上 Runtime 自己的資料夾。任何一項不符就不會安裝。那台電腦會留下安裝紀錄。 取消 更新到 1.5.3"
+    },
+    {
+      "name": "skew-runtime-3-after-click-zh-TW",
+      "sha256": "4eb88bc9eca1fd611472af7d1c39a10d05ebbe1c049d031f9b5531dffb5ce4b3",
+      "painted": {
+        "attr": "light",
+        "bg": "rgb(255, 255, 255)"
+      },
+      "variant": "after+retained-runtime-cli-install.js(7198c63dd)",
+      "shape": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "page": "skew-runtime-click",
+      "text": "安裝 CLI 安裝 AgEnD 固定的版本，裝在那台電腦上 Runtime 自己的資料夾。不需要系統管理員，不改 PATH，也不執行廠商腳本。 Claude Code 已安裝 2.1.319，是最新的。AgEnD 稽核過的最新版本：2.1.319。 Codex 已安裝 0.167.0，是最新的。AgEnD 稽核過的最新版本：0.167.0。 Antigravity 已安裝 1.3.5。AgEnD 稽核過的版本是 1.5.3：按「更新」會裝這個版本，檢查和安裝完全一樣。 更新到 1.5.3 OpenCode 已安裝 1.18.34。AgEnD 稽核過的版本是 1.19.5：按「更新」會裝這個版本，檢查和安裝完全一樣。 更新到 1.19.5 那台電腦的主人已允許。 無法開始安裝：This page is out of date for this action. Refresh the page and try again. 其他 CLI"
+    }
+  ],
+  "notes": [
+    {
+      "flow": "light/en",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\",\"acceptLatestUnaudited\":true}"
+      ]
+    },
+    {
+      "flow": "dark/en",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\",\"acceptLatestUnaudited\":true}"
+      ]
+    },
+    {
+      "flow": "light/zh-TW",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\",\"acceptLatestUnaudited\":true}"
+      ]
+    },
+    {
+      "flow": "dark/zh-TW",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\",\"acceptLatestUnaudited\":true}"
+      ]
+    },
+    {
+      "cssServed": {
+        "runtime-install.css@d51a038b0": "d351a880f9f9c042d8afc30353cbae26ed0ea94afa537f5da2d9d99269e31a54",
+        "app.css@7198c63dd": "1ca99ab5f6f118ee6bd3c57b1fb898e1aeafaa3872ac1b0d82eeaa1caac5a4aa"
+      }
+    },
+    {
+      "servedInPlaceOf": {
+        "host-install.js": "71d5cb698ef185c7b5e70eb6c4e476e0cac13ee4700f68cb1da6a371d00ca35e",
+        "runtime-cli-install.js": "58a2533c04600fd4699b132bf5921dd057067da869bc0c73f3daf91050094a51"
+      }
+    },
+    {
+      "skewHost": "en",
+      "servedHostInstallSha256": "71d5cb698ef185c7b5e70eb6c4e476e0cac13ee4700f68cb1da6a371d00ca35e",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\"}"
+      ],
+      "responses": [
+        "409 /ui/host-update {\"error\":\"latest_ack_required\"}"
+      ],
+      "agyVersionAfter": "1.5.3",
+      "hostInstallRun": null
+    },
+    {
+      "skewRuntime": "en",
+      "posts": [
+        {
+          "cli": "antigravity"
+        }
+      ]
+    },
+    {
+      "skewHost": "zh-TW",
+      "servedHostInstallSha256": "71d5cb698ef185c7b5e70eb6c4e476e0cac13ee4700f68cb1da6a371d00ca35e",
+      "posts": [
+        "/ui/host-update {\"backend\":\"antigravity\"}"
+      ],
+      "responses": [
+        "409 /ui/host-update {\"error\":\"latest_ack_required\"}"
+      ],
+      "agyVersionAfter": "1.5.3",
+      "hostInstallRun": null
+    },
+    {
+      "skewRuntime": "zh-TW",
+      "posts": [
+        {
+          "cli": "antigravity"
+        }
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "label": "pre-fix CSS (runtime-install.css @ d51a038b0)",
+      "viewport": 390,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 30
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 30
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "pre-fix CSS (runtime-install.css @ d51a038b0)",
+      "viewport": 500,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 30
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 30
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "pre-fix CSS (runtime-install.css @ d51a038b0)",
+      "viewport": 600,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 30
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 30
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "current CSS (this head)",
+      "viewport": 390,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "current CSS (this head)",
+      "viewport": 500,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "current CSS (this head)",
+      "viewport": 600,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "retained CSS (this head's runtime-install.css, app.css of 7198c63dd)",
+      "viewport": 390,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "retained CSS (this head's runtime-install.css, app.css of 7198c63dd)",
+      "viewport": 500,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "retained CSS (this head's runtime-install.css, app.css of 7198c63dd)",
+      "viewport": 600,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        },
+        "opencode": {
+          "text": "Update to 1.19.5",
+          "w": 120,
+          "h": 44
+        },
+        "codex": null
+      }
+    },
+    {
+      "label": "host Update button, current CSS (this head)",
+      "viewport": 390,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        }
+      }
+    },
+    {
+      "label": "host Update button, retained CSS (app.css of 7198c63dd)",
+      "viewport": 390,
+      "buttons": {
+        "antigravity": {
+          "text": "Update to latest (not audited by AgEnD)",
+          "w": 261,
+          "h": 44
+        }
+      }
+    }
+  ]
+}

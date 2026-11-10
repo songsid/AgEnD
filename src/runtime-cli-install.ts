@@ -18,6 +18,9 @@
  * A second kind of entry has no npm package: a PINNED DOWNLOAD (Antigravity). Its exact version, the exact file address and the file's sha512 are in the same table. The Runtime
  * downloads that one address with its own fixed PowerShell command (the address travels in the environment, never in the command text; the vendor's `install.ps1` is NOT run),
  * checks the size and the sha512 of what landed against the pin, then runs the same Authenticode check, and only then switches it on. Any one of them failing refuses the install.
+ * AGEND-153 (the maintainer's decision on #3539): Antigravity's Update on a computer is the ONE named exception to "the audited version, not latest": it goes to the newest release the vendor serves
+ * (`LATEST_UNAUDITED`). The vendor's own updater is still never run: the Runtime reads the vendor's manifest at one fixed address, accepts only a file at the vendor's fixed address pattern, and
+ * then makes the same checks as for the pinned download (the file's sha512 against that manifest, the Authenticode signer Google LLC) before it switches. The page says it is not audited.
  * Kiro (an MSI into Program Files), Grok (an unsigned binary) and Muse (a launcher that installs itself) are NOT in this table on purpose:
  * the dashboard shows their official command and why, and the computer's owner runs it. Why each one cannot be pinned the way these are: docs/dev/cli-registry.md.
  *
@@ -29,6 +32,7 @@ import { chmodSync, createReadStream, existsSync, lstatSync, mkdirSync, readFile
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ProcessNotConfirmedEnded, killTree } from "./runtime-signin.js";
+import { compareVersions } from "./cli-audited.js";
 import type { RuntimeCliWith } from "./cli-registry.js";
 // Types only: the lock module reaches windows-cli-worker, which imports this module, so its values are loaded when the first install starts (see `lockModule`).
 import type { RuntimeInstallLock, RuntimeProcessObservation, RuntimeProcessProof, acquireRuntimeInstallLock as AcquireRuntimeInstallLock } from "./runtime-update-lock.js";
@@ -59,7 +63,11 @@ export interface NpmInstallableCli extends InstallableBase { kind: "npm"; spec: 
  * A single file at one exact address (the vendor's own versioned, immutable file): its size and sha512 (lower-case hex) are pinned. It is saved as `native.path` inside the install
  * folder. The address is ours; the server and the page never supply one.
  */
-export interface DownloadInstallableCli extends InstallableBase { kind: "download"; url: string; bytes: number; sha512: string }
+export interface DownloadInstallableCli extends InstallableBase {
+  kind: "download"; url: string; bytes: number; sha512: string;
+  /** AGEND-153: the size is not known beforehand (the vendor's manifest does not carry it): `bytes` is then the most the file may be, not its exact size. Only a release read from `LATEST_UNAUDITED`. */
+  anySize?: true;
+}
 export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 /** The certificate subject's CN and O that must both be exactly this (not a prefix, not a pattern). */
 export interface ExpectedSigner { cn: string; o: string }
@@ -103,6 +111,36 @@ export const INSTALLABLE_CLIS = Object.freeze({
     native: { path: "node_modules/opencode-windows-x64-baseline/bin/opencode.exe", signer: { cn: "Anomaly Innovations, Inc https://anoma.ly/", o: "Anomaly Innovations, Inc https://anoma.ly/" } },
   },
 } satisfies Record<InstallableCliId, InstallableCli>);
+/**
+ * AGEND-153: where the newest release of a CLI whose Update is the named exception comes from. `manifest`: the vendor's own release information, one fixed address; `file`: the only shape of address
+ * a file may have (the vendor's own versioned, immutable storage path; capture 1 is the version, which must be the manifest's `version`); `maxBytes`: the most the file may be (the manifest names no size).
+ * Nothing the server or the page sends is ever part of any of it. tests/runtime-cli-install-latest-153.test.ts pins that this table and the registry's `runtime.update` of kind `latest-unaudited` name the same CLIs.
+ */
+export const LATEST_UNAUDITED = Object.freeze({
+  antigravity: {
+    manifest: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json",
+    file: /^https:\/\/storage\.googleapis\.com\/antigravity-public\/antigravity-cli\/(\d{1,6}\.\d{1,6}\.\d{1,6})-\d{1,20}\/windows-x64\/cli_windows_x64\.exe$/,
+    maxBytes: 600 * 1024 * 1024,
+  },
+} satisfies Partial<Record<InstallableCliId, { manifest: string; file: RegExp; maxBytes: number }>>);
+export type LatestCliId = keyof typeof LATEST_UNAUDITED;
+export const isLatestCli = (id: unknown): id is LatestCliId => typeof id === "string" && Object.hasOwn(LATEST_UNAUDITED, id);
+/** One release a vendor manifest named, after every check of its shape. */
+export interface LatestRelease { version: string; url: string; sha512: string }
+/**
+ * The vendor manifest as text → the release it names, or null for anything that is not exactly that: a JSON object whose `version` is three plain numbers, whose `sha512` is 128 hex digits, and whose
+ * `url` is the vendor's fixed address pattern for that very version. Extra fields are ignored (the vendor may add some); none of them is used.
+ */
+export function parseLatestManifest(id: LatestCliId, text: string): LatestRelease | null {
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { return null; }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { version, url, sha512 } = value as Record<string, unknown>;
+  if (typeof version !== "string" || !/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(version) || typeof url !== "string" || typeof sha512 !== "string" || !/^[0-9a-fA-F]{128}$/.test(sha512)) return null;
+  const found = LATEST_UNAUDITED[id].file.exec(url);
+  if (!found || found[1] !== version) return null;
+  return { version, url, sha512: sha512.toLowerCase() };
+}
 /**
  * A certificate subject as Windows prints it (`CN="Anthropic, PBC", O="Anthropic, PBC", L=..., C=US`) as a list of [type, value]. A value is either plain
  * (up to the next comma; `\\` escapes the next character) or in double quotes (a comma inside is part of the value, `""` is one quote). Anything it cannot
@@ -218,10 +256,17 @@ const npmLocalArgs = (config: NpmConfigFiles, prefix: string): string[] => ["--u
 /**
  * The one command a pinned download runs, fixed text. The address and the file travel in the environment (AGEND_DOWNLOAD_URL / AGEND_DOWNLOAD_FILE), never in this text, and both come from
  * the pin in the table. It is Windows PowerShell's own `Invoke-WebRequest`, so the computer's proxy and its certificate store (a company that inspects TLS) apply as they do for the
- * user's own downloads. Nothing it fetched is run. What it saved is only believed after the Runtime has checked its size and sha512 against the pin and Windows has checked its signature.
+ * user's own downloads. Nothing it fetched is run. AGEND-154 (Prism P2-2 on #3552): it follows NO redirect (`-MaximumRedirection 0`, where Windows PowerShell 5.1 would follow five; a 3xx answer is then an error, which is `exit 1`): the fixed address is the only place the
+ * file may come from, so an official starting address cannot hand the fetch to another origin. The sha512 and the signer checks below are unchanged. What it saved is only believed after the Runtime has checked its size and sha512 against the pin and Windows has checked its signature.
  */
 export const DOWNLOAD_COMMAND = "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }; "
-  + "try { Invoke-WebRequest -UseBasicParsing -Uri $env:AGEND_DOWNLOAD_URL -OutFile $env:AGEND_DOWNLOAD_FILE } catch { exit 1 }";
+  + "try { Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri $env:AGEND_DOWNLOAD_URL -OutFile $env:AGEND_DOWNLOAD_FILE } catch { exit 1 }";
+/**
+ * AGEND-153: the one command that reads the vendor's release information, fixed text like `DOWNLOAD_COMMAND`: the address travels in the environment (AGEND_DOWNLOAD_URL), it is Windows PowerShell's own
+ * `Invoke-WebRequest` (the computer's proxy and certificate store apply; AGEND-154: no redirect is followed and a 3xx fails, as for `DOWNLOAD_COMMAND`), and what it fetched is only printed. The Runtime parses the output as data (`parseLatestManifest`); nothing in it is run.
+ */
+export const MANIFEST_COMMAND = "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }; "
+  + "try { $r = Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri $env:AGEND_DOWNLOAD_URL; if ($r.StatusCode -ne 200) { exit 1 }; if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { $r.Content } } catch { exit 1 }";
 /** sha512 of a file as lower-case hex, read as a stream (the download can be hundreds of MB). */
 export const sha512OfFile = (file: string): Promise<string> => new Promise((done, fail) => {
   const hash = createHash("sha512"), stream = createReadStream(file);
@@ -277,8 +322,11 @@ export function managedCliExecutable(root: string, id: string): { command: strin
   try {
     const pointer = JSON.parse(readFileSync(join(root, id, "current.json"), "utf8")) as { version?: unknown };
     const cli = INSTALLABLE_CLIS[id];
-    if (pointer.version !== cli.version) return null;      // an older pin than this Runtime's: reinstall
-    const file = join(root, id, cli.version, cli.native.path);
+    // An older pin than this Runtime's: reinstall. AGEND-153: a CLI whose Update is the named exception may have been taken to a NEWER release than the pin (a plain x.y.z the Runtime itself wrote
+    // after its checks); that copy is the one in use. A pointer that is not three plain numbers is never followed (it becomes a folder name).
+    const version = typeof pointer.version === "string" ? pointer.version : "";
+    if (version !== cli.version && !(isLatestCli(id) && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(version) && compareVersions(version, cli.version) > 0)) return null;
+    const file = join(root, id, version, cli.native.path);
     // No link anywhere on the way to the program, the managed root itself included: a managed folder is never a redirect to somewhere else (a junction reads as a link).
     for (let at = file; ; at = dirname(at)) {
       if (lstatSync(at).isSymbolicLink()) return null;
@@ -287,7 +335,7 @@ export function managedCliExecutable(root: string, id: string): { command: strin
     }
     // And what the names resolve to still lies inside the root's own resolved place.
     if (!inside(realpathSync(root), realpathSync(file))) return null;
-    return statSync(file).isFile() ? { command: file, args: [], version: cli.version } : null;
+    return statSync(file).isFile() ? { command: file, args: [], version } : null;
   } catch { return null; }
 }
 
@@ -334,9 +382,12 @@ function localLockOptions(): NonNullable<InstallDeps["lockOptions"]> {
  *   - One deadline covers every step. The Runtime stopping ends it as `cancelled`; the deadline ends it as `timed-out`.
  *   - The new folder replaces an old one by moving the old one aside (`<version>.old`), never by deleting it first: if the swap fails, the old one is moved back.
  */
-export async function installManagedCli(id: unknown, deps: InstallDeps): Promise<InstallResult> {
+export async function installManagedCli(id: unknown, deps: InstallDeps, latest?: LatestRelease): Promise<InstallResult> {
   if (!isInstallableCli(id)) throw new CliInstallError("install-failed", "This CLI cannot be installed from the dashboard");
-  const cli = deps.pins?.[id] ?? INSTALLABLE_CLIS[id];
+  const pinned = deps.pins?.[id] ?? INSTALLABLE_CLIS[id];
+  // AGEND-153: the named exception installs the release the vendor's manifest named, as a pinned download whose pin was read just now (version, address and sha512 from the manifest; the size only capped).
+  if (latest && (!isLatestCli(id) || pinned.kind !== "download")) throw new CliInstallError("install-failed", "This CLI is not updated to a latest release from the dashboard");
+  const cli: InstallableCli = latest && pinned.kind === "download" ? { ...pinned, version: latest.version, url: latest.url, sha512: latest.sha512, bytes: LATEST_UNAUDITED[id as LatestCliId].maxBytes, anySize: true } : pinned;
   const run = deps.run ?? defaultRun, report = deps.report ?? (() => {}), node = deps.nodePath ?? process.execPath, rename = deps.rename ?? renameSync;
   const fail = (reason: InstallFailure, message: string): never => { throw new CliInstallError(reason, message); };
   const folder = join(deps.root, id, cli.version), staging = `${folder}.staging`, old = `${folder}.old`;
@@ -344,7 +395,9 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   // A link where we are about to write is not followed: the CLI folder and its id folder are ours, plain folders.
   for (const dir of [deps.root, join(deps.root, id)]) if (existsSync(dir) && lstatSync(dir).isSymbolicLink()) fail("install-failed", "The Runtime's CLI folder is a link, so nothing was installed");
   const present = managedCliExecutable(deps.root, id);
-  if (present && present.version === cli.version) { report("ready"); return { version: cli.version, command: present.command }; }
+  // Already there: this pin (nothing is done at all) — and, for a CLI whose Update is the named exception, any copy at or above what is asked for (an install never takes a newer copy back to the pin,
+  // and an update to a release the computer already has or is past does nothing).
+  if (present && (present.version === cli.version || (isLatestCli(id) && compareVersions(present.version, cli.version) >= (latest ? 0 : 1)))) { report("ready"); return { version: present.version, command: present.command }; }
   const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
   if (cli.kind === "npm" && !existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
   mkdirSync(deps.root, { recursive: true, mode: 0o700 });
@@ -524,9 +577,11 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
       let landed: BigIntStats | undefined;
       try { landed = lstatSync(file, { bigint: true }); } catch { /* checked below */ }
       if (!landed || !landed.isFile() || landed.isSymbolicLink()) fail("install-failed", "The download did not produce the expected file");
-      if (Number(landed!.size) !== cli.bytes) fail("integrity-mismatch", "The downloaded file is not the one this AgEnD version expects (its size differs), so nothing was installed");
+      // A pinned file has its exact size; a release read from the vendor's manifest has only a ceiling (the manifest names no size) and must not be empty.
+      const size = Number(landed!.size);
+      if (cli.anySize ? size <= 0 || size > cli.bytes : size !== cli.bytes) fail("integrity-mismatch", cli.anySize ? "The downloaded file is empty or larger than this AgEnD version allows, so nothing was installed" : "The downloaded file is not the one this AgEnD version expects (its size differs), so nothing was installed");
       boundary();
-      if (await sha512OfFile(file) !== cli.sha512) fail("integrity-mismatch", "The downloaded file is not the one this AgEnD version expects (its checksum differs), so nothing was installed");
+      if (await sha512OfFile(file) !== cli.sha512) fail("integrity-mismatch", cli.anySize ? "The downloaded file does not match the checksum in the vendor's release information, so nothing was installed" : "The downloaded file is not the one this AgEnD version expects (its checksum differs), so nothing was installed");
       stopped();
     }
     report("checking-publisher");
@@ -580,6 +635,34 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     throw out;
   }
 }
+/**
+ * AGEND-153: Update to the vendor's newest release (the named exception; `LATEST_UNAUDITED`). Reads the vendor's manifest from its one fixed address, checks its shape (`parseLatestManifest`), and
+ * installs that release exactly as a pinned download is installed (`installManagedCli`): size ceiling, sha512 against the manifest, the Authenticode signer, the lock, the swap. A manifest that cannot
+ * be read or is not the expected shape refuses the update before anything is written. The Runtime's live admission (`gate`) is asked before the fetch, as before every other step.
+ */
+export async function updateManagedCliToLatest(id: unknown, deps: InstallDeps): Promise<InstallResult> {
+  if (!isLatestCli(id)) throw new CliInstallError("install-failed", "This CLI is not updated to a latest release from the dashboard");
+  const report = deps.report ?? (() => {});
+  if (deps.signal?.aborted) throw new CliInstallError("cancelled", "The update was cancelled");
+  deps.gate?.();
+  const env = passThroughEnvironment(deps.env ?? process.env);
+  const system = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
+  report("installing");
+  let read: Awaited<ReturnType<NonNullable<InstallDeps["run"]>>>;
+  try {
+    read = await (deps.run ?? defaultRun)(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", MANIFEST_COMMAND],
+      { cwd: system, env: { ...env, AGEND_DOWNLOAD_URL: LATEST_UNAUDITED[id].manifest }, timeoutMs: Math.min(deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, 60_000), ...(deps.signal ? { signal: deps.signal } : {}), ...(deps.killWaitMs !== undefined ? { killWaitMs: deps.killWaitMs } : {}) });
+  } catch (error) {
+    if (error instanceof ProcessNotConfirmedEnded) throw new CliInstallError(deps.signal?.aborted ? "cancelled" : "install-failed", "A program the update started could not be confirmed ended, so this computer stays busy until it is", { ended: error.ended });
+    throw error;
+  }
+  if (deps.signal?.aborted) throw new CliInstallError("cancelled", "The update was cancelled");
+  if (read.overflow || read.code === null) throw new CliInstallError("timed-out", "The vendor's release information could not be read in time");
+  if (read.code !== 0) throw new CliInstallError("install-failed", "The vendor's release information could not be read (see this computer's network, proxy and certificate settings)");
+  const release = parseLatestManifest(id, read.stdout.trim());
+  if (!release) throw new CliInstallError("install-failed", "The vendor's release information is not what this AgEnD version expects, so nothing was installed");
+  return installManagedCli(id, deps, release);
+}
 /** What an install answers: the version that landed and where its program is; `ended` only when the lock could not be given back yet (settles when it has been). */
 export interface InstallResult { version: string; command: string; ended?: Promise<unknown> }
 const endedOf = (retry: Promise<void> | undefined): { ended?: Promise<unknown> } => retry ? { ended: retry } : {};
@@ -591,14 +674,24 @@ const endedOf = (retry: Promise<void> | undefined): { ended?: Promise<unknown> }
  */
 export function managedInstaller(deps: Omit<InstallDeps, "signal" | "gate">, signal?: () => AbortSignal | undefined): {
   knows(cli: string): boolean; installed(cli: string): boolean; install(cli: string, gate?: () => void): Promise<{ version: string; ended?: Promise<unknown> }>; running(): boolean;
+  /** AGEND-153: the CLIs whose Update goes to the vendor's newest release (the named exception), and that update. */
+  knowsLatest(cli: string): boolean; update(cli: string, gate?: () => void): Promise<{ version: string; ended?: Promise<unknown> }>;
 } {
   const active = new Set<Promise<unknown>>();
   const track = (work: Promise<unknown>): void => { active.add(work); const done = (): void => { active.delete(work); }; work.then(done, done); };
   return {
     knows: isInstallableCli,
     /** This CLI is already at the version this Runtime installs (what a repeated request would find, and do nothing about). */
-    installed: cli => isInstallableCli(cli) && managedCliExecutable(deps.root, cli)?.version === INSTALLABLE_CLIS[cli].version,
+    // A copy of a CLI whose Update is the named exception that is already NEWER than the pin counts too: an install would only put an older copy beside it (installManagedCli does nothing then).
+    installed: cli => { if (!isInstallableCli(cli)) return false; const have = managedCliExecutable(deps.root, cli)?.version; return have === INSTALLABLE_CLIS[cli].version || (isLatestCli(cli) && !!have && compareVersions(have, INSTALLABLE_CLIS[cli].version) > 0); },
     running: () => active.size > 0,
+    knowsLatest: isLatestCli,
+    update: async (cli, gate) => {
+      const attempt = updateManagedCliToLatest(cli, { ...deps, signal: signal?.(), ...(gate ? { gate } : {}) });
+      track(attempt.then(result => result.ended, (error: unknown) => (error as { ended?: unknown } | null)?.ended instanceof Promise ? (error as { ended: Promise<unknown> }).ended : undefined));
+      const { version, ended } = await attempt;
+      return { version, ...(ended ? { ended } : {}) };
+    },
     install: async (cli, gate) => {
       const attempt = installManagedCli(cli, { ...deps, signal: signal?.(), ...(gate ? { gate } : {}) });
       // The install counts as running until it, and any program it could not stop or any release of its lock that is still being retried, has ended.

@@ -20,6 +20,8 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 export const MODEL_REFRESH_CAPABILITY = "model-catalog-refresh";
 export const REMOTE_SIGNIN_CAPABILITY = "remote-signin";
 export const CLI_INSTALL_CAPABILITY = "cli-install";
+/** AGEND-153: this Runtime can take a CLI whose Update is the named exception to the vendor's newest release (`cli.update`). An older Runtime does not claim it, so it is never asked. */
+export const CLI_UPDATE_CAPABILITY = "cli-update";
 
 export const REMOTE_SWITCHES = ["accounts", "install"] as const;
 export type RemoteSwitchName = typeof REMOTE_SWITCHES[number];
@@ -103,7 +105,7 @@ export function describeRemoteSwitches(switches: RemoteSwitches, now = Date.now(
 }
 
 /** Closed vocabulary of the audit record. Free text has no field here. */
-export const AUDIT_ACTIONS = ["models.refresh", "switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install"] as const;
+export const AUDIT_ACTIONS = ["models.refresh", "switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install", "cli.update"] as const;
 export const AUDIT_OUTCOMES = ["started", "ok", "refused", "failed"] as const;
 export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "unconfirmed", "timeout", "rate_limited", "failed"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];

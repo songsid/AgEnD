@@ -169,8 +169,8 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
     const machines = !installOnly && MACHINE_ACCOUNT_CLIS.has(backend) ? input.machines ?? [] : [];
     // AGEND-136: what the installed CLI's version is, and where it stands against the audited release (and whether an Update is offered).
     const printed = installed ? input.versions?.get(backend) ?? null : null;
-    const canUpdate = hostFacts(backend, "update") !== null;
-    const updateView = installed ? cliUpdateView(backend, printed, canUpdate) : null;
+    const updateFacts = hostFacts(backend, "update"), canUpdate = updateFacts !== null;
+    const updateView = installed ? cliUpdateView(backend, printed, canUpdate, updateFacts?.release === "latest-unaudited") : null;
     const cliUpdate: CliUpdateInfo | null = updateView ? { ...updateView, via: canUpdate ? "dashboard" : "self" } : null;
     const hostRelevant = installOnly ? installable || (installed && !!cliUpdate) || (input.installShown === backend && !!def) : installed || installable || agents.length > 0 || classic.length > 0 || input.installShown === backend;
     if (!hostRelevant && !machines.length) continue;

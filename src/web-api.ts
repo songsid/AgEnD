@@ -33,6 +33,8 @@ import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { HOST_CLI_PATHS, isRuntimeCliInstallPath } from "./settings-effect.js";
+import { hostUpdateAckError } from "./web-host-install.js";
+import { LATEST_ACK_FIELD } from "./cli-audited.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -1403,9 +1405,15 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
       json(res, 200, { cancelled: await installs.cancel() });
       return;
     }
-    const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
+    // AGEND-154 (Prism P2-1 on #3552): an update may carry `acceptLatestUnaudited: true` (only the page that knows the named exception sends it); the request and the registry must agree (below).
+    const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), ...(path === "/ui/host-update" ? { [LATEST_ACK_FIELD]: z.literal(true).optional() } : {}) }).safeParse(body);
     if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
+
     if (!isSettingsReplay(req) || !settingsRequestExecution(req)) { json(res, 403, { error: "install_confirmation_required" }); return; }
+    if (path === "/ui/host-update") {
+      const ackError = hostUpdateAckError(parsed.data.backend, (parsed.data as Record<string, unknown>)[LATEST_ACK_FIELD]);
+      if (ackError) { json(res, 409, { error: ackError }); return; }
+    }
     // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
     const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req), path === "/ui/host-update" ? "update" : "install");
     if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });

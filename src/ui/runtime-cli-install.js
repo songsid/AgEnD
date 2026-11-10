@@ -74,6 +74,19 @@ register("runtimeInstall", {
   },
 });
 
+// AGEND-153 (the maintainer's decision on #3539): the named exception. Antigravity updates itself and cannot be pinned to a release, so on a computer that already has it the button goes to the
+// vendor's LATEST release — which AgEnD has NOT audited — and says so. The Runtime downloads it from the vendor's own fixed address and checks its checksum and Google's Windows signature first.
+register("runtimeInstall", {
+  en: { updateLatest: "Update to latest (not audited by AgEnD)",
+    latestInfo: "Installed {0}. AgEnD installs {1}, a version it has audited. Update goes to the latest release the vendor serves, which AgEnD has NOT audited: this CLI updates itself and cannot be pinned.",
+    askUpdateLatest: "Update {0} on {1} to the vendor's LATEST release, which AgEnD has NOT audited? This computer downloads the release the vendor's own manifest names (the vendor's update program is not run), checks its checksum and the publisher's Windows signature, and keeps it in this Runtime's folder. If any of them does not match, nothing changes. The update is recorded there.",
+    doneLatest: "{0} is now {1}, the latest release the vendor serves (not audited by AgEnD).", cardLabelUpdateLatest: "Update {0} on {1} to the latest release (not audited by AgEnD)" },
+  "zh-TW": { updateLatest: "更新到最新版（未經盤點）",
+    latestInfo: "已安裝 {0}。AgEnD 會安裝 {1}，這是它稽核過的版本。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。",
+    askUpdateLatest: "要在 {1} 把 {0} 更新到廠商的「最新版」嗎？這個版本 AgEnD 尚未稽核。那台電腦會下載廠商自己的 manifest 指定的版本（不執行廠商的更新程式），比對檔案雜湊與發行者的 Windows 數位簽章，並放在 Runtime 自己的資料夾。任何一項不符就不會改變任何東西。那台電腦會留下更新紀錄。",
+    doneLatest: "{0} 現在是 {1}，廠商釋出的最新版（未經 AgEnD 盤點）。", cardLabelUpdateLatest: "在 {1} 上把 {0} 更新到最新版（未經 AgEnD 盤點）" },
+});
+
 // Ridge #3321 S06 / S09: the words of the loading state and the copyable commands.
 register("runtimeInstall", {
   en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer",
@@ -116,7 +129,7 @@ const refusalOf = (r) => {
 
 export function CliInstall({ machine, lease, onChanged }) {
   const [view, setView] = useState(null), [error, setError] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
-  const last = useRef("");
+  const last = useRef(""), latestJob = useRef(false);
   const online = machine.status === "online";
   const path = `/ui/runtimes/machines/${encodeURIComponent(machine.id)}/remote-setup`;
   const load = async () => {
@@ -142,7 +155,7 @@ export function CliInstall({ machine, lease, onChanged }) {
     const before = last.current; last.current = key;
     if (before.endsWith(":installing") && job && job.state !== "installing") {
       const label = INSTALL_CLIS.find(cli => cli.id === job.cli)?.label || job.cli;
-      setNote(job.state === "done" ? text("done", label, job.version || "") : job.error ? text("failed", label, job.version || "", job.error) : text("failedShort"));
+      setNote(job.state === "done" ? text(latestJob.current && CLI_CAPS[job.cli]?.runtimeUpdateLatest ? "doneLatest" : "done", label, job.version || "") : job.error ? text("failed", label, job.version || "", job.error) : text("failedShort"));
       onChanged?.();
     }
   }, [job]);
@@ -158,18 +171,20 @@ export function CliInstall({ machine, lease, onChanged }) {
     // AGEND-152 (Prism R4 on #3539): install and update are separate facts in the registry. An installed copy of a CLI whose `runtime.update` is not "yes" (Antigravity updates itself, OpenCode's Update
     // is not built) is only shown — its version and the audited one — and never offered a button: an Install over it would be an update by another name.
     const canUpdate = CLI_CAPS[cli.id]?.runtimeUpdate === true, installOnly = !!entry && !canUpdate;
-    const state = !entry ? text("notInstalled") : installOnly && behind ? text("noUpdate", found, pinned) : upToDate ? text("current", found, pinned) : behind ? text("behind", found, pinned) : newer ? text("newer", found, pinned) : text("installedOther", entry.version || "?");
+    // AGEND-153: the named exception — installed here and updated to the vendor's latest, whatever the version it has now (it is offered at, below and above the audited one).
+    const toLatest = !!entry && canUpdate && CLI_CAPS[cli.id]?.runtimeUpdateLatest === true;
+    const state = !entry ? text("notInstalled") : toLatest ? text("latestInfo", entry.version || found || "?", pinned) : installOnly && behind ? text("noUpdate", found, pinned) : upToDate ? text("current", found, pinned) : behind ? text("behind", found, pinned) : newer ? text("newer", found, pinned) : text("installedOther", entry.version || "?");
     const start = async () => {
       if (busy || !pinned || installOnly) return;
-      const message = byDownload ? text("askDownload", cli.label, pinned, machine.name) : behind ? text("askUpdate", cli.label, pinned, machine.name, found) : text("ask", cli.label, pinned, machine.name);
-      if (!await confirmDialog({ message, confirmLabel: text(behind ? "update" : "confirm", pinned) })) return;
+      const message = toLatest ? text("askUpdateLatest", cli.label, machine.name) : byDownload ? text("askDownload", cli.label, pinned, machine.name) : behind ? text("askUpdate", cli.label, pinned, machine.name, found) : text("ask", cli.label, pinned, machine.name);
+      if (!await confirmDialog({ message, confirmLabel: toLatest ? text("updateLatest") : text(behind ? "update" : "confirm", pinned) })) return;
       if (!lease.current()) return;
-      setBusy(true); setError(""); setNote("");
+      setBusy(true); setError(""); setNote(""); latestJob.current = toLatest;
       try {
         // AGEND-148 (Prism R3 on #3539): through the Settings gate like any change that acts on a computer — held, and (for an administrator who asked for their own code) confirmed with it on
         // the card — and the page sends the CLI's id and nothing else. The computer's own owner-switch is asked on that computer afterwards, as before.
-        const label = text(behind ? "cardLabelUpdate" : "cardLabel", cli.label, machine.name);
-        const response = await confirmedWrite(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", body: { cli: cli.id }, label, displaySummary: () => label });
+        const label = toLatest ? text("cardLabelUpdateLatest", cli.label, machine.name) : text(behind ? "cardLabelUpdate" : "cardLabel", cli.label, machine.name);
+        const response = await confirmedWrite(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", body: toLatest ? { cli: cli.id, acceptLatestUnaudited: true } : { cli: cli.id }, label, displaySummary: () => label });
         if (!lease.current()) return;
         if (!response.ok) throw new Error(refusalOf(response));
         await load();
@@ -177,7 +192,7 @@ export function CliInstall({ machine, lease, onChanged }) {
       finally { if (lease.current()) setBusy(false); }
     };
     return html`<li key=${cli.id} data-cli=${cli.id}><strong>${cli.label}</strong><span class="note">${state}</span>${unaudited ? html`<span class="note runtime-cli-unaudited">${text("notAudited")}</span>` : null}
-      ${upToDate || newer || installOnly ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${behind ? text("update", pinned) : entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
+      ${!toLatest && (upToDate || newer || installOnly) ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${toLatest ? text("updateLatest") : behind ? text("update", pinned) : entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
   };
   return html`<div class="runtime-cli-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>
     ${!online ? html`<p class="note" role="status">${text("offline")}</p>`

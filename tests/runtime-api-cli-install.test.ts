@@ -115,28 +115,62 @@ describe("install a CLI from the dashboard: what may be asked", () => {
   });
 });
 
-describe("AGEND-152 (Prism R4 on #3539): an update is only sent for a CLI whose runtime.update is supported", () => {
+describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart by what the computer already has, and sent as the right operation", () => {
   // The route has one POST for Install and Update (the page sends the CLI's id and nothing else), so the server tells them apart by what the computer already has.
   const has = (id: string, version: string) => { machine.inventory = { home: "C:\\D", clis: [{ id, path: `C:\\tools\\${id}.exe`, version }] }; };
-  it("Antigravity and OpenCode already installed (an older copy): refused with a sentence, nothing is sent to the computer, and no job is left", async () => {
-    for (const [cli, version] of [["antigravity", "1.3.5"], ["opencode", "1.18.34"]] as const) {
-      has(cli, version);
-      const refused = await ask(INSTALL, "POST", "replay", { cli });
-      expect(refused.status, cli).toBe(409); expect(refused.json.error, cli).toMatch(/not updated from here/);
-    }
-    expect(calls.filter(call => call.operation === "cli.install")).toEqual([]);
+  const sent = () => calls.filter(call => call.operation.startsWith("cli.")).map(call => [call.operation, call.payload.cli]);
+  it("AGEND-153 OpenCode already installed (an older copy): the pinned install over it (`cli.install`, the audited release) — its Update is built", async () => {
+    has("opencode", "1.18.34");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "opencode" })).status).toBe(202);
+    expect(sent()).toEqual([["cli.install", "opencode"]]);
+  });
+  it("AGEND-153 Antigravity already installed: the named exception is asked for as `cli.update`, with the CLI id and the asker's handle and nothing else", async () => {
+    has("antigravity", "1.5.3");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).status).toBe(202);
+    expect(sent()).toEqual([["cli.update", "antigravity"]]);
+    // the acknowledgement is the route's: what the Runtime is sent is still the id and the asker's handle
+    expect(calls.find(call => call.operation === "cli.update")!.payload).toEqual({ cli: "antigravity", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) });
+  });
+  // AGEND-154 (Prism P2-1 on #3552): the retained older page module labels this button "Update to 1.5.3" and sends `{ cli }`. That used to be taken as the latest exception; now it is refused.
+  it("AGEND-154 fail-first: Antigravity already installed + a request WITHOUT `acceptLatestUnaudited` (what an older page module sends) is refused 409 before any job or call — it is not run as the latest exception", async () => {
+    has("antigravity", "1.5.3");
+    const refused = await ask(INSTALL, "POST", "replay", { cli: "antigravity" });
+    expect([refused.status, refused.json.code]).toEqual([409, "latest_ack_required"]);
+    expect(refused.json.error).toMatch(/Refresh the page/);                       // what an older page module shows (it shows `error`)
+    expect(sent()).toEqual([]);
     expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
   });
-  it("control: Codex already installed at an older version is updated (runtime.update is supported), and an install-only CLI that is not installed is installed", async () => {
+  it("AGEND-154: the acknowledgement is only for the exception — claimed for a CLI that is not being updated to the latest (Codex; OpenCode; Antigravity not installed yet) it is refused, nothing is sent", async () => {
+    has("codex", "0.161.0");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "codex", acceptLatestUnaudited: true })).status).toBe(409);
+    machine.inventory = { home: "C:\\D", clis: [] };
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).json.code).toBe("latest_ack_mismatch");
+    for (const bad of [false, "true", 1, null]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: bad })).status, String(bad)).toBeGreaterThanOrEqual(400);
+    expect(sent()).toEqual([]);
+  });
+  it("AGEND-153 Antigravity not installed on that computer: the pinned, audited install (`cli.install`), as before", async () => {
+    machine.inventory = { home: "C:\\D", clis: [] };
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity" })).status).toBe(202);
+    expect(sent()).toEqual([["cli.install", "antigravity"]]);
+  });
+  it("AGEND-153 a computer whose inventory has not been read is installed to, as before — never sent the update", async () => {
+    delete machine.inventory;
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity" })).status).toBe(202);
+    expect(sent()).toEqual([["cli.install", "antigravity"]]);
+  });
+  it("control: Codex already installed at an older version is updated by the pinned install (`cli.install`), never as the exception", async () => {
     has("codex", "0.161.0");
     expect((await ask(INSTALL, "POST", "replay", { cli: "codex" })).status).toBe(202);
     await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done" }));
-    has("claude-code", "2.1.316");
-    machine.inventory = { home: "C:\\D", clis: [] };
-    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity" })).status).toBe(202);
-    expect(calls.filter(call => call.operation === "cli.install").map(call => call.payload.cli)).toEqual(["codex", "antigravity"]);
+    expect(sent()).toEqual([["cli.install", "codex"]]);
+  });
+  it("the body is still the CLI's id and nothing else — a `release`, `latest` or `mode` is refused before anything is sent", async () => {
+    has("antigravity", "1.5.3");
+    for (const extra of [{ release: "latest" }, { latest: true }, { mode: "update" }, { version: "9.9.9" }]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", ...extra })).status, JSON.stringify(extra)).toBe(400);
+    expect(sent()).toEqual([]);
   });
 });
+
 
 describe("install a CLI from the dashboard: a run under way", () => {
   it("follows the job, refuses a second install while one runs, then shows how it ended", async () => {

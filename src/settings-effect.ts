@@ -33,7 +33,9 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
-import { hostUpdatePlan } from "./web-host-install.js";
+import { hostUpdateAckError, hostUpdatePlan } from "./web-host-install.js";
+import { LATEST_ACK_FIELD } from "./cli-audited.js";
+import { runtimeFacts } from "./cli-registry.js";
 import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
 import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
@@ -127,24 +129,31 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   if (path === "/ui/host-update") {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
     const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
-    // The request is exactly `{ backend }` naming a CLI that has an update and an audited release to go to (the release is the server's, never the page's; the change shows it):
-    // refused before it is proposed, so a held change is never one that cannot run.
-    if (!b || Object.keys(b).length !== 1 || typeof b.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(b.backend)) throw new SettingsConfirmationError(400, "install_args");
+    // The request is exactly `{ backend }` naming a CLI that has an update and an audited release to go to (the release is the server's, never the page's; the change shows it) — and, for the one named
+    // exception (the vendor's latest, not audited), `{ backend, acceptLatestUnaudited: true }` (AGEND-154, Prism P2-1 on #3552): a page that does not know the exception cannot say it, so it is refused here.
+    // Refused before it is proposed, so a held change is never one that cannot run.
+    if (!b || typeof b.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(b.backend) || Object.keys(b).some(k => k !== "backend" && k !== LATEST_ACK_FIELD)) throw new SettingsConfirmationError(400, "install_args");
     const plan = hostUpdatePlan(b.backend);
     if (!plan) throw new SettingsConfirmationError(400, "unsupported");
+    const ackError = hostUpdateAckError(b.backend, b[LATEST_ACK_FIELD]);
+    if (ackError) throw new SettingsConfirmationError(409, ackError);
     const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
+      summary: [plan.target === null ? t("host_cli.update_latest", input.backend) : t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (isRuntimeCliInstallPath(path)) {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
     const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
-    // The request is exactly `{ cli }` naming a CLI the Runtime installs from its pinned table: refused before it is proposed, so a held change is never one that cannot run.
-    if (!b || Object.keys(b).length !== 1 || typeof b.cli !== "string") throw new SettingsConfirmationError(400, "install_args");
+    // The request is exactly `{ cli }` naming a CLI the Runtime installs from its pinned table: refused before it is proposed, so a held change is never one that cannot run. The one named exception's
+    // Update (AGEND-153) is `{ cli, acceptLatestUnaudited: true }` (AGEND-154, Prism P2-1 on #3552) — claimed for any other CLI it is refused; whether the CLI is already on that computer (so that the request
+    // must carry it) is decided by the route, which can see the computer's inventory.
+    if (!b || typeof b.cli !== "string" || Object.keys(b).some(k => k !== "cli" && k !== LATEST_ACK_FIELD)) throw new SettingsConfirmationError(400, "install_args");
     if (!isInstallableCli(b.cli)) throw new SettingsConfirmationError(400, "unsupported");
-    const machine = RUNTIME_CLI_INSTALL_PATH.exec(path)![1], input = { cli: b.cli, machine }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    if (b[LATEST_ACK_FIELD] !== undefined && (b[LATEST_ACK_FIELD] !== true || runtimeFacts(b.cli, "update")?.kind !== "latest-unaudited")) throw new SettingsConfirmationError(409, "latest_ack_mismatch");
+    const machine = RUNTIME_CLI_INSTALL_PATH.exec(path)![1], input = { cli: b.cli, machine, ...(b[LATEST_ACK_FIELD] === true ? { [LATEST_ACK_FIELD]: true } : {}) }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8))], affectedConnections: [], authority: HUB_AUTHORITY } };
+      // AGEND-153: a CLI whose update is the named exception is, when it is already on that computer, taken to the vendor's newest release — the held change says so in its own words.
+      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8)), ...(runtimeFacts(b.cli, "update")?.kind === "latest-unaudited" ? [t("runtime_cli.update_latest", input.cli, machine.slice(0, 8))] : [])], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");

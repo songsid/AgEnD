@@ -114,13 +114,20 @@ describe("host lists, as they were", () => {
       "kiro-cli": { support: "yes", binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash -s -- --version {version} --force" },
       "grok": { support: "yes", binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash -s {version}" },
       "opencode": { support: "yes", binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash -s -- --version {version}" },
+      // AGEND-153: the one named exception — no `{version}`: it goes to the newest release the vendor serves, which AgEnD has NOT audited (`release` says so).
+      "antigravity": { support: "yes", binary: "agy", command: "agy update", release: "latest-unaudited" },
     });
-    // The CLIs that update themselves in the background have no button.
-    expect(CLI_IDS.filter(id => !hostIds("update").includes(id))).toEqual(["antigravity", "muse"]);
+    // The CLI that updates itself with no way to choose a release and no exception has no button.
+    expect(CLI_IDS.filter(id => !hostIds("update").includes(id))).toEqual(["muse"]);
+    expect(hostIds("update").filter(id => hostFacts(id, "update")?.release === "latest-unaudited")).toEqual(["antigravity"]);
   });
-  it("runtime.update: only the CLIs the Runtime installs from its pinned table; the update is that same install", () => {
-    expect(runtimeIds("update")).toEqual(["claude-code", "codex"]);
+  it("runtime.update: only the CLIs the Runtime installs; the update is that same pinned install (the audited release), except the one named exception, which goes to the vendor's latest", () => {
+    expect(runtimeIds("update")).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
     expect(runtimeIds("update").every(id => runtimeIds("install").includes(id))).toBe(true);
+    expect(Object.fromEntries(runtimeIds("update").map(id => [id, runtimeFacts(id, "update")]))).toEqual({
+      "claude-code": { support: "yes", kind: "pinned" }, "codex": { support: "yes", kind: "pinned" }, "opencode": { support: "yes", kind: "pinned" },
+      "antigravity": { support: "yes", kind: "latest-unaudited" },
+    });
   });
 
   it("the usage panel's provider ids, names and order, and which have a row per named account", () => {

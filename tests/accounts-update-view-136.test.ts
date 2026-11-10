@@ -30,9 +30,15 @@ describe("the version of an installed CLI against the audited release", () => {
   it("newer than anything audited: newer (not verified by AgEnD yet), never a button", () => {
     expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.77", installed: "1.0.99", button: false } });
   });
-  it("a CLI that updates itself shows the versions and who updates it, and no button even when behind", () => {
-    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.3", button: false, via: "self" } });
-    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.14-R7309.1", button: false, via: "self" } });
+  it("a CLI that updates itself with no exception shows the versions and who updates it, and no button even when behind", () => {
+    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.14-R7309.1", button: false, via: "self", latest: false } });
+  });
+  it("AGEND-153: Antigravity is the named exception — the button is there behind, at and above the audited release, and the reading says it goes to the latest (not audited)", () => {
+    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.3", button: true, via: "dashboard", latest: true } });
+    for (const [printed, state] of [["1.5.3", "current"], ["1.5.9", "newer"]] as const) {
+      expect(hostRow(buildAccountsView(input({ antigravity: printed })), "antigravity")).toMatchObject({ cliUpdate: { state, button: true, latest: true } });
+    }
+    expect(hostRow(buildAccountsView(input({ antigravity: "no idea" })), "antigravity")?.cliUpdate).toMatchObject({ state: "unknown", button: false, latest: true });
   });
   it("a version the probe could not read: unknown, no button, no version", () => {
     const opencode = hostRow(view, "opencode");

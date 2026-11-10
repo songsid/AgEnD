@@ -24,7 +24,7 @@ async function setup(over: { start?: (backend: string, r: HostInstallReporter, e
   const cancel = vi.fn(async () => true);
   const installs = new WebHostInstalls({
     isLocalAdmin: handle => !!sessions.findByHandle(handle) && sessions.findByHandle(handle)!.tier === "admin" && sessions.findByHandle(handle)!.surface === "local",
-    installable: b => ["grok", "codex", "muse"].includes(b), updatable: b => ["grok", "codex"].includes(b), start, cancel,
+    installable: b => ["grok", "codex", "muse", "antigravity"].includes(b), updatable: b => ["grok", "codex", "antigravity"].includes(b), start, cancel,
   });
   const ctx = { webToken: token, webSessions: sessions, webHostInstalls: installs } as unknown as WebApiContext;
   const server = createServer((req, res) => { if (!handleWebRequest(req, res, new URL(req.url!, "http://localhost"), ctx)) { res.writeHead(404); res.end(); } });
@@ -111,12 +111,30 @@ describe("what is asked", () => {
   });
   it("a CLI with no update (it updates itself, or the registry has none): 400 unsupported, nothing runs", async () => {
     const t = await setup();
-    for (const backend of ["muse", "antigravity", "nonesuch"]) {
+    for (const backend of ["muse", "nonesuch"]) {
       const r = await replay(t, { backend });
       expect([r.status, r.body], backend).toEqual([400, { error: "unsupported" }]);
     }
     expect(t.start).not.toHaveBeenCalled();
   });
+  // AGEND-154 (Prism P2-1 on #3552): the one named exception (Antigravity: the vendor's latest, not audited) is started only by a request that says so. The older page module's `{ backend }` — the button it
+  // labels "Update to 1.5.3" — is refused before anything starts, and the page is to be refreshed; the claim is refused for a CLI whose update is the pinned, audited one.
+  it("AGEND-154 fail-first: `{ backend: \"antigravity\" }` (an older page module) is 409 latest_ack_required and starts nothing; with `acceptLatestUnaudited: true` it is let through to the fleet", async () => {
+    const t = await setup();
+    const old = await replay(t, { backend: "antigravity" });
+    expect([old.status, old.body]).toEqual([409, { error: "latest_ack_required" }]);
+    expect(t.start).not.toHaveBeenCalled();
+    await replay(t, { backend: "antigravity", acceptLatestUnaudited: true });
+    expect(t.start).toHaveBeenCalledTimes(1);
+    expect(t.start.mock.calls[0]!.slice(0, 1)).toEqual(["antigravity"]);
+    expect(t.start.mock.calls[0]![3]).toBe("update");
+  });
+  it.each([[{ backend: "grok", acceptLatestUnaudited: true }], [{ backend: "grok", acceptLatestUnaudited: false }], [{ backend: "antigravity", acceptLatestUnaudited: false }], [{ backend: "antigravity", acceptLatestUnaudited: "true" }], [{ backend: "antigravity", acceptLatestUnaudited: 1 }]])(
+    "AGEND-154: %j — an acknowledgement for a pinned CLI, or anything but the literal true, is refused and starts nothing", async body => {
+      const t = await setup();
+      expect((await replay(t, body)).status).toBe(400 + (body.backend === "grok" && body.acceptLatestUnaudited === true ? 9 : 0));
+      expect(t.start).not.toHaveBeenCalled();
+    });
   it.each([["not_installed", 409], ["up_to_date", 409], ["version_unreadable", 409], ["busy", 409], ["shutting_down", 503], ["failed", 500]] as const)("the fleet refuses with %s: its code and status come back, and no run is shown", async (code, status) => {
     const t = await setup({ start: async () => ({ refused: code }) });
     const r = await replay(t, { backend: "grok" });

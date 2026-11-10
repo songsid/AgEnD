@@ -14,7 +14,7 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | Capability | `yes` means | Behaviour that backs it |
 |---|---|---|
 | `host.install` | a binary and the command a person (or the install window) runs | `BIN_DIRS` in `instance-lifecycle.ts` |
-| `host.update` | the dashboard's Update: the command that takes the installed CLI to the **audited** release (`{version}` is filled on the server from `cli-audited.ts`) | `hostUpdatePlan` in `web-host-install.ts` |
+| `host.update` | the dashboard's Update: the command that takes the installed CLI to the **audited** release (`{version}` is filled on the server from `cli-audited.ts`); the one named exception (AGEND-153, Antigravity) has `release: "latest-unaudited"` and a command with no `{version}` | `hostUpdatePlan` in `web-host-install.ts` |
 | `host.chatLogin` | `/login <name>` recognises it (`aliases`), and what it does (`mode`) | `LOGIN_FLOWS` in `login-flows.ts` |
 | `host.dashboardSignIn` | the browser-terminal flow signs it in; `named`: a named account too | `LOGIN_FLOWS[id].noShellEscape`, `dashboardSignInSupported` |
 | `host.structuredSignIn` | Sign in → open the page → paste the code; the exact command | `structured-signin.ts` |
@@ -28,7 +28,7 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | `host.usage` | a row in the usage panel (provider id, name, place) | `USAGE_FETCHERS` in `usage/providers.ts` |
 | `runtime.provider` | a Windows Runtime lists it and (if `supports.execution`) runs it | `windows-cli-worker.ts` |
 | `runtime.install` | the dashboard installs it from a pinned package | pins and signer in `runtime-cli-install.ts` |
-| `runtime.update` | the dashboard's Update on that computer: the pinned install over an older copy (the pin is the audited release) | `INSTALLABLE_CLIS` in `runtime-cli-install.ts`; `tests/cli-audited-136.test.ts` |
+| `runtime.update` | the dashboard's Update on that computer: `pinned` — the pinned install over an older copy (the pin is the audited release); `latest-unaudited` — the one named exception (AGEND-153, Antigravity), see below | `INSTALLABLE_CLIS` in `runtime-cli-install.ts`; `tests/cli-audited-136.test.ts` |
 | `runtime.signIn` | the dashboard signs it in on that computer | `runtime-signin.ts` |
 | `runtime.namedAccounts` | named accounts on that computer | `runtime-credential-profiles.ts` |
 | `runtime.accountRows` | Accounts shows that computer's accounts of it | `machine-accounts.ts` |
@@ -65,6 +65,7 @@ An installed CLI shows its version on its row (Settings → Agents → AI accoun
 |---|---|---|
 | older than the audited release, and the registry has an update | both versions | **Update to \<audited\>** |
 | older, and the CLI updates itself (no `host.update`) | both versions, and that it updates itself | none |
+| **Antigravity** (the named exception, AGEND-153): any readable version — older, at, or newer than the audited release | both versions, and that the update is **not audited** | **Update to latest (not audited by AgEnD)** (zh-TW: 更新到最新版（未經盤點）) |
 | the audited release | "up to date" and the audited version | none |
 | newer than anything audited | "not verified by AgEnD yet" | none |
 | not readable | the audited version | none |
@@ -87,15 +88,23 @@ What each CLI does (checked 2026-11-09: the vendors' docs, and the CLIs' own `--
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash -s -- --version <audited>` | `opencode upgrade [target]` can take a version, but it needs `opencode` on the window's PATH; the installer (`--version`) is where the host's copy came from. |
 | Grok | `curl -fsSL https://x.ai/cli/install.sh \| bash -s <audited>` | `grok update --version <V>` exists (grok 1.0.77's `--help`, docs.x.ai CLI reference); the installer takes the same version as its argument and does not need `grok` on PATH. |
 | Kiro | `curl -fsSL https://cli.kiro.dev/install \| bash -s -- --version <audited> --force` | `kiro-cli update` (3.1.0's `--help`: `--check`, `--force`) has no version argument. The installer has `--version`, and `--force` so that "replace it?" never waits on a terminal nobody has. |
-| Antigravity | none | Updates itself in the background (`agy update` exists but cannot choose a release). The page shows installed and audited versions, and "not verified" when it is ahead. |
+| Antigravity | `agy update` (**the named exception**, AGEND-153) | Updates itself and `agy update` cannot choose a release, so — by the maintainer's decision on #3539 — the button runs it as it is and the CLI goes to **the latest release Google serves, which AgEnD has not audited**. The registry says so (`host.update.release: "latest-unaudited"`, a command with no `{version}`; `hostUpdatePlan` answers `target: null`), the button and the line say "latest, not audited", the held change says "LATEST … (not audited by AgEnD)", and the run reports the version before and after, never "did not reach the audited version". Everything else is an update's: the held change and each admin's own code (#3542/#3503), no public link, the same one window. |
 | Muse | none | The launcher updates itself every hour (`MUSE_UPDATE_INTERVAL_SECONDS`; the launcher script has no update subcommand). Versions only. |
 
-**On a paired Windows computer** the three CLIs with a pinned npm install (Claude Code, Codex; OpenCode when its pinned install lands) are updated by **the same pinned install over the older
+**On a paired Windows computer** the CLIs with a pinned npm install (Claude Code, Codex, and — AGEND-153 — OpenCode, whose pin 1.19.5 is the newest audited release) are updated by **the same pinned install over the older
 copy**, not by the vendor's own updater. The vendor updater (`claude update`, `codex update`) would fetch whatever the channel serves at that moment and run it unverified on a computer nobody is watching,
 which is exactly what #3190 Part 3b rules out. The pins in `runtime-cli-install.ts` are therefore kept equal to the newest audited release (`tests/cli-audited-136.test.ts` fails when they are not),
 and every check of Part 3b still applies: exact version, the registry's sha512 of each package, `npm audit signatures`, and the publisher's Authenticode signature. The page shows "Update to <audited>"
-when the computer's copy is older, "up to date" at it, and "not verified by AgEnD yet" (no button) when it is newer. Grok, Antigravity, Kiro and Muse have no pinned install and so no remote update:
+when the computer's copy is older, "up to date" at it, and "not verified by AgEnD yet" (no button) when it is newer. Grok, Kiro and Muse have no pinned install and so no remote update:
 the registry says why (`runtime.update`).
+
+**The named exception on a computer (AGEND-153): Antigravity → the vendor's latest, not audited.** Antigravity updates itself, and the vendor serves only its newest build, so the Runtime cannot be pinned to an older one.
+When the computer already has it, the same route (`POST …/cli-install { cli }`, the same held change and each admin's own code, the computer owner's `install` switch on that computer) sends the Runtime `cli.update`
+(capability `cli-update`; an older Runtime does not claim it and is never asked). The Runtime does **not** run the vendor's updater. It reads the vendor's manifest (`LATEST_UNAUDITED.antigravity.manifest`, one fixed address, with its
+own fixed `Invoke-WebRequest` command), accepts it only if it is `{ version: x.y.z, url, sha512 }` with the `url` of the vendor's fixed storage shape **for that version**
+(`https://storage.googleapis.com/antigravity-public/antigravity-cli/<version>-<build>/windows-x64/cli_windows_x64.exe`), then does what a pinned download does: the file's size (a ceiling and not empty — the manifest names no size),
+its sha512 against that manifest, and the Authenticode signer (`Google LLC`, status `Valid`) — then switches `current.json` to the new version folder. Any mismatch refuses and leaves the old copy. A copy at or above the manifest's version is left
+alone. An **Install** on a computer without Antigravity is still the pinned, audited download (1.5.3). Measured 2026-11-10: the manifest is `{ "version": "1.5.3", "url": …/1.5.3-6604829099950080/…, "sha512": … }` and agrees with the pin.
 
 **Adding a release to the ledger:** when the upstream watch marks a version audited, add it to `AUDITED_CLI_VERSIONS` (the same change carries the audit's tests and fixtures). For Claude Code or Codex that
 is also a new pin in `runtime-cli-install.ts` (its sha512 of each package, taken from the registry, and the Authenticode signer checked on the real `.exe`). Maintaining this shipped ledger is part of our audit PRs: when a version is marked
