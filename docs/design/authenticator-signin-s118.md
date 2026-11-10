@@ -1,6 +1,6 @@
 # S-118: one box for authenticator and device sign-in codes
 
-繁中摘要：最新使用者指示取代「改用裝置登入碼」切換。只有一個輸入框，接受 6 位數驗證碼或 8 字元裝置登入碼；完整輸入後自動送出，仍保留可見的「登入」按鈕。備援提示固定一行「也可以貼上 8 字元裝置登入碼」。本次只更新 PNG；須等使用者核准、junsion 核心 PR 合併及 Leader GO 才實作。另有字元集造成的逐字輸入歧義，見下文，實作前須確認處理規則。
+繁中摘要：最新使用者指示取代「改用裝置登入碼」切換。只有一個輸入框，接受 6 位數驗證碼或 8 字元裝置登入碼；完整輸入後自動送出，仍保留可見的「登入」按鈕。備援提示固定一行「也可以貼上 8 字元裝置登入碼」。本次只更新 PNG；須等使用者核准、junsion 核心 PR 合併及 Leader GO 才實作。逐字輸入歧義已定案：只含2–7的6字元輸入等待約800ms，續打即取消；極少數提早送出的TOTP可計一次錯誤，續打完整8字元仍須提交裝置碼。不改字元集或核心。
 
 ## Current UI
 
@@ -21,20 +21,40 @@ Read from the owned #3548-source checkout:
 - Six ASCII digits go only to POST /auth/totp `{code}`. A full eight-character alphabet-valid device code, with or without its middle dash and in any case, goes only to POST /auth/login. Never try both routes after a failure.
 - UI validation must reject partial/invalid values before any request. Support the specified dash/case formatting; do not use the core's permissive stripping to turn arbitrary punctuation into an apparently complete input. No core route, alphabet or matching change belongs to S-118.
 
-### Real incremental-input ambiguity — needs a rule before implementation
+### Accepted incremental-input rule
 
-Full six-digit and eight-character values are disjoint by length. The alphabet is not letters-only: it contains2–7. Therefore a legal eight-character code can start with six digits, or even contain eight digits. For example, the synthetic alphabet-valid `234567AB` has prefix `234567`, which is also a complete TOTP-shaped value.
+Full six-digit and eight-character values are disjoint by length. A legal device code can still start with six digits: the synthetic alphabet-valid `234567AB` has prefix `234567`, which is also TOTP-shaped. Leader's decision accepts the short wait and residual early attempt; no alphabet or core change is needed.
 
-A handler cannot know at the sixth digit whether the person has finished a TOTP or paused halfway through typing a device code. A short quiet-input debounce covers ordinary continuous typing but cannot prove “never send a partial device code” across an arbitrary pause. Aborting a request after character7 does not undo a server attempt. The proposal does not hide this limitation or silently alter the core alphabet.
+| Input event and entire current value | Auto-submit rule |
+| --- | --- |
+| Paste exactly six digits | Submit immediately to /auth/totp, including values made only of 2–7. |
+| Paste eight base32 characters, optionally with the middle dash, in any case | Submit immediately to /auth/login after accepted-format normalization. |
+| Type six digits containing any of 0, 1, 8 or 9 | Submit immediately to /auth/totp; these characters cannot be part of a device code. |
+| Type exactly six characters made only of 2–7 | Wait about 800 ms; any further keystroke cancels the pending timer. Before dispatch, recheck current value, generation, validity, pause and prior-attempt state. |
+| Current input contains a dash or letter | Device-code candidate only; never submit it to /auth/totp, including after formatting normalization. Submit only when the complete eight-character base32 format is valid. |
+| Partial or invalid value | No automatic or manual network submission. |
 
-Before implementation, confirm whether a short quiet-input delay with this residual ambiguity is acceptable, or whether ambiguous numeric prefixes need an explicit submit exception / a separately authorized code-generation constraint. Those alternatives affect the user's automatic-submit promise or the UI-only scope. The PNGs remain useful independently of that choice.
+A rare user pause longer than the 800 ms window may cause the six-digit prefix to reach /auth/totp before the rest of the device code is typed. That can consume one wrong attempt; this is explicitly accepted. Aborting the client request cannot undo that attempt. If the person then finishes a valid eight-character device code, it must still be submitted to /auth/login, subject to the unchanged server pause policy. The earlier TOTP attempt, its in-flight status or its failure must not silently discard the completed device-code attempt. This is submission of a new complete value, not automatic cross-route retry of the same failed value.
 
 ## Planned auto-submit fences (not implemented in this design branch)
 
-- Validate the entire raw value before dispatch. Normalize only accepted formatting, then key attempts by route+canonical value; dash/case-only changes are the same value.
-- An auto-attempt is recorded synchronously before awaiting the request. A per-page set prevents A→B→A, rerender, focus/blur or error recovery from repeatedly auto-submitting A. Failed auto-submit does not loop. An explicit Sign in click can be a deliberate retry, still respecting pause/in-flight rules.
-- No composition/partial/invalid input, active request, paused state or timer completion dispatches a request. Re-evaluate current input and generation after asynchronous work; an older response cannot settle a newer input's view.
-- Keep all server CSRF, session, matching, replay, rate-limit and notices policy unchanged. The code-only matching follow-up is owned by Junsion; S-118 only consumes the merged interface. The input-prefix question above remains a separate pre-build decision.
+- Validate the entire raw value before dispatch. A dash or letter selects device-code classification before normalization. Normalize only accepted formatting, then key attempts by route+canonical value; dash/case-only changes are the same value.
+- Record an auto-attempt synchronously before awaiting its request. A per-page set prevents A→B→A, rerender, focus/blur or error recovery from repeatedly auto-submitting A. Failed auto-submit does not loop. An explicit Sign in click can deliberately retry a complete valid value, still respecting pause and same-attempt in-flight rules.
+- Any further keystroke cancels the ambiguous-six-digit timer. Paste and explicit submit also retire it, so neither later fires a duplicate. Composition/partial/invalid input, paused state and expiry of a pause never dispatch a request. The 800 ms ambiguous-input timer is the specific allowed delayed dispatch, with final current-value checks.
+- Keep distinct attempts and their presentation generations separate. A late response cannot settle a newer input's view; a same-attempt duplicate remains fenced. A valid completed device code remains eligible for its own dispatch after an accepted early prefix attempt, including while that prior attempt is unresolved.
+- Keep all server CSRF, session, matching, replay, rate-limit and notices policy unchanged. The code-only matching/next-code response remains Junsion's core work; S-118 only consumes the merged interface. The input timing rule is now settled, while product implementation still waits for user approval, that core PR and Leader GO.
+
+### Required fail-first cases when building
+
+Use controlled timers and held route responses, not elapsed-time sleeps.
+
+- Immediate routing: paste six digits; paste upper/lowercase eight-character codes with/without the dash; type six digits containing 0/1/8/9.
+- Delayed routing: an all-2–7 six-digit value is unsent before 800 ms and submitted once at the deadline. Any further keystroke, paste or explicit submit cancels the old timer; its late callback cannot send a duplicate or stale value.
+- Negative controls: letters/dashes never reach /auth/totp; partial/invalid values make no request; composition and paused state send nothing; pause expiry does not replay a value.
+- Dedupe: a failed attempt, rerender or A→B→A never auto-loops; case/dash-only changes do not create a new device-code attempt.
+- Early-attempt continuation: after the accepted prefix attempt, a complete device code submits exactly once despite a held or failed prior request. Preserve route-specific errors and presentation-generation fences.
+
+None of these feature tests is claimed as run in this PNG/document-only branch.
 
 ## Copy, scope and PNG evidence
 
