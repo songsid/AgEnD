@@ -9597,8 +9597,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async closePublicLinkFromWeb(): Promise<{ status: number; body: Record<string, unknown> }> {
     const link = this.publicWebLink, id = link?.exposureId;
     if (!link || !id || this.getPublicWebStatus().state === "closed") return { status: 200, body: { closed: false } };
-    const open = link.openSignin();
-    if (open && isOutsideLinkOwner(open.owner)) return { status: 409, body: { error: "outside_link" } };
+    // Whatever its phase: an outside link still starting or reconnecting is the owner's switch too (Fable #3570 P3).
+    const owner = link.ownerOf(id);
+    if (owner && isOutsideLinkOwner(owner)) return { status: 409, body: { error: "outside_link" } };
     const result = await link.close("admin close", id);
     this.forgetPublicLinkOwner();
     this.logger.info({ event: "public_link_closed_from_web" }, "Public link closed from Settings");

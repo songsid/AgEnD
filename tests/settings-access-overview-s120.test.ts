@@ -75,7 +75,9 @@ describe("S-120: the devices summary (GET /ui/devices only)", () => {
     expect(sent.some((s) => s.path === "/auth/sessions")).toBe(false);                     // no list of its own
     expect($$("#ovDevices li[data-handle]").length).toBe(4);
     expect(text(row("a1a1a1a1a1a1a1a1"))).toContain("擁有者 ✓");
-    expect(text(row("c3c3c3c3c3c3c3c3"))).toContain("管理者 · 未驗證");
+    // The role words are #3553's (device-roles.js), whatever spelling they have when this lands (M-2820: 管理員).
+    const { roleName } = await import("/assets/device-roles.js");
+    expect(text(row("c3c3c3c3c3c3c3c3"))).toContain(roleName("admin", false));
     expect(text(row("d4d4d4d4d4d4d4d4"))).toContain("訪客");
     const more = $$("#ovDevices .s-ov-link").find((b: any) => text(b).includes("另外 1 個"));
     expect(more).toBeTruthy();
@@ -90,7 +92,7 @@ describe("S-120: the devices summary (GET /ui/devices only)", () => {
     const blocked = $('[data-ov-signout="c3c3c3c3c3c3c3c3"]');
     expect(blocked.disabled).toBe(true);
     expect(String(blocked.getAttribute("class"))).not.toContain("btn-danger");
-    expect(text(row("c3c3c3c3c3c3c3c3").querySelector(".s-ov-why"))).toBe("別的管理者的裝置，只有那位管理者本人能登出。");
+    expect(text(row("c3c3c3c3c3c3c3c3").querySelector(".s-ov-why"))).toBe("別的管理員的裝置，只有那位管理員本人能登出。");
     expect($('[data-ov-signout="b2b2b2b2b2b2b2b2"]').disabled).toBe(false);
     devices = [CHAT_DEVICES[0], D("f6f6f6f6f6f6f6f6", "Chrome on iPad", "admin", false, m, { canSignOut: false, signOutBlocked: "owner_required" })];
     await p.unmount(); await mount("zh-TW");

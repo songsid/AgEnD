@@ -23,6 +23,9 @@ import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
 import { base32Decode, hotp, totpStep } from "../src/web-remote-access.js";
 import { fleetCookieName } from "../src/web-cookie-names.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
+import { handleWebRequest } from "../src/web-api.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { EventEmitter } from "node:events";
 import { PUBLIC_LINK_OWNER_FILE } from "../src/public-link-owner.js";
 import { setLocale } from "../src/locale.js";
 
@@ -52,7 +55,7 @@ const HOST = "close-link.trycloudflare.com";
 type Signed = { cookie: string; sessionId: string };
 const CHAT_OWNER = { adapterId: "telegram", userId: "1", chatId: "1" };
 
-async function startFleet(opts: { chat?: boolean } = {}) {
+async function startFleet(opts: { chat?: boolean; holdStart?: Promise<void> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-s120-close-")); dirs.push(dir);
   const fm = new FleetManager(dir), any = fm as any;
   const sink = () => {};
@@ -69,6 +72,7 @@ async function startFleet(opts: { chat?: boolean } = {}) {
   const tunnel = { port: 0 };
   const manager = {
     start: vi.fn(async (_p: unknown, ctx: any) => {
+      if (opts.holdStart) await opts.holdStart;                       // the link stays "starting" until released
       tunnel.port = Number(new URL(ctx.origin).port);
       ctx.onCandidateHost(HOST);
       return { ok: true as const, handle: { pageUrl: `https://${HOST}/signin`, onUnexpectedExit: () => () => {} } };
@@ -109,6 +113,32 @@ async function startFleet(opts: { chat?: boolean } = {}) {
 const close = (h: Awaited<ReturnType<typeof startFleet>>, s: Signed) => h.local(s, "POST", "/ui/public-link/close", {});
 
 describe("S-120: POST /ui/public-link/close", () => {
+  it("never over the public link, even past the gateway: the handler itself refuses a gateway request (403 public_link_close_not_here)", async () => {
+    // Fable #3570 R1: a request handed to the route as the gateway hands it (its context bound, an admin session's
+    // cookie and CSRF) — the handler's own check answers, before any session is looked at or anything is closed.
+    const h = await startFleet({ chat: true });
+    await h.openChatLink();
+    const remote = h.stored({ label: "Over the link", surface: "gateway" });
+    const closeSpy = vi.spyOn(h.fm as any, "closePublicLinkFromWeb");
+    const req: any = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/public-link/close", socket: { remoteAddress: "127.0.0.1" }, destroy: () => {},
+      headers: { host: HOST, origin: `https://${HOST}`, "sec-fetch-site": "same-origin", "content-type": "application/json", cookie: remote.cookie, [WEB_CSRF_HEADER]: csrfTokenFor(remote.sessionId) } });
+    bindGatewayRequest(req, { surface: "gateway", exposureId: h.any.publicWebLink.exposureId, expectedOrigin: `https://${HOST}`, isCurrent: () => true, named: false } as any);
+    const answer = await new Promise<{ status: number; body: any }>((resolve) => {
+      let status = 0;
+      const res: any = Object.assign(new EventEmitter(), { destroyed: false, headersSent: false, setHeader: () => {},
+        writeHead(code: number) { status = code; this.headersSent = true; },
+        end(this: EventEmitter, v: string) { this.emit("finish"); this.emit("close"); resolve({ status, body: JSON.parse(v) }); } });
+      expect(handleWebRequest(req, res, new URL("/ui/public-link/close", `https://${HOST}`), h.fm as any)).toBe(true);
+      setImmediate(() => { req.emit("data", Buffer.from("{}")); req.emit("end"); });
+    });
+    expect(answer).toEqual({ status: 403, body: { error: "public_link_close_not_here" } });
+    expect(closeSpy).not.toHaveBeenCalled();
+    expect(h.fm.getPublicWebStatus().state).toBe("open");
+    // The refusal leaves the real way intact: an admin on this fleet's own listener still closes it.
+    expect((await close(h, await h.hostSignIn())).status).toBe(200);
+    expect(h.fm.getPublicWebStatus().state).toBe("closed");
+  }, 30_000);
+
   it("an admin on this fleet's own listener closes the open link at once, and its owner is forgotten", async () => {
     const h = await startFleet({ chat: true });
     const admin = await h.hostSignIn();
@@ -146,6 +176,27 @@ describe("S-120: POST /ui/public-link/close", () => {
     expect(h.fm.getPublicWebStatus().state).toBe("open");
   }, 30_000);
 
+  it("closes only the exposure it read: a link opened again before the close runs is left open", async () => {
+    // Fable #3570 R7: close("admin close", id) — the captured exposure, never "whatever is open by then".
+    const h = await startFleet({ chat: true });
+    const admin = await h.hostSignIn();
+    await h.openChatLink();
+    const link = h.any.publicWebLink, first = link.exposureId, realClose = link.close.bind(link);
+    let second: string | undefined;
+    vi.spyOn(link, "close").mockImplementationOnce((async (reason: string, id?: string) => {
+      // Between the route reading the exposure and its close running, that link ends and a new one opens.
+      await realClose("rotated");
+      expect(await link.openUnattended(CHAT_OWNER)).toBe("opened");
+      second = link.exposureId;
+      return realClose(reason, id);
+    }) as never);
+    const r = await close(h, admin);
+    expect(r.status).toBe(200);
+    expect(second).toBeDefined();
+    expect(second).not.toBe(first);
+    expect([h.fm.getPublicWebStatus().state, link.exposureId]).toEqual(["open", second]);
+  }, 30_000);
+
   it("never a guest, a read-only session or the CLI's header token — the link stays open each time", async () => {
     const h = await startFleet({ chat: true });
     await h.openChatLink();
@@ -174,5 +225,21 @@ describe("S-120: POST /ui/public-link/close", () => {
     expect(r.status).toBe(409);
     expect(parse(r)).toMatchObject({ error: "outside_link" });
     expect(h.fm.getPublicWebStatus().state).toBe("open");
+  }, 40_000);
+
+  it("the outside link while it is still starting is the owner's switch too: 409, and it goes on to open", async () => {
+    // Fable #3570 P3: openSignin() is only the OPEN link; the owner is read whatever the phase.
+    let release!: () => void;
+    const h = await startFleet({ holdStart: new Promise<void>(r => { release = r; }) });
+    const owner = await h.hostSignIn();
+    const begun = parse(await h.local(owner, "POST", "/ui/outside/enroll", {}));
+    const key = base32Decode(begun.secret)!;
+    expect((await h.local(owner, "POST", "/ui/outside/enroll/confirm", { code: hotp(key, totpStep(Date.now()) - 1) })).status).toBe(200);
+    expect((await h.local(owner, "POST", "/ui/outside/switch", { on: true })).status).toBe(200);
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("starting"));
+    const r = await close(h, owner);
+    expect([r.status, parse(r)]).toEqual([409, { error: "outside_link" }]);
+    release();
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
   }, 40_000);
 });

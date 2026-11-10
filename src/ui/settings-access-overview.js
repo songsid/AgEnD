@@ -38,7 +38,7 @@ register("accessov", {
   "zh-TW": {
     devicesTitle: "已登入的裝置", devicesCount: "{0} 個登入", more: "另外 {0} 個，到「裝置與登入」查看", manageDevices: "裝置與登入", manageGuests: "訪客",
     legend: "✓ 已驗證的擁有者：可新增裝置、登出其他裝置。未驗證：只能使用一般功能。",
-    blockedOwner: "要先驗證為擁有者，才能登出其他裝置。", blockedOther: "別的管理者的裝置，只有那位管理者本人能登出。",
+    blockedOwner: "要先驗證為擁有者，才能登出其他裝置。", blockedOther: "別的管理員的裝置，只有那位管理員本人能登出。",
     signOutTitle: "登出 {0}？", signOutLead: "{0} 會立即登出，之後需要重新登入。", signedOut: "已登出 {0}。",
     entryTitle: "從外面連線的方式", publicLink: "公開連結", publicLinkHint: "從任何地方開啟這個儀表板的網址；開啟後仍要登入。",
     linkOpen: "開啟中", linkQuick: "臨時網址", linkNamed: "固定網址 {0}", linkLeft: "剩 {0}", hm: "{0} 小時 {1} 分", h: "{0} 小時", m: "{0} 分", linkNoExpiry: "不過期", linkClosed: "已關閉", linkNotAllowed: "不允許",
@@ -47,7 +47,7 @@ register("accessov", {
     sharesCount: "{0} 個開放中", none: "沒有", closeNow: "立即關閉公開連結", manageSharing: "公開與分享",
     closeTitle: "立即關閉公開連結？", closeLead: "連結會馬上失效，透過它登入的裝置也會一併登出。", closeGo: "關閉連結", closed: "公開連結已關閉。", closeFailed: "沒能關閉連結，請再試一次。",
     outsideOwned: "這是「從外面連線」用的連結。要關閉，請到擁有者驗證關掉「從外面連線」。",
-    twoStepTitle: "擁有者驗證", twoStepMine: "這是你自己的驗證器 App；每位管理者各自設定。",
+    twoStepTitle: "擁有者驗證", twoStepMine: "這是你自己的驗證器 App；每位管理員各自設定。",
     app: "驗證器 App", appSet: "已於 {0} 設定", appNone: "尚未設定", askCode: "確認變更時要求我的 6 位數驗證碼",
     on: "開啟", goOwner: "擁有者驗證設定", twoStepNone: "未設定時，其他裝置上的變更以「立即套用」確認。",
     otherTitle: "其他連線", otherLead: "到各自的頁面中斷或移除。",
