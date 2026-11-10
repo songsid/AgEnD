@@ -1,0 +1,23 @@
+{
+  "focused": {
+    "command": "npx vitest run tests/ui-gate-fonts.test.ts tests/ci-actions-pinned-2528.test.ts tests/pwsh-ci-preparation.test.ts tests/changelog-fragments.test.ts tests/changelog-split.test.ts",
+    "passed": 150,
+    "failed": 0
+  },
+  "sourceTypes": {
+    "command": "npm run typecheck",
+    "exit": 0
+  },
+  "testTypes": {
+    "command": "npm run typecheck:tests",
+    "exit": 0
+  },
+  "actionsPinning": {
+    "command": "node scripts/ci/assert-actions-pinned.mjs",
+    "result": "ok: 14 files, every remote uses: is a 40-char SHA"
+  },
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "result": "changelog-assemble: 132 fragment(s) OK"
+  }
+}

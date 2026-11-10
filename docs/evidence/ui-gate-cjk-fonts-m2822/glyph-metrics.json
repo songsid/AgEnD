@@ -1,0 +1,582 @@
+{
+  "control": [
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 300.3520812988281,
+      "width": 300.359375,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 228.8360595703125,
+      "width": 228.84375,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 375.43927001953125,
+      "width": 375.453125,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 286.04486083984375,
+      "width": 286.046875,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 303.2348937988281,
+      "width": 303.25,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 247.4376220703125,
+      "width": 247.453125,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 379.04278564453125,
+      "width": 379.046875,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 309.29681396484375,
+      "width": 309.296875,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 296.3205871582031,
+      "width": 296.328125,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 211.136474609375,
+      "width": 212.84375,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 370.3997802734375,
+      "width": 370.40625,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 263.91973876953125,
+      "width": 266.046875,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 297.31256103515625,
+      "width": 297.328125,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 218.76841735839844,
+      "width": 220.25,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 371.6397705078125,
+      "width": 371.640625,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 273.45977783203125,
+      "width": 275.3125,
+      "height": 29
+    }
+  ],
+  "candidate": [
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 300.3520812988281,
+      "width": 300.359375,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 228.8360595703125,
+      "width": 228.84375,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 375.43927001953125,
+      "width": 375.453125,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 286.04486083984375,
+      "width": 286.046875,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 303.2348937988281,
+      "width": 303.25,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 247.4376220703125,
+      "width": 247.453125,
+      "height": 24
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 379.04278564453125,
+      "width": 379.046875,
+      "height": 29
+    },
+    {
+      "family": "system-ui, sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 309.29681396484375,
+      "width": 309.296875,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 296.3205871582031,
+      "width": 296.328125,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 211.136474609375,
+      "width": 212.84375,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 370.3997802734375,
+      "width": 370.40625,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 400,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 263.91973876953125,
+      "width": 266.046875,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "允許的群組與人員",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "儲存後不會再顯示",
+      "canvas": 128.000244140625,
+      "width": 128.015625,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 297.31256103515625,
+      "width": 297.328125,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 16,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 218.76841735839844,
+      "width": 220.25,
+      "height": 24
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "允許的群組與人員",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "儲存後不會再顯示",
+      "canvas": 159.9998779296875,
+      "width": 160,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "AD 連線設定：服務帳號、憑證與安全通知",
+      "canvas": 371.6397705078125,
+      "width": 371.640625,
+      "height": 29
+    },
+    {
+      "family": "\"Noto Sans CJK TC\", sans-serif",
+      "weight": 700,
+      "size": 20,
+      "text": "Hub Settings 123 — 臺灣體驗",
+      "canvas": 273.45977783203125,
+      "width": 275.3125,
+      "height": 29
+    }
+  ]
+}

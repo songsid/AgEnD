@@ -1,0 +1,3 @@
+CJK font cache miss; fetching the pinned Ubuntu archive (45s maximum, no retries)
+CJK fonts download failed (limit 50s): curl: (28) SSL connection timeout
+

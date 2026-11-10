@@ -1,0 +1,53 @@
+{
+  "f099e8300a3ec801a6ed3eab6a50c516969c29a39ac822244a012446c220d2c7": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/README.md"
+  ],
+  "bcb63f44a46fe3d5a122db18489460883bcd045ff1ba4bfef334afbc9e00817e": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/accept.mjs"
+  ],
+  "053e453dd142d7c19dc3a20f3bab41e5c4b793107e56cc0b086cfc8807e2a407": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/checks.json"
+  ],
+  "b01d8d14ec3d4c6f2e953b8c1a9c50f1f1488b02783bf45f1aa70d92c6f3587e": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/cold.log"
+  ],
+  "4a2dbfd99149e5f35d44e79a52765aa4b4eb0511652cddb727e43d635718334e": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/failure.log"
+  ],
+  "332a2bce9494b30be90b66f7b5f7a9d049ef17861a9e5d0a2dd56ea6115345a2": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/gate-candidate.log"
+  ],
+  "ce389bb85bd883ad91ac8686d638243a9baa1c24fecbcc39280a3fc5aa9615ec": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/gate-control.log"
+  ],
+  "e966752424151d890aabe49758b573695c574d7bd7b11df51b685eaa5017406d": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/gate-results.json"
+  ],
+  "b3f3a49474d3d25814ec33987a7b12ab08021361554ca7667968d32d0eb2bb10": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/glyph-metrics.json"
+  ],
+  "12a5588fbd36f41f8ed9bed520ab6be68ddd62847ceb111391ea6a556752326e": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/receipt.json"
+  ],
+  "24c4f5d2d4aa3923112193ed2a3188c7ca855feb26f7f6263ec8a40bf8af84dd": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/release-branches.json"
+  ],
+  "a9afcf6ca9271677f1f2a3e4fbef3062157a98a8c961752b8bbfd265feef66dc": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822/warm.log"
+  ],
+  "1b762d343ff9bbf5c59180d848007f1bf5082efb4761556b53d76c1527d912c5": [
+    ".github/workflows/ci.yml"
+  ],
+  "d0da4ad2234b3adf11e5909006f2c9f66b2b4cb92521fd88b4a988ae1c24e457": [
+    "scripts/ci/prepare-ui-gate-fonts.mjs"
+  ],
+  "d43d04908588ee4fabf873f06089db9f146f92e69808b48b537004ca1d3be62d": [
+    "scripts/ci/prepare-ui-gate-fonts.d.mts"
+  ],
+  "11d1e11d6786b47e1e072bb10b3bb0580ae101bec440f2983f96f9b03451ed13": [
+    "scripts/ci/ui-gate-fonts.json"
+  ],
+  "3ff7c3bdac4378ae58a6e0e9acda73869ede43f2ff5382921164ec372d99ed2b": [
+    "tests/ui-gate-fonts.test.ts"
+  ]
+}

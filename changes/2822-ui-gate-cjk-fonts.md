@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- Prepare the UI gate's CJK fonts from a checksum-pinned cached Ubuntu archive, with bounded downloads and clear failures instead of an unbounded apt step. The font version and UI gate deadline stay unchanged.
