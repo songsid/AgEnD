@@ -1,0 +1,39 @@
+{
+  "base": "33d2ac3f6b864b4d84f49634e83937fd5f9df639",
+  "sourceParent": "48df024c8369f40b2154fa367a4d58d2efbb2268",
+  "mainCorrectionHead": "b6c851d1d0c5a047d439123d9bf32ba68bb26811",
+  "scope": "Alpha R1 modified tree before commit; main fail-first/reversals remain main-only.",
+  "productionPatchId": "04c12a42cc9abbac96c88d5b22a91c919894a14f",
+  "mainProductionPatchId": "04c12a42cc9abbac96c88d5b22a91c919894a14f",
+  "byteIdenticalToMainCorrection": {
+    "src/selection-card.ts": true,
+    "tests/cli-question-chat-3334.test.ts": true,
+    "tests/web-only-dialogs-2910.test.ts": true
+  },
+  "testFiles": [
+    "tests/admin-gate-754.test.ts",
+    "tests/changelog-fragments.test.ts",
+    "tests/claude-file-send-card-2322.test.ts",
+    "tests/cli-question-chat-3334.test.ts",
+    "tests/kiro-remote-card-2675.test.ts",
+    "tests/kiro-remote-card-chat-2675.test.ts",
+    "tests/needs-you-derive-1386.test.ts",
+    "tests/needs-you-fleet-1386.test.ts",
+    "tests/needs-you-web-1386.test.ts",
+    "tests/nonce-button-shutdown.test.ts",
+    "tests/tool-progress.test.ts",
+    "tests/web-chat-c4.test.ts",
+    "tests/web-only-dialogs-2910.test.ts"
+  ],
+  "tests": {
+    "passed": 357,
+    "failed": 0,
+    "skipped": 0,
+    "files": 13
+  },
+  "sourceTypes": "passed",
+  "testTypes": "passed",
+  "diffCheck": "passed",
+  "mainCorrectionMerge": "6050fec12fe140e2e0cf416a6979499d61305258",
+  "mainAncestryVerified": true
+}

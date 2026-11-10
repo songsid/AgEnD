@@ -1,5 +1,7 @@
 # Alpha parity: CLI permission choices — #3334 / M-2861
 
+Historical R0 at `48df024c8369f40b2154fa367a4d58d2efbb2268`. The current ownership correction is recorded in `../cli-question-owner-3334-alpha/`; this original manifest is not a current-source claim.
+
 Alpha base: `33d2ac3f6b864b4d84f49634e83937fd5f9df639`. These local runs used a modified tree before commit; `manifest.json` binds the tested source, tests and recorded pane. Main approval is at `73637b66e0c842d6717189f4bbee97969f457abb` (#3608). Main merged as `a53ceff487461ccf5ad6d4ce646a2d4e441f481c`; its ancestry and the same production patch ID were independently verified. Alpha publication waits for the main post-merge CI verdict.
 
 The production patch has the same stable patch ID as approved main. The complete selection-card module and both changed tests are byte-identical. Whole FleetManager and backend type files differ between release lines; the claim is patch parity, not whole-file equality.

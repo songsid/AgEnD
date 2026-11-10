@@ -1,0 +1,18 @@
+{
+  "algorithm": "SHA-256",
+  "base": "de21c9123ffe321a45efffe8400917c49be4c5aa",
+  "entries": {
+    "29eb6899f3989b6de0dd5ffb3ae5cd17c43e7751a85385fad3b59a0a016b3b17": [
+      "src/fleet-manager.ts"
+    ],
+    "4d77a926aa335119883ef6f4d7a10915f21e2bbd6f0f69860e9e629f15b61bcf": [
+      "tests/cli-question-chat-3334.test.ts"
+    ],
+    "c95a215fc10f7fb69c994fc3df85095e295b92232cb501bdb39241888687c762": [
+      "tests/web-only-dialogs-2910.test.ts"
+    ],
+    "6f87f19b3528d5d6aceea2e8065119bff3950710930a10dc9127ed4ccdeddc59": [
+      "tests/fixtures/claude-2.1.318-bash-permission-prompt.pane.txt"
+    ]
+  }
+}

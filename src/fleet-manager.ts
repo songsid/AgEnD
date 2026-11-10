@@ -910,7 +910,7 @@ interface NonceButtonEntry {
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
   assistFor?: { owner: string | null; episode: number | null };
   /** card-answer only (#2675): the card it offers, as it was read — what is asked and the rows the buttons name. */
-  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean };
+  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean; ownerAdapterId?: string };
 }
 
 
@@ -20075,7 +20075,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
-        requiresAdmin } },
+        requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName) } },
     });
     if (nonce) this.remoteCardPosts.set(instanceName, nonce);
   }
@@ -20163,6 +20163,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const card = entry.remoteCard;
     let outcome: RemoteCardOutcome;
     if (!card || !action) outcome = { outcome: "refused", reason: "malformed" };
+    // The worker may have moved since posting. Its owner is distinct from the private dashboard's display sink.
+    // Check here for platform buttons, typed replies and dashboard claims alike, before invoking the CLI answer.
+    else if (card.requiresAdmin && card.ownerAdapterId !== this.getInstanceAdapterId(entry.instanceName)) outcome = { outcome: "stale" };
     else if (!daemon?.answerRemoteCard) outcome = { outcome: "stale" };
     else {
       try { outcome = await daemon.answerRemoteCard(card.identity, action); }
