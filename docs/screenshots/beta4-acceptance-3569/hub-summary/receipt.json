@@ -1,0 +1,56 @@
+{
+  "checks": [
+    {
+      "name": "desk-light-zh-TW-before exact component text",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before no page overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-after exact component text",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-after no page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before exact component text",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before no page overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-after exact component text",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-after no page overflow",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ],
+  "shots": [
+    "desk-light-zh-TW-before.png",
+    "desk-light-zh-TW-after.png",
+    "phone-dark-zh-TW-before.png",
+    "phone-dark-zh-TW-after.png"
+  ],
+  "errors": [],
+  "cases": [
+    "desk-light-zh-TW-before",
+    "desk-light-zh-TW-after",
+    "phone-dark-zh-TW-before",
+    "phone-dark-zh-TW-after"
+  ],
+  "scope": "Real main Fleet Settings shell, synthetic client-store pending row for the shared display component only. Main has no company-join backend; no such authority/action claimed. No API reply stubs, no native/model/accounts/directory/pilot.",
+  "status": "PASS",
+  "cleaned": true
+}

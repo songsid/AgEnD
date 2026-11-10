@@ -1,0 +1,35 @@
+{
+  "scope": "Main checkout scripts/manual only; follow-up inventory alongside fixes for CodeQL js/bad-code-sanitization alerts #105\u2013107.",
+  "counts": {
+    "selectedFiles": 153,
+    "matchingSourceLines": 680,
+    "totalCalls": 689,
+    "constantStringCalls": 449,
+    "functionCalls": 178,
+    "objectCalls": 0,
+    "unresolvedCalls": 2,
+    "directConstructedCallSites": 60,
+    "additionalDirectConstructedCallSites": 60,
+    "additionalDirectFiles": 35,
+    "additionalDirectRuntimeDataCallSites": 57,
+    "additionalDirectConstantFragmentCallSites": 3,
+    "forwardingSinksWithConstructedSources": 1,
+    "forwardedConstructedSourceExpressions": 9,
+    "forwardingSinksWithConstantExpressionsOnly": 1,
+    "nestedEvalConstructedSourceCallSites": 4,
+    "nestedEvalConstantFragmentCallSites": 4
+  },
+  "originalAlertFiles": [
+    "scripts/manual/smoke/smoke-2556-memory-header.mts",
+    "scripts/manual/smoke/smoke-settings-quota-card-main.mts",
+    "scripts/manual/smoke/smoke-web-update-2738.mts"
+  ],
+  "originalAlertFilesWithRemainingConstructedCalls": [],
+  "limitations": [
+    "Targeted syntax scan, not whole-program data flow, sanitization validation, or a CodeQL rerun.",
+    "Identifier lookup is file-local and keyed by name; it follows initializers and one-return helpers, not mutation/control flow.",
+    "All unresolved first arguments in this snapshot are the two explicitly reviewed preview-matrix expr wrappers.",
+    "Counts distinguish execution call sites from source expressions: one wrapper sink accepts nine built expressions, and three IME call sites share one builder.",
+    "Numeric data and static source fragments have different risk from untrusted strings; occurrences are follow-up candidates, not vulnerability assertions."
+  ]
+}

@@ -1,0 +1,92 @@
+{
+ "desk-light-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
+ },
+ "phone-dark-zh-TW": {
+  "got": {
+   "labels": [
+    "Session",
+    "每週",
+    "Fable（週）",
+    "Session",
+    "每週",
+    "Fable（週）",
+    "每週"
+   ],
+   "caps": 0,
+   "capText": false,
+   "clipped": false
+  },
+  "errs": [],
+  "csp": [],
+  "compact": [
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "5小時",
+     "7天",
+     "Fable"
+    ],
+    "cls": "u-crow has-models",
+    "clipped": false
+   },
+   {
+    "tags": [
+     "7天"
+    ],
+    "cls": "u-crow",
+    "clipped": false
+   }
+  ]
+ }
+}

@@ -1,0 +1,61 @@
+{
+  "candidate": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+  "passed": 355,
+  "failed": 0,
+  "suites": [
+    {
+      "file": "tests/subagent-records.test.ts",
+      "status": "passed",
+      "tests": 37,
+      "failed": 0
+    },
+    {
+      "file": "tests/subagent-ui.test.ts",
+      "status": "passed",
+      "tests": 19,
+      "failed": 0
+    },
+    {
+      "file": "tests/ui-gate-fonts.test.ts",
+      "status": "passed",
+      "tests": 16,
+      "failed": 0
+    },
+    {
+      "file": "tests/update-npm-bounds-2797.test.ts",
+      "status": "passed",
+      "tests": 23,
+      "failed": 0
+    },
+    {
+      "file": "tests/web-chat-c1.test.ts",
+      "status": "passed",
+      "tests": 191,
+      "failed": 0
+    },
+    {
+      "file": "tests/web-chat-quote-2789.test.ts",
+      "status": "passed",
+      "tests": 14,
+      "failed": 0
+    },
+    {
+      "file": "tests/subagent-async-lifecycle.test.ts",
+      "status": "passed",
+      "tests": 28,
+      "failed": 0
+    },
+    {
+      "file": "tests/subagent-service.test.ts",
+      "status": "passed",
+      "tests": 10,
+      "failed": 0
+    },
+    {
+      "file": "tests/subagent-web.test.ts",
+      "status": "passed",
+      "tests": 17,
+      "failed": 0
+    }
+  ]
+}

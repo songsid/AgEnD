@@ -1,0 +1,9 @@
+
+> @songsid/agend@1.22.0 build
+> tsc
+
+
+> @songsid/agend@1.22.0 postbuild
+> node scripts/generate-tips-html.mjs && cp -r src/plugin dist/ && cp -r src/workflow-templates dist/ && cp src/agent-cli-instructions.md dist/ && cp -r src/ui dist/ && cp -r src/general-knowledge dist/ && chmod +x dist/cli.js && cd dist/plugin/agend && ln -sf ../../channel/mcp-server.js server.js
+
+Generated website tips pages (304 tips × 2 locales)

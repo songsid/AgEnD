@@ -1,0 +1,35 @@
+{
+  "scope": "real chat rendering and DOM selection; synthetic agent message; no model",
+  "results": [
+    {
+      "case": "desk-light-zh-TW",
+      "got": {
+        "lists": 1,
+        "start": "3",
+        "items": [
+          "先確認設定",
+          "再檢查結果",
+          "最後回覆"
+        ]
+      },
+      "value": "> 先確認設定\n> 再檢查結果\n> 最後回覆\n",
+      "selectionScope": "browser Selection text excludes CSS list markers; preserves all three selected item texts",
+      "pass": true
+    },
+    {
+      "case": "phone-dark-zh-TW",
+      "got": {
+        "lists": 1,
+        "start": "3",
+        "items": [
+          "先確認設定",
+          "再檢查結果",
+          "最後回覆"
+        ]
+      },
+      "value": "> 先確認設定\n> 再檢查結果\n> 最後回覆\n",
+      "selectionScope": "browser Selection text excludes CSS list markers; preserves all three selected item texts",
+      "pass": true
+    }
+  ]
+}

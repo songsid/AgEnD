@@ -1,0 +1,14 @@
+[
+  {
+    "file": "scripts/manual/smoke/smoke-2556-memory-header.mts",
+    "parseDiagnostics": 0
+  },
+  {
+    "file": "scripts/manual/smoke/smoke-settings-quota-card-main.mts",
+    "parseDiagnostics": 0
+  },
+  {
+    "file": "scripts/manual/smoke/smoke-web-update-2738.mts",
+    "parseDiagnostics": 0
+  }
+]

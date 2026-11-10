@@ -1,0 +1,220 @@
+{
+  "candidate": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+  "receipts": [
+    {
+      "case": "build",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "BUILD",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 4,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-ppnx71xj",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300799.9454637,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "focused",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/focused.mts",
+      "extras": {},
+      "exitCode": 1,
+      "trackedPids": 10,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-5i3nrkpd",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300974.5978081,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "hub-summary",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/hub-p3s-m2779/main.mts",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 23,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-xe2rqqph",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300822.31767,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "loose-list",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/loose-list.mts",
+      "extras": {},
+      "exitCode": 1,
+      "trackedPids": 14,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-65sbrzyy",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300968.6176403,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "loose-list-current",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/loose-list.mts",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 17,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-060583tg",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794301064.091283,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "quotes",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/quotes.mts",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 23,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-o5nc1tph",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300837.7255511,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "static",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/static.mts",
+      "extras": {
+        "PATH": "/home/han/.nvm/versions/node/v22.22.2/bin:/usr/bin:/bin:/home/han/.nvm/versions/node/v22.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path"
+      },
+      "exitCode": 0,
+      "trackedPids": 3,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-ke7ndexh",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794301039.3492987,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "subagent-tests",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/subagent-tests.mts",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 6,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-2xncwukb",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794301051.4071732,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "subagents",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/subagent-row/async-accept.mts",
+      "extras": {
+        "HP": "48872"
+      },
+      "exitCode": 0,
+      "trackedPids": 31,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-hqt_ka90",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300835.2088752,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "update",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/smoke/smoke-web-update-2738.mts",
+      "extras": {
+        "HP": "48873"
+      },
+      "exitCode": 1,
+      "trackedPids": 17,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-p3vgsezs",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300964.8276303,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "update-current",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/update.mts",
+      "extras": {},
+      "exitCode": 0,
+      "trackedPids": 17,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-8i8ecpc6",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794301106.1522925,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "usage",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/smoke/smoke-usage-refresh-m2805.mts",
+      "extras": {
+        "HP": "48874"
+      },
+      "exitCode": 0,
+      "trackedPids": 35,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-j6iw9y3i",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300962.8276665,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "usage-empty",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/usage-empty.mts",
+      "extras": {
+        "HP": "48875",
+        "EMPTY": "1"
+      },
+      "exitCode": 0,
+      "trackedPids": 35,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-b3_g0t6e",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300964.6301591,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    },
+    {
+      "case": "weekly",
+      "head": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+      "commandScript": "scripts/manual/b4-acceptance/weekly.mts",
+      "extras": {
+        "HP": "48876",
+        "SKEW_OLD_DIALOG": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b4-acceptance/skew/usage-dialog.js",
+        "SKEW_OLD_CSS": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/b4-acceptance/skew/app.css"
+      },
+      "exitCode": 0,
+      "trackedPids": 23,
+      "liveOwnedPids": [],
+      "ownedTemp": "/tmp/b4qa-tir035hr",
+      "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+      "at": 1794300959.0877414,
+      "guardViolations": [],
+      "ownedTempRemoved": true
+    }
+  ],
+  "ownedHomesRemoved": true,
+  "allOwnedPidsGone": true,
+  "guardViolations": 0,
+  "liveOrVendorOperations": 0
+}

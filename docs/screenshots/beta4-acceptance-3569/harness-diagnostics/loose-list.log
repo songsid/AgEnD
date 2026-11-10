@@ -1,0 +1,13 @@
+(node:779515) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/beta4-acceptance/scripts/manual/b4-acceptance/loose-list.mts:16
+ const value=await page.locator('#msgIn').inputValue();if(!value.includes('> 3. 先確認設定')||!value.includes('> 4. 再檢查結果')||!value.includes('> 5. 最後回覆'))throw Error(value);
+                                                                                                                                                                         ^
+
+Error: > 先確認設定
+> 再檢查結果
+> 最後回覆
+
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/beta4-acceptance/scripts/manual/b4-acceptance/loose-list.mts:16:156)
+
+Node.js v22.22.2

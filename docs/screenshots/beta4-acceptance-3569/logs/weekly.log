@@ -1,0 +1,25 @@
+(node:776440) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ok   desk-light-zh-TW: "Fable（週）" on both Claude cards (Session / 每週 / Fable（週） / Session / 每週 / Fable（週） / 每週)
+ok   desk-light-zh-TW: Codex's unused per-model quota stays hidden
+ok   desk-light-zh-TW: no capacity footnote (0 blocks)
+ok   desk-light-zh-TW: nothing clipped
+ok   desk-light-zh-TW: no page error, no CSP violation ()
+ok   desk-light-zh-TW compact: three lines (3)
+ok   desk-light-zh-TW compact: a Fable bar on each Claude line ([["5小時","7天","Fable"],["5小時","7天","Fable"],["7天"]])
+ok   desk-light-zh-TW compact: no tag or percent clipped
+ok   desk-light-zh-TW compact: no page error ()
+ok   phone-dark-zh-TW: "Fable（週）" on both Claude cards (Session / 每週 / Fable（週） / Session / 每週 / Fable（週） / 每週)
+ok   phone-dark-zh-TW: Codex's unused per-model quota stays hidden
+ok   phone-dark-zh-TW: no capacity footnote (0 blocks)
+ok   phone-dark-zh-TW: nothing clipped
+ok   phone-dark-zh-TW: no page error, no CSP violation ()
+ok   phone-dark-zh-TW compact: three lines (3)
+ok   phone-dark-zh-TW compact: a Fable bar on each Claude line ([["5小時","7天","Fable"],["5小時","7天","Fable"],["7天"]])
+ok   phone-dark-zh-TW compact: no tag or percent clipped
+ok   phone-dark-zh-TW compact: no page error ()
+ok   skew old dialog + new server/css: Fable listed (Session / 每週 / Fable（週） / Session / 每週 / Fable（週） / 每週)
+ok   skew old dialog + new server/css: no page error (); it may still draw the capacity it is served (2 blocks)
+ok   skew new dialog + old css: Fable listed, no capacity
+ok   skew new dialog + old css: no page error ()
+smoke-2815-usage-card: PASS
