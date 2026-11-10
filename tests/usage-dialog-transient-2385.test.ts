@@ -112,6 +112,23 @@ describe("#2385 a failed read keeps the numbers already shown", () => {
   });
 });
 
+describe("M-2805 updating replaces the age until the refresh finishes", () => {
+  it.each(["en", "zh-TW"])("%s: only updating while refreshing, then the unchanged age", async lang => {
+    i18n.setLang(lang);
+    const fetchedAt = iso(Date.now() - 61_000);
+    script(ok(snapshot(42, { fetchedAt, refreshing: true })), ok(snapshot(57, { fetchedAt, refreshing: false })));
+    await mount(`m2805-${lang}`);
+    const foot = () => pg!.root.querySelector(".u-foot .note")!;
+    expect(foot().textContent).toBe(lang === "zh-TW" ? "更新中…" : "Updating…");
+    expect(foot().getAttribute("title")).toBe(new Date(fetchedAt).toLocaleString());
+    expect(pct()).toBe("42%");
+    await refresh();
+    expect(foot().textContent).toBe(lang === "zh-TW" ? "1 分鐘前更新" : "Updated 1 min ago");
+    expect(pg!.root.querySelector(".u-refreshing")).toBeNull();
+    expect(pct()).toBe("57%");
+  });
+});
+
 describe("#2385 nothing read yet", () => {
   it("a first read that fails shows the full error with Try again; Try again recovers", async () => {
     script({ ok: false, status: 500, body: { error: "boom" } }, ok(snapshot(42)));

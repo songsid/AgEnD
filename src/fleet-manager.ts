@@ -404,13 +404,14 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
-import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
-import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
+import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.js";
+import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -18736,6 +18737,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the outside switch, a wait in force and the link — its address only to this computer.
    */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; manage: boolean; codeNeeded: boolean; strict: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
+    /** #3486: what THIS admin types as the name at a new browser's authenticator sign-in (their own, never anyone else's); null: a web-only fleet needs none, or no app yet. */
+    signinName: string | null;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
     const store = this.webRemoteAccess();
     const manager = this.authenticatorOwner(req);
@@ -18744,7 +18747,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
     const mine = !!open && isOutsideLinkOwner(open.owner);
     const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
-    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
+    const signinName = manager && manager.who !== HOST_ADMIN_KEY && status?.enrolled
+      ? this.signinHandleOf({ adapterId: manager.actor.adapter_id, userId: manager.actor.user_id }) ?? manager.actor.user_id : null;
+    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null, signinName,
       manage: !!manager, codeNeeded: !!manager && !!store && this.authenticatorCodeAsked(manager, store), strict: !!status?.strict,
       outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
       link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
@@ -18953,29 +18958,105 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #3008 (auth-api POST /auth/totp): a sign-in through the outside link with the authenticator's code. "ok": the caller
-   * makes the session (SessionRecord.remote) and then calls authorizeOutsideSession. Each wrong code counts; a wait that
-   * starts is a Notice; a code that matches a step just outside the window logs how far this clock seems to be off.
+   * #3486 (per admin; auth-api POST /auth/totp): a browser that is not signed in yet signs in as ONE admin, with
+   * the code of THAT admin's own authenticator — the same per-admin app their confirmations use. Who is not found by trying the code
+   * against everyone: the person types a name (`account`), which resolves — among the admins that have an app and are still admins —
+   * to at most one; the page lists nobody. A name that resolves to nobody (no such name, an admin with no app, a name two admins
+   * share, one no longer an admin) is answered exactly as a wrong code is, after the same work and the same counting (store.signIn).
+   * A web-only fleet has one admin (the host operator): its one app, no name needed.
+   *
+   * Where it works: a direct connection (LAN, tailnet, the owner's own proxy — and this computer's own browser) on any fleet; on a
+   * chat fleet also a public link (TOTP_SIGNIN_OVER_PUBLIC_LINK, the one switch that takes that back); on a web-only fleet a link
+   * only as before (#3008): the one "Allow connections from outside" opened. "Only this computer can authorize" closes all of it.
+   * What it makes: a chat admin's session is that account's own (owner), exactly as a sign-in code from the chat makes it; a web-only
+   * fleet's is that fleet's admin session (and over the outside link the #3008 `remote` one, authorized as before). No authority beyond
+   * that: no "Authorize this browser", nothing an agent would take as a go-ahead. Every success tells every admin (a Notice).
    */
-  outsideSignIn(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" } {
-    const link = this.outsideLink(), store = this.webRemoteAccess();
-    if (!link || !store || !exposureId || link.exposureId !== exposureId) return { kind: "closed" };
-    const v = store.verify(code);
-    if (v.kind === "ok") return { kind: "ok" };
-    if (v.kind === "paused") return v;
-    if (v.kind === "not_enrolled") return { kind: "closed" };
+  totpSignIn(input: { exposureId: string | undefined; peer: WebPeer; account: string | undefined; code: string; browser: { id: string; address: string | undefined }; knownCookie: string | undefined }): TotpSignInResult {
+    const store = this.webRemoteAccess(), webOnly = this.isWebOnlyFleet(), { exposureId, peer } = input;
+    if (!store || !this.webToken || !this.totpSignInOpen(exposureId, peer)) return { kind: "closed" };
+    const { who, ident } = this.resolveSignInAdmin(store, webOnly, input.account);
+    const enrollment = who ? store.enrollmentOf(who) : null;
+    const epoch = this.webAuthorityState().epoch, now = Date.now();
+    // This browser: its cookie id, and on a direct connection the address too (over a link the gateway's peer is the tunnel, so the cookie alone).
+    // A browser with a valid mark is counted by the MARK (a thief cannot shed it by dropping the cookie id), else by cookie id and address.
+    const mark = findSigninKnownEntry(this.webToken, input.knownCookie, who, enrollment, epoch, now);
+    const browser = mark ? { key: createHash("sha256").update(`agend-signin-mark\0${mark}`).digest("hex"), known: true }
+      : { key: createHash("sha256").update(`agend-signin-browser\0${input.browser.id}\0${input.browser.address ?? "link"}`).digest("hex"), known: false };
+    const v = store.signIn(who, ident, input.code, browser);
     if (v.kind === "unavailable") return v;
-    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
-    if (v.paused) {
-      this.logger.warn({ waitMs: v.retryAfterMs }, "Sign-in from outside paused after wrong codes");
-      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
-      return { kind: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind !== "ok") {
+      // Half-way through a real admin's count, or the whole sign-in's: said once per cycle — nothing of the code or the name typed in it.
+      if (v.began.halfFleet || v.began.halfAdmin) this.postFleetSecurityNotice(t("signin.totp_notice_attempts"));
+      // A shared wait that starts is said to the admins when it is the whole sign-in's or a real admin's — never for a name that is nobody's (a flood of those must not be a flood of Notices).
+      if (v.began.fleet || v.began.admin) {
+        this.logger.warn({ fleet: v.began.fleet }, "Sign-in with authenticator codes paused after wrong codes");
+        this.postFleetSecurityNotice(t("signin.totp_notice_paused", outsideDuration(v.began.waitMs)));
+      }
+      if (v.kind === "paused") return { kind: "paused", retryAfterMs: v.retryAfterMs };
+      if (v.skewSteps !== undefined) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+      this.logger.debug("Sign-in with an authenticator code refused");
+      return { kind: "wrong" };
     }
-    return { kind: "wrong" };
+    if (!who || !enrollment) return { kind: "wrong" };
+    const actor = who === HOST_ADMIN_KEY ? null : (() => { const [adapterId, userId] = who.split("\u0000"); return adapterId && userId ? { adapterId, userId } : null; })();
+    if (!actor && who !== HOST_ADMIN_KEY) return { kind: "wrong" };
+    const outside = webOnly && exposureId !== undefined;
+    return {
+      kind: "ok",
+      knownCookie: addSigninKnownDevice(this.webToken, input.knownCookie, who, enrollment, epoch, now),
+      session: outside ? { remote: "totp" } : actor ? { owner: actor } : {},
+      // Asked again as the session is made: the same app, still an admin, still allowed here.
+      commit: (record, label) => {
+        if (!this.totpSignInOpen(exposureId, peer) || store.enrollmentOf(who) !== enrollment) return false;
+        if (actor ? this.adminGate(actor.userId, actor.adapterId) !== "ok" : !webOnly) return false;
+        if (outside) return this.authorizeOutsideSession(record, peer, label);
+        const name = actor ? this.webPerson({ adapterId: actor.adapterId, userId: actor.userId }).name : t("settings_confirm.host_operator_label");
+        this.logger.info({ handle: record.handle, surface: record.surface }, "Web sign-in with an admin's authenticator code");
+        this.postFleetSecurityNotice(t("signin.totp_notice_signed_in", name, label, t(exposureId === undefined ? "signin.totp_where_direct" : "signin.totp_where_link")));
+        return true;
+      },
+    };
+  }
+  /** The platform handle (Discord / Telegram user name) an account last signed in to the web with, exactly as the platform gave it; undefined when none is known. */
+  private signinHandleOf(owner: { adapterId: string; userId: string }): string | undefined {
+    const handle = this.webPrefs.profile(webPersonKey(owner))?.platformName;
+    return typeof handle === "string" && handle ? handle : undefined;
+  }
+  /** Where the new-device authenticator sign-in is open: the owner's knobs and the link rules in one place (asked again as the session is made). */
+  private totpSignInOpen(exposureId: string | undefined, peer: WebPeer): boolean {
+    // "Only this computer can authorize" closes this too: only this computer's own browser, never a link.
+    if (this.webAuthorityState().loopbackOnly && (exposureId !== undefined || peer !== "loopback")) return false;
+    if (exposureId === undefined) return true;
+    if (this.isWebOnlyFleet()) return this.outsideLink()?.exposureId === exposureId;
+    return TOTP_SIGNIN_OVER_PUBLIC_LINK && this.publicWebLink?.openSignin()?.exposureId === exposureId;
+  }
+  /**
+   * The admin a typed name stands for, among the chat admins that have an authenticator AND are still admins of their connection: by
+   * the platform user name they sign in with (Discord / Telegram handle, no "@", any case), their user id, or `connection:id`. Exactly
+   * one: a name two of them answer to is nobody's here (they use `connection:id`). The loop never stops early, so it takes as long
+   * for a name that is nobody's. `ident` is the normalized text, for the limiter.
+   */
+  private resolveSignInAdmin(store: WebRemoteAccess, webOnly: boolean, account: string | undefined): { who: string | null; ident: string } {
+    // A web-only fleet has one admin and one app: no name to give, nothing to tell apart.
+    if (webOnly) return { who: store.isEnrolled(HOST_ADMIN_KEY) ? HOST_ADMIN_KEY : null, ident: "host" };
+    const norm = (v: unknown): string => (typeof v === "string" ? v.normalize("NFKC").trim().replace(/^@+/, "").toLowerCase().slice(0, 128) : "");
+    const ident = norm(account), found: string[] = [];
+    for (const key of store.adminKeys) {
+      const [adapterId, userId] = key.split("\u0000");
+      if (!adapterId || !userId) continue;
+      let platformName = "";
+      try { platformName = norm(this.signinHandleOf({ adapterId, userId })); } catch { /* no handle known: the id still works */ }
+      const answers = [norm(userId), norm(`${adapterId}:${userId}`), platformName].includes(ident) && ident !== "";
+      // Asked of every key, whether or not the name matches it: a name that belongs to a record does no more work than one that belongs to nobody.
+      const admin = this.adminGate(userId, adapterId) === "ok";
+      if (answers && admin) found.push(key);
+    }
+    return { who: found.length === 1 ? found[0]! : null, ident };
   }
 
   /**
-   * #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. False: it
+   * #3008: a session just made by totpSignIn's "ok" over the outside link is this computer's admin for its authorization's life. False: it
    * could not be admitted (its handle not saved, #3015 review r3) — the caller ends it.
    */
   authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): boolean {

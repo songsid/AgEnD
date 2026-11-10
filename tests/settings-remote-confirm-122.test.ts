@@ -19,7 +19,8 @@
  *   - a pending set-up is nobody else's to clear or replace (a remote remove with no app, a second session's begin);
  *   - the ordinary New Agent shortcut follows the same policy (through the real gate): held for a strict admin off the computer and
  *     under "Only this computer can authorize", created at once otherwise, asked again at execution;
- *   - a chat fleet gets the authenticator for per-change codes only: no sign-in from outside;
+ *   - a chat fleet has no "Allow connections from outside" link or switch (a web-only fleet's); its admins' authenticators confirm
+ *     changes, and (#3486, tests/signin-per-admin-totp-3486.test.ts) sign a new browser in as THAT admin;
  *   - the page is told it is remote (`remote: true`) so the card names no host command.
  */
 import { EventEmitter } from "node:events";
@@ -791,8 +792,8 @@ describe("who can never confirm (agents, paired Windows PCs)", () => {
   });
 });
 
-describe("a chat fleet's authenticator is for per-change codes only", () => {
-  it("no sign-in from outside and no switch, even with an app set up and the switch recorded on", () => {
+describe("a chat fleet has no outside link or outside switch (its admins sign in with their own app: signin-per-admin-totp-3486)", () => {
+  it("no outside link and no switch, even with an app set up and the switch recorded on", () => {
     const f = fleet({ chat: true, enrolled: true }), s = f.session("account", "here");
     expect(f.any.webRemoteAccess().outside).toBe(true);                    // the shared store says it, the fleet type decides
     expect([f.any.outsideOn(), f.any.outsideLink(), f.any.isOutsideLink("x")]).toEqual([false, null, false]);

@@ -19,6 +19,9 @@
  * their own "ask for my code to confirm from other devices" switch (`strict`), kept with the record so removing the app removes
  * it. The wrong-code limiter stays fleet-wide.
  *
+ * #3486: the same per-admin app also signs a new browser in as that admin (`signIn`): one use per step with the confirmations
+ * (`lastStep`), its own limiters (per admin in the record, per typed name in memory, one fleet-wide), never the confirmations' own.
+ *
  * The secret never leaves this module except once, to the host operator who is setting it up (beginEnrollment). It is
  * never logged, never in a status, a Notice or an error.
  */
@@ -45,6 +48,42 @@ export const TOTP_WRONG_LIMIT = 5;
 /** The first wait; #3008 C(b): each further one doubles, up to TOTP_PAUSE_MAX_MS. A correct code resets it. */
 export const TOTP_PAUSE_MS = 15 * 60_000;
 export const TOTP_PAUSE_MAX_MS = 24 * 60 * 60_000;
+/**
+ * #3486 (new-device sign-in with an admin's own authenticator): the wrong-code limits of that sign-in, which are NOT the
+ * confirmation limiter above — an unauthenticated route must not be able to pause the confirmations of admins already signed in.
+ * Four layers, so that one person's typos stop only that person, and the shared ones are only ceilings:
+ * 1. **this browser** (first to trip): SIGNIN_BROWSER_WRONG_LIMIT wrong codes pause that browser alone — 5 minutes, doubling up to
+ *    an hour. Memory only; it counts every failure the same, whatever name was typed;
+ * 2. **the admin**, 3. **the name typed** (a name that is no admin's is counted exactly like one that is: nothing tells them apart)
+ *    and 4. **the whole sign-in**: shared ceilings (SIGNIN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT wrong codes →
+ *    15 minutes, doubling up to a day). A browser the admin already signed in from (its "known device" mark) is not held by these.
+ * A shared count forgets after a day of no wrong codes (this browser's after an hour), and the doubling level steps down once a day has
+ * passed without one. A browser with a valid known-device mark is counted by the mark instead of its cookie id (so shedding cookies
+ * resets nothing) and, with every other attempt carrying a mark for the same admin, in a fifth limiter (SIGNIN_KNOWN_WRONG_LIMIT).
+ * Half-way through the admin's count (and the whole sign-in's) the admins are told once per cycle.
+ */
+export const SIGNIN_BROWSER_WRONG_LIMIT = 5;
+export const SIGNIN_BROWSER_PAUSE_MS = 5 * 60_000;
+export const SIGNIN_BROWSER_PAUSE_MAX_MS = 60 * 60_000;
+export const SIGNIN_WRONG_LIMIT = 10;
+export const SIGNIN_FLEET_WRONG_LIMIT = 50;
+/** A shared wrong-code count is forgotten after this long without one (a slow guesser must not escape by pacing); the doubling level drops one step per SIGNIN_LEVEL_QUIET_MS without one. */
+export const SIGNIN_COUNT_QUIET_MS = 24 * 60 * 60_000;
+/** This browser's own count forgets sooner: it only holds that browser. */
+export const SIGNIN_BROWSER_QUIET_MS = 60 * 60_000;
+/** Attempts that carry a valid known-device mark of one admin count together in one more limiter, whatever cookies they send. */
+export const SIGNIN_KNOWN_WRONG_LIMIT = 30;
+export const SIGNIN_LEVEL_QUIET_MS = 24 * 60 * 60_000;
+/** How many typed names' limiters (saved) and browsers' (memory) are remembered; the shared ceilings bound how fast they can be made. */
+const SIGNIN_IDENT_MAX = 4096;
+const SIGNIN_BROWSER_MAX = 4096;
+/**
+ * #3486: whether a chat fleet's admin may sign a new browser in with their own authenticator over a PUBLIC link too (the
+ * quick or named link). The one place that says so — the owner may veto it at acceptance: set this to `false` and a sign-in over
+ * a link is refused (404, as if the route were not there) while direct connections (LAN, tailnet, the owner's own proxy) keep
+ * working. A web-only fleet's link is another thing: only the outside link the owner opened with "Allow connections from outside".
+ */
+export const TOTP_SIGNIN_OVER_PUBLIC_LINK = true;
 /** #3008 review (Prism P2 1): a state that could not be saved is written again this often until it is. */
 export const OUTSIDE_SAVE_RETRY_MS = 30_000;
 /** How long a secret being set up waits for its first code. */
@@ -129,8 +168,36 @@ export function otpauthUri(secretBase32: string, account: string): string {
   return `otpauth://totp/${label}?secret=${secretBase32}&issuer=AgEnD&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SECONDS}`;
 }
 
-/** One admin's authenticator: the secret, when it was set up, the last step accepted, and their own "ask for my code" switch. */
-interface Rec { secret: string; enrolledAt: number; lastStep: number; strict?: boolean }
+/** A wrong-code limiter's state: wrong codes since the last wait, how many waits in a row, the wall clock no code is tried before, and the last wrong code's time. */
+interface Lim { wrong: number; level: number; pausedUntil: number; at: number; told: boolean }
+const NO_LIM: Lim = Object.freeze({ wrong: 0, level: 0, pausedUntil: 0, at: 0, told: false });
+const readLimWith = (v: unknown, limit: number): Lim | undefined => {
+  const l = v as Partial<Lim> | null | undefined;
+  if (!l || typeof l !== "object") return undefined;
+  const n = (x: unknown): number => (Number.isSafeInteger(x) && (x as number) >= 0 ? x as number : 0);
+  const lim = { wrong: Math.min(n(l.wrong), limit - 1), level: Math.min(n(l.level), 32), pausedUntil: n(l.pausedUntil), at: n(l.at), told: l.told === true };
+  return lim.wrong || lim.level || lim.pausedUntil ? lim : undefined;
+};
+/** A limiter as it reads now: the count forgotten after a quiet spell (`quietMs`), the level one step down per quiet day (after any wait ended). */
+function settle(l: Lim, now: number, quietMs: number = SIGNIN_COUNT_QUIET_MS): Lim {
+  const quiet = now - Math.max(l.at, l.pausedUntil);
+  if (quiet < quietMs) return l;
+  return { ...l, wrong: 0, told: false, level: Math.max(0, l.level - Math.floor(quiet / SIGNIN_LEVEL_QUIET_MS)) };
+}
+/** One more wrong code in a limiter: its new state, the wait it started (0: none), and whether it just passed `halfAt` for the first time this cycle. */
+function bumpLim(l: Lim, limit: number, baseMs: number, maxMs: number, now: number, quietMs: number = SIGNIN_COUNT_QUIET_MS, halfAt = Infinity): { lim: Lim; wait: number; half: boolean } {
+  const s = settle(l, now, quietMs), wrong = s.wrong + 1, half = !s.told && wrong >= halfAt;
+  if (wrong < limit) return { lim: { ...s, wrong, at: now, told: s.told || half }, wait: 0, half };
+  const wait = Math.min(baseMs * 2 ** s.level, maxMs);
+  return { lim: { wrong: 0, level: s.level + 1, pausedUntil: now + wait, at: now, told: s.told || half }, wait, half };
+}
+const limitsIdle = (l: Lim, now: number): boolean => { const s = settle(l, now); return !s.wrong && !s.level && s.pausedUntil <= now; };
+
+/**
+ * One admin's authenticator: the secret, when it was set up, the last step accepted (by a confirmation, a sign-in or the
+ * switch — one step, one use, whichever asked), their own "ask for my code" switch, and their own sign-in limiter (`lim`).
+ */
+interface Rec { secret: string; enrolledAt: number; lastStep: number; strict?: boolean; lim?: Lim; klim?: Lim }
 /** The host operator's key (a web-only fleet's one admin; also a chat fleet's host session). */
 export const HOST_ADMIN_KEY = "host\u0000operator";
 /** An admin's key: their connection and their account on it (ids are per platform). */
@@ -140,7 +207,9 @@ export const ADMIN_AUTHENTICATORS_MAX = 64;
 const readRec = (t: unknown): Rec | undefined => {
   const r = t as Partial<Rec> | null | undefined;
   return r && typeof r.secret === "string" && (base32Decode(r.secret)?.length ?? 0) >= 16 && Number.isSafeInteger(r.enrolledAt)
-    && Number.isSafeInteger(r.lastStep) ? { secret: r.secret, enrolledAt: r.enrolledAt as number, lastStep: r.lastStep as number, ...(r.strict === true ? { strict: true } : {}) } : undefined;
+    && Number.isSafeInteger(r.lastStep) ? { secret: r.secret, enrolledAt: r.enrolledAt as number, lastStep: r.lastStep as number, ...(r.strict === true ? { strict: true } : {}),
+      ...(readLimWith(r.lim, SIGNIN_WRONG_LIMIT) ? { lim: readLimWith(r.lim, SIGNIN_WRONG_LIMIT)! } : {}),
+      ...(readLimWith(r.klim, SIGNIN_KNOWN_WRONG_LIMIT) ? { klim: readLimWith(r.klim, SIGNIN_KNOWN_WRONG_LIMIT)! } : {}) } : undefined;
 };
 
 interface Saved {
@@ -150,6 +219,10 @@ interface Saved {
   /** Every other admin's own (chat fleets), by adminKey. */
   admins?: Record<string, Rec>;
   outside: boolean;
+  /** #3486: the fleet-wide sign-in limiter (any admin or identifier). */
+  signin?: Lim;
+  /** #3486: each typed name's sign-in limiter (known or not), by sha256 of the normalized name; at most SIGNIN_IDENT_MAX, saved so a restart changes nothing. */
+  idents?: Record<string, Lim>;
   /** Wrong codes since the last wait (or the last correct code). */
   wrong: number;
   /** How many waits in a row (0: none since the last correct code): the next one is TOTP_PAUSE_MS × 2^level. */
@@ -190,6 +263,17 @@ export interface RemoteAccessStatus {
   pausedForMs: number;
 }
 
+/** Whose shared limit a wrong code started, for the Notices (never part of an answer): `fleet`, or `admin` (their own or the name typed, when it is a real admin's). */
+export interface SignInBegan { fleet: boolean; admin: boolean; waitMs: number; /** Half-way through the whole sign-in's / a real admin's count, first time this cycle: the admins are told once. */ halfFleet: boolean; halfAdmin: boolean }
+export type SignInVerdict =
+  | { kind: "ok" }
+  /** `skewSteps`: for a real admin, the code would have matched that many steps out — this computer's clock is likely off (logged, never answered). */
+  | { kind: "wrong"; skewSteps?: number; began: SignInBegan }
+  /** A wait is in force (or this wrong code started one): the same answer for every name. */
+  | { kind: "paused"; retryAfterMs: number; began: SignInBegan }
+  /** Right, but the step it used could not be saved: refused (else a restart would let it be used again). */
+  | { kind: "unavailable" };
+
 const blank = (): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] });
 
 export class WebRemoteAccess {
@@ -200,6 +284,10 @@ export class WebRemoteAccess {
   /** The state in memory is not on disk yet (a write failed): written again, by the next change or the retry timer. */
   private dirty = false;
   private retry: ReturnType<typeof setTimeout> | null = null;
+  /** #3486: the limiter of each browser (memory only; bounded). Key: the caller's hash of its cookie id and address. */
+  private browserLim = new Map<string, Lim>();
+  /** #3486: what a sign-in for an identifier that is no admin's is compared with — a secret nobody has, so the work done is the same. */
+  private readonly decoySecret = randomBytes(SECRET_BYTES);
 
   constructor(private readonly path: string, private readonly log: { warn(obj: object, msg?: string): void },
     private readonly now: () => number = Date.now, private readonly monotonic: () => number = () => performance.now()) {
@@ -217,7 +305,12 @@ export class WebRemoteAccess {
         for (const [k, r] of Object.entries(v.admins).slice(0, ADMIN_AUTHENTICATORS_MAX)) { const rec = readRec(r); if (rec && k.length <= 400) admins[k] = rec; }
       }
       const count = (n: unknown): number => (Number.isSafeInteger(n) && (n as number) >= 0 ? n as number : 0);
-      this.state = { v: 1, ...(totp ? { totp } : {}), ...(Object.keys(admins).length ? { admins } : {}),
+      const signin = readLimWith(v.signin, SIGNIN_FLEET_WRONG_LIMIT);
+      const idents: Record<string, Lim> = {};
+      if (v.idents && typeof v.idents === "object" && !Array.isArray(v.idents)) {
+        for (const [k, l] of Object.entries(v.idents).slice(-SIGNIN_IDENT_MAX)) { const lim = /^[0-9a-f]{64}$/.test(k) ? readLimWith(l, SIGNIN_WRONG_LIMIT) : undefined; if (lim) idents[k] = lim; }
+      }
+      this.state = { v: 1, ...(totp ? { totp } : {}), ...(Object.keys(admins).length ? { admins } : {}), ...(signin ? { signin } : {}), ...(Object.keys(idents).length ? { idents } : {}),
         // Never on without an app set up: a file that says otherwise is read as off.
         outside: v.outside === true && !!totp,
         wrong: Math.min(count(v.wrong), TOTP_WRONG_LIMIT - 1), level: Math.min(count(v.level), 32),
@@ -230,6 +323,9 @@ export class WebRemoteAccess {
       this.state = blank();
     }
   }
+
+  /** The keys (adminKey) of the chat admins that have an authenticator — never shown to anyone; the sign-in resolves a typed name among them. */
+  get adminKeys(): string[] { return Object.keys(this.state.admins ?? {}); }
 
   /** One admin's record (the host operator's by default). */
   private rec(who: string): Rec | undefined { return who === HOST_ADMIN_KEY ? this.state.totp : this.state.admins?.[who]; }
@@ -350,7 +446,7 @@ export class WebRemoteAccess {
    */
   remove(who: string = HOST_ADMIN_KEY): boolean {
     if (!this.rec(who)) return true;
-    this.state = who === HOST_ADMIN_KEY ? { ...blank(), ...(this.state.admins ? { admins: this.state.admins } : {}) } : this.withRec(this.state, who, undefined);
+    this.state = who === HOST_ADMIN_KEY ? { ...blank(), ...(this.state.admins ? { admins: this.state.admins } : {}), ...(this.state.signin ? { signin: this.state.signin } : {}), ...(this.state.idents ? { idents: this.state.idents } : {}) } : this.withRec(this.state, who, undefined);
     return this.flush();
   }
 
@@ -385,6 +481,71 @@ export class WebRemoteAccess {
     this.state = { ...this.state, wrong: 0, level: this.state.level + 1, pausedUntil: now + wait };
     this.flush();
     return { kind: "wrong", paused: true, retryAfterMs: wait, wrong: TOTP_WRONG_LIMIT, skewSteps };
+  }
+
+  /**
+   * #3486: a new browser signs in with an admin's OWN authenticator code. `who`: the admin the typed name resolved to (null: it
+   * resolved to nobody — no such name, an admin with no app, one no longer an admin: the caller does not say which); `ident`: the
+   * normalized text typed, whatever it is; `browser`: this browser's key, and whether it carries a valid "known device" mark for `who`.
+   * A code is compared with that admin's secret when there is one and with a decoy secret when there is not — the same work — and
+   * every failed attempt changes and saves the same counters, so neither the answer nor the time says whether a name is an admin who
+   * has an app. What can pause an attempt: this browser's own limiter, the typed name's, the whole sign-in's (all three answer
+   * identically for every name). The admin's own limiter is a ceiling that never changes an answer: while it is in force a
+   * code is not tried and is answered as any wrong one (so using two names of one admin shows nothing either). A known device is
+   * not held by the shared ceilings, only by its mark's own limiter and the known-path limiter of its admin (so shedding cookies resets nothing).
+   * `browser.key` is the cookie-derived key, or — when `known` — the key of the mark itself.
+   * - one use per time step: the same `lastStep` as the admin's confirmations and switch;
+   * - success clears that admin's own count, that name's and this browser's — never the whole sign-in's, which only time lowers.
+   */
+  signIn(who: string | null, ident: string, code: string, browser: { key: string; known: boolean }): SignInVerdict {
+    const now = this.now(), rec = who ? this.rec(who) : undefined, known = browser.known && !!rec;
+    const identKey = createHash("sha256").update(`agend-signin-ident\0${ident}`).digest("hex");
+    const fleet = settle(this.state.signin ?? NO_LIM, now), byIdent = settle(this.state.idents?.[identKey] ?? NO_LIM, now);
+    const byAdmin = settle(rec?.lim ?? NO_LIM, now), byBrowser = settle(this.browserLim.get(browser.key) ?? NO_LIM, now, SIGNIN_BROWSER_QUIET_MS);
+    const byKnown = settle(rec?.klim ?? NO_LIM, now);
+    // A known device is held by its own mark's limiter and by the known-path limiter of its admin (every attempt carrying one of X's marks counts there), not by the shared ones.
+    const waits = [byBrowser.pausedUntil, ...(known ? [byKnown.pausedUntil] : [fleet.pausedUntil, byIdent.pausedUntil])].map(p => Math.min(p - now, TOTP_PAUSE_MAX_MS));
+    const wait = Math.max(...waits);
+    const idle: SignInBegan = { fleet: false, admin: false, waitMs: 0, halfFleet: false, halfAdmin: false };
+    if (wait > 0) return { kind: "paused", retryAfterMs: wait, began: idle };
+    const secret = rec ? base32Decode(rec.secret)! : this.decoySecret;
+    const step = matchTotp(secret, code, now, rec ? rec.lastStep : -1);
+    const held = !known && byAdmin.pausedUntil > now;                            // the admin's ceiling: the code is not tried
+    if (rec && who && step !== null && !held) {
+      const before = this.state, beforeBrowser = this.browserLim.get(browser.key);
+      const { lim: _lim, klim: _klim, ...clean } = rec;
+      const idents = { ...(this.state.idents ?? {}) }; delete idents[identKey];
+      const { idents: _idents, ...rest } = this.withRec(this.state, who, { ...clean, lastStep: step });
+      this.state = { ...rest, ...(Object.keys(idents).length ? { idents } : {}) };
+      this.browserLim.delete(browser.key);
+      if (!this.flush()) {
+        this.state = { ...this.withRec(before, who, { ...clean, lastStep: step }), ...(before.signin ? { signin: before.signin } : {}), ...(before.idents ? { idents: before.idents } : {}) };
+        if (beforeBrowser) this.browserLim.set(browser.key, beforeBrowser);
+        return { kind: "unavailable" };
+      }
+      return { kind: "ok" };
+    }
+    // Wrong, or no such admin, or the admin's ceiling: the same counters, the same write — and the same clock-skew look (the decoy when there is no admin).
+    const skew = totpSkew(secret, code, now);
+    const f = bumpLim(fleet, SIGNIN_FLEET_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now, SIGNIN_COUNT_QUIET_MS, SIGNIN_FLEET_WRONG_LIMIT / 2);
+    const i = bumpLim(byIdent, SIGNIN_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now);
+    const a = rec ? bumpLim(byAdmin, SIGNIN_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now, SIGNIN_COUNT_QUIET_MS, SIGNIN_WRONG_LIMIT / 2) : { lim: NO_LIM, wait: 0, half: false };
+    const k = known ? bumpLim(byKnown, SIGNIN_KNOWN_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now, SIGNIN_COUNT_QUIET_MS, SIGNIN_KNOWN_WRONG_LIMIT / 2) : { lim: byKnown, wait: 0, half: false };
+    const w = bumpLim(byBrowser, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_BROWSER_PAUSE_MS, SIGNIN_BROWSER_PAUSE_MAX_MS, now, SIGNIN_BROWSER_QUIET_MS);
+    this.browserLim.delete(browser.key); this.browserLim.set(browser.key, w.lim);
+    while (this.browserLim.size > SIGNIN_BROWSER_MAX) this.browserLim.delete(this.browserLim.keys().next().value!);
+    const idents: Record<string, Lim> = {};
+    for (const [k, l] of Object.entries(this.state.idents ?? {})) if (k !== identKey && !limitsIdle(l, now)) idents[k] = l;
+    idents[identKey] = i.lim;
+    for (const k of Object.keys(idents).slice(0, Math.max(0, Object.keys(idents).length - SIGNIN_IDENT_MAX))) delete idents[k];
+    const { idents: _old, ...base } = rec && who ? this.withRec(this.state, who, { ...rec, lim: a.lim, ...(known ? { klim: k.lim } : {}) }) : this.state;
+    this.state = { ...base, signin: f.lim, idents };
+    this.flush();
+    const began: SignInBegan = { fleet: f.wait > 0, admin: !!rec && (a.wait > 0 || i.wait > 0 || k.wait > 0), waitMs: Math.max(f.wait, i.wait, a.wait, k.wait),
+      halfFleet: f.half, halfAdmin: !!rec && (a.half || k.half) };
+    // Answered by what every name shares: this browser's wait, the name's, the whole sign-in's (a known device: its mark's and its admin's known-path wait).
+    const started = Math.max(w.wait, ...(known ? [k.wait] : [f.wait, i.wait]));
+    return started > 0 ? { kind: "paused", retryAfterMs: started, began } : { kind: "wrong", ...(rec && skew !== null ? { skewSteps: skew } : {}), began };
   }
 
   /**
