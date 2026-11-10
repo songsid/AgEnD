@@ -1,0 +1,56 @@
+{
+  "source": "working-tree",
+  "scope": "production GrokBackend.writeConfig/buildCommand; fake Grok models project MCP discovery and actually executes only owned fixture wrappers; no real Grok/account/vendor",
+  "checks": [
+    {
+      "name": "single-agent control",
+      "expected": [
+        "single-worker"
+      ],
+      "actual": [
+        {
+          "key": "agend",
+          "instance": "single-worker",
+          "toolSet": "developer"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "same-cwd worker-a only own identity/config",
+      "expected": [
+        "worker-a"
+      ],
+      "actual": [
+        {
+          "key": "agend",
+          "instance": "worker-a",
+          "toolSet": "developer"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "same-cwd worker-b only own identity/config",
+      "expected": [
+        "worker-b"
+      ],
+      "actual": [
+        {
+          "key": "agend",
+          "instance": "worker-b",
+          "toolSet": "reader"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "env-less launch refuses tools",
+      "pass": true
+    }
+  ],
+  "cleanup": {
+    "privateSocketClosed": true,
+    "rootRemoved": true
+  }
+}
