@@ -73,9 +73,9 @@ async function rig() {
   return { fm, old, save, launches, launch, start, stop, pause, dir };
 }
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>(done => { resolve = done; });
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
 function wakeEntered(fm: any): Promise<void> {
@@ -85,25 +85,26 @@ function wakeEntered(fm: any): Promise<void> {
   });
   return entered.promise;
 }
-async function heldRealPause(r: Awaited<ReturnType<typeof rig>>) {
+async function heldRealPause(r: Awaited<ReturnType<typeof rig>>, options: { pane?: boolean; accepts?: boolean } = {}) {
   r.pause.mockRestore();
   const old = r.old as any;
   await old.autoPauseController.wakeOnDeliver(async () => {});
   old.pauseWakeState = "active"; old.instanceState = "idle";
   clearPausedMarker(old.instanceDir);
-  const gate = deferred(), entered = deferred();
+  const gate = deferred(), entered = deferred(), pane = deferred<string>(), paneEntered = deferred();
   let exited = false, retired = false, settled = false;
-  old.tmux = { getWindowId: () => "%inert", capturePane: async () => "",
+  old.tmux = { getWindowId: () => "%inert", capturePane: () => { paneEntered.resolve(); return options.pane ? pane.promise : Promise.resolve("inert admitted pane"); },
     getPaneStatus: async () => { if (retired) throw Error("retired synthetic pane"); return { alive: !exited }; } };
   vi.spyOn(old, "checkpointSessionId").mockImplementation(() => { entered.resolve(); return gate.promise; });
   vi.spyOn(old, "sendQuitSequence").mockImplementation(async () => { exited = true; });
   const resumed = vi.spyOn(old, "resumeRuntimeMonitors").mockImplementation(() => {});
   const stopBeforeSettlement: boolean[] = [];
   r.stop.mockImplementation(async () => { stopBeforeSettlement.push(!settled); retired = true; });
-  const pausing = old.pause("operator").then(() => { settled = true; });
+  const accepts = vi.fn(() => options.accepts !== false);
+  const pausing = old.pause("operator", options.pane ? { current: () => true, accepts, revalidate: async () => true } : undefined).then(() => { settled = true; });
   void pausing.catch(() => {}); // Cleanup always joins it; observe rejection immediately during red probes.
-  await entered.promise;
-  return { pausing, release: gate.resolve, resumed, stopBeforeSettlement };
+  await (options.pane ? paneEntered.promise : entered.promise);
+  return { pausing, release: gate.resolve, releasePane: () => pane.resolve("inert admitted pane"), checkpointEntered: entered.promise, accepts, resumed, stopBeforeSettlement };
 }
 
 describe("a paused fleet Agent adopts saved launch settings at wake", () => {
@@ -175,6 +176,107 @@ describe("a paused fleet Agent adopts saved launch settings at wake", () => {
     } finally {
       pause.release(); await vi.advanceTimersByTimeAsync(200);
       await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("joins an admitted real pause still reading its pane before the transition is published", async () => {
+    const r = await rig(); r.save({ model: "opus", backend_options: { "claude-code": { credential_profile: "after" } } }); vi.useFakeTimers();
+    const pause = await heldRealPause(r, { pane: true });
+    const wait = r.old.waitForPauseWakeTransition.bind(r.old);
+    vi.spyOn(r.old, "waitForPauseWakeTransition").mockImplementationOnce(() => {
+      const flight = wait(); pause.releasePane(); return flight;
+    });
+    const waking = r.fm.explicitWake("worker");
+    try {
+      await pause.checkpointEntered; await vi.advanceTimersByTimeAsync(0);
+      expect(pause.accepts).toHaveBeenCalledWith("inert admitted pane");
+      expect(r.stop).not.toHaveBeenCalled(); expect(r.fm.daemons.get("worker")).toBe(r.old); expect(r.launches()).toHaveLength(1);
+      pause.release(); await vi.advanceTimersByTimeAsync(200); await Promise.all([pause.pausing, waking]);
+      expect(pause.stopBeforeSettlement).toEqual([false]); expect(pause.resumed).not.toHaveBeenCalled();
+      expect(r.launches()).toHaveLength(2); expect(r.launches()[1].args).toContain("opus");
+      expect(r.launches()[1].home).toBe(credentialProfileHome(r.dir, "claude-code", "after"));
+    } finally {
+      pause.releasePane(); pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("a wake stays pending while its admitted real pause still holds the pane read", async () => {
+    const r = await rig(); r.save({ model: "opus" }); vi.useFakeTimers();
+    const pause = await heldRealPause(r, { pane: true });
+    const entered = wakeEntered(r.fm), waking = r.fm.explicitWake("worker");
+    let settled = false; void waking.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      await entered; await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false); expect(r.stop).not.toHaveBeenCalled(); expect(r.launches()).toHaveLength(1);
+      pause.releasePane(); await pause.checkpointEntered; pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.all([pause.pausing, waking]);
+      expect(r.launches()).toHaveLength(2); expect(r.launches()[1].args).toContain("opus");
+      expect(pause.stopBeforeSettlement).toEqual([false]); expect(pause.resumed).not.toHaveBeenCalled();
+    } finally {
+      pause.releasePane(); pause.release(); await vi.advanceTimersByTimeAsync(200); await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("a held pane read that no longer admits a pause keeps its active daemon", async () => {
+    const r = await rig(); r.save({ model: "opus" }); vi.useFakeTimers();
+    const pause = await heldRealPause(r, { pane: true, accepts: false });
+    const wait = r.old.waitForPauseWakeTransition.bind(r.old);
+    vi.spyOn(r.old, "waitForPauseWakeTransition").mockImplementationOnce(() => {
+      const flight = wait(); pause.releasePane(); return flight;
+    });
+    const waking = r.fm.explicitWake("worker");
+    try {
+      await Promise.all([pause.pausing, waking]);
+      expect(pause.accepts).toHaveBeenCalledWith("inert admitted pane");
+      expect(r.fm.daemons.get("worker")).toBe(r.old); expect(r.stop).not.toHaveBeenCalled(); expect(r.launches()).toHaveLength(1);
+      expect(r.old.isPaused).toBe(false); expect(hasPausedMarker(r.fm.getInstanceDir("worker"))).toBe(false); expect(pause.resumed).not.toHaveBeenCalled();
+    } finally {
+      pause.releasePane(); pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("rechecks a real pause admitted in the settlement caller's await gap", async () => {
+    const r = await rig(); r.save({ model: "opus" }); r.pause.mockRestore(); vi.useFakeTimers();
+    const old = r.old as any, checkpoint = deferred(), entered = deferred();
+    await old.autoPauseController.wakeOnDeliver(async () => {}); old.pauseWakeState = "active"; old.instanceState = "idle"; clearPausedMarker(old.instanceDir);
+    let exited = false, retired = false;
+    old.tmux = { getWindowId: () => "%inert", capturePane: async () => "inert admitted pane",
+      getPaneStatus: async () => { if (retired) throw Error("retired synthetic pane"); return { alive: !exited }; } };
+    vi.spyOn(old, "checkpointSessionId").mockImplementation(() => { entered.resolve(); return checkpoint.promise; });
+    vi.spyOn(old, "sendQuitSequence").mockImplementation(async () => { exited = true; });
+    r.stop.mockImplementation(async () => { retired = true; });
+    const wait = r.old.waitForPauseWakeTransition.bind(r.old);
+    let pausing: Promise<void> | undefined;
+    vi.spyOn(r.old, "waitForPauseWakeTransition").mockImplementationOnce(async () => {
+      await wait(); // No pause exists yet. Admit it just before the lifecycle caller resumes.
+      pausing = old.pause("operator", { current: () => true, accepts: () => true, revalidate: async () => true });
+      void pausing!.catch(() => {});
+    });
+    const waking = r.fm.explicitWake("worker");
+    try {
+      await entered.promise; await vi.advanceTimersByTimeAsync(0);
+      expect(r.stop).not.toHaveBeenCalled(); expect(r.fm.daemons.get("worker")).toBe(r.old);
+      checkpoint.resolve(); await vi.advanceTimersByTimeAsync(200); await Promise.all([pausing, waking]);
+      expect(r.launches()).toHaveLength(2); expect(r.launches()[1].args).toContain("opus");
+    } finally {
+      checkpoint.resolve(); await vi.advanceTimersByTimeAsync(200); await Promise.allSettled([pausing, waking]);
+    }
+  });
+  it("retirement refuses a fresh real pause before it reads a pane", async () => {
+    const r = await rig(); r.pause.mockRestore(); const old = r.old as any;
+    old.pauseWakeState = "active"; old.instanceState = "idle";
+    const capture = vi.fn(async () => "inert admitted pane"), checkpoint = vi.spyOn(old, "checkpointSessionId").mockRejectedValue(Error("inert checkpoint sentinel"));
+    old.tmux = { getWindowId: () => "%inert", capturePane: capture };
+    old.fenceDeliveryWritesForStop();
+    await old.pause("operator", { current: () => true, accepts: () => true, revalidate: async () => true }).catch(() => {});
+    expect(capture).not.toHaveBeenCalled(); expect(checkpoint).not.toHaveBeenCalled(); expect(old.isPaused).toBe(false);
+  });
+  it("retirement during an admitted pane read prevents publishing a pause", async () => {
+    const r = await rig(); vi.useFakeTimers(); const pause = await heldRealPause(r, { pane: true });
+    const checkpoint = vi.spyOn(r.old as any, "checkpointSessionId").mockRejectedValue(Error("inert checkpoint sentinel"));
+    try {
+      r.old.fenceDeliveryWritesForStop(); pause.releasePane(); await pause.pausing.catch(() => {});
+      expect(checkpoint).not.toHaveBeenCalled(); expect(r.old.isPaused).toBe(false); expect(pause.resumed).not.toHaveBeenCalled();
+    } finally {
+      pause.releasePane(); pause.release(); await vi.advanceTimersByTimeAsync(200); await Promise.allSettled([pause.pausing]);
     }
   });
   it("a Stop during a held real pause supersedes the waiting cold wake", async () => {
