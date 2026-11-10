@@ -1,0 +1,51 @@
+[
+  {
+    "branch": "release/2.1",
+    "sha": "7a8160a12ac4024bffc5165b5b6e03af851cacf2",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  },
+  {
+    "branch": "release/2.2",
+    "sha": "6696acd2c4a2860d31ce39e19f8f0509fe55c893",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  },
+  {
+    "branch": "release/2.2.0-alpha.1-prep",
+    "sha": "d6439060e4007b161d05ea14f41f7f32311eb3f1",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  },
+  {
+    "branch": "release/2.2.x",
+    "sha": "30c19ba307060233e36802021e944bd8ab03b79d",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  },
+  {
+    "branch": "release/2.3.2-settings",
+    "sha": "526f37663f231c873e9c9065a41470ba3739eb3d",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  },
+  {
+    "branch": "release/2.3.5-alpha",
+    "sha": "636328df913c8a01081f3a35d1d14f408635977b",
+    "ciExists": true,
+    "cjkFontStep": true,
+    "uiGate": true
+  },
+  {
+    "branch": "release/v2.0.3",
+    "sha": "a1f059843cbd35f7ebed31c9f9ce3b9860e0049e",
+    "ciExists": true,
+    "cjkFontStep": false,
+    "uiGate": false
+  }
+]

@@ -15,3 +15,24 @@ No font binaries are committed. An upstream archive deletion or cache outage can
 The release branch inventory finds the affected UI-gate/apt step only on `release/2.3.5-alpha`. Six older release lines have no such job and need no new font dependency. Land main first, then the alpha twin.
 
 Execution receipts and control comparisons will be added separately, with the exact source commit and honest local-versus-hosted scope.
+
+## Executed controls
+
+`accept.mjs` ran from committed source `fc97c3278d463badd6f7a9eadb18b671487c5e4f` against detached control `bbff8ae42aeab2371b7d6de9b89948ec76a36d59`. The receipt records both trees and equal product, smoke and fixture input trees, plus the exact helper, pin and harness digests. Subsequent changes only add the TypeScript declaration, changelog metadata and these receipts; runtime/helper/workflow bytes are unchanged.
+
+- Cold: the real official 61 MB archive downloaded, verified, extracted and selected in **11.405 s**.
+- Warm/offline: a `curl` stub that would fail any invocation remained unused; the verified cache prepared in **3.754 s**.
+- Held TLS: an owned loopback peer accepted a connection but sent no handshake. The actual curl failed in **10.018 s**, with `SSL connection timeout`, an empty cache and no ready output. The peer's physical exit was acknowledged.
+- Glyphs: **32 canvas/DOM metric rows per preparation**, system UI and explicit Noto TC, regular/bold, two sizes, four Chinese/mixed samples: **exactly equal**.
+- Original `GATE=ci`: **94/94 checks on each preparation**, complete results equal after excluding duration (38 s control, 41 s candidate). No section, assertion, fixture or tap allowance changed. All screenshots were generated locally; this is a font-preparation comparison, not a UI change or a new full-matrix claim.
+
+The local control reconstructs the apt-installed Fontconfig inputs in an owned directory, placing the package's `70-*` rule at its normal sorted location among copies of this machine's system rules. The candidate uses the actual helper. Both use the same Chromium, isolated empty XDG config/data directories (to exclude the developer's personal font aliases), system fonts and unchanged product tree. This proves the preparation delta on a control head; it is **not** a fresh GitHub-hosted apt run. The hosted retry above independently supplies the original package/version and 94-check result. Candidate hosted CI is reported on the PR separately.
+
+Reproduce after creating a detached control checkout at the recorded control SHA and linking dependencies:
+
+```sh
+PW_DIR=<directory-containing-playwright-core> CHROME=<same-Chromium> \
+  node docs/evidence/ui-gate-cjk-fonts-m2822/accept.mjs
+```
+
+`OUT` must be a fresh owned directory. The harness uses `../../.artifacts/t2822` as a short scratch directory, and an optional `.artifacts/deny-bin` of exit-97 native/lifecycle stubs. The original smoke fixture owns and drains the browser, loopback listeners and scratch home without starting a fleet.

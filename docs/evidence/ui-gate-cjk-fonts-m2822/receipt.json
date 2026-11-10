@@ -1,0 +1,94 @@
+{
+  "source": {
+    "control": {
+      "head": "bbff8ae42aeab2371b7d6de9b89948ec76a36d59",
+      "tree": "09aff6c906425318f3fa614807200851c1e6b224",
+      "inputs": {
+        "src": "0b3e06832543e376de825602b4b627586fa60006",
+        "scripts/manual/smoke": "af9ab67f9ce815febc78f9bad47cbb9aa984a89b",
+        "scripts/manual/smoke-fixture": "a7795217e1caa256795423295fe55c403e495d5d"
+      }
+    },
+    "candidate": {
+      "head": "fc97c3278d463badd6f7a9eadb18b671487c5e4f",
+      "tree": "3cbbc47589cef76fe4532a2b741e7118704aa6c5",
+      "inputs": {
+        "src": "0b3e06832543e376de825602b4b627586fa60006",
+        "scripts/manual/smoke": "af9ab67f9ce815febc78f9bad47cbb9aa984a89b",
+        "scripts/manual/smoke-fixture": "a7795217e1caa256795423295fe55c403e495d5d"
+      }
+    }
+  },
+  "harnessDigest": "bcb63f44a46fe3d5a122db18489460883bcd045ff1ba4bfef334afbc9e00817e",
+  "pinDigest": "11d1e11d6786b47e1e072bb10b3bb0580ae101bec440f2983f96f9b03451ed13",
+  "helperDigest": "d0da4ad2234b3adf11e5909006f2c9f66b2b4cb92521fd88b4a988ae1c24e457",
+  "browser": "Google Chrome for Testing 156.0.8078.4",
+  "node": "v22.22.2",
+  "cold": {
+    "package": "fonts-noto-cjk",
+    "version": "1:20230817+repack1-3",
+    "source": "download",
+    "archiveDigest": "7d64b985f6fe128c99eae5610d5c047338e572bdcfb2bb09736be01b824a7f6c",
+    "fontconfig": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/ui-gate-cjk-fonts-m2822/.artifacts/acceptance/cold/fonts.conf",
+    "files": {
+      "NotoSansCJK-Regular.ttc": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a",
+      "NotoSansCJK-Bold.ttc": "faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb",
+      "NotoSerifCJK-Regular.ttc": "93069d8e9e45d515cc421c971a79e6a5777704b348e36a9ef86578bf58adef77",
+      "NotoSerifCJK-Bold.ttc": "9d3c0d769c703cfe41c49cbe2b14d4718e26545593dc247485486335b783fe94"
+    },
+    "matches": [
+      {
+        "pattern": "Noto Sans CJK TC:lang=zh-tw",
+        "family": "Noto Sans CJK TC",
+        "style": "Regular",
+        "digest": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+      },
+      {
+        "pattern": "Noto Sans CJK TC:lang=zh-tw:weight=bold",
+        "family": "Noto Sans CJK TC",
+        "style": "Bold",
+        "digest": "faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb"
+      }
+    ],
+    "elapsedMs": 11405
+  },
+  "warm": {
+    "package": "fonts-noto-cjk",
+    "version": "1:20230817+repack1-3",
+    "source": "cache",
+    "archiveDigest": "7d64b985f6fe128c99eae5610d5c047338e572bdcfb2bb09736be01b824a7f6c",
+    "fontconfig": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/ui-gate-cjk-fonts-m2822/.artifacts/acceptance/warm/fonts.conf",
+    "files": {
+      "NotoSansCJK-Regular.ttc": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a",
+      "NotoSansCJK-Bold.ttc": "faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb",
+      "NotoSerifCJK-Regular.ttc": "93069d8e9e45d515cc421c971a79e6a5777704b348e36a9ef86578bf58adef77",
+      "NotoSerifCJK-Bold.ttc": "9d3c0d769c703cfe41c49cbe2b14d4718e26545593dc247485486335b783fe94"
+    },
+    "matches": [
+      {
+        "pattern": "Noto Sans CJK TC:lang=zh-tw",
+        "family": "Noto Sans CJK TC",
+        "style": "Regular",
+        "digest": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+      },
+      {
+        "pattern": "Noto Sans CJK TC:lang=zh-tw:weight=bold",
+        "family": "Noto Sans CJK TC",
+        "style": "Bold",
+        "digest": "faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb"
+      }
+    ],
+    "elapsedMs": 3754
+  },
+  "failure": {
+    "elapsedMs": 10018,
+    "cacheEmpty": true,
+    "noOutput": true
+  },
+  "glyphRowsPerPreparation": 32,
+  "identicalGlyphMetrics": true,
+  "gateChecksPerPreparation": 94,
+  "identicalGateResults": true,
+  "heldPeerExitAcknowledged": true,
+  "scope": "Local original GATE=ci on one control product tree; apt-equivalent private configuration versus cache helper. Not a fresh GitHub-hosted apt run or full UI matrix."
+}
