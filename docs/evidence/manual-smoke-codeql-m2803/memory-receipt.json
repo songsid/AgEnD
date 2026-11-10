@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "662c1fd9a88863112da7d82fedebcbe4d1d43ee2",
+  "sourceTree": "efac7716b111d29fdd4caaa845c4bd295dfabb77",
+  "sourceStatus": "",
+  "inputs": {
+    "scripts/manual/smoke/smoke-2556-memory-header.mts": "3ed075460137f1b3848e1d3cf787d1c103b17c153e1ece2e34c72dd8093a26b3",
+    "scripts/manual/smoke-fixture/index.mts": "45aded08c037eaa8ed9de6db2d8d8bac5b7b2c1168fb154ab35f0f7fbc6f2aa5"
+  },
+  "command": [
+    "/home/han/.nvm/versions/node/v22.22.2/bin/node",
+    "--import",
+    "tsx",
+    "scripts/manual/smoke/smoke-2556-memory-header.mts"
+  ],
+  "startedAt": "2026-11-10T03:42:40Z",
+  "scope": "Owned Fleet fixture/listeners only; native/model/lifecycle commands denied. Update launch and registry lookup remain stubbed by its existing fixture; no real update.",
+  "retainedRef": "01781750590506c8a0d5c16f3b1a5d9bcae37a4e",
+  "matrix": "default:4 modes x2 languages x4 widths (32cases)",
+  "exitCode": 0,
+  "finishedAt": "2026-11-10T03:44:17Z",
+  "sourceAfter": "662c1fd9a88863112da7d82fedebcbe4d1d43ee2",
+  "sourceStatusAfter": ""
+}

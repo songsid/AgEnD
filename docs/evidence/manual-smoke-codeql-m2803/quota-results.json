@@ -1,0 +1,13 @@
+{
+ "label": "branch",
+ "desk-light-en": "PASS",
+ "desk-light-zh-TW": "PASS",
+ "desk-dark-en": "PASS",
+ "desk-dark-zh-TW": "PASS",
+ "phone-light-en": "PASS",
+ "phone-light-zh-TW": "PASS",
+ "phone-dark-en": "PASS",
+ "phone-dark-zh-TW": "PASS",
+ "skew-old-module": "PASS",
+ "skew-old-css": "PASS"
+}
