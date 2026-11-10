@@ -4252,7 +4252,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-ov-actions { display: flex; justify-content: flex-end; }
 .p-settings .s-ov-link > svg, .p-settings .s-ov-tile > svg:last-child { transform: rotate(-90deg); }
 .p-settings .s-ov-tile > svg:last-child { color: var(--accent); flex: none; }
-.p-settings .s-ov-link { display: inline-flex; align-items: center; gap: 2px; min-height: var(--tap, 32px); padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.p-settings .s-ov-link { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-height: var(--tap, 32px); min-width: var(--tap, 32px); padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .p-settings .s-ov-other h3 { margin: 0 0 2px; }
 .p-settings .s-ov-other > .note { margin: 0 0 10px; }
 .p-settings .s-ov-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-3); }
