@@ -73,13 +73,17 @@ export function selectedPassage(list, sel) {
   if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
   const text = String(sel.toString() || "");
   if (!text.trim()) return null;
-  const range = sel.getRangeAt(0);
   const msg = (n) => { const e = n && (n.nodeType === 1 ? n : n.parentElement); return e && e.closest ? e.closest(".msg[data-key]") : null; };
-  const a = msg(range.startContainer), b = msg(range.endContainer);
-  if (!a || a !== b || !list.contains(a)) return null;
   // The message's own words, not its header (sender, time) or its action strip.
   const inBody = (n) => { const e = n && (n.nodeType === 1 ? n : n.parentElement); return !!(e && e.closest && e.closest(".body, .md") && !e.closest(".meta, .msg-actions")); };
-  if (!inBody(range.startContainer) || !inBody(range.endContainer)) return null;
+  // Every range of the selection (a browser may keep several: #3555 review P3) in the same message's words — what is
+  // quoted is the whole selection's text.
+  const range = sel.getRangeAt(0), a = msg(range.startContainer);
+  if (!a || !list.contains(a)) return null;
+  for (let i = 0; i < sel.rangeCount; i++) {
+    const rg = sel.getRangeAt(i);
+    if (msg(rg.startContainer) !== a || msg(rg.endContainer) !== a || !inBody(rg.startContainer) || !inBody(rg.endContainer)) return null;
+  }
   return { text, el: a, range };
 }
 
@@ -218,6 +222,8 @@ export function installQuoteSelection(list, deps) {
   function soon() { if (timer) clearTimeout(timer); timer = setTimeout(check, 120); }
   const onSelection = () => soon();
   const onDown = (e) => { if (pop && pop.contains(e.target)) return; down = true; hide(); };
+  // A gesture the browser took over (a touch scroll: pointerdown → pointercancel, no pointerup — #3555 review P2-1)
+  // ends the press as a pointerup does; the selection then decides.
   const onUp = () => { if (!down) return; down = false; soon(); };
   const onKey = (e) => { if (e.key === "Escape" && pop) { hide(); } };
   const onScroll = () => { if (pop && current) place(current); };
@@ -230,6 +236,7 @@ export function installQuoteSelection(list, deps) {
   doc.addEventListener("selectionchange", onSelection);
   list.addEventListener("pointerdown", onDown);
   doc.addEventListener("pointerup", onUp);
+  doc.addEventListener("pointercancel", onUp);
   doc.addEventListener("keydown", onKey);
   win?.addEventListener("scroll", onScroll, true);
   win?.addEventListener("resize", onScroll);
@@ -241,6 +248,7 @@ export function installQuoteSelection(list, deps) {
     doc.removeEventListener("selectionchange", onSelection);
     list.removeEventListener("pointerdown", onDown);
     doc.removeEventListener("pointerup", onUp);
+    doc.removeEventListener("pointercancel", onUp);
     doc.removeEventListener("keydown", onKey);
     win?.removeEventListener("scroll", onScroll, true);
     win?.removeEventListener("resize", onScroll);

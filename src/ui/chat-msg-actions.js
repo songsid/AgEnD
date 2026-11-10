@@ -21,10 +21,30 @@ const LONG_PRESS_MS = 500, MOVE_TOLERANCE = 10, SWIPE_REPLY_PX = 56, SWIPE_MAX_P
 const WORDS_PRESS_MS = 1500;
 const clock = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
-/** On a message's own words (its rendered text), not its header, its padding or its action strip. */
-function onWords(target) {
+/**
+ * On a message's own words: the press at (x, y) lands on a glyph of its rendered text — not on the blank part of a
+ * line, its padding, its header or its action strip (a paragraph's box is wider than a short line's glyphs: #3555
+ * review P2-2). The browser's own hit test (caretPositionFromPoint / caretRangeFromPoint), then the glyph's box
+ * beside that caret; without either API, not words (the menu, as before).
+ */
+const GLYPH_SLACK = 2;
+function onWords(target, x, y, doc) {
   const e = target && (target.nodeType === 1 ? target : target.parentElement);
-  return !!(e && e.closest && e.closest(".msg[data-key] .md") && !e.closest(".meta, .msg-actions"));
+  const md = e && e.closest ? e.closest(".msg[data-key] .md") : null;
+  if (!md || e.closest(".meta, .msg-actions") || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  let node = null, offset = 0;
+  if (typeof doc.caretPositionFromPoint === "function") { const p = doc.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; offset = p.offset; } }
+  else if (typeof doc.caretRangeFromPoint === "function") { const r = doc.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; offset = r.startOffset; } }
+  if (!node || node.nodeType !== 3 || !md.contains(node) || typeof doc.createRange !== "function") return false;
+  // The caret sits between two characters: the press is on words when the glyph before or after it holds the point.
+  for (const at of [offset - 1, offset]) {
+    if (at < 0 || at >= node.data.length || !node.data[at].trim()) continue;
+    const rg = doc.createRange(); rg.setStart(node, at); rg.setEnd(node, at + 1);
+    for (const b of rg.getClientRects()) {
+      if (x >= b.left - GLYPH_SLACK && x <= b.right + GLYPH_SLACK && y >= b.top - GLYPH_SLACK && y <= b.bottom + GLYPH_SLACK) return true;
+    }
+  }
+  return false;
 }
 /** A selection already started inside `el` (a message): the browser's, never ours. */
 function selectionIn(el, doc) {
@@ -108,7 +128,7 @@ export function installMessageActions(list, deps) {
     const el = messageEl(list, e.target);
     if (!el || keepsNativeMenu(e, doc)) return;
     // M-2789: a long press on the words (or a selection begun in this message) is the browser's — its selection.
-    if (selectionIn(el, doc) || (clock() - wordsPressAt < WORDS_PRESS_MS && onWords(e.target))) return;
+    if (selectionIn(el, doc) || (clock() - wordsPressAt < WORDS_PRESS_MS && onWords(e.target, e.clientX, e.clientY, doc))) return;
     const row = deps.messageOf(el.dataset.key);
     if (!row) return;
     e.preventDefault();
@@ -139,7 +159,7 @@ export function installMessageActions(list, deps) {
     const t0 = e.touches[0];
     const native = keepsNativeMenu({ target: e.target, shiftKey: false }, doc);   // a link, an image, code: the browser's
     // M-2789: a press on the message's words is the browser's text selection, not our menu (swipe-left Reply stays).
-    const words = onWords(e.target);
+    const words = onWords(e.target, t0.clientX, t0.clientY, doc);
     wordsPressAt = words ? clock() : -Infinity;
     press = native || words ? null : { el, x: t0.clientX, y: t0.clientY, timer: setTimeout(() => {
       const row = deps.messageOf(el.dataset.key);

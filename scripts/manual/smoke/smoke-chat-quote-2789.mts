@@ -125,6 +125,42 @@ try {
         setTimeout(() => { ok({ across, meta: !!document.querySelector(".quote-pop") }); sel.removeAllRanges(); }, 300); }, 300));
     })()`) as any;
     check(`${cn}:not-a-passage`, !none.across && !none.meta, none);
+    if (phone) {
+      // Real touch input (CDP Input.dispatchTouchEvent, the browser's own pointer/touch/hit-test pipeline on the real layout):
+      // #3555 review P2-2 — a long press on a glyph of a message's words opens no menu; one on the blank part of a short
+      // line inside the same paragraph box opens #2272's menu. P2-1 — a touch scroll (pointercancel, no pointerup) leaves
+      // no stale press: the next selection has its pill. Native text selection itself stays a real-phone check.
+      const cdp = await ctx.newCDPSession(page);
+      const touch = async (type: string, x?: number, y?: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: x === undefined ? [] : [{ x, y }] });
+      const spots = await page.evaluate(`(() => {
+        const md = [...document.querySelectorAll(".msg[data-key] .md")].find((m) => (m.textContent || "").includes(${JSON.stringify(PASSAGES[L][2].slice(0, 6))}));
+        const li = [...md.querySelectorAll("li")].find((x) => x.textContent.includes(${JSON.stringify(PASSAGES[L][2].slice(0, 6))})) || md;
+        li.scrollIntoView({ block: "center" });
+        const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT); const t = w.nextNode(); const r = document.createRange(); r.setStart(t, 1); r.setEnd(t, 2);
+        const g = r.getBoundingClientRect(); const rects = [...(() => { const a = document.createRange(); a.selectNodeContents(li); return a.getClientRects(); })()];
+        const last = rects[rects.length - 1], box = md.getBoundingClientRect();
+        return { glyph: { x: g.left + g.width / 2, y: g.top + g.height / 2 }, blank: { x: Math.min(box.right - 8, last.right + 40), y: last.top + last.height / 2, room: box.right - last.right } };
+      })()`) as any;
+      const longPress = async (p: { x: number; y: number }) => {
+        await page.evaluate(() => { document.querySelectorAll(".msg-menu").forEach((m) => m.remove()); getSelection()?.removeAllRanges(); });
+        await touch("touchStart", p.x, p.y); await page.waitForTimeout(700);
+        const menu = await page.evaluate(`!!document.querySelector(".msg-menu:not(.quote-pop)")`) as boolean;
+        await touch("touchEnd"); await page.waitForTimeout(200);
+        await page.keyboard.press("Escape").catch(() => {});
+        return menu;
+      };
+      const onGlyph = await longPress(spots.glyph), onBlank = spots.blank.room > 40 ? await longPress(spots.blank) : null;
+      check(`${cn}:long-press-words-vs-blank`, onGlyph === false && (onBlank === null || onBlank === true), { spots, onGlyph, onBlank });
+      // A touch scroll that starts on a message: down, a move, up — Chrome cancels the pointer (pointercancel), no pointerup.
+      await page.evaluate(() => { (window as any).__pe = []; for (const k of ["pointerdown", "pointerup", "pointercancel"]) document.addEventListener(k, () => (window as any).__pe.push(k), true); });
+      const sx = spots.glyph.x, sy = spots.glyph.y;
+      await touch("touchStart", sx, sy); for (const d of [8, 20, 40, 70]) await touch("touchMove", sx, sy - d); await touch("touchEnd"); await page.waitForTimeout(300);
+      const pe = await page.evaluate("window.__pe") as string[];
+      await page.evaluate(`(${SELECT})(${JSON.stringify(PASSAGES[L][0])})`); await page.waitForTimeout(500);
+      const pillAfter = await page.evaluate("!!document.querySelector('.quote-pop')") as boolean;
+      check(`${cn}:after-touch-scroll`, pe.includes("pointerdown") && pe.includes("pointercancel") && !pe.includes("pointerup") && pillAfter, { pe, pillAfter });
+      await page.evaluate(() => { getSelection()?.removeAllRanges(); document.querySelectorAll(".quote-pop").forEach((x) => x.remove()); });
+    }
     // Send: exactly the composer's text; the thread draws the quotes.
     if (phone) await page.click("#sendBtn");
     else { await page.focus("#msgIn"); await page.keyboard.press("Enter"); }

@@ -222,20 +222,50 @@ describe("the gestures", () => {
     const click = ev("click"); g.body.dispatchEvent(click);
     expect([g.menu(), cm.defaultPrevented, click.defaultPrevented]).toEqual([null, false, false]);
   });
-  it("M-2789: a long press on the words (no selection yet — Android selects after contextmenu) is the browser's; on the bubble's padding it is our menu", async () => {
+  /** The browser's hit test on the message's words "the plan": each character a 10-px box from x 0, the line y 290–310. */
+  function glyphs(g: any) {
+    let text = g.body.querySelector(".md"); while (text && text.nodeType !== 3) text = text.firstChild;     // the words' text node
+    g.doc.caretRangeFromPoint = (x: number, y: number) => (y < 290 || y > 310 ? null
+      : { startContainer: text, startOffset: Math.max(0, Math.min(text.data.length, Math.round(x / 10))) });
+    g.doc.createRange = () => { const r: any = { s: 0, e: 0, setStart(_n: any, o: number) { r.s = o; }, setEnd(_n: any, o: number) { r.e = o; },
+      getClientRects: () => [{ left: r.s * 10, right: r.e * 10, top: 290, bottom: 310, width: (r.e - r.s) * 10, height: 20 }] }; return r; };
+    return text;
+  }
+  it("M-2789: a long press on a GLYPH of the words (no selection yet — Android selects after contextmenu) is the browser's", async () => {
+    const g = await gestures(); glyphs(g);
+    const md = g.body.querySelector(".md");
+    g.doc.getSelection = () => ({ isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null });
+    vi.useFakeTimers();
+    md.dispatchEvent(ev("touchstart", { touches: [{ clientX: 45, clientY: 300 }] }));     // on "p" of "the plan" (x 40–50)
+    vi.advanceTimersByTime(520);
+    expect(g.menu(), "no timer on the words").toBe(null);
+    const cm = ev("contextmenu", { clientX: 45, clientY: 300 }); md.dispatchEvent(cm);
+    expect([g.menu(), cm.defaultPrevented]).toEqual([null, false]);
+  });
+  it("M-2789 (#3555 review P2-2): a long press on the BLANK part of the words' line, or on the bubble's padding, is our menu", async () => {
+    const g = await gestures(); glyphs(g);
+    const md = g.body.querySelector(".md");
+    g.doc.getSelection = () => ({ isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null });
+    vi.useFakeTimers();
+    // Inside the paragraph's box, past the line's last glyph (x 80): the hit test puts the caret at the line's end.
+    md.dispatchEvent(ev("touchstart", { touches: [{ clientX: 228, clientY: 300 }] }));
+    vi.advanceTimersByTime(520);
+    expect(g.menu()?.querySelectorAll("button").length, "blank space: the menu").toBe(3);
+    const cm = ev("contextmenu", { clientX: 228, clientY: 300 }); md.dispatchEvent(cm);
+    expect(cm.defaultPrevented, "the long press's own contextmenu is ours").toBe(true);
+    md.dispatchEvent(ev("touchend", { touches: [] })); g.doc.dispatchEvent(ev("keydown", { key: "Escape" }));
+    vi.advanceTimersByTime(2000);
+    // The bubble's padding (not its words): the #2272 menu, unchanged.
+    g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    vi.advanceTimersByTime(520);
+    expect(g.menu()?.querySelectorAll("button").length).toBe(3);
+  });
+  it("M-2789: without the browser's hit test, a press is never taken for words (the menu, as before)", async () => {
     const g = await gestures();
     const md = g.body.querySelector(".md");
     g.doc.getSelection = () => ({ isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null });
     vi.useFakeTimers();
-    md.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
-    vi.advanceTimersByTime(520);
-    expect(g.menu(), "no timer on the words").toBe(null);
-    const cm = ev("contextmenu", { clientX: 100, clientY: 300 }); md.dispatchEvent(cm);
-    expect([g.menu(), cm.defaultPrevented]).toEqual([null, false]);
-    md.dispatchEvent(ev("touchend", { touches: [] }));
-    vi.advanceTimersByTime(2000);
-    // The bubble's padding (not its words): the #2272 menu, unchanged.
-    g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    md.dispatchEvent(ev("touchstart", { touches: [{ clientX: 35, clientY: 300 }] }));
     vi.advanceTimersByTime(520);
     expect(g.menu()?.querySelectorAll("button").length).toBe(3);
   });

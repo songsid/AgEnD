@@ -89,6 +89,11 @@ describe("what counts as a passage", () => {
     expect(q.selectedPassage(list, selection(a.text, b.text, "rehearsal？ another"))).toBe(null);
     expect(q.selectedPassage(list, selection(a.text, a.text, "   "))).toBe(null);
     expect(q.selectedPassage(list, selection(a.text, a.text, ""))).toBe(null);
+    // #3555 review P3: every range of a multi-range selection counts — one outside the message: no passage.
+    const two = (r2s: any, r2e: any, text: string) => ({ ...selection(a.text, a.text, text), rangeCount: 2,
+      getRangeAt: (i: number) => (i === 0 ? { startContainer: a.text, endContainer: a.text } : { startContainer: r2s, endContainer: r2e }) });
+    expect(q.selectedPassage(list, two(b.text, b.text, "rehearsal another"))).toBe(null);
+    expect(q.selectedPassage(list, two(a.text, a.text, "三個 rehearsal"))?.text).toBe("三個 rehearsal");
     const outside = doc.createElement("p"); outside.textContent = "elsewhere"; doc.body.append(outside);
     expect(q.selectedPassage(list, selection(outside.firstChild, outside.firstChild, "elsewhere"))).toBe(null);
   });
@@ -135,6 +140,13 @@ describe("the pill", () => {
     p.select("rehearsal"); expect(p.pill()).toBe(null);                 // still dragging: no pill yet
     p.doc.dispatchEvent(new MiniEvent("pointerup")); vi.advanceTimersByTime(200);
     expect(!!p.pill()).toBe(true);                                       // let go: the pill
+  });
+  it("#3555 review P2-1: a gesture the browser took over (a touch scroll: pointercancel, no pointerup) ends the press — the next selection has its pill", async () => {
+    const p = await mounted();
+    p.list.dispatchEvent(new MiniEvent("pointerdown", { bubbles: true }));
+    p.doc.dispatchEvent(new MiniEvent("pointercancel"));
+    p.select("rehearsal");
+    expect(!!p.pill()).toBe(true);
   });
   it("no pill on a page that can't send", async () => {
     const p = await mounted({ canQuote: false });
