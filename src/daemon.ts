@@ -6164,6 +6164,13 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** Settle the resident launch transition before lifecycle decides whether to replace it. */
+  async waitForPauseWakeTransition(): Promise<void> {
+    while (this.pauseWakeTransition && (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking")) {
+      await this.pauseWakeTransition;
+    }
+  }
+
   /** Respawn the CLI in the preserved window and block until its prompt is ready. */
   async wake(timeoutMs = 30_000): Promise<void> {
     this.assertSessionOomAdmission();

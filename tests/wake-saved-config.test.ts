@@ -18,7 +18,7 @@ afterEach(() => {
     fm.memoryPressure?.stop(); fm.spawnGate.shutdown(); fm.stormWindow.shutdown();
     rmSync(dir, { recursive: true, force: true });
   }
-  vi.restoreAllMocks(); vi.unstubAllEnvs();
+  vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs();
 });
 
 async function rig() {
@@ -55,7 +55,7 @@ async function rig() {
   vi.spyOn(Daemon.prototype as any, "trySpawn").mockImplementation(async function (this: Daemon) { launch(this); return true; });
   vi.spyOn(Daemon.prototype as any, "resetTranscriptBeforeAdmission").mockResolvedValue(true);
   vi.spyOn(Daemon.prototype as any, "resumeRuntimeMonitors").mockImplementation(() => {});
-  vi.spyOn(Daemon.prototype, "pause").mockImplementation(async function (this: any) {
+  const pause = vi.spyOn(Daemon.prototype, "pause").mockImplementation(async function (this: any) {
     this.pauseWakeState = "paused"; this.autoPauseController.markPaused(1234);
     writePausedMarker(this.instanceDir, 1234, "operator");
   });
@@ -70,7 +70,40 @@ async function rig() {
     expect(fm.lifecycle.isPaused("worker")).toBe(true); expect(launches()).toHaveLength(1);
     return yaml.load(readFileSync(path, "utf8")) as any;
   };
-  return { fm, old, save, launches, start, stop, dir };
+  return { fm, old, save, launches, launch, start, stop, pause, dir };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
+function wakeEntered(fm: any): Promise<void> {
+  const entered = deferred(), run = fm.lifecycle.wakeInTransition.bind(fm.lifecycle);
+  vi.spyOn(fm.lifecycle, "wakeInTransition").mockImplementation((...args: any[]) => {
+    const flight = run(...args); entered.resolve(); return flight;
+  });
+  return entered.promise;
+}
+async function heldRealPause(r: Awaited<ReturnType<typeof rig>>) {
+  r.pause.mockRestore();
+  const old = r.old as any;
+  await old.autoPauseController.wakeOnDeliver(async () => {});
+  old.pauseWakeState = "active"; old.instanceState = "idle";
+  clearPausedMarker(old.instanceDir);
+  const gate = deferred(), entered = deferred();
+  let exited = false, retired = false, settled = false;
+  old.tmux = { getWindowId: () => "%inert", capturePane: async () => "",
+    getPaneStatus: async () => { if (retired) throw Error("retired synthetic pane"); return { alive: !exited }; } };
+  vi.spyOn(old, "checkpointSessionId").mockImplementation(() => { entered.resolve(); return gate.promise; });
+  vi.spyOn(old, "sendQuitSequence").mockImplementation(async () => { exited = true; });
+  const resumed = vi.spyOn(old, "resumeRuntimeMonitors").mockImplementation(() => {});
+  const stopBeforeSettlement: boolean[] = [];
+  r.stop.mockImplementation(async () => { stopBeforeSettlement.push(!settled); retired = true; });
+  const pausing = old.pause("operator").then(() => { settled = true; });
+  void pausing.catch(() => {}); // Cleanup always joins it; observe rejection immediately during red probes.
+  await entered.promise;
+  return { pausing, release: gate.resolve, resumed, stopBeforeSettlement };
 }
 
 describe("a paused fleet Agent adopts saved launch settings at wake", () => {
@@ -122,6 +155,81 @@ describe("a paused fleet Agent adopts saved launch settings at wake", () => {
     await refused; await stopping;
     expect(r.launches()).toHaveLength(1); expect(r.fm.daemons.has("worker")).toBe(false);
     expect(readPausedAt(r.fm.getInstanceDir("worker"))).toBe(1234);
+  });
+  it("settles a held real pause before replacing, then reads the latest saved profile and model", async () => {
+    const r = await rig(); vi.useFakeTimers();
+    const pause = await heldRealPause(r); r.save({ model: "opus" });
+    const entered = wakeEntered(r.fm), waking = r.fm.explicitWake("worker");
+    try {
+      await entered;
+      expect(r.stop).not.toHaveBeenCalled(); expect(r.launches()).toHaveLength(1);
+      expect(r.fm.daemons.get("worker")).toBe(r.old);
+      // A second accepted save during the wait must not be replaced by a pre-wait snapshot.
+      r.save({ backend_options: { "claude-code": { credential_profile: "after" } } });
+      pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await pause.pausing; await waking;
+      expect(pause.stopBeforeSettlement).toEqual([false]); expect(pause.resumed).not.toHaveBeenCalled();
+      expect(r.launches()).toHaveLength(2);
+      expect(r.launches()[1].home).toBe(credentialProfileHome(r.dir, "claude-code", "after"));
+      expect(r.launches()[1].args).toContain("opus"); expect(r.fm.daemons.get("worker")).not.toBe(r.old);
+    } finally {
+      pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("a Stop during a held real pause supersedes the waiting cold wake", async () => {
+    const r = await rig(); vi.useFakeTimers();
+    const pause = await heldRealPause(r); r.save({ model: "opus" });
+    const entered = wakeEntered(r.fm), waking = r.fm.explicitWake("worker");
+    const outcome = waking.then(() => null, (err: unknown) => err);
+    const stops = vi.spyOn(r.fm.lifecycle, "stop");
+    let stopping: Promise<void> | undefined;
+    try {
+      await entered; expect(r.stop).not.toHaveBeenCalled();
+      stopping = r.fm.lifecycle.stop("worker");
+      pause.release(); await vi.advanceTimersByTimeAsync(200); await pause.pausing;
+      expect(await outcome).toBeInstanceOf(SupersededStartError); await stopping;
+      expect(stops).toHaveBeenCalledOnce(); // Only the newer Stop, not an extra cold teardown.
+      expect(r.launches()).toHaveLength(1); expect(r.fm.daemons.has("worker")).toBe(false);
+      expect(pause.stopBeforeSettlement).toEqual([false]); expect(pause.resumed).not.toHaveBeenCalled();
+    } finally {
+      pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.allSettled([pause.pausing, waking, stopping]);
+    }
+  });
+  it("an owner change while a real pause settles cannot retire the replacement", async () => {
+    const r = await rig(); vi.useFakeTimers();
+    const pause = await heldRealPause(r); r.save({ model: "opus" });
+    const entered = wakeEntered(r.fm), waking = r.fm.explicitWake("worker");
+    const outcome = waking.then(() => null, (err: unknown) => err);
+    try {
+      await entered; expect(r.stop).not.toHaveBeenCalled();
+      const replacement = new Daemon("worker", r.fm.fleetConfig.instances.worker, r.fm.getInstanceDir("worker"), false, undefined, undefined, r.fm.logger);
+      const stopReplacement = vi.spyOn(replacement, "stop").mockResolvedValue(undefined);
+      r.fm.daemons.set("worker", replacement);
+      pause.release(); await vi.advanceTimersByTimeAsync(200); await pause.pausing;
+      expect(await outcome).toBeInstanceOf(SupersededStartError);
+      expect(r.fm.daemons.get("worker")).toBe(replacement); expect(stopReplacement).not.toHaveBeenCalled();
+      expect(r.launches()).toHaveLength(1); expect(pause.resumed).not.toHaveBeenCalled();
+    } finally {
+      pause.release(); await vi.advanceTimersByTimeAsync(200);
+      await Promise.allSettled([pause.pausing, waking]);
+    }
+  });
+  it("joins a real wake already in progress without replacing or launching twice", async () => {
+    const r = await rig(), gate = deferred(), spawned = deferred();
+    vi.spyOn(r.old as any, "trySpawn").mockImplementationOnce(async () => {
+      spawned.resolve(); await gate.promise; r.launch(r.old); return true;
+    });
+    const direct = r.old.wake(); await spawned.promise;
+    r.save({ model: "opus" });
+    const entered = wakeEntered(r.fm), joined = r.fm.explicitWake("worker");
+    try {
+      await entered; expect(r.stop).not.toHaveBeenCalled(); expect(r.launches()).toHaveLength(1);
+      gate.resolve(); await Promise.all([direct, joined]);
+      expect(r.fm.daemons.get("worker")).toBe(r.old); expect(r.launches()).toHaveLength(2);
+      expect(r.launches()[1].args).toContain("sonnet"); expect(r.stop).not.toHaveBeenCalled();
+    } finally { gate.resolve(); await Promise.allSettled([direct, joined]); }
   });
   it("an unchanged wake preserves the resident daemon and its window path", async () => {
     const r = await rig(); await r.fm.explicitWake("worker");
