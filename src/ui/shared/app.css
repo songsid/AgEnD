@@ -4270,5 +4270,5 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-details .d-actions .field-row { flex-wrap: wrap; }
 /* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */
 .inst-gear { flex: none; width: 28px; height: 28px; padding: 0; color: var(--text-3); display: inline-grid; place-items: center; }
-@media (hover: hover) { .inst-nav .v-li:not(:hover):not(:focus-within) > .inst-gear:not(:focus-visible) { visibility: hidden; } .inst-nav .v-li:has(> .inst.active) > .inst-gear { visibility: visible; } }
+@media (hover: hover) { .inst-nav .v-li:not(:hover):not(:focus-within):not(:has(> .inst.active)) > .inst-gear:not(:focus-visible) { visibility: hidden; } }
 .v-li.two-line > .inst-gear { align-self: flex-start; margin-top: 6px; }
