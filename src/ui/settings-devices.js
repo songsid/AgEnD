@@ -58,7 +58,7 @@ register("devices", {
     signOutAllLeadChat: "This device, your other devices and every guest and read-only session are signed out. Other admins' devices stay signed in. You will have to sign in again.",
   },
   "zh-TW": {
-    title: "裝置與登入", lead: "用 8 碼裝置登入碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
+    title: "裝置與登入", lead: "用 8 字元裝置登入碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
     add: "新增裝置", noCopy: "核准不會複製這台裝置的登入狀態，新裝置會取得自己的工作階段。",
     ownerOnly: "只有已驗證擁有者的裝置才能新增裝置。請使用 AgEnD 電腦，或用驗證器 App 登入。",
     dlgTitle: "新增裝置", dlgLead: "在新裝置上選「使用其他裝置登入」，再輸入它顯示的裝置登入碼。",

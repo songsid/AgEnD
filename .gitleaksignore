@@ -25,3 +25,9 @@ d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fi
 8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:105
 8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:114
 8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:116
+
+# PR #3562: verified public-source SHA-256 digests, not credentials. Current evidence
+# uses digest-first PRODUCTION_SHA256SUMS. Exact historical findings only;
+# no rule, path, future commit or other finding is exempted.
+2cca5b736232b5519abb6240b899df0bd436a8bf:docs/screenshots/authenticator-signin-s118/receipt.json:generic-api-key:207
+2cca5b736232b5519abb6240b899df0bd436a8bf:docs/screenshots/authenticator-signin-s118/receipt.json:generic-api-key:211

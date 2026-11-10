@@ -155,8 +155,6 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "loading.css": { file: join("shared", "loading.css"), type: "text/css; charset=utf-8" },
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
-  // #3486: the temporary page for the authenticator sign-in (the leader's sign-in page replaces it).
-  "signin-authenticator.js": { file: join("shared", "signin-authenticator.js"), type: "text/javascript; charset=utf-8" },
   "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
@@ -377,22 +375,13 @@ export function handleAuthRequest(
   }
 
   // ── The page and its scripts: public, inert ──
-  if (path === "/signin") {
+  if (path === "/signin" || path === "/signin/authenticator") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
+    // S-118 replaces the temporary UI, retaining its availability fence; both consume the same auth routes.
+    if (path === "/signin/authenticator" && !ctx.totpSignIn) { json(res, 404, { error: "not_found" }); return true; }
     const link = gatewayRequestContext(req);
     serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, noChat: ctx.signinWithoutChat?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
       deviceLogin: !link && ctx.deviceLoginAvailable?.() === true, loginQr: ctx.loginQrEnabled?.() === true });
-    return true;
-  }
-
-  // #3486 (TEMPORARY): the minimum page to try "sign in with your own authenticator" — GET /signin/authenticator; the leader's sign-in page replaces it.
-  if (path === "/signin/authenticator") {
-    if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    if (!ctx.totpSignIn) { json(res, 404, { error: "not_found" }); return true; }
-    try {
-      const page = readFileSync(join(__dirname, "ui", "signin-authenticator.html"), "utf-8");
-      sendPanelHtml(res, withAppIconLinks(page), 200, { "Cache-Control": "no-store" });
-    } catch { json(res, 500, { error: "signin-authenticator.html not found" }); }
     return true;
   }
 

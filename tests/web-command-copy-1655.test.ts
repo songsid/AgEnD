@@ -42,13 +42,19 @@ describe("#1655 advertises /web while keeping the old alias", () => {
     }
   });
 
-  it("shared View translations and the sign-in HTML fallback use /web", () => {
+  it("shared View and chat device-code recovery keep /web; the primary sign-in accepts codes", () => {
     let view: Record<string, Record<string, string>> | undefined;
     runInNewContext(source("src/ui/shared/view-strings.js").replace(/^import .*;$/m, ""), {
       register: (_namespace: string, dictionary: typeof view) => { view = dictionary; },
     });
     webCopy(view!.en.saveHint); webCopy(view!["zh-TW"].saveHint);
-    webCopy(source("src/ui/signin.html"));
+    // S-118 deliberately leads with the authenticator, while chat device-code recovery keeps the advertised command.
+    const signin = source("src/ui/shared/signin.js").match(/const T = (\{[\s\S]*?\n  \});/);
+    expect(signin).not.toBeNull();
+    const words = runInNewContext(`(${signin![1]})`) as Record<string, Record<string, string>>;
+    webCopy(words.en!.refused!); webCopy(words["zh-TW"]!.refused!);
+    const page = source("src/ui/signin.html");
+    expect(page).toContain("6-digit"); expect(page).toContain("8-character"); expect(page).not.toContain("/dashboard");
   });
 
   it.each(["README.md", "README.zh-TW.md", "docs/upgrade-2.2.md", "docs/upgrade-2.2.zh-TW.md",

@@ -13,16 +13,16 @@ const HTML = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8
 
 const COPY = {
   en: {
-    lead: "Enter your sign-in code.",
-    hint: "No code? Send /web in General, then press a sign-in button to get one.",
+    lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
+    hint: "Paste an 8-character device sign-in code",
     nobot: "No chat bot?",
     nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
     refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
     unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
   },
   "zh-TW": {
-    lead: "輸入裝置登入碼。",
-    hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
+    lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。",
+    hint: "也可以貼上 8 字元裝置登入碼",
     nobot: "沒有聊天 bot？",
     nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
     refused: "裝置登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
@@ -36,7 +36,7 @@ async function page(language: string, answer = 401, webOnly = false) {
   vi.useRealTimers();
   const handlers: Record<string, (e?: unknown) => Promise<void>> = {};
   const el = (id: string) => ({ id, hidden: id === "resend" || id === "form", textContent: "", value: "ABCD-EFGH", disabled: false,
-    classList: { add() {}, remove() {} }, addEventListener(type: string, fn: (e?: unknown) => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {} });
+    classList: { add() {}, remove() {} }, addEventListener(type: string, fn: (e?: unknown) => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {}, setAttribute() {} });
   const elements: Record<string, ReturnType<typeof el>> = {};
   const i18n = ["lead", "hint", "nobot", "nobot_body"].map(attr => ({ attr, textContent: "", children: null as unknown[] | null,
     getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } }));
@@ -54,9 +54,9 @@ async function page(language: string, answer = 401, webOnly = false) {
       if (url === "/auth/session") return { ok: false, status: 401 };
       if (url === "/auth/device") return { ok: true, status: 200, json: async () => ({ returning: false }) };
       if (url === "/auth/login") logins.push(JSON.parse(init!.body!));
-      return { ok: answer < 300, status: answer };
+      return { ok: answer < 300, status: answer, headers: { get: () => null }, json: async () => ({}) };
     },
-    URL, URLSearchParams, JSON, Date, Number, String,
+    setTimeout: () => 0, clearTimeout() {}, URL, URLSearchParams, JSON, Date, Number, String,
   });
   vm.runInContext(SRC, context);
   for (let n = 0; n < 50; n++) await new Promise(r => setImmediate(r));
@@ -74,7 +74,7 @@ describe("#1854 rank 2: the sign-in page", () => {
     it(`${language}: a wrong, expired or used code (401) says how to get a new one — press a sign-in button after /web`, async () => {
       const p = await page(language, 401);
       await p.submit();
-      expect([p.$("msg").textContent, p.logins]).toEqual([COPY[language].refused, [{ code: "ABCD-EFGH" }]]);
+      expect([p.$("msg").textContent, p.logins]).toEqual([COPY[language].refused, [{ code: "ABCDEFGH" }]]);
     });
     it(`${language}: a sign-in the server could not confirm (503, and any 5xx) is not called a wrong code`, async () => {
       for (const status of [503, 500]) {
@@ -89,11 +89,12 @@ describe("#1854 rank 2: the sign-in page", () => {
     ["en", "On the AgEnD computer, run agend web --code to get a sign-in code.", "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one."],
     ["zh-TW", "在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。", "裝置登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。"],
   ] as const) {
-    it(`#2910 ${language}: a web-only fleet's page leads with agend web --code (as <code>); its "No chat bot?" help is hidden; a wrong code says the same`, async () => {
+    it(`#2910 ${language}: a web-only fleet shares the unified hint; its hidden help and device-code recovery stay unchanged`, async () => {
       const p = await page(language, 401, true);
-      const hintEl = p.i18n.find(x => x.attr === "hint")!;
-      expect([p.text("hint"), hintEl.children!.map(c => typeof c === "string" ? "text" : (c as { tag: string }).tag), p.help.map(h => h.hidden)])
-        .toEqual([hint, ["text", "code", "text"], [true, false]]);
+      // S-118 makes the primary hint common; the refused-code recovery below remains host-specific.
+      expect([p.text("hint"), p.help.map(h => h.hidden)])
+        .toEqual([COPY[language].hint, [true, false]]);
+      expect(p.text("hint")).not.toContain("agend web");
       await p.submit();
       expect(p.$("msg").textContent).toBe(refused);
       // A chat fleet's page is unchanged (no mark): the /web words, the help shown.
@@ -104,7 +105,7 @@ describe("#1854 rank 2: the sign-in page", () => {
   it("429 keeps its own message (rate limit, not the code)", async () => {
     const p = await page("en", 429);
     await p.submit();
-    expect(p.$("msg").textContent).toBe("Too many wrong codes — sign-in is paused for a few minutes.");
+    expect(p.$("msg").textContent).toBe("Sign-in is paused. Please wait 1 minute, then try again.");
   });
   it("the primary path names no terminal command; agend web --code is only in the help", async () => {
     const p = await page("en");
