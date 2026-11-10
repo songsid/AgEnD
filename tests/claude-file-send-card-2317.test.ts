@@ -65,7 +65,7 @@ describe("M-2296 Claude 2.1.317 connector file-send card", () => {
   });
 
   it("every other Claude fixture is untouched by the new detector", () => {
-    const others = readdirSync(dir).filter(f => f.startsWith("claude") && f.endsWith(".txt") && !FILE_SEND.some(n => f.startsWith(n)));
+    const others = readdirSync(dir).filter(f => f.startsWith("claude") && f.endsWith(".txt") && !FILE_SEND.some(n => f.startsWith(n)) && !f.includes("-file-send-"));  // the 2.1.322 cards: their own test
     expect(others.length).toBeGreaterThan(300);
     const hits = others.filter(f => claudeFileSendCardActive(readFileSync(join(dir, f), "utf8")));
     expect(hits).toEqual([]);
