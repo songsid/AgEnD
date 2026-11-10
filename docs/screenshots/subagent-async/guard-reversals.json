@@ -1,0 +1,98 @@
+[
+  {
+    "name": "diagnostic-recognition",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  12 failed | 66 passed (78)"
+    ]
+  },
+  {
+    "name": "diagnostic-identity",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  2 failed | 76 passed (78)"
+    ]
+  },
+  {
+    "name": "message-binding",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  8 failed | 70 passed (78)"
+    ]
+  },
+  {
+    "name": "ignore-diagnostic-activity",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  1 failed | 77 passed (78)"
+    ]
+  },
+  {
+    "name": "unknown-original-anchor",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  2 failed | 76 passed (78)"
+    ]
+  },
+  {
+    "name": "retirement-filter",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  8 failed | 70 passed (78)"
+    ]
+  },
+  {
+    "name": "late-completion-anchor",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  2 failed | 76 passed (78)"
+    ]
+  },
+  {
+    "name": "parent-end-preserved",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  4 failed | 74 passed (78)"
+    ]
+  },
+  {
+    "name": "parent-end-uuid",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  1 failed | 77 passed (78)"
+    ]
+  },
+  {
+    "name": "initial-write-order",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  1 failed | 77 passed (78)"
+    ]
+  },
+  {
+    "name": "ui-retirement",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  5 failed | 73 passed (78)"
+    ]
+  },
+  {
+    "name": "old-server-no-revival",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests  1 failed | 77 passed (78)"
+    ]
+  }
+]

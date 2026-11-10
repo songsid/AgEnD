@@ -1,0 +1,15 @@
+{
+  "scope": "Original unredacted saved files via actual bounded reader. Live prefix derived, not a captured live meta. No CLI/account/model/live fleet.",
+  "cases": 4,
+  "completed": [
+    "completed",
+    "completed"
+  ],
+  "derivedLive": [
+    "running",
+    "running"
+  ],
+  "expired": [],
+  "reopened": [],
+  "rawParentSha256": "d04a56c9fe9ee45771fd2673c371fb924506bf2ab9c480b13abfc3a435ae4315"
+}
