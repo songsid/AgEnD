@@ -23,7 +23,8 @@ import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { evaluateSettingsRole } from "../src/authority/settings-role.js";
 import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
-import { addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
+import { SIGNIN_KNOWN_COOKIE, addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
+import { fleetCookieName } from "../src/web-cookie-names.js";
 import { setLocale } from "../src/locale.js";
 
 const TOKEN = "d".repeat(48), ADMIN = "100", ADMIN_B = "200", NO_APP = "300", STRANGER = "999";
@@ -387,6 +388,24 @@ describe("limits: this browser first, then the shared ceilings (the admin's, the
 
 describe("a browser that signed in before (the known-device mark)", () => {
   const signIn = async (br: ReturnType<ReturnType<typeof fleet>["browser"]>, user = ADMIN_B, offset = 0) => br.post({ account: user === ADMIN ? "alice_tg" : "bob", code: codeOf(secretFor(user), offset) });
+  /**
+   * What is wrong with a known-device cookie as "a mark that names no one" (empty: nothing). Deterministic: the mark's value is the
+   * random-looking `<expiry>.<HMAC>` text (1–4 entries joined by `~`), so "the text does not contain the admin's id" is a coin flip
+   * for an id made of digits or hex letters (CI flaked on it: a signature that happened to contain `200`). What is checked instead is
+   * (a) its STRUCTURE — only canonical entries (an expiry of 10–16 digits, a dot, 32 lowercase hex), nothing else in the value, so
+   * there is no field an identity could be in — and (b) the identities the test signed in as, which are chosen to be impossible in the
+   * mark's alphabet (`[0-9a-f.~]`), so finding one in the value is always a real leak and never a coincidence.
+   */
+  const markProblems = (setCookie: string, identities: readonly string[]): string[] => {
+    const problems: string[] = [];
+    const eq = setCookie.indexOf("="), value = setCookie.slice(eq + 1).split(";")[0]!;
+    const entries = value.split("~");
+    if (entries.length < 1 || entries.length > 4) problems.push(`${entries.length} entries`);
+    for (const e of entries) if (!/^[1-9][0-9]{9,15}\.[0-9a-f]{32}$/.test(e)) problems.push(`not an <expiry>.<signature> entry: ${e}`);
+    if (!/^[0-9a-f.~]+$/.test(value)) problems.push("a character outside [0-9a-f.~]");
+    for (const id of identities) if (id && /[^0-9a-f.~]/.test(id) && (value.includes(id) || setCookie.slice(0, eq).includes(id))) problems.push(`names ${id}`);
+    return problems;
+  };
   it("the first success hands out the browser's id and its mark (HttpOnly, SameSite=Strict, long-lived); the mark names no one", async () => {
     const f = fleet(), mine = f.browser(), r = await signIn(mine);
     expect(r.status).toBe(200);
@@ -394,7 +413,41 @@ describe("a browser that signed in before (the known-device mark)", () => {
     const known = cookies.find(c => /^agend_signin_known/.test(c))!, id = cookies.find(c => /^agend_signin_browser/.test(c))!;
     for (const c of [known, id]) expect(c).toMatch(/HttpOnly; SameSite=Strict; Max-Age=\d+/);
     expect(Number(/Max-Age=(\d+)/.exec(known)![1])).toBe(90 * 24 * 3600);
-    expect(known).not.toContain(ADMIN_B); expect(known).not.toContain("bob");
+    // The mark is one canonical <expiry>.<signature> entry and nothing else; its name is the fleet's (from the token), not the admin's.
+    expect(markProblems(known, ["bob", "Alice_TG"])).toEqual([]);
+    expect(known.split("=")[0]).toBe(fleetCookieName(SIGNIN_KNOWN_COOKIE, TOKEN));
+    expect(known.slice(known.indexOf("=") + 1).split(";")[0]!.split("~")).toHaveLength(1);
+  });
+  it("…and an admin whose id can never appear in a mark by chance: the same sign-in, the id (and connection:id) is nowhere in the cookie", async () => {
+    const SPECIAL = "Zq-200";                                                                   // 'Z', 'q' and '-' are outside the mark's alphabet: a hit is a leak, never luck
+    const f = fleet({ admins: [SPECIAL], allowed: [SPECIAL], names: false }), mine = f.browser();
+    const r = await mine.post({ account: SPECIAL, code: codeOf(secretFor(SPECIAL)) });
+    expect(r.status).toBe(200);
+    const known = (r.headers["Set-Cookie"] as string[]).find(c => /^agend_signin_known/.test(c))!;
+    expect(markProblems(known, [SPECIAL, `a:${SPECIAL}`, "Zq", "a:Zq"])).toEqual([]);
+    expect(known).not.toContain(SPECIAL); expect(known).not.toContain("Zq");
+  });
+  it("the check itself: it catches a mark that names someone (the control), and never mistakes a signature that merely contains the digits for one", () => {
+    const mac = "0123456789abcdef0123456789abcdef", at = "1799999999999", name = "agend_signin_known_c21b13ddab05bbd2";
+    // Real leaks, each of which the old substring check would also have flagged: all are reported.
+    expect(markProblems(`${name}=200.${mac}; Path=/`, ["Zq-200"]).length).toBeGreaterThan(0);                  // an id where the expiry goes
+    expect(markProblems(`${name}=${at}.${mac}~Zq-200; Path=/`, ["Zq-200"])).toEqual(expect.arrayContaining(["names Zq-200"]));
+    expect(markProblems(`${name}=${at}.${mac}~bob; Path=/`, ["bob"])).toEqual(expect.arrayContaining(["names bob"]));
+    expect(markProblems(`${name}=bob.${mac}; Path=/`, ["bob"]).length).toBeGreaterThan(0);
+    expect(markProblems(`${name}=${at}.${mac}.200; Path=/`, [])).not.toEqual([]);                              // an extra field
+    expect(markProblems(`${name}=${at}.${mac}~${at}.${mac}~${at}.${mac}~${at}.${mac}~${at}.${mac}; Path=/`, [])).not.toEqual([]);   // more than four entries
+    expect(markProblems(`agend_signin_known_Zq-200=${at}.${mac}; Path=/`, ["Zq-200"])).toEqual(expect.arrayContaining(["names Zq-200"]));   // an id in the cookie's name
+    // The flake: a perfectly good mark whose signature contains the admin's digits (or any of them, anywhere) is clean.
+    for (const lucky of ["200", "100", "999", "20", "00"]) {
+      const sig = (lucky + "f".repeat(32)).slice(0, 32), good = `${name}=${at}.${sig}; Path=/; HttpOnly`;
+      expect(good).toContain(lucky);
+      expect(markProblems(good, ["Zq-200", "bob"])).toEqual([]);
+    }
+    // Every position of "200" in a signature, and in the expiry's digits.
+    for (let i = 0; i <= 29; i++) {
+      const sig = ("a".repeat(i) + "200" + "b".repeat(32)).slice(0, 32), expiry = `1${"2".repeat(3)}00${"0".repeat(8)}`;
+      expect(markProblems(`${name}=${expiry}.${sig}`, ["Zq-200", "bob"]), `i=${i}`).toEqual([]);
+    }
   });
   it("another browser's wrong codes (even to the name's ceiling) do not hold a known device; it still needs the right code", async () => {
     const f = fleet(), mine = f.browser();
