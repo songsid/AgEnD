@@ -10,6 +10,7 @@ import { reportUpdateRestart } from "../src/update-check.js";
 import * as preimage from "../src/package-preimage.js";
 import { activationWorld } from "./support/activation-world-1490.js";
 import { guardLaunchd, guardSystemd, type ExpectedTuple } from "../src/restart-guard.js";
+import { withoutUpdateNpmBounds } from "../src/update-npm-env.js";   // M-2797: a free name of the extracted CLI code
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -54,7 +55,7 @@ function rig(status: number | null, kind: "systemd" | "detached" = "systemd") {
   };
   const context = createContext({ process, console, join, Promise, pkgVersion: "2.1.12", DATA_DIR: join(root, "data"), nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
     spawnSync, readFileSync: fs.readFileSync, writeFileSync: fs.writeFileSync, realpathSync: fs.realpathSync, statSync: fs.statSync,
-    withOrigin: () => ({}), setUpdateProgressStage: (_dir: string, stage: string) => { stages.push(stage); return true; }, clearUpdateMarker: vi.fn(),
+    withOrigin: () => ({}), withoutUpdateNpmBounds, setUpdateProgressStage: (_dir: string, stage: string) => { stages.push(stage); return true; }, clearUpdateMarker: vi.fn(),
     reportUpdateRestart: (value: number | null) => reportUpdateRestart(value, console),
     load: async (name: string) => { if (!(name in modules)) throw Error(`Unexpected inert import ${name}`); return modules[name]; },
     opts: { force: false },

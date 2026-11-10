@@ -32,6 +32,7 @@ import { setLocale } from "../src/locale.js";
 import * as preimage from "../src/package-preimage.js";
 import { activationWorld } from "./support/activation-world-1490.js";
 import type { CommandResult, CommandRunner } from "../src/update-install.js";
+import { withoutUpdateNpmBounds } from "../src/update-npm-env.js";   // M-2797: a free name of the extracted CLI code
 
 const roots: string[] = [];
 beforeEach(() => { setLocale("en"); });
@@ -241,7 +242,7 @@ function cliRig(sudoUninstallStatus: number, installedVersion = "2.1.12") {
   // #2264 review: the copy this updater runs from — the system copy retired only when it is a 2.1-era release.
   const context = createContext({ process, console, join, Promise, t, pkgVersion: installedVersion, DATA_DIR: dataDir, nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
     spawnSync, readFileSync: fs.readFileSync, writeFileSync: fs.writeFileSync, realpathSync: fs.realpathSync, statSync: fs.statSync,
-    withOrigin: () => ({}), setUpdateProgressStage: (dir: string, stage: string, details?: unknown) => { stages.push({ stage, details }); return true; }, clearUpdateMarker: vi.fn(),
+    withOrigin: () => ({}), withoutUpdateNpmBounds, setUpdateProgressStage: (dir: string, stage: string, details?: unknown) => { stages.push({ stage, details }); return true; }, clearUpdateMarker: vi.fn(),
     reportUpdateRestart: (value: number | null) => reportUpdateRestart(value, console),
     load: async (name: string) => { if (!(name in modules)) throw Error(`Unexpected inert import ${name}`); return modules[name]; },
     opts: { force: false },
