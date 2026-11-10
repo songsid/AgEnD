@@ -485,7 +485,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
@@ -21212,7 +21212,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
     this.refreshSignInIdentities();
     const targets = this.backendSignInTargets();
-    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
+    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity; reconnect?: true }>>();
     for (const backend of PROFILE_CLIS) {
       const rows = [];
       for (const profile of profilesOnDisk(this.dataDir, backend)) {
@@ -21222,7 +21222,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
         const identity = this.signInIdentity(backend, profile);
         rows.push({ profile, state: (login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown") as SignInTarget["state"], signIn,
-          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}) });
+          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}), ...(this.claudeSignInEnded(backend, profile) ? { reconnect: true as const } : {}) });
       }
       diskProfiles.set(backend, rows);
     }
@@ -21655,14 +21655,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result;
   }
 
+  /** M-2825: a host Claude sign-in whose own file says it is over (credential-profile.ts claudeStoreEnded); false for other CLIs. */
+  private claudeSignInEnded(backend: string, profile: string | null): boolean {
+    if (backend !== "claude-code") return false;
+    try {
+      const home = profile ? credentialProfileStoreHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot();
+      return !!home && claudeStoreEnded(home);
+    } catch { return false; }
+  }
+
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
       const flow = LOGIN_FLOWS[row.backend];
       const install = BACKEND_INSTALLATION_INFO[row.backend]?.install;
+      // M-2825: `claude auth status` says loggedIn after a refused refresh and past the sign-in's end date — the file says
+      // whether it is over, and then it is not signed in (never the other way: the file can't vouch for a login).
+      const ended = row.state === "usable" && this.claudeSignInEnded(row.backend, null);
       out.push({
         // Not installed or too old: signing in would not help — the row says how to install (or update) it instead.
-        backend: row.backend, state: row.state, signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
+        backend: row.backend, state: ended ? "not_signed_in" : row.state, ...(ended ? { reconnect: true as const } : {}),
+        signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
         ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
         ...(row.state === "too_old" && install ? { update: install } : {}),
@@ -21680,7 +21693,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const signIn = dashboardSignInSupported(backend, profile);
       const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
       out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
-        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}) });
+        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}),
+        ...(this.claudeSignInEnded(backend, profile) ? { reconnect: true as const } : {}) });
     }
     return out;
   }

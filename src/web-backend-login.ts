@@ -51,6 +51,8 @@ export interface SignInTarget {
   update?: string;
   /** Which account this sign-in is (a masked e-mail and a plan), Claude Code only, from the host's own `claude auth status`. Local administrators only: this list is never served to anyone else. */
   identity?: AccountIdentity;
+  /** M-2825: the sign-in's file says it is over (its end date passed, or blanked after a refused refresh): reconnect it. */
+  reconnect?: true;
 }
 
 export interface WebLoginRequester {

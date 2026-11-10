@@ -20,6 +20,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { END_NOTICE_MS, END_WARNING_MS, SignInKeepAlive, endNoticeOf, writeEntries, type KeepAliveDeps, type KeepAliveRunners } from "../src/signin-keepalive.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
+import { claudeStoreEnded, claudeStoreHasLogin } from "../src/backend/credential-profile.js";
+import { buildAccountsView } from "../src/accounts-view.js";
 
 const DAY = 86_400_000, NOW = Date.UTC(2026, 10, 10, 6, 0, 0);
 const dirs: string[] = [];
@@ -43,6 +45,39 @@ describe("endNoticeOf (pure)", () => {
     expect(endNoticeOf([s(NOW + 6 * 3_600_000)], NOW)).toEqual([{ backend: "claude-code", profile: "work", kind: "ending", since: NOW + 6 * 3_600_000 - DAY, endsAt: NOW + 6 * 3_600_000 }]);
     expect(endNoticeOf([s(NOW)], NOW)).toEqual([{ backend: "claude-code", profile: "work", kind: "ended", since: NOW, endsAt: NOW }]);
     expect(endNoticeOf([s(NOW - DAY)], NOW)).toEqual([{ backend: "claude-code", profile: "work", kind: "ended", since: NOW - DAY, endsAt: NOW - DAY }]);
+  });
+});
+
+describe("an ended sign-in is not 「已連接」 (the leader on #3577: the hsinlin case)", () => {
+  const store = (creds?: Record<string, unknown>, account = true) => {
+    const d = scratch();
+    if (creds) writeFileSync(join(d, ".credentials.json"), JSON.stringify({ claudeAiOauth: creds }));
+    if (account) writeFileSync(join(d, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "u-1" } }));
+    return d;
+  };
+  const live = { accessToken: SECRET_AT, refreshToken: SECRET_RT, expiresAt: NOW + 3_600_000, refreshTokenExpiresAt: NOW + 5 * DAY };
+  it("claudeStoreEnded: past its end date (a refresh token still there), or blanked after invalid_grant (expiresAt 0 / no tokens) — from the file; nothing known: false", () => {
+    expect(claudeStoreEnded(store(live), NOW)).toBe(false);
+    expect(claudeStoreEnded(store({ ...live, refreshTokenExpiresAt: NOW - 1 }), NOW)).toBe(true);
+    expect(claudeStoreEnded(store({ ...live, refreshTokenExpiresAt: NOW }), NOW)).toBe(true);
+    expect(claudeStoreEnded(store({ ...live, accessToken: "", refreshToken: "", expiresAt: 0 }), NOW)).toBe(true);   // what claude leaves after invalid_grant
+    expect(claudeStoreEnded(store({ ...live, expiresAt: 0 }), NOW)).toBe(true);
+    expect(claudeStoreEnded(store({ accessToken: "", refreshToken: "" }), NOW)).toBe(true);
+    expect(claudeStoreEnded(store({ accessToken: SECRET_AT }), NOW)).toBe(false);                                  // no end date known: not over
+    expect(claudeStoreEnded(store(undefined), NOW)).toBe(false);                                                    // macOS: the token is in the Keychain
+    expect(claudeStoreEnded(join(scratch(), "missing"), NOW)).toBe(false);
+  });
+  it("claudeStoreHasLogin: an ended login is signed out even though .claude.json still names the account; the Keychain shape (no file) stays signed in", () => {
+    expect(claudeStoreHasLogin(store({ ...live, refreshTokenExpiresAt: Date.now() - 1 }))).toBe(false);
+    expect(claudeStoreHasLogin(store({ ...live, accessToken: "", refreshToken: "", expiresAt: 0 }))).toBe(false);
+    expect(claudeStoreHasLogin(store({ ...live, refreshTokenExpiresAt: Date.now() + DAY }))).toBe(true);
+    expect(claudeStoreHasLogin(store(undefined))).toBe(true);
+  });
+  it("the Accounts view carries `reconnect` on the default row and a profile's row", () => {
+    const v = buildAccountsView({ targets: [{ backend: "claude-code", state: "not_signed_in", signIn: true, reconnect: true }],
+      diskProfiles: new Map([["claude-code", [{ profile: "hsinlin", state: "not_signed_in", signIn: true, reconnect: true }, { profile: "ok", state: "usable", signIn: true }]]]),
+      agents: [], classic: [], fleetDefaults: new Map() } as never);
+    expect(v.clis[0]!.rows.map(r => [r.profile, r.state, r.reconnect ?? null])).toEqual([[null, "not_signed_in", true], ["hsinlin", "not_signed_in", true], ["ok", "usable", null]]);
   });
 });
 
@@ -130,6 +165,22 @@ describe("FleetManager: the sign-ins in use, warned about in Needs you", () => {
     const items = deriveNeedsYou({ prompts: [], instances: [], deliveries: [], ownerOf: () => "dc", signInKeepAlive: lines });
     expect(items.map((i: any) => [i.reason, i.id.replace(/\d+$/, "N"), !!i.signIn])).toEqual([
       ["backend_signin", "keepalive:ending:claude-code:hsinlin:N", true], ["backend_signin", "keepalive:ended:claude-code::N", true]]);
+  });
+  it("the leader on #3577: the rows' state reads the file — an ended default whose `claude auth status` said loggedIn, and an ended profile, say reconnect", async () => {
+    claudeCreds(join(dir, "credential-profiles", "claude-code", "gone"), T - 3_600_000);
+    const rows = fm.backendAvailabilityRows;
+    fm.backendAvailabilityRows = () => [{ backend: "claude-code", state: "usable", auth: "valid", path: "/x/claude" }];     // the CLI's answer: logged in
+    try {
+      const targets = fm.backendSignInTargets();
+      expect(targets.filter((t: any) => !t.profile).map((t: any) => [t.backend, t.state, t.reconnect ?? null])).toEqual([["claude-code", "not_signed_in", true]]);
+      expect(targets.filter((t: any) => t.profile === "hsinlin").map((t: any) => [t.state, t.reconnect ?? null])).toEqual([["usable", null]]);
+      // The Accounts view (its profiles on disk): the ended profile says reconnect; a live one doesn't.
+      fm.refreshSignInIdentities = () => {};                 // no `claude auth status` for the identity line (no CLI here)
+      const view = await fm.accountsView(0);
+      const claude = view.clis.find((c: any) => c.backend === "claude-code");
+      expect(claude.rows.filter((r: any) => r.scope.kind === "host").map((r: any) => [r.profile, r.state, r.reconnect ?? null]))
+        .toEqual(expect.arrayContaining([[null, "not_signed_in", true], ["gone", "not_signed_in", true], ["hsinlin", "usable", null]]));
+    } finally { fm.backendAvailabilityRows = rows; }
   });
   it("#3577 review P2: a profile saved but not yet applied — the agent still runs on the old one (as launched), which stays in use and warned about until the restart", async () => {
     const yaml = (profile: string) => [

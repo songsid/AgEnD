@@ -64,6 +64,8 @@ export interface AccountRow {
   shortUsage?: AccountUsage;
   /** #3292: "Keep sign-in alive" (Claude Code and Codex host rows): the setting, its last run, the dates the sign-in's file says. */
   keepAlive?: AccountKeepAlive;
+  /** M-2825: not signed in because the sign-in is over (its file says so): the badge says to reconnect. */
+  reconnect?: true;
 }
 /** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
 export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
@@ -97,7 +99,7 @@ export interface AccountsInput {
   /** backendSignInTargets(): every backend's default, and each profile an agent uses. */
   targets: readonly SignInTarget[];
   /** Profiles on disk an agent may not use yet, per backend, with their sign-in state and how to sign them in. */
-  diskProfiles: ReadonlyMap<string, ReadonlyArray<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>;
+  diskProfiles: ReadonlyMap<string, ReadonlyArray<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity; reconnect?: true }>>;
   /** Every fleet agent: its backend and its effective profile (its own, else the fleet default's; null = the default sign-in). */
   agents: ReadonlyArray<{ name: string; backend: string; profile: string | null }>;
   /** ClassicBot channels, as their key, backend and effective profile. */
@@ -187,7 +189,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
     if (hostRelevant) rows.push({
       scope: { kind: "host" }, backend, profile: null, state: def?.state ?? "unknown", signIn: !!def?.signIn,
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
-      ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}),
+      ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}), ...(def?.reconnect ? { reconnect: true as const } : {}),
       ...(installed && versionOf(printed) ? { version: versionOf(printed)! } : {}), ...(cliUpdate ? { cliUpdate } : {}),
       usedBy: usedBy(null), ...(usage(null) ? { usage: usage(null) } : {}), ...(shortOf(null) ? { shortUsage: shortOf(null) } : {}), ...keepAlive(null),
     });
@@ -204,7 +206,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
         const src = t ?? d;
         rows.push({
           scope: { kind: "host" }, backend, profile, state: src?.state ?? "not_signed_in", signIn: !!src?.signIn,
-          ...(src?.identity ? { identity: src.identity } : {}), ...(src?.hostCommand ? { hostCommand: src.hostCommand } : {}),
+          ...(src?.identity ? { identity: src.identity } : {}), ...(src?.hostCommand ? { hostCommand: src.hostCommand } : {}), ...(src?.reconnect ? { reconnect: true as const } : {}),
           usedBy: usedBy(profile), ...(usage(profile) ? { usage: usage(profile) } : {}), ...(shortOf(profile) ? { shortUsage: shortOf(profile) } : {}), ...keepAlive(profile),
         });
       }

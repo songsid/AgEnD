@@ -245,6 +245,8 @@ const CLAUDE_HOME: CredentialHomeSpec = {
  * no proof in the other: null — unknown, never "signed out" (#1699).
  */
 export function claudeStoreHasLogin(storeHome: string): boolean | null {
+  // M-2825: a login in .credentials.json that is over is no login, whatever .claude.json still names (the hsinlin case).
+  if (claudeStoreEnded(storeHome)) return false;
   let unreadable = false;
   const read = (name: string): Record<string, any> | null => {
     try {
@@ -261,6 +263,28 @@ export function claudeStoreHasLogin(storeHome: string): boolean | null {
   const account = read(".claude.json")?.oauthAccount?.accountUuid;
   if (typeof account === "string" && account.length > 0) return true;
   return unreadable ? null : false;
+}
+
+/**
+ * M-2825 (the user, 11-10: an ended sign-in showed 「已連接」): the Claude login in this config dir's `.credentials.json`
+ * is over — its fixed end date (`refreshTokenExpiresAt`, which refreshing never moves) has passed, or the CLI blanked it
+ * after a refused refresh (`invalid_grant`: `expiresAt` 0, both tokens empty — while `claude auth status` still says
+ * loggedIn). Read from the file only: dates and emptiness, never a token's value. No file, or no login in it (macOS keeps
+ * the token in the Keychain): false — nothing is known to be over.
+ */
+export function claudeStoreEnded(storeHome: string, now: number = Date.now()): boolean {
+  let o: Record<string, unknown> | null = null;
+  try {
+    const v: unknown = JSON.parse(readFileSync(join(storeHome, ".credentials.json"), "utf8"));
+    const c = v && typeof v === "object" ? (v as Record<string, unknown>).claudeAiOauth : null;
+    o = c && typeof c === "object" ? c as Record<string, unknown> : null;
+  } catch { return false; }
+  if (!o) return false;
+  const end = o.refreshTokenExpiresAt;
+  if (typeof end === "number" && Number.isFinite(end) && end > 0 && end <= now) return true;
+  if (o.expiresAt === 0) return true;
+  const empty = (x: unknown) => typeof x !== "string" || x.length === 0;
+  return empty(o.accessToken) && empty(o.refreshToken);
 }
 
 /** Backends that can hold more than one login. */

@@ -52,6 +52,14 @@ const rowOf = (backend: string, acct: string) => card(backend).querySelector(`.s
 const text = (el: any) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 
 describe("Settings → Agents → Accounts (#3212)", () => {
+  it("M-2825: an ended sign-in's badge says to reconnect — 「需要重新連接」 / needs reconnecting — not just 'not connected'", async () => {
+    view = { clis: [{ ...VIEW.clis[0], rows: [{ ...VIEW.clis[0]!.rows[1], profile: "hsinlin", reconnect: true }, VIEW.clis[0]!.rows[1]] }] };
+    await mount();
+    expect([text(rowOf("claude-code", "hsinlin").querySelector(".s-auth-state")), text(rowOf("claude-code", "personal").querySelector(".s-auth-state"))]).toEqual(["needs reconnecting", "not connected"]);
+    await p.unmount(); i18n.setLang("zh-TW", { store: false }); A.accountsStore.set({ loaded: false, failed: false, view: null });
+    await mount();
+    expect([text(rowOf("claude-code", "hsinlin").querySelector(".s-auth-state")), text(rowOf("claude-code", "personal").querySelector(".s-auth-state"))]).toEqual(["需要重新連接", "尚未連接"]);
+  });
   it("one card per CLI; each account says which it is, who uses it, its week; states in words", async () => {
     await mount();
     expect(p.root.querySelectorAll(".s-account-card").map((c: any) => c.getAttribute("data-backend"))).toEqual(["claude-code", "codex"]);
