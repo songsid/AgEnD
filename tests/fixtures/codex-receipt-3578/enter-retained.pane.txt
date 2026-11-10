@@ -1,0 +1,42 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     /tmp/m3578-ctp4nkk5/w
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› [agend-human-id: hmsg-00000000-0000-4000-8000-000000003578]
+  [user:Test person via discord, id:mock-person] Wait for the local mock response.
+  (message_id: m3578-replay-message)
+
+  Context 100% left
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
