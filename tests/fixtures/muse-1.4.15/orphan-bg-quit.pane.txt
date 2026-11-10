@@ -1,0 +1,36 @@
+
+
+  Muse Code 1.4.15
+
+  resumed session 01a1c59e-9220-7c93-87ca-8c2d820cc67c
+
+❯ please do the long thing
+
+◆ Backgrounded sleep 300 · 1s · ctrl+o
+
+  (↓ to view terminals)
+
+◆ mock reply ok
+
+  warning: the previous run of this session ended abnormally around 2026-11-10 13:21 UTC (no clean shutdown was
+  recorded). It was resumed cleanly.
+
+❯ carry on
+
+◆ mock reply ok
+
+To continue this session, run muse resume 01a1c59e-9220-7c93-87ca-8c2d820cc67c
+
+
+
+
+
+
+
+
+
+
+
+
+
+

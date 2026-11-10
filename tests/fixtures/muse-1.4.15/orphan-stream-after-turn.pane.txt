@@ -1,0 +1,36 @@
+
+
+  Muse Code 1.4.15
+
+  resumed session 01a1c59d-6915-7820-b461-f10183c3286f
+
+❯ please do the long thing
+
+◆ Interrupted · Report issues with /feedback
+
+  warning: the previous run of this session ended abnormally around 2026-11-10 13:19 UTC (no clean shutdown was
+  recorded). It was resumed cleanly.
+
+❯ carry on
+
+◆ mock reply ok
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · /home/u/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
