@@ -7,6 +7,7 @@
  *    POST /ui/public-link/close; a web-only fleet's outside link is closed by its switch, so no button there, a pointer;
  *  - shares counted from the existing share lists, paired computers from /ui/runtimes.
  */
+import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
@@ -214,5 +215,40 @@ describe("S-120: counts from existing reads", () => {
     await mount("zh-TW");
     expect(text($("#ovEntry"))).toContain("3 個開放中");
     expect(text($('[data-ov-go="runtimes"]'))).toContain("已連上 2 台");
+  });
+});
+
+describe("M-2855 (2): the page carries its own tab label and stylesheet — a tab opened before S-120 holds an older settings-layout.js and app.css", () => {
+  const read = (rel: string) => readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8");
+  it("the stylesheet is linked once, when the module loads (before any render); linking again adds none", () => {
+    const links = () => p.document.querySelectorAll('link[data-access-overview-css="1"]');
+    expect(links().length).toBe(1);
+    expect(links()[0].getAttribute("href")).toBe("/assets/access-overview.css");
+    expect(links()[0].getAttribute("rel")).toBe("stylesheet");
+    O.linkAccessOverviewCss();
+    expect(links().length).toBe(1);
+  });
+  it("the tab label is the page's own word, in both languages; the settings page asks it, and no settingsLayout key is left to miss", () => {
+    i18n.setLang("en"); expect(O.accessOverviewLabel()).toBe("Overview");
+    i18n.setLang("zh-TW"); expect(O.accessOverviewLabel()).toBe("總覽");
+    const panel = read("ui/panel-settings.js");
+    expect(panel).toMatch(/\{ id: "overview", label: accessOverviewLabel\(\) \}/);
+    expect(panel).not.toMatch(/layoutText\("accessOverview"\)/);
+    expect(read("ui/settings-layout.js")).not.toMatch(/accessOverview/);
+  });
+  it("every s-ov class the page uses has its rule in access-overview.css; app.css holds none of them; the server serves the file", async () => {
+    const used = new Set([...read("ui/settings-access-overview.js").matchAll(/\bs-ov(?:-[a-z]+)*\b/g)].map(x => x[0]).filter(c => !c.endsWith("-")));
+    const css = read("ui/shared/access-overview.css");
+    for (const c of used) expect(css, c).toMatch(new RegExp(`\\.${c}(?![a-z-])`));
+    expect(css).toMatch(/\.tag\.tag-ok\b/);
+    expect(read("ui/shared/app.css")).not.toMatch(/\.s-ov\b|\.s-ov-|\.tag-ok\b/);
+    const { handleAuthRequest } = await import("../src/auth-api.js");
+    const got = await new Promise<{ status: number; type: string; body: string }>(resolve => {
+      const res: any = { writeHead(s: number, h: Record<string, string>) { this.s = s; this.h = h; }, end(b: Buffer | string) { resolve({ status: this.s, type: this.h?.["Content-Type"], body: String(b) }); } };
+      handleAuthRequest({ method: "GET", url: "/assets/access-overview.css", headers: { host: "127.0.0.1" } } as any, res, new URL("http://127.0.0.1/assets/access-overview.css"), {} as any);
+    });
+    expect(got.status).toBe(200);
+    expect(got.type).toMatch(/^text\/css/);
+    expect(got.body).toBe(css);
   });
 });

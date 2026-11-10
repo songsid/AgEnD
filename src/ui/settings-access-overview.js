@@ -17,7 +17,7 @@ import { roleName } from "/assets/device-roles.js";
 
 register("accessov", {
   en: {
-    devicesTitle: "Signed-in devices", devicesCount: "{0} signed in", more: "{0} more in Devices & sign-in", manageDevices: "Devices & sign-in", manageGuests: "Guests",
+    tab: "Overview", devicesTitle: "Signed-in devices", devicesCount: "{0} signed in", more: "{0} more in Devices & sign-in", manageDevices: "Devices & sign-in", manageGuests: "Guests",
     legend: "✓ the verified owner: may add devices and sign others out. Not verified: everyday use only.",
     blockedOwner: "Verify as the owner first to sign out other devices.", blockedOther: "Another admin's device: only that admin can sign it out.",
     signOutTitle: "Sign out {0}?", signOutLead: "{0} is signed out at once and has to sign in again.", signedOut: "{0} was signed out.",
@@ -36,7 +36,7 @@ register("accessov", {
     accounts: "AI accounts", accountsHint: "The Claude, Codex and other accounts your agents use", hubOn: "Connected", paired: "{0} connected",
   },
   "zh-TW": {
-    devicesTitle: "已登入的裝置", devicesCount: "{0} 個登入", more: "另外 {0} 個，到「裝置與登入」查看", manageDevices: "裝置與登入", manageGuests: "訪客",
+    tab: "總覽", devicesTitle: "已登入的裝置", devicesCount: "{0} 個登入", more: "另外 {0} 個，到「裝置與登入」查看", manageDevices: "裝置與登入", manageGuests: "訪客",
     legend: "✓ 已驗證的擁有者：可新增裝置、登出其他裝置。未驗證：只能使用一般功能。",
     blockedOwner: "要先驗證為擁有者，才能登出其他裝置。", blockedOther: "別的管理員的裝置，只有那位管理員本人能登出。",
     signOutTitle: "登出 {0}？", signOutLead: "{0} 會立即登出，之後需要重新登入。", signedOut: "已登出 {0}。",
@@ -56,6 +56,22 @@ register("accessov", {
   },
 });
 const to = (k, ...a) => t(`accessov.${k}`, ...a);
+/** M-2855: the tab's own label (a tab opened before this page existed holds an older settings-layout.js without it). */
+export const accessOverviewLabel = () => to("tab");
+
+/**
+ * M-2855: this page's stylesheet, linked once when the module loads (a tab opened before this page existed holds an
+ * older app.css with none of its rules). Before first render, so the cards never paint unstyled.
+ */
+export function linkAccessOverviewCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-access-overview-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/access-overview.css"); link.setAttribute("data-access-overview-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the page still works without it */ }
+}
+linkAccessOverviewCss();
 const SHOWN = 4;
 const leftWords = (ms) => { const m = Math.max(1, Math.round(ms / 60_000)); return m >= 60 ? (m % 60 ? to("hm", Math.floor(m / 60), m % 60) : to("h", Math.floor(m / 60))) : to("m", m); };
 const day = (ms) => { const d = new Date(ms); return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`; };

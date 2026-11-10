@@ -59,7 +59,6 @@ export const layoutText = (key, ...values) => t(`settingsLayout.${key}`, ...valu
 
 register("settingsLayout", {
   "en": {
-    "accessOverview": "Overview",
     "accessLogin": "Sign-in & authority",
     "accessGuests": "Guests",
     "accessSharing": "Public & sharing",
@@ -76,7 +75,6 @@ register("settingsLayout", {
     "effectiveSourceDefault": "Default"
   },
   "zh-TW": {
-    "accessOverview": "總覽",
     "accessLogin": "登入與授權",
     "accessGuests": "訪客",
     "accessSharing": "公開與分享",

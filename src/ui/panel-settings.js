@@ -62,7 +62,7 @@ import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { DevicesCard } from "./settings-devices.js";
-import { AccessOverview } from "./settings-access-overview.js";
+import { AccessOverview, accessOverviewLabel } from "./settings-access-overview.js";
 import { HubSection, hubSectionText } from "./settings-hub-section.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
@@ -1374,7 +1374,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const has = (p) => part === "all" || part === p;
   const lock = (body) => html`<fieldset class="s-web-fields" disabled=${overPublicLink}>${body}</fieldset>`;
   const tabs = [
-    { id: "overview", label: layoutText("accessOverview") },
+    { id: "overview", label: accessOverviewLabel() },
     { id: "login", label: layoutText("accessLogin") },
     { id: "guests", label: layoutText("accessGuests") },
     { id: "sharing", label: layoutText("accessSharing") },
