@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const exec = promisify(execFile);
 const repo = resolve(process.env.REPO ?? process.cwd());
 const control = resolve(process.env.CONTROL);
+const controlHead = process.env.CONTROL_HEAD ?? 'e1b88cd8edd4d6c4656a6dbae8f9c68239025dee';
 const out = resolve(process.env.OUT ?? join(repo, '.artifacts/acceptance'));
 const chrome = resolve(process.env.CHROME), pw = resolve(process.env.PW_DIR), fonts = resolve(process.env.FONTCONFIG_FILE);
 mkdirSync(out, { recursive: true });
@@ -21,7 +22,7 @@ for (const [name, cwd] of [['control', control], ['candidate', repo]]) {
   source[name] = { head: await git(cwd, 'rev-parse', 'HEAD'), tree: await git(cwd, 'rev-parse', 'HEAD^{tree}'), inputs: {} };
   for (const path of ['src', 'scripts/manual/smoke', 'scripts/manual/smoke-fixture', 'tests/helpers/hub-s3b-rig.ts']) source[name].inputs[path] = await git(cwd, 'rev-parse', `HEAD:${path}`);
 }
-assert.equal(source.control.head, 'e1b88cd8edd4d6c4656a6dbae8f9c68239025dee');
+assert.equal(source.control.head, controlHead);
 assert.equal(source.control.inputs.src, source.candidate.inputs.src);
 assert.equal(source.control.inputs['tests/helpers/hub-s3b-rig.ts'], source.candidate.inputs['tests/helpers/hub-s3b-rig.ts']);
 const env = { ...process.env, PW_DIR: pw, CHROME: chrome, FONTCONFIG_FILE: fonts, GATE: 'ci', XDG_CONFIG_HOME: join(out, 'xdg-config'), XDG_DATA_HOME: join(out, 'xdg-data') };
