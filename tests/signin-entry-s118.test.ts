@@ -16,6 +16,9 @@ describe("S-118 replaces the temporary authenticator entry, without changing aut
     expect(r.body).toContain('src="/assets/signin.js"'); expect(r.body).toContain('id="code"');
     expect(r.body).not.toMatch(/id="account"|autocomplete="username"|signin-authenticator\.js/);
   });
+  it("does not ship the retired temporary authenticator script as a public asset", () => {
+    expect(entry("/assets/signin-authenticator.js").status).toBe(404);
+  });
   it("retains the temporary entry's availability and method fences", () => {
     expect(entry("/signin/authenticator", "POST").status).toBe(405);
     expect(entry("/signin/authenticator", "GET", false).status).toBe(404);

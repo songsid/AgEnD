@@ -23,7 +23,7 @@ class Node {
   append(...items: Array<string | Node>) { this.textContent += items.map(x => typeof x === "string" ? x : x.textContent).join(""); }
   emit(type: string, extra: Record<string, unknown> = {}) { for (const fn of this.handlers.get(type) ?? []) fn({ type, target: this, currentTarget: this, preventDefault() {}, ...extra }); }
 }
-async function page(opts: { lang?: string; outside?: boolean; webOnly?: boolean; html?: string } = {}) {
+async function page(opts: { lang?: string; outside?: boolean; webOnly?: boolean; html?: string; abortController?: boolean } = {}) {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-10T06:00:00Z"));
   const ids = new Map<string, Node>(), translated: Node[] = [];
   for (const m of (opts.html ?? markup).matchAll(/<[a-z][^>]*>/gi)) {
@@ -51,7 +51,7 @@ async function page(opts: { lang?: string; outside?: boolean; webOnly?: boolean;
       return await (responses.shift() ?? reply());
     },
     addEventListener: (type: string, fn: () => void) => windowEvents.set(type, fn),
-    AbortController, URL, URLSearchParams, JSON, Date, Number, String, Math, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
+    AbortController: opts.abortController === false ? undefined : AbortController, URL, URLSearchParams, JSON, Date, Number, String, Math, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
   });
   runInContext(source, context); await micro();
   const input = async (value: string, pasted = false, isComposing = false) => {
@@ -126,6 +126,31 @@ for (const lang of ["en", "zh-TW"]) describe(`S-118 unified code entry (${lang})
     const currentError = p.element("msg").textContent; expect(currentError).not.toBe("");
     old.resolve(reply(200, { ok: true })); await micro();
     expect(p.navigations).toHaveLength(0); expect(p.element("msg").textContent).toBe(currentError);
+  });
+  it.each([200, 401])("without AbortController a retired same-value response (%s) cannot repaint or navigate", async status => {
+    const p = await page({ lang, abortController: false }), old = deferred<Reply>(); p.responses.push(old.promise, reply(401));
+    await p.input("123456", true); await p.input("ABCDEFGH", true); await p.input("123456", true);
+    expect(p.posts).toHaveLength(2); expect(p.posts.every(x => x.signal === undefined)).toBe(true);
+    const view = [p.element("msg").textContent, p.element("authHint").textContent];
+    old.resolve(reply(status)); await micro();
+    expect(p.navigations).toEqual([]); expect([p.element("msg").textContent, p.element("authHint").textContent]).toEqual(view);
+    expect(p.element("go").disabled).toBe(false);
+  });
+  it("a closed authenticator route shows unavailable guidance, while a device 404 retains its own recovery", async () => {
+    const p = await page({ lang }); p.responses.push(reply(404), reply(404));
+    await p.input("123456", true);
+    expect(p.element("msg").textContent).toMatch(lang === "en" ? /Authenticator sign-in is not available here/ : /這裡無法使用驗證器 App 登入/);
+    expect(p.element("msg").textContent).toMatch(lang === "en" ? /8-character device sign-in code/ : /8 字元裝置登入碼/);
+    expect(p.element("msg").textContent).not.toMatch(/\/web/); expect(p.element("go").disabled).toBe(false);
+    await p.advance(60_000); expect(p.posts).toHaveLength(1);
+    await p.input("ABCDEFGH", true); expect(p.posts.map(x => x.path)).toEqual(["/auth/totp", "/auth/login"]);
+    expect(p.element("msg").textContent).toMatch(/\/web/);
+  });
+  it("an IME-marked input does not submit before compositionend, even without the start event", async () => {
+    const p = await page({ lang }); await p.input("123456", false, true);
+    await p.advance(1000); expect(p.posts).toHaveLength(0);
+    p.element("code").emit("compositionend"); await micro();
+    expect(p.posts.map(x => [x.path, x.body])).toEqual([["/auth/totp", { code: "123456" }]]);
   });
   it("a stale awaited pause body cannot settle a newer device attempt", async () => {
     const p = await page({ lang }), body = deferred<unknown>();

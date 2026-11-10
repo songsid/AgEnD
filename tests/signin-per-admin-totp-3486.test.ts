@@ -682,11 +682,11 @@ describe("the admins hear of a slow guesser half-way, once", () => {
     for (let n = 0; n < 7; n++) { real.push((await f.totp({ account: "bob", code: "000000" })).status); ghost.push((await g.totp({ account: "nobody", code: "000000" })).status); }
     expect(real).toEqual(ghost);
   });
-  it("the page tells a refused person to use the 8-character code or a device used before (the leader's page should too)", () => {
-    const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin-authenticator.js"), "utf8");
-    expect(js).toMatch(/refused_hint/);
-    expect(js).toMatch(/8-character sign-in code/);
-    expect(js).toMatch(/8 碼登入碼/);
+  it("the unified page tells a refused person to use the 8-character code or a device used before", () => {
+    const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
+    expect(js).toMatch(/totp_help/);
+    expect(js).toMatch(/8-character code or a signed-in device/);
+    expect(js).toMatch(/8 字元裝置登入碼/);
   });
 });
 
@@ -769,14 +769,16 @@ describe("what is unchanged", () => {
     const f = fleet();
     expect(summary(await f.totp({ account: NO_APP, code: "123456" }))).toEqual(WRONG);
   });
-  it("the page asks for the code only: no name field, no list, no suggestions; and it sends only the code", async () => {
-    const html = readFileSync(join(process.cwd(), "src", "ui", "signin-authenticator.html"), "utf8");
+  it("the unified page asks for the code only: no name field, no list, no suggestions; and it sends only the code", () => {
+    const html = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8");
     expect(html).not.toMatch(/datalist|list="/i);
     expect(html).not.toMatch(/id="account"|name="account"|autocomplete="username"/);
-    expect(readFileSync(join(process.cwd(), "src", "ui", "shared", "signin-authenticator.js"), "utf8")).not.toMatch(/account/);
     expect(html).toMatch(/id="code"[^>]*autocomplete="one-time-code"/);
-    const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin-authenticator.js"), "utf8");
-    expect(js).not.toMatch(/\/auth\/(sessions|device-login)|admins|enumerate/);
+    const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
+    const submit = js.slice(js.indexOf("async function submitEntry"), js.indexOf("function entryInput"));
+    expect(submit.length).toBeGreaterThan(0);
+    expect(submit).toContain("body: JSON.stringify({ code: value.code })");
+    expect(submit).not.toMatch(/\/auth\/(sessions|device-login)|admins|enumerate|\baccount\s*[:,]/);
   });
   it("the status a signed-in admin reads no longer carries a sign-in name (AGEND-155: nobody types one any more); it still says whether they have an app", () => {
     const f = fleet();

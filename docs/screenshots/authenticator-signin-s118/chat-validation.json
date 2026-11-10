@@ -105,7 +105,7 @@
     "scripts/manual/smoke/smoke-signin-chat-s118.mts"
   ],
   "sourceManifest": "CHAT_PRODUCTION_SHA256SUMS",
-  "captureBoundary": "Product source at merge19bd54f0609735b0bf32f5401fe14977b4c2a4f2; the new committed smoke source is hash-bound in CHAT_PRODUCTION_SHA256SUMS; final evidence-only commit follows.",
+  "captureBoundary": "R1 capture on18b058a4c plus test-only coverage and retired temporary HTML/JS/public-asset removal. Active HTML/controller and POST core bytes are unchanged; manifests bind actual executed product/fixture bytes before the final evidence commit.",
   "alignedAlpha": "9458db49de3f519cdb482b14220f3f47e5dc3afc",
   "mergedCodeOnlyCore": "4eb8d7875051bfec78ac8bea9af5d0747fce3723"
 }

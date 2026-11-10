@@ -28,5 +28,20 @@
     "name": "raw-validation",
     "caught": true,
     "exit": 1
+  },
+  {
+    "name": "no-abort-generation",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "totp-unavailable",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "ime-input",
+    "caught": true,
+    "exit": 1
   }
 ]

@@ -219,13 +219,7 @@
     "src/ui/settings-access-strings.js"
   ],
   "sourceManifest": "PRODUCTION_SHA256SUMS",
-  "captureBoundary": "Captured on merge19bd54f0609735b0bf32f5401fe14977b4c2a4f2 plus evidence/fixture changes; product hashes bind the executed UI/core. Final evidence-only commit follows.",
+  "captureBoundary": "R1 capture on18b058a4c plus test-only coverage and retired temporary HTML/JS/public-asset removal. Active HTML/controller and POST core bytes are unchanged; manifests bind actual executed product/fixture bytes before the final evidence commit.",
   "alignedAlpha": "9458db49de3f519cdb482b14220f3f47e5dc3afc",
-  "mergedCodeOnlyCore": "4eb8d7875051bfec78ac8bea9af5d0747fce3723",
-  "limitations": [
-    "Web-only layout/SKEW driver; chat/collision proof is in chat-validation.json.",
-    "Exact base assets are routed into this owned listener; no separate base daemon.",
-    "Cached old HTML keeps centered placement and may split its old zh subtitle."
-  ],
-  "polish": "Uniform401 next-code/recovery hint with the normal Sign in button; no separate collision state. English error fits one line, 8-character stays intact; phone error and recovery paragraphs each fit at most two lines. All eight wrong-state originals inspected at full resolution."
+  "mergedCodeOnlyCore": "4eb8d7875051bfec78ac8bea9af5d0747fce3723"
 }

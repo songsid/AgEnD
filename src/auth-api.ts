@@ -155,8 +155,6 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "loading.css": { file: join("shared", "loading.css"), type: "text/css; charset=utf-8" },
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
-  // #3486: the temporary page for the authenticator sign-in (the leader's sign-in page replaces it).
-  "signin-authenticator.js": { file: join("shared", "signin-authenticator.js"), type: "text/javascript; charset=utf-8" },
   "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
