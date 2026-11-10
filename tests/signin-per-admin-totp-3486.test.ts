@@ -69,12 +69,12 @@ function fleet(o: { chat?: boolean; hostApp?: boolean; admins?: string[]; allowe
   /** The link a public request arrives over (the gateway's own binding), as `openSignin` reports it. */
   const openLink = (owner?: unknown) => { any.publicWebLink = { openSignin: () => ({ exposureId: "x", owner, url: "https://x.trycloudflare.com/signin" }), whenClosed: async () => {}, close: async () => {}, endOf: () => null }; };
   /** POST /auth/totp through the real handler. */
-  const totp = (body: unknown, opts: { where?: Where; link?: "quick" | "named"; raw?: string; cookie?: string } = {}) => new Promise<{ status: number; headers: Record<string, any>; json: any }>((resolve, reject) => {
+  const totp = (body: unknown, opts: { where?: Where; link?: "quick" | "named"; raw?: string; cookie?: string; /** Whether the gateway still counts the request as current (default: always). */ current?: () => boolean; /** The Origin header: a string, or null for none (the default is the page's own). */ origin?: string | null } = {}) => new Promise<{ status: number; headers: Record<string, any>; json: any }>((resolve, reject) => {
     const link = !!opts.link, w = WHERE[opts.where ?? "lan"];
     const host = link ? "x.trycloudflare.com" : w.host, origin = link ? "https://x.trycloudflare.com" : `http://${w.host}`;
     const req: any = Object.assign(Readable.from([Buffer.from(opts.raw ?? JSON.stringify(body))]), { method: "POST", url: "/auth/totp", socket: { remoteAddress: link ? "127.0.0.1" : w.remoteAddress },
-      headers: { host, origin, "content-type": "application/json", "sec-fetch-site": "same-origin", "user-agent": "Mozilla/5.0 (iPhone) Safari", ...(opts.cookie ? { cookie: opts.cookie } : {}), ...(link ? {} : w.extra) } });
-    if (link) bindGatewayRequest(req, { surface: "gateway", exposureId: "x", expectedOrigin: origin, isCurrent: () => true, named: opts.link === "named" } as any);
+      headers: { host, ...(opts.origin === null ? {} : { origin: opts.origin ?? origin }), "content-type": "application/json", "sec-fetch-site": "same-origin", "user-agent": "Mozilla/5.0 (iPhone) Safari", ...(opts.cookie ? { cookie: opts.cookie } : {}), ...(link ? {} : w.extra) } });
+    if (link) bindGatewayRequest(req, { surface: "gateway", exposureId: "x", expectedOrigin: origin, isCurrent: opts.current ?? (() => true), named: opts.link === "named" } as any);
     const res: any = { destroyed: false, headersSent: false, writeHead(s: number, h: Record<string, any>) { this.s = s; this.h = h; }, end(b: string) { resolve({ status: this.s, headers: this.h, json: b ? JSON.parse(b) : null }); } };
     try { if (!handleAuthRequest(req, res, new URL(req.url, origin), any)) reject(new Error("not handled")); } catch (err) { reject(err); }
   });
@@ -625,6 +625,69 @@ describe("the admins hear of a slow guesser half-way, once", () => {
     expect(js).toMatch(/refused_hint/);
     expect(js).toMatch(/8-character sign-in code/);
     expect(js).toMatch(/8 碼登入碼/);
+  });
+});
+
+describe("the route's CSRF edge, and what is checked after the answer", () => {
+  /** Everything a refused request must leave alone: the saved state (every limiter and every admin's `lastStep`), the browsers' counts, the sessions. */
+  const state = (f: ReturnType<typeof fleet>) => ({ file: readFileSync(join(f.dir, WEB_REMOTE_ACCESS_FILE), "utf8"), browsers: f.any.webRemoteAccess().browserLim.size,
+    sessions: f.any.webSessions.list(undefined, () => true).length });
+  const who = adminKey("a", ADMIN_B);
+  it.each([["no Origin header", null], ["another site's Origin", "http://evil.example"], ["the opaque Origin 'null'", "null"]] as const)("%s: 403, and nothing is counted, saved, handed out or spent", async (_why, origin) => {
+    const f = fleet();
+    const known = buildSigninCookie("known", addSigninKnownDevice(TOKEN, undefined, who, f.access().enrollmentOf(who)!, f.any.webAuthorityState().epoch, Date.now()), false, TOKEN).split(";")[0]!;
+    f.access().signIn(adminKey("a", "nobody"), "warm", "000000", { key: "warm", known: false });                           // the counters exist, so a change shows
+    const before = state(f);
+    for (const [code, cookie] of [["000000", undefined], [codeOf(secretFor(ADMIN_B)), undefined], ["000000", known], [codeOf(secretFor(ADMIN_B)), known]] as const) {
+      const r = await f.totp({ account: "bob", code }, { origin, ...(cookie ? { cookie } : {}) });
+      expect([r.status, r.json]).toEqual([403, { error: "Cross-site request rejected" }]);
+      expect(r.headers["Set-Cookie"]).toBeUndefined();                                                                  // no browser id, no mark, no session
+      expect(state(f)).toEqual(before);                                                                                 // browser, name, admin, whole sign-in, known path: unchanged
+    }
+    // …and the right code was not spent by them: the same step still signs in, from the page's own origin.
+    expect((await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+  });
+  it("the same over a link: no Origin there is a 403 too, and counts nothing", async () => {
+    const f = fleet(); f.openLink();
+    const before = state(f);
+    const r = await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) }, { link: "quick", origin: null });
+    expect([r.status, r.headers["Set-Cookie"], state(f)]).toEqual([403, undefined, before]);
+    expect((await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) }, { link: "quick" })).status).toBe(200);
+  });
+  it("the token rotated while the request is in flight: no session and no cookie of one, and the code is spent", async () => {
+    const f = fleet(), real = f.any.totpSignIn.bind(f.any);
+    vi.spyOn(f.any, "totpSignIn").mockImplementation(((input: unknown) => { const result = real(input); writeFileSync(join(f.dir, "web.token"), "e".repeat(48), { mode: 0o600 }); return result; }) as any);       // the token file replaced, as `agend web-token rotate` does
+    const r = await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) });
+    expect([r.status, r.json]).toEqual([503, { error: "unavailable" }]);
+    expect([r.headers["Set-Cookie"]].flat().filter(c => /session|signin_known/.test(String(c)))).toEqual([]);
+    expect(f.any.webSessions.list(undefined, () => true)).toEqual([]);
+  });
+  it("a link that closes while the request is in flight: no session and no cookie of one", async () => {
+    const f = fleet(); f.openLink();
+    let live = true; const real = f.any.totpSignIn.bind(f.any);
+    vi.spyOn(f.any, "totpSignIn").mockImplementation(((input: unknown) => { const result = real(input); live = false; return result; }) as any);
+    const r = await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) }, { link: "quick", current: () => live });
+    expect([r.status, r.json]).toEqual([503, { error: "unavailable" }]);
+    expect([r.headers["Set-Cookie"]].flat().filter(c => /session|signin_known/.test(String(c)))).toEqual([]);
+    expect(f.any.webSessions.list(undefined, () => true)).toEqual([]);
+  });
+  it("a correct code clears the count of the name typed: nine wrong, the right one, nine wrong again never pauses", async () => {
+    const f = fleet();
+    for (let n = 0; n < SIGNIN_WRONG_LIMIT - 1; n++) expect((await f.totp({ account: "bob", code: "000000" })).status).toBe(401);
+    expect((await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+    const idents = JSON.parse(readFileSync(join(f.dir, WEB_REMOTE_ACCESS_FILE), "utf8")).idents;
+    expect(idents === undefined || !Object.keys(idents).length).toBe(true);
+    for (let n = 0; n < SIGNIN_WRONG_LIMIT - 1; n++) expect((await f.totp({ account: "bob", code: "000000" })).status).toBe(401);   // 18 in all: only the cleared count lets this through
+  });
+  it("every key's admin standing is asked whatever the name is (a name that belongs to a record does no extra work)", async () => {
+    const f = fleet(), asked: string[] = [], real = f.any.adminGate.bind(f.any);
+    vi.spyOn(f.any, "adminGate").mockImplementation(((u: string, a: string) => { asked.push(`${a}:${u}`); return real(u, a); }) as any);
+    await f.totp({ account: "nobody-at-all", code: "000000" });
+    const forGhost = [...asked]; asked.length = 0;
+    await f.totp({ account: "bob", code: "000000" });
+    expect(forGhost.length).toBeGreaterThanOrEqual(2);                                                                   // both enrolled admins, a name that matches neither
+    expect(asked.filter(x => x === `a:${ADMIN}` || x === `a:${ADMIN_B}`).length).toBeGreaterThanOrEqual(2);
+    expect(forGhost.filter(x => x === `a:${ADMIN}` || x === `a:${ADMIN_B}`).sort()).toEqual([`a:${ADMIN}`, `a:${ADMIN_B}`]);
   });
 });
 

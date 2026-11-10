@@ -19047,7 +19047,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       let platformName = "";
       try { platformName = norm(this.signinHandleOf({ adapterId, userId })); } catch { /* no handle known: the id still works */ }
       const answers = [norm(userId), norm(`${adapterId}:${userId}`), platformName].includes(ident) && ident !== "";
-      if (answers && this.adminGate(userId, adapterId) === "ok") found.push(key);
+      // Asked of every key, whether or not the name matches it: a name that belongs to a record does no more work than one that belongs to nobody.
+      const admin = this.adminGate(userId, adapterId) === "ok";
+      if (answers && admin) found.push(key);
     }
     return { who: found.length === 1 ? found[0]! : null, ident };
   }

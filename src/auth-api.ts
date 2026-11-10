@@ -451,7 +451,7 @@ export function handleAuthRequest(
       // Admitted (and its Notice posted) by the fleet, or no session at all.
       let admitted = false;
       try { admitted = result.commit(record, label) === true; } catch (err) { ctx.logger.debug({ err }, "authenticator sign-in not admitted"); }
-      if (!admitted || !isWebRequestCurrent(req)) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }, withCookies()); return; }
+      if (!admitted || !isWebRequestCurrent(req) || ctx.webToken !== token) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }, withCookies()); return; }
       const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000, token);
       // The session, and this browser's marks: its id (when new) and the "known device" mark for this admin (it grants nothing by itself).
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry },
