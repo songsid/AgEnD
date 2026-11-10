@@ -129,6 +129,16 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md("1. a\n   - b\n   - c\n2. d")).toBe("<ol><li>a<ul><li>b</li><li>c</li></ul></li><li>d</li></ol>");
       expect(md("- a\n\t- tab-indented")).toBe("<ul><li>a<ul><li>tab-indented</li></ul></li></ul>");
       expect(md("- a\n- b\n1. c")).toBe("<ul><li>a</li><li>b</li></ul><ol><li>c</li></ol>");
+      // M-2811: a blank line between items (a loose list) is still ONE list — never "1. 1. 1." (the agent's multi-part
+      // question in the M-2789 mockup); blank lines before a non-item still end it.
+      expect(md("1. a\n\n2. b\n\n3. c")).toBe("<ol><li>a</li><li>b</li><li>c</li></ol>");
+      expect(md("- a\n\n\n- b")).toBe("<ul><li>a</li><li>b</li></ul>");
+      expect(md("1. a\n   - x\n\n2. b")).toBe("<ol><li>a<ul><li>x</li></ul></li><li>b</li></ol>");
+      expect(md("1. a\n\nafter")).toBe("<ol><li>a</li></ol><p>after</p>");
+      // A numbered list keeps its first number: "3." after a paragraph reads 3 (digits only; 1 needs no start).
+      expect(md("1. a\n\npara\n\n2. b")).toBe('<ol><li>a</li></ol><p>para</p><ol start="2"><li>b</li></ol>');
+      expect(md("3. c\n4. d")).toBe('<ol start="3"><li>c</li><li>d</li></ol>');
+      expect(md("- a\n  0. zero")).toBe("<ul><li>a<ol><li>zero</li></ol></li></ul>");
       expect(md("- **bold** item\n  - [link](https://a.example)")).toBe(
         '<ul><li><strong>bold</strong> item<ul><li><a href="https://a.example" target="_blank" rel="noopener noreferrer" data-trust="link">link</a></li></ul></li></ul>');
     });
