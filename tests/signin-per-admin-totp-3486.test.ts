@@ -30,7 +30,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { evaluateSettingsRole } from "../src/authority/settings-role.js";
-import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_REACH_STEPS, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_REACH_STEPS, TOTP_RETIRED_KEEP_MS, TOTP_RETIRED_SLOTS, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { SIGNIN_KNOWN_COOKIE, addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
 import { fleetCookieName } from "../src/web-cookie-names.js";
 import { setLocale } from "../src/locale.js";
@@ -897,7 +897,7 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
         let n = 0;
         const work = (code: string, candidates = both): number => { const before = hmac.calls; store.signInByCode(code, { key: `k${n++}` }, candidates, []); return hmac.calls - before; };
         const at = (secret: string, offset: number) => hotp(base32Decode(secret)!, totpStep(T) + offset);
-        const per = 2 * TOTP_REACH_STEPS + 1;
+        const per = 2 * TOTP_REACH_STEPS + 1, all = (2 + TOTP_RETIRED_SLOTS) * per;   // two admins, plus the fixed pool of retired-app slots
         const counts = {
           ordinary: work("000000"),
           skewInside: work(at(sa, 2)),                       // two steps ahead: inside the reach, outside the accepted window
@@ -907,10 +907,15 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
           collision: work(at(sa, 0)),                        // matches both apps
           notDigits: work("12ab"),
         };
-        expect(counts).toEqual({ ordinary: 2 * per, skewInside: 2 * per, skewOutside: 2 * per, used: 2 * per, demoted: 2 * per, collision: 2 * per, notDigits: 2 * per });
+        expect(counts).toEqual({ ordinary: all, skewInside: all, skewOutside: all, used: all, demoted: all, collision: all, notDigits: all });
         const empty = new WebRemoteAccess(join(mkdtempSync(join(tmpdir(), "agend-155-hmac0-")), WEB_REMOTE_ACCESS_FILE), { warn: () => {} });
         const before = hmac.calls; empty.signInByCode("123456", { key: "x" }, [], []);
-        expect(hmac.calls - before).toBe(per);              // the decoy: exactly one app's worth
+        expect(hmac.calls - before).toBe((1 + TOTP_RETIRED_SLOTS) * per);   // the decoy: exactly one app's worth, plus the same fixed retired pool
+        // …and the same after an app was retired (replaced), and with a full pool: nothing about the lifecycle changes the work.
+        const spare = store.beginEnrollment("h", "x", B), keep = [{ who: A, eligible: true }, { who: B, eligible: true }];
+        expect(store.confirmEnrollment("h", hotp(base32Decode(spare.secret)!, totpStep(T) + 1))).toBe("ok");
+        const afterRetire = (() => { const b4 = hmac.calls; store.signInByCode("000000", { key: "after" }, keep, []); return hmac.calls - b4; })();
+        expect(afterRetire).toBe(all);
       } finally { vi.useRealTimers(); }
     });
     it("a web-only fleet compares its one app", async () => {
@@ -1000,6 +1005,85 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
       f.fm.fleetConfig!.channels![0]!.access!.allowed_users = [ADMIN];                                // B demoted: only A could sign in
       expect(summary(await f.totp({ code: codeOf(sa) }))).toEqual(WRONG);
       expect(sessions(f)).toEqual([]);
+    });
+    describe("a refused collision stays refused when the matching admin removes or replaces their OWN app (retired apps)", () => {
+      /** B signs in by name with the step BEFORE the collision step (so B's collision step is still unspent), then the unnamed digits are refused. */
+      const setup = async () => {
+        const [sa, sb, T] = collide();
+        vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+        const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+        const mine = await f.totp({ account: "bob", code: codeOf(sb, -1) });
+        expect(mine.status).toBe(200);
+        const session = f.withCookie(mine, "lan");
+        const digits = codeOf(sb);
+        expect(digits).toBe(codeOf(sa));
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+        return { f, sa, sb, T, digits, session };
+      };
+      it("B REMOVES their app (proving their current code): the same digits are still 401, also after a restart; A's next code and B's other codes behave", async () => {
+        const { f, sa, sb, T, digits, session } = await setup();
+        expect(f.any.webOutsideRemove(session.req, digits)).toBe("ok");
+        expect(f.access().isEnrolled(B)).toBe(false);
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);                                // before the fix: 200 as A
+        f.restart();
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+        expect(saved(f).admins[A].lastStep).toBe(0);                                                    // A's step was never spent by the refusals
+        expect(saved(f).retired).toHaveLength(1);
+        // the retired secret is never a way in: it signs nobody in, by name or by code alone, and confirms nothing
+        expect(summary(await f.totp({ code: codeOf(sb, 1) }))).toEqual(WRONG);
+        expect(summary(await f.totp({ account: "bob", code: codeOf(sb, 1) }))).toEqual(WRONG);
+        expect(f.access().verify(codeOf(sb, 1), B)).toEqual({ kind: "not_enrolled" });
+        // someone who collides with nobody is not affected: A's own next code (a different number) signs A in at once
+        const next = await f.totp({ code: codeOf(sa, 1) });
+        expect(next.status).toBe(200);
+        expect(f.withCookie(next, "lan").record.owner).toEqual({ adapterId: "a", userId: ADMIN });
+        // once the retention is over A's collision step is out of the window anyway and the retired app is forgotten
+        vi.setSystemTime(T + TOTP_RETIRED_KEEP_MS + 60_000);
+        const later = await f.totp({ code: codeOf(sa, 1) });
+        expect(later.status).toBe(200);
+      });
+      it("B REPLACES their app (begin with their current code, confirm with the new app's): the same digits are still 401 after a restart; the new app's code works at once", async () => {
+        const { f, sa, digits, session } = await setup();
+        const begun = f.any.webOutsideBeginEnrollment(session.req, digits);
+        expect(begun).toHaveProperty("secret");
+        expect(f.any.webOutsideConfirmEnrollment(session.req, codeOf((begun as any).secret))).toBe("ok");
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+        f.restart();
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+        expect(saved(f).admins[A].lastStep).toBe(0);
+        const mineNow = await f.totp({ code: codeOf((begun as any).secret, 1) });                         // the new app: usable at once, as B
+        expect(mineNow.status).toBe(200);
+        expect(f.withCookie(mineNow, "lan").record.owner).toEqual({ adapterId: "a", userId: ADMIN_B });
+        expect((await f.totp({ code: codeOf(sa, 1) })).status).toBe(200);                                 // and A's next code is untouched
+      });
+      it("the retired secret is saved with the other state (restart-proof), is not used for anything else, and its keep time is the documented 3 minutes", async () => {
+        const { f, sb, session, digits } = await setup();
+        expect(f.any.webOutsideRemove(session.req, digits)).toBe("ok");
+        const file = saved(f);
+        expect(file.retired).toEqual([{ who: B, secret: sb, until: Date.now() + TOTP_RETIRED_KEEP_MS }]);
+        expect(TOTP_RETIRED_KEEP_MS).toBe(180_000);
+        expect(file.admins[B]).toBeUndefined();
+      });
+      it("more apps retired within the keep time than the pool holds: nothing is forgotten quietly — code-only sign-in is refused (as a wrong code) until the dropped one's time is over", () => {
+        let clock = 1_800_000_000_000;
+        const dir = mkdtempSync(join(tmpdir(), "agend-155-pool-")); roots.push(dir);
+        writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, admins: { [A]: { secret: secretFor(ADMIN), enrolledAt: 1, lastStep: 0 }, [B]: { secret: secretFor(ADMIN_B), enrolledAt: 1, lastStep: 0 } }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }));
+        const store = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} }, () => clock);
+        const both = [{ who: A, eligible: true }, { who: B, eligible: true }];
+        const replaceB = () => { const b = store.beginEnrollment("h", "x", B); expect(store.confirmEnrollment("h", hotp(base32Decode(b.secret)!, totpStep(clock)))).toBe("ok"); };
+        for (let n = 0; n < TOTP_RETIRED_SLOTS; n++) replaceB();
+        expect(JSON.parse(readFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), "utf8")).holdUntil).toBeUndefined();     // full, nothing dropped yet
+        expect(store.signInByCode(hotp(base32Decode(secretFor(ADMIN))!, totpStep(clock)), { key: "ok" }, both, []).kind).toBe("ok");
+        clock += 1_000; replaceB();                                                                           // one more: the oldest is dropped …
+        const held = JSON.parse(readFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), "utf8"));
+        expect(held.retired).toHaveLength(TOTP_RETIRED_SLOTS);
+        expect(held.holdUntil).toBeGreaterThan(clock);
+        expect(store.signInByCode(hotp(base32Decode(secretFor(ADMIN))!, totpStep(clock) + 1), { key: "held" }, both, []).kind).toBe("wrong");   // … so the right code is refused, uniformly
+        clock = held.holdUntil + 1;
+        expect(store.signInByCode(hotp(base32Decode(secretFor(ADMIN))!, totpStep(clock)), { key: "free" }, both, []).kind).toBe("ok");
+        const reopened = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} }, () => held.holdUntil - 5_000);
+        expect(reopened.signInByCode(hotp(base32Decode(secretFor(ADMIN))!, totpStep(held.holdUntil - 5_000) + 1), { key: "r" }, both, []).kind).toBe("wrong");   // the hold survives a restart
+      });
     });
     it("the digits of an admin who does NOT collide still sign in after another admin spent a step (the rule refuses only what two apps match)", async () => {
       const f = fleet();
