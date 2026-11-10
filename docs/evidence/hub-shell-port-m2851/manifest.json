@@ -5,10 +5,10 @@
   "a7c717b66c2046265dec85304f2ae327aada48188da0d900f5672d9b955aca60": [
     "changes/2851-hub-shell-listener.zh-TW.md"
   ],
-  "2aef190a13d2db0037a2161a97bfee8432623f2883083d39bb6d4b6dfa372212": [
+  "cf4d4b25b22400123e532df5e815a0b6cecbfebcea5c0bdfeef24c3f372dda41": [
     "docs/evidence/hub-shell-port-m2851/README.md"
   ],
-  "c42f48dd627b840a855e3b2cd494d7c53f49453200def086ac1111b80909ea61": [
+  "aa904977cf545f588dc2c6ce91f5efeb7f971e48e27ff8045209ae784d0fa97c": [
     "docs/evidence/hub-shell-port-m2851/accept.mjs"
   ],
   "fc78d2760dca30dab2749623d3787bbff4877c9a6c9f06018bf08ace84a8b344": [
@@ -19,22 +19,34 @@
   ],
   "90f70ee17d5d745ef50e86a9032fd4c36695944b5bb900908dfca2a96e7f21dd": [
     "docs/evidence/hub-shell-port-m2851/candidate-result.json",
-    "docs/evidence/hub-shell-port-m2851/control-result.json"
+    "docs/evidence/hub-shell-port-m2851/control-result.json",
+    "docs/evidence/hub-shell-port-m2851/post-sync/candidate-result.json",
+    "docs/evidence/hub-shell-port-m2851/post-sync/control-result.json"
   ],
-  "454722db4d011b873a1a4b6538e809c3146a5cebc556f3006ee3fda6cf4ee322": [
+  "d3e1fa12b7eff546004177add27ca773d17410edc1d0cf7cf513c3dcf65cd955": [
     "docs/evidence/hub-shell-port-m2851/checks.json"
   ],
   "37feb763199c054c842e18a74f4470100335fabac2fcd4cfd04841b30ab8fc3a": [
     "docs/evidence/hub-shell-port-m2851/ci-attempt1-excerpt.log"
   ],
   "e3c0272c3e9dbb622d091edcef2c1b2f81a57a8fbd5e06f39c149383f0a3eb7b": [
-    "docs/evidence/hub-shell-port-m2851/control.log"
+    "docs/evidence/hub-shell-port-m2851/control.log",
+    "docs/evidence/hub-shell-port-m2851/post-sync/control.log"
   ],
   "f055b2ab0613735c515848dc352ab71715d0c35c361de13d4aec6c4eff599432": [
     "docs/evidence/hub-shell-port-m2851/mutate-listener.py"
   ],
   "de06b15e4d1c552c2b9173435ad59a691feb927ec945f541b47424919d9f7838": [
     "docs/evidence/hub-shell-port-m2851/mutations.json"
+  ],
+  "42bcdf1c77bc4d23c0bc107bddacfa155bd5d094ec341c566d13e4ab63f19acc": [
+    "docs/evidence/hub-shell-port-m2851/post-sync/blocked-control.log"
+  ],
+  "7b0c9ffe9364e80ed212c1f1b30b6faf753b1593e909f397e5c2e36e33d7b5d6": [
+    "docs/evidence/hub-shell-port-m2851/post-sync/candidate-blocked-range.log"
+  ],
+  "d525490f91dc31c052a24191f8a08130267f0769b433f60bad375162bc0ad2e2": [
+    "docs/evidence/hub-shell-port-m2851/post-sync/receipt.json"
   ],
   "5a8fd7057df3c33cfcc1c04f90a4ce89d7f1329b6371b5d38defafd226081bfb": [
     "docs/evidence/hub-shell-port-m2851/receipt.json"

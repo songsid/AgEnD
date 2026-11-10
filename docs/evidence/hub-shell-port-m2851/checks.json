@@ -12,5 +12,17 @@
   "pinnedListenerRecheck": {
     "passed": 4,
     "failed": 0
+  },
+  "postSync": {
+    "source": "37c20c09a98b79da96382524e44f79cd5d74b1c6",
+    "focused": {
+      "passed": 122,
+      "failed": 0,
+      "skipped": 0,
+      "files": 6
+    },
+    "testTypesExit": 0,
+    "gateChecks": 170,
+    "identicalResultMaps": true
   }
 }

@@ -1,0 +1,41 @@
+{
+  "source": {
+    "control": {
+      "head": "380dbde9ff7626c13cd63a4260d8ff4e8f21f368",
+      "tree": "d6ef5e2960cacd665ba357b012fc8cd7685ad073",
+      "inputs": {
+        "src": "370fb9cce9e97247f937660845d29b717c261d59",
+        "scripts/manual/smoke": "3e8b3d0ad53f4897a914576f885e991f30b4a991",
+        "scripts/manual/smoke-fixture": "4ce8bef0c892b68369887e6d9e2b48fced12744c",
+        "tests/helpers/hub-s3b-rig.ts": "3ea20025bee03be13b8c415014444cc80a6a44b9"
+      }
+    },
+    "candidate": {
+      "head": "37c20c09a98b79da96382524e44f79cd5d74b1c6",
+      "tree": "0c47f06c372f55d9b13e5bba84e9807d58662c82",
+      "inputs": {
+        "src": "370fb9cce9e97247f937660845d29b717c261d59",
+        "scripts/manual/smoke": "7da29c97ad656ffbb107bcdae388ce6095900d71",
+        "scripts/manual/smoke-fixture": "87654dd5487407330b7049cf4daa20edc37376cc",
+        "tests/helpers/hub-s3b-rig.ts": "3ea20025bee03be13b8c415014444cc80a6a44b9"
+      }
+    }
+  },
+  "browser": "Google Chrome for Testing 156.0.8078.4",
+  "node": "v22.22.2",
+  "playwright": "1.64.1",
+  "fontconfigDigest": "2d747c0e1655b139285ce27e5e4e532e59b9188b06bf19d8d3eecafe8d1040c0",
+  "harnessDigest": "aa904977cf545f588dc2c6ce91f5efeb7f971e48e27ff8045209ae784d0fa97c",
+  "reservedRange": [
+    48700,
+    48789
+  ],
+  "preexistingOccupied": [],
+  "blockedControlExit": 1,
+  "controlExit": 0,
+  "candidateExit": 0,
+  "candidatePort": 45929,
+  "checks": 170,
+  "identicalResults": true,
+  "scope": "GATE=ci desk-light-en/phone-dark-zh-TW. Same local browser/fonts; no claim of GitHub-hosted control rerun. Existing listeners were neither stopped nor modified."
+}
