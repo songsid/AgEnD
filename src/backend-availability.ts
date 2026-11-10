@@ -61,6 +61,17 @@ export function parseVersion(text: string | null | undefined): string | null {
   return m ? `${m[1]}.${m[2]}.${m[3] ?? "0"}` : null;
 }
 
+/**
+ * AGEND-144: the full release a launcher's own version file names — x.y.z WITH the build a CLI ships after it (Muse's `1.4.14-R7309.1`), so the page can tell an installed
+ * `1.4.14-R7012.1` from the audited `1.4.14-R7309.1` (cli-audited.ts `versionOf`). Without a build it is `parseVersion`.
+ */
+export function parseRelease(text: string | null | undefined): string | null {
+  const v = parseVersion(text);
+  if (!v) return null;
+  const build = /\d+\.\d+(?:\.\d+)?-R(\d{1,9}(?:\.\d{1,6})*)(?!\d)/.exec(text ?? "")?.[1];
+  return build ? `${v}-R${build}` : v;
+}
+
 /** a < b, for dotted numeric versions. */
 export function versionBelow(a: string, b: string): boolean {
   const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
@@ -276,7 +287,7 @@ export const STATIC_VERSION_FILES: Readonly<Record<string, (path: string) => str
  */
 export async function staticBackendVersion(backend: string, path: string): Promise<string | null> {
   const file = STATIC_VERSION_FILES[backend];
-  if (file) { try { return parseVersion(await readFile(file(path), "utf8")); } catch { return null; } }
+  if (file) { try { return parseRelease(await readFile(file(path), "utf8")); } catch { return null; } }
   let real: string;
   try { real = await realpath(path); } catch { return null; }
   const parts = real.split("/");
