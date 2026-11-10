@@ -1,0 +1,2917 @@
+{
+  "base": "345ea079eb0bc9065e5c03a0420e7af9ee6017fc",
+  "results": [
+    {
+      "mode": "before",
+      "lang": "en",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1264.421875,
+          "scroll": 1264
+        }
+      ],
+      "top": {
+        "x": 609.84375,
+        "y": 14.5,
+        "w": 786.578125,
+        "h": 24,
+        "right": 1396.421875,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 132,
+        "y": 14.5,
+        "w": 1264.421875,
+        "h": 24,
+        "right": 1396.421875,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 52,
+        "right": 360,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "en",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1264.421875,
+          "scroll": 1264
+        }
+      ],
+      "top": {
+        "x": 761.84375,
+        "y": 14.5,
+        "w": 786.578125,
+        "h": 24,
+        "right": 1548.421875,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 284,
+        "y": 14.5,
+        "w": 1264.421875,
+        "h": 24,
+        "right": 1548.421875,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 645.078125,
+          "y": 8,
+          "w": 91.5625,
+          "h": 36,
+          "right": 736.640625,
+          "bottom": 44
+        },
+        {
+          "x": 740.640625,
+          "y": 8,
+          "w": 60.4375,
+          "h": 36,
+          "right": 801.078125,
+          "bottom": 44
+        },
+        {
+          "x": 805.078125,
+          "y": 8,
+          "w": 82.921875,
+          "h": 36,
+          "right": 888,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 52,
+        "right": 900,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "en",
+      "width": 1366,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1264.421875,
+          "scroll": 1264
+        }
+      ],
+      "top": {
+        "x": 761.84375,
+        "y": 14.5,
+        "w": 786.578125,
+        "h": 24,
+        "right": 1548.421875,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 284,
+        "y": 14.5,
+        "w": 1264.421875,
+        "h": 24,
+        "right": 1548.421875,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 1111.078125,
+          "y": 8,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1202.640625,
+          "bottom": 44
+        },
+        {
+          "x": 1206.640625,
+          "y": 8,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1267.078125,
+          "bottom": 44
+        },
+        {
+          "x": 1271.078125,
+          "y": 8,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1354,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 52,
+        "right": 1366,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "en",
+      "width": 1920,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 1264.421875,
+          "scroll": 1264
+        }
+      ],
+      "top": {
+        "x": 802.40625,
+        "y": 14.5,
+        "w": 786.578125,
+        "h": 24,
+        "right": 1588.984375,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 14.5,
+        "w": 1264.421875,
+        "h": 24,
+        "right": 1588.984375,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 1665.078125,
+          "y": 8,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1756.640625,
+          "bottom": 44
+        },
+        {
+          "x": 1760.640625,
+          "y": 8,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1821.078125,
+          "bottom": 44
+        },
+        {
+          "x": 1825.078125,
+          "y": 8,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1908,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 52,
+        "right": 1920,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "zh-TW",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1161.40625,
+          "scroll": 1161
+        }
+      ],
+      "top": {
+        "x": 488.109375,
+        "y": 14.5,
+        "w": 805.296875,
+        "h": 24,
+        "right": 1293.40625,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 132,
+        "y": 14.5,
+        "w": 1161.40625,
+        "h": 24,
+        "right": 1293.40625,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 52,
+        "right": 360,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "zh-TW",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1161.40625,
+          "scroll": 1161
+        }
+      ],
+      "top": {
+        "x": 640.109375,
+        "y": 14.5,
+        "w": 805.296875,
+        "h": 24,
+        "right": 1445.40625,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 284,
+        "y": 14.5,
+        "w": 1161.40625,
+        "h": 24,
+        "right": 1445.40625,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 653.953125,
+          "y": 8,
+          "w": 86.015625,
+          "h": 36,
+          "right": 739.96875,
+          "bottom": 44
+        },
+        {
+          "x": 743.96875,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 813.984375,
+          "bottom": 44
+        },
+        {
+          "x": 817.984375,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 888,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 52,
+        "right": 900,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "zh-TW",
+      "width": 1366,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 0,
+          "scroll": 41
+        },
+        {
+          "width": 1161.40625,
+          "scroll": 1161
+        }
+      ],
+      "top": {
+        "x": 640.109375,
+        "y": 14.5,
+        "w": 805.296875,
+        "h": 24,
+        "right": 1445.40625,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 284,
+        "y": 14.5,
+        "w": 1161.40625,
+        "h": 24,
+        "right": 1445.40625,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 1119.953125,
+          "y": 8,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1205.96875,
+          "bottom": 44
+        },
+        {
+          "x": 1209.96875,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1279.984375,
+          "bottom": 44
+        },
+        {
+          "x": 1283.984375,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1354,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 52,
+        "right": 1366,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": true,
+      "inside": false,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "before",
+      "lang": "zh-TW",
+      "width": 1920,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 1161.40625,
+          "scroll": 1161
+        }
+      ],
+      "top": {
+        "x": 680.671875,
+        "y": 14.5,
+        "w": 805.296875,
+        "h": 24,
+        "right": 1485.96875,
+        "bottom": 38.5
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 14.5,
+        "w": 1161.40625,
+        "h": 24,
+        "right": 1485.96875,
+        "bottom": 38.5
+      },
+      "tools": [
+        {
+          "x": 1673.953125,
+          "y": 8,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1759.96875,
+          "bottom": 44
+        },
+        {
+          "x": 1763.96875,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1833.984375,
+          "bottom": 44
+        },
+        {
+          "x": 1837.984375,
+          "y": 8,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1908,
+          "bottom": 44
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 52,
+        "right": 1920,
+        "bottom": 52
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": false,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "en",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 24,
+        "right": 344,
+        "bottom": 130
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 74,
+        "right": 344,
+        "bottom": 130
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 134,
+        "right": 360,
+        "bottom": 134
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "en",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 645.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 736.640625,
+          "bottom": 59
+        },
+        {
+          "x": 740.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 801.078125,
+          "bottom": 59
+        },
+        {
+          "x": 805.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 888,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 82,
+        "right": 900,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "en",
+      "width": 1366,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1111.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1202.640625,
+          "bottom": 59
+        },
+        {
+          "x": 1206.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1267.078125,
+          "bottom": 59
+        },
+        {
+          "x": 1271.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1354,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 82,
+        "right": 1366,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "en",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1068.515625,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1665.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1756.640625,
+          "bottom": 59
+        },
+        {
+          "x": 1760.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1821.078125,
+          "bottom": 59
+        },
+        {
+          "x": 1825.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1908,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 82,
+        "right": 1920,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "zh-TW",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 24,
+        "right": 344,
+        "bottom": 130
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 74,
+        "right": 344,
+        "bottom": 130
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 134,
+        "right": 360,
+        "bottom": 134
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "zh-TW",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 653.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 739.96875,
+          "bottom": 59
+        },
+        {
+          "x": 743.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 813.984375,
+          "bottom": 59
+        },
+        {
+          "x": 817.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 888,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 82,
+        "right": 900,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "zh-TW",
+      "width": 1366,
+      "inHeader": true,
+      "navWidth": 523.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1119.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1205.96875,
+          "bottom": 59
+        },
+        {
+          "x": 1209.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1279.984375,
+          "bottom": 59
+        },
+        {
+          "x": 1283.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1354,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 82,
+        "right": 1366,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "after",
+      "lang": "zh-TW",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1077.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1673.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1759.96875,
+          "bottom": 59
+        },
+        {
+          "x": 1763.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1833.984375,
+          "bottom": 59
+        },
+        {
+          "x": 1837.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1908,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 82,
+        "right": 1920,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "en",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 24,
+        "right": 344,
+        "bottom": 130
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 74,
+        "right": 344,
+        "bottom": 130
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 134,
+        "right": 360,
+        "bottom": 134
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "en",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 645.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 736.640625,
+          "bottom": 59
+        },
+        {
+          "x": 740.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 801.078125,
+          "bottom": 59
+        },
+        {
+          "x": 805.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 888,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 82,
+        "right": 900,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "en",
+      "width": 1366,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1111.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1202.640625,
+          "bottom": 59
+        },
+        {
+          "x": 1206.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1267.078125,
+          "bottom": 59
+        },
+        {
+          "x": 1271.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1354,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 82,
+        "right": 1366,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "en",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1068.515625,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1665.078125,
+          "y": 23,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1756.640625,
+          "bottom": 59
+        },
+        {
+          "x": 1760.640625,
+          "y": 23,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1821.078125,
+          "bottom": 59
+        },
+        {
+          "x": 1825.078125,
+          "y": 23,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1908,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 82,
+        "right": 1920,
+        "bottom": 82
+      },
+      "title": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "zh-TW",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 24,
+        "right": 344,
+        "bottom": 130
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 74,
+        "right": 344,
+        "bottom": 130
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 134,
+        "right": 360,
+        "bottom": 134
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "zh-TW",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 653.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 739.96875,
+          "bottom": 59
+        },
+        {
+          "x": 743.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 813.984375,
+          "bottom": 59
+        },
+        {
+          "x": 817.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 888,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 82,
+        "right": 900,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "zh-TW",
+      "width": 1366,
+      "inHeader": true,
+      "navWidth": 523.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1119.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1205.96875,
+          "bottom": 59
+        },
+        {
+          "x": 1209.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1279.984375,
+          "bottom": 59
+        },
+        {
+          "x": 1283.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1354,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 82,
+        "right": 1366,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-css",
+      "lang": "zh-TW",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1077.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 24,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 74,
+        "right": 580.5625,
+        "bottom": 78
+      },
+      "tools": [
+        {
+          "x": 1673.953125,
+          "y": 23,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1759.96875,
+          "bottom": 59
+        },
+        {
+          "x": 1763.96875,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1833.984375,
+          "bottom": 59
+        },
+        {
+          "x": 1837.984375,
+          "y": 23,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1908,
+          "bottom": 59
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 82,
+        "right": 1920,
+        "bottom": 82
+      },
+      "title": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 Agent) · node 858 MB (fleet 本身)",
+      "truncated": true,
+      "wrapped": false,
+      "clipped": true,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": true,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "en",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 72,
+        "right": 344,
+        "bottom": 178
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 122,
+        "right": 344,
+        "bottom": 178
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 182,
+        "right": 360,
+        "bottom": 182
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "en",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 645.078125,
+          "y": 59,
+          "w": 91.5625,
+          "h": 36,
+          "right": 736.640625,
+          "bottom": 95
+        },
+        {
+          "x": 740.640625,
+          "y": 59,
+          "w": 60.4375,
+          "h": 36,
+          "right": 801.078125,
+          "bottom": 95
+        },
+        {
+          "x": 805.078125,
+          "y": 59,
+          "w": 82.921875,
+          "h": 36,
+          "right": 888,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 154,
+        "right": 900,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "en",
+      "width": 1366,
+      "inHeader": false,
+      "navWidth": 808,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 1111.078125,
+          "y": 59,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1202.640625,
+          "bottom": 95
+        },
+        {
+          "x": 1206.640625,
+          "y": 59,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1267.078125,
+          "bottom": 95
+        },
+        {
+          "x": 1271.078125,
+          "y": 59,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1354,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 154,
+        "right": 1366,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "en",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1068.515625,
+      "tabWidths": [
+        83.609375,
+        112.28125,
+        88.640625,
+        106.015625,
+        87.5,
+        88
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 1665.078125,
+          "y": 59,
+          "w": 91.5625,
+          "h": 36,
+          "right": 1756.640625,
+          "bottom": 95
+        },
+        {
+          "x": 1760.640625,
+          "y": 59,
+          "w": 60.4375,
+          "h": 36,
+          "right": 1821.078125,
+          "bottom": 95
+        },
+        {
+          "x": 1825.078125,
+          "y": 59,
+          "w": 82.921875,
+          "h": 36,
+          "right": 1908,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 154,
+        "right": 1920,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "Largest: claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (not an instance) · node 858 MB (the fleet)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "zh-TW",
+      "width": 360,
+      "inHeader": false,
+      "navWidth": 360,
+      "tabWidths": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 66,
+          "scroll": 66
+        },
+        {
+          "width": 328,
+          "scroll": 328
+        }
+      ],
+      "top": {
+        "x": 28,
+        "y": 106,
+        "w": 316,
+        "h": 72,
+        "right": 344,
+        "bottom": 178
+      },
+      "status": {
+        "x": 16,
+        "y": 56,
+        "w": 328,
+        "h": 122,
+        "right": 344,
+        "bottom": 178
+      },
+      "tools": [
+        {
+          "x": 194,
+          "y": 4,
+          "w": 58,
+          "h": 44,
+          "right": 252,
+          "bottom": 48
+        },
+        {
+          "x": 256,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 298,
+          "bottom": 48
+        },
+        {
+          "x": 302,
+          "y": 4,
+          "w": 42,
+          "h": 44,
+          "right": 344,
+          "bottom": 48
+        }
+      ],
+      "head": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 182,
+        "right": 360,
+        "bottom": 182
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 360,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "zh-TW",
+      "width": 900,
+      "inHeader": false,
+      "navWidth": 640,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 653.953125,
+          "y": 59,
+          "w": 86.015625,
+          "h": 36,
+          "right": 739.96875,
+          "bottom": 95
+        },
+        {
+          "x": 743.96875,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 813.984375,
+          "bottom": 95
+        },
+        {
+          "x": 817.984375,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 888,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 640,
+        "h": 154,
+        "right": 900,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 900,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": false,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "zh-TW",
+      "width": 1366,
+      "inHeader": true,
+      "navWidth": 523.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 1119.953125,
+          "y": 59,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1205.96875,
+          "bottom": 95
+        },
+        {
+          "x": 1209.96875,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1279.984375,
+          "bottom": 95
+        },
+        {
+          "x": 1283.984375,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1354,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1106,
+        "h": 154,
+        "right": 1366,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1366,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "old-panel",
+      "lang": "zh-TW",
+      "width": 1920,
+      "inHeader": true,
+      "navWidth": 1077.390625,
+      "tabWidths": [
+        83.609375,
+        74.015625,
+        88.640625,
+        87.015625,
+        74.015625,
+        74.015625
+      ],
+      "titleWidths": [
+        {
+          "width": 40.5625,
+          "scroll": 41
+        },
+        {
+          "width": 256,
+          "scroll": 256
+        }
+      ],
+      "top": {
+        "x": 336.5625,
+        "y": 54,
+        "w": 244,
+        "h": 96,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "status": {
+        "x": 324.5625,
+        "y": 4,
+        "w": 256,
+        "h": 146,
+        "right": 580.5625,
+        "bottom": 150
+      },
+      "tools": [
+        {
+          "x": 1673.953125,
+          "y": 59,
+          "w": 86.015625,
+          "h": 36,
+          "right": 1759.96875,
+          "bottom": 95
+        },
+        {
+          "x": 1763.96875,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1833.984375,
+          "bottom": 95
+        },
+        {
+          "x": 1837.984375,
+          "y": 59,
+          "w": 70.015625,
+          "h": 36,
+          "right": 1908,
+          "bottom": 95
+        }
+      ],
+      "head": {
+        "x": 260,
+        "y": 0,
+        "w": 1660,
+        "h": 154,
+        "right": 1920,
+        "bottom": 154
+      },
+      "title": "",
+      "text": "最大：claude 3.2 GB (agend-dev-claude2-t481212) · chrome-headless-shell 1.8 GB (不屬於任何 instance) · node 858 MB (fleet 本身)",
+      "truncated": false,
+      "wrapped": true,
+      "clipped": false,
+      "overlap": false,
+      "inside": true,
+      "allTabs": true,
+      "scrollWidth": 1920,
+      "healed": false,
+      "cleared": {
+        "warning": false,
+        "tabs": true,
+        "overflow": false
+      },
+      "errors": []
+    }
+  ]
+}

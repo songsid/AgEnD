@@ -1,0 +1,1938 @@
+{
+  "schemaVersion": 1,
+  "task": "M-2803",
+  "scope": "Main checkout scripts/manual only; follow-up inventory alongside fixes for CodeQL js/bad-code-sanitization alerts #105–107.",
+  "createdBy": "Read-only TypeScript AST scan plus targeted wrapper review; no browser rigs or production edits.",
+  "command": "node docs/evidence/manual-smoke-codeql-m2803/scan.mjs > .artifacts/manual-evaluate-scan.json",
+  "commands": [
+    {
+      "command": "rg -l --glob '*.{mts,ts,js,mjs,cts,cjs}' '\\.(evaluate|evaluateHandle|addInitScript)\\s*\\(' scripts/manual | wc -l",
+      "count": 144,
+      "unit": "files"
+    },
+    {
+      "command": "rg -n --glob '*.{mts,ts,js,mjs,cts,cjs}' '\\.(evaluate|evaluateHandle|addInitScript)\\s*\\(' scripts/manual | wc -l",
+      "count": 612,
+      "unit": "matching source lines"
+    },
+    {
+      "command": "rg -n --glob '*.{mts,ts,js,mjs,cts,cjs}' '\\beval\\b|\\bFunction\\b' scripts/manual",
+      "purpose": "Find nested eval wrappers, including indirect (0, eval)."
+    },
+    {
+      "command": "rg -n --glob '*.{mts,ts,js,mjs,cts,cjs}' '(\\bevaluate\\b|\\baddInitScript\\b)' scripts/manual | rg -v '\\.(evaluate|evaluateHandle|addInitScript)\\s*\\('",
+      "purpose": "Check non-call mentions for method aliases; review found type declarations/comments only."
+    }
+  ],
+  "counts": {
+    "selectedFiles": 144,
+    "matchingSourceLines": 612,
+    "totalCalls": 621,
+    "constantStringCalls": 413,
+    "functionCalls": 156,
+    "objectCalls": 0,
+    "unresolvedCalls": 2,
+    "directConstructedCallSites": 50,
+    "additionalDirectConstructedCallSites": 50,
+    "additionalDirectFiles": 33,
+    "additionalDirectRuntimeDataCallSites": 49,
+    "additionalDirectConstantFragmentCallSites": 1,
+    "forwardingSinksWithConstructedSources": 1,
+    "forwardedConstructedSourceExpressions": 9,
+    "forwardingSinksWithConstantExpressionsOnly": 1,
+    "nestedEvalConstructedSourceCallSites": 4,
+    "nestedEvalConstantFragmentCallSites": 4
+  },
+  "definitions": {
+    "runtime-data-interpolation": "Host-side values are embedded into executable browser source. Values may be fixed fixture inputs or numbers; this does not mean attacker controlled or exploitable.",
+    "constant-code-fragment-composition": "Only previously defined literal source fragments are substituted. This still constructs source, but does not interpolate runtime input data.",
+    "constant-expressions-only": "String code is forwarded unchanged; inspected callers supply literal expressions with no substitutions."
+  },
+  "findings": [
+    {
+      "path": "scripts/manual/smoke-fixture/index.mts",
+      "sinkLine": 173,
+      "method": "addInitScript",
+      "argumentPreview": "{ content: `try { ${Object.entries(storage).map(([k, v]) => `localStorage.setItem(${q(k)}, ${q(v)});`).join(\" \")} } catch {} window.__csp = []; document.addEventListener(\"securitypolicyviolation\", e => window.__csp.push(e.violatedDirective ",
+      "definitionTrace": [],
+      "constructionLine": 173,
+      "sourcePreview": "`try { ${Object.entries(storage).map(([k, v]) => `localStorage.setItem(${q(k)}, ${q(v)});`).join(\" \")} } catch {} window.__csp = []; document.addEventListener(\"securitypolicyviolation\", e => window.__csp.push(e.violatedDirective + \" \" + (e.",
+      "substitutions": [
+        {
+          "line": 173,
+          "expression": "Object.entries(storage).map(([k, v]) => `localStorage.setItem(${q(k)}, ${q(v)});`).join(\" \")",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke-fixture/pictures.mts",
+      "sinkLine": 28,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const W = ${s.w}, H = ${s.h}, hue = ${s.hue}, alpha = ${!!s.alpha}; let seed = ${s.seed ?? s.w * 31 + s.h * 17 + s.hue}; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }; const c = d",
+      "definitionTrace": [],
+      "constructionLine": 28,
+      "sourcePreview": "`(() => { const W = ${s.w}, H = ${s.h}, hue = ${s.hue}, alpha = ${!!s.alpha}; let seed = ${s.seed ?? s.w * 31 + s.h * 17 + s.hue}; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }; const c = d",
+      "substitutions": [
+        {
+          "line": 29,
+          "expression": "s.w",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 29,
+          "expression": "s.h",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 29,
+          "expression": "s.hue",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 29,
+          "expression": "!!s.alpha",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 30,
+          "expression": "s.seed ?? s.w * 31 + s.h * 17 + s.hue",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 59,
+          "expression": "JSON.stringify(s.label)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 62,
+          "expression": "JSON.stringify(s.label)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 64,
+          "expression": "JSON.stringify(s.mime ?? (s.alpha || s.w * s.h <= 1_000_000 ? \"image/png\" : \"image/jpeg\"))",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-1918-workflow-defaults.mts",
+      "sinkLine": 112,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const loose = document.querySelector(\".oc-team.loose\"); const xs = new Set([...document.querySelectorAll(\".oc-node\")].filter((g) => { const n = g.dataset.name; return ${JSON.stringify(REST)}.includes(n); }).map((g) => g.getAttribu",
+      "definitionTrace": [],
+      "constructionLine": 112,
+      "sourcePreview": "`(() => { const loose = document.querySelector(\".oc-team.loose\"); const xs = new Set([...document.querySelectorAll(\".oc-node\")].filter((g) => { const n = g.dataset.name; return ${JSON.stringify(REST)}.includes(n); }).map((g) => g.getAttribu",
+      "substitutions": [
+        {
+          "line": 112,
+          "expression": "JSON.stringify(REST)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 113,
+          "expression": "JSON.stringify(GENERALS)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 113,
+          "expression": "PAUSED",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "PAUSED",
+              "line": 30
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-1918-workflow-defaults.mts",
+      "sinkLine": 132,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const loose = document.querySelector(\".oc-team.loose .oc-box\"); const bx = +loose.getAttribute(\"x\"), bw = +loose.getAttribute(\"width\"); const cells = [...document.querySelectorAll(\".oc-node\")].map((g) => ({ n: g.dataset.name, x: +",
+      "definitionTrace": [],
+      "constructionLine": 132,
+      "sourcePreview": "`(() => { const loose = document.querySelector(\".oc-team.loose .oc-box\"); const bx = +loose.getAttribute(\"x\"), bw = +loose.getAttribute(\"width\"); const cells = [...document.querySelectorAll(\".oc-node\")].map((g) => ({ n: g.dataset.name, x: +",
+      "substitutions": [
+        {
+          "line": 134,
+          "expression": "JSON.stringify(REST)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2014.mts",
+      "sinkLine": 24,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const st = h.querySelector(\".u-head strong\"), pr = h.querySelector(\".u-profile\"), pl = h.q",
+      "definitionTrace": [],
+      "constructionLine": 24,
+      "sourcePreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const st = h.querySelector(\".u-head strong\"), pr = h.querySelector(\".u-profile\"), pl = h.q",
+      "substitutions": [
+        {
+          "line": 24,
+          "expression": "JSON.stringify(scope)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2038.mts",
+      "sinkLine": 38,
+      "method": "evaluate",
+      "argumentPreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "definitionTrace": [],
+      "constructionLine": 38,
+      "sourcePreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "substitutions": [
+        {
+          "line": 38,
+          "expression": "JSON.stringify(size)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2038.mts",
+      "sinkLine": 43,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c.querySelector(\".id-banner\"); const r = (e) => e && e.getBoundingClientRect(); return { card: r(c) && [Math.round(r(c).width), Math.round(r(c).height)], banner: ",
+      "definitionTrace": [],
+      "constructionLine": 43,
+      "sourcePreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c.querySelector(\".id-banner\"); const r = (e) => e && e.getBoundingClientRect(); return { card: r(c) && [Math.round(r(c).width), Math.round(r(c).height)], banner: ",
+      "substitutions": [
+        {
+          "line": 43,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2053-switch.mts",
+      "sinkLine": 47,
+      "method": "evaluate",
+      "argumentPreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, want = ${N}; const link = document.querySelector('a[href=\"/ui/chat/' + to + '\"]'); const marks = {}; let t0 = 0, tEnd = 0; let done = false; const frame = (k) => { if (marks[k] =",
+      "definitionTrace": [],
+      "constructionLine": 47,
+      "sourcePreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, want = ${N}; const link = document.querySelector('a[href=\"/ui/chat/' + to + '\"]'); const marks = {}; let t0 = 0, tEnd = 0; let done = false; const frame = (k) => { if (marks[k] =",
+      "substitutions": [
+        {
+          "line": 48,
+          "expression": "JSON.stringify(to)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 48,
+          "expression": "N",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "N",
+              "line": 21
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2086.mts",
+      "sinkLine": 50,
+      "method": "evaluate",
+      "argumentPreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "definitionTrace": [],
+      "constructionLine": 50,
+      "sourcePreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "substitutions": [
+        {
+          "line": 50,
+          "expression": "JSON.stringify(size)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2086.mts",
+      "sinkLine": 56,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const b = document.querySelector(${JSON.stringify(sel)}).querySelector(\".id-banner\"); if (!b) return null; const r = b.getBoundingClientRect(); const cs = getComputedStyle(b); return { w: Math.round(r.width), h: Math.round(r.heigh",
+      "definitionTrace": [],
+      "constructionLine": 56,
+      "sourcePreview": "`(() => { const b = document.querySelector(${JSON.stringify(sel)}).querySelector(\".id-banner\"); if (!b) return null; const r = b.getBoundingClientRect(); const cs = getComputedStyle(b); return { w: Math.round(r.width), h: Math.round(r.heigh",
+      "substitutions": [
+        {
+          "line": 56,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2086.mts",
+      "sinkLine": 88,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c && c.querySelector(\".id-banner\"); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`",
+      "definitionTrace": [],
+      "constructionLine": 88,
+      "sourcePreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c && c.querySelector(\".id-banner\"); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`",
+      "substitutions": [
+        {
+          "line": 88,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2086.mts",
+      "sinkLine": 105,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const r = document.querySelector('.bf-field input[type=range]'); if (!r) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, \"value\").set; set.call(r, \"${f}\"); r.dispatchEvent(new Event(\"input\", { bubbl",
+      "definitionTrace": [],
+      "constructionLine": 105,
+      "sourcePreview": "`(() => { const r = document.querySelector('.bf-field input[type=range]'); if (!r) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, \"value\").set; set.call(r, \"${f}\"); r.dispatchEvent(new Event(\"input\", { bubbl",
+      "substitutions": [
+        {
+          "line": 105,
+          "expression": "f",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2233-web-sign-in.mts",
+      "sinkLine": 75,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const b = [...document.querySelectorAll(\"dialog.dlg[open] button\")].find((x) => ${re}.test(x.textContent.trim())); if (b) b.click(); return !!b; })()`",
+      "definitionTrace": [],
+      "constructionLine": 75,
+      "sourcePreview": "`(() => { const b = [...document.querySelectorAll(\"dialog.dlg[open] button\")].find((x) => ${re}.test(x.textContent.trim())); if (b) b.click(); return !!b; })()`",
+      "substitutions": [
+        {
+          "line": 75,
+          "expression": "re",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2236-default-row.mts",
+      "sinkLine": 43,
+      "method": "evaluate",
+      "argumentPreview": "rows(scope)",
+      "definitionTrace": [
+        {
+          "name": "rows()",
+          "line": 26
+        }
+      ],
+      "constructionLine": 26,
+      "sourcePreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const st = h.querySelector(\".u-head strong\"), pr = h.querySelector(\".u-profile\"), pl = h.q",
+      "substitutions": [
+        {
+          "line": 26,
+          "expression": "JSON.stringify(scope)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2236-last-known.mts",
+      "sinkLine": 33,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const mk = h.querySelector(\".u-stale\"), dt = h.querySelector(\".u-stale-detail\"), clipped =",
+      "definitionTrace": [],
+      "constructionLine": 33,
+      "sourcePreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const mk = h.querySelector(\".u-stale\"), dt = h.querySelector(\".u-stale-detail\"), clipped =",
+      "substitutions": [
+        {
+          "line": 33,
+          "expression": "JSON.stringify(scope)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2308-app-icon.mts",
+      "sinkLine": 56,
+      "method": "evaluate",
+      "argumentPreview": "`fetch(\"/manifest.webmanifest?v=${v}\").then(r => r.text())`",
+      "definitionTrace": [],
+      "constructionLine": 56,
+      "sourcePreview": "`fetch(\"/manifest.webmanifest?v=${v}\").then(r => r.text())`",
+      "substitutions": [
+        {
+          "line": 56,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2308-app-icon.mts",
+      "sinkLine": 59,
+      "method": "evaluate",
+      "argumentPreview": "`Promise.all([\"/favicon.ico?v=${v}\", \"/apple-touch-icon.png?v=${v}\", \"/icon-192.png?v=${v}\", \"/icon-512.png?v=${v}\"].map(src => new Promise(ok => { const i = new Image(); i.onload = () => ok(src.split(\"?\")[0] + \" \" + i.naturalWidth + \"x\" + ",
+      "definitionTrace": [],
+      "constructionLine": 59,
+      "sourcePreview": "`Promise.all([\"/favicon.ico?v=${v}\", \"/apple-touch-icon.png?v=${v}\", \"/icon-192.png?v=${v}\", \"/icon-512.png?v=${v}\"].map(src => new Promise(ok => { const i = new Image(); i.onload = () => ok(src.split(\"?\")[0] + \" \" + i.naturalWidth + \"x\" + ",
+      "substitutions": [
+        {
+          "line": 59,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 59,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 59,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 59,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2308-app-icon.mts",
+      "sinkLine": 63,
+      "method": "evaluate",
+      "argumentPreview": "`Promise.all([fetch(\"/icon-192.png?v=${v}\"), fetch(\"/icon-192.png\")]).then(rs => rs.map(r => r.headers.get(\"cache-control\")))`",
+      "definitionTrace": [],
+      "constructionLine": 63,
+      "sourcePreview": "`Promise.all([fetch(\"/icon-192.png?v=${v}\"), fetch(\"/icon-192.png\")]).then(rs => rs.map(r => r.headers.get(\"cache-control\")))`",
+      "substitutions": [
+        {
+          "line": 63,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2308-app-icon.mts",
+      "sinkLine": 67,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { document.documentElement.innerHTML = \"<head><title>icons</title></head><body></body>\"; const add = (tag, attrs, text) => { const el = document.createElement(tag); for (const [k, val] of Object.entries(attrs)) el.setAttribute(k, va",
+      "definitionTrace": [],
+      "constructionLine": 67,
+      "sourcePreview": "`(() => { document.documentElement.innerHTML = \"<head><title>icons</title></head><body></body>\"; const add = (tag, attrs, text) => { const el = document.createElement(tag); for (const [k, val] of Object.entries(attrs)) el.setAttribute(k, va",
+      "substitutions": [
+        {
+          "line": 70,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 70,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 71,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 71,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 72,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 73,
+          "expression": "v",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "v",
+              "line": 49
+            }
+          ]
+        },
+        {
+          "line": 73,
+          "expression": "manifest",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "manifest",
+              "line": 56
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2330-left-bars.mts",
+      "sinkLine": 89,
+      "method": "evaluate",
+      "argumentPreview": "`[...document.querySelectorAll(${JSON.stringify(p.probe)})].map((el) => { const box = el.getBoundingClientRect(), cs = getComputedStyle(el), bar = getComputedStyle(el, \"::before\"); return { cls: el.className, contentLeft: (() => { const w =",
+      "definitionTrace": [],
+      "constructionLine": 89,
+      "sourcePreview": "`[...document.querySelectorAll(${JSON.stringify(p.probe)})].map((el) => { const box = el.getBoundingClientRect(), cs = getComputedStyle(el), bar = getComputedStyle(el, \"::before\"); return { cls: el.className, contentLeft: (() => { const w =",
+      "substitutions": [
+        {
+          "line": 89,
+          "expression": "JSON.stringify(p.probe)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2333-lightbox-zoom.mts",
+      "sinkLine": 131,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const st = document.querySelector(\"dialog.lb .lb-stage\"); st.dispatchEvent(new PointerEvent(${JSON.stringify(kind)}, { bubbles: true, cancelable: true, pointerId: ${id}, pointerType: \"touch\", isPrimary: ${id === 1}, clientX: ${x},",
+      "definitionTrace": [],
+      "constructionLine": 131,
+      "sourcePreview": "`(() => { const st = document.querySelector(\"dialog.lb .lb-stage\"); st.dispatchEvent(new PointerEvent(${JSON.stringify(kind)}, { bubbles: true, cancelable: true, pointerId: ${id}, pointerType: \"touch\", isPrimary: ${id === 1}, clientX: ${x},",
+      "substitutions": [
+        {
+          "line": 132,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 132,
+          "expression": "id",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 132,
+          "expression": "id === 1",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 132,
+          "expression": "x",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 132,
+          "expression": "y",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2347-search.mts",
+      "sinkLine": 28,
+      "method": "evaluate",
+      "argumentPreview": "`(() => ({ heads: [...document.querySelectorAll(\".s-find-head\")].length, items: [...document.querySelectorAll(\".s-find-item\")].length, marks: document.querySelectorAll(\".s-find-item mark\").length, keys: document.querySelectorAll(\".s-find-ke",
+      "definitionTrace": [],
+      "constructionLine": 28,
+      "sourcePreview": "`(() => ({ heads: [...document.querySelectorAll(\".s-find-head\")].length, items: [...document.querySelectorAll(\".s-find-item\")].length, marks: document.querySelectorAll(\".s-find-item mark\").length, keys: document.querySelectorAll(\".s-find-ke",
+      "substitutions": [
+        {
+          "line": 30,
+          "expression": "geo",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "geo",
+              "line": 24
+            }
+          ]
+        }
+      ],
+      "constructionKind": "constant-code-fragment-composition",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2401-filter-height.mts",
+      "sinkLine": 30,
+      "method": "addInitScript",
+      "argumentPreview": "`try { localStorage.setItem(\"agend_sidebar_w\", \"${side}\") } catch {}`",
+      "definitionTrace": [],
+      "constructionLine": 30,
+      "sourcePreview": "`try { localStorage.setItem(\"agend_sidebar_w\", \"${side}\") } catch {}`",
+      "substitutions": [
+        {
+          "line": 30,
+          "expression": "side",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "side",
+              "line": 27
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2412-usage-head.mts",
+      "sinkLine": 42,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const head = h.querySelector(\".u-head\"), st = h.querySelector(\".u-head strong\"), pr = h.qu",
+      "definitionTrace": [],
+      "constructionLine": 42,
+      "sourcePreview": "`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(\".u-provider\")].map((h) => { const head = h.querySelector(\".u-head\"), st = h.querySelector(\".u-head strong\"), pr = h.qu",
+      "substitutions": [
+        {
+          "line": 42,
+          "expression": "JSON.stringify(scope)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2911-preview-versions.mts",
+      "sinkLine": 49,
+      "method": "evaluate",
+      "argumentPreview": "`document.querySelectorAll(\".html-card .pv-open\")[${nth}].click()`",
+      "definitionTrace": [],
+      "constructionLine": 49,
+      "sourcePreview": "`document.querySelectorAll(\".html-card .pv-open\")[${nth}].click()`",
+      "substitutions": [
+        {
+          "line": 49,
+          "expression": "nth",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2911-preview-widths.mts",
+      "sinkLine": 45,
+      "method": "evaluate",
+      "argumentPreview": "`document.querySelectorAll(\".html-card .pv-open\")[${nth}].click()`",
+      "definitionTrace": [],
+      "constructionLine": 45,
+      "sourcePreview": "`document.querySelectorAll(\".html-card .pv-open\")[${nth}].click()`",
+      "substitutions": [
+        {
+          "line": 45,
+          "expression": "nth",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-agy-argon-2240.mts",
+      "sinkLine": 61,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const root = document.querySelector(${JSON.stringify(SCOPE[c.device])}); const card = [...root.querySelectorAll(\".u-provider\")].find((s) => s.querySelector(\".u-head strong\")?.textContent === \"Antigravity\"); const rows = [...root.q",
+      "definitionTrace": [],
+      "constructionLine": 61,
+      "sourcePreview": "`(() => { const root = document.querySelector(${JSON.stringify(SCOPE[c.device])}); const card = [...root.querySelectorAll(\".u-provider\")].find((s) => s.querySelector(\".u-head strong\")?.textContent === \"Antigravity\"); const rows = [...root.q",
+      "substitutions": [
+        {
+          "line": 62,
+          "expression": "JSON.stringify(SCOPE[c.device])",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-ambient.mts",
+      "sinkLine": 75,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const f = document.querySelector(\".amb-burst\"); const n = f ? f.children.length : 0; const top = document.elementFromPoint(${box.x}, ${box.y}); return { n, topIsAmbient: !!(top && top.closest(\".amb-layer, .amb-burst\")) }; })()`",
+      "definitionTrace": [],
+      "constructionLine": 75,
+      "sourcePreview": "`(() => { const f = document.querySelector(\".amb-burst\"); const n = f ? f.children.length : 0; const top = document.elementFromPoint(${box.x}, ${box.y}); return { n, topIsAmbient: !!(top && top.closest(\".amb-layer, .amb-burst\")) }; })()`",
+      "substitutions": [
+        {
+          "line": 76,
+          "expression": "box.x",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 76,
+          "expression": "box.y",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-card.mts",
+      "sinkLine": 29,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); if (!c) return null; const p = c.querySelector(\".id-portrait\"), b = c.querySelector(\".id-banner\"); const rect = (e) => e ? (({ width, height, left, right }) => ({ w: Math.r",
+      "definitionTrace": [],
+      "constructionLine": 29,
+      "sourcePreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); if (!c) return null; const p = c.querySelector(\".id-portrait\"), b = c.querySelector(\".id-banner\"); const rect = (e) => e ? (({ width, height, left, right }) => ({ w: Math.r",
+      "substitutions": [
+        {
+          "line": 29,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-card.mts",
+      "sinkLine": 70,
+      "method": "evaluate",
+      "argumentPreview": "`fetch(\"/api/card/${enc(LONG)}\").then((x) => x.json()).then((c) => ({ tagline: c.tagline, bio: c.bio && c.bio.by }))`",
+      "definitionTrace": [],
+      "constructionLine": 70,
+      "sourcePreview": "`fetch(\"/api/card/${enc(LONG)}\").then((x) => x.json()).then((c) => ({ tagline: c.tagline, bio: c.bio && c.bio.by }))`",
+      "substitutions": [
+        {
+          "line": 70,
+          "expression": "enc(LONG)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-card.mts",
+      "sinkLine": 71,
+      "method": "evaluate",
+      "argumentPreview": "`fetch(\"/api/card/${enc(LONG)}\", { method: \"DELETE\" }).then((x) => x.status)`",
+      "definitionTrace": [],
+      "constructionLine": 71,
+      "sourcePreview": "`fetch(\"/api/card/${enc(LONG)}\", { method: \"DELETE\" }).then((x) => x.status)`",
+      "substitutions": [
+        {
+          "line": 71,
+          "expression": "enc(LONG)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-chat-card-compact.mts",
+      "sinkLine": 94,
+      "method": "evaluate",
+      "argumentPreview": "`(async () => { const per = []; let cur = null; const po = new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput && cur) { cur.sum += e.value; cur.n++; cur.src.push(...(e.sources || []).map((x) => (x.node &&",
+      "definitionTrace": [],
+      "constructionLine": 94,
+      "sourcePreview": "`(async () => { const per = []; let cur = null; const po = new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput && cur) { cur.sum += e.value; cur.n++; cur.src.push(...(e.sources || []).map((x) => (x.node &&",
+      "substitutions": [
+        {
+          "line": 98,
+          "expression": "JSON.stringify([B, A, B, A])",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-chat-card-compact.mts",
+      "sinkLine": 181,
+      "method": "evaluate",
+      "argumentPreview": "`document.activeElement === document.querySelector(${JSON.stringify(MENU_BTN)})`",
+      "definitionTrace": [],
+      "constructionLine": 181,
+      "sourcePreview": "`document.activeElement === document.querySelector(${JSON.stringify(MENU_BTN)})`",
+      "substitutions": [
+        {
+          "line": 181,
+          "expression": "JSON.stringify(MENU_BTN)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-chat-switch.mts",
+      "sinkLine": 25,
+      "method": "evaluate",
+      "argumentPreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, want = ${N}; const link = document.querySelector('a.v-inst[href=\"/ui/chat/' + to + '\"]'); const marks = {}; let t0 = 0; let done = false; const frame = (k) => { if (marks[k] === ",
+      "definitionTrace": [],
+      "constructionLine": 25,
+      "sourcePreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, want = ${N}; const link = document.querySelector('a.v-inst[href=\"/ui/chat/' + to + '\"]'); const marks = {}; let t0 = 0; let done = false; const frame = (k) => { if (marks[k] === ",
+      "substitutions": [
+        {
+          "line": 26,
+          "expression": "JSON.stringify(to)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 26,
+          "expression": "N",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "N",
+              "line": 17
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-composer-row-2215.mts",
+      "sinkLine": 190,
+      "method": "addInitScript",
+      "argumentPreview": "{ content: `try { localStorage.setItem(\"agend_tour_done\", \"1\"); localStorage.setItem(\"agend_firstrun_dismissed\", \"1\"); localStorage.setItem(\"agend_lang\", ${JSON.stringify(k.c.lang)}); } catch {}` }",
+      "definitionTrace": [],
+      "constructionLine": 190,
+      "sourcePreview": "`try { localStorage.setItem(\"agend_tour_done\", \"1\"); localStorage.setItem(\"agend_firstrun_dismissed\", \"1\"); localStorage.setItem(\"agend_lang\", ${JSON.stringify(k.c.lang)}); } catch {}`",
+      "substitutions": [
+        {
+          "line": 190,
+          "expression": "JSON.stringify(k.c.lang)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-id-row.mts",
+      "sinkLine": 20,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const c = document.createElement(\"canvas\"); c.width = ${w}; c.height = ${h}; const g = c.getContext(\"2d\"); const grad = g.createLinearGradient(0, 0, ${w}, ${h}); grad.addColorStop(0, \"hsl(${hue},55%,42%)\"); grad.addColorStop(1, \"h",
+      "definitionTrace": [],
+      "constructionLine": 20,
+      "sourcePreview": "`(() => { const c = document.createElement(\"canvas\"); c.width = ${w}; c.height = ${h}; const g = c.getContext(\"2d\"); const grad = g.createLinearGradient(0, 0, ${w}, ${h}); grad.addColorStop(0, \"hsl(${hue},55%,42%)\"); grad.addColorStop(1, \"h",
+      "substitutions": [
+        {
+          "line": 20,
+          "expression": "w",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 20,
+          "expression": "h",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 21,
+          "expression": "w",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 21,
+          "expression": "h",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 21,
+          "expression": "hue",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 21,
+          "expression": "hue + 40",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 22,
+          "expression": "w",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 22,
+          "expression": "h",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 23,
+          "expression": "w / 2",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 23,
+          "expression": "h * 0.38",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 23,
+          "expression": "Math.min(w, h) * 0.22",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 24,
+          "expression": "Math.round(Math.min(w, h) / 9)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 24,
+          "expression": "JSON.stringify(label)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 24,
+          "expression": "w / 2",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 24,
+          "expression": "h * 0.82",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-id-row.mts",
+      "sinkLine": 44,
+      "method": "evaluate",
+      "argumentPreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "definitionTrace": [],
+      "constructionLine": 44,
+      "sourcePreview": "`localStorage.setItem(\"agend_card_size\", ${JSON.stringify(size)})`",
+      "substitutions": [
+        {
+          "line": 44,
+          "expression": "JSON.stringify(size)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-id-row.mts",
+      "sinkLine": 50,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const card = document.querySelector(${JSON.stringify(sel)}); const box = (q) => { const e = card.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: ",
+      "definitionTrace": [],
+      "constructionLine": 50,
+      "sourcePreview": "`(() => { const card = document.querySelector(${JSON.stringify(sel)}); const box = (q) => { const e = card.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: ",
+      "substitutions": [
+        {
+          "line": 50,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-ime-composition.mts",
+      "sinkLine": 68,
+      "method": "evaluate",
+      "argumentPreview": "imeStep(\"start\", \"\")",
+      "definitionTrace": [
+        {
+          "name": "imeStep()",
+          "line": 43
+        }
+      ],
+      "constructionLine": 43,
+      "sourcePreview": "`(() => { const box = document.getElementById(\"msgIn\"), w = window.__ime, base = box.dataset.imeBase || \"\"; if (${JSON.stringify(kind)} === \"start\") { box.dataset.imeBase = box.value; box.dispatchEvent(new CompositionEvent(\"compositionstart",
+      "substitutions": [
+        {
+          "line": 44,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 45,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 46,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 47,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 48,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 49,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-ime-composition.mts",
+      "sinkLine": 76,
+      "method": "evaluate",
+      "argumentPreview": "imeStep(\"update\", KEYS[i])",
+      "definitionTrace": [
+        {
+          "name": "imeStep()",
+          "line": 43
+        }
+      ],
+      "constructionLine": 43,
+      "sourcePreview": "`(() => { const box = document.getElementById(\"msgIn\"), w = window.__ime, base = box.dataset.imeBase || \"\"; if (${JSON.stringify(kind)} === \"start\") { box.dataset.imeBase = box.value; box.dispatchEvent(new CompositionEvent(\"compositionstart",
+      "substitutions": [
+        {
+          "line": 44,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 45,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 46,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 47,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 48,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 49,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-ime-composition.mts",
+      "sinkLine": 83,
+      "method": "evaluate",
+      "argumentPreview": "imeStep(\"end\", \"寶貝\")",
+      "definitionTrace": [
+        {
+          "name": "imeStep()",
+          "line": 43
+        }
+      ],
+      "constructionLine": 43,
+      "sourcePreview": "`(() => { const box = document.getElementById(\"msgIn\"), w = window.__ime, base = box.dataset.imeBase || \"\"; if (${JSON.stringify(kind)} === \"start\") { box.dataset.imeBase = box.value; box.dispatchEvent(new CompositionEvent(\"compositionstart",
+      "substitutions": [
+        {
+          "line": 44,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 45,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 46,
+          "expression": "JSON.stringify(kind)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 47,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 48,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 49,
+          "expression": "JSON.stringify(text)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-owner-css.mts",
+      "sinkLine": 24,
+      "method": "evaluate",
+      "argumentPreview": "`(async () => { const font = ${JSON.stringify(font)}, pic = ${JSON.stringify(pictureB64)}; const bytes = (b) => Uint8Array.from(atob(b), c => c.charCodeAt(0)); const up = async (b) => (await fetch(\"/ui/owner-css/asset\", { method: \"POST\", he",
+      "definitionTrace": [],
+      "constructionLine": 24,
+      "sourcePreview": "`(async () => { const font = ${JSON.stringify(font)}, pic = ${JSON.stringify(pictureB64)}; const bytes = (b) => Uint8Array.from(atob(b), c => c.charCodeAt(0)); const up = async (b) => (await fetch(\"/ui/owner-css/asset\", { method: \"POST\", he",
+      "substitutions": [
+        {
+          "line": 25,
+          "expression": "JSON.stringify(font)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 25,
+          "expression": "JSON.stringify(pictureB64)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 29,
+          "expression": "JSON.stringify(ownerCss(40 * 1024))",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-scroll-end.mts",
+      "sinkLine": 64,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const sc = document.querySelector(\".p-chat .scroller\"); sc.scrollTop = sc.scrollHeight - sc.clientHeight - ${Math.round(STEPS * REACH) * DELTA + LAND}; return sc.scrollTop; })()`",
+      "definitionTrace": [],
+      "constructionLine": 64,
+      "sourcePreview": "`(() => { const sc = document.querySelector(\".p-chat .scroller\"); sc.scrollTop = sc.scrollHeight - sc.clientHeight - ${Math.round(STEPS * REACH) * DELTA + LAND}; return sc.scrollTop; })()`",
+      "substitutions": [
+        {
+          "line": 64,
+          "expression": "Math.round(STEPS * REACH) * DELTA + LAND",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-settings-ui-gate.mts",
+      "sinkLine": 201,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { document.querySelectorAll(\".p-settings .panel-body details\").forEach((d) => { d.open = true; }); document.querySelectorAll(\".p-settings .panel-body select\").forEach((s) => { const o = document.createElement(\"option\"); o.textConten",
+      "definitionTrace": [],
+      "constructionLine": 201,
+      "sourcePreview": "`(() => { document.querySelectorAll(\".p-settings .panel-body details\").forEach((d) => { d.open = true; }); document.querySelectorAll(\".p-settings .panel-body select\").forEach((s) => { const o = document.createElement(\"option\"); o.textConten",
+      "substitutions": [
+        {
+          "line": 202,
+          "expression": "JSON.stringify(LONG)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-sidebar-burst.mts",
+      "sinkLine": 52,
+      "method": "evaluate",
+      "argumentPreview": "`new Promise((resolve) => { const seq = ${JSON.stringify(seq)}, gaps = ${JSON.stringify(gaps)}, last = seq[seq.length - 1], EPS = ${EPS}; const row = (n) => document.querySelector('.sidebar a.inst[href=\"/ui/chat/' + encodeURIComponent(n) + ",
+      "definitionTrace": [],
+      "constructionLine": 52,
+      "sourcePreview": "`new Promise((resolve) => { const seq = ${JSON.stringify(seq)}, gaps = ${JSON.stringify(gaps)}, last = seq[seq.length - 1], EPS = ${EPS}; const row = (n) => document.querySelector('.sidebar a.inst[href=\"/ui/chat/' + encodeURIComponent(n) + ",
+      "substitutions": [
+        {
+          "line": 53,
+          "expression": "JSON.stringify(seq)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 53,
+          "expression": "JSON.stringify(gaps)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 53,
+          "expression": "EPS",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "EPS",
+              "line": 19
+            }
+          ]
+        },
+        {
+          "line": 73,
+          "expression": "Math.min(N, 24)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-sidebar-burst.mts",
+      "sinkLine": 143,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const t = document.querySelector(\".p-chat .thread\"); if (!t) return false; t.__used = ${JSON.stringify(n)}; return true; })()`",
+      "definitionTrace": [],
+      "constructionLine": 143,
+      "sourcePreview": "`(() => { const t = document.querySelector(\".p-chat .thread\"); if (!t) return false; t.__used = ${JSON.stringify(n)}; return true; })()`",
+      "substitutions": [
+        {
+          "line": 143,
+          "expression": "JSON.stringify(n)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-switch-jitter.mts",
+      "sinkLine": 49,
+      "method": "evaluate",
+      "argumentPreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, EPS = ${EPS}; const ids = new WeakMap(); let next = 0; const id = (n) => { if (!ids.has(n)) ids.set(n, ++next); return ids.get(n); }; const els = new Map(); const what = (k) => {",
+      "definitionTrace": [],
+      "constructionLine": 49,
+      "sourcePreview": "`new Promise((resolve) => { const to = ${JSON.stringify(to)}, EPS = ${EPS}; const ids = new WeakMap(); let next = 0; const id = (n) => { if (!ids.has(n)) ids.set(n, ++next); return ids.get(n); }; const els = new Map(); const what = (k) => {",
+      "substitutions": [
+        {
+          "line": 50,
+          "expression": "JSON.stringify(to)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 50,
+          "expression": "EPS",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "EPS",
+              "line": 20
+            }
+          ]
+        },
+        {
+          "line": 73,
+          "expression": "WINDOW_MS",
+          "kind": "runtime-data",
+          "definitionTrace": [
+            {
+              "name": "WINDOW_MS",
+              "line": 20
+            }
+          ]
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-usage-compact.mts",
+      "sinkLine": 82,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const s = document.querySelector(${JSON.stringify(SCROLLER[c.device])}), root = document.querySelector(${JSON.stringify(SCOPE[c.device])}); const clipped = (el) => { if (!el) return null; const range = document.createRange(); rang",
+      "definitionTrace": [],
+      "constructionLine": 82,
+      "sourcePreview": "`(() => { const s = document.querySelector(${JSON.stringify(SCROLLER[c.device])}), root = document.querySelector(${JSON.stringify(SCOPE[c.device])}); const clipped = (el) => { if (!el) return null; const range = document.createRange(); rang",
+      "substitutions": [
+        {
+          "line": 83,
+          "expression": "JSON.stringify(SCROLLER[c.device])",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        },
+        {
+          "line": 83,
+          "expression": "JSON.stringify(SCOPE[c.device])",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-widgets.mts",
+      "sinkLine": 23,
+      "method": "evaluate",
+      "argumentPreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); if (!c) return null; const rect = (e) => e ? (({ width, height, left, right, top, bottom }) => ({ w: Math.round(width), h: Math.round(height), l: Math.round(left), r: Math.",
+      "definitionTrace": [],
+      "constructionLine": 23,
+      "sourcePreview": "`(() => { const c = document.querySelector(${JSON.stringify(sel)}); if (!c) return null; const rect = (e) => e ? (({ width, height, left, right, top, bottom }) => ({ w: Math.round(width), h: Math.round(height), l: Math.round(left), r: Math.",
+      "substitutions": [
+        {
+          "line": 23,
+          "expression": "JSON.stringify(sel)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-widgets.mts",
+      "sinkLine": 47,
+      "method": "evaluate",
+      "argumentPreview": "`(async () => { history.pushState({}, \"\", \"/ui/chat/${enc(OTHER)}\"); dispatchEvent(new PopStateEvent(\"popstate\")); await new Promise((r) => setTimeout(r, 1200)); return !!document.querySelector(\".aw-chat_header\"); })()`",
+      "definitionTrace": [],
+      "constructionLine": 47,
+      "sourcePreview": "`(async () => { history.pushState({}, \"\", \"/ui/chat/${enc(OTHER)}\"); dispatchEvent(new PopStateEvent(\"popstate\")); await new Promise((r) => setTimeout(r, 1200)); return !!document.querySelector(\".aw-chat_header\"); })()`",
+      "substitutions": [
+        {
+          "line": 47,
+          "expression": "enc(OTHER)",
+          "kind": "runtime-data",
+          "definitionTrace": []
+        }
+      ],
+      "constructionKind": "runtime-data-interpolation",
+      "originalAlertFile": false
+    }
+  ],
+  "forwardingWrappers": [
+    {
+      "path": "scripts/manual/preview-matrix-1306.mts",
+      "name": "ev",
+      "sinkLine": 80,
+      "codeArgumentIndex": 0,
+      "classification": "runtime-data-interpolation",
+      "builtSourceCount": 9,
+      "argumentIndex": 0,
+      "callers": [
+        {
+          "line": 86,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { try { return \"value:\" + JSON.stringify(document.cookie); } catch (e) { return \"throws \" + e.name; } })()`"
+        },
+        {
+          "line": 88,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { try { return \"read \" + typeof parent.document.body; } catch (e) { return \"throws \" + e.name; } })()`"
+        },
+        {
+          "line": 90,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { try { return \"read \" + top.location.href; } catch (e) { return \"throws \" + e.name; } })()`"
+        },
+        {
+          "line": 92,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { try { top.location = \"https://example.org/\"; } catch (e) {} })()`"
+        },
+        {
+          "line": 94,
+          "argumentKind": "built-string",
+          "argumentPreview": "`fetch(${lit(base + \"/ui/send\")}, { method: \"POST\", body: \"{}\" }).then(r => \"status \" + r.status, e => \"rejected \" + e.name)`",
+          "constructionLine": 94,
+          "sourcePreview": "`fetch(${lit(base + \"/ui/send\")}, { method: \"POST\", body: \"{}\" }).then(r => \"status \" + r.status, e => \"rejected \" + e.name)`",
+          "substitutions": [
+            {
+              "line": 94,
+              "expression": "lit(base + \"/ui/send\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 112,
+          "argumentKind": "unknown",
+          "argumentPreview": "expr"
+        }
+      ],
+      "loopSourceExpressions": [
+        {
+          "line": 101,
+          "argumentKind": "built-string",
+          "constructionLine": 101,
+          "sourcePreview": "`fetch(${lit(prevOrigin + \"/frame?probe\")}).then(r => \"status \" + r.status, e => \"rejected \" + e.name)`",
+          "substitutions": [
+            {
+              "line": 101,
+              "expression": "lit(prevOrigin + \"/frame?probe\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 102,
+          "argumentKind": "built-string",
+          "constructionLine": 102,
+          "sourcePreview": "`(() => { try { return \"returned \" + navigator.sendBeacon(${lit(base + \"/ui/send\")}, \"x\"); } catch (e) { return \"throws \" + e.name; } })()`",
+          "substitutions": [
+            {
+              "line": 102,
+              "expression": "lit(base + \"/ui/send\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 103,
+          "argumentKind": "built-string",
+          "constructionLine": 103,
+          "sourcePreview": "`new Promise(r => { try { const w = new WebSocket(${lit(base.replace(\"http\", \"ws\") + \"/ui/events\")}); w.onerror = () => r(\"error event\"); w.onopen = () => r(\"OPEN\"); setTimeout(() => r(\"no open in 1.5s\"), 1500); } catch (e) { r(\"throws \" + ",
+          "substitutions": [
+            {
+              "line": 103,
+              "expression": "lit(base.replace(\"http\", \"ws\") + \"/ui/events\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 104,
+          "argumentKind": "built-string",
+          "constructionLine": 104,
+          "sourcePreview": "`new Promise(r => { try { const s = new EventSource(${lit(base + \"/ui/events\")}); s.onerror = () => { s.close(); r(\"error event\"); }; s.onopen = () => r(\"OPEN\"); setTimeout(() => r(\"no open in 1.5s\"), 1500); } catch (e) { r(\"throws \" + e.na",
+          "substitutions": [
+            {
+              "line": 104,
+              "expression": "lit(base + \"/ui/events\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 105,
+          "argumentKind": "built-string",
+          "constructionLine": 105,
+          "sourcePreview": "`new Promise(r => { const i = new Image(); i.onload = () => r(\"LOADED\"); i.onerror = () => r(\"error event\"); i.src = ${lit(base + \"/health?img\")}; setTimeout(() => r(\"no load in 1.5s\"), 1500); })`",
+          "substitutions": [
+            {
+              "line": 105,
+              "expression": "lit(base + \"/health?img\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 106,
+          "argumentKind": "built-string",
+          "constructionLine": 106,
+          "sourcePreview": "`new Promise(r => { const d = document.createElement(\"div\"); d.style.backgroundImage = ${lit(`url(${base}/health?css)`)}; d.textContent = \"x\"; document.body.append(d); getComputedStyle(d).backgroundImage; setTimeout(() => r(\"styled; request",
+          "substitutions": [
+            {
+              "line": 106,
+              "expression": "lit(`url(${base}/health?css)`)",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 107,
+          "argumentKind": "built-string",
+          "constructionLine": 107,
+          "sourcePreview": "`new Promise(r => { const l = document.createElement(\"link\"); l.rel = \"prefetch\"; l.href = ${lit(base + \"/health?prefetch\")}; l.onload = () => r(\"LOADED\"); l.onerror = () => r(\"error event\"); document.head.append(l); setTimeout(() => r(\"no ",
+          "substitutions": [
+            {
+              "line": 107,
+              "expression": "lit(base + \"/health?prefetch\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 108,
+          "argumentKind": "built-string",
+          "constructionLine": 108,
+          "sourcePreview": "`new Promise(r => { const fm = document.createElement(\"form\"); fm.method = \"POST\"; fm.action = ${lit(base + \"/ui/send\")}; document.body.append(fm); try { fm.submit(); r(\"submitted (sandbox decides)\"); } catch (e) { r(\"throws \" + e.name); } ",
+          "substitutions": [
+            {
+              "line": 108,
+              "expression": "lit(base + \"/ui/send\")",
+              "kind": "runtime-data",
+              "definitionTrace": [
+                {
+                  "name": "lit()",
+                  "line": 82
+                }
+              ]
+            }
+          ],
+          "constructionKind": "runtime-data-interpolation"
+        },
+        {
+          "line": 109,
+          "argumentKind": "constant-string"
+        },
+        {
+          "line": 110,
+          "argumentKind": "constant-string"
+        }
+      ],
+      "notes": "lit() at line 82 serializes data using JSON.stringify plus character escaping. Direct caller 94 and eight loop expressions 101–108 all reach evaluate(expr) at 80."
+    },
+    {
+      "path": "scripts/manual/preview-matrix-1306.mts",
+      "name": "nav",
+      "sinkLine": 127,
+      "codeArgumentIndex": 1,
+      "classification": "constant-expressions-only",
+      "builtSourceCount": 0,
+      "argumentIndex": 1,
+      "callers": [
+        {
+          "line": 142,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = \"https://example.org/?x\"`"
+        },
+        {
+          "line": 143,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { const m = document.createElement(\"meta\"); m.httpEquiv = \"refresh\"; m.content = \"0;url=https://example.org/\"; document.head.append(m); })()`"
+        },
+        {
+          "line": 144,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`(() => { const a = document.createElement(\"a\"); a.href = \"https://example.org/\"; document.body.append(a); a.click(); })()`"
+        },
+        {
+          "line": 145,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = \"data:text/html,<p>x</p>\"`"
+        },
+        {
+          "line": 146,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = URL.createObjectURL(new Blob([\"<p>x</p>\"], { type: \"text/html\" }))`"
+        },
+        {
+          "line": 147,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = \"javascript:document.body.innerHTML='replaced'\"`"
+        },
+        {
+          "line": 148,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = \"/other\"`"
+        },
+        {
+          "line": 149,
+          "argumentKind": "constant-string",
+          "argumentPreview": "`location = \"/frame?x\"`"
+        }
+      ],
+      "loopSourceExpressions": [],
+      "notes": "All eight nav() callers supply constant expressions. Forwarding a code string alone is not evidence of dynamic code construction."
+    }
+  ],
+  "nestedEval": [
+    {
+      "path": "scripts/manual/smoke/smoke-2272-reply.mts",
+      "sinkLine": 68,
+      "method": "evaluate",
+      "argumentPreview": "RUN",
+      "definitionTrace": [
+        {
+          "name": "RUN",
+          "line": 35
+        }
+      ],
+      "evalFunctionLine": 35,
+      "sourceArgumentIndex": 1,
+      "sourceKind": "built-string",
+      "constructionLine": 68,
+      "sourcePreview": "`(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [[\"touchstart\", 200], [\"touchmove\", 170], [\"touchmove\", 130], [\"touchend\", 130]]) touch(el, type, r0.left + dx, y, 1); }`",
+      "substitutions": [
+        {
+          "line": 68,
+          "expression": "TOUCH",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "TOUCH",
+              "line": 29
+            }
+          ]
+        }
+      ],
+      "constructionKind": "constant-code-fragment-composition"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2272-reply.mts",
+      "sinkLine": 89,
+      "method": "evaluate",
+      "argumentPreview": "RUN",
+      "definitionTrace": [
+        {
+          "name": "RUN",
+          "line": 35
+        }
+      ],
+      "evalFunctionLine": 35,
+      "sourceArgumentIndex": 1,
+      "sourceKind": "built-string",
+      "constructionLine": 89,
+      "sourcePreview": "`(el) => { ${TOUCH} return new Promise((done) => { const r0 = el.getBoundingClientRect(); touch(el, \"touchstart\", r0.left + 30, r0.top + 10, 2); setTimeout(done, 650); }); }`",
+      "substitutions": [
+        {
+          "line": 89,
+          "expression": "TOUCH",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "TOUCH",
+              "line": 29
+            }
+          ]
+        }
+      ],
+      "constructionKind": "constant-code-fragment-composition"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2272-reply.mts",
+      "sinkLine": 100,
+      "method": "evaluate",
+      "argumentPreview": "RUN",
+      "definitionTrace": [
+        {
+          "name": "RUN",
+          "line": 35
+        }
+      ],
+      "evalFunctionLine": 35,
+      "sourceArgumentIndex": 1,
+      "sourceKind": "built-string",
+      "constructionLine": 100,
+      "sourcePreview": "`(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [[\"touchstart\", 40], [\"touchmove\", 80], [\"touchmove\", 130], [\"touchend\", 130]]) touch(el, type, r0.left + dx, y, 3); }`",
+      "substitutions": [
+        {
+          "line": 100,
+          "expression": "TOUCH",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "TOUCH",
+              "line": 29
+            }
+          ]
+        }
+      ],
+      "constructionKind": "constant-code-fragment-composition"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-2281-native-reply.mts",
+      "sinkLine": 57,
+      "method": "evaluate",
+      "argumentPreview": "RUN",
+      "definitionTrace": [
+        {
+          "name": "RUN",
+          "line": 38
+        }
+      ],
+      "evalFunctionLine": 38,
+      "sourceArgumentIndex": 1,
+      "sourceKind": "built-string",
+      "constructionLine": 57,
+      "sourcePreview": "`(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [[\"touchstart\", 200], [\"touchmove\", 170], [\"touchmove\", 130], [\"touchend\", 130]]) touch(el, type, r0.left + dx, y, 1); }`",
+      "substitutions": [
+        {
+          "line": 57,
+          "expression": "TOUCH",
+          "kind": "constant-code-fragment",
+          "definitionTrace": [
+            {
+              "name": "TOUCH",
+              "line": 33
+            }
+          ]
+        }
+      ],
+      "constructionKind": "constant-code-fragment-composition"
+    }
+  ],
+  "originalAlertFiles": [
+    "scripts/manual/smoke/smoke-2556-memory-header.mts",
+    "scripts/manual/smoke/smoke-settings-quota-card-main.mts",
+    "scripts/manual/smoke/smoke-web-update-2738.mts"
+  ],
+  "originalAlertFilesWithRemainingConstructedCalls": [],
+  "exclusions": [
+    "Constant evaluate/addInitScript strings and literal string aliases with no substitutions.",
+    "Function callbacks with Playwright serialized data arguments, including the three corrected alert sites.",
+    "Template URLs passed to navigation/network APIs outside executable code strings.",
+    "HTML fixture strings not passed as executable code to evaluate/addInitScript.",
+    "Runtime JSON.stringify performed inside a constant browser expression, without host-side source interpolation."
+  ],
+  "limitations": [
+    "Targeted syntax scan, not whole-program data flow, sanitization validation, or a CodeQL rerun.",
+    "Identifier lookup is file-local and keyed by name; it follows initializers and one-return helpers, not mutation/control flow.",
+    "All unresolved first arguments in this snapshot are the two explicitly reviewed preview-matrix expr wrappers.",
+    "Counts distinguish execution call sites from source expressions: one wrapper sink accepts nine built expressions, and three IME call sites share one builder.",
+    "Numeric data and static source fragments have different risk from untrusted strings; occurrences are follow-up candidates, not vulnerability assertions."
+  ],
+  "historicalSnapshot": {
+    "phase": "Before the root agent converted the three open alert sites; captured during the initial read-only scan.",
+    "selectedFiles": 144,
+    "totalCalls": 621,
+    "constantStringCalls": 413,
+    "directConstructedCallSites": 53,
+    "unresolvedCalls": 2,
+    "note": "The initial prose report identified eight loop builders at preview-matrix lines 101–108; caller 94 adds a ninth built expression, included in this reproducible inventory."
+  }
+}

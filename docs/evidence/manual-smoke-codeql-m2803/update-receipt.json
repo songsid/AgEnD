@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "662c1fd9a88863112da7d82fedebcbe4d1d43ee2",
+  "sourceTree": "efac7716b111d29fdd4caaa845c4bd295dfabb77",
+  "sourceStatus": "",
+  "inputs": {
+    "scripts/manual/smoke/smoke-web-update-2738.mts": "d06af426902954375fa147a37eca09e0ea8eda6244accc8d85451057aa989cdf",
+    "scripts/manual/smoke-fixture/index.mts": "45aded08c037eaa8ed9de6db2d8d8bac5b7b2c1168fb154ab35f0f7fbc6f2aa5"
+  },
+  "command": [
+    "/home/han/.nvm/versions/node/v22.22.2/bin/node",
+    "--import",
+    "tsx",
+    "scripts/manual/smoke/smoke-web-update-2738.mts"
+  ],
+  "startedAt": "2026-11-10T03:44:41Z",
+  "scope": "Owned Fleet fixture/listeners only; native/model/lifecycle commands denied. Update launch and registry lookup remain stubbed by its existing fixture; no real update.",
+  "retainedRef": "01781750590506c8a0d5c16f3b1a5d9bcae37a4e",
+  "matrix": "default:4cases, banner/confirm/progress/failure/reload/settings/chat",
+  "exitCode": 0,
+  "finishedAt": "2026-11-10T03:45:30Z",
+  "sourceAfter": "662c1fd9a88863112da7d82fedebcbe4d1d43ee2",
+  "sourceStatusAfter": ""
+}

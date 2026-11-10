@@ -1,0 +1,56 @@
+{
+  "2034aab7b19232729350d3c1033cec81e6cacf0bffe238c8ce68329354c82452": [
+    "changes/2803-manual-smoke-evaluation.md"
+  ],
+  "a541a7df10f63429cbf357b269e70edb96e23829fbcc57ca6ffa377e901f53e6": [
+    "changes/2803-manual-smoke-evaluation.zh-TW.md"
+  ],
+  "7bf770d006cab74fc3a8a891514c4111070ebdccdfc3e2e45a31e0e1b2abe1ac": [
+    "docs/evidence/manual-smoke-codeql-m2803/README.md"
+  ],
+  "78f85c8c960a5088ad926262bf2deb7eb6cedbfc953e4ad7d7533da7eb82ef2a": [
+    "docs/evidence/manual-smoke-codeql-m2803/checks.json"
+  ],
+  "905c35e0a95a0cb618073c35c044bce89308bde2e9826031ef154b4371603434": [
+    "docs/evidence/manual-smoke-codeql-m2803/memory-receipt.json"
+  ],
+  "030d25c57bd2f025fd465ff6d6ae48aad4d80ff1718d07a9268b4199493ec5b6": [
+    "docs/evidence/manual-smoke-codeql-m2803/memory-results.json"
+  ],
+  "edfc72c0ca967d1856bebc60e86c7a8bf86f34e7577eeea9755c5eccb9503b5b": [
+    "docs/evidence/manual-smoke-codeql-m2803/memory.log"
+  ],
+  "4d71708742ca5c1a34d89a5ed663a67ae2bfa3b5d693a553465cca229182fc94": [
+    "docs/evidence/manual-smoke-codeql-m2803/quota-receipt.json"
+  ],
+  "d967eb334ee7035bdd449cfe991e660e72c4908073aa3f3b6c0484c4db26f04a": [
+    "docs/evidence/manual-smoke-codeql-m2803/quota-results.json"
+  ],
+  "d9b89d3a3eaab17c347f374607e0d464117c16005497ab8a55eead4f962bc7b1": [
+    "docs/evidence/manual-smoke-codeql-m2803/quota.log"
+  ],
+  "56c8f29592aeb73b23bbc13cdd84db0ee82a91258ad5750fe2ba0ad8dbc65868": [
+    "docs/evidence/manual-smoke-codeql-m2803/scan.json"
+  ],
+  "1f0e2709f7dbd4ea703a6e22b60ecb5c9c32ea9f711a93d3fac819a6303af718": [
+    "docs/evidence/manual-smoke-codeql-m2803/scan.mjs"
+  ],
+  "c4d542dff59fbb7e2051aaa1a334e444b94f28c8820c5af5a1a6a6c59be7b430": [
+    "docs/evidence/manual-smoke-codeql-m2803/update-receipt.json"
+  ],
+  "09f07c7d1b868c9b845019b8adc1596ec4df11a48f9240025d1cdfc25c16a927": [
+    "docs/evidence/manual-smoke-codeql-m2803/update-results.json"
+  ],
+  "bfad2f800b11ffb55c907feacde0deec70b3ca974b4bcb2e38461884c4c6a982": [
+    "docs/evidence/manual-smoke-codeql-m2803/update.log"
+  ],
+  "3ed075460137f1b3848e1d3cf787d1c103b17c153e1ece2e34c72dd8093a26b3": [
+    "scripts/manual/smoke/smoke-2556-memory-header.mts"
+  ],
+  "d1c0d39827bebf60a69998478a364debfa4982c6ed278f3f07c2ea8ae3f63bf4": [
+    "scripts/manual/smoke/smoke-settings-quota-card-main.mts"
+  ],
+  "d06af426902954375fa147a37eca09e0ea8eda6244accc8d85451057aa989cdf": [
+    "scripts/manual/smoke/smoke-web-update-2738.mts"
+  ]
+}

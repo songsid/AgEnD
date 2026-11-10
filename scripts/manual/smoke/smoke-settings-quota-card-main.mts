@@ -48,7 +48,12 @@ try {
     const longs: Record<string, unknown> = {};
     for (const section of SETTINGS_SECTIONS as string[]) {
       await page.goto(`${fx.base}/settings/${section}`); await page.waitForSelector(".p-settings .panel-body > .col", { timeout: 15000 }); await page.waitForTimeout(700);
-      await page.evaluate(`(() => { document.querySelectorAll(".p-settings details").forEach((d) => { d.open = true; }); document.querySelectorAll(".p-settings .panel-body select").forEach((s) => { const o = document.createElement("option"); o.textContent = ${JSON.stringify(LONG)}; s.appendChild(o); }); })()`);
+      await page.evaluate((label: string) => {
+        document.querySelectorAll<HTMLDetailsElement>(".p-settings details").forEach((d) => { d.open = true; });
+        document.querySelectorAll(".p-settings .panel-body select").forEach((s) => {
+          const o = document.createElement("option"); o.textContent = label; s.appendChild(o);
+        });
+      }, LONG);
       await page.waitForTimeout(250);
       const m = await page.evaluate(OVER) as any;
       if (m.missing || m.n || m.pageX > 0) { longs[section] = m; await page.screenshot({ path: shotPath(SMOKE, cn, `${LABEL}-long-${section}`) }); }

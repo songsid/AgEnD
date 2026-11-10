@@ -82,7 +82,10 @@ try {
     await page.waitForSelector(".update-line.ok", { timeout: 8000 });
     const rl = await lineText(page);
     await page.screenshot({ path: join(OUT, `${name}-5-reload.png`) });
-    const reloadBox = await page.evaluate(`(() => { const b = [...document.querySelectorAll(".update-line button")].find(x => x.innerText === ${JSON.stringify(zh ? "重新載入" : "Reload")}); const r = b.getBoundingClientRect(); return r.height; })()`);
+    const reloadBox = await page.evaluate((label: string) => {
+      const b = [...document.querySelectorAll<HTMLButtonElement>(".update-line button")].find(x => x.innerText === label)!;
+      return b.getBoundingClientRect().height;
+    }, zh ? "重新載入" : "Reload");
     check(`${name}:reload`, rl.includes(zh ? "AgEnD 已更新到 v2.3.5-beta.3" : "AgEnD is updated to v2.3.5-beta.3") && reloadBox < 40, { rl, reloadBox });
     // 6. Settings → 進階: the card (offer, current, alpha-stable) and the pill
     reset();

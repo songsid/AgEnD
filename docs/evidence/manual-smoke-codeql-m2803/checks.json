@@ -1,0 +1,51 @@
+{
+  "sourceCommit": "662c1fd9a88863112da7d82fedebcbe4d1d43ee2",
+  "baseline": "4c5f45a71f4c31c21c0a3b5370dac5806acec5d8",
+  "namedAlertFixes": [
+    105,
+    106,
+    107
+  ],
+  "memory": {
+    "exitCode": 0,
+    "cases": 32,
+    "modes": [
+      "before",
+      "after",
+      "old-css",
+      "old-panel"
+    ],
+    "langs": [
+      "en",
+      "zh-TW"
+    ],
+    "widths": [
+      360,
+      900,
+      1366,
+      1920
+    ]
+  },
+  "quota": {
+    "exitCode": 0,
+    "cases": 8,
+    "retainedAssetControls": 2,
+    "output": "ALL PASS"
+  },
+  "update": {
+    "exitCode": 0,
+    "cases": 4,
+    "checks": 52,
+    "output": "ALL 52 PASS",
+    "optionalOldCssRun": false
+  },
+  "changelog": {
+    "success": true,
+    "numTotalTests": 75,
+    "numPassedTests": 75,
+    "numFailedTests": 0
+  },
+  "scope": "Three existing smokes, main only, actual owned web listener and Chromium. Native/model/lifecycle commands denied in runner. Existing updater launch/lookup stubs retained. No product changes, real update, account or directory operations.",
+  "setup": "Two initial attempts failed before a browser page opened because the owned long TMPDIR exceeded Chromium Unix-socket limits. A short owned workspace TMPDIR fixed setup; passing runs retain source commit and clean-source checks.",
+  "codeql": "Baseline main alerts105-107 verified open. Closure is not claimed by local smoke/static checks; re-run CodeQL on main after coordinator merge, then verify states fixed."
+}
