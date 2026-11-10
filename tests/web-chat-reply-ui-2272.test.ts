@@ -205,6 +205,47 @@ describe("the gestures", () => {
     const click = ev("click"); g.body.dispatchEvent(click);
     expect(click.defaultPrevented, "nothing swallowed: the press never completed").toBe(false);
   });
+  // M-2789, the leader's ruling A ("text wins on text"): a long press on a message's words, or one with a selection
+  // already begun inside it, is the browser's (its text selection → the 「引用」 pill); anywhere else, our menu as before.
+  // Native long-press selection itself can't be shown headless — a real phone confirms it before a beta.
+  it("M-2789: a selection the browser begins inside the message DURING the press — no menu and nothing is prevented", async () => {
+    const g = await gestures();
+    const words = g.body.querySelector(".md").firstChild;
+    let sel: any = { isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null };
+    g.doc.getSelection = () => sel;
+    vi.useFakeTimers();
+    g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    vi.advanceTimersByTime(300);
+    sel = { isCollapsed: false, toString: () => "the plan", anchorNode: words, focusNode: words };   // the browser selects
+    vi.advanceTimersByTime(220);
+    const cm = ev("contextmenu", { clientX: 100, clientY: 300 }); g.body.dispatchEvent(cm);
+    const click = ev("click"); g.body.dispatchEvent(click);
+    expect([g.menu(), cm.defaultPrevented, click.defaultPrevented]).toEqual([null, false, false]);
+  });
+  it("M-2789: a long press on the words (no selection yet — Android selects after contextmenu) is the browser's; on the bubble's padding it is our menu", async () => {
+    const g = await gestures();
+    const md = g.body.querySelector(".md");
+    g.doc.getSelection = () => ({ isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null });
+    vi.useFakeTimers();
+    md.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    vi.advanceTimersByTime(520);
+    expect(g.menu(), "no timer on the words").toBe(null);
+    const cm = ev("contextmenu", { clientX: 100, clientY: 300 }); md.dispatchEvent(cm);
+    expect([g.menu(), cm.defaultPrevented]).toEqual([null, false]);
+    md.dispatchEvent(ev("touchend", { touches: [] }));
+    vi.advanceTimersByTime(2000);
+    // The bubble's padding (not its words): the #2272 menu, unchanged.
+    g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    vi.advanceTimersByTime(520);
+    expect(g.menu()?.querySelectorAll("button").length).toBe(3);
+  });
+  it("M-2789: a desktop right-click on the words with nothing selected still opens our menu (only a touch's press is the browser's)", async () => {
+    const g = await gestures();
+    const md = g.body.querySelector(".md");
+    g.doc.getSelection = () => ({ isCollapsed: true, toString: () => "", anchorNode: null, focusNode: null });
+    const cm = ev("contextmenu", { clientX: 40, clientY: 50 }); md.dispatchEvent(cm);
+    expect([cm.defaultPrevented, g.menu()?.querySelectorAll("button").length]).toEqual([true, 3]);
+  });
 });
 
 describe("the phone drawer's swipe", () => {

@@ -961,6 +961,14 @@ img.amb-p { object-fit: contain; }
 .msg-quote .quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg-menu { position: fixed; z-index: 60; min-width: 180px; padding: var(--s-1); border-radius: var(--r-md); background: var(--surface);
   box-shadow: var(--shadow-2); display: flex; flex-direction: column; }
+/* M-2789: the 「引用」 pill on a selected passage (chat-quote.js) — the message menu's look, one item, its pointer at the
+   passage's end; readable on white and dark alike (the shared border and shadow tokens). A phone's is a 44-px tap. */
+.msg-menu.quote-pop { min-width: 0; padding: 2px; border: 1px solid var(--border-strong); overflow: visible; }
+.quote-pop .quote-pick { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; white-space: nowrap; }
+.quote-pop.is-phone .quote-pick { min-height: var(--tap); padding: 10px 14px; }
+.quote-pop .quote-tip { position: absolute; width: 10px; height: 10px; background: var(--surface); transform: rotate(45deg); pointer-events: none; }
+.quote-pop .quote-tip.down { bottom: -6px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.quote-pop .quote-tip.up { top: -6px; border-left: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong); }
 .msg[data-key] { transition: transform var(--t-fast); }
 .msg.swipe-ready { box-shadow: 3px 0 0 var(--accent); border-radius: var(--r-sm); }   /* let go now: a reply */
 @media (max-width: 899px) {
