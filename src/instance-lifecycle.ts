@@ -2289,7 +2289,7 @@ export class InstanceLifecycle {
     const instances = this.ctx.fleetConfig?.instances;
     const next = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
     const launched = daemon?.getConfigSnapshot?.();
-    if (daemon?.isPaused && next && launched && classifyInstanceChange(launched, next) === "restart") {
+    if (daemon?.isPaused && !daemon.usesNativePane?.() && next && launched && classifyInstanceChange(launched, next) === "restart") {
       // A resident paused daemon still owns its old cold config. Recreate it
       // at this launch boundary, as a marker-only wake already does, rather
       // than respawning the old profile/model. Keep the same serialized wake.

@@ -47,3 +47,18 @@ it.each(["exited","unknown"] as const)("a no-pin %s snapshot closes only positiv
  else{await new Promise(resolve=>setTimeout(resolve,30));expect(f.native.release).not.toHaveBeenCalled();expect(hold).not.toHaveBeenCalled();}
  expect(f.fleet.lifecycle.nativeRecoveryPending("native")).toBe(false);expect(existsSync(join(f.fleet.getInstanceDir("native"),"native-crash-state.json"))).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();
 });
+
+it("a native wake keeps its runner-owned path despite the native config projection",async()=>{
+ const f=fixture();await f.fleet.lifecycle.start("native",f.config,true);
+ const daemon=f.fleet.daemons.get("native");
+ // Native start deliberately projects agent_mode=cli to mcp; comparing that
+ // snapshot as a portable cold edit would close an unchanged remote pane.
+ daemon.pauseWakeState="paused";daemon.autoPauseController.markPaused();
+ const wake=vi.spyOn(daemon,"wake").mockResolvedValue(undefined);
+ const replace=vi.spyOn(f.fleet,"startPersistedPausedInstance").mockResolvedValue(undefined);
+ vi.spyOn(f.fleet,"setNativePanePaused").mockImplementation(()=>{});
+ await f.fleet.lifecycle.wake("native");
+ expect(wake).toHaveBeenCalledOnce();expect(replace).not.toHaveBeenCalled();
+ expect(f.fleet.daemons.get("native")).toBe(daemon);expect(f.native.release).not.toHaveBeenCalled();
+ expect(f.native.acquire).toHaveBeenCalledOnce();expect(f.forbidden).not.toHaveBeenCalled();
+});
