@@ -14,7 +14,9 @@ const state = () => ({ sessionId: "11111111-1111-4111-8111-111111111111", contex
 const backend = createNativePaneBackend("claude-code", state);
 const matching = (pane: string) => backend.getRuntimeDialogs!().filter(d => { d.pattern.lastIndex = 0; return d.pattern.test(pane) && (!d.isActive || d.isActive(pane)); });
 const DESCRIPTION = "Claude connector file-send approval — waiting for a human choice, never auto-approving";
-const CARDS = ["claude-2.1.317-file-send-card", "claude-2.1.317-file-send-default-no", "claude-2.1.317-file-send-unlisted", "claude-2.1.317-file-send-too-short"];
+const CARDS = ["claude-2.1.317-file-send-card", "claude-2.1.317-file-send-default-no", "claude-2.1.317-file-send-unlisted", "claude-2.1.317-file-send-too-short",
+  // #3590 (2.1.322 audit): the 2.1.319+ card for an ordinary name (no `* ` mark) and for a look-alike name (new warning)
+  "claude-2.1.322-file-send-plain", "claude-2.1.322-file-send-plain-two", "claude-2.1.322-file-send-lookalike"];
 // A Windows pane names Windows paths.
 const windows = (pane: string) => pane.replaceAll("/scratch/cwd/report.pdf", "C:\\Users\\scratch\\report.pdf").replaceAll("/scratch/cwd", "C:\\fixture");
 
