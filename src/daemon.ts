@@ -1664,6 +1664,8 @@ export class Daemon extends EventEmitter {
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
   private autoResolvedDialogGeneration = 0;
+  /** RuntimeDialog.retrySafe: the sends made to the visible dialog of that key, in this spawn (monotonic time of the last). */
+  private retrySafeSends: { key: string; spawn: number; count: number; lastMono: number } | null = null;
   /** Per-launch safety phases survive startup handoff, redraws and failed/uncertain key ACKs. */
   private launchDialogClaims: { spawn: number; attempt: number; keys: Set<string> } | null = null;
   /**
@@ -4408,9 +4410,10 @@ export class Daemon extends EventEmitter {
             continue;
           }
           const autoKey = dialog.autoResolutionKey;
-          if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) {
+          if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) {
             // A previous poll sent the safety choice but the CLI has not
-            // repainted yet. Never send another Enter into the same screen.
+            // repainted yet. Never send another Enter into the same screen
+            // (a retrySafe dialog's keys may be re-sent: retrySafeDue).
             continue;
           }
           // These keys go straight into the pane. Sent while a message delivery is
@@ -4448,8 +4451,9 @@ export class Daemon extends EventEmitter {
             // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
             // not evidence that the old request was answered, and the one-minute fallback must keep running.
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
-            if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
+            if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) return;
             if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
+            this.noteRetrySafeSend(dialog);
             this.logger.info(Daemon.answerDetailOf(dialog, currentPane), `Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
@@ -8702,6 +8706,8 @@ export class Daemon extends EventEmitter {
       this.autoResolvedDialogKey = null;
       this.autoResolvedDialogGeneration = 0;
     }
+    // A retrySafe dialog that is gone and comes back (Claude's idle cold-resume timer) is a new episode: a fresh budget.
+    if (!active) this.retrySafeSends = null;
     return active;
   }
 
@@ -8714,6 +8720,28 @@ export class Daemon extends EventEmitter {
         && claims.keys.has(key);
     }
     return this.autoResolvedDialogGeneration === this.spawnGeneration && this.autoResolvedDialogKey === key;
+  }
+
+  /**
+   * RuntimeDialog.retrySafe: may the claimed answer to this dialog — still on screen — be sent again now? Only for a
+   * dialog that declares its keys safe to repeat, within its send budget, and once `afterMs` has passed since the last
+   * send to it in this spawn.
+   */
+  private retrySafeDue(dialog: RuntimeDialog): boolean {
+    const retry = dialog.retrySafe, key = dialog.autoResolutionKey;
+    if (!retry || !key || dialog.oncePerLaunch || !dialog.verifyAfterKeys) return false;
+    const sends = this.retrySafeSends;
+    if (!sends || sends.key !== key || sends.spawn !== this.spawnGeneration) return false;  // no send of ours to repeat
+    return sends.count < retry.max && performance.now() - sends.lastMono >= retry.afterMs;
+  }
+
+  /** Count one send of a retrySafe dialog's keys (the first one included). */
+  private noteRetrySafeSend(dialog: RuntimeDialog): void {
+    const key = dialog.autoResolutionKey;
+    if (!dialog.retrySafe || !key) return;
+    const sends = this.retrySafeSends;
+    const same = sends !== null && sends.key === key && sends.spawn === this.spawnGeneration;
+    this.retrySafeSends = { key, spawn: this.spawnGeneration, count: (same ? sends!.count : 0) + 1, lastMono: performance.now() };
   }
 
   private claimAutoDialog(dialog: RuntimeDialog): void {
@@ -13385,11 +13413,18 @@ export class Daemon extends EventEmitter {
         // Try each startup dialog pattern before checking ready state
         let matched = false;
         lastDialog = null;
+        // A safety choice already sent whose dialog is still on screen (the CLI dropped the key, or has not repainted
+        // yet): it is never read as ready below — its own menu row can carry the ready glyph (`❯`).
+        let answeredStillVisible: StartupDialog | null = null;
         for (const dialog of startupDialogs) {
           if (Daemon.dialogMatches(dialog, pane)) {
             if (dialog.autoResolutionKey
               && (attemptedSafetyChoices.has(dialog.autoResolutionKey)
-                || this.hasAutoDialogClaim(dialog))) continue;
+                || this.hasAutoDialogClaim(dialog))
+              && !this.retrySafeDue(dialog)) {
+              answeredStillVisible ??= dialog;
+              continue;
+            }
             lastDialog = dialog;
             this.noteCodexReserveDialog(dialog, pane);
             this.noteLiveIncidentDialog(dialog, pane);
@@ -13458,6 +13493,7 @@ export class Daemon extends EventEmitter {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
                 this.claimAutoDialog(dialog);
               }
+              this.noteRetrySafeSend(dialog);
               for (const key of dialog.keys) {
                 this.startupAdmission?.();
                 // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
@@ -13491,6 +13527,13 @@ export class Daemon extends EventEmitter {
         }
         if (matched) {
           if (lastDialog?.holdOnly) await sleep();
+          continue;
+        }
+        if (answeredStillVisible) {
+          // Answered, still up: wait for it to go (or, for a retrySafe one, for its next send to fall due).
+          lastDialog = answeredStillVisible;
+          cleanReadyPolls = 0;
+          await sleep();
           continue;
         }
         if (this.dialogParkedSince !== 0 && !this.deliveryBlockingDialogs().some(d => Daemon.dialogMatches(d, pane))) this.trackDialogParked(null);
