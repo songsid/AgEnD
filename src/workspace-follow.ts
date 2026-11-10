@@ -15,7 +15,8 @@
  */
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { isHiddenPath, placeOf, type WorkspaceRoot } from "./agent-workspace.js";
+import { placeOf, type WorkspaceRoot } from "./agent-workspace.js";
+import { isHiddenPath } from "./workspace-file-policy.js";
 
 import { randomUUID } from "node:crypto";
 import { FOLLOW_LIMITS, followStepOf, type FollowStep, type FollowStepInput } from "./workspace-follow-parse.js";

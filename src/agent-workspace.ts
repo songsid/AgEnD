@@ -22,6 +22,8 @@ import { execFile } from "./child-process.js";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
+import { isHiddenPath } from "./workspace-file-policy.js";
+export { isHiddenPath } from "./workspace-file-policy.js";
 
 export const WORKSPACE_LIMITS = Object.freeze({
   fileBytes: 1024 * 1024,
@@ -35,25 +37,6 @@ export const WORKSPACE_LIMITS = Object.freeze({
 });
 const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-/** Names whose contents never leave the machine through this view (fixed in P1, #3153). Lowercase compare. */
-const HIDDEN_DIRS = new Set([".git", ".ssh", ".aws", ".gnupg", ".kube", ".docker", ".azure", ".config", ".agend", ".claude", ".codex", ".kiro"]);
-const HIDDEN_FILES = new Set([".npmrc", ".netrc", ".pypirc", ".git-credentials", ".pgpass", "credentials", "credentials.json", "auth.json", "secrets.json",
-  "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts", "authorized_keys", ".htpasswd",
-  // Fable on #3158: tool credentials and shell histories (a history holds whatever was typed, tokens included).
-  ".envrc", ".vault-token", ".s3cfg", ".boto", "kubeconfig", ".kubeconfig", "terraform.tfstate", "terraform.tfstate.backup"]);
-/** Whether a path (relative, `/`-separated) is hidden: any part a hidden directory, or its name a secret-looking file. */
-export function isHiddenPath(rel: string): boolean {
-  const parts = rel.split("/").filter(Boolean);
-  for (const p of parts.slice(0, -1)) if (HIDDEN_DIRS.has(p.toLowerCase())) return true;
-  const name = (parts[parts.length - 1] ?? "").toLowerCase();
-  if (HIDDEN_DIRS.has(name) || HIDDEN_FILES.has(name)) return true;
-  if (/^\.env(?:$|[.-])/.test(name) || /^id_(?:rsa|dsa|ecdsa|ed25519)/.test(name)) return true;
-  if (/\.(?:pem|key|p12|p8|pfx|jks|keystore|kdbx|asc|gpg|ppk|token|env|tfvars|tfstate)$/.test(name) || /\.tfstate\./.test(name)) return true;
-  if (/^service[-_]?account.*\.json$/.test(name) || /^\.[a-z0-9]*_?history$/.test(name) || /^\.?kubeconfig(?:[.-]|$)/.test(name)) return true;
-  if (/(?:^|[._-])(?:secret|secrets|credential|credentials|password|passwords|private[-_]?key)(?:[._-]|$)/.test(name)) return true;
-  return false;
-}
 
 export type WorkspaceRefusal = "not_found" | "not_a_directory" | "outside" | "hidden" | "symlink" | "not_a_file" | "invalid";
 export class WorkspaceError extends Error { constructor(readonly code: WorkspaceRefusal) { super(code); } }
@@ -150,16 +133,18 @@ export async function workspaceChanges(ws: WorkspaceRoot): Promise<WorkspaceChan
     files.push({ path, status: untracked ? "untracked" : code.includes("D") ? "deleted" : code.includes("A") ? "added" : "modified",
       adds: null, dels: null, binary: false, hidden: isHiddenPath(path), untracked });
   }
-  // Line counts for tracked changes (numstat: "-\t-" is binary).
-  const numstat = await git(ws.root, ["diff", base, "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv"], 4 * 1024 * 1024);
+  const visibleTracked = files.filter((f) => !f.untracked && !f.hidden).map((f) => f.path);
+  // Hidden files get neither hunks nor content-derived line counts. Use the same literal path admission for both.
+  const numstat = visibleTracked.length
+    ? await git(ws.root, ["diff", base, "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", "--", ...visibleTracked.map((p) => `:(literal)${p}`)], 4 * 1024 * 1024)
+    : null;
   const counts = new Map<string, { adds: number | null; dels: number | null; binary: boolean }>();
-  for (const row of numstat.out.toString("utf8").split("\u0000").filter(Boolean)) {
+  for (const row of (numstat?.out.toString("utf8") ?? "").split("\u0000").filter(Boolean)) {
     const m = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(row);
     if (m) counts.set(m[3]!, { adds: m[1] === "-" ? null : Number(m[1]), dels: m[2] === "-" ? null : Number(m[2]), binary: m[1] === "-" });
   }
   for (const f of files) { const c = counts.get(f.path); if (c) Object.assign(f, c); }
   // The patch: tracked changes (hidden paths excluded by pathspec), then untracked text files as additions.
-  const visibleTracked = files.filter((f) => !f.untracked && !f.hidden).map((f) => f.path);
   // Each file's section is kept only within its own share and the whole budget: one huge file never starves the rest.
   let patch = "", cutBytes = false;
   const byPath = new Map(files.map((f) => [f.path, f]));
