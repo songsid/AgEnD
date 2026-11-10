@@ -38,7 +38,7 @@ register("accounts", {
   en: {
     title: "Accounts", hint: "Each CLI's connections on this AgEnD host and on paired computers: the default one and named accounts (credential profiles), who uses them and their weekly usage.",
     loading: "Reading accounts…", failed: "Could not read the accounts.", empty: "No CLI is installed or used by an agent on this host.",
-    def: "Default connection", profile: "Account “{0}”", state_usable: "connected", state_not_signed_in: "not connected", state_unknown: "not checked",
+    def: "Default connection", profile: "Account “{0}”", state_usable: "connected", state_not_signed_in: "not connected", state_reconnect: "needs reconnecting", state_unknown: "not checked",
     state_not_installed: "not installed", state_too_old: "too old",
     usedBy: "used by {0}", usedByNone: "used by no agent", agents: "{0} agents", agent: "1 agent", channels: "{0} ClassicBot rooms", channel: "1 ClassicBot room",
     fleetDefaultTag: "fleet default",
@@ -67,7 +67,7 @@ register("accounts", {
   "zh-TW": {
     title: "帳號", hint: "這台 AgEnD 主機與已配對電腦上各 CLI 的連接：預設連接與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
     loading: "正在讀取帳號…", failed: "無法讀取帳號。", empty: "這台主機上沒有安裝或被 Agent 使用的 CLI。",
-    def: "預設連接", profile: "帳號「{0}」", state_usable: "已連接", state_not_signed_in: "尚未連接", state_unknown: "未確認",
+    def: "預設連接", profile: "帳號「{0}」", state_usable: "已連接", state_not_signed_in: "尚未連接", state_reconnect: "需要重新連接", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
     usedBy: "使用者：{0}", usedByNone: "沒有 Agent 使用", agents: "{0} 個 Agent", agent: "1 個 Agent", channels: "{0} 個 ClassicBot 房間", channel: "1 個 ClassicBot 房間",
     fleetDefaultTag: "Fleet 預設",
@@ -332,7 +332,7 @@ function InstallOnlyRow({ row, running }) {
   const canInstall = row.state === "not_installed" && !!row.install;
   return html`<div class="s-row s-account-row" data-account="default">
     <div class="s-account-title-bar">
-      <div class="s-account-title-left"><span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(run.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span></div>
+      <div class="s-account-title-left"><span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(run.mode === "update" ? "updating" : "installing") : tx(row.reconnect ? "state_reconnect" : `state_${row.state || "unknown"}`)}</span></div>
       <span class="s-actions">${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}</span>
     </div>
     ${canInstall && !run ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
@@ -390,7 +390,7 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
-        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(`state_${row.state || "unknown"}`)}</span>
+        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(row.reconnect ? "state_reconnect" : `state_${row.state || "unknown"}`)}</span>
         ${row.usedBy.fleetDefault && cli.profiles ? html`<span class="tag s-account-default-tag">${machine ? tx("machineDefaultTag") : tx("fleetDefaultTag")}</span>` : null}</div>
       ${readOnly ? null : html`<span class="s-actions">
         ${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}

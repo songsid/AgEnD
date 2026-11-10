@@ -485,7 +485,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
@@ -21229,7 +21229,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
     this.refreshSignInIdentities();
     const targets = this.backendSignInTargets();
-    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
+    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity; reconnect?: true }>>();
     for (const backend of PROFILE_CLIS) {
       const rows = [];
       for (const profile of profilesOnDisk(this.dataDir, backend)) {
@@ -21239,7 +21239,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
         const identity = this.signInIdentity(backend, profile);
         rows.push({ profile, state: (login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown") as SignInTarget["state"], signIn,
-          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}) });
+          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}), ...(this.claudeSignInEnded(backend, profile) ? { reconnect: true as const } : {}) });
       }
       diskProfiles.set(backend, rows);
     }
@@ -21312,7 +21312,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * admitCredentialUse) from the configuration it launched with — never re-resolved against today's defaults. An entry
    * whose start ended without a daemon, or whose daemon is gone, is dropped when next read.
    */
-  private readonly credentialLeases = new Map<string, { key: string; starting: boolean }>();
+  // M-2825 review: with the sign-in as launched (backend, profile as written) — what is in use until the agent restarts.
+  private readonly credentialLeases = new Map<string, { key: string; starting: boolean; backend?: string; profile?: string | null }>();
   /** #3292 review: Keep sign-in alive runs in flight, by sign-in: a start on that sign-in waits for its end. */
   private readonly keepAliveRenewing = new Map<string, Promise<void>>();
   private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
@@ -21322,16 +21323,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Daemon's clone of that config hands its CLI. Never today's defaults: an older config object keeps its own.
    */
   private launchCredentialKey(config: InstanceConfig, backend: string): string {
-    let profile: string | null = null;
-    try { profile = resolveCredentialProfile(config.backend_options?.[backend]); } catch { profile = null; }
-    return this.credentialKey(backend, profile);
+    return this.credentialKey(backend, this.launchCredentialProfile(config, backend));
+  }
+  private launchCredentialProfile(config: InstanceConfig, backend: string): string | null {
+    try { return resolveCredentialProfile(config.backend_options?.[backend]); } catch { return null; }
   }
 
   /**
    * #3313 review r2: failed starts whose CLI was not proven gone keep holding their sign-in (across a retry of the same
    * agent too) until a check finds it ended.
    */
-  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean> }>();
+  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean>; backend?: string; profile?: string | null }>();
   private orphanCheck: Promise<void> | null = null;
   private recheckCredentialOrphans(): void {
     if (this.orphanCheck || !this.credentialOrphans.size) return;
@@ -21356,7 +21358,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await renewing; assertCurrent();
       key = this.launchCredentialKey(config, backend);
     }
-    const lease = { key, starting: true };
+    const lease = { key, starting: true, backend, profile: this.launchCredentialProfile(config, backend) };
     this.credentialLeases.set(name, lease);
     const drop = () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); };
     return {
@@ -21364,7 +21366,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       release: drop,
       current: c => this.launchCredentialKey(c, backend) === key,
       // A failed start whose CLI may still run: the sign-in stays held (by itself, not by the agent's name) until it is seen gone.
-      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended }); this.recheckCredentialOrphans(); },
+      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended, backend, profile: lease.profile }); this.recheckCredentialOrphans(); },
     };
   }
 
@@ -21433,13 +21435,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
   private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
     const ka = this.signInKeepAlive; if (!ka) return [];
-    const day = (ms: number | undefined) => ms === undefined ? "?" : new Date(ms).toISOString().slice(0, 10);
+    // M-2825: in the host's own time (the people reading it are where the fleet runs; a UTC day was a day off near midnight
+    // in Taipei), with the hour for an end date — a day's notice needs to say when that day ends.
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    const day = (ms: number | undefined, at = false) => {
+      if (ms === undefined) return "?";
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}${at ? ` ${p2(d.getHours())}:${p2(d.getMinutes())}` : ""}`;
+    };
     const owner = this.worlds.keys().next().value;
-    return ka.attention().map(a => ({
+    return ka.attention(this.signInsInUse()).map(a => ({
       backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
       ...(owner ? { owner } : {}),
-      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.endsAt)),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), a.kind === "transient" ? day(a.failedSince ?? a.since) : day(a.endsAt, a.kind === "ending" || a.kind === "ended")),
     }));
+  }
+
+  /**
+   * M-2825: the host sign-ins in use, once each — whose end date is warned about even when it is not kept alive:
+   * - each agent's and ClassicBot room's as configured (accountUses: a paired computer's agents use that computer's own);
+   * - #3577 review P2: the one each host agent is starting or running on AS LAUNCHED (its lease; a failed start whose CLI
+   *   may still run; a running agent with no lease, by its own launch snapshot) — a profile saved but not yet applied
+   *   leaves the old one in use until the restart, as keepAliveInUse() counts it.
+   */
+  private signInsInUse(): Array<{ backend: string; profile: string | null }> {
+    const seen = new Set<string>(), out: Array<{ backend: string; profile: string | null }> = [];
+    const add = (backend: string | undefined, profile: string | null | undefined) => {
+      if (!backend) return;
+      const key = this.credentialKey(backend, profile ?? null);
+      if (!seen.has(key)) { seen.add(key); out.push({ backend, profile: profile ?? null }); }
+    };
+    try { const uses = this.accountUses(); for (const u of [...uses.agents, ...uses.classic]) add(u.backend, u.profile); } catch { /* the launched ones below still count */ }
+    for (const [name, lease] of this.credentialLeases) if (lease.starting || this.daemons?.has(name)) add(lease.backend, lease.profile);
+    for (const o of this.credentialOrphans.values()) add(o.backend, o.profile);
+    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
+    for (const [name, daemon] of this.daemons ?? []) {
+      if (this.credentialLeases.has(name)) continue;
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap)) continue;
+      const backend = snap.backend ?? defaultBackend;
+      add(backend, this.launchCredentialProfile(snap, backend));
+    }
+    return out;
   }
 
   /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
@@ -21634,14 +21672,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result;
   }
 
+  /** M-2825: a host Claude sign-in whose own file says it is over (credential-profile.ts claudeStoreEnded); false for other CLIs. */
+  private claudeSignInEnded(backend: string, profile: string | null): boolean {
+    if (backend !== "claude-code") return false;
+    try {
+      const home = profile ? credentialProfileStoreHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot();
+      return !!home && claudeStoreEnded(home);
+    } catch { return false; }
+  }
+
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
       const flow = LOGIN_FLOWS[row.backend];
       const install = BACKEND_INSTALLATION_INFO[row.backend]?.install;
+      // M-2825: `claude auth status` says loggedIn after a refused refresh and past the sign-in's end date — the file says
+      // whether it is over, and then it is not signed in (never the other way: the file can't vouch for a login).
+      const ended = row.state === "usable" && this.claudeSignInEnded(row.backend, null);
       out.push({
         // Not installed or too old: signing in would not help — the row says how to install (or update) it instead.
-        backend: row.backend, state: row.state, signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
+        backend: row.backend, state: ended ? "not_signed_in" : row.state, ...(ended ? { reconnect: true as const } : {}),
+        signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
         ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
         ...(row.state === "too_old" && install ? { update: install } : {}),
@@ -21659,7 +21710,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const signIn = dashboardSignInSupported(backend, profile);
       const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
       out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
-        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}) });
+        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}),
+        ...(this.claudeSignInEnded(backend, profile) ? { reconnect: true as const } : {}) });
     }
     return out;
   }
