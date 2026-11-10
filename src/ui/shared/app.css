@@ -3636,14 +3636,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Refs #3061 (P2b): the signed-in devices of Devices & sign-in. */
 .p-settings .s-devices .s-dev-listhead { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin: 14px 0 6px; }
 .p-settings .s-devices .s-dev-listhead h4 { margin: 0; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-semibold); }
-.p-settings .s-dev-list { list-style: none; margin: 0 0 10px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
-.p-settings .s-dev-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
-.p-settings .s-dev-row + .s-dev-row { border-top: 1px solid var(--border); }
-.p-settings .s-dev-row.current { background: var(--surface-2); }
-.p-settings .s-dev-main { display: grid; gap: 2px; min-width: 0; }
-.p-settings .s-dev-name { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
-.p-settings .s-dev-meta { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
-.p-settings .s-dev-row .btn { flex: none; }
+.p-settings .s-dev-list, .p-settings .s-ov-devlist { list-style: none; margin: 0 0 10px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.p-settings .s-dev-row, .p-settings .s-ov-dev { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+.p-settings .s-dev-row + .s-dev-row, .p-settings .s-ov-dev + .s-ov-dev { border-top: 1px solid var(--border); }
+.p-settings .s-dev-row.current, .p-settings .s-ov-dev.current { background: var(--surface-2); }
+.p-settings .s-dev-main, .p-settings .s-ov-dev-main { display: grid; gap: 2px; min-width: 0; }
+.p-settings .s-dev-name, .p-settings .s-ov-dev-name { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.p-settings .s-dev-meta, .p-settings .s-ov-dev-meta { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.p-settings .s-dev-row .btn, .p-settings .s-ov-dev .btn { flex: none; }
 .p-settings .s-auth-state { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 3px 8px; border-radius: 6px; color: var(--text-3); background: var(--surface-2); font-size: 12px; font-weight: var(--fw-regular); line-height: 1.5; white-space: nowrap; }
 .p-settings .s-auth-state.is-usable { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .p-settings .s-auth-state:is(.is-not_signed_in, .is-too_old) { color: var(--warn); background: var(--warn-bg); }
@@ -4226,3 +4226,43 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .s-hub-connection .field-row > .btn-primary { width: 100%; }
   .s-hub-connection .hub-fp .btn { white-space: normal; }
 }
+
+/* S-120: Settings → Access & security → Overview */
+.p-settings .s-ov { display: flex; flex-direction: column; gap: var(--s-5); }
+.p-settings .s-ov-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--s-4); align-items: stretch; }   /* S-120: card bottoms (their footers) aligned */
+.p-settings .s-ov-devices { grid-row: span 2; }
+@media (max-width: 900px) { .p-settings .s-ov-grid { grid-template-columns: minmax(0, 1fr); } .p-settings .s-ov-devices { grid-row: auto; } }
+.p-settings .s-ov-card { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.p-settings .s-ov-title { display: flex; align-items: center; gap: 8px; margin: 0; }
+.p-settings .s-ov-title > svg { color: var(--accent); flex: none; }
+.p-settings .s-ov-card > .note { margin: 0; }
+.p-settings .s-ov-card > footer { margin-top: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 6px; border-top: 1px solid var(--border); }
+.p-settings .s-ov-list { margin: 0; }
+.p-settings .s-ov-facts { margin: 0; display: grid; gap: 8px; }
+.p-settings .s-ov-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; }
+.p-settings .s-ov-row dd { flex: 0 1 auto; }
+.p-settings .s-ov-row > .s-ov-hint { flex: 1 0 100%; margin-top: 0; }
+.p-settings .s-ov-row dt { color: var(--text-2); font-size: var(--fs-sm); min-width: 0; }
+.p-settings .s-ov-hint { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.4; }
+.p-settings .s-ov-why { display: block; margin-top: 2px; color: var(--text-2); font-size: var(--fs-xs); }
+.p-settings .s-ov-legend { color: var(--text-3); font-size: var(--fs-xs); }
+.p-settings .s-ov-row dd { margin: 0; text-align: right; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.p-settings .s-ov-muted { color: var(--text-3); }
+.p-settings .tag.tag-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.p-settings .s-ov-actions { display: flex; justify-content: flex-end; }
+.p-settings .s-ov-link > svg, .p-settings .s-ov-tile > svg:last-child { transform: rotate(-90deg); }
+.p-settings .s-ov-tile > svg:last-child { color: var(--accent); flex: none; }
+.p-settings .s-ov-link { display: inline-flex; align-items: center; gap: 2px; min-height: var(--tap, 32px); padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.p-settings .s-ov-other h3 { margin: 0 0 2px; }
+.p-settings .s-ov-other > .note { margin: 0 0 10px; }
+.p-settings .s-ov-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-3); }
+.p-settings .s-ov-tile { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; text-align: left; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.p-settings .s-ov-tile > span { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.p-settings .s-ov-tile small { color: var(--text-3); font-size: var(--fs-xs); }
+.p-settings .s-ov-tile small.s-ov-state { color: var(--text-2); }
+.p-settings .s-ov-tile:hover { border-color: var(--accent); }
+.p-settings .s-ov-tile > svg { margin-top: 2px; }
+@media (max-width: 899px), (pointer: coarse) { .p-settings .s-ov-dev .btn, .p-settings .s-ov-actions .btn { min-height: var(--tap); min-width: var(--tap); } }
+/* S-120: a sign-out this session may not do reads as unavailable, not as a faded red: the shared muted text on the shared
+   inset surface at full opacity (its reason is the line under the device). */
+.p-settings .s-ov-dev .btn:disabled { opacity: 1; color: var(--text-2); background: var(--surface-2); border-color: var(--border); }

@@ -583,6 +583,8 @@ export interface WebApiContext {
   webDeviceLoginAct?(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> };
   /** Refs #3061 (P2b): the owner ends another signed-in device (the settings list's button). */
   webDeviceSignOut?(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> };
+  /** S-120 (D2a): close the open public link now (Settings → 存取與安全 → 總覽). Only closes; the route checks who asks. */
+  closePublicLinkFromWeb?(): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -3053,6 +3055,30 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Device sign-out failed");
       try { json(res, 500, { error: "devices_failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+  // S-120 (D2a): POST /ui/public-link/close — 「立即關閉公開連結」 in Settings → 存取與安全 → 總覽. An admin session on this
+  // fleet's own listener only: never over the public link itself (the gateway does not route it; refused here too), never
+  // a guest, a read-only session or the CLI's header token. It only closes — nothing here opens a link — the way the chat
+  // menu's 確定關閉 does (its remembered owner forgotten, so auto_open never reopens a deliberate close). A web-only fleet's
+  // outside link is the owner's switch on this computer (#3008): 409 outside_link, left open.
+  if (method === "POST" && path === "/ui/public-link/close") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "public_link_close_not_here" }); return true; }
+    const act = ctx.closePublicLinkFromWeb?.bind(ctx);
+    if (!act) { json(res, 404, { error: "not_found" }); return true; }
+    (async () => {
+      try { await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      if (verdict.via !== "session" || verdict.session?.tier !== "admin") { json(res, 403, { error: "public_link_close_needs_an_admin_session" }); return; }
+      res.setHeader("Cache-Control", "no-store");
+      const r = await act();
+      json(res, r.status, r.body);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Public link close failed");
+      try { json(res, 500, { error: "public_link_close_failed" }); } catch { /* already answered */ }
     });
     return true;
   }

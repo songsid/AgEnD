@@ -9589,6 +9589,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /**
+   * S-120 (D2a): POST /ui/public-link/close (web-api.ts checks who asks). Closes the open public link — this exposure only,
+   * so a link opened since is left alone — and forgets its remembered owner, as the chat menu's 確定關閉 does. It only closes.
+   * The outside link (#3008) is the owner's switch on this computer: refused (409 outside_link), left open.
+   */
+  async closePublicLinkFromWeb(): Promise<{ status: number; body: Record<string, unknown> }> {
+    const link = this.publicWebLink, id = link?.exposureId;
+    if (!link || !id || this.getPublicWebStatus().state === "closed") return { status: 200, body: { closed: false } };
+    const open = link.openSignin();
+    if (open && isOutsideLinkOwner(open.owner)) return { status: 409, body: { error: "outside_link" } };
+    const result = await link.close("admin close", id);
+    this.forgetPublicLinkOwner();
+    this.logger.info({ event: "public_link_closed_from_web" }, "Public link closed from Settings");
+    return { status: 200, body: { closed: true, confirmed: result?.confirmed !== false } };
+  }
+
   /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
   revokeWebSessions(): { count: number; durable: boolean } {
     this.initializeWebSessions();
