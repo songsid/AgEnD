@@ -40,13 +40,19 @@ export interface UsageApiContext {
  */
 export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[]; refreshing?: boolean };
 
-/** Keep primary account limits even at zero; hide only unused per-model noise. */
-export function isVisibleUsageMetric(metric: UsageMetric): boolean {
+/**
+ * Keep primary account limits even at zero; hide only unused per-model noise (another vendor's 0% model quota, e.g.
+ * Codex-Spark). M-2815 (the user): a Claude login's per-model weekly ("Fable (weekly)") is shown even at 0% — it is the
+ * limit that model will hit, and the card has room for it. `provider` is the row the metric belongs to.
+ */
+export function isVisibleUsageMetric(metric: UsageMetric, provider?: { id: string }): boolean {
+  if (metric.scope === "model" && provider && isClaudeUsageRow(provider.id)) return true;
   return !(metric.scope === "model"
     && metric.type === "percent"
     && typeof metric.used === "number"
     && metric.used <= 0);
 }
+const isClaudeUsageRow = (id: string): boolean => id === "claude" || id.startsWith("claude:");
 
 /** Map runtime backend names to the subscription provider row they consume. */
 export function usageProviderIdForBackend(backend: string | undefined): string | null {
@@ -77,7 +83,7 @@ export function filterUsageProviders(
       .filter(provider => !active || active.has(provider.id) || (opts.hostLogins === true && isHostLoginUsageProvider(provider.id)))
       .map(provider => ({
         ...provider,
-        metrics: provider.metrics.filter(isVisibleUsageMetric),
+        metrics: provider.metrics.filter(m => isVisibleUsageMetric(m, provider)),
       })),
   };
 }
@@ -587,7 +593,7 @@ export function formatUsageSummary(payload: UsagePayload): string {
       lines.push(`· ${name}: ${t("usage.value.unlimited")}`);
       continue;
     }
-    const parts = provider.metrics.filter(isVisibleUsageMetric).map(formatMetric).filter(Boolean);
+    const parts = provider.metrics.filter(m => isVisibleUsageMetric(m, provider)).map(formatMetric).filter(Boolean);
     const marked = usageStaleText(provider);
     const staleness = marked ? ` (${marked})` : provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
     lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
@@ -645,7 +651,7 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
     // A stale-while-rate-limited row has the old metrics but says so in its
     // hint.  Do not turn an old number into a falsely live presence.
     const percent = provider.metrics
-      .filter(isVisibleUsageMetric)
+      .filter(m => isVisibleUsageMetric(m, provider))
       .filter(metric => metric.type === "percent" && typeof metric.used === "number")
       .sort((a, b) => Number(/weekly/i.test(b.label)) - Number(/weekly/i.test(a.label)))[0];
     if (!percent) return [];
