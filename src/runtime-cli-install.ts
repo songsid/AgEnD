@@ -256,16 +256,17 @@ const npmLocalArgs = (config: NpmConfigFiles, prefix: string): string[] => ["--u
 /**
  * The one command a pinned download runs, fixed text. The address and the file travel in the environment (AGEND_DOWNLOAD_URL / AGEND_DOWNLOAD_FILE), never in this text, and both come from
  * the pin in the table. It is Windows PowerShell's own `Invoke-WebRequest`, so the computer's proxy and its certificate store (a company that inspects TLS) apply as they do for the
- * user's own downloads. Nothing it fetched is run. What it saved is only believed after the Runtime has checked its size and sha512 against the pin and Windows has checked its signature.
+ * user's own downloads. Nothing it fetched is run. AGEND-154 (Prism P2-2 on #3552): it follows NO redirect (`-MaximumRedirection 0`, where Windows PowerShell 5.1 would follow five; a 3xx answer is then an error, which is `exit 1`): the fixed address is the only place the
+ * file may come from, so an official starting address cannot hand the fetch to another origin. The sha512 and the signer checks below are unchanged. What it saved is only believed after the Runtime has checked its size and sha512 against the pin and Windows has checked its signature.
  */
 export const DOWNLOAD_COMMAND = "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }; "
-  + "try { Invoke-WebRequest -UseBasicParsing -Uri $env:AGEND_DOWNLOAD_URL -OutFile $env:AGEND_DOWNLOAD_FILE } catch { exit 1 }";
+  + "try { Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri $env:AGEND_DOWNLOAD_URL -OutFile $env:AGEND_DOWNLOAD_FILE } catch { exit 1 }";
 /**
  * AGEND-153: the one command that reads the vendor's release information, fixed text like `DOWNLOAD_COMMAND`: the address travels in the environment (AGEND_DOWNLOAD_URL), it is Windows PowerShell's own
- * `Invoke-WebRequest` (the computer's proxy and certificate store apply), and what it fetched is only printed. The Runtime parses the output as data (`parseLatestManifest`); nothing in it is run.
+ * `Invoke-WebRequest` (the computer's proxy and certificate store apply; AGEND-154: no redirect is followed and a 3xx fails, as for `DOWNLOAD_COMMAND`), and what it fetched is only printed. The Runtime parses the output as data (`parseLatestManifest`); nothing in it is run.
  */
 export const MANIFEST_COMMAND = "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }; "
-  + "try { $r = Invoke-WebRequest -UseBasicParsing -Uri $env:AGEND_DOWNLOAD_URL; if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { $r.Content } } catch { exit 1 }";
+  + "try { $r = Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri $env:AGEND_DOWNLOAD_URL; if ($r.StatusCode -ne 200) { exit 1 }; if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { $r.Content } } catch { exit 1 }";
 /** sha512 of a file as lower-case hex, read as a stream (the download can be hundreds of MB). */
 export const sha512OfFile = (file: string): Promise<string> => new Promise((done, fail) => {
   const hash = createHash("sha512"), stream = createReadStream(file);
