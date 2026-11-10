@@ -16,7 +16,7 @@
 //   - no page error, no CSP report.
 // Native long-press selection on a real phone can't be driven headless (the leader's ruling A is pinned in
 // tests/web-chat-reply-ui-2272.test.ts); a real phone confirms it before a beta.
-//   PW_DIR=<playwright-core dir> REPO=<checkout> OUT=<dir> [GATE=ci|full] [OLD_REF=ea4de219c^] FONTCONFIG_FILE=/etc/fonts/fonts.conf \
+//   PW_DIR=<playwright-core dir> REPO=<checkout> OUT=<dir> [GATE=ci|full] [OLD_REF=d8dd79910^] FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx tsx scripts/manual/smoke/smoke-chat-quote-2789.mts
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -26,9 +26,9 @@ import { bootFixture, caseName, matrix, shotPath, type MatrixCase } from "../smo
 const SMOKE = "smoke-chat-quote-2789";
 const REPO = process.env.REPO ?? process.cwd();
 const GATE = process.env.GATE === "full" ? "full" : "ci";
-// The SKEW legs compare with the page before the feature: main just before #3555 merged (its merge commit's parent) —
-// a branch tip would already hold the feature once it landed. The alpha line passes its own (OLD_REF=<alpha before #3556>).
-const OLD_REF = process.env.OLD_REF ?? "ea4de219c^";
+// The SKEW legs compare with the page before the feature: on this (alpha) line, release/2.3.5-alpha just before #3556
+// merged (its merge commit's parent) — a branch tip would already hold the feature once it landed. Main's is ea4de219c^.
+const OLD_REF = process.env.OLD_REF ?? "d8dd79910^";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
 const r: Record<string, unknown> = { gate: GATE, oldRef: OLD_REF };
