@@ -1,6 +1,6 @@
 {
  "gate": "full",
- "oldRef": "songsid/main",
+ "oldRef": "songsid/release/2.3.5-alpha",
  "desk-light-en:1:pill": "PASS",
  "desk-light-en:1:inserted": "PASS",
  "desk-light-en:2:pill": "PASS",
@@ -75,5 +75,5 @@
  "phone-dark-zh-TW:no-errors": "PASS",
  "skew:old-panel": "PASS",
  "skew:old-css": "PASS",
- "seconds": 70
+ "seconds": 75
 }
