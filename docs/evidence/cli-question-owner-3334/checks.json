@@ -1,0 +1,49 @@
+{
+  "base": "de21c9123ffe321a45efffe8400917c49be4c5aa",
+  "scope": "Main modified tree before commit; digests bind tested source/tests.",
+  "failFirst": {
+    "failed": 6,
+    "passed": 21,
+    "total": 27
+  },
+  "testFiles": [
+    "tests/admin-gate-754.test.ts",
+    "tests/changelog-fragments.test.ts",
+    "tests/claude-file-send-card-2322.test.ts",
+    "tests/cli-question-chat-3334.test.ts",
+    "tests/kiro-remote-card-2675.test.ts",
+    "tests/kiro-remote-card-chat-2675.test.ts",
+    "tests/needs-you-derive-1386.test.ts",
+    "tests/needs-you-fleet-1386.test.ts",
+    "tests/needs-you-web-1386.test.ts",
+    "tests/nonce-button-shutdown.test.ts",
+    "tests/tool-progress.test.ts",
+    "tests/web-chat-c4.test.ts",
+    "tests/web-only-dialogs-2910.test.ts"
+  ],
+  "tests": {
+    "passed": 355,
+    "failed": 0,
+    "skipped": 0,
+    "files": 13
+  },
+  "sourceTypes": "passed",
+  "testTypes": "passed",
+  "fragmentFormat": "Missing list markers caught and fixed before final restored pass.",
+  "mutations": [
+    {
+      "name": "M1-drop-live-owner-check",
+      "compiles": true,
+      "passed": 38,
+      "failed": 6,
+      "total": 44
+    },
+    {
+      "name": "M2-capture-display-sink",
+      "compiles": true,
+      "passed": 41,
+      "failed": 3,
+      "total": 44
+    }
+  ]
+}
