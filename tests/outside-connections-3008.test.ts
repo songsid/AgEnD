@@ -43,7 +43,7 @@ import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { PublicWebLink } from "../src/public-web-link.js";
 import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
-import { base32Decode, hotp, totpStep, SIGNIN_WRONG_LIMIT, TOTP_PAUSE_MS, OUTSIDE_LINK_RETRY_MS } from "../src/web-remote-access.js";
+import { base32Decode, hotp, totpStep, SIGNIN_FLEET_WRONG_LIMIT, TOTP_PAUSE_MS, OUTSIDE_LINK_RETRY_MS } from "../src/web-remote-access.js";
 import { setLocale } from "../src/locale.js";
 
 const dirs: string[] = [];
@@ -423,9 +423,9 @@ describe("#3008 a real fleet: connections from outside", () => {
     await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
     expect((await h.codeIn(key, 2)).status).toBe(401);
     expect(h.warns).toContain("A wrong authenticator code matched a nearby time step: this computer's clock may be off");
-    // The wrong codes of a sign-in are limited per browser (#3486: five), per admin and name and for the whole sign-in (SIGNIN_WRONG_LIMIT). These requests
-    // carry no cookies — each is a new browser — so it is the shared ceiling that stops them.
-    for (let n = 2; n < SIGNIN_WRONG_LIMIT; n++) expect((await h.outside("POST", "/auth/totp", { body: { code: "000000" } })).status).toBe(401);
+    // The wrong codes of a sign-in are limited per browser (#3486: five) and for the whole sign-in (SIGNIN_FLEET_WRONG_LIMIT, 20 since AGEND-155: the code
+    // is typed alone now, so there is no name's or admin's count). These requests carry no cookies — each is a new browser — so it is the shared ceiling that stops them.
+    for (let n = 2; n < SIGNIN_FLEET_WRONG_LIMIT; n++) expect((await h.outside("POST", "/auth/totp", { body: { code: "000000" } })).status).toBe(401);
     const fifth = await h.outside("POST", "/auth/totp", { body: { code: "000000" } });
     expect([fifth.status, fifth.headers["retry-after"], parse(fifth).retryAfterMs]).toEqual([429, String(TOTP_PAUSE_MS / 1000), TOTP_PAUSE_MS]);
     expect((await h.codeIn(key)).status).toBe(429);                                       // even the right code waits

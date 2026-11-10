@@ -215,7 +215,7 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 
 - 能做什麼（alpha）：不用操作者自己架通道，也能從外面打開儀表板；用驗證器 App 的碼登入，並以已驗證擁有者的身分核准新裝置、登出其他裝置（維護者裁定，#3165）。
 - 不能做什麼：main 上今天不能用——僅 alpha；設定、重新綁定或移除驗證器（只能在這台電腦上進行）。
-- 另（#3486）：還沒登入的瀏覽器可以用某位管理員自己的 App 登入成那位管理員（`/auth/totp`，帶名稱和驗證碼；`TOTP_SIGNIN_OVER_PUBLIC_LINK`）；詳見 SECURITY.zh-TW.md。
+- 另（#3486）：還沒登入的瀏覽器可以用某位管理員自己的 App 登入成那位管理員（`/auth/totp`，只帶 6 位數驗證碼——由伺服器判斷是誰的；`TOTP_SIGNIN_OVER_PUBLIC_LINK`）；詳見 SECURITY.zh-TW.md。
 - 程式碼（alpha 分支）：`src/auth-api.ts`（`/auth/totp`）；`src/authority/web-authority.ts`；`src/fleet-manager.ts`（`deviceApprovalOwner`）。
 - 相關決議與議題：#3008、#3165、fleet decision 0471da59。
 

@@ -411,7 +411,7 @@ import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js"
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.js";
-import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
+import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -18788,8 +18788,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the outside switch, a wait in force and the link — its address only to this computer.
    */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; manage: boolean; codeNeeded: boolean; strict: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
-    /** #3486: what THIS admin types as the name at a new browser's authenticator sign-in (their own, never anyone else's); null: a web-only fleet needs none, or no app yet. */
-    signinName: string | null;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
     const store = this.webRemoteAccess();
     const manager = this.authenticatorOwner(req);
@@ -18798,9 +18796,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
     const mine = !!open && isOutsideLinkOwner(open.owner);
     const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
-    const signinName = manager && manager.who !== HOST_ADMIN_KEY && status?.enrolled
-      ? this.signinHandleOf({ adapterId: manager.actor.adapter_id, userId: manager.actor.user_id }) ?? manager.actor.user_id : null;
-    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null, signinName,
+    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
       manage: !!manager, codeNeeded: !!manager && !!store && this.authenticatorCodeAsked(manager, store), strict: !!status?.strict,
       outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
       link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
@@ -19009,12 +19005,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #3486 (per admin; auth-api POST /auth/totp): a browser that is not signed in yet signs in as ONE admin, with
-   * the code of THAT admin's own authenticator — the same per-admin app their confirmations use. Who is not found by trying the code
-   * against everyone: the person types a name (`account`), which resolves — among the admins that have an app and are still admins —
-   * to at most one; the page lists nobody. A name that resolves to nobody (no such name, an admin with no app, a name two admins
-   * share, one no longer an admin) is answered exactly as a wrong code is, after the same work and the same counting (store.signIn).
-   * A web-only fleet has one admin (the host operator): its one app, no name needed.
+   * #3486 (per admin; auth-api POST /auth/totp): a browser that is not signed in yet signs in as ONE admin, with the code of THAT
+   * admin's own authenticator — the same per-admin app their confirmations use.
+   *
+   * **Code only (AGEND-155, the product owner's decision on #3486).** The browser types the 6-digit code and nothing else: the code is
+   * compared with the app of every admin who has one and is still an admin of their connection (WebRemoteAccess.signInByCode — each,
+   * every time, no early stop), and exactly one match signs that admin in. No match, or more than one (nobody is signed in and nothing
+   * is spent), is the one 401 `wrong_code`. The page lists nobody, and nothing in an answer says which admins exist or have an app.
+   * A request that still carries a name (`account`, accepted for compatibility; the UI no longer sends it) is resolved to at most
+   * one admin by that name as before (resolveSignInAdmin) and is held by the per-name and per-admin counts too.
+   * A web-only fleet has one admin (the host operator): its one app, no name needed either way.
    *
    * Where it works: a direct connection (LAN, tailnet, the owner's own proxy — and this computer's own browser) on any fleet; on a
    * chat fleet also a public link (TOTP_SIGNIN_OVER_PUBLIC_LINK, the one switch that takes that back); on a web-only fleet a link
@@ -19026,15 +19026,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   totpSignIn(input: { exposureId: string | undefined; peer: WebPeer; account: string | undefined; code: string; browser: { id: string; address: string | undefined }; knownCookie: string | undefined }): TotpSignInResult {
     const store = this.webRemoteAccess(), webOnly = this.isWebOnlyFleet(), { exposureId, peer } = input;
     if (!store || !this.webToken || !this.totpSignInOpen(exposureId, peer)) return { kind: "closed" };
-    const { who, ident } = this.resolveSignInAdmin(store, webOnly, input.account);
-    const enrollment = who ? store.enrollmentOf(who) : null;
-    const epoch = this.webAuthorityState().epoch, now = Date.now();
+    const webToken = this.webToken, epoch = this.webAuthorityState().epoch, now = Date.now();
+    const named = this.signInNameTyped(input.account);
     // This browser: its cookie id, and on a direct connection the address too (over a link the gateway's peer is the tunnel, so the cookie alone).
     // A browser with a valid mark is counted by the MARK (a thief cannot shed it by dropping the cookie id), else by cookie id and address.
-    const mark = findSigninKnownEntry(this.webToken, input.knownCookie, who, enrollment, epoch, now);
-    const browser = mark ? { key: createHash("sha256").update(`agend-signin-mark\0${mark}`).digest("hex"), known: true }
-      : { key: createHash("sha256").update(`agend-signin-browser\0${input.browser.id}\0${input.browser.address ?? "link"}`).digest("hex"), known: false };
-    const v = store.signIn(who, ident, input.code, browser);
+    const byCookie = { key: createHash("sha256").update(`agend-signin-browser\0${input.browser.id}\0${input.browser.address ?? "link"}`).digest("hex"), known: false };
+    const byMark = (entry: string) => ({ key: createHash("sha256").update(`agend-signin-mark\0${entry}`).digest("hex"), known: true });
+    let v: SignInVerdict;
+    if (named) {
+      const { who, ident } = this.resolveSignInAdmin(store, webOnly, input.account);
+      const entry = findSigninKnownEntry(webToken, input.knownCookie, who, who ? store.enrollmentOf(who) : null, epoch, now);
+      v = store.signIn(who, ident, input.code, entry ? byMark(entry) : byCookie);
+    } else {
+      // Every admin with an app, whether they are still an admin or not asked of each (no early stop); the marks this browser carries, one per admin they vouch for.
+      const keys = webOnly ? (store.isEnrolled(HOST_ADMIN_KEY) ? [HOST_ADMIN_KEY] : []) : store.adminKeys;
+      const candidates = keys.map(who => {
+        const [adapterId, userId] = who.split("\u0000");
+        return { who, eligible: webOnly || (!!adapterId && !!userId && this.adminGate(userId, adapterId) === "ok") };
+      });
+      const marks = candidates.flatMap(c => {
+        const entry = c.eligible ? findSigninKnownEntry(webToken, input.knownCookie, c.who, store.enrollmentOf(c.who), epoch, now) : null;
+        return entry ? [{ who: c.who, entry }] : [];
+      });
+      v = store.signInByCode(input.code, marks.length ? byMark(marks[0]!.entry) : byCookie, candidates, marks.map(m => m.who));
+    }
     if (v.kind === "unavailable") return v;
     if (v.kind !== "ok") {
       // Half-way through a real admin's count, or the whole sign-in's: said once per cycle — nothing of the code or the name typed in it.
@@ -19049,13 +19064,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug("Sign-in with an authenticator code refused");
       return { kind: "wrong" };
     }
-    if (!who || !enrollment) return { kind: "wrong" };
+    const who = v.who, enrollment = store.enrollmentOf(who);
+    if (!enrollment) return { kind: "wrong" };
     const actor = who === HOST_ADMIN_KEY ? null : (() => { const [adapterId, userId] = who.split("\u0000"); return adapterId && userId ? { adapterId, userId } : null; })();
     if (!actor && who !== HOST_ADMIN_KEY) return { kind: "wrong" };
     const outside = webOnly && exposureId !== undefined;
     return {
       kind: "ok",
-      knownCookie: addSigninKnownDevice(this.webToken, input.knownCookie, who, enrollment, epoch, now),
+      knownCookie: addSigninKnownDevice(webToken, input.knownCookie, who, enrollment, epoch, now),
       session: outside ? { remote: "totp" } : actor ? { owner: actor } : {},
       // Asked again as the session is made: the same app, still an admin, still allowed here.
       commit: (record, label) => {
@@ -19068,6 +19084,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return true;
       },
     };
+  }
+  /** Whether the request names an admin (`account`, legacy). Blank or missing: the code stands alone. */
+  private signInNameTyped(account: string | undefined): boolean {
+    return typeof account === "string" && account.normalize("NFKC").trim().replace(/^@+/, "") !== "";
   }
   /** The platform handle (Discord / Telegram user name) an account last signed in to the web with, exactly as the platform gave it; undefined when none is known. */
   private signinHandleOf(owner: { adapterId: string; userId: string }): string | undefined {
