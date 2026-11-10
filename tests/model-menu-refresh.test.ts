@@ -18,7 +18,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const LIVE = [{ id: "gpt-6-astra", label: "GPT-6 Astra" }, { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }];
 const CACHED = [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }];
 
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
   rotateLogIfNeeded: vi.fn(),

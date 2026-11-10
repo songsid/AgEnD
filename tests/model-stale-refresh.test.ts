@@ -13,12 +13,12 @@ import { join } from "node:path";
  * Now `/model` re-probes once the cache passes a staleness threshold, under a
  * deadline, and falls back to the cached list when the probe cannot answer.
  */
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
   rotateLogIfNeeded: vi.fn(),
 }));
 import { FakeProbeWorker } from "./helpers/probe-worker.js";
+import { FleetManager } from "../src/fleet-manager.js";
 
 const probeCLIEnv = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
@@ -53,7 +53,6 @@ function seed(models: Array<{ id: string }>, ageMs: number) {
 }
 
 async function makeFleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
   const fm = new FleetManager(dataDir);
   (fm as any).fleetConfig = { defaults: { backend: "claude-code" }, channel: {}, instances: { w: {} } };
   return fm as any;

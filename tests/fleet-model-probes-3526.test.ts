@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Real fleet boot/save/reconciliation and bounded probe publication. All host,
 // adapter, vendor and CLI effects remain inert, including worker construction.
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({ createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger, rotateLogIfNeeded: vi.fn() }));
 vi.mock("../src/backend/factory.js", () => ({ createBackend: () => { throw Error("no backend on fleet loop"); } }));
 vi.mock("node:child_process", async original => {
