@@ -1,0 +1,65 @@
+{
+  "binarySha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+  "version": "codex-cli 0.167.0",
+  "netns": "net:[4026533882]",
+  "routes": [],
+  "frames": [
+    {
+      "file": "post-enter-immediate.txt",
+      "afterEnterMs": 5
+    },
+    {
+      "file": "post-enter-000.txt",
+      "afterEnterMs": 11
+    },
+    {
+      "file": "post-enter-001.txt",
+      "afterEnterMs": 48
+    },
+    {
+      "file": "post-enter-002.txt",
+      "afterEnterMs": 117
+    },
+    {
+      "file": "post-enter-003.txt",
+      "afterEnterMs": 726
+    },
+    {
+      "file": "post-enter-004.txt",
+      "afterEnterMs": 1119
+    },
+    {
+      "file": "post-enter-005.txt",
+      "afterEnterMs": 1325
+    },
+    {
+      "file": "post-enter-006.txt",
+      "afterEnterMs": 1932
+    },
+    {
+      "file": "post-enter-007.txt",
+      "afterEnterMs": 2143
+    },
+    {
+      "file": "post-enter-008.txt",
+      "afterEnterMs": 2512
+    },
+    {
+      "file": "post-enter-009.txt",
+      "afterEnterMs": 3093
+    },
+    {
+      "file": "post-enter-010.txt",
+      "afterEnterMs": 3693
+    }
+  ],
+  "mockOnly": true,
+  "uniqueMessageId": "m3578-replay-message",
+  "scope": "real audited Codex TUI + localhost mock; raw stream capture only, not reporter incident",
+  "ownedTmp": "/tmp/m3578-ctp4nkk5",
+  "cleanup": {
+    "privateTmuxClosed": true,
+    "mockExited": true,
+    "ownedHomeTempRemoved": true
+  }
+}

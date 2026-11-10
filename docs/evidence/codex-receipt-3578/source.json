@@ -1,0 +1,6 @@
+{
+  "base": "5d27248ab117f81f0c3573abb910702ebc91d781",
+  "daemonSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+  "outboxSha256": "441c368b176311ac9cb3231f30a0828dacde90987326d3e95e1c790cc54aca01",
+  "allSixLiveLegsSameDaemon": true
+}

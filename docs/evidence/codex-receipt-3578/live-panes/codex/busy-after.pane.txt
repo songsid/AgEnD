@@ -1,0 +1,29 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     /tmp/l3578-mpeygh4i/codex
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-codex-idle)
+
+
+• Offline mock completed.
+
+  Worked for <1s • 18:02
+
+
+› BUSYSEED
+
+
+◦ Working (0s • esc to interrupt)
+
+• Messages to be submitted after next tool call (press esc to interrupt and send immediately)
+  ↳ [from:offline-test] Confirm this mock-only message.
+    (message_id: m3578-codex-busy)
+
+› Ask Codex to do anything
+
+  Context 100% left · ← for agents                                                                                           ⚠ 1 warning · f2 to view

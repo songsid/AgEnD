@@ -1125,9 +1125,13 @@ export class DeliveryOutbox extends EventEmitter {
       // Validate all references before inserting any delivery or edge. The
       // authenticated sender can explicitly disclose a grant it already owns.
       const acl = deliveryVisibility(this.db, "d", input.sourceInstance);
+      const pendingForward = "Forwarded message verification is pending delivery confirmation; check delivery_status and retry this forward after it is delivered. Do not resend the original message.";
       const references = forwards.map(messageId => {
         if (messageId.startsWith("hmsg-")) {
           const page = queryHumanReceipt(this.db, input.sourceInstance, { messageId });
+          // Classify only after row-scoped visibility: hidden and missing receipts
+          // must remain indistinguishable, and pending never grants an edge.
+          if (page?.items.length === 1 && page.items[0].state === "queued") throw new Error(pendingForward);
           if (!page || page.items.length !== 1 || page.items[0].state !== "delivered") {
             throw new Error("Forwarded message verification is unavailable");
           }
@@ -1135,6 +1139,7 @@ export class DeliveryOutbox extends EventEmitter {
         }
         const rows = this.db.prepare(`SELECT d.delivery_id,d.state FROM deliveries d
           WHERE d.message_id=? AND ${acl.sql} LIMIT 2`).all(messageId, ...acl.params) as Array<{ delivery_id: string; state: string }>;
+        if (rows.length === 1 && ["queued", "delivering", "submission_started", "retry_wait"].includes(rows[0].state)) throw new Error(pendingForward);
         if (rows.length !== 1 || rows[0].state !== "delivered") throw new Error("Forwarded message verification is unavailable");
         return { kind: "delivery", id: rows[0].delivery_id, messageId };
       });

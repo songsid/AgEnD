@@ -1,0 +1,9 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     /tmp/m3578-ctp4nkk5/w
+  permissions: YOLO mode
+
+
+› Ask Codex to do anything
+
+  Context 100% left · ← for agents

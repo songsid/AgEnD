@@ -1,0 +1,132 @@
+{
+  "versions": [
+    {
+      "backend": "codex",
+      "binarySha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+      "version": "codex-cli 0.167.0"
+    },
+    {
+      "backend": "claude-code",
+      "binarySha256": "dabafec82ca1319fa43d8be36a10fc61b1d11821cb98ad5df04ad95e199b8eed",
+      "version": "2.1.319 (Claude Code)"
+    }
+  ],
+  "results": [
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "codex",
+      "scenario": "idle",
+      "confirmed": true,
+      "elapsedMs": 24,
+      "enters": 1,
+      "captures": 2,
+      "trace": [
+        {
+          "afterEnterMs": 15,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    },
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "codex",
+      "scenario": "busy",
+      "confirmed": true,
+      "elapsedMs": 27,
+      "enters": 1,
+      "captures": 2,
+      "trace": [
+        {
+          "afterEnterMs": 16,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    },
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "codex",
+      "scenario": "resumed",
+      "confirmed": true,
+      "elapsedMs": 18,
+      "enters": 1,
+      "captures": 2,
+      "trace": [
+        {
+          "afterEnterMs": 12,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    },
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "claude-code",
+      "scenario": "idle",
+      "confirmed": true,
+      "elapsedMs": 272,
+      "enters": 1,
+      "captures": 3,
+      "trace": [
+        {
+          "afterEnterMs": 10,
+          "verdict": "stranded"
+        },
+        {
+          "afterEnterMs": 265,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    },
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "claude-code",
+      "scenario": "busy",
+      "confirmed": true,
+      "elapsedMs": 296,
+      "enters": 1,
+      "captures": 3,
+      "trace": [
+        {
+          "afterEnterMs": 23,
+          "verdict": "stranded"
+        },
+        {
+          "afterEnterMs": 286,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    },
+    {
+      "sourceSha256": "7d6ac8da2c3c7e8bdc65b3e78048ea8837031ae5d041fe1cdd03b5478e59cab4",
+      "backend": "claude-code",
+      "scenario": "resumed",
+      "confirmed": true,
+      "elapsedMs": 277,
+      "enters": 1,
+      "captures": 3,
+      "trace": [
+        {
+          "afterEnterMs": 12,
+          "verdict": "stranded"
+        },
+        {
+          "afterEnterMs": 270,
+          "verdict": "submitted"
+        }
+      ],
+      "scope": "real audited CLI/live mock APIs; production confirmAfterEnter+judge/readiness; manual private tmux paste/Enter (not a full fleet/outbox journey)"
+    }
+  ],
+  "routes": [],
+  "scope": "private real CLI/mock confirmation, no live fleet/accounts/vendors",
+  "cleanup": {
+    "homesRemoved": true,
+    "privateTmuxClosed": true,
+    "tempRemoved": true,
+    "mockClosed": true
+  }
+}

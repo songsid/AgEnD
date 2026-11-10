@@ -1,0 +1,42 @@
+
+ ▐▛███▛█   Claude Code v2.1.319
+▝▜██████▀  Sonnet 4.5 · API Usage Billing
+ ▝▝   ▝▝   /tmp/l3578-mpeygh4i/claude-code
+
+
+❯ [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-claude-code-idle)
+
+● Offline mock completed.
+
+✻ Sautéed for 0s · done 6:03 PM
+
+❯ BUSYSEED
+
+● Offline mock completed.
+
+✻ Cooked for 8s · done 6:03 PM
+
+❯ [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-claude-code-busy)
+
+● Offline mock completed.
+
+✻ Cogitated for 8s · done 6:03 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

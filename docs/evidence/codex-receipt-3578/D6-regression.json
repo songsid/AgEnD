@@ -1,0 +1,13 @@
+{
+  "sourceChange": "none; reversal restored",
+  "mutant": "remove post-readiness-wait current() fence",
+  "failed": [
+    "Codex confirmation during the stranded-readiness wait (#3578) does not confirm if its generation changes after positive evidence but before the wait returns",
+    "Codex confirmation during the stranded-readiness wait (#3578) does not confirm if its window changes after positive evidence but before the wait returns"
+  ],
+  "expectedOutcome": "false; candidate not settled; no Enter",
+  "cases": [
+    "generation replacement after submitted predicate",
+    "window replacement after submitted predicate"
+  ]
+}
