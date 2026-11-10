@@ -16,6 +16,7 @@ This guide keeps user-facing text, documentation, and configuration references c
 | Idle | idle | 閒置 | 閒置 | The instance is ready and not actively processing work. |
 | Stuck | stuck | 卡住 | `stuck` | An internal execution state: the CLI is not ready and its pane has remained unchanged past the stuck timeout. |
 | Awaiting input | awaiting input | 等待輸入 | `awaiting_input` | A presentation label for a confirmed, fresh interaction waiting for input; it is not an additional execution state. |
+| Admin | admin | 管理員 | 管理員 | A person who administers the Fleet or the Hub (a fleet admin, a Hub admin, this computer's admin). One word everywhere in zh-TW: 管理員, never 管理者. |
 
 ## Writing guidance
 
@@ -23,6 +24,7 @@ This guide keeps user-facing text, documentation, and configuration references c
 - In zh-TW user-facing text, call the thing a user talks to an “Agent”: for example, “你的 Agent 正在工作中”. Use `instance` when referring to an instance name, instance setting, API field, or configuration object.
 - Keep `Backend`, `Context`, `Fleet`, and `General` in English in zh-TW text. On first use for beginners, add a short plain-language definition instead of translating the term.
 - Keep literal filenames, commands, and configuration keys unchanged, such as `fleet.yaml`, `working_directory`, `backend`, and `context_guardian`.
+- Write 「管理員」 for admin in every zh-TW string, doc and site page (M-2820); do not use 「管理者」.
 - Do not alternate between translated and untranslated forms. Avoid using「AI 助手」for Agent,「後端」or「AI 引擎」for Backend, and「上下文」「前後文」「對話空間」for model Context.
 
 ## Important distinctions

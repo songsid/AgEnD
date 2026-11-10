@@ -33,7 +33,7 @@ const SAYS: Record<string, Record<string, string>> = {
   },
   "zh-TW": {
     no_account: "這個瀏覽器不是用帳號登入的（agend web）：請用 /web 登入後再授權。",
-    not_admin: "你的帳號在這裡不是 fleet 管理者。",
+    not_admin: "你的帳號在這裡不是 fleet 管理員。",
     public_link: "臨時公開連結上無法授權。",
     named_link_off: "透過固定網域：請在這台電腦的 設定 → 存取與安全 開啟「也允許透過我的固定網域」。",
     disabled: "網頁授權已關閉。",

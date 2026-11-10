@@ -310,7 +310,7 @@ notice 要從 `activity` 反推，規則是「**這個 instance 呼叫過新 pro
 **刻意不點名「只用 delegate_task」的 instance**：`delegate_task` 留在 worker（§2.2），所以 `rd1-a89-dev`（23 次）、`classic-鬥破串接`（18 次）這些**不會壞**，把它們列進來只會讓使用者標一堆不需要標的東西，然後對這則 notice 失去信任。**名單的定義是「會壞的」，不是「看起來像 coordinator 的」。**
 
 一個實作前提：這份反推**只看得到 `handleOutboundFromInstance` 那一條路**（§2.5）。所以 notice 的措辭要留餘地（「用過…的有這些」而不是「只有這些需要標」），而 S1 在三個 sink 都記錄之後，這份名單才會完整。
-4. **被擋下時的回應要能自我解釋**：不是 "unknown tool"，而是「這個 instance 是 worker，`create_instance` 是 coordinator 的工具；請 `report_result` 說明你需要什麼，或由管理者設 `tool_set: full`」。**被擋住的 agent 會把錯誤訊息當指示讀**，所以那句話就是遷移文件。
+4. **被擋下時的回應要能自我解釋**：不是 "unknown tool"，而是「這個 instance 是 worker，`create_instance` 是 coordinator 的工具；請 `report_result` 說明你需要什麼，或由管理員設 `tool_set: full`」。**被擋住的 agent 會把錯誤訊息當指示讀**，所以那句話就是遷移文件。
 5. **先觀察再收**（見 stage 拆分）：S1 只記錄「worker 呼叫了 coordinator 工具」，不擋。跑一輪真實 fleet，看看有沒有我們沒想到的合法用途，再切預設。
 
 ---
