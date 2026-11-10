@@ -1366,7 +1366,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
  * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
-const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, busy: 409, shutting_down: 503, failed: 500 };
+const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, busy: 409, shutting_down: 503, failed: 500 };
 function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");

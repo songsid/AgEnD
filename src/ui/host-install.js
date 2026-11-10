@@ -67,7 +67,7 @@ register("hostinstall", {
     updatedNoVersion: "The {0} installer finished (exit code 0), but the installed version could not be read afterwards, so it is not known whether it reached the audited version, {1}.",
     failedUpdate: "The {0} update did not finish.", failedUpdateCode: "The {0} update exited with code {1}.",
     cancelledUpdate: "The {0} update was cancelled.", timeoutUpdate: "The {0} update took too long and was stopped.",
-    err_not_installed: "{0} is not installed on this host.", err_up_to_date: "{0} is already at the version AgEnD has audited (or newer): there is nothing to update.",
+    err_not_installed: "{0} is not installed on this host.", err_version_unreadable: "AgEnD could not read the installed version of {0} just now, so it did not update it. Try again in a moment.", err_up_to_date: "{0} is already at the version AgEnD has audited (or newer): there is nothing to update.",
   },
   "zh-TW": {
     update: "更新到 {0}", updating: "更新中…", cancelUpdate: "取消更新",
@@ -81,7 +81,7 @@ register("hostinstall", {
     updatedNoVersion: "{0} 的安裝程式已結束（結束碼 0），但之後讀不到已安裝的版本，不確定有沒有更新到稽核版本 {1}。",
     failedUpdate: "{0} 沒有更新完成。", failedUpdateCode: "{0} 的更新以結束碼 {1} 結束。",
     cancelledUpdate: "已取消 {0} 的更新。", timeoutUpdate: "{0} 的更新花太久，已停止。",
-    err_not_installed: "這台主機沒有安裝 {0}。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
+    err_not_installed: "這台主機沒有安裝 {0}。", err_version_unreadable: "AgEnD 剛才讀不到 {0} 目前安裝的版本，所以沒有更新。請稍後再試。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
   },
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);

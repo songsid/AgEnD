@@ -179,7 +179,7 @@ describe("who sees it, and in which words", () => {
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang, { store: false });
       for (const key of ["update", "updating", "cancelUpdate", "verCurrent", "verBehind", "verSelf", "verNewer", "verUnknown", "runningUpdate", "updated", "updatedNoFrom", "updatedWarn", "updatedNoVersion",
-        "failedUpdate", "failedUpdateCode", "cancelledUpdate", "timeoutUpdate", "err_not_installed", "err_up_to_date"]) {
+        "failedUpdate", "failedUpdateCode", "cancelledUpdate", "timeoutUpdate", "err_not_installed", "err_up_to_date", "err_version_unreadable", "cardLabelUpdate"]) {
         const s = HI.hostInstallText(key, "grok", "1.0.70", "1.0.77");
         expect(s, `${lang}:${key}`).not.toBe(`hostinstall.${key}`);
         if (lang === "zh-TW") expect(s, `${lang}:${key}`).toMatch(/[一-鿿]/);

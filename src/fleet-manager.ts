@@ -22214,10 +22214,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let versionBefore: string | null = null;
     if (plan) {
       // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
+      // AGEND-144 (Prism on #3539, P2-3): that reading must be FRESH, SUCCESSFUL and of the executable that resolves now. The published row is not enough: a forced refresh keeps the previous
+      // version when the new probe fails for the same path (right for the pickers, which fail open), so a replaced binary whose version cannot be read would still carry the old
+      // number and an update to an older release would be accepted. Unreadable refuses. (The published row is refreshed too, as before, for the pickers and the page.)
+      const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
       await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
-      versionBefore = this.backendAvailabilityRows().find(row => row.backend === backend)?.version ?? null;
+      versionBefore = fresh?.version ?? null;
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
       if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
+      if (!fresh) { this.loginWindow.release(claim); return { refused: "version_unreadable" }; }
       if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
       try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
     } else this.recordLoginFlow(backend, "install_only", "web");

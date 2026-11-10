@@ -146,6 +146,25 @@ export class BackendAvailabilityStore {
     return run;
   }
 
+  /**
+   * AGEND-144 (Prism on #3539, P2-3): ONE fresh, successful version reading of the executable that resolves NOW — for the one decision that must not rest on a retained value: an
+   * update's admission. It is not the published row: `probeOne` keeps the version it knew for the same path when a probe fails (right for the pickers, which fail open), so a
+   * binary replaced in place whose version cannot be read would still show the old number. Here a missing executable, no answer or an unreadable version is null — never a retained
+   * value. Nothing is published or cached; it takes its place in the same one-probe-at-a-time queue.
+   */
+  freshVersion(backend: string): Promise<{ path: string; version: string } | null> {
+    if (!this.rows.has(backend)) return Promise.resolve(null);
+    const run = this.queue.then(async () => {
+      let path: string | null | undefined;
+      try { path = await this.probes.resolve(backend); } catch { path = undefined; }
+      if (!path) return null;
+      const version = await this.probes.version(backend, path).catch(() => null);
+      return version ? { path, version } : null;
+    });
+    this.queue = run.then(() => {}, () => {});
+    return run;
+  }
+
   private async probeOne(backend: string, force: boolean): Promise<void> {
     const previous = this.rows.get(backend)!;
     let path: string | null | undefined;

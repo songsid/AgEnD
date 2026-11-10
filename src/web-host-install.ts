@@ -36,7 +36,7 @@ const WEB_INSTALL_BYTES = 2_000;
 export type HostInstallPhase = "running" | "ok" | "failed" | "cancelled" | "timeout";
 
 /** Why a start was refused. Codes: the page words them in its own language. */
-export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date";
+export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable";
 /** What a run does: install a CLI that is not there, or take an installed one to AgEnD's audited release. */
 export type HostInstallMode = "install" | "update";
 export type HostInstallStart = { started: true } | { refused: HostInstallRefusal; message?: string };

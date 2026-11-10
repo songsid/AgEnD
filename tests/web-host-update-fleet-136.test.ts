@@ -6,7 +6,7 @@
  *   before any window opens.
  * - The command carries the audited release (never "latest"); the page is told the version before and the release it goes to; afterwards the binary probe's version.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +34,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { checkBinaryInstalled, BACKEND_INSTALLATION_INFO } from "../src/instance-lifecycle.js";
 import type { HostInstallReporter } from "../src/web-host-install.js";
 import { binaryProbe } from "../src/binary-probe.js";
+import { hostAvailabilityProbes, parseVersion } from "../src/backend-availability.js";
 
 let root: string, home: string, profileBin: string;
 const saved = { PATH: process.env.PATH, HOME: process.env.HOME };
@@ -49,6 +50,10 @@ beforeEach(() => {
   process.env.PATH = "/usr/bin:/bin";
   fakeSessions.length = 0; startGate = undefined;
   binaryProbe.invalidate();                      // the PATH lookup is cached across tests (a throwaway HOME each time)
+  // AGEND-144 (CI run 42721896278: six failures here, "up_to_date" instead of "started"): the real version probe runs `<cli> --version` inside `unshare -rn` (no network), which a
+  // CI runner without unprivileged user namespaces cannot do — the version then reads as unknown and an update is refused. These tests are about the update's admission, not
+  // about that probe, so it is replaced: the throwaway fake CLI's own text says its version (nothing is started), the same answer on every machine.
+  vi.spyOn(hostAvailabilityProbes, "version").mockImplementation(async (_backend, path) => { try { return parseVersion(readFileSync(path, "utf8").split("\n").filter(l => l.startsWith("echo")).join("\n")); } catch { return null; } });
 });
 afterEach(() => {
   process.env.PATH = saved.PATH; process.env.HOME = saved.HOME;
@@ -115,7 +120,7 @@ describe("startWebInstall — update", () => {
     await fm.cancelInstallSession();
     expect(fakeSessions[0]!.cancelled).toEqual(["cancelled"]);
   });
-  it.each([["1.0.77", "at the audited release"], ["1.0.99", "newer than anything audited"], ["no version here", "a version that cannot be read"]])("%s (%s): refused as up_to_date, nothing opens, the window is free", async version => {
+  it.each([["1.0.77", "at the audited release"], ["1.0.99", "newer than anything audited"]])("%s (%s): refused as up_to_date, nothing opens, the window is free", async version => {
     writeGrok(version); onPath();
     const { fm, reporter } = fleet();
     const update = vi.fn();
@@ -123,6 +128,36 @@ describe("startWebInstall — update", () => {
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+  // AGEND-144 (Prism on #3539, P2-3): a retained version is not an update's authorization.
+  it("a version that cannot be read now: refused as version_unreadable — even though the published row still holds the last good number for the same path", async () => {
+    writeGrok("1.0.70"); onPath();
+    const { fm, reporter } = fleet();
+    await fm.backendAvailability.refresh(["grok"], { force: true });
+    expect(fm.backendAvailability.get("grok")?.version).toBe("1.0.70");             // what the page's snapshot says
+    writeGrok("no version here");                                                    // the binary at the same path is replaced; its version cannot be read
+    await fm.backendAvailability.refresh(["grok"], { force: true });
+    expect(fm.backendAvailability.get("grok")?.version, "the picker's fail-open snapshot keeps the old number (unchanged behaviour)").toBe("1.0.70");
+    const update = vi.fn();
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ refused: "version_unreadable" });
+    expect(update).not.toHaveBeenCalled();
+    expect(fakeSessions).toHaveLength(0);
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+  it("the positive control: a fresh, successful reading of the executable that resolves now lets the update start, from that version", async () => {
+    writeGrok("1.0.70"); onPath();
+    const { fm, reporter } = fleet();
+    await fm.backendAvailability.refresh(["grok"], { force: true });
+    writeGrok("1.0.72");                                                             // replaced in place, readable: the update goes from what is there NOW
+    const update = vi.fn<(from: string | null, target: string) => void>();
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(update).toHaveBeenCalledWith("1.0.72", "1.0.77");
+  });
+  it("freshVersion is not a published value: no executable, or no answer, is null; nothing is cached", async () => {
+    const { fm } = fleet();
+    rmSync(join(profileBin, "grok"));
+    expect(await fm.backendAvailability.freshVersion("grok")).toBeNull();
+    expect(await fm.backendAvailability.freshVersion("not-a-backend")).toBeNull();
   });
   it("a CLI that sits only in its installer's directory (~/.grok/bin, not on any PATH) is installed: the update starts, as the Accounts page said it could", async () => {
     writeGrok("1.0.70");                                    // in ~/.grok/bin …

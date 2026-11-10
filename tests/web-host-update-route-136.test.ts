@@ -114,7 +114,7 @@ describe("what is asked", () => {
     }
     expect(t.start).not.toHaveBeenCalled();
   });
-  it.each([["not_installed", 409], ["up_to_date", 409], ["busy", 409], ["shutting_down", 503], ["failed", 500]] as const)("the fleet refuses with %s: its code and status come back, and no run is shown", async (code, status) => {
+  it.each([["not_installed", 409], ["up_to_date", 409], ["version_unreadable", 409], ["busy", 409], ["shutting_down", 503], ["failed", 500]] as const)("the fleet refuses with %s: its code and status come back, and no run is shown", async (code, status) => {
     const t = await setup({ start: async () => ({ refused: code }) });
     const r = await replay(t, { backend: "grok" });
     expect([r.status, r.body.error]).toEqual([status, code]);
