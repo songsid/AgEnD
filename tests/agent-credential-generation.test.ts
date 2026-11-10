@@ -9,11 +9,6 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { AgentCredentials, agentCredentialPolicy } from "../src/agent-credentials.js";
 import { FakeProbeWorker } from "./helpers/probe-worker.js";
 
-// Settings publication can schedule discovery in another isolate; parent backend mocks do not reach it.
-vi.mock("node:worker_threads", async original => ({
-  ...await original<typeof import("node:worker_threads")>(), Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker,
-}));
-
 const roots: string[] = [];
 const managers: any[] = [];
 beforeEach(() => { FakeProbeWorker.reset(); FakeProbeWorker.answer = () => null; });
