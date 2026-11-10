@@ -279,7 +279,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - On other backends, kiro's V3 engine included, the card says their compaction end can't be detected, and leaves.
   - With no record after 10 minutes it says so and stays. If the command never reached the agent, or the agent stopped, restarted or changed backend meanwhile, it says it can't follow the compaction any more.
 - **Not a command:** anything else starting with `/` is sent as an ordinary message, as before. So is a line typed with a file waiting beside it.
-- **Fleet-wide commands** (`/status`, `/restart`, `/login`, …) stay in General. `/update` is the exception: typed in any chat by a fleet admin, it opens the same update dialog as the dashboard (see [Updating AgEnD from the web](#updating-agend-from-the-web)).
+- **Fleet-wide commands** (`/status`, `/restart`, `/login`, …) stay in General. `/update` is the exception: typed in any agent's web chat by a fleet admin, it opens the same update dialog as the dashboard (see [Updating AgEnD from the web](#updating-agend-from-the-web)).
 - **`/raw`** is not offered. Over the temporary public link a message starting with `/raw ` is refused, and so is `/save`.
 - **Quick actions:**
   - The backend, model and effort in the chat’s header open their lists. On a phone, backend and model are inside the composer. The current model is marked.
@@ -597,12 +597,12 @@ It leaves alone the colours people picked for agents, installed mods, uploaded e
 
 Fleet admins can update AgEnD from the dashboard (#3332); it runs the same steps as `/update` in General.
 
-- **When a new version is out,** every page shows a line at the top, to fleet admins only: **AgEnD v… is available (current v…)**, with **Update now** and **Later**. Settings → Advanced → **Version and update** shows the running version, its line (Stable, Preview or Alpha preview) and when it last checked, with **Check for updates**. Typing `/update` in any chat opens the same confirmation.
+- **When a new version is out,** every page shows a line at the top, to fleet admins only: **AgEnD v… is available (current v…)**, with **Update now** and **Later**. Settings → Advanced → **Version and update** shows the running version, its line (Stable, Preview or Alpha preview) and when it last checked, with **Check for updates**. Typing `/update` in a web chat opens the same confirmation (in Discord or Telegram, `/update` runs the same update with its own confirmation).
 - **One confirmation** (**Update and restart**) says which version it installs and that every agent stops briefly and comes back on its own.
 - **While it runs,** every open tab shows the step (**Step N of 4** and the seconds elapsed). Closing the page does not affect the update. When AgEnD is back, a tab still on the old version offers **Reload**.
 - **If it fails,** the line says why in plain words (the update source could not be reached, no permission to install, or it did not finish) and that AgEnD is still on the old version with nothing changed, with **Try again** and **See the full log**. With no network it gives up within about a minute.
 - **It stays on the install's line:** a stable install updates to stable, a preview to the newest preview, an alpha to the newest alpha. A newer version on another line is mentioned, not offered.
-- A guest, the temporary public link and someone who is not a fleet admin see none of this.
+- A guest, the temporary public link and someone who is not a fleet admin never see the offer, the progress or a failure. After an update, any signed-in tab still on the old version gets the **Reload** line.
 
 ## Reaching it from elsewhere
 
