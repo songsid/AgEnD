@@ -4,7 +4,12 @@
 // - Right-click on a message opens Reply / Copy text / Copy link. Shift+right-click, a right-click with text selected,
 //   or one on a link, an image or a field keeps the browser's own menu.
 // - A long press (500 ms without moving) opens the same menu; the click and the browser menu it would also cause are
-//   swallowed.
+//   swallowed. M-2789 (the leader's ruling A, "text wins on text"): a long press on a message's WORDS, or one when a
+//   selection has already started inside the message, is the browser's — it selects text (then the 「引用」 pill,
+//   chat-quote.js); the menu still opens from a long press anywhere else on the message (its padding, header, an empty
+//   part of the bubble). Android starts its selection only after contextmenu's own default, so the press's place
+//   decides, not only a selection already made. Native long-press selection can't be shown headless: confirmed on a
+//   real phone before a beta.
 // - Swipe left on a message: it follows the finger (up to 64 px); let go past 56 px and it is a reply. A mostly
 //   vertical move is scrolling, never a reply. A swipe right is the phone drawer's (app-swipe.js), on a message too: the
 //   two never fight.
@@ -12,7 +17,41 @@
 //   order); Escape closes the menu.
 
 const LONG_PRESS_MS = 500, MOVE_TOLERANCE = 10, SWIPE_REPLY_PX = 56, SWIPE_MAX_PX = 64;
+/** How long after a touch on a message's words its contextmenu is still that press's (the browser's selection). */
+const WORDS_PRESS_MS = 1500;
+const clock = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
+/**
+ * On a message's own words: the press at (x, y) lands on a glyph of its rendered text — not on the blank part of a
+ * line, its padding, its header or its action strip (a paragraph's box is wider than a short line's glyphs: #3555
+ * review P2-2). The browser's own hit test (caretPositionFromPoint / caretRangeFromPoint), then the glyph's box
+ * beside that caret; without either API, not words (the menu, as before).
+ */
+const GLYPH_SLACK = 2;
+function onWords(target, x, y, doc) {
+  const e = target && (target.nodeType === 1 ? target : target.parentElement);
+  const md = e && e.closest ? e.closest(".msg[data-key] .md") : null;
+  if (!md || e.closest(".meta, .msg-actions") || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  let node = null, offset = 0;
+  if (typeof doc.caretPositionFromPoint === "function") { const p = doc.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; offset = p.offset; } }
+  else if (typeof doc.caretRangeFromPoint === "function") { const r = doc.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; offset = r.startOffset; } }
+  if (!node || node.nodeType !== 3 || !md.contains(node) || typeof doc.createRange !== "function") return false;
+  // The caret sits between two characters: the press is on words when the glyph before or after it holds the point.
+  for (const at of [offset - 1, offset]) {
+    if (at < 0 || at >= node.data.length || !node.data[at].trim()) continue;
+    const rg = doc.createRange(); rg.setStart(node, at); rg.setEnd(node, at + 1);
+    for (const b of rg.getClientRects()) {
+      if (x >= b.left - GLYPH_SLACK && x <= b.right + GLYPH_SLACK && y >= b.top - GLYPH_SLACK && y <= b.bottom + GLYPH_SLACK) return true;
+    }
+  }
+  return false;
+}
+/** A selection already started inside `el` (a message): the browser's, never ours. */
+function selectionIn(el, doc) {
+  const sel = doc.getSelection ? doc.getSelection() : null;
+  if (!sel || sel.isCollapsed || !String(sel).trim()) return false;
+  return !!((sel.anchorNode && el.contains(sel.anchorNode)) || (sel.focusNode && el.contains(sel.focusNode)));
+}
 /** The message element an event is on (a person's or an agent's message of this thread), or null. */
 function messageEl(list, target) {
   const el = target && target.closest ? target.closest(".msg[data-key]") : null;
@@ -34,7 +73,7 @@ function keepsNativeMenu(e, doc) {
  */
 export function installMessageActions(list, deps) {
   const doc = list.ownerDocument, win = doc.defaultView;
-  let menu = null, press = null, swipe = null, swallowClick = false;
+  let menu = null, press = null, swipe = null, swallowClick = false, wordsPressAt = -Infinity;
 
   function closeMenu() {
     if (!menu) return;
@@ -88,6 +127,8 @@ export function installMessageActions(list, deps) {
     cancelPress();                                                   // Android's long press fires this itself: one menu
     const el = messageEl(list, e.target);
     if (!el || keepsNativeMenu(e, doc)) return;
+    // M-2789: a long press on the words (or a selection begun in this message) is the browser's — its selection.
+    if (selectionIn(el, doc) || (clock() - wordsPressAt < WORDS_PRESS_MS && onWords(e.target, e.clientX, e.clientY, doc))) return;
     const row = deps.messageOf(el.dataset.key);
     if (!row) return;
     e.preventDefault();
@@ -117,9 +158,14 @@ export function installMessageActions(list, deps) {
     if (!el) return;
     const t0 = e.touches[0];
     const native = keepsNativeMenu({ target: e.target, shiftKey: false }, doc);   // a link, an image, code: the browser's
-    press = native ? null : { el, x: t0.clientX, y: t0.clientY, timer: setTimeout(() => {
+    // M-2789: a press on the message's words is the browser's text selection, not our menu (swipe-left Reply stays).
+    const words = onWords(e.target, t0.clientX, t0.clientY, doc);
+    wordsPressAt = words ? clock() : -Infinity;
+    press = native || words ? null : { el, x: t0.clientX, y: t0.clientY, timer: setTimeout(() => {
       const row = deps.messageOf(el.dataset.key);
-      press = null; cancelSwipe();
+      press = null;
+      if (selectionIn(el, doc)) return;                              // a selection has started here: it stays the browser's
+      cancelSwipe();
       if (!row) return;
       swallowClick = true; setTimeout(() => { swallowClick = false; }, 700);
       openMenu(row, t0.clientX, t0.clientY);
