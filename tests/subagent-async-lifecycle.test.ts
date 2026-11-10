@@ -84,6 +84,11 @@ describe("Claude 2.1.319 full mixed background stream and immutable visibility",
     f.now = Date.parse("2026-11-09T07:14:28.458Z"); expect(projectSubagents(f)).toEqual([]);
     expect(projectSubagents(structuredClone(f))).toEqual([]);
   });
+  it("future-dated launches cannot turn a missing child into permanent Unknown", () => {
+    const f = full(); f.children = new Map();
+    for (const r of f.parent as any[]) if (r.toolUseResult?.status === "async_launched") r.timestamp = new Date(f.now + 86400000).toISOString();
+    expect(projectSubagents(f)).toEqual([]);
+  });
   it("only valid advancing child evidence renews unknown visibility, never invalid identity or future time", () => {
     const f = open(); f.now = Date.parse("2026-11-09T07:14:00Z");
     const c = f.children.get(first)!; const extra = structuredClone(c.records[0]) as any; extra.timestamp = new Date(f.now).toISOString(); c.records.push(extra);
@@ -95,5 +100,39 @@ describe("Claude 2.1.319 full mixed background stream and immutable visibility",
   it("completion without a proven end has a finite fallback, not permanent progress history", () => {
     const f = full(); f.parent = f.parent.filter((r: any) => r.subtype !== "turn_duration");
     f.now += 121_000; expect(projectSubagents(f)).toEqual([]);
+  });
+  it.each(["claude-code", "codex"] as const)("a future %s terminal record cannot anchor completion/expiry", backend => {
+    const f = backend === "claude-code" ? full() : subagentFixture(backend);
+    const future = f.now + 86400000;
+    if (backend === "claude-code") {
+      const n = (f.parent as any[]).find(r => r.origin?.kind === "task-notification"); n.timestamp = new Date(future).toISOString();
+    } else {
+      const c = f.children.values().next().value!;
+      const n = c.records.find((r: any) => r.payload?.type === "task_complete") as any; n.timestamp = new Date(future).toISOString();
+    }
+    const rows = projectSubagents(f);
+    expect(rows.map(r => r.state)).toContain("unknown");
+    expect(rows.every(r => r.expiresAt! < future)).toBe(true);
+    f.now += 121000; expect(projectSubagents(f)).toEqual([]);
+  });
+  it("an unrecognized new prompt retires turn attribution before its later assistant/end", () => {
+    const f = full(), rs = f.parent as any[], index = rs.findIndex(r => r.subtype === "turn_duration"), end = rs[index];
+    const later = { ...rs[0], promptId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", uuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", origin: { kind: "unrecognized-system-input" }, timestamp: "2026-11-09T07:12:28.700Z" };
+    const assistant = { ...rs[1], uuid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", parentUuid: later.uuid, timestamp: "2026-11-09T07:12:28.800Z" };
+    rs.splice(index, 1, later, assistant, { ...end, parentUuid: assistant.uuid, timestamp: "2026-11-09T07:12:28.900Z" });
+    f.now = Date.parse("2026-11-09T07:13:00Z");
+    expect(projectSubagents(f).map(r => r.state)).toEqual(["completed", "completed"]); // no proven original end: finite terminal+120s fallback
+  });
+  it("a future parent duration cannot extend a completed row's deadline", () => {
+    const f = full(), end = (f.parent as any[]).find(r => r.subtype === "turn_duration");
+    end.timestamp = new Date(f.now + 86400000).toISOString();
+    const rows = projectSubagents(f);
+    expect(rows.map(r => r.expiresAt)).toEqual([Date.parse("2026-11-09T07:14:36.945Z"), Date.parse("2026-11-09T07:14:40.788Z")]);
+  });
+  it("a second duration for the same original assistant cannot move the first end", () => {
+    const f = full(), end = (f.parent as any[]).find(r => r.subtype === "turn_duration"); f.now = Date.parse("2026-11-09T07:12:46Z");
+    const before = projectSubagents(f); expect(before).toHaveLength(2);
+    f.parent.push({ ...end, uuid: "ffffffff-ffff-4fff-8fff-ffffffffffff", timestamp: "2026-11-09T07:12:45Z" });
+    expect(projectSubagents(f)).toEqual(before);
   });
 });

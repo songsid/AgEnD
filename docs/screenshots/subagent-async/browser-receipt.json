@@ -3,7 +3,7 @@
   "source": [
     {
       "file": "src/subagent-records.ts",
-      "sha256": "94c913373d6153afa5e8a9ad08b1f66233d6389901c50ff00c4ed964181c3534"
+      "sha256": "febf682dae0a5a4ed3e025a50329a2a81e829e11d99ba35135a53c0e7ce84d25"
     },
     {
       "file": "src/subagent-service.ts",

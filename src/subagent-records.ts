@@ -107,7 +107,7 @@ function parentEnds(i: SubagentProjection): Map<string, number> {
 const diagnostic = (r: Obj) => r.type === "api-request-shape" || r.type === "api-request-blob" || r.type === "api-request";
 export function projectSubagents(i: SubagentProjection): SubagentRun[] {
   const ends = parentEnds(i);
-  return subagentLaunches(i).map(edge => {
+  return subagentLaunches(i).filter(edge => edge.startedAt <= i.now + 1000).map(edge => {
     const { id, call, turn, ...display } = edge;
     const row: SubagentRun = { ...display, key: key(i.backend, i.sessionId, turn, call, id), parentTurn: turn, state: "unknown", expiresAt: edge.startedAt + SUBAGENT_UNKNOWN_MS };
     const completed = (finishedAt: number, ms: number, summary: unknown): SubagentRun => {
