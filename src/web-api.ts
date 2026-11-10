@@ -84,6 +84,7 @@ import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-sto
 import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-api.js";
+import { resolveCreateAccount } from "./create-host-account.js";
 import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
 import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
@@ -3452,6 +3453,12 @@ export function handleWebRequest(
         if (body?.runtime === "windows") { await createNativeInstance(req,res,url,ctx,body); return; }
         const v = validateArgs(CreateInstanceArgs, body, "create_instance");
         if (!v.ok) { json(res, 400, { error: v.error }); return; }
+        // The account the form picked for this host's CLI: checked here, before anything is created, and written as the
+        // agent's own backend_options.<cli>.credential_profile so its first start already runs under it.
+        const account = resolveCreateAccount(ctx.dataDir, v.data as Record<string, unknown>, ctx.fleetConfig?.defaults?.backend);
+        if (!account.ok) { const { ok: _ok, status, ...rest } = account; json(res, status, rest); return; }
+        delete (v.data as Record<string, unknown>).credentialProfile;
+        if (account.backendOptions) v.data.backend_options = account.backendOptions;
         let result: unknown = null;
         let error: string | undefined;
         const respond = (r: unknown, e?: string): void => { result = r; error = e; };
