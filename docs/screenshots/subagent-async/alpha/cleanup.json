@@ -1,7 +1,7 @@
 {
   "namespaceAudit": "net:[4026533351]",
-  "case": "alpha-browser",
-  "head": "02cd61e4c2cee2a74b85ab9f2c32153e590e4044",
+  "case": "final-alpha-browser",
+  "head": "e55ef495f187c8c5883e8d4f40c79bbc66f6f4fe",
   "commandScript": "scripts/manual/subagent-row/async-accept.mts",
   "extras": {
     "AUDIT_NAMESPACE": "1"
@@ -9,8 +9,8 @@
   "exitCode": 0,
   "trackedPids": 32,
   "liveOwnedPids": [],
-  "ownedTemp": "/tmp/b3qa-9akn5kb_",
+  "ownedTemp": "/tmp/b3qa-3r5kyt45",
   "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
-  "at": 1794280899.6196885,
+  "at": 1794281429.014074,
   "ownedTempRemoved": true
 }

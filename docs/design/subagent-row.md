@@ -21,6 +21,8 @@ Unknown rows expire 120 seconds after the latest valid child evidence, or after 
 
 The captured first child user precedes the async tool result by 6–11ms. A 1-second ordering allowance applies only after all launch/child bindings pass. The 30-second activity freshness limit remains: silence becomes Unknown, never an invented running or completed claim. No CLI is launched to fill an observation gap.
 
+The client compares host-derived deadlines with its browser wall clock. Large phone/remote-PC clock drift can alter the between-poll completion grace; server polling still applies the host's immutable deadline. This is an observation-only limitation, not authorization or child-control authority. A future server-time reference could remove the display skew without granting a fresh relative lifetime on every poll.
+
 ## Ownership and resource boundaries
 
 A separate optional reader follows only the current daemon's selected parent transcript, selected credential-profile home, exact session/cwd and interaction owner. It never selects a latest same-cwd file. It does not enter TranscriptMonitor, delivery, readiness, Needs you, supervision or the chat ledger. No child commands, approval, cancel or continue actions exist.

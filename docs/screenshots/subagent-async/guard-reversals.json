@@ -94,5 +94,31 @@
     "counts": [
       "Tests  1 failed | 77 passed (78)"
     ]
+  },
+  {
+    "name": "future-launch-retirement",
+    "exit": 1,
+    "semanticFailure": true,
+    "counts": [
+      "Tests 1 failed | 22 skipped (23)"
+    ]
+  },
+  {
+    "name": "Q4-future-terminal",
+    "exit": 1,
+    "semanticFailure": true,
+    "scope": "28 lifecycle cases; semantic assertion failures; original restored"
+  },
+  {
+    "name": "Q6-unrecognized-prompt",
+    "exit": 1,
+    "semanticFailure": true,
+    "scope": "28 lifecycle cases; semantic assertion failures; original restored"
+  },
+  {
+    "name": "Q8-parent-end-time-first",
+    "exit": 1,
+    "semanticFailure": true,
+    "scope": "28 lifecycle cases; semantic assertion failures; original restored"
   }
 ]

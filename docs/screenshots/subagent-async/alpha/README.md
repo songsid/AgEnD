@@ -1,6 +1,6 @@
 # Alpha parity acceptance
 
-M-2801 · alpha base5d7a91697. The two changed production modules, mixed-record fixtures and lifecycle/UI tests are byte-identical to main#3545. Existing alpha native/paired exclusion is unchanged; this adds no native support. Main's unredacted raw-stream replay and12guard reversals carry on identical parser bytes.
+M-2801 · alpha base5d7a91697. The two changed production modules, mixed-record fixtures and lifecycle/UI tests are byte-identical to main#3545. Existing alpha native/paired exclusion is unchanged; this adds no native support. Main's unredacted raw-stream replay and16guard reversals carry on identical parser bytes.
 
 This directory is a fresh real alpha Fleet web/admin sign-in + Chrome + bounded-file-reader run, not main screenshots relabelled. Two zh-TW cells (desktop light, phone dark) cover the same baselineUnknown/running/completed/retired/missingUnknown/retired/reopen stories. Four SKEW cases also ran. [Receipt](browser-receipt.json) records alpha's own panel hash and exact shared production hashes; the main images/receipt in the parent directory remain explicitly main evidence. [Cleanup](cleanup.json): loopback-only unprivileged namespace,32tracked owned processes,zero survivors,scratch removed.
 
@@ -13,4 +13,6 @@ This directory is a fresh real alpha Fleet web/admin sign-in + Chrome + bounded-
 | Unknown retired | [clear](desk-light-zh-TW-unknown-retired.png) | [clear](phone-dark-zh-TW-unknown-retired.png) |
 | Reopen stays clear | [reopened](desk-light-zh-TW-reopened.png) | [reopened](phone-dark-zh-TW-reopened.png) |
 
-190/190 focused alpha tests (9suites) include all subagent/source/auth/UI cases, web preview and alpha's CLI registry-list guard. No new CLI/model/account/native/live fleet operation. Live phase and fixed clock are derived fixtures as disclosed in the parent README. No positive HTTP response stub, no extra shared-module import or control. Main-first merge prerequisite remains.
+196/196 focused alpha tests (9suites) include all subagent/source/auth/UI cases, web preview and alpha's CLI registry-list guard. No new CLI/model/account/native/live fleet operation. Live phase and fixed clock are derived fixtures as disclosed in the parent README. No positive HTTP response stub, no extra shared-module import or control. Main-first merge prerequisite remains.
+
+The final replacement additionally pins future terminal records for both backends, unrecognized-prompt turn reset, and future/duplicate parent-duration anchors.16/16 semantic reversals caught. One local parallel registry scan hit its existing10s timeout under host load; its isolated unchanged rerun passed4/4 in3.74s. No timeout changed.
