@@ -1,0 +1,37 @@
+[
+  {
+    "id": "M1-fixed-port",
+    "exit": 1,
+    "failed": 1,
+    "passed": 0,
+    "deselected": 3
+  },
+  {
+    "id": "M2-wrong-port",
+    "exit": 1,
+    "failed": 1,
+    "passed": 0,
+    "deselected": 3
+  },
+  {
+    "id": "M3-released-reservation",
+    "exit": 1,
+    "failed": 1,
+    "passed": 0,
+    "deselected": 3
+  },
+  {
+    "id": "M4-swallowed-bind-error",
+    "exit": 1,
+    "failed": 1,
+    "passed": 0,
+    "deselected": 3
+  },
+  {
+    "id": "M5-sync-listener-leak",
+    "exit": 1,
+    "failed": 1,
+    "passed": 0,
+    "deselected": 3
+  }
+]
