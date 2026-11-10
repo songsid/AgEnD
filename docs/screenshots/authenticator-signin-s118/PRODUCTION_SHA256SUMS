@@ -1,4 +1,4 @@
-edcb4331904d046f013df2f6baf6a1c7eadacef83b0f850c8c60da6ea95ca84e  src/auth-api.ts
+268edce8955979ec55644c3e97c548dc2dd6393b84ff45f95f49d6161fa2834e  src/auth-api.ts
 6876de428ede21164983d23aec0da53f4aa521b52f7ef59970510892f508efcc  src/ui/signin.html
 037b6bbd28264d4d6a9ad23d6efef95d7bf4671d427adf7a6a4d5d60c48e1c67  src/ui/shared/signin.js
 fd1cae459ad49d6d9124e4e803fc644a4e62d48a3a64373df916a5280cc7376a  src/ui/settings-devices.js

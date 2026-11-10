@@ -2,9 +2,13 @@
 
 Actual signin.html shell in Chromium 156.0.8078.4. Eight EN/zh × desk1366/phone390 × light/dark cases. Originals are committed PNGs, not build artifacts.
 
-**HOLD:** Junsion’s code-only core must land before this PR can be reviewed/merged. These captures and the real success check exercise the existing web-only route only; chat and actual collision are NOT RUN. #3563 @701c6dcf remains OPEN; its collision is the same401 as a wrong code, with no separate waiting state. The server’s authentication core is unchanged.
+#3563 is merged as4eb8d787; this branch plain-merged alpha9458db49 at19bd54f06. The only auth-api conflict was the temporary GET page: both entry URLs now use the unified shell and retain the availability/method fences. POST routes, matching, sessions, policy, storage and limiters exactly retain upstream.
 
-613/613 tests across29 related suites; both typechecks;330 fragments; six independent intended mutation failures followed by restored green. The first UI fail-first run was34red/6controls; the temporary-entry test also failed only its old-page control before replacement. Browser:149 checks,56 PNGs; hint/help/disabled text≥4.5:1, visible controls≥44px, no horizontal overflow.
+Fresh validation:861/861 across29 related suites, both typechecks,331 fragments. Existing six independent controller mutations carry on byte-identical controller source. Web-only Chromium156 layout/SKEW:149checks/56PNGs; shared Settings style gate114checks. Chat acceptance adds74checks/17PNGs, for73 committed original PNGs in total. See [chat-validation.json](chat-validation.json), [style-validation.json](style-validation.json) and digest-first manifests.
+
+Real Chrome on the scratch production listener, EN/zh × desktop/phone × light/dark: two distinct synthetic secrets are searched for an actual current-step HMAC collision, with both server and browser clocks real. Ordinary wrong and collision each return401 and show identical text; collision creates no session, spends neither step and sends no notice. The next unique accepted-step code signs in as the correct synthetic chat admin; only `{code}` is sent. HTTP body equality is additionally checked on the same real route. The real browser's fifth wrong attempt shows429 and a wait. No separate collision state or account inference exists.
+
+The public-link policy leg binds production gateway metadata on a second owned HTTP ingress; it checks chat200, loopback-only404, retired-context403 before body/counters, demoted admin401 and cross-Origin403. It is not an actual tunnel or public gateway run. No platform adapter, fleet start, CLI, model, real account or live host operation.
 
 Before/SKEW route exact base d8dd79910a643f9546cd07045015208aafb42ed6 UI assets into the scratch listener. This is not a separate base-daemon rehearsal. Current source hashes and every PNG hash are pinned in receipt.json/PRODUCTION_SHA256SUMS/SHA256SUMS. All listeners and scratch state are closed/removed by the driver.
 
@@ -32,18 +36,34 @@ REPO="$PWD" PW_DIR="$PWD/node_modules/playwright-core" CHROME=/path/to/chrome \
 
 Mutation scopes (one at a time): remove the800ms branch; auto dedupe; keydown cancellation; post-fetch current fence; post-body current fence; broaden six-digit raw validation. Each caused intended assertion failures in signin-unified-s118.test.ts; production restored before final tests/capture.
 
-No independent real-account, chat-code-only, double-match, public-link or native-platform acceptance is claimed. The former Devices overview/QR proposal and Settings sign-in-name line are out of scope.
+No real-account, actual tunnel/public-gateway, platform-adapter or native-platform acceptance is claimed. The former Devices overview/QR proposal and Settings sign-in-name line are out of scope.
 
 Required scan initially flagged two public source digests as generic API keys. Current evidence uses digest-first PRODUCTION_SHA256SUMS. Only the two exact historical commit/path/rule/line fingerprints are recorded in .gitleaksignore; no rule/path/future finding is exempted. Product source and PNG bytes are unchanged by this correction.
 
-CI bootstrap correction: the earlier UI gate timed out clicking #go after auto-submit had already navigated. The shared fixture now dispatches input and requestSubmit in one browser task through the real form, then requires the same dashboard URL. Fresh aligned GATE=ci passes114checks with all assertions intact. A dedicated real-browser control passes four current-auto/cached-manual × EN-desktop/zh-phone cases, each with exactly one /auth/login POST and a valid session; see fixture-validation.json and FIXTURE_SHA256SUMS. After the plain alpha636328df9 merge, all56 original PNGs and current source manifests were refreshed; all eight wrong-state originals were inspected at full resolution. This is fixture compatibility, not the pending code-only core acceptance.
+Shared smoke bootstrap: input+requestSubmit happen in one browser task, then the original dashboard navigation is required. This supports current auto-submit and cached manual-only scripts. The earlier dedicated four-case bootstrap proof is retained in fixture-validation.json; the final merged-core Settings gate passes114checks with assertions/timeouts unchanged.
+
+The original controller fail-first run produced34 semantic failures and6 passing controls. Six isolated source reversals fail intended assertions; the restored controller is byte-identical for this merged-core continuation. At390px each error/recovery paragraph fits at most two lines, and the fallback helper stays on one line. Contrast and44px controls are checked on the current page.
+
+Earlier CI copy regressions were corrected without weakening /web recovery or the one-home byte comparison beyond the authorized8碼→8字元 glossary change. Current exact-head CI/scan and parity review remain required.
+
+Chat originals (each case has ordinary wrong and collision):
+
+| Case | Wrong | Actual collision |
+|---|---|---|
+|desk-light-en|[PNG](desk-light-en-chat-wrong-view.png)|[PNG](desk-light-en-chat-collision-view.png)|
+|desk-light-zh-TW|[PNG](desk-light-zh-TW-chat-wrong-view.png)|[PNG](desk-light-zh-TW-chat-collision-view.png)|
+|desk-dark-en|[PNG](desk-dark-en-chat-wrong-view.png)|[PNG](desk-dark-en-chat-collision-view.png)|
+|desk-dark-zh-TW|[PNG](desk-dark-zh-TW-chat-wrong-view.png)|[PNG](desk-dark-zh-TW-chat-collision-view.png)|
+|phone-light-en|[PNG](phone-light-en-chat-wrong-view.png)|[PNG](phone-light-en-chat-collision-view.png)|
+|phone-light-zh-TW|[PNG](phone-light-zh-TW-chat-wrong-view.png)|[PNG](phone-light-zh-TW-chat-collision-view.png)|
+|phone-dark-en|[PNG](phone-dark-en-chat-wrong-view.png)|[PNG](phone-dark-en-chat-collision-view.png)|
+|phone-dark-zh-TW|[PNG](phone-dark-zh-TW-chat-wrong-view.png)|[PNG](phone-dark-zh-TW-chat-collision-view.png)|
+
+[Chat browser pause](chat-en-browser-paused-view.png).
 
 ```sh
 REPO="$PWD" PW_DIR="$PWD/node_modules/playwright-core" CHROME=/path/to/chrome \
-  OUT="$PWD/.artifacts/s118/fixture-bootstrap" \
-  npx tsx scripts/manual/smoke/smoke-signin-fixture-s118.mts
+  FONTCONFIG_FILE=/path/to/fonts.conf OUT="$PWD/.artifacts/s118/chat" MATRIX=full \
+  systemd-run --user --scope -q -p MemoryMax=3G -- \
+  npx tsx scripts/manual/smoke/smoke-signin-chat-s118.mts
 ```
-
-Latest continuation: uniform401 next-code/recovery guidance is shared by every refused authenticator code. The normal Sign in button stays available; no collision enum, timer or disabled state exists. At390px the error and recovery paragraphs each fit at most two lines (not two combined); the one-line fallback helper, contrast and44px controls are checked in the real browser.
-
-CI42775357648 on olde061 failed two old-copy expectations. Both were reproduced (2red/30controls), then updated while retaining /web in chat/device recovery and the complete one-home byte comparison except the approved8碼→8字元 phrase. Final aligned29files613/613 and both typechecks pass. A prior concurrent run hit the unchanged S-117 cold-import20s timeout; isolated and final single-worker reruns passed without a timeout change. No early review or merge request.

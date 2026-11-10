@@ -1,5 +1,5 @@
 /** UI-only S-118 acceptance on the real scratch FleetManager listener. Never starts a fleet, CLI, public link or model.
- * The current core supports account-omitted sign-in only on web-only fleets. Chat/uniform-collision acceptance MUST follow the core merge.
+ * This driver covers web-only layout/SKEW; smoke-signin-chat-s118.mts separately covers the merged chat/collision route.
  * Baseline/SKEW use exact base HTML/JS/token bytes routed into the owned listener; never claim a separately running base daemon.
  * REPO=$PWD PW_DIR=$PWD/node_modules/playwright-core CHROME=<chrome> OUT=<dir> npx tsx scripts/manual/smoke/smoke-signin-unified-s118.mts
  */

@@ -219,14 +219,13 @@
     "src/ui/settings-access-strings.js"
   ],
   "sourceManifest": "PRODUCTION_SHA256SUMS",
-  "captureBoundary": "Precommit working-source hashes in PRODUCTION_SHA256SUMS; final original PNGs. Source tree not a released build. Browser driver itself uses __name identity helper for tsx instrumentation only.",
-  "alignedAlpha": "636328df9",
-  "mergeCommit": "2ab453a78",
+  "captureBoundary": "Captured on merge19bd54f0609735b0bf32f5401fe14977b4c2a4f2 plus evidence/fixture changes; product hashes bind the executed UI/core. Final evidence-only commit follows.",
+  "alignedAlpha": "9458db49de3f519cdb482b14220f3f47e5dc3afc",
+  "mergedCodeOnlyCore": "4eb8d7875051bfec78ac8bea9af5d0747fce3723",
   "limitations": [
-    "Only real web-only core with account omitted; chat code-only and actual collision are NOT RUN pending #3563. Uniform401 presentation is covered by UI tests, not a core-collision claim.",
-    "Before is exact base UI HTML/JS/tokens routed to owned current listener, not a separate base daemon.",
-    "SKEW old HTML keeps its centered layout and lacks the new nowrap class; phone zh can split 自動登入. Functional sign-in is verified.",
-    "No real account, live fleet, CLI, model, tunnel, native host or public-link creation."
+    "Web-only layout/SKEW driver; chat/collision proof is in chat-validation.json.",
+    "Exact base assets are routed into this owned listener; no separate base daemon.",
+    "Cached old HTML keeps centered placement and may split its old zh subtitle."
   ],
   "polish": "Uniform401 next-code/recovery hint with the normal Sign in button; no separate collision state. English error fits one line, 8-character stays intact; phone error and recovery paragraphs each fit at most two lines. All eight wrong-state originals inspected at full resolution."
 }
