@@ -201,6 +201,14 @@ export class PublicWebLink {
     const e = this.entry;
     return e && e.phase === "open" && e.url && this.current(e) ? { exposureId: e.id, url: e.url, owner: e.owner } : null;
   }
+  /**
+   * S-120: the admin (or the outside switch, #3008) a link was opened for — whatever its phase (starting, open,
+   * reconnecting), unlike openSignin(). Null when `exposureId` is not the current exposure.
+   */
+  ownerOf(exposureId: string): LoginCodeOwner | null {
+    const e = this.entry;
+    return e && e.id === exposureId ? e.owner : null;
+  }
   /** #1723: the open exposure's dashboard origin (`https://<host>`), for a configured preview origin to accept; else null. */
   openDashboardOrigin(): string | null {
     const e = this.entry;

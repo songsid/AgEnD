@@ -281,7 +281,8 @@ describe("#3061 P2b: the signed-in devices", () => {
     expect(sent.filter(s => s.path === "/ui/devices/signout").map(s => s.body)).toEqual([{ handle: "bbbbbbbbbbbbbbbb" }]);
     expect(w.text(w.$("#devicesNote"))).toBe("Chrome on Android was signed out.");
     expect(sent.filter(s => s.method === "GET" && s.path === "/ui/devices").length).toBeGreaterThan(before);
-    expect(w.$('[data-handle="bbbbbbbbbbbbbbbb"]')).toBeNull();
+    // This card's own rows (S-120: 存取與安全 → 總覽 lists the devices too, in its own tab, read again when it is shown).
+    expect(w.$('.s-dev-row[data-handle="bbbbbbbbbbbbbbbb"]')).toBeNull();
     expect([...p.root.querySelectorAll(".s-dev-row")].length).toBe(3);
   });
 

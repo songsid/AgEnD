@@ -62,6 +62,7 @@ import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { DevicesCard } from "./settings-devices.js";
+import { AccessOverview } from "./settings-access-overview.js";
 import { HubSection, hubSectionText } from "./settings-hub-section.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
@@ -1234,7 +1235,7 @@ export function uploadMbInEffect(web) {
 }
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
-  const [accessTab, setAccessTab] = useSettingsTabs("access", "login");
+  const [accessTab, setAccessTab] = useSettingsTabs("access", "overview");
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
   // serves their reads there).
@@ -1373,6 +1374,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const has = (p) => part === "all" || part === p;
   const lock = (body) => html`<fieldset class="s-web-fields" disabled=${overPublicLink}>${body}</fieldset>`;
   const tabs = [
+    { id: "overview", label: layoutText("accessOverview") },
     { id: "login", label: layoutText("accessLogin") },
     { id: "guests", label: layoutText("accessGuests") },
     { id: "sharing", label: layoutText("accessSharing") },
@@ -1389,6 +1391,10 @@ function WebSection({ ctx, staged, part = "all" }) {
     ${overPublicLink && part !== "readonly" ? html`<p class="note s-access-notice" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
     ${has("access") ? html`<${SettingsTabs} id="access" value=${accessTab} onChange=${setAccessTab} items=${tabs} />
       <div class="s-access-banner"><${Icon} name="info" size=${18} /><p>${layoutText("revAccessPolicy")}</p><details class="s-access-policy"><summary>${layoutText("revDetails")}</summary><p class="note">${tn("webLead")}</p></details></div>
+      <${SettingsTabPanel} group="access" id="overview" active=${accessTab === "overview"}>
+        <${AccessOverview} web=${web} hub=${!!ctx.fleet.hub?.hubId} overPublicLink=${overPublicLink} active=${accessTab === "overview"}
+          openTab=${(tab, anchor) => { setAccessTab(tab); if (anchor) setTimeout(() => globalThis.document?.getElementById(anchor)?.scrollIntoView({ block: "start" }), 50); }} />
+      </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="login" active=${accessTab === "login"}>
         <div class="s-access-login-layout"><div class="s-access-stack">
           ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
