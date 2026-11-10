@@ -1,5 +1,7 @@
 # Logging stand-in for muse's Meta provider (Responses-style SSE). Behaviour per request from /home/rh/audit/mockmode:
-#   text (default) | tool (a muse.bash call; args from /home/rh/audit/mockargs) | 429 | 402 | 500 | 401
+#   text (default) | tool (a muse.<tool> call: /home/rh/audit/mocktool, default bash; args from /home/rh/audit/mockargs) |
+#   429 | 402 | 500 | 401. 1.4.15: the post-turn tip picker is answered with the id in /home/rh/audit/tipid, and every
+#   request line (also one the handler refuses) is logged.
 #   | slow (the main agent's text reply never completes: one "." a second, so the process can be lost mid-stream)
 import json, sys, time, os
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -12,7 +14,7 @@ def mode():
     except Exception: return "text"
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
-    def log_message(self, *a): pass
+    def log_message(self, fmt, *a): log("RAW " + (fmt % a) + " | upgrade=" + str(self.headers.get("upgrade") if getattr(self, "headers", None) else None))
     def _body(self):
         n = int(self.headers.get("content-length") or 0)
         return self.rfile.read(n) if n else b""
@@ -61,6 +63,13 @@ class H(BaseHTTPRequestHandler):
             out = [item]
         else:
             text = "mock reply ok"
+            # 1.4.15 audit: the post-turn tip picker ("You are picking one optional feature tip") gets the id in /home/rh/audit/tipid.
+            try:
+                last = [x for x in req.get("input", []) if isinstance(x, dict) and x.get("role") == "user"][-1]
+                body = last.get("content") if isinstance(last.get("content"), str) else json.dumps(last.get("content"))
+                if "picking one optional feature tip" in body and os.path.exists("/home/rh/audit/tipid"):
+                    text = open("/home/rh/audit/tipid").read().strip(); log(f"  tip -> {text}")
+            except Exception as e: log(f"  tip err {e}")
             msg = {"type": "message", "id": "msg_1", "role": "assistant", "status": "completed", "content": [{"type": "output_text", "text": text, "annotations": []}]}
             ev("response.output_item.added", {"output_index": 0, "item": {**msg, "content": [], "status": "in_progress"}})
             ev("response.content_part.added", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}})
