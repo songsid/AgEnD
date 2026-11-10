@@ -134,6 +134,24 @@ describe.each(["telegram", "discord"] as const)("#3334 CLI permission on a %s fl
     expect(h.keys).toEqual(["Enter"]);
   });
 
+  it.each(["button", "text", "web"] as const)("retires an old CLI prompt after its worker transfers to another connection (%s)", async surface => {
+    const h = fleet(type);
+    await h.fm.postRemoteCard("worker", permission());
+    const originalClick = h.click();
+    const nonce = h.currentPrompt().nonce;
+    h.fm.fleetConfig!.channels!.push({ ...h.channel, id: "new-owner", group_id: "new-group",
+      access: { mode: "locked", allowed_users: ["new-admin"] } } as any);
+    h.fm.fleetConfig!.instances.worker.channel_id = "new-owner";
+    expect(h.fm.getInstanceAdapterId("worker")).toBe("new-owner");
+    if (surface === "button") await h.dispatch(originalClick);
+    else if (surface === "text") await (h.fm as any).takeRemoteCardReply(h.reply("owner-admin"));
+    else await h.fm.clickWebPrompt("worker", nonce, "opt-1");
+    expect(h.answer).not.toHaveBeenCalled();
+    expect(h.keys).toEqual([]);
+    expect(h.fm.listWebPrompts()).toEqual([]);
+    expect(h.repost).not.toHaveBeenCalled();
+  });
+
   it("a typed reply cannot bypass admin authority or invent an answer the dialog does not offer", async () => {
     const h = fleet(type);
     await h.fm.postRemoteCard("worker", permission());
