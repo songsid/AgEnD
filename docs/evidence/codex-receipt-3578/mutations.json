@@ -1,0 +1,45 @@
+[
+  {
+    "name": "proof-poll",
+    "exit": 1,
+    "failedTests": [
+      "Codex confirmation during the stranded-readiness wait (#3578) confirms a retained post-Enter frame once the real busy capture proves the receipt, without waiting for idle or sending Enter again",
+      "Codex confirmation during the stranded-readiness wait (#3578) a replacement generation retires the wait without crediting its pane or pressing Enter",
+      "Codex confirmation during the stranded-readiness wait (#3578) a replacement window retires the wait without crediting its pane or pressing Enter",
+      "Codex confirmation during the stranded-readiness wait (#3578) a held proof read stays single-flight and loses settlement authority when its readiness wait expires"
+    ]
+  },
+  {
+    "name": "wait-read-retired",
+    "exit": 1,
+    "failedTests": [
+      "Codex confirmation during the stranded-readiness wait (#3578) a held proof read stays single-flight and loses settlement authority when its readiness wait expires"
+    ]
+  },
+  {
+    "name": "strand-is-proof",
+    "exit": 1,
+    "failedTests": [
+      "Codex confirmation during the stranded-readiness wait (#3578) confirms a retained post-Enter frame once the real busy capture proves the receipt, without waiting for idle or sending Enter again",
+      "Codex confirmation during the stranded-readiness wait (#3578) never confirms a permanently stranded message; the existing one-Enter retry still waits for positive readiness"
+    ]
+  },
+  {
+    "name": "human-acl",
+    "exit": 1,
+    "failedTests": [
+      "pending forwarded receipts (#3578) hidden queued human receipts reveal no pending/existence distinction",
+      "pending forwarded receipts (#3578) hidden delivered human receipts reveal no pending/existence distinction"
+    ]
+  },
+  {
+    "name": "normal-acl",
+    "reversal": "visibility OR1=1 (valid SQL with original bindings)",
+    "exit": 1,
+    "failedTests": [
+      "explicit row-scoped forwards (#1756) refuses an invisible reference before any outgoing admission or turn-start effect",
+      "pending forwarded receipts (#3578) hidden queued normal references reveal no pending/existence distinction",
+      "pending forwarded receipts (#3578) hidden delivered normal references reveal no pending/existence distinction"
+    ]
+  }
+]
