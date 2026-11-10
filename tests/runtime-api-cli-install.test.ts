@@ -135,7 +135,8 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
   it("AGEND-154 fail-first: Antigravity already installed + a request WITHOUT `acceptLatestUnaudited` (what an older page module sends) is refused 409 before any job or call — it is not run as the latest exception", async () => {
     has("antigravity", "1.5.3");
     const refused = await ask(INSTALL, "POST", "replay", { cli: "antigravity" });
-    expect([refused.status, refused.json.error]).toEqual([409, "latest_ack_required"]);
+    expect([refused.status, refused.json.code]).toEqual([409, "latest_ack_required"]);
+    expect(refused.json.error).toMatch(/Refresh the page/);                       // what an older page module shows (it shows `error`)
     expect(sent()).toEqual([]);
     expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
   });
@@ -143,7 +144,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
     has("codex", "0.161.0");
     expect((await ask(INSTALL, "POST", "replay", { cli: "codex", acceptLatestUnaudited: true })).status).toBe(409);
     machine.inventory = { home: "C:\\D", clis: [] };
-    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).json.error).toBe("latest_ack_mismatch");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).json.code).toBe("latest_ack_mismatch");
     for (const bad of [false, "true", 1, null]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: bad })).status, String(bad)).toBeGreaterThanOrEqual(400);
     expect(sent()).toEqual([]);
   });

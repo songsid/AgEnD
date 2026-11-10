@@ -188,7 +188,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         // AGEND-154 (Prism P2-1 on #3552): the vendor's latest, not audited, is started only by a request that says it knows so (`acceptLatestUnaudited: true`, which the page that labels the button
         // "not audited" sends). An older page module — "Update to 1.5.3", `{ cli }` — is refused here, before the job, the call and the one-shot admission; so is a claim of it for a CLI that is not
         // being updated to the latest (a page that read an older inventory). Either way the page is to be refreshed; nothing runs.
-        if (toLatest ? acked !== true : acked !== undefined) { json(res, 409, { error: toLatest ? "latest_ack_required" : "latest_ack_mismatch", message: "This page is out of date for this action. Refresh the page and try again." }); return; }
+        if (toLatest ? acked !== true : acked !== undefined) { json(res, 409, { error: "This page is out of date for this action. Refresh the page and try again.", code: toLatest ? "latest_ack_required" : "latest_ack_mismatch" }); return; }
         // AGEND-152 (Prism R4 on #3539): this one route is Install and Update (the page sends the CLI's id and nothing else), so it is told apart by what the computer already has. A CLI the computer
         // already has, whose `runtime.update` is not "yes" (a CLI whose registry says it is not updated from here), is refused here — before the job, the call and the one-shot admission —
         // whatever the page showed. A computer whose inventory has not been read has nothing to refuse on, and is installed to as before.
