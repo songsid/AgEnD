@@ -3778,8 +3778,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * DELETE /auth/sessions[/<handle>]) and for the list's `canSignOut`; asked of the live session each time. Null: not an
    * admin session (a guest or read-only one ends only its own account's, auth-api; the header token none).
    *  - a web-only fleet: the verified owner ends any; every other admin only itself (`any: false`);
-   *  - a fleet with a chat connection: an admin ends their OWN other devices (the same chat account; the host's own code
-   *    sign-ins are one principal) and any guest's or read-only one; ANOTHER admin's devices only that admin.
+   *  - a fleet with a chat connection: an admin ends their OWN other devices (the same chat account) and any guest's or
+   *    read-only one; ANOTHER admin's devices only that admin. Every admin sign-in there records its account (`owner`: /web,
+   *    /dashboard and the per-admin authenticator); only a session with NO chat account (the host's own `agend web --code`,
+   *    or one persisted before accounts were recorded) counts as the host's — one principal that only another such session
+   *    may end, and that ends no chat admin's. It does not re-check that the account is still an admin (an existing
+   *    limitation of every admin API; follow-up).
    * Revoke-all (`revokeWebSessions`, /dashboard revoke) is the host's emergency button and is not this rule.
    */
   private sessionEndRule(req: IncomingMessage): { session: SessionRecord; any: boolean; may(r: SessionRecord): boolean; blocked: "owner_required" | "other_admin" } | null {
