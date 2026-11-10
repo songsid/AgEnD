@@ -16,6 +16,7 @@ import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
+import "./settings-revoke-strings.js";   // the revoke card's own words: a file of its own (PR #3553 review: a retained settings-access-strings.js would lack them)
 import "./settings-access-strings.js";   // revAuthorityBriefWeb / revAuthorityEnabledWeb / revAuthorityRule: an older settings-layout.js from a tab that visited Fleet first lacks them (#3061)
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
