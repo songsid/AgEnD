@@ -139,6 +139,12 @@ export interface AuthApiContext {
    * Absent: yes, as it always was (a fleet with a chat connection, and any caller that does not set it).
    */
   mayEndOtherSessions?(req: IncomingMessage): boolean;
+  /**
+   * AGEND-138 (#3486): on a fleet with a chat connection an admin session ends the sessions this says it may (its own
+   * account's devices, any guest's or read-only one) — not another admin's: that is refused 403 `other_admin`, and
+   * `DELETE /auth/sessions` ends only what it allows. Undefined (or absent): no narrowing, as it was.
+   */
+  endableSessions?(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined;
 }
 
 export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
@@ -762,6 +768,7 @@ export function handleAuthRequest(
     // Refs #3061 (P2b): an admin session's right to end the others — told with the list so the menu can hide its buttons, and
     // asked again by each write below (the page's idea of it is never the check). A non-admin only ever ends its own.
     const mayEndOthers = (): boolean => own !== undefined || ctx.mayEndOtherSessions?.(req) !== false;
+    const endable = (): ((r: SessionRecord) => boolean) | undefined => (own === undefined ? ctx.endableSessions?.(req) : undefined);
 
     if (path === "/auth/sessions" && method === "GET") {
       json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own), ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
@@ -770,7 +777,7 @@ export function handleAuthRequest(
 
     if (path === "/auth/sessions" && method === "DELETE") {
       if (!mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
-      const { count, durable } = sessions.revokeAll(own);
+      const { count, durable } = sessions.revokeAll(own ?? endable());
       if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only", cookiesToClear);
       ctx.logger.info({ count, ...(own ? { own: true } : {}) }, own ? "Web sessions revoked (the caller's own)" : "Web sessions revoked (all)");
       json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": cookiesToClear });
@@ -783,6 +790,9 @@ export function handleAuthRequest(
       // Someone else's session: the owner's to end on a web-only fleet (checked before the handle is looked up, so a
       // non-owner learns nothing about which handles exist). One's own is a sign-out, as ever.
       if (!wasCurrent && !mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
+      // AGEND-138: on a chat fleet another admin's device is only that admin's to end.
+      const scope = wasCurrent ? undefined : endable();
+      if (scope) { const target = sessions.findByHandle(handle); if (target && !scope(target)) { json(res, 403, { error: "other_admin" }); return true; } }
       const { found, durable } = sessions.revokeByHandle(handle, own);
       if (!found) { json(res, 404, { error: "no such session" }); return true; }
       if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent ? cookiesToClear : false);

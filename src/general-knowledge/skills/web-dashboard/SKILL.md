@@ -76,9 +76,10 @@ lists every page (**Pages (N)**), shows a page at phone or tablet width, and goe
 - Public link: as long as the link, at most 8 h (never longer than the account's own limit: `web.session.local` for
   an admin, `web.guests.session` for a guest), 30 min unused, and they end when the link closes.
 - At most 8 sessions; the least recently used is dropped.
-- The session menu (sidebar): "Signed in · …", "Ends by <time> at the latest, or after <span> unused". With more than
-  one session it lists **Signed-in devices** (this one marked "· This device", others with **Sign out**) and **Sign
-  out everywhere**.
+- The session menu (sidebar): "Signed in · …", "Ends by <time> at the latest, or after <span> unused", your role
+  (Owner ✓ / Admin · not verified / Guest / Read-only) and, for an admin, **Manage devices** → Settings → Access & security →
+  Devices & sign-in, which lists every signed-in device with **Sign out** and has **Sign out everywhere**. On a chat fleet an
+  admin signs out their own devices and any guest's or read-only one, not another admin's.
 - `/web revoke` (in chat) signs every browser out, withdraws an unused code and closes the public link.
 
 **`/view` without signing in.** `web.view_access`: `open` (default) or `session`. With `open`, anyone who can reach

@@ -3759,38 +3759,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
-   * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
-   * `authority`: web authorization is on. With it off nobody is an owner (liveOwner → null), so nobody may add a device or
-   * sign another out; the page says why and points to `agend web-token rotate` on this computer instead of "use the AgEnD
-   * computer", which would not help.
+   * GET /ui/devices — the one device list, for every fleet (AGEND-138, #3486): is this a web-only fleet, may THIS session
+   * approve a new device (web-only: the verified owner) and end the others' (`canEndOthers`), and — to an admin session,
+   * never to a guest or the CLI's header token — every signed-in session of any tier, one row each (webDeviceRows).
+   * `owner`: the verified owner (web-only: this computer's admin here or from outside; a chat fleet: an admin whose chat
+   * account confirmed this session). `authority`: web authorization is on; with it off nobody is an owner, so on a web-only
+   * fleet nobody may add a device or sign another out and the page says so.
    */
-  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; devices: WebDeviceRow[] } {
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; canEndOthers: boolean; devices: WebDeviceRow[] } {
     const webOnly = this.isWebOnlyFleet();
-    const owner = webOnly && !!this.deviceApprovalOwner(req);
-    return { webOnly, owner, authority: webOnly && this.webAuthorityState().enabled, devices: webOnly ? this.webDeviceRows(req) : [] };
+    const owner = webOnly ? !!this.deviceApprovalOwner(req) : !!this.webAuthorityRevoker(req);
+    const rule = this.sessionEndRule(req);
+    return { webOnly, owner, authority: this.webAuthorityState().enabled, canEndOthers: !!rule && (webOnly ? owner : true), devices: this.webDeviceRows(req) };
   }
 
   /**
-   * Refs #3061 (P2b): the device list — this fleet's admin sessions, newest activity first (a guest's sessions are the
-   * Guests page's, and a read-only tier has none): how each was approved, whether it carries owner authority, and which
-   * one is the reader's own. The same people may read this as may read `GET /auth/sessions` (any admin session).
+   * AGEND-138 (#3486): which sessions may this ADMIN request sign out — one rule for every way in (POST /ui/devices/signout,
+   * DELETE /auth/sessions[/<handle>]) and for the list's `canSignOut`; asked of the live session each time. Null: not an
+   * admin session (a guest or read-only one ends only its own account's, auth-api; the header token none).
+   *  - a web-only fleet: the verified owner ends any; every other admin only itself (`any: false`);
+   *  - a fleet with a chat connection: an admin ends their OWN other devices (the same chat account; the host's own code
+   *    sign-ins are one principal) and any guest's or read-only one; ANOTHER admin's devices only that admin.
+   * Revoke-all (`revokeWebSessions`, /dashboard revoke) is the host's emergency button and is not this rule.
+   */
+  private sessionEndRule(req: IncomingMessage): { session: SessionRecord; any: boolean; may(r: SessionRecord): boolean; blocked: "owner_required" | "other_admin" } | null {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin") return null;
+    const me = auth.session;
+    if (this.isWebOnlyFleet()) {
+      const owner = !!this.deviceApprovalOwner(req);
+      return { session: me, any: owner, may: r => r.handle === me.handle || owner, blocked: "owner_required" };
+    }
+    const principal = (r: SessionRecord): string => (r.owner ? `${r.owner.adapterId}\u0000${r.owner.userId}` : "\u0000host");
+    return { session: me, any: true, may: r => r.handle === me.handle || r.tier !== "admin" || principal(r) === principal(me), blocked: "other_admin" };
+  }
+
+  /** AGEND-138: auth-api's narrowing of `DELETE /auth/sessions[/<handle>]` for an admin on a chat fleet; undefined: as before. */
+  endableSessions(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined {
+    if (this.isWebOnlyFleet()) return undefined;
+    return this.sessionEndRule(req)?.may;
+  }
+
+  /**
+   * Refs #3061 (P2b), AGEND-138: the device list — every signed-in session of any tier, newest activity first: its tier,
+   * how it was approved, whether it carries owner authority, whether it is the reader's own, and whether the reader may sign
+   * it out (and if not, why). Only an admin session reads it: a guest, a read-only session and the header token get none,
+   * so no one sees another person's devices unless they are an admin.
    *
-   * `ownerVerified` is the §3 verdict for the session as it would be used from where it signs in (a host session from
-   * this computer, a session from outside over the link): one that signed in with a one-time code or a device approval is
-   * not an owner until the authenticator vouches for it. Display only — the checks that act on it run again at each use.
+   * `verified` is the §3 verdict for an admin session as it would be used from where it signs in (a host session from this
+   * computer, a session from outside over the link, a chat account's confirmed one): one that signed in with a one-time
+   * code or a device approval is not an owner until the authenticator vouches for it. Display only — the checks that act
+   * on it run again at each use.
    */
   private webDeviceRows(req: IncomingMessage): WebDeviceRow[] {
-    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-    if (auth.kind !== "ok" || auth.session.tier !== "admin" || !this.webSessions) return [];
+    const rule = this.sessionEndRule(req);
+    if (!rule || !this.webSessions) return [];
     const authorizations = this.sessionAuthorizationStore();
-    return this.webSessions.list(auth.session.idHash, r => r.tier === "admin").map(summary => {
+    return this.webSessions.list(rule.session.idHash, () => true).map(summary => {
       const record = this.webSessions!.findByHandle(summary.handle);
       const gateway = summary.surface === "gateway";
-      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : "lan";
-      return { handle: summary.handle, label: summary.label, via: summary.via, current: summary.current, surface: summary.surface,
+      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : authorizations?.get(summary.handle)?.peer ?? "lan";
+      const verified = summary.tier === "admin" && !!record && !this.webAuthority({ session: record, gateway, peer }).refusal;
+      const may = !summary.current && !!record && rule.may(record);
+      return { handle: summary.handle, label: summary.label, tier: summary.tier, via: summary.via, verified, current: summary.current, surface: summary.surface,
         created: summary.created, lastSeen: summary.lastSeen, expiresAt: Math.min(summary.absoluteExpiry, summary.idleExpiry),
-        ownerVerified: !!record && !this.webAuthority({ session: record, gateway, peer }).refusal };
+        canSignOut: may, ...(!summary.current && !may ? { signOutBlocked: rule.blocked } : {}) };
     });
   }
 
@@ -3798,30 +3831,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Refs #3061 (P2b): may this request's session end ANOTHER session — one signed in elsewhere, or all of them (auth-api
    * `DELETE /auth/sessions…`, which an admin session could always do). On a web-only fleet that is the verified owner's:
    * a session a code or a device approval made is signed in but not an owner, and could otherwise sign out the owner's
-   * own. A fleet with a chat connection is as it was (its admins are the chat's). Ending one's OWN session is never this.
+   * own. A fleet with a chat connection: yes for an admin, within endableSessions' rule (AGEND-138). Ending one's OWN
+   * session is never this.
    */
   mayEndOtherSessions(req: IncomingMessage): boolean {
     return !this.isWebOnlyFleet() || !!this.deviceApprovalOwner(req);
   }
 
   /**
-   * Refs #3061 (P2b): POST /ui/devices/signout {handle} — the owner ends another signed-in device (the settings list's
-   * button). Only the verified owner, asked of the LIVE session each time (a non-owner learns nothing about any handle:
-   * 403 before anything is looked up); only an admin session of this fleet (a guest's is the Guests page's; an unknown
-   * handle and a guest's are the same 404); never the owner's own session here (Sign out is /auth/logout). The device's
-   * authorization goes with it, so a copy of its cookie is nobody's.
+   * Refs #3061 (P2b), AGEND-138: POST /ui/devices/signout {handle} — an admin ends another signed-in session, by the one
+   * rule (sessionEndRule), asked of the live session each time. A web-only fleet: only the verified owner, and a non-owner
+   * is refused (403 `owner_required`) BEFORE any handle is looked up, so it learns nothing about which handles exist. A chat
+   * fleet: any admin for their own devices and any guest's or read-only one; another admin's device is refused (403
+   * `other_admin`). Never the reader's own session here (Sign out is /auth/logout). The device's authorization goes with
+   * it, so a copy of its cookie is nobody's.
    */
   webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
-    if (!this.isWebOnlyFleet() || !this.webSessions) return { status: 404, body: { error: "not_found" } };
-    const owner = this.deviceApprovalOwner(req);
-    if (!owner) return { status: 403, body: { error: "owner_required" } };
-    if (handle === owner.handle) return { status: 400, body: { error: "this_device" } };
+    if (!this.webSessions) return { status: 404, body: { error: "not_found" } };
+    const rule = this.sessionEndRule(req);
+    if (!rule) return { status: 403, body: { error: this.isWebOnlyFleet() ? "owner_required" : "other_admin" } };
+    if (this.isWebOnlyFleet() && !rule.any) return { status: 403, body: { error: "owner_required" } };
+    if (handle === rule.session.handle) return { status: 400, body: { error: "this_device" } };
     const target = this.webSessions.findByHandle(handle);
-    if (!target || target.tier !== "admin") return { status: 404, body: { error: "not_found" } };
-    const { found, durable } = this.webSessions.revokeByHandle(handle, r => r.tier === "admin");
+    if (!target) return { status: 404, body: { error: "not_found" } };
+    if (!rule.may(target)) return { status: 403, body: { error: rule.blocked } };
+    const { found, durable } = this.webSessions.revokeByHandle(handle);
     if (!found) return { status: 404, body: { error: "not_found" } };
     this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
-    this.logger.info({ by: owner.handle.slice(0, 8), handle, label: target.label, via: sessionVia(target), durable }, "Device signed out by the owner");
+    this.logger.info({ by: rule.session.handle.slice(0, 8), handle, label: target.label, tier: target.tier, via: sessionVia(target), durable }, "Device signed out by an admin");
     if (!durable) return { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
     return { status: 200, body: { ok: true } };
   }

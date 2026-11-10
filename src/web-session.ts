@@ -176,14 +176,18 @@ export interface SessionSummary {
  * authority/web-authority.ts never reads it.
  */
 export type SessionVia = "code" | "host" | "device" | "totp";
-/** Refs #3061 (P2b): one row of Settings → Devices & sign-in (fleet-manager webDeviceRows). Nothing here signs anyone in. */
+/**
+ * Refs #3061 (P2b), AGEND-138: one row of Settings → Devices & sign-in (fleet-manager webDeviceRows) — one per session, of
+ * any tier, on any fleet. The role is `tier` + `verified` (the app's roleName()). Nothing here signs anyone in.
+ */
 export interface WebDeviceRow {
   /** Opaque, what a sign-out names; not the session id and not its hash. */
   readonly handle: string;
   readonly label: string;
+  readonly tier: SessionTier;
   readonly via: SessionVia;
-  /** The §3 verdict for it as it would be used from where it signs in. Display only. */
-  readonly ownerVerified: boolean;
+  /** An admin session whose owner authorization is valid: the §3 verdict as it would be used from where it signs in. Display only. */
+  readonly verified: boolean;
   /** The reader's own session. */
   readonly current: boolean;
   readonly surface: SessionSurface;
@@ -191,6 +195,10 @@ export interface WebDeviceRow {
   readonly lastSeen: number;
   /** The sooner of its two ends (the cap from creation, the idle window). */
   readonly expiresAt: number;
+  /** May the reader sign this one out (the server checks again at the sign-out). Never true for the reader's own: that is Sign out. */
+  readonly canSignOut: boolean;
+  /** Why not: `owner_required` (a web-only fleet: only the verified owner) or `other_admin` (a chat fleet: only that admin). */
+  readonly signOutBlocked?: "owner_required" | "other_admin";
 }
 export function sessionVia(record: Pick<SessionRecord, "host" | "remote" | "via">): SessionVia {
   return record.via === "device" ? "device" : record.host === true ? "host" : record.remote === "totp" ? "totp" : "code";
