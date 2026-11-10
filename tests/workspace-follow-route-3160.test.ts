@@ -36,6 +36,7 @@ const session = (tier: "admin" | "guest", surface: "local" | "gateway" = "local"
   fm.webSessions.create({ tier, surface, label: tier, tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!), ...(owner ? { owner } : {}), ...(surface === "gateway" ? { exposureId: "e1" } : {}) }).sessionId as string;
 const get = (sid: string | null, q: string) => raw(port, `/ui/workspace?${q}`, sid ? { cookie: `${WEB_SESSION_COOKIE}=${sid}` } : {});
 const json = (r: Raw) => JSON.parse(r.body.toString("utf8"));
+const missedSecretNames = [".envLOCAL", "id_custom", "mycredentials.json", "mysecret.txt"];
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "agend-ws-fleet-"));
@@ -43,9 +44,14 @@ beforeAll(async () => {
   execFileSync("git", ["-C", work, "init", "-q"]);
   writeFileSync(join(work, "a.txt"), "hello\n");
   writeFileSync(join(work, ".env"), "TOKEN=x\n");
-  execFileSync("git", ["-C", work, "-c", "user.email=t@e", "-c", "user.name=t", "add", "a.txt"]);
+  for (const name of missedSecretNames) writeFileSync(join(work, name), "before\n");
+  execFileSync("git", ["-C", work, "-c", "user.email=t@e", "-c", "user.name=t", "add", "a.txt", ...missedSecretNames]);
   execFileSync("git", ["-C", work, "-c", "user.email=t@e", "-c", "user.name=t", "commit", "-qm", "init"]);
   writeFileSync(join(work, "a.txt"), "hello\nworld\n");
+  for (const name of missedSecretNames) {
+    writeFileSync(join(work, name), "HTTP_PRIVATE_CANARY\n");
+    writeFileSync(join(work, `${name}.png`), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+  }
   writeFileSync(join(work, "pic.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   writeFileSync(join(dir, "fleet.yaml"), [
     "health_port: 0", "instances:",
@@ -105,6 +111,27 @@ describe("GET /ui/workspace op=follow / op=diff (#3160)", () => {
     expect([d.repo, d.patch.includes("+world")]).toEqual([true, true]);
     expect((await get(sid, "instance=dev&op=diff&path=.env")).status).toBe(403);
     expect((await get(sid, "instance=dev&op=diff&path=../x")).status).toBe(403);
+  });
+  it.each(missedSecretNames)("filename-policy: %s stays hidden through every HTTP operation", async name => {
+    const sid = session("admin"), path = encodeURIComponent(name);
+    for (const op of ["file", "image", "diff"]) {
+      const r = await get(sid, `instance=dev&op=${op}&path=${path}`);
+      expect(r.status, op).toBe(403); expect(json(r).error, op).toBe("hidden");
+      expect(r.body.toString("utf8")).not.toContain("HTTP_PRIVATE_CANARY");
+    }
+    const image = await get(sid, `instance=dev&op=image&path=${encodeURIComponent(`${name}.png`)}`);
+    expect(image.status).toBe(403); expect(json(image).error).toBe("hidden");
+    const listing = json(await get(sid, "instance=dev&op=list"));
+    expect(listing.entries.find((e: any) => e.name === name)).toMatchObject({ hidden: true });
+    const changes = await get(sid, "instance=dev&op=changes");
+    expect(json(changes).files.find((f: any) => f.path === name)).toMatchObject({ hidden: true });
+    expect(changes.body.toString("utf8")).not.toContain("HTTP_PRIVATE_CANARY");
+    fm.daemons.set("dev", steps([{ seq: 1, at: 1, kind: "read", tool: "Read", paths: [name, "a.txt"], exact: true }]));
+    const follow = await get(sid, "instance=dev&op=follow");
+    expect(follow.status).toBe(200);
+    expect(json(follow).steps[0].paths).toEqual([{ path: name, hidden: true, dir: false }, { path: "a.txt", hidden: false, dir: false }]);
+    expect(follow.body.toString("utf8")).not.toContain("HTTP_PRIVATE_CANARY");
+    expect(json(await get(sid, "instance=dev&op=file&path=a.txt"))).toMatchObject({ kind: "text", text: "hello\nworld\n" });
   });
   it("rechecks session, daemon and working-directory binding after the snapshot is taken", async () => {
     const cfg = fm.fleetConfig.instances.dev, originalDir = cfg.working_directory;
