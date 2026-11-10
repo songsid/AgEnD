@@ -109,9 +109,9 @@ describe("the redesigned panel loses nothing", () => {
 
   it("can still write every agent setting", () => {
     expect(patchKeys("settings-model.js", "const next = {")).toEqual([
-      "agent_mode", "auto_pause_after", "backend", "channel_id", "cross_instance_visibility", "dashboard", "description",
-      "display_name", "general_topic", "hang_detector", "lightweight",
-      "log_level", "model", "model_failover", "office_access", "office_pack_access", "reply_completion_guard",
+      "agent_mode", "auto_pause_after", "backend", "board_cards_at_once", "channel_id", "cross_instance_visibility", "dashboard", "description",
+      "display_name", "general_topic", "hang_detector", "lightweight", "log_level", "mcp_proxy_reply", "model", "model_failover",
+      "office_access", "office_pack_access", "reply_completion_guard", "resume_interrupted_work",
       "status_emojis", "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",
     ]);
   });
@@ -138,17 +138,20 @@ function functionBody(name: string): string {
 }
 
 const EDITORS = ["AgentDialog", "BotDialog", "ClassicDialog"];
+/** AGEND-161: the agent and ClassicBot dialogs are thin shells over a form hook (the draft and its staging) and a fields component. */
+const FORM_HOOK: Record<string, string> = { AgentDialog: "useAgentForm", ClassicDialog: "useClassicForm" };
+const editorBody = (name: string) => (FORM_HOOK[name] ? [functionBody(name), functionBody(FORM_HOOK[name]!)].join("\n") : functionBody(name));
 
 describe("a modal edits one object and never submits by itself", () => {
   it.each(EDITORS)("%s reaches the API only through a staged apply", name => {
-    const body = functionBody(name);
+    const body = editorBody(name);
     // An editor never calls the API itself: its change is staged, and the Apply runner writes it on confirmation.
     expect(body, `${name} calls api() directly`).not.toMatch(/\bapi\(/);
     expect(body, `${name} does not stage its change`).toMatch(/ctx\.stage[A-Za-z]*\(/);
   });
 
   it.each(EDITORS)("%s hands the caller a stage() instead of its own buttons", name => {
-    const body = functionBody(name);
+    const body = editorBody(name);
 
     // No Save/Cancel of its own: the modal footer owns those, so one click cannot both close the form and write.
     expect(body).not.toMatch(/t\("save"\)/);
@@ -156,8 +159,8 @@ describe("a modal edits one object and never submits by itself", () => {
   });
 
   it.each(EDITORS)("%s puts its advanced settings in an expandable drawer", name => {
-    expect(functionBody(name), `${name} has no drawer`).toContain("<${Drawer}");
-    expect(functionBody(name)).toContain("advancedSection");
+    expect(editorBody(name), `${name} has no drawer`).toContain("<${Drawer}");
+    expect(editorBody(name)).toMatch(/advancedSection|cat_adv/);
   });
 
   it("renders the drawer as a real disclosure, not a hidden mode", () => {
@@ -171,14 +174,14 @@ describe("a modal edits one object and never submits by itself", () => {
 
   it.each(EDITORS)("%s stages on Done and discards on Cancel, and neither writes", name => {
     // Done is the footer's stage; Cancel closes. Neither writes: the pending bar's Apply does.
-    const body = functionBody(name);
-    expect(body).toContain("onStage=${stage}");
+    const body = editorBody(name);
+    expect(body).toMatch(/onStage=\$\{[^}]*stage/);
     expect(body).toContain("onClose=${onClose}");
     expect(sources["panel-settings.js"]).toContain("onApply=${apply}");
   });
 
   it.each(EDITORS)("%s summarises the whole modal's impact in the footer", name => {
-    expect(functionBody(name), `${name} has no footer impact`).toContain("impacts=");
+    expect(editorBody(name), `${name} has no footer impact`).toContain("impacts=");
   });
 });
 

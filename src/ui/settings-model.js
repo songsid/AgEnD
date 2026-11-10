@@ -181,6 +181,10 @@ export function codexSpeedOf(inst) {
   const v = inst && inst.backend_options && inst.backend_options.codex && inst.backend_options.codex.speed;
   return v === "fast" || v === "standard" ? v : "";
 }
+/** AGEND-161: what is in effect for the three keys the page adds (types.ts: unset = 1 / the default's, else true / the default's, else false). */
+export const boardCardsOf = (inst) => (Number.isInteger(inst && inst.board_cards_at_once) && inst.board_cards_at_once >= 1 ? inst.board_cards_at_once : 1);
+export const resumeWorkOf = (inst, defaults) => (typeof (inst && inst.resume_interrupted_work) === "boolean" ? inst.resume_interrupted_work : (defaults && typeof defaults.resume_interrupted_work === "boolean" ? defaults.resume_interrupted_work : true));
+export const proxyReplyOf = (inst, defaults) => (typeof (inst && inst.mcp_proxy_reply) === "boolean" ? inst.mcp_proxy_reply : (defaults && typeof defaults.mcp_proxy_reply === "boolean" ? defaults.mcp_proxy_reply : false));
 export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmojisBaseline) {
   const hang = inst.hang_detector || {};
   const next = {
@@ -203,6 +207,11 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     dashboard: dashboardPatchValue(form.dashboard),
     office_access: separateChoice(form.dashboard.office),
     office_pack_access: separateChoice(form.dashboard.office_packs),
+    // AGEND-161: the three keys the page never showed. Written only when changed from what is in effect (the server
+    // accepts a value, not null, so a field left alone is never put into fleet.yaml).
+    board_cards_at_once: form.board_cards_at_once === undefined ? boardCardsOf(inst) : Number(form.board_cards_at_once),
+    resume_interrupted_work: form.resume_interrupted_work === undefined ? resumeWorkOf(inst, defaults) : form.resume_interrupted_work,
+    mcp_proxy_reply: form.mcp_proxy_reply === undefined ? proxyReplyOf(inst, defaults) : form.mcp_proxy_reply,
   };
   return Object.assign(changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
@@ -228,6 +237,9 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     dashboard: dashboardPatchValue(dashboardForm(inst)),
     office_access: separateChoice(dashboardForm(inst).office),
     office_pack_access: separateChoice(dashboardForm(inst).office_packs),
+    board_cards_at_once: boardCardsOf(inst),
+    resume_interrupted_work: resumeWorkOf(inst, defaults),
+    mcp_proxy_reply: proxyReplyOf(inst, defaults),
   }), codexSpeedPatch(form, inst));
 }
 /**
@@ -268,6 +280,9 @@ export function agentForm(inst, defaults, name = "") {
     status_emojis: inst.status_emojis || null,
     dashboard: dashboardForm(inst),
     codex_speed: codexSpeedOf(inst),
+    board_cards_at_once: String(boardCardsOf(inst)),
+    resume_interrupted_work: resumeWorkOf(inst, defaults),
+    mcp_proxy_reply: proxyReplyOf(inst, defaults),
     inherit: {
       auto_pause_after: inherit("auto_pause_after"), hang: !hasOwn(hang, "timeout_minutes"), agent_mode: inherit("agent_mode"),
       tool_set: inherit("tool_set"), tool_progress: inherit("tool_progress"), cross_instance_visibility: inherit("cross_instance_visibility"),
