@@ -35,6 +35,7 @@ export const INSTALL_CLIS = Object.keys(CLI_CAPS).filter((id) => CLI_CAPS[id].ru
 export const OFFICIAL_COMMANDS = [
   { id: "grok", label: "Grok", command: "irm https://x.ai/cli/install.ps1 | iex", why: "whyGrok" },
   { id: "antigravity", label: "Antigravity", command: "irm https://antigravity.google/cli/install.ps1 | iex", why: "whyAntigravity" },
+  { id: "muse", label: "Muse", command: "irm https://dev.meta.ai/install.ps1 | iex", why: "whyMuse" },
   { id: "kiro", label: "Kiro", command: "irm https://cli.kiro.dev/install.ps1 | iex", administrator: true, why: "whyKiro" },
 ];
 /** A computer shows this only when its Runtime says it can (and it is a paired, approved one). */
@@ -56,11 +57,13 @@ register("runtimeInstall", {
     whyGrok: "Why not here: Grok's Windows program is not signed by its publisher, so AgEnD could not check who built it, and the vendor script installs whatever version is current.",
     whyAntigravity: "Why not here: the vendor script installs whatever version is current. A fixed, signed download exists, and AgEnD will install it from here once its Runtime can download one.",
     whyKiro: "Why not here: Kiro's Windows installer is an MSI into Program Files, which needs an administrator; the Runtime never has one.",
+    whyMuse: "Why not here: Muse has no package or file with a fixed version AgEnD could check: its launcher installs itself, and updates itself, from the vendor's server.",
   },
   "zh-TW": {
     whyGrok: "為什麼不能從這裡安裝：Grok 的 Windows 程式沒有發行者的數位簽章，AgEnD 無法確認是誰建置的；廠商腳本也是裝當下最新的版本。",
     whyAntigravity: "為什麼不能從這裡安裝：廠商腳本裝的是當下最新的版本。有固定版本且已簽章的下載檔，等 Runtime 能下載之後，AgEnD 會從這裡安裝。",
     whyKiro: "為什麼不能從這裡安裝：Kiro 在 Windows 的安裝程式是裝進 Program Files 的 MSI，需要系統管理員權限，而 Runtime 沒有。",
+    whyMuse: "為什麼不能從這裡安裝：Muse 沒有 AgEnD 能確認的固定版本套件或檔案：它的啟動器會自己從廠商的伺服器安裝、自己更新。",
   },
 });
 /** Ridge #3321 S09: a command to run on that computer — Runtime's labelled command card (runtime-install.css), with Copy. */
