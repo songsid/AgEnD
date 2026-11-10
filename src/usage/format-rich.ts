@@ -106,7 +106,7 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
         : null,
     okHint: usageStaleText(p) ?? ((p.status === "ok" || p.stale) && p.hint ? usageText(p.hint, p.hintI18n) : null),
     lines: p.status === "ok"
-      ? p.metrics.filter(isVisibleUsageMetric).map(metricLine).filter((l): l is MetricLine => l !== null)
+      ? p.metrics.filter((m) => isVisibleUsageMetric(m, p)).map(metricLine).filter((l): l is MetricLine => l !== null)
       : [],
   }));
 }
