@@ -18,3 +18,10 @@ e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fi
 e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19
 d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M1-parent-sidechain.log:generic-api-key:18
 d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19
+
+# PR #3542: these three historical findings are verified public-source SHA-256 digests,
+# not credentials. Current evidence uses digest-first PRODUCTION_SHA256SUMS.
+# Exact commit/path/rule/line only; no rule, path, or future finding is exempted.
+8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:105
+8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:114
+8353e87c9f2bcf04640102dcfd9ba2c8ae3d17f4:docs/screenshots/host-cli-enforcement-m2793/after-results.json:generic-api-key:116

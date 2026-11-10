@@ -7,7 +7,7 @@ The real Settings shell, HTTP handler, held-change store, and authenticator veri
 - Chromium 156.0.8078.4; desktop 1366 and phone 390; desktop light and phone dark, EN and zh-TW.
 - Cached shell: alpha.10 `app.js`, `app-shell.js`, `app-i18n.js`, `app.css`; current feature modules, authentication bridge and feature stylesheet. This is not an all-modules-old test.
 - Current and cached phone confirmation inputs/buttons measure at least 44px; no horizontal overflow. The expected wrong-code 401 is the only allowed console error. External browser requests are blocked.
-- Captures were taken from the uncommitted working tree on the recorded base: `after-results.json` includes SHA-256 hashes of every changed production file. `SHA256SUMS` covers all 28 original PNGs.
+- Captures were taken from the uncommitted working tree on the recorded base: `after-results.json` points to the digest-first `PRODUCTION_SHA256SUMS` for every changed production file. `SHA256SUMS` covers all 28 original PNGs.
 
 ## Gallery
 
