@@ -62,6 +62,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
+import { dropUpdateNpmBounds, withoutUpdateNpmBounds } from "./update-npm-env.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -261,6 +262,9 @@ fleet
     }
     const marked = process.env[DIRECT_FLEET_START_ENV] === "1";
     delete process.env[DIRECT_FLEET_START_ENV];
+    // M-2797 (Fable #3544 F1): a fleet started by an update's restart (or an older release's installer) never keeps the
+    // npm bounds that update set — every npm the fleet starts follows the person's own npm settings again.
+    dropUpdateNpmBounds(process.env);
     // #2356: the way out when the installed service cannot run here (never activated, no GUI session for launchd) — an
     // operator's own decision, as `restart --force` is; the fleet's singleton lock still refuses a second fleet.
     if (opts?.direct && !forceAllowed()) {
@@ -1307,6 +1311,21 @@ program
       if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && await handOffLaunchdActivation("update")) return;
     }
     const { spawnSync } = await import("node:child_process");
+    // M-2797: from here on, every npm this update starts (the version lookup, the preflight, the release's own installer
+    // and its `npm install -g`) gives up on a silent connection instead of waiting minutes per try — set once, in this
+    // process's environment, for each key nobody set (a person's .npmrc, variable or flag is kept, whatever its value).
+    {
+      const { applyUpdateNpmBounds, npmConfigQuery, parseNpmConfigLs, registryStop, updateRegistry } = await import("./update-npm-env.js");
+      const listed = spawnSync("npm", npmConfigQuery(), { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
+      const explicit = listed.status === 0 ? parseNpmConfigLs(listed.stdout ?? "") : null;
+      applyUpdateNpmBounds(process.env, explicit);
+      // With the network gone npm answers the version lookup from its stale cache, and the install then fails as a version
+      // that does not exist. Ask the registry AgEnD comes from (the @songsid scope's, never a cache) first: unreachable →
+      // stop here, nothing changed. Its config unreadable: nothing is asked, the update goes on as before.
+      const registry = updateRegistry(explicit);
+      const stop = registry ? registryStop(spawnSync("npm", ["ping", "--registry", registry], { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "ignore", "pipe"] })) : null;
+      if (stop) { console.error(`\n${stop}\n`); setUpdateProgressStage(DATA_DIR, "failed", { error: stop.trim() }); process.exitCode = 1; return; }
+    }
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
     const looked = lookupTargetVersion(tag);
@@ -1337,7 +1356,8 @@ program
         stdio: "inherit",
         // This update was already confirmed (or interactive); its own restart is
         // part of it, not a second command for the agent-session guard.
-        env: withOrigin("agend-update"),
+        // M-2797 (Fable #3544 F1): without the update's own npm bounds — the fleet it starts outlives the update.
+        env: withOrigin("agend-update", withoutUpdateNpmBounds(process.env)),
       });
       const restartOutcome = reportUpdateRestart(restartResult.status);
       // "pending": systemd is still running the restart job; the replacement fleet settles the marker.
@@ -1719,6 +1739,8 @@ program
         log: message => console.log(message),
       },
     );
+    // M-2797 (Fable #3544 F1): npm is done; nothing after this (service refresh, restart) carries the update's npm bounds.
+    dropUpdateNpmBounds(process.env);
     if (!installed.ok) return failUpdate(installed.message);
     const agendPath = installed.agendPath;
     const newVersion = installed.version;
