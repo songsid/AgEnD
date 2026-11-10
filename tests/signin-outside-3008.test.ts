@@ -47,28 +47,31 @@ async function page(language: string, opts: { outside?: boolean; webOnly?: boole
       return { ok: status < 300, status, headers: { get: (h: string) => (h.toLowerCase() === "retry-after" ? opts.retryAfter ?? null : null) },
         json: async () => { if (opts.body === undefined) throw new Error("no body"); return opts.body; } };
     },
-    URL, URLSearchParams, JSON, Date, Number, String, Math,
+    setTimeout: () => 0, clearTimeout() {}, URL, URLSearchParams, JSON, Date, Number, String, Math,
   });
   vm.runInContext(SRC, context);
   for (let n = 0; n < 50; n++) await new Promise(r => setImmediate(r));
   const $ = (id: string) => elements[id] ??= el(id);
-  const text = (attr: string) => i18n.find(x => x.attr === attr)!.textContent;
+  const text = (attr: string) => {
+    const n = i18n.find(x => x.attr === attr)!;
+    return n.children ? n.children.map(x => typeof x === "string" ? x : (x as { textContent: string }).textContent).join("") : n.textContent;
+  };
   return { $, text, posts, asked, attrs, submit: async () => { await handlers["form:submit"]!({ preventDefault() {} }); } };
 }
 
 const WORDS = {
-  en: { label: "Authenticator code", lead: "Open your authenticator app and enter the 6-digit code for AgEnD.", hint: "Lost your phone? On the AgEnD computer, choose “Set up again”.",
-    wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.", wait: "Too many wrong codes. Try again in 15 minutes.", wait2h: "Too many wrong codes. Try again in 2 hours." },
-  "zh-TW": { label: "6 位數驗證碼（驗證器 App）", lead: "打開驗證器 App，輸入 AgEnD 的 6 位數驗證碼。", hint: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
-    wrong: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。", wait: "錯誤次數太多，請 15 分鐘 後再試。", wait2h: "錯誤次數太多，請 2 小時 後再試。" },
+  en: { label: "Authenticator or device sign-in code", lead: "Enter your authenticator app’s 6-digit code to sign in automatically.", hint: "You can also paste an 8-character device sign-in code",
+    wrong: "Could not sign in. Use the code currently shown in your authenticator app and check the clock on your authenticator device.", wait: "Sign-in is paused. Please wait 15 minutes, then try again.", wait2h: "Sign-in is paused. Please wait 2 hours, then try again." },
+  "zh-TW": { label: "驗證碼或裝置登入碼", lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。", hint: "也可以貼上 8 字元裝置登入碼",
+    wrong: "無法登入。請使用驗證器 App 目前顯示的驗證碼，並確認驗證器所在裝置的時間正確。", wait: "登入已暫停，請等 15 分鐘後再試。", wait2h: "登入已暫停，請等 2 小時後再試。" },
 } as const;
 
 describe("#3008 ② the sign-in page from outside", () => {
   for (const language of ["en", "zh-TW"] as const) {
-    it(`${language}: asks for the authenticator's code, numeric, posted to /auth/totp; no "Send me a new code"`, async () => {
+    it(`${language}: accepts both code formats and posts six digits to /auth/totp; no "Send me a new code"`, async () => {
       const p = await page(language, { outside: true });
       expect([p.text("label"), p.text("lead"), p.text("hint")]).toEqual([WORDS[language].label, WORDS[language].lead, WORDS[language].hint]);
-      expect([p.attrs.inputmode, p.attrs.maxlength, p.attrs.placeholder]).toEqual(["numeric", "7", "123456"]);
+      expect([p.attrs.inputmode, p.attrs.maxlength, p.attrs.placeholder]).toEqual(["text", "32", ""]);
       expect([p.asked.includes("/auth/device"), p.$("resend").hidden]).toEqual([false, true]);
       await p.submit();
       expect([p.posts, p.$("msg").textContent]).toEqual([[{ url: "/auth/totp", body: { code: "123456" } }], WORDS[language].wrong]);
@@ -82,11 +85,13 @@ describe("#3008 ② the sign-in page from outside", () => {
       expect(b.$("msg").textContent).toBe(WORDS[language].wait2h);
     });
   }
-  it("this computer's page (no data-outside) and a chat fleet's keep the one-time code and /auth/login", async () => {
+  it("code format selects the route on local and chat pages as well (core chat support is separately held)", async () => {
     for (const p of [await page("en", { outside: false }), await page("en", { webOnly: false, outside: true })]) {
       await p.submit();
-      expect(p.posts.map(x => x.url)).toEqual(["/auth/login"]);
-      expect(p.text("label")).toBe("One-time code");
+      expect(p.posts.map(x => x.url)).toEqual(["/auth/totp"]);
+      p.$("code").value = "ABCD-EFGH"; await p.submit();
+      expect(p.posts.map(x => x.url)).toEqual(["/auth/totp", "/auth/login"]);
+      expect(p.text("label")).toBe(WORDS.en.label);
     }
   });
   it("the server marks the page: web-only + outside → both marks; outside alone (a chat fleet) → none", () => {

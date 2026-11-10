@@ -121,7 +121,7 @@ function signinPage(url: string, opts: { probeOk: boolean; loginOk?: boolean }) 
   const href = new URL(url);
   const els: Record<string, any> = {};
   const el = (id: string) => (els[id] ??= { id, hidden: false, textContent: "", value: "", disabled: false, listeners: {} as Record<string, Function>,
-    addEventListener(t: string, f: Function) { this.listeners[t] = f; }, focus() {}, select() {} });
+    addEventListener(t: string, f: Function) { this.listeners[t] = f; }, focus() {}, select() {}, setAttribute() {} });
   let replaced: string | null = null;
   const session = new Map<string, string>();
   const ctx = vm.createContext({
@@ -131,13 +131,13 @@ function signinPage(url: string, opts: { probeOk: boolean; loginOk?: boolean }) 
     history: { replaceState() {} },
     sessionStorage: { getItem: (k: string) => session.get(k) ?? null, setItem: (k: string, v: string) => session.set(k, v), removeItem: (k: string) => session.delete(k) },
     fetch: async (u: string) => ({ ok: u === "/auth/session" ? opts.probeOk : !!opts.loginOk, status: 200 }),
-    URL, URLSearchParams, Date, Promise, JSON, console,
+    setTimeout: () => 0, clearTimeout() {}, URL, URLSearchParams, Date, Promise, JSON, console,
   });
   vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8"), ctx);
   return {
     settle: () => new Promise(r => setTimeout(r, 10)),
     replaced: () => replaced,
-    submit: async () => { await els.form.listeners.submit({ preventDefault() {} }); },
+    submit: async () => { els.code.value = "ABCD-EFGH"; await els.form.listeners.submit({ preventDefault() {} }); },
   };
 }
 

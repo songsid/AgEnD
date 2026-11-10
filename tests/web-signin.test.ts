@@ -598,10 +598,10 @@ describe("signin.js, run against a fake page", () => {
     const vm = await import("node:vm");
     const url = new URL(href);
     const replaced: string[] = [];
-    const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {} });
+    const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {}, setAttribute() {} });
     const elements: Record<string, ReturnType<typeof el>> = {};
     const context = vm.createContext({
-      document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el()), querySelectorAll: () => [] },
+      document: { documentElement: {}, getElementById: (id: string) => id.startsWith("reach") ? null : (elements[id] ??= el()), querySelectorAll: () => [] },
       location: { href: url.href, pathname: url.pathname, search: url.search, hash: url.hash, origin: url.origin, replace() {} },
       history: { replaceState: (_s: unknown, _t: unknown, u: string) => { replaced.push(u); } },
       navigator: { language: "en" },
@@ -626,10 +626,10 @@ describe("signin.js, run against a fake page", () => {
       const made: Array<{ tag: string; textContent: string }> = [];
       const hint = { attr: "nobot_body", textContent: "", children: null as unknown[] | null, getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } };
       const title = { attr: "title", textContent: "", children: null as unknown[] | null, getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } };
-      const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {} });
+      const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {}, setAttribute() {} });
       const elements: Record<string, ReturnType<typeof el>> = {};
       const context = vm.createContext({
-        document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el()), querySelectorAll: () => [hint, title],
+        document: { documentElement: {}, getElementById: (id: string) => id.startsWith("reach") ? null : (elements[id] ??= el()), querySelectorAll: () => [hint, title],
           createElement: (tag: string) => { const e = { tag, textContent: "" }; made.push(e); return e; } },
         location: { href: "http://127.0.0.1:1/signin", pathname: "/signin", search: "", hash: "", origin: "http://127.0.0.1:1", replace() {} },
         history: { replaceState() {} }, navigator: { language }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },

@@ -12,9 +12,9 @@
   const T = {
     en: {
       signout_unsaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
-      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your sign-in code.",
-      label: "One-time code", submit: "Sign in", working: "Signing in…",
-      hint: "No code? Send /web in General, then press a sign-in button to get one.",
+      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
+      label: "Authenticator or device sign-in code", submit: "Sign in", working: "Signing in…",
+      hint: "You can also paste an 8-character device sign-in code",
       nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
       safe: "Page looks wrong after signing in?", safe_body: "Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Look.",
       refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
@@ -42,6 +42,14 @@
       hint_outside: "Lost your phone? On the AgEnD computer, choose \u201cSet up again\u201d.",
       refused_outside: "That code didn't work. Check that your phone's clock is right and try the newest code.",
       paused_outside: "Too many wrong codes. Try again in {duration}.",
+      totp_refused: "Could not sign in. Use the code currently shown in your authenticator app and check the clock on your authenticator device.",
+      totp_help: "If the code is correct but you still cannot sign in, paste an 8-character device sign-in code, or use a device you have signed in from before.",
+      unavailable: "Authenticator sign-in is not available here. Paste an 8-character device sign-in code, or use a device you have signed in from before.",
+      invalid: "Enter a 6-digit authenticator code or an 8-character device sign-in code.",
+      pause_for: "Sign-in is paused. Please wait {duration}, then try again.", pause_button: "Sign-in paused", ready_again: "You can try signing in again.",
+      reach_title: "How does my phone reach AgEnD?", reach_lead: "Open the AgEnD address in your phone’s browser:",
+      reach_wifi: "Same Wi-Fi: use the computer’s local network address.", reach_private: "Private network, such as Tailscale: connect both devices to that network first.",
+      reach_outside: "Outside connection: use the address your admin provides.",
       minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
       // #3061: sign in with another device — an 8-character code shown here, approved on a device that is already signed in.
       another: "Sign in with another device", dev_title: "Sign in with another device",
@@ -55,9 +63,9 @@
     },
     "zh-TW": {
       signout_unsaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
-      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入裝置登入碼。",
-      label: "一次性裝置登入碼", submit: "登入", working: "登入中…",
-      hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
+      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。",
+      label: "驗證碼或裝置登入碼", submit: "登入", working: "登入中…",
+      hint: "也可以貼上 8 字元裝置登入碼",
       nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
       safe: "登入後畫面不對勁？", safe_body: "可能是你的自訂 CSS 把東西藏起來了。在網址最後加上 ?safe=1，就會不套用它地載入；再到「設定 → 外觀」修正或關閉。",
       refused: "裝置登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
@@ -80,6 +88,14 @@
       hint_outside: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
       refused_outside: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。",
       paused_outside: "錯誤次數太多，請 {duration} 後再試。",
+      totp_refused: "無法登入。請使用驗證器 App 目前顯示的驗證碼，並確認驗證器所在裝置的時間正確。",
+      totp_help: "若驗證碼正確仍無法登入，請貼上 8 字元裝置登入碼，或使用先前登入過的裝置。",
+      unavailable: "這裡無法使用驗證器 App 登入。請貼上 8 字元裝置登入碼，或使用先前登入過的裝置。",
+      invalid: "請輸入 6 位數驗證碼或 8 字元裝置登入碼。",
+      pause_for: "登入已暫停，請等 {duration}後再試。", pause_button: "暫時無法登入", ready_again: "可以再次嘗試登入。",
+      reach_title: "如何在手機開啟 AgEnD？", reach_lead: "在手機瀏覽器開啟 AgEnD 網址：",
+      reach_wifi: "同一個 Wi-Fi：使用電腦的區網網址。", reach_private: "私人網路（如 Tailscale）：兩台裝置先連上同一個網路。",
+      reach_outside: "外部連線：使用管理員提供的網址。",
       minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
       another: "使用其他裝置登入", dev_title: "使用其他裝置登入",
       dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組裝置登入碼。",
@@ -111,8 +127,21 @@
   // here (a WSL install) is pointed at its desktop shortcut. Only words change: the page issues nothing itself (D3).
   const local = !outside && /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/i.test((typeof location !== "undefined" && location.hostname) || "");
   const win = local && /Windows/i.test((typeof navigator !== "undefined" && navigator.userAgent) || "");
-  const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (win && (T[lang][`${k}_local_win`] || T.en[`${k}_local_win`]))
+  const deviceText = (k) => (win && (T[lang][`${k}_local_win`] || T.en[`${k}_local_win`]))
     || (local && (T[lang][`${k}_local`] || T.en[`${k}_local`])) || (noChat && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  // Input routing is by the complete code, on every surface; device-code recovery retains its existing local/chat words.
+  const t = (k) => ["lead", "label", "hint"].includes(k) ? T[lang][k] : (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || deviceText(k);
+  function paint(node, text) {
+    if (!node) return;
+    if (lang !== "zh-TW" || typeof node.replaceChildren !== "function") { node.textContent = text; return; }
+    const terms = /(8 字元裝置登入碼|使用先前登入過的裝置|驗證器 App|驗證器|驗證碼|同一個網路|自動登入|每組|立即|直接|核准)/g;
+    const parts = text.split(terms);
+    if (parts.length === 1) { node.textContent = text; return; }
+    node.replaceChildren(...parts.map((part, i) => {
+      if (i % 2 === 0) return part;
+      const span = document.createElement("span"); span.className = "signin-term"; span.textContent = part; return span;
+    }));
+  }
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
     const minutes = Math.max(1, Math.ceil(ms / 60000));
@@ -124,11 +153,9 @@
   if (noChat || local) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
   $("checking").setAttribute?.("aria-label", t("checking"));
-  if (outside) {
-    const input = $("code");
-    input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");
-    input.setAttribute("pattern", "[0-9 ]*");
-  }
+  // Also repairs an old cached HTML shell’s numeric/short field constraints.
+  $("code").setAttribute("inputmode", "text"); $("code").setAttribute("maxlength", "32"); $("code").setAttribute("placeholder", "");
+  $("code").removeAttribute?.("pattern");
 
   // #3270: `agend web` opens this page on this computer as /signin#code=XXXX-XXXX. A fragment is never sent to the server, a
   // log or a Referer; it is read here and taken out of the address bar and the history entry BEFORE anything else runs —
@@ -170,11 +197,17 @@
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const text = t(el.getAttribute("data-i18n"));
     const m = CMD.exec(text);
-    if (!m) { el.textContent = text; return; }
+    if (!m) { paint(el, text); return; }
     const code = document.createElement("code");
     code.textContent = m[0];
     el.replaceChildren(text.slice(0, m.index), code, text.slice(m.index + m[0].length));
   });
+
+  // New help is optional: new JS still works with cached HTML, and old JS leaves it hidden.
+  if ($("reachHelp")) {
+    for (const [id, key] of [["reachTitle", "reach_title"], ["reachLead", "reach_lead"], ["reachWifi", "reach_wifi"], ["reachPrivate", "reach_private"], ["reachOutside", "reach_outside"]]) paint($(id), t(key));
+    $("reachHelp").hidden = false;
+  }
 
   // An old deep link, /ui#instance=<name> (#1408 §3): the fragment never reaches the server, and the sign-in page is
   // served at the URL that was asked for, so it is still in location.hash here. Exactly that one form becomes the new
@@ -337,6 +370,7 @@
     $("devQr").hidden = false;
   }
   async function devStart() {
+    retireEntries();
     devStop();
     $("form").hidden = true; $("device").hidden = false; $("devNew").hidden = true;
     hideQr();
@@ -419,7 +453,7 @@
   }
 
   // What a refused POST /auth/login says (the form's and the fragment's exchange alike): 429 and 5xx are not a wrong code.
-  const failureText = (status) => (status === 429 ? t("paused") : status >= 500 ? t("unconfirmed") : t("refused"));
+  const failureText = (status) => (status === 429 ? deviceText("paused") : status >= 500 ? deviceText("unconfirmed") : deviceText("refused"));
 
   // #3270: the exchange of the code `agend web` put in the fragment. Resolves null once the browser is on its way into the
   // app, else the words for why not — the form then shows them, so an expired or used code never leaves a blank page. The
@@ -440,38 +474,91 @@
     }
   }
 
-  $("form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = $("go");
-    const msg = $("msg");
-    msg.textContent = "";
-    msg.classList?.remove("ok");
-    button.disabled = true;
-    button.textContent = t("working");
+  // S-118: one complete value chooses one existing route. Never strip a letter/dash into a TOTP.
+  function codeValue() {
+    const raw = $("code").value.trim();
+    if (/^[0-9]{6}$/.test(raw)) return { path: "/auth/totp", code: raw, wait: /^[2-7]{6}$/.test(raw) };
+    if (/^(?:[A-Z2-7]{8}|[A-Z2-7]{4}-[A-Z2-7]{4})$/i.test(raw)) return { path: "/auth/login", code: raw.replace("-", "").toUpperCase(), wait: false };
+    return null;
+  }
+  const autoAttempts = new Set(), activeEntries = new Map();
+  let entryTimer = 0, pauseTimer = 0, pausedUntil = 0, entryVersion = 0, latestEntry = null;
+  let composing = false, pasteInput = false, entryStopped = false, signedIn = false, observedValue = "";
+  const entryKey = (value) => value ? `${value.path}:${value.code}` : `invalid:${$("code").value}`;
+  function cancelEntryTimer() { clearTimeout(entryTimer); entryTimer = 0; }
+  function retireEntries() {
+    cancelEntryTimer(); entryVersion++; latestEntry = null;
+    for (const attempt of activeEntries.values()) attempt.controller?.abort();
+    activeEntries.clear();
+  }
+  function entryCurrent(mine) {
+    return !entryStopped && !signedIn && !$("form").hidden && mine === latestEntry && mine.version === entryVersion && entryKey(codeValue()) === mine.key;
+  }
+  function entryMessage(text, hint = "") {
+    paint($("msg"), text); $("msg").classList?.remove("ok");
+    if ($("authHint")) { paint($("authHint"), hint); $("authHint").hidden = !hint; }
+    else if (hint) paint($("msg"), `${text} ${hint}`); // cached HTML still gets the complete recovery guidance
+  }
+  function entryButton() {
+    const paused = pausedUntil > Date.now();
+    $("go").disabled = paused || !!(latestEntry && activeEntries.get(latestEntry.key) === latestEntry);
+    $("go").textContent = paused ? t("pause_button") : $("go").disabled ? t("working") : t("submit");
+  }
+  async function submitEntry(manual = false) {
+    cancelEntryTimer();
+    if (entryStopped || signedIn || $("form").hidden || composing || pausedUntil > Date.now()) return;
+    const value = codeValue();
+    if (!value) { if (manual) entryMessage(t("invalid")); return; }
+    const key = entryKey(value);
+    if (activeEntries.has(key) || (!manual && autoAttempts.has(key))) return;
+    // Explicit submit may be the first observation of the value (autofill or an old HTML form).
+    if (observedValue !== key) { retireEntries(); observedValue = key; }
+    autoAttempts.add(key);
+    const mine = { key, version: entryVersion, controller: typeof AbortController === "function" ? new AbortController() : null };
+    latestEntry = mine; activeEntries.set(key, mine); entryMessage(""); entryButton();
     try {
-      const r = await fetch(outside ? "/auth/totp" : "/auth/login", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: $("code").value }),
-      });
-      if (r.ok) { clearBounce(); location.replace(nextTarget()); return; }
-      if (outside && r.status === 429) {
+      const r = await fetch(value.path, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: value.code }), ...(mine.controller ? { signal: mine.controller.signal } : {}) });
+      if (!entryCurrent(mine)) return;
+      if (r.ok) { signedIn = true; cancelEntryTimer(); clearTimeout(pauseTimer); clearBounce(); location.replace(nextTarget()); return; }
+      if (r.status === 429) {
         let wait = Number(r.headers.get("Retry-After")) * 1000;
-        try { const body = await r.json(); if (Number.isFinite(body && body.retryAfterMs)) wait = body.retryAfterMs; } catch { /* the header's */ }
-        msg.textContent = t("paused").replace("{duration}", duration(Number.isFinite(wait) && wait > 0 ? wait : 60000));
-        throw "shown";
-      }
-      // #1854: a 5xx is the server failing to confirm the sign-in (503: a public link's notice did not go out), not a
-      // wrong code — say so. The code is spent either way: the way on is a new one.
-      msg.textContent = failureText(r.status);
-    } catch (err) {
-      if (err !== "shown") msg.textContent = t("network");
+        try { const body = await r.json(); if (Number.isFinite(body?.retryAfterMs) && body.retryAfterMs > 0) wait = body.retryAfterMs; } catch { /* use the header */ }
+        if (!entryCurrent(mine)) return;
+        wait = Number.isFinite(wait) && wait > 0 ? wait : 60000;
+        pausedUntil = Date.now() + wait;
+        entryMessage(t("pause_for").replace("{duration}", duration(wait))); $("msg").classList?.add("ok");
+        clearTimeout(pauseTimer);
+        pauseTimer = setTimeout(() => {
+          if (entryStopped || signedIn) return;
+          pausedUntil = 0; entryMessage(t("ready_again")); $("msg").classList?.add("ok"); entryButton();
+        }, wait);
+      } else if (value.path === "/auth/totp" && r.status === 404) entryMessage(t("unavailable"));
+      else if (value.path === "/auth/totp" && r.status === 401) entryMessage(t("totp_refused"), t("totp_help"));
+      else entryMessage(failureText(r.status));
+    } catch {
+      if (entryCurrent(mine)) entryMessage(t("network"));
+    } finally {
+      if (activeEntries.get(key) === mine) activeEntries.delete(key);
+      if (entryCurrent(mine)) { entryButton(); if (!(pausedUntil > Date.now())) $("code").select(); }
     }
-    button.disabled = false;
-    button.textContent = t("submit");
-    $("code").select();
-  });
+  }
+  function entryInput(event = {}) {
+    cancelEntryTimer();
+    const value = codeValue(), key = entryKey(value);
+    if (key !== observedValue) { retireEntries(); observedValue = key; if (!(pausedUntil > Date.now())) entryMessage(""); entryButton(); }
+    const pasted = pasteInput || event.inputType === "insertFromPaste"; pasteInput = false;
+    if (entryStopped || signedIn || $("form").hidden || composing || event.isComposing || pausedUntil > Date.now() || !value) return;
+    if (!pasted && value.wait) entryTimer = setTimeout(() => { submitEntry(); }, 800);
+    else void submitEntry();
+  }
+  $("code").addEventListener("keydown", cancelEntryTimer);
+  $("code").addEventListener("paste", () => { cancelEntryTimer(); pasteInput = true; Promise.resolve().then(() => { pasteInput = false; }); });
+  $("code").addEventListener("input", entryInput);
+  $("code").addEventListener("compositionstart", () => { composing = true; cancelEntryTimer(); });
+  $("code").addEventListener("compositionend", () => { composing = false; entryInput(); });
+  $("form").addEventListener("submit", (event) => { event.preventDefault(); return submitEntry(true); });
+  globalThis.addEventListener?.("pagehide", () => { entryStopped = true; retireEntries(); clearTimeout(pauseTimer); });
 
   (async () => {
     // Someone who already has a session is simply let in: the code in the link is not exchanged over it (it stays unspent

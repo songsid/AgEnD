@@ -1,0 +1,32 @@
+[
+  {
+    "name": "timing",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "dedupe",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "cancel-key",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "stale-fetch",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "stale-body",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "raw-validation",
+    "caught": true,
+    "exit": 1
+  }
+]

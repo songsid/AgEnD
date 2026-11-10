@@ -471,7 +471,7 @@ describe("the sign-in page offers the button only to a returning device", () => 
     const calls: Array<{ url: string; init?: any }> = [];
     const handlers: Record<string, () => Promise<void>> = {};
     const el = (id: string) => ({ id, hidden: id === "resend" || id === "form", textContent: "", value: "", disabled: false, classList: { set: new Set<string>(), add(c: string) { this.set.add(c); }, remove(c: string) { this.set.delete(c); } },
-      addEventListener(type: string, fn: () => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {} });
+      addEventListener(type: string, fn: () => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {}, setAttribute() {} });
     const elements: Record<string, ReturnType<typeof el>> = {};
     const context = vm.createContext({
       document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el(id)), querySelectorAll: () => [] },
@@ -481,9 +481,9 @@ describe("the sign-in page offers the button only to a returning device", () => 
         calls.push({ url, init });
         if (url === "/auth/session") return { ok: false, status: 401 };
         if (url === "/auth/device") return { ok: true, status: 200, json: async () => ({ returning }) };
-        return { ok: answer < 300, status: answer };
+        return { ok: answer < 300, status: answer, headers: { get: () => null }, json: async () => ({}) };
       },
-      URL, URLSearchParams, JSON, Date, Number, String,
+      setTimeout: () => 0, clearTimeout() {}, URL, URLSearchParams, JSON, Date, Number, String,
     });
     vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8"), context);
     for (let n = 0; n < 50; n++) await new Promise(r => setImmediate(r));

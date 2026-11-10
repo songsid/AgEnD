@@ -18,7 +18,11 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 
 ## Signing in
 
-The dashboard signs in with a **one-time code**, never with a link that carries a credential.
+Open the AgEnD address on the new device and enter the **6-digit code currently shown in your authenticator app**. The same box also accepts an **8-character device sign-in code** (`ABCD-EFGH`, with or without the dash, in any case). A complete pasted code signs in immediately; a typed six-digit value made only of 2–7 waits 800 ms so you can finish an eight-character code. Continuing to type cancels that wait. A longer pause can spend one wrong authenticator attempt before you finish the device code. The visible **Sign in** button also submits or retries explicitly.
+
+A wrong value is not automatically retried. A server pause says how long to wait, and ending the pause does not submit again. The help under the box explains reaching AgEnD over the same Wi-Fi, a shared private network or an outside address supplied by your admin; it opens no public link. Authenticator setup, sign-in eligibility and limits remain the server’s policy.
+
+To get the eight-character fallback code:
 
 1. Get a code, either way:
    - in General, use **`/web`** (fleet admins only; Discord native slash). Press **💻 AgEnD computer: get a code** for the AgEnD computer, or **🌐 Other device (temporary public)** for another device (when allowed). The instruction appears first, without redundant page URLs or a closed-link countdown. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.

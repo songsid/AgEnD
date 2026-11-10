@@ -44,8 +44,8 @@ describe("S-117 glossary: no bare 代碼", () => {
       expect(hostT("dashboard.private_local", "x", "AB12", 5)).toContain("裝置登入碼");
     } finally { setLocale("en"); }
     const signin = readFileSync(join(ROOT, "src/ui/shared/signin.js"), "utf8");
-    expect(signin).toContain('label: "一次性裝置登入碼"');
-    expect(signin).toContain('lead: "輸入裝置登入碼。"');
+    expect(signin).toContain('label: "驗證碼或裝置登入碼"');
+    expect(signin).toContain('hint: "也可以貼上 8 字元裝置登入碼"');
   });
 });
 
@@ -103,7 +103,7 @@ async function signin(language: string, { host = "127.0.0.1", noChat = false, ua
   const vm = await import("node:vm");
   const handlers: Record<string, (e?: unknown) => Promise<void>> = {};
   const el = (id: string) => ({ id, hidden: id === "resend" || id === "form", textContent: "", value: "ABCD-EFGH", disabled: false,
-    classList: { add() {}, remove() {} }, addEventListener(type: string, fn: (e?: unknown) => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {} });
+    classList: { add() {}, remove() {} }, addEventListener(type: string, fn: (e?: unknown) => Promise<void>) { handlers[`${id}:${type}`] = fn; }, focus() {}, select() {}, setAttribute() {} });
   const elements: Record<string, ReturnType<typeof el>> = {};
   const i18n = ["lead", "hint", "nobot", "nobot_body"].map(attr => ({ attr, textContent: "", children: null as unknown[] | null,
     getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } }));
@@ -119,9 +119,9 @@ async function signin(language: string, { host = "127.0.0.1", noChat = false, ua
     fetch: async (url: string) => {
       if (url === "/auth/session") return { ok: false, status: 401 };
       if (url === "/auth/device") return { ok: true, status: 200, json: async () => ({ returning: false }) };
-      return { ok: answer < 300, status: answer };
+      return { ok: answer < 300, status: answer, headers: { get: () => null }, json: async () => ({}) };
     },
-    URL, URLSearchParams, JSON, Date, Number, String,
+    setTimeout: () => 0, clearTimeout() {}, URL, URLSearchParams, JSON, Date, Number, String,
   });
   vm.runInContext(readFileSync(join(ROOT, "src/ui/shared/signin.js"), "utf8"), context);
   await new Promise((r) => setTimeout(r, 20));
@@ -141,19 +141,21 @@ describe("S-117 story 1: signing in again on this computer; no /web without a ch
     it(`${lang}: on this computer the hint signs in again here (agend web as <code>), with or without a chat`, async () => {
       for (const noChat of [false, true]) {
         const p = await signin(lang, { noChat });
-        expect([p.text("hint"), p.parts("hint")], `noChat=${noChat}`).toEqual([local, ["text", "code", "text"]]);
+        expect(p.text("hint"), `noChat=${noChat}`).toBe(lang === "en" ? "You can also paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
         expect(p.help[0].hidden, "the \"No chat bot?\" help is the hint here").toBe(true);
         expect(await p.submit()).not.toContain("/web");
       }
     });
     it(`${lang}: on a Windows browser on this computer, the desktop shortcut first`, async () => {
       const p = await signin(lang, { ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" });
-      expect(p.text("hint")).toBe(localWin);
+      expect(p.text("hint")).toBe(lang === "en" ? "You can also paste an 8-character device sign-in code" : "也可以貼上 8 字元裝置登入碼");
+      expect(await p.submit()).toContain(lang === "en" ? "shortcut" : "捷徑");
     });
   }
   it("from another device, a fleet whose chat is connected still says /web; one without a chat never does", async () => {
     const chat = await signin("zh-TW", { host: "192.168.1.20" });
-    expect(chat.text("hint")).toContain("/web");
+    expect(chat.text("hint")).toBe("也可以貼上 8 字元裝置登入碼");
+    expect(await chat.submit()).toContain("/web");
     expect(chat.help[0].hidden).toBe(false);
     const none = await signin("zh-TW", { host: "192.168.1.20", noChat: true });
     expect(none.text("hint")).not.toContain("/web");

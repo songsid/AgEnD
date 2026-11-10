@@ -17,7 +17,7 @@
 <style>
   /* #1408 step 5: the app's tokens (tokens.css), light and dark like every page (theme.js before paint). */
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+  body { margin: 0; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: var(--s-4); padding-top: calc(var(--s-8) + var(--s-4));
          background: var(--bg); color: var(--text); font: var(--fw-regular) var(--fs-md)/var(--lh-md) var(--font-ui); -webkit-font-smoothing: antialiased; }
   main { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px 24px; }
   .brand { margin: 0 0 18px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
@@ -27,10 +27,10 @@
   input { width: 100%; padding: 12px; font: 600 22px/1 var(--font-mono); letter-spacing: .18em; text-align: center;
           text-transform: uppercase; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); }
   input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
-  button { width: 100%; margin-top: 14px; padding: 12px; font: var(--fw-semibold) var(--fs-md) var(--font-ui); color: var(--on-accent); background: var(--accent-fill);
+  button { width: 100%; min-height: var(--tap); margin-top: 14px; padding: 12px; font: var(--fw-semibold) var(--fs-md) var(--font-ui); color: var(--on-accent); background: var(--accent-fill);
            border: 0; border-radius: var(--r-full); cursor: pointer; }
   button:hover:not(:disabled) { opacity: .88; }
-  button:disabled { opacity: .6; cursor: default; }
+  button:disabled { color: var(--text-2); background: var(--surface-2); opacity: 1; cursor: default; }
   button.secondary { margin-top: 10px; color: var(--text); background: transparent; border: 1px solid var(--border-strong); }
   #msg { min-height: 1.5em; margin-top: 14px; font-size: var(--fs-sm); color: var(--danger); }
   #msg.ok { color: var(--text-2); }
@@ -44,7 +44,16 @@
   .devqr { margin: 4px 0 8px; text-align: center; }
   .devqr svg { width: 168px; height: 168px; border-radius: var(--r-sm); border: 1px solid var(--border-strong); }
   .devqr p { margin: 8px 0 0; font-size: var(--fs-xs); color: var(--text-3); }
-  .hint { margin-top: 18px; font-size: var(--fs-xs); color: var(--text-3); }
+  .hint { margin: var(--s-2) 0 0; font-size: var(--fs-xs); color: var(--text-2); }
+  .signin-term { white-space: nowrap; }
+  #authHint { margin: var(--s-2) 0 0; color: var(--text-2); font-size: var(--fs-sm); }
+  #reachHelp { margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-2); }
+  #reachHelp summary { min-height: var(--tap); display: flex; align-items: center; color: var(--text-2); }
+  #reachHelp summary::before { content: "▸"; margin-right: var(--s-2); }
+  #reachHelp[open] summary::before { content: "▾"; }
+  #reachHelp ul { padding-left: var(--s-5); margin: var(--s-2) 0; }
+  #reachHelp li { margin: var(--s-2) 0; }
+  @media (max-width: 899px) { body { padding-top: var(--s-7); } }
   .hint code, .help code { white-space: nowrap; font-family: var(--font-mono); }
   /* #1854: the operator's way in (no chat bot) — closed until asked for. */
   .help { margin-top: 8px; font-size: var(--fs-xs); color: var(--text-3); }
@@ -61,15 +70,17 @@
   </div>
   <form id="form" hidden autocomplete="off">
     <h1 data-i18n="title">Sign in to AgEnD</h1>
-    <p data-i18n="lead">Enter your sign-in code.</p>
-    <label for="code" data-i18n="label">One-time code</label>
+    <p data-i18n="lead">Enter your authenticator app’s 6-digit code to sign in automatically.</p>
+    <label for="code" data-i18n="label">Authenticator or device sign-in code</label>
     <input id="code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
-           autocorrect="off" spellcheck="false" maxlength="12" placeholder="XXXX-XXXX" required>
+           autocorrect="off" spellcheck="false" maxlength="32" placeholder="" aria-describedby="codeHint" required>
+    <div id="codeHint" class="hint" data-i18n="hint">You can also paste an 8-character device sign-in code</div>
     <button id="go" type="submit" data-i18n="submit">Sign in</button>
     <button id="resend" type="button" class="secondary" hidden data-i18n="resend">Send me a new code</button>
     <button id="another" type="button" class="secondary" hidden data-i18n="another">Sign in with another device</button>
     <div id="msg" role="alert" aria-live="polite"></div>
-    <div class="hint" data-i18n="hint">No code? Send /web in General, then press a sign-in button to get one.</div>
+    <p id="authHint" hidden></p>
+    <details id="reachHelp" class="help" hidden><summary id="reachTitle">How does my phone reach AgEnD?</summary><p id="reachLead"></p><ul><li id="reachWifi"></li><li id="reachPrivate"></li><li id="reachOutside"></li></ul></details>
     <details class="help"><summary data-i18n="nobot">No chat bot?</summary><p data-i18n="nobot_body">Ask the operator to run <code>agend web --code</code> on the AgEnD computer.</p></details>
     <details class="help"><summary data-i18n="safe">Page looks wrong after signing in?</summary><p data-i18n="safe_body">Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Web appearance.</p></details>
   </form>
