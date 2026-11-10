@@ -7,7 +7,8 @@ import { CLI_CAPS } from "./cli-caps.js";
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
  * package, the exact version, the folder and the checks. It happens only while that computer's owner has turned the "install" switch on THERE (the page can
- * read the switch, never change it). Only what AgEnD can pin and check (Claude Code, Codex, OpenCode); the other CLIs show their official command, and why for the computer's owner to run.
+ * read the switch, never change it). Only what AgEnD can pin and check: Claude Code, Codex and OpenCode (a pinned npm package) and Antigravity (one pinned download, #3521); the other CLIs
+ * show their official command, and why, for the computer's owner to run.
  */
 register("runtimeInstall", {
   en: { title: "Install a CLI", lead: "Installs the fixed version AgEnD pins, into this Runtime's own folder on that computer. No administrator, no PATH change, no vendor script.",
@@ -15,6 +16,8 @@ register("runtimeInstall", {
     switchOff: "The owner of that computer has not turned this on. On that computer, run:", switchOn: "Allowed by that computer's owner.", switchUntil: "Allowed until {0}.",
     installed: "Installed {0}", installedOther: "Installed {0} (not the version AgEnD installs)", notInstalled: "Not installed", install: "Install {0}", reinstall: "Install pinned {0}", installing: "Installing… this can take a few minutes",
     ask: "Install {0} {1} on {2}? It comes from the official npm registry, is checked against AgEnD's pinned hashes, the registry signatures and the publisher's Windows signature, and is kept in this Runtime's folder on that computer. The install is recorded there.",
+    notAudited: "Not yet verified by AgEnD: this version is pinned for its integrity (size, checksum, the publisher's signature), not because AgEnD has audited it.",
+    askDownload: "Install {0} {1} on {2}? AgEnD downloads that exact version from the vendor's own address (the vendor's install script is not run), checks its size, its checksum and the publisher's Windows signature, and keeps it in this Runtime's folder on that computer. If any of them does not match, nothing is installed. The install is recorded there.",
     confirm: "Install", done: "{0} {1} is installed.", failed: "The install did not finish: {2}", failedShort: "The install did not finish.", requestFailed: "Could not start the install: {0}",
     othersTitle: "Other CLIs", othersLead: "AgEnD does not install these. The computer's owner can run the vendor's own command in PowerShell on that computer.", needsAdmin: "needs an administrator" },
   "zh-TW": { title: "安裝 CLI", lead: "安裝 AgEnD 固定的版本，裝在那台電腦上 Runtime 自己的資料夾。不需要系統管理員，不改 PATH，也不執行廠商腳本。",
@@ -22,6 +25,8 @@ register("runtimeInstall", {
     switchOff: "那台電腦的主人還沒有開啟這個功能。請在那台電腦執行：", switchOn: "那台電腦的主人已允許。", switchUntil: "已允許，到 {0} 為止。",
     installed: "已安裝 {0}", installedOther: "已安裝 {0}（不是 AgEnD 會安裝的版本）", notInstalled: "尚未安裝", install: "安裝 {0}", reinstall: "安裝固定版本 {0}", installing: "安裝中…可能需要幾分鐘",
     ask: "要在 {2} 安裝 {0} {1} 嗎？它來自官方 npm registry，會比對 AgEnD 內建的雜湊、registry 簽章與發行者的 Windows 數位簽章，並放在那台電腦上 Runtime 自己的資料夾。那台電腦會留下安裝紀錄。",
+    notAudited: "尚未經 AgEnD 驗證：這個版本是因為能檢查它的完整性（檔案大小、雜湊、發行者的簽章）才鎖定的，不是 AgEnD 稽核過的版本。",
+    askDownload: "要在 {2} 安裝 {0} {1} 嗎？AgEnD 會從廠商自己的網址下載這個固定版本（不執行廠商的安裝腳本），比對檔案大小、雜湊與發行者的 Windows 數位簽章，並放在那台電腦上 Runtime 自己的資料夾。任何一項不符就不會安裝。那台電腦會留下安裝紀錄。",
     confirm: "安裝", done: "{0} {1} 已安裝。", failed: "安裝沒有完成：{2}", failedShort: "安裝沒有完成。", requestFailed: "無法開始安裝：{0}",
     othersTitle: "其他 CLI", othersLead: "AgEnD 不會安裝這些。電腦的主人可以在那台電腦的 PowerShell 執行廠商自己的指令。", needsAdmin: "需要系統管理員" },
 });
@@ -34,7 +39,6 @@ export const INSTALL_CLIS = Object.keys(CLI_CAPS).filter((id) => CLI_CAPS[id].ru
 /** Vendor commands, for the computer's owner to run: AgEnD never sends them anywhere. */
 export const OFFICIAL_COMMANDS = [
   { id: "grok", label: "Grok", command: "irm https://x.ai/cli/install.ps1 | iex", why: "whyGrok" },
-  { id: "antigravity", label: "Antigravity", command: "irm https://antigravity.google/cli/install.ps1 | iex", why: "whyAntigravity" },
   { id: "muse", label: "Muse", command: "irm https://dev.meta.ai/install.ps1 | iex", why: "whyMuse" },
   { id: "kiro", label: "Kiro", command: "irm https://cli.kiro.dev/install.ps1 | iex", administrator: true, why: "whyKiro" },
 ];
@@ -55,15 +59,13 @@ register("runtimeInstall", {
 register("runtimeInstall", {
   en: {
     whyGrok: "Why not here: Grok's Windows program is not signed by its publisher, so AgEnD could not check who built it, and the vendor script installs whatever version is current.",
-    whyAntigravity: "Why not here: the vendor script installs whatever version is current. A fixed, signed download exists, and AgEnD will install it from here once its Runtime can download one.",
-    whyKiro: "Why not here: Kiro's Windows installer is an MSI into Program Files, which needs an administrator; the Runtime never has one.",
     whyMuse: "Why not here: Muse has no package or file with a fixed version AgEnD could check: its launcher installs itself, and updates itself, from the vendor's server.",
+    whyKiro: "Why not here: Kiro's Windows installer is an MSI into Program Files, which needs an administrator; the Runtime never has one.",
   },
   "zh-TW": {
     whyGrok: "為什麼不能從這裡安裝：Grok 的 Windows 程式沒有發行者的數位簽章，AgEnD 無法確認是誰建置的；廠商腳本也是裝當下最新的版本。",
-    whyAntigravity: "為什麼不能從這裡安裝：廠商腳本裝的是當下最新的版本。有固定版本且已簽章的下載檔，等 Runtime 能下載之後，AgEnD 會從這裡安裝。",
-    whyKiro: "為什麼不能從這裡安裝：Kiro 在 Windows 的安裝程式是裝進 Program Files 的 MSI，需要系統管理員權限，而 Runtime 沒有。",
     whyMuse: "為什麼不能從這裡安裝：Muse 沒有 AgEnD 能確認的固定版本套件或檔案：它的啟動器會自己從廠商的伺服器安裝、自己更新。",
+    whyKiro: "為什麼不能從這裡安裝：Kiro 在 Windows 的安裝程式是裝進 Program Files 的 MSI，需要系統管理員權限，而 Runtime 沒有。",
   },
 });
 /** Ridge #3321 S09: a command to run on that computer — Runtime's labelled command card (runtime-install.css), with Copy. */
@@ -111,13 +113,13 @@ export function CliInstall({ machine, lease, onChanged }) {
   const allowed = switchState?.on === true;
   const row = cli => {
     const entry = (machine.inventory?.clis || []).find(item => item.id === cli.id && item.path);
-    const pinned = view?.catalog?.find(item => item.id === cli.id)?.version || "";
+    const pin = view?.catalog?.find(item => item.id === cli.id), pinned = pin?.version || "", byDownload = pin?.kind === "download", unaudited = pin?.pin === "integrity";
     // What the CLI printed is compared by its version number, whole; the path says nothing (the owner's own copy of the same version is just as installed).
     const found = entry ? versionNumber(entry.version) : null, upToDate = !!entry && !!pinned && found === pinned;
     const state = !entry ? text("notInstalled") : upToDate ? text("installed", found) : text("installedOther", entry.version || "?");
     const start = async () => {
       if (busy || !pinned) return;
-      if (!await confirmDialog({ message: text("ask", cli.label, pinned, machine.name), confirmLabel: text("confirm") })) return;
+      if (!await confirmDialog({ message: text(byDownload ? "askDownload" : "ask", cli.label, pinned, machine.name), confirmLabel: text("confirm") })) return;
       if (!lease.current()) return;
       setBusy(true); setError(""); setNote("");
       try {
@@ -129,7 +131,7 @@ export function CliInstall({ machine, lease, onChanged }) {
       } catch (e) { if (lease.current()) setError(text("requestFailed", e.message)); }
       finally { if (lease.current()) setBusy(false); }
     };
-    return html`<li key=${cli.id} data-cli=${cli.id}><strong>${cli.label}</strong><span class="note">${state}</span>
+    return html`<li key=${cli.id} data-cli=${cli.id}><strong>${cli.label}</strong><span class="note">${state}</span>${unaudited ? html`<span class="note runtime-cli-unaudited">${text("notAudited")}</span>` : null}
       ${upToDate ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
   };
   return html`<div class="runtime-cli-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>

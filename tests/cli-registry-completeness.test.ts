@@ -82,7 +82,6 @@ antigravity host.identity not_yet_built undecided
 antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
-antigravity runtime.install not_yet_built #3521
 antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
 antigravity runtime.accountRows not_yet_built undecided
@@ -153,7 +152,7 @@ describe("a CLI that leaves something out is caught", () => {
     const keepAlive: HostCliWith<"keepAlive">[] = ["claude-code", "codex"];
     // @ts-expect-error — Kiro's spec says no to keep-alive, so it is not one of the CLIs that have it
     const notKiro: HostCliWith<"keepAlive"> = "kiro-cli";
-    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex", "opencode"];
+    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex", "antigravity", "opencode"];
     // @ts-expect-error — Grok's spec says no to a Runtime install
     const notGrok: RuntimeCliWith<"install"> = "grok";
     expect([keepAlive, notKiro, runtimeInstall, notGrok]).toHaveLength(4);
@@ -247,7 +246,7 @@ describe("a CLI that leaves something out is caught", () => {
     specs.codex.runtime.signIn = yes({ argv: ["codex", "login"], profile: "named" });
     specs.codex.runtime.namedAccounts = notYetBuilt("undecided", "taken away to see the Runtime's sign-in notice it");
     specs.codex.runtime.accountRows = yes();
-    specs.opencode.runtime.install = yes({ kind: "npm" });
+    specs.opencode.runtime.install = yes({ kind: "npm", pin: "audited" });
     specs.opencode.runtime.provider = byDesign("taken away to see the install notice it");
     specs["claude-code"].runtime.namedAccounts = yes({ env: "SOMETHING_ELSE" });
     const problems = checkCliRegistry(specs);
@@ -345,6 +344,8 @@ describe("every \"yes\" has the behaviour it promises, every \"no\" has none", (
         expect(d.authProbe, id).toEqual(status?.argv ?? null);
       }
       expect(isInstallableCli(id), id).toBe(!!install);
+      // The registry says HOW it is installed (a pinned npm package, or one pinned download) and the Runtime's table must be that kind.
+      if (install) expect(INSTALLABLE_CLIS[id as keyof typeof INSTALLABLE_CLIS].kind, id).toBe(install.kind);
       expect(RUNTIME_SIGNIN_CLIS[id] ?? null, id).toEqual(signIn?.argv ?? null);
       expect(isCredentialProfileCli(id), id).toBe(!!named);
       if (named) expect(CREDENTIAL_PROFILE_CLIS[id as keyof typeof CREDENTIAL_PROFILE_CLIS], id).toBe(named.env);

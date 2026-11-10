@@ -14,14 +14,17 @@
  *     what we run (its `bin/claude.exe` stays a 500-byte placeholder until the postinstall links it, and hangs if run);
  *   - four checks, all required before anything is switched: npm's own integrity check, our pin of the registry sha512 of each package,
  *     `npm audit signatures`, then the Windows Authenticode signer of the native binary (its subject's CN and O, each compared whole, see signerMatches).
- * Kiro (an MSI into Program Files), Grok (an unsigned binary) and Antigravity (a vendor PowerShell script, no npm package) are NOT in this table on purpose:
- * the dashboard shows their official command and the computer's owner runs it. Why each one cannot be pinned the way these are: docs/dev/cli-registry.md.
+ * A second kind of entry has no npm package: a PINNED DOWNLOAD (Antigravity). Its exact version, the exact file address and the file's sha512 are in the same table. The Runtime
+ * downloads that one address with its own fixed PowerShell command (the address travels in the environment, never in the command text; the vendor's `install.ps1` is NOT run),
+ * checks the size and the sha512 of what landed against the pin, then runs the same Authenticode check, and only then switches it on. Any one of them failing refuses the install.
+ * Kiro (an MSI into Program Files), Grok (an unsigned binary) and Muse (a launcher that installs itself) are NOT in this table on purpose:
+ * the dashboard shows their official command and why, and the computer's owner runs it. Why each one cannot be pinned the way these are: docs/dev/cli-registry.md.
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
 import { spawn as nodeSpawn } from "./child-process.js";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type BigIntStats } from "node:fs";
+import { chmodSync, createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type BigIntStats } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ProcessNotConfirmedEnded, killTree } from "./runtime-signin.js";
@@ -42,20 +45,26 @@ export const managedCliRoot = (pairingDirectory: string): string => join(pairing
 
 /** The CLIs this Runtime installs (cli-registry.ts: `runtime.install`); the table below must have a pinned entry for each, and for no other. */
 export type InstallableCliId = RuntimeCliWith<"install">;
-export interface InstallableCli {
+interface InstallableBase {
   id: InstallableCliId;
-  /** The package to install and the exact version, never "latest". Its hashes below belong to exactly this version. */
-  spec: string; version: string;
-  /** Registry sha512 of each package that lands, by node_modules path inside the install folder. */
-  integrity: Readonly<Record<string, string>>;
+  /** The exact version, never "latest". Everything pinned in the entry belongs to exactly this version. */
+  version: string;
   /** Where the runnable file is, relative to the install folder, and who must have signed it. */
   native: { path: string; signer: ExpectedSigner };
 }
+/** An npm package and the registry's sha512 of every package that lands, by node_modules path inside the install folder. */
+export interface NpmInstallableCli extends InstallableBase { kind: "npm"; spec: string; integrity: Readonly<Record<string, string>> }
+/**
+ * A single file at one exact address (the vendor's own versioned, immutable file): its size and sha512 (lower-case hex) are pinned. It is saved as `native.path` inside the install
+ * folder. The address is ours; the server and the page never supply one.
+ */
+export interface DownloadInstallableCli extends InstallableBase { kind: "download"; url: string; bytes: number; sha512: string }
+export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 /** The certificate subject's CN and O that must both be exactly this (not a prefix, not a pattern). */
 export interface ExpectedSigner { cn: string; o: string }
-export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>> = Object.freeze({
+export const INSTALLABLE_CLIS = Object.freeze({
   "claude-code": {
-    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.316",
+    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.316",
     integrity: {
       "node_modules/@anthropic-ai/claude-code": "sha512-i3BpzyDkcCPnsa0CSkWgxGPs7WMsyqDkxkqT0SDxyEC5XMIxEmcUmluWRHG9VSeBY8Vyv+l9X34JvJ/Bj54nBQ==",
       "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-qs/GOpsQmgWECHVTpqUfTg33BaWoaH7CNOZQlOSqXbBOYst6YL1OqdutE12JsXg096NqGaE7vb5eFa6ZynOIKw==",
@@ -63,18 +72,28 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", spec: "@openai/codex", version: "0.165.0",
+    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.165.0",
     integrity: {
       "node_modules/@openai/codex": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
       "node_modules/@openai/codex-win32-x64": "sha512-f5LMyugPSnAovnTnR1N+SNHSTfWZ+ym5A4H3zZHz/zhuMGMGZD8IxUdlSUlEbiENYyPXrJ8G3Jh+CLyzTfQB6Q==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
+  // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
+  // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json, read 2026-11-09: version 1.5.3, this url, this sha512). Measured: the file is 225159320
+  // bytes, its sha512 equals the manifest's, `Get-AuthenticodeSignature` says Valid with the subject CN=Google LLC, O=Google LLC, and `agy.exe --version` prints 1.5.3 without the vendor's
+  // `install` step (which only edits PATH and shell aliases, and so is not run). Windows x64 only: no arm64 pin has been measured. The CLI updates itself afterwards; the pin governs the first install.
+  antigravity: {
+    id: "antigravity", kind: "download", version: "1.5.3",
+    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.3-6604829099950080/windows-x64/cli_windows_x64.exe", bytes: 225159320,
+    sha512: "b282c10ca3266078806d7bcae66db8ec0c6e2953ee6e62de1da6499182d24c02fffa8a74c620817bd35b15cf5f5a18287fb1ab30bcb9c7a67592c248696ed909",
+    native: { path: "agy.exe", signer: { cn: "Google LLC", o: "Google LLC" } },
+  },
   // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64
   // builds (they share os/cpu): the AVX2 one and the `-baseline` one for CPUs without AVX2; all three are pinned. The `-baseline` build is the one that runs: it works on every x64
   // CPU (OpenCode's own postinstall picks by AVX2, which a `--ignore-scripts` install does not run). Both binaries carry the same Authenticode signature (measured 2026-11-09).
   opencode: {
-    id: "opencode", spec: "opencode-ai", version: "1.19.5",
+    id: "opencode", kind: "npm", spec: "opencode-ai", version: "1.19.5",
     integrity: {
       "node_modules/opencode-ai": "sha512-tEqMvQahfhdDj8vceYpXtoIrvjPXm5XRfetWnPN5YISueU7adNx9JcUA3zZ+2GKuDVgDpGdQe1ZLtCZDjqodvA==",
       "node_modules/opencode-windows-x64": "sha512-xCVbrA8A/qQTAdBIKyhK5tx3/mcq18yF82Mi8phry0MJb2631nnnpxF9m6FFfWAVHyer4qFGrO7hbWXesHQ1Gg==",
@@ -82,7 +101,7 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
     },
     native: { path: "node_modules/opencode-windows-x64-baseline/bin/opencode.exe", signer: { cn: "Anomaly Innovations, Inc https://anoma.ly/", o: "Anomaly Innovations, Inc https://anoma.ly/" } },
   },
-});
+} satisfies Record<InstallableCliId, InstallableCli>);
 /**
  * A certificate subject as Windows prints it (`CN="Anthropic, PBC", O="Anthropic, PBC", L=..., C=US`) as a list of [type, value]. A value is either plain
  * (up to the next comma; `\\` escapes the next character) or in double quotes (a comma inside is part of the value, `""` is one quote). Anything it cannot
@@ -170,13 +189,20 @@ export interface InstallDeps {
   gate?: () => void;
   /** How long to wait before trying again to release the lock when a release failed (default 1 s). Tests shorten it. */
   releaseRetryMs?: number;
+  /** Tests only: a pinned download entry with a small file in place of the real one (the real pin is hundreds of MB). Production never sets it; nothing from the server can. */
+  pins?: Partial<Readonly<Record<InstallableCliId, InstallableCli>>>;
 }
-/** What a child npm may see: the Windows basics and the user's proxy/certificate settings, nothing else (same idea as nativeCliEnvironment). */
-export function installEnvironment(source: NodeJS.ProcessEnv, cache: string, config?: NpmConfigFiles, prefix?: string): NodeJS.ProcessEnv {
+/** What any child of an install may see: the Windows basics and the user's proxy/certificate settings, nothing else (same idea as nativeCliEnvironment). */
+export function passThroughEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const keep = ["SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATH", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "USERNAME", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES",
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"];
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(source)) if (value !== undefined && keep.includes(key.toUpperCase())) env[key] = value;
+  return env;
+}
+/** What a child npm may see: the pass-through environment plus npm's own settings. */
+export function installEnvironment(source: NodeJS.ProcessEnv, cache: string, config?: NpmConfigFiles, prefix?: string): NodeJS.ProcessEnv {
+  const env = passThroughEnvironment(source);
   // The user's and the global `.npmrc` are replaced by one controlled file, and npm is told to install locally under `prefix`: a user `global=true`, `prefix=` or a scoped
   // registry in their own `.npmrc` must not move the install out of the pairing folder or send it elsewhere.
   return { ...env, npm_config_cache: cache, npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false", npm_config_registry: NPM_REGISTRY, npm_config_ignore_scripts: "true",
@@ -188,6 +214,18 @@ export interface NpmConfigFiles { user: string; global: string }
 const NPMRC_TEXT = `global=false\nregistry=${NPM_REGISTRY}\nignore-scripts=true\naudit=false\nfund=false\nupdate-notifier=false\n`;
 /** The same selections on the command line, which wins over every file and environment variable. */
 const npmLocalArgs = (config: NpmConfigFiles, prefix: string): string[] => ["--userconfig", config.user, "--globalconfig", config.global, "--global=false", "--prefix", prefix, "--registry", NPM_REGISTRY];
+/**
+ * The one command a pinned download runs, fixed text. The address and the file travel in the environment (AGEND_DOWNLOAD_URL / AGEND_DOWNLOAD_FILE), never in this text, and both come from
+ * the pin in the table. It is Windows PowerShell's own `Invoke-WebRequest`, so the computer's proxy and its certificate store (a company that inspects TLS) apply as they do for the
+ * user's own downloads. Nothing it fetched is run. What it saved is only believed after the Runtime has checked its size and sha512 against the pin and Windows has checked its signature.
+ */
+export const DOWNLOAD_COMMAND = "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }; "
+  + "try { Invoke-WebRequest -UseBasicParsing -Uri $env:AGEND_DOWNLOAD_URL -OutFile $env:AGEND_DOWNLOAD_FILE } catch { exit 1 }";
+/** sha512 of a file as lower-case hex, read as a stream (the download can be hundreds of MB). */
+export const sha512OfFile = (file: string): Promise<string> => new Promise((done, fail) => {
+  const hash = createHash("sha512"), stream = createReadStream(file);
+  stream.on("data", part => hash.update(part)); stream.on("error", fail); stream.on("end", () => done(hash.digest("hex")));
+});
 /**
  * Runs one program: no shell, output capped at 512 KiB. A child that has a pid has ended ONLY when its `close` has come (an `error` event can also mean it could
  * not be killed); only one that never started (no pid) has ended without it. On the timeout, the Runtime's stop or the output limit the whole process tree is killed
@@ -297,7 +335,7 @@ function localLockOptions(): NonNullable<InstallDeps["lockOptions"]> {
  */
 export async function installManagedCli(id: unknown, deps: InstallDeps): Promise<InstallResult> {
   if (!isInstallableCli(id)) throw new CliInstallError("install-failed", "This CLI cannot be installed from the dashboard");
-  const cli = INSTALLABLE_CLIS[id];
+  const cli = deps.pins?.[id] ?? INSTALLABLE_CLIS[id];
   const run = deps.run ?? defaultRun, report = deps.report ?? (() => {}), node = deps.nodePath ?? process.execPath, rename = deps.rename ?? renameSync;
   const fail = (reason: InstallFailure, message: string): never => { throw new CliInstallError(reason, message); };
   const folder = join(deps.root, id, cli.version), staging = `${folder}.staging`, old = `${folder}.old`;
@@ -307,7 +345,7 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   const present = managedCliExecutable(deps.root, id);
   if (present && present.version === cli.version) { report("ready"); return { version: cli.version, command: present.command }; }
   const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
-  if (!existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
+  if (cli.kind === "npm" && !existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
   mkdirSync(deps.root, { recursive: true, mode: 0o700 });
   const idDir = join(deps.root, id);
   const changed = (): CliInstallError => new CliInstallError("install-failed", "The Runtime's CLI folder was changed during the install, so it was stopped");
@@ -432,36 +470,67 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     admitFolders([deps.root, idDir]); contained();
     bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 }); staged = true;
     admitFolders([deps.root, idDir, staging]);
-    const config: NpmConfigFiles = { user: join(staging, "agend-user.npmrc"), global: join(staging, "agend-global.npmrc") };
-    writeFileSync(config.user, NPMRC_TEXT, { mode: 0o600 }); writeFileSync(config.global, NPMRC_TEXT, { mode: 0o600 });
-    const env = installEnvironment(deps.env ?? process.env, join(deps.root, ".npm-cache"), config, staging);
-    const npm = (args: string[]) => run(node, [npmCli, ...args, ...npmLocalArgs(config, staging)], { cwd: staging, env, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal, ...(deps.killWaitMs !== undefined ? { killWaitMs: deps.killWaitMs } : {}) });
-    report("installing");
-    contained(); writeFileSync(join(staging, "package.json"), '{"name":"agend-managed-cli","private":true,"version":"0.0.0"}\n');
-    boundary();
-    const installed = await npm(["install", `${cli.spec}@${cli.version}`, "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund"]);
-    stopped();
-    if (installed.overflow) fail("install-failed", "npm could not install the package (its output was far larger than expected)");
-    if (installed.code === null) fail("timed-out", "The install did not finish in time and was stopped");
-    if (installed.code !== 0) fail("install-failed", "npm could not install the package (see this computer's network and proxy settings)");
-    report("checking-integrity");
-    contained();
-    const lockfile = JSON.parse(readFileSync(join(staging, "package-lock.json"), "utf8")) as { packages?: Record<string, { integrity?: string; version?: string }> };
-    for (const [path, expected] of Object.entries(cli.integrity)) {
-      const entry = lockfile.packages && Object.hasOwn(lockfile.packages, path) ? lockfile.packages[path] : undefined;
-      if (entry?.integrity !== expected) fail("integrity-mismatch", "A downloaded package is not the one this AgEnD version expects, so nothing was installed");
+    const file = join(staging, cli.native.path);
+    if (cli.kind === "npm") {
+      const config: NpmConfigFiles = { user: join(staging, "agend-user.npmrc"), global: join(staging, "agend-global.npmrc") };
+      writeFileSync(config.user, NPMRC_TEXT, { mode: 0o600 }); writeFileSync(config.global, NPMRC_TEXT, { mode: 0o600 });
+      const env = installEnvironment(deps.env ?? process.env, join(deps.root, ".npm-cache"), config, staging);
+      const npm = (args: string[]) => run(node, [npmCli, ...args, ...npmLocalArgs(config, staging)], { cwd: staging, env, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal, ...(deps.killWaitMs !== undefined ? { killWaitMs: deps.killWaitMs } : {}) });
+      report("installing");
+      contained(); writeFileSync(join(staging, "package.json"), '{"name":"agend-managed-cli","private":true,"version":"0.0.0"}\n');
+      boundary();
+      const installed = await npm(["install", `${cli.spec}@${cli.version}`, "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund"]);
+      stopped();
+      if (installed.overflow) fail("install-failed", "npm could not install the package (its output was far larger than expected)");
+      if (installed.code === null) fail("timed-out", "The install did not finish in time and was stopped");
+      if (installed.code !== 0) fail("install-failed", "npm could not install the package (see this computer's network and proxy settings)");
+      report("checking-integrity");
+      contained();
+      const lockfile = JSON.parse(readFileSync(join(staging, "package-lock.json"), "utf8")) as { packages?: Record<string, { integrity?: string; version?: string }> };
+      for (const [path, expected] of Object.entries(cli.integrity)) {
+        const entry = lockfile.packages && Object.hasOwn(lockfile.packages, path) ? lockfile.packages[path] : undefined;
+        if (entry?.integrity !== expected) fail("integrity-mismatch", "A downloaded package is not the one this AgEnD version expects, so nothing was installed");
+      }
+      report("checking-signatures");
+      boundary();
+      const audited = await npm(["audit", "signatures"]);
+      stopped();
+      if (audited.overflow) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
+      if (audited.code === null) fail("timed-out", "The install did not finish in time and was stopped");
+      if (audited.code !== 0) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
+    } else {
+      // A pinned download: our own fixed command saves the one file at the pinned address; nothing it saved is run. Its size, then its sha512, then its signature (below) must all be the pin's.
+      const env = passThroughEnvironment(deps.env ?? process.env);
+      const system = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
+      report("installing");
+      boundary();
+      // A server that keeps sending past the pinned size is stopped as soon as the file is longer than the pin, not when the deadline comes.
+      const oversize = new AbortController();
+      const watch = setInterval(() => { try { if (statSync(file).size > cli.bytes) oversize.abort(); } catch { /* not there yet */ } }, 1000);
+      watch.unref?.();
+      let downloaded: Awaited<ReturnType<typeof run>>;
+      try {
+        downloaded = await run(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", DOWNLOAD_COMMAND],
+          { cwd: staging, env: { ...env, AGEND_DOWNLOAD_URL: cli.url, AGEND_DOWNLOAD_FILE: file }, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal: AbortSignal.any([signal, oversize.signal]), ...(deps.killWaitMs !== undefined ? { killWaitMs: deps.killWaitMs } : {}) });
+      } finally { clearInterval(watch); }
+      stopped();
+      if (oversize.signal.aborted) fail("integrity-mismatch", "The download is larger than the file this AgEnD version expects, so it was stopped and nothing was installed");
+      if (downloaded.overflow) fail("install-failed", "The download could not be completed (its output was far larger than expected)");
+      if (downloaded.code === null) fail("timed-out", "The install did not finish in time and was stopped");
+      if (downloaded.code !== 0) fail("install-failed", "The download could not be completed (see this computer's network, proxy and certificate settings)");
+      report("checking-integrity");
+      contained();
+      let landed: BigIntStats | undefined;
+      try { landed = lstatSync(file, { bigint: true }); } catch { /* checked below */ }
+      if (!landed || !landed.isFile() || landed.isSymbolicLink()) fail("install-failed", "The download did not produce the expected file");
+      if (Number(landed!.size) !== cli.bytes) fail("integrity-mismatch", "The downloaded file is not the one this AgEnD version expects (its size differs), so nothing was installed");
+      boundary();
+      if (await sha512OfFile(file) !== cli.sha512) fail("integrity-mismatch", "The downloaded file is not the one this AgEnD version expects (its checksum differs), so nothing was installed");
+      stopped();
     }
-    report("checking-signatures");
-    boundary();
-    const audited = await npm(["audit", "signatures"]);
-    stopped();
-    if (audited.overflow) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
-    if (audited.code === null) fail("timed-out", "The install did not finish in time and was stopped");
-    if (audited.code !== 0) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
     report("checking-publisher");
     contained();
-    const file = join(staging, cli.native.path);
-    if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", "The package did not contain the expected program");
+    if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", cli.kind === "download" ? "The downloaded file is no longer in place after the checks, so nothing was installed" : "The package did not contain the expected program");
     boundary();
     const signer = await (deps.signerOf ?? ((f, s) => windowsSignerOf(f, run, s, deps.killWaitMs)))(file, signal);
     stopped();

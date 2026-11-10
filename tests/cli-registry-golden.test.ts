@@ -156,8 +156,13 @@ describe("the Windows Runtime's lists, as they were", () => {
     expect(RUNTIME_SIGNIN_CLIS).toEqual({ "claude-code": ["claude", "auth", "login"] });
     expect(Object.isFrozen(RUNTIME_SIGNIN_CLIS)).toBe(true);
     expect(CREDENTIAL_PROFILE_CLIS).toEqual({ "claude-code": "CLAUDE_CONFIG_DIR" });
-    expect(Object.keys(INSTALLABLE_CLIS)).toEqual(["claude-code", "codex", "opencode"]);
-    expect(runtimeIds("install")).toEqual(["claude-code", "codex", "opencode"]);
+    expect(Object.keys(INSTALLABLE_CLIS)).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
+    expect(runtimeIds("install")).toEqual(["claude-code", "codex", "antigravity", "opencode"]);
+    // What each pin vouches for, written out (the page says "Not yet verified by AgEnD" only for `integrity`): the npm CLIs are pinned to audited releases; Antigravity's download is pinned for its
+    // integrity only (the vendor serves just its newest build, and the CLI updates itself afterwards — 2026-11-10 decision).
+    expect(Object.fromEntries(runtimeIds("install").map(id => [id, [runtimeFacts(id, "install")!.kind, runtimeFacts(id, "install")!.pin]]))).toEqual({
+      "claude-code": ["npm", "audited"], "codex": ["npm", "audited"], "antigravity": ["download", "integrity"], "opencode": ["npm", "audited"],
+    });
     expect(runtimeIds("signIn")).toEqual(["claude-code"]);
     expect(runtimeFacts("claude-code", "signIn")).toMatchObject({ argv: ["claude", "auth", "login"], profile: "named" });
     expect(runtimeIds("identity")).toEqual(["claude-code"]);
@@ -192,7 +197,7 @@ describe("the dashboard scripts' lists, as they were", () => {
 
   it("an agent's settings offer an account choice for these CLIs, and the Runtime page lists these CLIs to install", () => {
     expect(ids(c => c.namedAccounts)).toEqual(["claude-code", "codex", "kiro-cli"]);
-    expect(INSTALL_CLIS).toEqual([{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }, { id: "opencode", label: "OpenCode" }]);
+    expect(INSTALL_CLIS).toEqual([{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }, { id: "antigravity", label: "Antigravity" }, { id: "opencode", label: "OpenCode" }]);
   });
 
   it("asks about a name that is not a CLI and gets nothing, whatever the name", () => {

@@ -27,7 +27,7 @@ export const CODEX_SPEC = {
       permission: "os-sandbox", permissionNote: "Uses Codex's native read-only or workspace-write sandbox. Approval policy is unchanged.",
       promptTransport: "stdin-text", modelProbe: null, rank: 0,
     }),
-    install: yes({ kind: "npm" }),
+    install: yes({ kind: "npm", pin: "audited" }),
     signIn: notYetBuilt("#3212", "Named accounts on a computer wait for the Codex part of #3212 (its PR 4); only Claude Code is signed in from the dashboard there."),
     namedAccounts: notYetBuilt("#3212", "The Runtime's profile folders are Claude Code's only (CLAUDE_CONFIG_DIR); Codex waits for #3212 PR 4."),
     accountRows: notYetBuilt("#3212", "Accounts shows a computer's Claude Code accounts only; Codex waits for #3212 PR 4."),

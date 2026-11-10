@@ -24,10 +24,11 @@ export const ANTIGRAVITY_SPEC = {
       permission: "native-policy", permissionNote: "Uses the native CLI permission policy. Plan mode and terminal sandboxing do not guarantee read-only workspace access.",
       promptTransport: "stdin-json", modelProbe: ["models"], rank: 2,
     }),
-    // AGEND-133 (#3521), measured 2026-11-09: there is no npm package (`agy` / `antigravity-cli` on npm are not Google's), but the vendor script downloads a versioned, immutable file named by a
+    // AGEND-135 (#3521), measured 2026-11-09: there is no npm package (`agy` / `antigravity-cli` on npm are not Google's), but the vendor script downloads a versioned, immutable file named by a
     // manifest (https://storage.googleapis.com/antigravity-public/antigravity-cli/<version>/windows-x64/cli_windows_x64.exe, manifest `sha512`), and that file IS Authenticode-signed
-    // (Google LLC, status Valid; its sha512 matches the manifest). A pinned download (exact URL + sha512 + signer) meets Part 3b; it needs a download step the Runtime does not have yet.
-    install: notYetBuilt("#3521", "A pinned, signed download exists (exact versioned URL, sha512, Google LLC signature) but the Runtime has no download step yet; until then the dashboard shows the official command for the computer's owner."),
+    // (Google LLC, status Valid; its sha512 matches the manifest). The Runtime pins the exact URL, size and sha512, downloads that one file itself (the vendor script is not run), checks all
+    // of them, then the signer, and refuses on any mismatch (runtime-cli-install.ts, `kind: "download"`). Windows x64 only.
+    install: yes({ kind: "download", pin: "integrity" }),
     signIn: notYetBuilt("undecided", "Antigravity signs in as the computer's own login, with no profile; not built on this registry yet."),
     namedAccounts: toVerify("Whether `agy` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "No row per computer for Antigravity's own login yet."),

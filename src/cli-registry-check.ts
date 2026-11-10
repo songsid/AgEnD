@@ -37,7 +37,7 @@ const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> =
     name: text, company: text, binaryNames: words(1), supports: supportsShape, readOnlySupport: bool, permission: oneOf("os-sandbox", "read-tools", "native-policy"),
     permissionNote: text, promptTransport: oneOf("stdin-text", "stdin-json", "file"), modelProbe: orNull(words(1)), "reason?": text, rank: int,
   },
-  "runtime.install": { kind: oneOf("npm") },
+  "runtime.install": { kind: oneOf("npm", "download"), pin: oneOf("audited", "integrity") },
   "runtime.signIn": { argv: words(1), profile: oneOf("named") },
   "runtime.namedAccounts": { env: envName },
   "runtime.accountRows": {},

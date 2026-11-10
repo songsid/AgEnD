@@ -59,6 +59,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("only a local administrator session; a header token, guest, public link, outside admin or no one gets nothing and nothing is sent", async () => {
     for (const kind of ["token", "guest", "gateway", "remote-admin", "none"] as Kind[]) {
       expect((await ask(INSTALL, "POST", kind, { cli: "codex" })).status, kind).toBe(403);
+      expect((await ask(INSTALL, "POST", kind, { cli: "antigravity" })).status, kind).toBe(403);
       expect((await ask(SETUP, "GET", kind)).status, kind).toBe(403);
     }
     expect(calls).toEqual([]);
@@ -66,7 +67,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("a local administrator reads the computer's switches from the computer, and the audit name is an opaque session handle", async () => {
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200);
-    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }, { id: "opencode", version: "1.19.5" }] });
+    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.316", kind: "npm", pin: "audited" }, { id: "codex", version: "0.165.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }] });
     expect(calls[0]).toMatchObject({ operation: "accounts.switches", payload: {} });
     const install = await ask(INSTALL, "POST", "admin", { cli: "codex" });
     expect(install.status).toBe(202);
@@ -75,11 +76,16 @@ describe("install a CLI from the dashboard: who may ask", () => {
 });
 
 describe("install a CLI from the dashboard: what may be asked", () => {
-  it("only Claude Code or Codex, by id, with no other field", async () => {
-    for (const body of [{ cli: "grok" }, { cli: "kiro" }, { cli: "@evil/pkg" }, { cli: "codex@9" }, { cli: "constructor" }, {}, { cli: "codex", version: "9.9.9" }, { cli: "codex", argv: ["x"] }, { cli: 7 }, []]) {
+  it("only the CLIs the Runtime's table has, by id, with no other field", async () => {
+    for (const body of [{ cli: "grok" }, { cli: "muse" }, { cli: "kiro" }, { cli: "kiro-cli" }, { cli: "antigravity", url: "https://evil.example/agy.exe" }, { cli: "antigravity", sha512: "0".repeat(128) }, { cli: "antigravity", version: "9.9.9" }, { cli: "@evil/pkg" }, { cli: "codex@9" }, { cli: "constructor" }, {}, { cli: "codex", version: "9.9.9" }, { cli: "codex", argv: ["x"] }, { cli: 7 }, []]) {
       expect((await ask(INSTALL, "POST", "admin", body)).status, JSON.stringify(body)).toBe(400);
     }
     expect(calls).toEqual([]);
+  });
+  it("Antigravity is asked for by id alone: the Runtime is sent the id and the asker's handle, nothing else", async () => {
+    const install = await ask(INSTALL, "POST", "admin", { cli: "antigravity" });
+    expect(install.status).toBe(202);
+    expect(calls.filter(call => call.operation === "cli.install").map(call => call.payload)).toEqual([{ cli: "antigravity", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) }]);
   });
   it("a known computer only; the other methods are not routes", async () => {
     expect((await ask(`/ui/runtimes/machines/22345678-1234-4321-abcd-123456789012/cli-install`, "POST", "admin", { cli: "codex" })).status).toBe(404);
