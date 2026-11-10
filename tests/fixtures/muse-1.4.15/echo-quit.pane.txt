@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.15
+
+❯ hello echo
+
+◆ echo: hello echo
+
+To continue this session, run muse resume 01a1c599-5627-7ec1-af0a-5061d4fdcf7d
+EXITED=0
+rh@03eaecf94dd4:/home/u/work$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

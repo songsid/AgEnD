@@ -127,6 +127,12 @@ function stripSgr(s: string): string {
  * Muse empty-composer rotating hints. 1.4.12-R6909.1 catalog (offset 8596268)
  * plus two added in 1.4.14-R7309.1 (offsets 11216301 / 11216047). A prefix,
  * a suffix, or extra characters is typed input (#2520).
+ *
+ * #3588: the rest of the same feature-tip catalog. After a turn muse asks the
+ * model to pick ONE tip from this list ("You are picking one optional feature
+ * tip…") and draws it in the empty composer — the slash-command and key tips
+ * too (tests/fixtures/muse-1.4.15/tip-*.pane.txt, the same on 1.4.14). Without
+ * them a parked pane showing one read as a typed draft and never proved idle.
  */
 const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
   "Type @ to search and insert workspace file paths",
@@ -138,6 +144,20 @@ const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
   "Press Ctrl+O to expand collapsed tool output",
   "Ask to monitor a running build or log and get pinged on changes",
   "Ask to 'use a workflow' to fan out parallel agents on big tasks",
+  "Say 'use a workflow' to fan out agents on big tasks",
+  "/side asks a quick question without touching this thread",
+  "/fork branches the conversation from the latest point",
+  "/goal pins a session objective with a progress bar",
+  "/resume reopens a past session (--last for the latest)",
+  "/agent opens the subagent command center",
+  "/tasks shows workflows, subagents and terminals in one place",
+  "/loop 10m <prompt> schedules a recurring prompt",
+  "Ctrl+B sends the selected task to the background queue",
+  "/skills browses ready-made skills for repeatable procedures",
+  "/plugins marketplace installs new commands and skills",
+  "/effort adjusts reasoning depth vs speed",
+  "/usage shows this session's token usage",
+  "/export saves the conversation to a text file",
 ]);
 
 export type MusePlaceholderDebugRec = { text: string; sgr: string };
@@ -488,7 +508,9 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  * option, so like #1716 this is recognised whole and never answered here.
  * 1.4.7 draws the selection cursor as `⟩` on this prompt and on the #1716
  * quit menu (tests/fixtures/muse-1.4.7); the other rows of those blocks are
- * unchanged.
+ * unchanged. 1.4.15 (#3588) offers a third option on the escalated prompt —
+ * `2. Always allow outside the sandbox in this workspace: <cmd> (p)` — before
+ * No, which moves to `3.`; that shape is recognised too.
  */
 export const MUSE_APPROVAL_PROMPT = /^[ \t]*Would you like to run the following command\?[ \t]*$/m;
 const MUSE_APPROVAL_STAGE = /^[ \t]*Stage \d+\/\d+[ \t]*$/;
@@ -537,6 +559,11 @@ function museApprovalBlock(screen: string[], top: number, bottom: number): { hea
     if (options.length === 2) {
       if (!/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) continue;
       if (!/^[ \t]*[❯›⟩]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) continue;
+    } else if (/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) {
+      // #3588: 1.4.15's escalated prompt (tests/fixtures/muse-1.4.15/approval-escalated.pane.txt) adds an "always allow
+      // outside the sandbox" option between Yes and No.
+      if (!/^[ \t]*[❯›⟩]?[ \t]*2\. Always allow outside the sandbox in this workspace: .+ \(p\)[ \t]*$/.test(second)) continue;
+      if (!/^[ \t]*[❯›⟩]?[ \t]*3\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(options[2] ?? "")) continue;
     } else {
       if (!/^1\. Allow this stage once \(y\)[ \t]*$/.test(first)) continue;
       if (!/^[ \t]*[❯›⟩]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) continue;
