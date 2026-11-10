@@ -74,6 +74,9 @@ export function AccessOverview({ web = {}, hub, openTab, overPublicLink, active 
   const [shares, setShares] = useState(null), [machines, setMachines] = useState(null);
   const [ask, setAsk] = useState(null), [askClose, setAskClose] = useState(false), [linkNote, setLinkNote] = useState("");
   const { publicLink } = useStore(appStore);
+  // #3600: the status frame this page saw when its close went through. Until the next frame arrives (each frame is a new
+  // object), that frame still says "open" for a link that is already closed: it is shown as closed, at once.
+  const [closedFrame, setClosedFrame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const load = async () => {
@@ -98,14 +101,16 @@ export function AccessOverview({ web = {}, hub, openTab, overPublicLink, active 
   };
   // The link's state: the shell's status frame (every fleet; a tab from before S-120 has none — then /ui/outside's).
   const pub = web.public_link || {};
-  const framed = publicLink && publicLink.state !== "closed" ? { ...publicLink, quick: !pub.hostname } : null;
+  const framed = publicLink && publicLink.state !== "closed" && publicLink !== closedFrame ? { ...publicLink, quick: !pub.hostname } : null;
   const link = framed || (outside && outside.link) || null;
   // A web-only fleet's outside link is the owner's switch (#3008): closed there, not here (the route answers 409).
   const outsideOwned = !!(link && outside && outside.webOnly && outside.outside);
   const closeLink = async () => {
     setBusy(true);
+    const seen = publicLink;
     const r = await api("/ui/public-link/close", { method: "POST", body: "{}" });
     setBusy(false); setAskClose(false);
+    if (r.ok && r.body && r.body.closed === true) setClosedFrame(seen);   // only a close that happened; a refusal changes nothing
     setLinkNote(r.ok ? to("closed") : r.body && r.body.error === "outside_link" ? to("outsideOwned") : to("closeFailed"));
     load();
   };
