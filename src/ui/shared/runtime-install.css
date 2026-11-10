@@ -50,3 +50,6 @@
 .runtime-pending-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s-3); margin: 0 0 var(--s-4); padding: var(--s-2) 0 var(--s-2) var(--s-3); --lbar-color: var(--warn); --lbar-inset: 0; font-size: var(--fs-sm); color: var(--text); }
 .runtime-same-name { --lbar-color: var(--warn); --lbar-inset: 0; padding-left: var(--s-3); color: var(--text-2); }
 @media (max-width: 600px) { .runtime-open-policy { min-height: var(--tap); } }
+/* AGEND-154 (Prism P2-3 on #3552): the Install / Update buttons of a paired computer's CLI list (.btn.btn-sm = 30px) are phone tap targets — 44px high and wide (the house --tap), on the same
+   breakpoints as the shared phone rules. Here, not only in app.css, so a tab that kept an older app.css still gets them (this file is linked by panel-runtimes.js itself). Tokens only: no inline style. */
+@media (max-width: 899px), (pointer: coarse) { .runtime-cli-install-list li .btn { min-height: var(--tap, 44px); min-width: var(--tap, 44px); } }
