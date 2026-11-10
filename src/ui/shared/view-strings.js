@@ -36,7 +36,7 @@ register("view", {
   "usageUpdated": "updated",
   "usageUpdatedAgo": "Updated {age} ago",
   "usageUpdatedJustNow": "Updated just now",
-  "usageRefreshing": "Refreshing…",
+  "usageRefreshing": "Updating…",
   "usageRefreshFailed": "Couldn't refresh — showing the last numbers",
   "usageMinutes": "{n} min",
   "usageHours": "{n} h",

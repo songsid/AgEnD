@@ -376,7 +376,7 @@ export function UsageBody({ owner }) {
       ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g}
           line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} onExpand=${() => toggleOne(key(p))} />`)} />`)
         : providers.map((p, i) => card(p, i))}
-      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${failed ? html` · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
+      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${failed ? html`${updatedAgo(data.fetchedAt)} · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html`<span class="u-refreshing">${tn("usageRefreshing")}</span>` : updatedAgo(data.fetchedAt)}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }
