@@ -1,0 +1,51 @@
+{
+  "88bdd0ee4c51573322235281c1347c7da8c64f3a59efad58bca97d011103f2bc": [
+    "changes/2851-hub-shell-listener.md"
+  ],
+  "a7c717b66c2046265dec85304f2ae327aada48188da0d900f5672d9b955aca60": [
+    "changes/2851-hub-shell-listener.zh-TW.md"
+  ],
+  "2aef190a13d2db0037a2161a97bfee8432623f2883083d39bb6d4b6dfa372212": [
+    "docs/evidence/hub-shell-port-m2851/README.md"
+  ],
+  "c42f48dd627b840a855e3b2cd494d7c53f49453200def086ac1111b80909ea61": [
+    "docs/evidence/hub-shell-port-m2851/accept.mjs"
+  ],
+  "fc78d2760dca30dab2749623d3787bbff4877c9a6c9f06018bf08ace84a8b344": [
+    "docs/evidence/hub-shell-port-m2851/blocked-control.log"
+  ],
+  "e0bcd702600df5482506e55585a9ab418804d32599cc2ab105a9c57332f2d465": [
+    "docs/evidence/hub-shell-port-m2851/candidate-blocked-range.log"
+  ],
+  "90f70ee17d5d745ef50e86a9032fd4c36695944b5bb900908dfca2a96e7f21dd": [
+    "docs/evidence/hub-shell-port-m2851/candidate-result.json",
+    "docs/evidence/hub-shell-port-m2851/control-result.json"
+  ],
+  "454722db4d011b873a1a4b6538e809c3146a5cebc556f3006ee3fda6cf4ee322": [
+    "docs/evidence/hub-shell-port-m2851/checks.json"
+  ],
+  "37feb763199c054c842e18a74f4470100335fabac2fcd4cfd04841b30ab8fc3a": [
+    "docs/evidence/hub-shell-port-m2851/ci-attempt1-excerpt.log"
+  ],
+  "e3c0272c3e9dbb622d091edcef2c1b2f81a57a8fbd5e06f39c149383f0a3eb7b": [
+    "docs/evidence/hub-shell-port-m2851/control.log"
+  ],
+  "f055b2ab0613735c515848dc352ab71715d0c35c361de13d4aec6c4eff599432": [
+    "docs/evidence/hub-shell-port-m2851/mutate-listener.py"
+  ],
+  "de06b15e4d1c552c2b9173435ad59a691feb927ec945f541b47424919d9f7838": [
+    "docs/evidence/hub-shell-port-m2851/mutations.json"
+  ],
+  "5a8fd7057df3c33cfcc1c04f90a4ce89d7f1329b6371b5d38defafd226081bfb": [
+    "docs/evidence/hub-shell-port-m2851/receipt.json"
+  ],
+  "baaa6ab4f4c3decb139a19707dd29e22b3296dd21b1328169784ec6062f62918": [
+    "scripts/manual/smoke-fixture/listen-loopback.mts"
+  ],
+  "01dd7fc7d84c081729f83b5e3882e9366eabeb70c2e50c2a0d06cc03867427c4": [
+    "scripts/manual/smoke/smoke-hub-shell-gate.mts"
+  ],
+  "a4c02f091e2e45e3baaf81f38d1ee1d16db7769a75795c5af45f2b45f6c35beb": [
+    "tests/hub-shell-listener-2851.test.ts"
+  ]
+}

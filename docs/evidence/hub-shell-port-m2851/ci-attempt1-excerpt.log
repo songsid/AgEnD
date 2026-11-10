@@ -1,0 +1,5 @@
+2026-11-10T14:52:55.7764759Z Error: listen EADDRINUSE: address already in use 127.0.0.1:48748
+2026-11-10T14:52:55.7768163Z   code: 'EADDRINUSE',
+2026-11-10T14:52:55.7769096Z   port: 48748
+2026-11-10T14:52:55.7769494Z Node.js v22.23.4
+2026-11-10T14:52:55.8182889Z ##[error]Process completed with exit code 1.

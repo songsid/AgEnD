@@ -1,0 +1,16 @@
+{
+  "focused": {
+    "passed": 122,
+    "failed": 0,
+    "skipped": 0,
+    "files": 6
+  },
+  "testTypesExit": 0,
+  "scope": "Focused checks on the matching author source before its source commit; browser comparison uses pinned committed source and verifies protected inputs clean. No full unit suite or full UI matrix claim.",
+  "mainInspected": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "mainHasHubShellStep": false,
+  "pinnedListenerRecheck": {
+    "passed": 4,
+    "failed": 0
+  }
+}
