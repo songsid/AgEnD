@@ -102,7 +102,7 @@ async function read(lease, path) {
 
 let loads = 0;
 /** Everything the panel shows, in the order the old page read it. Returns null if the lease ended meanwhile. */
-async function loadAll(lease) {
+export async function loadAll(lease) {
   const out = { schema: DEFAULT_SCHEMA };
   const schema = await read(lease, "/api/settings/schema");
   if (!lease.current()) return null;
@@ -739,7 +739,7 @@ export function ProfileCard({ embedded = false } = {}) {
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */
-const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.phase) || op.restart === "busy");
+export const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.phase) || op.restart === "busy");
 function dropSecrets(staged) { for (const c of staged.values()) if (c.connectionSecret) c.connectionSecret.secret = ""; }
 
 function renderDialog(d, ctx, close) {
@@ -753,7 +753,7 @@ function renderDialog(d, ctx, close) {
 }
 
 /** What the sections and dialogs work with: the data, and the ways to change it (staging, or a direct write). */
-function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra = {}) {
+export function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra = {}) {
   const { fleet, classic, schema } = data;
   const chs = channelsOf(fleet);
   const edit = (fn) => setData((d) => { const next = structuredClone(d); fn(next); return next; });
@@ -1553,7 +1553,7 @@ function Developer({ ctx }) {
  * #2347: the section's Save. Shown while anything is unsaved: how many changes, what they will cost, Discard and Save —
  * Save waits while a field is invalid ("Fix 1 field to save").
  */
-function PendingBar({ staged, busy, onApply, onDiscard, section }) {
+export function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
   // What Save will cost, one line each: a change that knows its own words (the shared agent settings: how many agents
   // restart) says them; any other says its impact label.
@@ -1580,7 +1580,7 @@ function PendingBar({ staged, busy, onApply, onDiscard, section }) {
 }
 
 /** The Apply in hand (the app's, settings-apply.js): its writes, its job, and a restart when one is needed. */
-function OperationCard({ op, schema }) {
+export function OperationCard({ op, schema }) {
   const [restarting, setRestarting] = useState(false);
   const busy = opBusy(op);                                 // nothing to dismiss while it, or its restart, runs
   const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);

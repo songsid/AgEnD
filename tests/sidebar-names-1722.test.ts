@@ -242,7 +242,7 @@ describe("the row: a star slot, the CLI on the avatar", () => {
   it("the ☆ is its own slot after the row link — never inside it, never placed over it", async () => {
     const pg = await app("/ui");
     const li = rowOf(pg, "agend-reviewer-t1").parentNode;
-    expect(li.children.map((c: any) => c.className.split(" ").find((k: string) => k === "inst" || k === "inst-star"))).toEqual(["inst", "inst-star"]);
+    expect(li.children.map((c: any) => c.className.split(" ").find((k: string) => k === "inst" || k === "inst-star" || k === "inst-gear"))).toEqual(["inst", "inst-star", "inst-gear"]);   // AGEND-161: the ⚙ to the agent's settings follows the ☆
     expect(rowOf(pg, "agend-reviewer-t1").querySelector(".inst-star")).toBeNull();
     expect(appCss).toMatch(/\.v-li \{ display: flex;/);
     const starRules = [...appCss.matchAll(/([^{}]*\.inst-star[^{}]*)\{([^}]*)\}/g)].map((m) => m[2]);

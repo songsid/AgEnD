@@ -90,7 +90,7 @@ describe("the instance switch: Chat · View · Log · Details", () => {
     answers = [ON()];
     const pg = await app("/ui/log/web-dev");
     expect(pg.root.querySelectorAll(".inst-switch a.seg-item").map((a: any) => [a.textContent, a.getAttribute("href"), a.getAttribute("aria-current") ?? null]))
-      .toEqual([["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", null], ["Log", "/ui/log/web-dev", "page"], ["Details", "/ui/fleet/agent/web-dev", null]]);
+      .toEqual([["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", null], ["Log", "/ui/log/web-dev", "page"], ["Details & settings", "/ui/fleet/agent/web-dev", null]]);
     // A row in the sidebar opens that instance's Log (Log → Log).
     expect(pg.root.querySelectorAll("#instanceList a.inst").map((a: any) => a.getAttribute("href"))).toContain("/ui/log/api-server");
   });

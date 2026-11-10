@@ -2,8 +2,9 @@ import { NativePaneRecovery } from "./native-pane-recovery.js";
 // #1523 N2 (§3.3, Q1 = B): Details — "the Fleet side of one instance", at /ui/fleet/agent/<name>. Behind the session
 // gate (/ui/js/). What it holds:
 // - runtime and recent activity (what Chat's details dialog showed, now a page);
-// - a read-only config summary — directory, binding, tags, description — with "Edit in Settings" (that agent's
-//   Settings dialog: Settings' own staged Apply and confirmations; nothing is edited here);
+// - a read-only config summary — directory, binding, tags, description — in the Overview;
+// - AGEND-161: "Details & settings" — the settings of that agent beside it, by category (agent-details-settings.js), with
+//   Settings' own staged Apply and confirmations;
 // - the instance's actions (⋯), carried over with their calls and confirmations, none new: start / restart / stop (Chat's
 //   ⋯), pause / wake (Settings' agent row). Deletion stays where it already lives (Chat's ⋯, Settings).
 // One read of /ui/instance/<name> when it opens (#1374: nothing recurring); the live status is the app's.
@@ -13,7 +14,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { navigate } from "/assets/app-nav.js";
-import { sectionPath } from "/assets/app-route.js";
+import { detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { modelText } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
@@ -27,7 +28,10 @@ import { toast } from "/assets/ui-toast.js";
 import "/assets/chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
-import { requestAgentSettings } from "./settings-request.js";
+import { Icon } from "/assets/ui-icons.js";
+import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, categoryLabel, categoryPath, useAgentSettings } from "./agent-details-settings.js";
+import "./agent-page-strings.js";
+import { pt } from "./agent-page-strings.js";
 
 export function DetailsPanel({ route, navKey }) {
   const app = useStore(appStore);
@@ -53,6 +57,15 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
   const body = useRef(null);
+  // AGEND-161: the category the address names (`?cat=`); none is Overview on a wide screen, the list of categories on a phone.
+  const [opened, setOpened] = useState(false);
+  const [dirty, setDirty] = useState(() => new Set());
+  const kind = agentKind(d, inst);
+  const cat = categoryFromSearch(kind);
+  const shownCat = cat || "overview";
+  useEffect(() => { if (d && cat && cat !== "overview") setOpened(true); }, [!!d, cat]);
+  const sess = useAgentSettings({ name, lease, enabled: opened, navKey });
+  const onDirty = (next) => setDirty((cur) => (cur.size === next.size && [...cur].every((c) => next.has(c)) ? cur : next));
   // Each read is numbered: only the latest one (on this page) may set what is shown — a Retry still on its way never
   // overwrites a newer answer, failed or not (#1561 review).
   const reads = useRef(0);
@@ -95,7 +108,8 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   // A ClassicBot room (classicBot.yaml) keeps Classic's split: its own Settings dialog, and only the actions Settings'
   // Classic rows have (pause / wake) — never the fleet agent's (#1561 review).
   const classic = !!(d && d.kind === "classic");
-  const editInSettings = () => { requestAgentSettings(name, classic ? "classic" : "agent"); navigate(sectionPath(classic ? "classic" : undefined)); };
+  // AGEND-161: the settings are this page's: its first category (a ClassicBot room has no basic info: its first is Runtime).
+  const editInSettings = () => navigate(categoryPath(name, classic ? "runtime" : "basic"));
   const st = inst.status;
   // Until its read is in, the page does not know which kind it is: no actions yet (only Edit is offered once known).
   const items = !d ? [] : classic ? [
@@ -157,9 +171,23 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
-  return html`<div data-effect-panel="details" class="panel p-details">
+  const actions = items.filter((i) => i && ["start", "restart", "stop", "pause", "wake"].includes(i.key));
+  const overview = html`<${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
+      <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}
+      ${actions.length ? html`<section class="card d-actions"><h3>${pt("actions")}</h3><div class="field-row">${actions.map((i) => html`<button key=${i.key} type="button" class="btn btn-sm" disabled=${i.disabled} onClick=${i.onSelect}>${i.label}</button>`)}</div>
+        <p class="note">${pt("actionsNote")}</p></section>` : null}`;
+  const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
+  return html`<div data-effect-panel="details" class="panel p-details p-settings" data-view=${cat ? "section" : "index"}>
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}><${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
-      <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}</div></div>
+    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty} />
+    <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
+      <a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span><span class="s-back-here">${categoryLabel(kind, shownCat)}</span></a>
+      <${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />
+      ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
+      <div class="s-section-layout" data-agent-category=${shownCat}>
+        <div class="ap-panel" id="ap-panel-overview" hidden=${shownCat !== "overview"}>${overview}</div>
+        ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
+      </div></div></div>
+    ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}
   </div>`;
 }

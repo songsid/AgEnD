@@ -169,7 +169,7 @@ describe("no style attribute (#1300): one attribute on the root, one custom prop
   // panel's scaled container — so a click changes it at once, with the panel still mounted and no navigation.
   it.each([
     ["Chat", "/ui/chat/web-dev", ".thread"],
-    ["Details", "/ui/fleet/agent/web-dev", ".p-details .panel-body"],
+    ["Details & settings", "/ui/fleet/agent/web-dev", ".p-details .panel-body"],
     ["Fleet", "/ui/fleet/org", ".p-fleet .panel-body"],
   ])("#1674: %s — Aa while it is mounted changes the size at once, on the container the stylesheet scales", async (_n, path, scaled) => {
     const pg = await app(path, { agend_text_size: "m", agend_view_fit: "0" });

@@ -100,6 +100,8 @@ async function app(path: string, opts: { matchNarrow?: boolean } = {}) {
 }
 /** A page load of `path`: the page before it gone first (unmounted, its globals restored). */
 async function reload(prev: AppPage, path: string) { await prev.unmount(); prev.restore(); mounted.splice(mounted.indexOf(prev), 1); return app(path); }
+/** The settings module is loaded when a category first opens (a dynamic import: real time in this harness). */
+const untilRead = async () => { for (let i = 0; i < 80 && !calls.includes("GET /api/settings/fleet/raw"); i++) await new Promise(r => setTimeout(r, 100)); };
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(6); };
 const route = async () => (await import("/assets/app-nav.js")).navStore.get().route;
 const sideLinks = (pg: AppPage) => pg.root.querySelectorAll(".side-nav a.side-row").map((a: any) => a.getAttribute("href"));
@@ -137,9 +139,9 @@ describe("the switch keeps the instance", () => {
   it("Chat and Details of web-dev: Chat | View | Details of web-dev, the current one marked; a reload of the URL keeps the view", async () => {
     const pg = await app("/ui/chat/web-dev");
     const want = (cur: string) => [["Chat", "/ui/chat/web-dev", cur === "chat" ? "page" : null], ["View", "/view/web-dev", cur === "view" ? "page" : null],
-      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Details", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
+      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Details & settings", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
     expect(sw(pg)).toEqual(want("chat"));
-    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Details");
+    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Details & settings");
     fire(d, "click", { button: 0 }); await settle(6);
     expect([await route(), sw(pg)]).toEqual([{ panel: "details", instance: "web-dev" }, want("details")]);
     const again = await reload(pg, "/ui/fleet/agent/web-dev");
@@ -213,10 +215,15 @@ describe("Details (Q1 = B)", () => {
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
-  it("Edit in Settings goes to Settings and asks it for that agent's dialog", async () => {
+  it("AGEND-161: Edit in Settings opens this page's Basic info — the agent's settings are on Details & settings, nothing asks Settings for a dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "agents" }, { name: "web-dev", kind: "agent" }]);
+    expect(calls.filter(c => c.includes("/api/settings/") && !c.includes("restart-pending"))).toEqual([]);   // the Overview alone reads no configuration (the shell's own restart check is not it)
+    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(12); await untilRead(); await settle(10);
+    expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "web-dev" }, "?cat=basic", null]);
+    expect(calls).toContain("GET /api/settings/fleet/raw");                         // read once, when a settings category first opens
+    expect(pg.root.querySelector(".p-details #ap-panel-basic #ag-dn")).not.toBeNull();
+    expect(pg.root.querySelector(".p-details #ap-panel-basic")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector(".p-details #ap-panel-runtime")?.hasAttribute("hidden")).toBe(true);
   });
   it("an unknown instance: not found, with no actions", async () => {
     const pg = await app("/ui/fleet/agent/nobody");
@@ -237,9 +244,72 @@ describe("View: the switch for a signed-in person, none for the anonymous reader
       viewStore.set({ loaded: true, error: null, roster: [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }] });
       await pg.mount(h(ViewPanel, { route: { panel: "view", instance: "web-dev" }, navKey: `view:web-dev|${viewOnly}` }));
       await settle(3);
-      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Details", "/ui/fleet/agent/web-dev", null]]]);
+      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Details & settings", "/ui/fleet/agent/web-dev", null]]]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
+  });
+});
+
+describe("AGEND-161: Details & settings", () => {
+  const navItems = (pg: AppPage) => pg.root.querySelectorAll(".p-details > .s-nav .seg-item").map((a: any) => [a.textContent.replace("●", "").trim(), a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
+  it("the categories are the shared Settings nav (Status / Settings groups, an icon before each item); no category is the phone's list", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    expect(pg.root.querySelector(".p-details")?.getAttribute("data-view")).toBe("index");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .s-nav-head").map((x: any) => x.textContent)).toEqual(["Status", "Settings"]);
+    expect(navItems(pg)).toEqual([["Overview", "/ui/fleet/agent/web-dev?cat=overview", "page"], ["Basic info", "/ui/fleet/agent/web-dev?cat=basic", null],
+      ["Runtime & model", "/ui/fleet/agent/web-dev?cat=runtime", null], ["Workspace & running", "/ui/fleet/agent/web-dev?cat=work", null],
+      ["Channels & status emojis", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null]]);
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .seg-item svg.icon").length).toBe(6);       // an icon in front of every item you can open
+    expect(pg.root.querySelector(".p-details .s-back")?.getAttribute("href")).toBe("/ui/fleet/agent/web-dev");
+    // The Overview keeps everything Details showed (read-only), and the ⋯ menu's actions.
+    expect(pg.root.querySelector("#ap-panel-overview")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector(".p-details .d-config")).not.toBeNull();
+    expect(pg.root.querySelectorAll(".p-details .d-actions button").map((b: any) => b.textContent.trim())).toEqual(["Restart instance", "Stop instance", "Pause"]);
+  });
+  it("an edit is staged at once (the Settings bar, a dot on its category), the draft stays when another category opens, and Discard puts it back", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=basic");
+    await untilRead(); await settle(12);
+    expect(pg.root.querySelector(".p-details")?.getAttribute("data-view")).toBe("section");
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+    const desc = pg.root.querySelector("#ag-desc"); desc.value = "Builds the site, faster"; fire(desc, "input"); await settle(8);
+    expect(pg.root.querySelector(".p-details > .s-pending")?.textContent).toContain("1 unsaved change");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(1);
+    expect(navItems(pg).filter((i: any) => i[0] === "Basic info")).toHaveLength(1);
+    await go("/ui/fleet/agent/web-dev?cat=work"); await settle(8);
+    expect(pg.root.querySelector("#ap-panel-work")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector("#ap-panel-basic")?.hasAttribute("hidden")).toBe(true);
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site, faster");              // kept, not drawn again from what is saved
+    expect(pg.root.querySelector(".p-details > .s-pending")).not.toBeNull();
+    // Discard: the forms start again from what is saved, nothing staged.
+    pg.root.querySelectorAll(".p-details > .s-pending .btn").find((b: any) => b.textContent.trim() === "Discard").click(); await settle(8);
+    await untilRead(); await settle(12);
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(0);
+  });
+  it("putting an edit back leaves nothing staged; a value that is not valid is staged as invalid (Save waits)", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=adv");
+    await untilRead(); await settle(12);
+    const cards = pg.root.querySelector("#ag-cards"); cards.value = "0"; fire(cards, "input"); await settle(8);
+    const bar = pg.root.querySelector(".p-details > .s-pending");
+    expect(bar).not.toBeNull();
+    expect(bar.querySelector(".btn-primary").disabled).toBe(true);
+    cards.value = "1"; fire(cards, "input"); await settle(8);
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+  });
+  it("a ClassicBot room: Overview, Runtime & model and Channels & replies only", async () => {
+    const pg = await app("/ui/fleet/agent/classic-ops-1?cat=channel");
+    await untilRead(); await settle(12);
+    expect(navItems(pg).map((i: any) => i[0])).toEqual(["Overview", "Runtime & model", "Channels & replies"]);
+    expect(pg.root.querySelector("#ap-panel-channel #cl-tp")).not.toBeNull();
+    expect(pg.root.querySelector("#ap-panel-runtime #cl-be")).not.toBeNull();
+  });
+  it("the sidebar's ⚙ goes to Basic info in one step, and the row itself still opens the chat", async () => {
+    const pg = await app("/ui/chat/web-dev");
+    const row = pg.root.querySelectorAll(".inst-nav .v-li").find((li: any) => li.querySelector(".inst-name")?.textContent === "web-dev");
+    expect(row.querySelector("a.inst").getAttribute("href")).toBe("/ui/chat/web-dev");
+    expect(row.querySelector("a.inst-gear").getAttribute("href")).toBe("/ui/fleet/agent/web-dev?cat=basic");
+    expect(row.querySelector("a.inst-gear").getAttribute("aria-label")).toBe("Settings of web-dev");
   });
 });
 
@@ -275,8 +345,10 @@ describe("#1561 review", () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1");
     expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
     expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "chat" }, { name: "classic-ops-1", kind: "classic" }]);   // #2347: ClassicBot is in Chat & connections
+    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(12); await untilRead(); await settle(10);
+    // AGEND-161: its settings are on this page too (a room has no basic info: it starts at Runtime & model).
+    expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "classic-ops-1" }, "?cat=runtime", null]);
+    expect(pg.root.querySelector(".p-details #ap-panel-runtime #cl-be")).not.toBeNull();
   });
   it("bound by default to the first connection says so; web only only when the fleet has no connection", async () => {
     const pg = await app("/ui/fleet/agent/api-server");
