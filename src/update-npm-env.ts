@@ -57,3 +57,19 @@ export function applyUpdateNpmBounds(env: NodeJS.ProcessEnv, configured: Map<str
   }
   return set;
 }
+
+/**
+ * M-2797 (rig): is the registry unreachable, by `npm ping`'s answer? `npm ping` asks the registry itself and never a
+ * cache: with the network gone, npm otherwise answers a version lookup from its stale cache, and the install then fails
+ * as "No matching version found" (ETARGET), which reads as anything but the network. Only a failure that IS the network
+ * (no name lookup, refused, reset, unreachable, a timeout) counts: a registry that does not implement ping (an error
+ * status, E404 and the like) or an npm that could not run says nothing, and the update goes on as before.
+ * Returns npm's own error code line for the message, or null.
+ */
+export function registryUnreachable(ping: { status: number | null; stderr?: string | null; error?: Error }): string | null {
+  if (ping.status === 0 || ping.error) return null;
+  const lines = String(ping.stderr ?? "").split("\n").map(l => l.trim()).filter(Boolean);
+  const code = lines.map(l => /^npm (?:ERR!|error) code (\S+)/i.exec(l)?.[1]).find(Boolean);
+  const network = /^(?:E(?:NOTFOUND|AI_AGAIN|TIMEDOUT|CONNREFUSED|CONNRESET|NETUNREACH|HOSTUNREACH|IDLETIMEOUT|CONNECTIONTIMEOUT|RESPONSETIMEOUT|TRANSFERTIMEOUT)|FETCH_ERROR)$/;
+  return code && network.test(code) ? `npm error code ${code}` : null;
+}

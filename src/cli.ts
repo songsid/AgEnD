@@ -1333,6 +1333,17 @@ program
       const { applyUpdateNpmBounds, npmBoundsQuery, parseNpmConfigGet } = await import("./update-npm-env.js");
       const asked = spawnSync("npm", npmBoundsQuery(), { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
       applyUpdateNpmBounds(process.env, asked.status === 0 ? parseNpmConfigGet(asked.stdout ?? "") : null);
+      // With the network gone npm answers the version lookup from its stale cache, and the install then fails as a version
+      // that does not exist. Ask the registry itself first (never a cache): unreachable → stop here, nothing changed.
+      const { registryUnreachable } = await import("./update-npm-env.js");
+      const unreachable = registryUnreachable(spawnSync("npm", ["ping"], { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "ignore", "pipe"] }));
+      if (unreachable) {
+        const message = `  ✗ Could not reach the update source (${unreachable}). Nothing was changed; the current version keeps running.`;
+        console.error(`\n${message}\n`);
+        setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
+        process.exitCode = 1;
+        return;
+      }
     }
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);

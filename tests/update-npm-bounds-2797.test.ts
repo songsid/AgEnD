@@ -9,7 +9,7 @@ import { closeSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyUpdateNpmBounds, npmBoundsQuery, parseNpmConfigGet, UPDATE_NPM_BOUNDS } from "../src/update-npm-env.js";
+import { applyUpdateNpmBounds, npmBoundsQuery, parseNpmConfigGet, registryUnreachable, UPDATE_NPM_BOUNDS } from "../src/update-npm-env.js";
 import { openUpdateLog, updateLogPath, watchUpdateLaunch } from "../src/update-launch.js";
 import { failureCause } from "../src/web-update.js";
 
@@ -68,6 +68,36 @@ describe("M-2797: npm is bounded for the update, where npm's default is still in
       const at = action.indexOf(npmCall);
       expect(at, npmCall).toBeGreaterThan(bounds);
     }
+  });
+});
+
+describe("M-2797 (rig): the registry is asked before anything, never a stale cache", () => {
+  const ping = (stderr: string, status: number | null = 1) => registryUnreachable({ status, stderr });
+  it("no network (the rig's cut: EAI_AGAIN), refused, a silent registry → unreachable, with npm's code", () => {
+    expect(ping("npm error code EAI_AGAIN\nnpm error syscall getaddrinfo\n")).toBe("npm error code EAI_AGAIN");
+    expect(ping("npm ERR! code ECONNREFUSED\n")).toBe("npm error code ECONNREFUSED");
+    expect(ping("npm error code FETCH_ERROR\nnpm error network timeout at: http://registry/-/ping?write=true\n")).toBe("npm error code FETCH_ERROR");
+    expect(ping("npm error code EIDLETIMEOUT\n")).toBe("npm error code EIDLETIMEOUT");
+  });
+  it("a registry that does not implement ping, an answer, or npm that did not run → the update goes on", () => {
+    expect(ping("npm error code E404\nnpm error 404 Not Found - GET https://nexus.example/-/ping\n")).toBeNull();
+    expect(ping("", 0)).toBeNull();
+    expect(ping("npm error code E500\n")).toBeNull();
+    expect(registryUnreachable({ status: null, stderr: "", error: new Error("spawnSync npm ENOENT") })).toBeNull();
+    expect(ping("something went wrong\n")).toBeNull();
+  });
+  it("agend update pings after the bounds and before the version lookup, and an unreachable registry stops it as failed", () => {
+    const cli = readFileSync(join(__dirname, "..", "src", "cli.ts"), "utf8");
+    const action = cli.slice(cli.indexOf('.command("update")'));
+    const bounds = action.indexOf("applyUpdateNpmBounds(process.env"), pinged = action.indexOf('spawnSync("npm", ["ping"]');
+    expect(pinged).toBeGreaterThan(bounds);
+    expect(action.indexOf("lookupTargetVersion(tag)")).toBeGreaterThan(pinged);
+    const stop = action.slice(pinged, action.indexOf("lookupTargetVersion(tag)"));
+    expect(stop).toContain('setUpdateProgressStage(DATA_DIR, "failed"');
+    expect(stop).toContain("return;");
+  });
+  it("its message is the network to the page and to chat", () => {
+    expect(failureCause("✗ Could not reach the update source (npm error code EAI_AGAIN). Nothing was changed; the current version keeps running.")).toBe("network");
   });
 });
 
