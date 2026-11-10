@@ -35,3 +35,11 @@ Mutation scopes (one at a time): remove the800ms branch; auto dedupe; keydown ca
 No independent real-account, chat-code-only, double-match, public-link or native-platform acceptance is claimed. The former Devices overview/QR proposal and Settings sign-in-name line are out of scope.
 
 Required scan initially flagged two public source digests as generic API keys. Current evidence uses digest-first PRODUCTION_SHA256SUMS. Only the two exact historical commit/path/rule/line fingerprints are recorded in .gitleaksignore; no rule/path/future finding is exempted. Product source and PNG bytes are unchanged by this correction.
+
+CI bootstrap correction: the earlier UI gate timed out clicking #go after auto-submit had already navigated. The shared fixture now dispatches input and requestSubmit in one browser task through the real form, then requires the same dashboard URL. GATE=ci passes114checks with all assertions intact. A dedicated real-browser control passes four current-auto/cached-manual × EN-desktop/zh-phone cases, each with exactly one /auth/login POST and a valid session; see fixture-validation.json and FIXTURE_SHA256SUMS. Product and56PNG bytes carry unchanged. This is fixture compatibility, not the pending code-only core acceptance.
+
+```sh
+REPO="$PWD" PW_DIR="$PWD/node_modules/playwright-core" CHROME=/path/to/chrome \
+  OUT="$PWD/.artifacts/s118/fixture-bootstrap" \
+  npx tsx scripts/manual/smoke/smoke-signin-fixture-s118.mts
+```

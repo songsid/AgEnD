@@ -189,7 +189,16 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
         at = `http://${LAN_HOST}:${o.port}`;
       }
       if (opts.headers) await ctx.setExtraHTTPHeaders(opts.headers);
-      await page.goto(`${at}/signin`); await page.waitForSelector("#code"); await page.fill("#code", code(opts.host)); await page.click("#go"); await page.waitForURL(`${at}/ui`);
+      await page.goto(`${at}/signin`); await page.waitForSelector("#code");
+      // Bootstrap through the real form in one browser task. S-118 may navigate as soon as input is complete;
+      // a later Playwright click would wait for a button that has already left the page. requestSubmit also
+      // supports a cached manual-only script; the new controller deduplicates input+submit while in flight.
+      await page.locator("#code").evaluate((input: HTMLInputElement, value: string) => {
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.form!.requestSubmit();
+      }, code(opts.host));
+      await page.waitForURL(`${at}/ui`);
       if (opts.path) { await page.goto(at + opts.path); }
       await page.waitForTimeout(500);
       return { ctx, page, csp: async () => page.evaluate("window.__csp || []") as Promise<string[]> };
