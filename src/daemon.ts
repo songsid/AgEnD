@@ -1884,6 +1884,8 @@ export class Daemon extends EventEmitter {
   private pauseAllowStuck = false;
   private pauseWakeState: "active" | "pausing" | "paused" | "waking" = "active";
   private pauseWakeTransition: Promise<void> | null = null;
+  /** Includes a pause's pane admission, before it publishes pausing. */
+  private pauseAdmissions = new Set<Promise<void>>();
   // Model failover: override model on next spawn when rate-limited
   private modelOverride: string | undefined;
   // Context rotation v3: ring buffers for daemon-side snapshot
@@ -6057,13 +6059,20 @@ export class Daemon extends EventEmitter {
 
   async pause(reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
     if (this.nativePaneLifecycle) throw Error("Native pause is owned by its Fleet lifecycle transition");
+    const flight = this.pauseInner(reason, admission);
+    const admissions = this.pauseAdmissions ??= new Set<Promise<void>>();
+    admissions.add(flight);
+    try { await flight; } finally { admissions.delete(flight); }
+  }
+
+  private async pauseInner(reason: PauseReason, admission?: CapacityNudgePauseGuard): Promise<void> {
     if (admission && !admission.current()) return;
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
       await this.pauseWakeTransition;
       if (this.getPauseWakeState() !== "active") return;
     }
-    if (admission && !admission.current()) return;
+    if (this.deliveryWritesStopping || this.startupAborted || (admission && !admission.current())) return;
     // `pauseAllowStuck` is consumed here, not merely read: it authorises exactly
     // one pause from a stuck pane (the auth-deferred one) and must never leak
     // into an ordinary idle-timeout pause of a busy instance.
@@ -6094,7 +6103,8 @@ export class Daemon extends EventEmitter {
       // #1730 P2-2: the await yields — the pane read is only valid for the
       // world it was taken from. Revalidate owner, phase, state and queue
       // before acting on it; anything that moved defers this cycle.
-      if ((admission && (!admission.current() || pane === null || !admission.accepts(pane)))
+      if (this.deliveryWritesStopping || this.startupAborted
+        || (admission && (!admission.current() || pane === null || !admission.accepts(pane)))
         || this.tmux !== tmux
         || this.tmux?.getWindowId?.() !== windowId
         || this.spawnGeneration !== generation
@@ -6161,6 +6171,19 @@ export class Daemon extends EventEmitter {
     this.pauseWakeTransition = transition;
     try { await transition; } finally {
       if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
+    }
+  }
+
+  /** Whether an admitted pause or published pause/wake still owns this launch. */
+  get hasPendingPauseWake(): boolean {
+    return !!this.pauseAdmissions?.size
+      || !!this.pauseWakeTransition && (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking");
+  }
+
+  /** Settle pane admission as well as the published pause/wake transition. */
+  async waitForPauseWakeTransition(): Promise<void> {
+    while (this.hasPendingPauseWake) {
+      await Promise.all([...this.pauseAdmissions ?? [], ...(this.pauseWakeTransition ? [this.pauseWakeTransition] : [])]);
     }
   }
 
