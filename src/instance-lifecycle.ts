@@ -2111,6 +2111,11 @@ export class InstanceLifecycle {
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const epoch = this.epochOf(name);
     let daemon = this.daemons.get(name);
+    if (daemon?.waitForPauseWakeTransition) {
+      await daemon.waitForPauseWakeTransition();
+      if (this.epochOf(name) !== epoch || this.daemons.get(name) !== daemon) throw new SupersededStartError(name);
+      assertNoSessionOomStop(this.ctx.getInstanceDir(name));
+    }
     const instances = this.ctx.fleetConfig?.instances;
     const next = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
     const launched = daemon?.getConfigSnapshot?.();
