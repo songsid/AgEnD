@@ -12,6 +12,7 @@ import { fire, installDom } from "./helpers/mini-dom.js";
 const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
+let failWrites = false;       // AGEND-161: a settings write the server refuses
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
 const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner", { card_v: "v1" })];
 /** #1629 r4 §1: loner's identity card, as GET /api/card/loner answers it (a person's tagline over the agent's bio). */
@@ -47,6 +48,7 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
     const a = await held.get(decodeURIComponent(url.slice("/ui/instance/".length)))!.shift()!;
     return { ok: a.status < 300, status: a.status, json: async () => a.body, text: async () => JSON.stringify(a.body) };
   }
+  if (failWrites && m === "PATCH") return { ok: false, status: 500, json: async () => ({ error: "boom" }), text: async () => "{\"error\":\"boom\"}" };
   const body: unknown = url.startsWith("/ui/instance/") ? detail[decodeURIComponent(url.slice("/ui/instance/".length))] ?? { error: "Instance not found" }
     : m === "POST" ? { ok: true } : {};
   const status = url.startsWith("/ui/instance/") && !detail[decodeURIComponent(url.slice("/ui/instance/".length))] ? 404 : 200;
@@ -75,6 +77,8 @@ afterEach(async () => {
   (await import("/assets/app-store.js")).appStore.set({ viewOnly: false });
   req.takeAgentRequest();
   held.clear();
+  failWrites = false;
+  (globalThis as any).confirm = undefined;
   calls = [];
 });
 
@@ -296,6 +300,47 @@ describe("AGEND-161: Details & settings", () => {
     expect(bar.querySelector(".btn-primary").disabled).toBe(true);
     cards.value = "1"; fire(cards, "input"); await settle(8);
     expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+  });
+  it("a Save that fails keeps the draft and the Settings bar, and it can be saved again (the page is not drawn again from what is saved)", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=basic");
+    await untilRead(); await settle(12);
+    const desc = pg.root.querySelector("#ag-desc"); desc.value = "Builds the site, twice"; fire(desc, "input"); await settle(8);
+    failWrites = true;
+    const save = () => pg.root.querySelector(".p-details > .s-pending .btn-primary").click();
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    save();
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    await settle(20); await untilRead(); await new Promise(r => setTimeout(r, 300)); await settle(20);
+    expect(patches()).toBe(1);
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site, twice");             // the draft is still in the form
+    expect(pg.root.querySelector(".p-details > .s-pending")?.textContent).toContain("1 unsaved change");   // and the change is staged again
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(1);
+    save();                                                                                     // …so it can be saved again
+    for (let i = 0; i < 40 && patches() < 2; i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(2);
+  });
+  it("turning the MCP proxy reply on asks first (it can post raw screen text); a no writes nothing, a yes writes", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=adv");
+    await untilRead(); await settle(12);
+    const box = pg.root.querySelector("#ag-mcp-proxy"); box.checked = true; fire(box, "change"); await settle(8);
+    const asked: string[] = []; let answer = false;
+    (globalThis as any).confirm = (msg: string) => { asked.push(msg); return answer; };
+    const save = async () => { pg.root.querySelector(".p-details > .s-pending .btn-primary").click(); await settle(20); await new Promise(r => setTimeout(r, 200)); await settle(10); };
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    await save();
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("MCP proxy reply");
+    expect(patches()).toBe(0);
+    expect(pg.root.querySelector(".p-details > .s-pending")).not.toBeNull();                      // still staged
+    answer = true;
+    await save();
+    expect(asked).toHaveLength(2);
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(1);
+  });
+  it("the page's root has its own class (p-agent-page), so the shared menu rules can later be scoped to it", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    expect(pg.root.querySelector(".p-details")?.className).toContain("p-agent-page");
   });
   it("a ClassicBot room: Overview, Runtime & model and Channels & replies only", async () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1?cat=channel");

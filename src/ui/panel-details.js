@@ -177,7 +177,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       ${actions.length ? html`<section class="card d-actions"><h3>${pt("actions")}</h3><div class="field-row">${actions.map((i) => html`<button key=${i.key} type="button" class="btn btn-sm" disabled=${i.disabled} onClick=${i.onSelect}>${i.label}</button>`)}</div>
         <p class="note">${pt("actionsNote")}</p></section>` : null}`;
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
-  return html`<div data-effect-panel="details" class="panel p-details p-settings" data-view=${cat ? "section" : "index"}>
+  return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty} />
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>

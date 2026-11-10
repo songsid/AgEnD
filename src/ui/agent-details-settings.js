@@ -93,6 +93,9 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   const gen = useRef(0);
   const { settingsOp: op } = useStore(appStore);
   const started = useRef(false);
+  const nameRef = useRef(name);
+  nameRef.current = name;
+  const submitted = useRef(new Map());     // the changes as they were when a Save began (what comes back after a failure keeps its confirms)
 
   const reload = async () => {
     const m = await loadSettingsModule();
@@ -100,7 +103,8 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     const next = await m.loadAll(lease);
     if (!next || mine !== gen.current || !lease.current()) return;
     setMod(m);
-    setData(next);
+    // A read that fails after a failed Save keeps what was read before: the forms (and the draft in them) stay.
+    setData((prev) => (next.error && prev && !prev.error ? prev : next));
   };
   useEffect(() => { if (enabled && !started.current) { started.current = true; reload(); } }, [enabled]);
 
@@ -117,7 +121,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     let asking = false;
     lease.hold(setLeaveGuard((to, path) => {
       const n = stagedRef.current.size;
-      if (!n || (to && to.panel === "details" && to.instance === name)) return true;
+      if (!n || (to && to.panel === "details" && to.instance === nameRef.current)) return true;
       if (!asking) {
         asking = true;
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
@@ -137,7 +141,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     if (!op || !op.leftover || !op.leftover.length) return;
     const back = takeLeftover();
     if (!back.length) return;
-    setStaged((s) => { const m = new Map(s); for (const c of back) { const k = c.stageKey || c.key; if (k && !m.has(k)) m.set(k, { ...c, stageKey: k }); } return m; });
+    setStaged((s) => { const m = new Map(s); for (const c of back) { const k = c.stageKey || c.key; if (k && !m.has(k)) m.set(k, { ...(submitted.current.get(k) || {}), ...c, stageKey: k }); } return m; });
   }, [op && op.leftover]);
 
   // An Apply that finished changed the configuration: read it again, and draw the forms from it.
@@ -158,7 +162,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     try {
       for (const c of [...stagedRef.current.values()]) {
         for (const k of c.confirms || []) {
-          const yes = await ask(tn(k));
+          const yes = await ask(k.includes(".") ? t(k) : tn(k));
           if (!lease.current()) return;
           if (!yes) { toast(tn("accessChangeCancelled"), false); return; }
         }
@@ -166,7 +170,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     } finally { applying.current = false; }
     if (!lease.current() || operationActive()) return;
     const list = [...stagedRef.current.values()].map(({ label, impact, request, stageKey, key }) => ({ label, impact, request, stageKey, key }));
-    if (startOperation(list)) setStaged(new Map());
+    if (startOperation(list)) { submitted.current = new Map(stagedRef.current); setStaged(new Map()); }
   };
 
   const ctx = mod && data && !data.error
@@ -210,7 +214,9 @@ function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, dele
     if (deleting) return;
     if (!Object.keys(patch).length) { sess.unstage(key); return; }
     const change = changeFor(ctx, kind, name, inst, room, patch);
-    sess.stage(key, ready ? change : { ...change, invalid: true });
+    // Turning the MCP proxy reply on is asked about first (it can post raw screen text to a channel): the Save asks.
+    const confirms = patch.mcp_proxy_reply === true ? ["agentPage.confirmMcpProxy"] : undefined;
+    sess.stage(key, { ...change, ...(confirms ? { confirms } : {}), ...(ready ? {} : { invalid: true }) });
   }, [patchJson, ready, deleting]);
   const cats = categoriesOf(kind).slice(1);
   const Fields = kind === "classic" ? ClassicFields : kind === "native" ? NativeFields : AgentFields;
@@ -243,5 +249,5 @@ export function AgentSettingsPanels({ name, kind, cat, sess, onDirty }) {
   };
   return html`${kind === "classic" ? html`<p class="s-info"><span aria-hidden="true">ⓘ</span><span>${pt("classicNote")}</span></p>` : null}
     ${deleting ? html`<p class="feedback warning" role="status">${tn("deleteAgentLabel", name)}</p>` : null}
-    <${AgentForms} key=${`${data.loadedAt}:${sess.epoch}`} name=${name} kind=${kind} cat=${cat} sess=${sess} inst=${inst} room=${room} onDirty=${onDirty} onDelete=${onDelete} deleting=${deleting} />`;
+    <${AgentForms} key=${sess.epoch} name=${name} kind=${kind} cat=${cat} sess=${sess} inst=${inst} room=${room} onDirty=${onDirty} onDelete=${onDelete} deleting=${deleting} />`;
 }

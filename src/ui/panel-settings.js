@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./agent-page-strings.js";   // AGEND-161: the confirmation text of the MCP proxy reply
 import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
@@ -345,7 +346,7 @@ export function SettingsPanel({ route, navKey }) {
       // A panel that went while a question was open asks nothing more, and says nothing.
       for (const c of [...stagedRef.current.values()]) {
         for (const k of c.confirms || []) {
-          const yes = await ask(tn(k));
+          const yes = await ask(k.includes(".") ? t(k) : tn(k));
           if (!mount.current()) return;
           if (!yes) { toast(tn("accessChangeCancelled"), false); return; }
         }
@@ -777,6 +778,8 @@ export function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive
       });
       stage(`agent:${name}`, {
         label: tn("updateAgent", shortName(name, { ...inst, ...patch })),
+        // AGEND-161: turning the MCP proxy reply on is asked about first (agent-page-strings.js).
+        ...(patch.mcp_proxy_reply === true ? { confirms: ["agentPage.confirmMcpProxy"] } : {}),
         impact: inst.runtime === "windows" ? "now" : batchImpact(schema, Object.keys(patch), (k) => impactOf(schema, `instance.${k}`)),
         request: { method: "PATCH", url: inst.runtime === "windows" ? `/ui/instances/${encodeURIComponent(name)}` : `/api/settings/fleet/instances/${encodeURIComponent(name)}`, body: patch },
       });
