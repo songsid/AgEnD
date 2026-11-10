@@ -1,0 +1,31 @@
+
+▟███▟      Claude Code v2.1.322
+█████▀     Opus 5.5 · API Usage Billing
+   ▝▝      /scratch/cwd
+
+
+❯ Send the report.
+
+  Calling mock…
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Tool use
+ Gmail — Send Email Tool: (MCP)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ to: "someone@example.com"
+ subject: "Weekly report"
+  attachments: ["/scratch/cwd/report.pdf"]
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ This call sends 1 file from this computer
+ to Gmail, which decides where to store it:
+ * "/scratch/cwd/rep\u043ert.pdf" (12 KB).
+ * Name may use look-alike characters.
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend
+
+
+

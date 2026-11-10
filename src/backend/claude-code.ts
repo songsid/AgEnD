@@ -953,14 +953,19 @@ function claudeCommandRequestIdentity(pane: string): string {
  * (a list too long to show, or a call that does not say which files) or "…or choose No." (a terminal too short to
  * show every file); Yes / No options (numbered, or unnumbered when it defaults to No); the "Esc to cancel" footer
  * last; and, between the card's top and its question, a file row `* "<path>"` / `* the file at "<path>"` or the
- * `* Name may not be what it looks like.` warning — the marks of a file-send card that no other card carries. A
+ * `* Name may not be what it looks like.` warning (2.1.322: `* Name may use look-alike characters.`), or — since an
+ * ordinary name's row carries no `* ` from 2.1.319 on — the card's own lead row `This call sends <N> file(s) from this
+ * computer`: the marks of a file-send card that no other card carries. A
  * question variant that only this card asks counts on its own. A Bash card (its own entry) never matches here.
  */
 const FILE_SEND_ONLY_QUESTION = /(?:Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
 const FILE_SEND_QUESTION = /(?:Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
 /** Pre-filter only (anywhere in the pane); claudeFileSendCardActive decides. */
 export const CLAUDE_FILE_SEND_PATTERN = /Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\./;
-const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\./;
+// 2.1.319+ (2.1.322 audit): an ordinary name's row is plain `"<path>" (<size>)` — only a look-alike name is `* `-marked —
+// so the card's own lead row, "This call sends <N> file(s) from this computer", is a mark too; and 2.1.322 reworded the
+// look-alike warning to "Name may use look-alike characters." (2.1.317's wording kept).
+const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\.|^[ \t│┃]*\* Name may use look-alike characters\.|^[ \t│┃]*This call sends \d+ files?\b/;
 const FILE_SEND_OPTION = /^[ \t]*[❯›]?[ \t]*(?:\d{1,2}\.[ \t]+)?(Yes|No)\b/;
 export function claudeFileSendCardActive(pane: string): boolean {
   const rows = claudeRows(pane).filter(row => row.trim() !== "");
