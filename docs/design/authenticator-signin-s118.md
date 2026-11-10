@@ -4,6 +4,8 @@
 
 ## Current UI
 
+Build-only copy refinement after the current PNG delivery: use 「即可自動登入」 instead of 「即會自動登入」, and 「目前顯示的驗證碼」 instead of 「最新的驗證碼」. Do not recapture the already-submitted proposal for these words. When building, measure the dark theme’s grey hint, help link and disabled-button text against their actual backgrounds; each must reach4.5:1. Correct any shortfall using shared tokens. The existing disabled-button measurement does not stand in for the other two checks.
+
 - One empty input, text keyboard and autocomplete=one-time-code. No name/account field, Settings name row, mode selector or fallback switch. The text keyboard can type the device-code alphabet; do not force a numeric-only keyboard.
 - Primary label: 驗證碼或裝置登入碼. The introduction explains automatic sign-in using the authenticator app's six-digit code. The one-line helper is exactly 也可以貼上 8 字元裝置登入碼.
 - Keep a visible Sign in button for accessibility, form submission and an explicit retry. The input handler and form button must share the same validator and in-flight fence. The PNGs do not implement either handler.
