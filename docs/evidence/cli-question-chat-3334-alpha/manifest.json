@@ -1,0 +1,33 @@
+{
+  "algorithm": "SHA-256",
+  "base": "33d2ac3f6b864b4d84f49634e83937fd5f9df639",
+  "entries": {
+    "60c0fc0fc6b97d6ea313108a3d4cffd91d044686ebf10edc02352cc6a5e60ae6": [
+      "src/fleet-manager.ts"
+    ],
+    "e308e8e69afae5f67f3c8bf02d9d82f2b733f63148f4e8218bdf3143e4fcdc09": [
+      "src/backend/types.ts"
+    ],
+    "07bb65621e01a8927fa0451c5fc5b31321d5525feff362b61b0972ea8768184f": [
+      "src/selection-card.ts"
+    ],
+    "04658fe243562263919637b907ea560d8a6f3a6f1ce0e452fac3e4c891c68452": [
+      "src/remote-card-answer.ts"
+    ],
+    "476c1dab4e774b98742913c2e3c43896aa9113dd42c198e7bfff86187de1220c": [
+      "src/remote-card-prompt.ts"
+    ],
+    "094e075dd18e21e96e8ad35062a9c1badb659ce254db2e4b04d1f8ea5e592baa": [
+      "src/tool-progress.ts"
+    ],
+    "e73d185b7988346541b5ff91c6510e746d5b9e00828c3cc1c5983040a2647cef": [
+      "tests/cli-question-chat-3334.test.ts"
+    ],
+    "c95a215fc10f7fb69c994fc3df85095e295b92232cb501bdb39241888687c762": [
+      "tests/web-only-dialogs-2910.test.ts"
+    ],
+    "6f87f19b3528d5d6aceea2e8065119bff3950710930a10dc9127ed4ccdeddc59": [
+      "tests/fixtures/claude-2.1.318-bash-permission-prompt.pane.txt"
+    ]
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "base": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "scope": "main modified working tree; manifest binds tested source and fixtures",
+  "testFiles": [
+    "tests/admin-gate-754.test.ts",
+    "tests/claude-file-send-card-2322.test.ts",
+    "tests/cli-question-chat-3334.test.ts",
+    "tests/kiro-remote-card-2675.test.ts",
+    "tests/kiro-remote-card-chat-2675.test.ts",
+    "tests/needs-you-derive-1386.test.ts",
+    "tests/needs-you-fleet-1386.test.ts",
+    "tests/needs-you-web-1386.test.ts",
+    "tests/nonce-button-shutdown.test.ts",
+    "tests/web-chat-c4.test.ts",
+    "tests/web-only-dialogs-2910.test.ts"
+  ],
+  "related": {
+    "passed": 235,
+    "failed": 0,
+    "skipped": 0
+  },
+  "fragmentSuite": {
+    "passed": 75,
+    "failed": 0,
+    "skipped": 0
+  },
+  "sourceTypes": "passed",
+  "testTypes": "passed",
+  "mutations": [
+    {
+      "name": "M1-old-chat-gate",
+      "compiles": true,
+      "passed": 19,
+      "failed": 15,
+      "total": 34
+    },
+    {
+      "name": "M2-drop-captured-admin-marker",
+      "compiles": true,
+      "passed": 24,
+      "failed": 10,
+      "total": 34
+    },
+    {
+      "name": "M3-drop-admin-check",
+      "compiles": true,
+      "passed": 24,
+      "failed": 10,
+      "total": 34
+    },
+    {
+      "name": "M4-primary-admin-instead-of-owner",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    },
+    {
+      "name": "M5-classic-bypass-before-admin",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    },
+    {
+      "name": "M6-all-questions-admin-only",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    },
+    {
+      "name": "M7-drop-thread-binding",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    },
+    {
+      "name": "M8-drop-chat-binding",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    },
+    {
+      "name": "M9-drop-message-binding",
+      "compiles": true,
+      "passed": 32,
+      "failed": 2,
+      "total": 34
+    }
+  ]
+}

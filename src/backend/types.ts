@@ -362,7 +362,7 @@ export interface RemoteQuestionCard {
    * own options say every choice there is (selection-card.ts).
    */
   noSkip?: true;
-  /** #2910 D4: put to people only on a web-only fleet (the dashboard); a chat fleet keeps its parked notice, as before. */
+  /** Legacy CLI-dialog marker (#2910 D4). #3334 also posts it in chat, with owning-adapter fleet-admin authority. */
   webOnly?: true;
 }
 
