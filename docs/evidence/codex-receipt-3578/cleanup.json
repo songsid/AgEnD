@@ -1,0 +1,9 @@
+{
+  "liveOwnedNativePids": [],
+  "privateTmuxAndMocksClosed": true,
+  "scratchHomesRemoved": true,
+  "routesDuringAllCLIAndReplayRuns": [],
+  "initialManagedAppServersRemoved": 10,
+  "method": "exact owned CODEX_HOME + PID start identity/pidfd; no name pattern or live fleet kill",
+  "note": "Initial native capture cleanup closed tmux/mock but missed Codex managed daemons; final ownership audit removed those exact10 processes and regenerated scratch homes. Stable six-state campaign uses --no-daemon and distinct private homes. No host tmux or networking configuration touched."
+}

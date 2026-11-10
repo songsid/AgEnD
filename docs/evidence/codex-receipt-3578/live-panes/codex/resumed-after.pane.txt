@@ -1,0 +1,38 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     /tmp/l3578-mpeygh4i/codex
+  permissions: YOLO mode
+
+  Tip: You can resume a previous conversation by running codex resume
+
+
+› [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-codex-idle)
+
+
+• Offline mock completed.
+
+  Worked for <1s • 18:02
+
+
+› BUSYSEED
+
+
+
+› [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-codex-busy)
+
+
+• Offline mock completed.
+
+  Worked for 16s • 18:03
+
+
+› [from:offline-test] Confirm this mock-only message.
+  (message_id: m3578-codex-resumed)
+
+
+
+› Ask Codex to do anything
+
+  Context 100% left · ← for agents

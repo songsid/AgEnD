@@ -11,32 +11,3 @@
   (message_id: m3578-replay-message)
 
   Context 100% left
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
