@@ -82,7 +82,7 @@ antigravity host.identity not_yet_built undecided
 antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
-antigravity runtime.install by_design
+antigravity runtime.install not_yet_built #3521
 antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
 antigravity runtime.accountRows not_yet_built undecided
@@ -127,7 +127,6 @@ opencode host.signOut needs_verification
 opencode host.keepAlive needs_verification
 opencode host.accountCard cli_has_none
 opencode host.usage cli_has_none
-opencode runtime.install by_design
 opencode runtime.signIn not_applicable
 opencode runtime.namedAccounts needs_verification
 opencode runtime.accountRows cli_has_none
@@ -154,7 +153,7 @@ describe("a CLI that leaves something out is caught", () => {
     const keepAlive: HostCliWith<"keepAlive">[] = ["claude-code", "codex"];
     // @ts-expect-error — Kiro's spec says no to keep-alive, so it is not one of the CLIs that have it
     const notKiro: HostCliWith<"keepAlive"> = "kiro-cli";
-    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex"];
+    const runtimeInstall: RuntimeCliWith<"install">[] = ["claude-code", "codex", "opencode"];
     // @ts-expect-error — Grok's spec says no to a Runtime install
     const notGrok: RuntimeCliWith<"install"> = "grok";
     expect([keepAlive, notKiro, runtimeInstall, notGrok]).toHaveLength(4);

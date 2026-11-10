@@ -27,7 +27,7 @@ export const MUSE_SPEC = {
       permission: "native-policy", permissionNote: "Uses the native CLI approval and sandbox policy; no --disable-approval, --yolo or workspace-switch override is added.",
       promptTransport: "file", modelProbe: null, rank: 6,
     }),
-    install: byDesign("Muse has no npm package; its launcher installs itself next to the script (instance-lifecycle.ts), which the Runtime does not run."),
+    install: byDesign("Muse has no package or file with a fixed version AgEnD could check: its launcher (`muse-launcher.ps1`, not versioned) installs itself, and updates itself, from the vendor's server, so there is nothing to pin. The page shows the official command and says why."),
     signIn: notApplicable("AgEnD has no sign-in flow for Muse."),
     namedAccounts: toVerify("Whether `muse` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),

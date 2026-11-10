@@ -24,7 +24,10 @@ export const GROK_SPEC = {
       permission: "native-policy", permissionNote: "Uses the native CLI permission policy; no blanket approval or sandbox bypass is added.",
       promptTransport: "file", modelProbe: ["models"], rank: 3,
     }),
-    install: byDesign("Grok installs with a vendor script, not an npm package (runtime-cli-install.ts); the dashboard shows the official command for the computer's owner."),
+    // AGEND-133 (#3521), measured 2026-11-09: `@xai-official/grok` (published by xai-security) is on npm, but its Windows binary (grok.exe, shipped brotli-compressed) is NOT Authenticode-signed
+    // (Get-AuthenticodeSignature: NotSigned), and the package relies on its own postinstall to unpack into ~/.grok. A `--ignore-scripts` install would have a registry hash and nothing that
+    // says who built the program; Part 3b's publisher check cannot be made. The vendor script (x.ai/cli/install.ps1) fetches whatever is current, so it cannot be pinned either.
+    install: byDesign("Grok's Windows program is not signed by its publisher, so AgEnD could not check who built it before running it; the vendor script installs whatever version is current. The dashboard shows the official command for the computer's owner."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: toVerify("Whether `grok` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),
