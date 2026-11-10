@@ -37,7 +37,7 @@ function replay() {
   const positive = vi.fn((tag: string) => outbox.settleHumanReceipt(receipt.receipt_id, "test", "owner", {
     receipt_id: receipt.receipt_id, verification_id: receipt.message_id, wire_sha256: bound.wire_sha256, owner_key: "owner", mode: "idle_submit", tag,
   }, "owner"));
-  const signature = { value: "agend-human-id:" + receipt.message_id, unique: true, humanPositive: positive };
+  const signature: { value: string; unique: boolean; humanPositive: (tag: string) => unknown } = { value: "agend-human-id:" + receipt.message_id, unique: true, humanPositive: positive };
   const baseline = d.paneEvidence(IDLE, signature);
   const enter = vi.spyOn(d, "sendDeliveryEnter").mockImplementation(async () => { state.pane = replaceId(BUSY); return true; });
   return { d, state, capture, positive, signature, baseline, enter, replaceId, row: () => outbox.getHumanReceipt(receipt.receipt_id)! };
@@ -87,6 +87,28 @@ describe("Codex confirmation during the stranded-readiness wait (#3578)", () => 
     release(h.replaceId(BUSY));await vi.advanceTimersByTimeAsync(0);
     expect(h.row().state).toBe("queued");expect(h.positive).not.toHaveBeenCalled();expect(h.enter).not.toHaveBeenCalled();
     expect(h.d.inputTransientGuardGeneration).toBe(h.d.spawnGeneration);expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["generation", "window"])("does not confirm if its %s changes after positive evidence but before the wait returns", async mode => {
+    const h = replay();
+    // As in a delivery verdict, finding proof stages a candidate. The receipt
+    // consumer may settle it only after confirmation returns true.
+    let offered: string | undefined;
+    h.signature.humanPositive = tag => { offered = tag; };
+    vi.spyOn(h.d, "waitForPaneReadyForDelivery").mockImplementation(async (_window: unknown, _timeout: unknown, stop: any) => {
+      h.state.pane = h.replaceId(BUSY);
+      expect(await stop()).toBe(true);
+      expect(offered).toBe("unique-id-pane");
+      if (mode === "generation") h.d.spawnGeneration++;
+      else h.d.tmux = { capturePane: async () => h.replaceId(BUSY) };
+      return "stopped";
+    });
+    const confirmed = await h.d.confirmAfterEnter("@owned", Date.now(), h.signature, h.baseline, "test-retry");
+    if (confirmed && offered) h.positive(offered);
+    expect(confirmed).toBe(false);
+    expect(h.row().state).toBe("queued");
+    expect(h.positive).not.toHaveBeenCalled();
+    expect(h.enter).not.toHaveBeenCalled();
   });
 
 });
