@@ -834,7 +834,7 @@ interface NonceButtonEntry {
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
   assistFor?: { owner: string | null; episode: number | null };
   /** card-answer only (#2675): the card it offers, as it was read — what is asked and the rows the buttons name. */
-  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }> };
+  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean };
 }
 
 
@@ -17134,9 +17134,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * was gone; this is the fallback).
    */
   async postRemoteCard(instanceName: string, card: RemoteCard): Promise<void> {
-    // #2910 D4: a CLI's own dialog read as a card (selection-card.ts) is put to people only on a web-only fleet — the
-    // dashboard; a chat fleet keeps its parked notice and its General's controls, as before.
-    if (card.kind === "question" && card.webOnly && !this.webOnlyPromptPlace()) return;
+    // #3334: CLI-owned dialogs also reach chat fleets. Their legacy webOnly marker now requires the owning
+    // adapter's fleet admin to answer; ordinary agent questions retain their existing conversation authority.
     this.retireRemoteCard(instanceName, null, t("card.answered_in_pane"));
     const place = this.remoteCardPlace(instanceName);
     if (!place) {
@@ -17148,7 +17147,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
-      extra: { remoteCard: { identity: card.identity, kind: card.kind, options: card.kind === "question" ? card.options.map(o => ({ n: o.n, title: o.title })) : [] } },
+      extra: { remoteCard: { identity: card.identity, kind: card.kind, options: card.kind === "question" ? card.options.map(o => ({ n: o.n, title: o.title })) : [],
+        requiresAdmin: card.kind === "question" && card.webOnly === true } },
     });
     if (nonce) this.remoteCardPosts.set(instanceName, nonce);
   }
@@ -17169,8 +17169,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.retireNonceButtons(entry, entry.messageId ?? "", text);
   }
 
-  /** Who may answer an instance's card: whoever may already talk to it there (a ClassicBot room is open to all). */
+  /** CLI-owned dialogs need the owning adapter's fleet admin; ordinary agent questions follow conversation access. */
   private mayAnswerRemoteCard(userId: string, entry: NonceButtonEntry): boolean {
+    if (entry.remoteCard?.requiresAdmin) return this.isFleetAdmin(userId, entry.adapterId);
     if (this.classicChannels?.getChannelIdByInstance(entry.instanceName) === entry.chatId) return true;
     const am = this.worlds.get(entry.adapterId)?.accessManager ?? this.accessManager;
     return !am || am.isAllowed(userId);
