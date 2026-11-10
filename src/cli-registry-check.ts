@@ -19,12 +19,15 @@ const envName: Check = v => typeof v === "string" && /^[A-Z][A-Z0-9_]*$/.test(v)
 const orNull = (inner: Check): Check => v => v === null ? null : inner(v);
 /** An update command carries exactly one `{version}`: the server fills it with the audited release, so a command that has none could not be pinned. */
 const updateCommand: Check = v => typeof v === "string" && v.split("{version}").length === 2 ? null : "a command with exactly one {version}";
+/** AGEND-153: the named exception (`release: "latest-unaudited"`) has no `{version}` at all: it goes to the newest release, which no `{version}` could name. */
+const noVersion: Check = v => typeof v === "string" && v.trim() !== "" && !v.includes("{version}") ? null : "a command with no {version}";
 const supportsShape: Check = v => isRecord(v) && ["execution", "resume", "model"].every(k => typeof v[k] === "boolean") && (v.mcp === undefined || typeof v.mcp === "boolean") && Object.keys(v).every(k => ["execution", "resume", "model", "mcp"].includes(k)) ? null : "{ execution, resume, model, mcp? } booleans";
 
 /** What a `yes` must carry, per capability: each field and how it is checked. `?`: may be absent. */
 const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> = {
   "host.install": { binary: text, command: text, "unattended?": text },
-  "host.update": { binary: text, command: updateCommand },
+  // `command` is checked below with `release` in view: exactly one {version}, or (the named exception) none.
+  "host.update": { binary: text, command: text, "release?": oneOf("latest-unaudited") },
   "host.chatLogin": { aliases: words(0), mode: oneOf("device-code", "paste-code", "menu", "declined", "install-only") },
   "host.dashboardSignIn": { named: bool },
   "host.structuredSignIn": { argv: words(1), rank: int, named: bool },
@@ -41,7 +44,7 @@ const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> =
     permissionNote: text, promptTransport: oneOf("stdin-text", "stdin-json", "file"), modelProbe: orNull(words(1)), "reason?": text, rank: int,
   },
   "runtime.install": { kind: oneOf("npm", "download"), pin: oneOf("audited", "integrity") },
-  "runtime.update": { kind: oneOf("pinned") },
+  "runtime.update": { kind: oneOf("pinned", "latest-unaudited") },
   "runtime.signIn": { argv: words(1), profile: oneOf("named") },
   "runtime.namedAccounts": { env: envName },
   "runtime.accountRows": {},
@@ -95,7 +98,11 @@ export function checkCliRegistry(specs: unknown, ids: readonly string[] = CLI_ID
       const cap = capabilityOf(spec, path);
       if (cap === undefined) { problems.push(`${where} is not answered (say "yes", or "no" and why)`); continue; }
       if (!isRecord(cap) || (cap.support !== "yes" && cap.support !== "no")) { problems.push(`${where} must have support "yes" or "no"`); continue; }
-      if (cap.support === "yes") { checkFacts(where, cap, FACTS[path], problems); continue; }
+      if (cap.support === "yes") {
+        checkFacts(where, cap, FACTS[path], problems);
+        if (path === "host.update" && typeof cap.command === "string") { const expected = (cap.release === "latest-unaudited" ? noVersion : updateCommand)(cap.command); if (expected) problems.push(`${where} \`command\` must be ${expected}`); }
+        continue;
+      }
       for (const field of Object.keys(cap)) if (!["support", "why", "note", "tracking"].includes(field)) problems.push(`${where} has an unknown field \`${field}\``);
       if (typeof cap.why !== "string" || !(NO_REASONS as readonly string[]).includes(cap.why)) { problems.push(`${where} is "no" without a reason (${NO_REASONS.join(", ")})`); continue; }
       if (typeof cap.note !== "string" || cap.note.trim().length < 12) problems.push(`${where} is "no" (${cap.why}) without a sentence saying why`);

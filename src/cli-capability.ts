@@ -86,8 +86,12 @@ export interface HostCapabilities {
    * AGEND-136: the dashboard's Update button — the command that takes an installed CLI to AgEnD's AUDITED release (cli-audited.ts), never to "latest". `command` has one
    * `{version}`, filled on the server with the newest audited release (a plain x.y.z from the ledger, never anything the browser sent) and run through the same
    * unattended window as an install. A CLI that updates itself in the background, or has no official way to reach a chosen version, is a `no` that says which.
+   *
+   * `release: "latest-unaudited"` (AGEND-153, the maintainer's decision on #3539) is the one named EXCEPTION: the CLI updates itself and its own updater cannot choose a
+   * release, so the button runs `command` as it is (no `{version}`) and the CLI goes to the newest release the vendor serves, which AgEnD has NOT audited. The page says so on
+   * the button; every other rule (the held change, the asker's code, no public link, the install switch on a paired computer, the publisher's signature) is the same.
    */
-  readonly update: Cap<{ binary: string; command: string }>;
+  readonly update: Cap<{ binary: string; command: string; release?: "latest-unaudited" }>;
   /** `/login <name>` in chat: the names it accepts besides the id, and what it does. */
   readonly chatLogin: Cap<{ aliases: readonly string[]; mode: ChatLoginMode }>;
   /** The dashboard can sign this CLI in (the browser-terminal flow, `dashboardSignInSupported`); `named`: a named account too. */
@@ -127,8 +131,10 @@ export interface RuntimeCapabilities {
   /**
    * AGEND-136: the dashboard's Update button for that computer. `pinned`: the same closed installer as `install`, whose pinned release is the audited one
    * (runtime-cli-install.ts), so an update is that install over an older copy with every check of #3190 Part 3b; nothing the vendor's own updater would fetch runs.
+   * `latest-unaudited` (AGEND-153): the named exception — the Runtime downloads the vendor's NEWEST release (named by the vendor's own manifest at a fixed address, saved only from a
+   * fixed address prefix), checks its sha512 against that manifest and the publisher's Windows signature, and switches to it. The release is not one AgEnD has audited, and the page says so.
    */
-  readonly update: Cap<{ kind: "pinned" }>;
+  readonly update: Cap<{ kind: "pinned" | "latest-unaudited" }>;
   /** The dashboard signs it in on that computer: the exact command, and whether it is a named account's sign-in. */
   readonly signIn: Cap<{ argv: readonly string[]; profile: "named" }>;
   /** Named accounts on that computer: the variable that points the CLI at the profile's folder. */

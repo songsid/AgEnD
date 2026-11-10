@@ -180,10 +180,14 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const input: unknown = JSON.parse(raw.toString("utf8"));
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose a CLI this Runtime installs");
         const cli = input.cli;
+        // AGEND-153: a CLI whose Update is the registry's named exception (the vendor's newest release, not audited) and that the computer already has is UPDATED (`cli.update`); the same route, the same
+        // body (the CLI's id and nothing else), the same gate. One the computer does not have yet is installed to the pinned release, as for every other CLI.
+        const present = (machine.inventory?.clis ?? []).some(item => item.id === cli && item.path);
+        const toLatest = runtimeFacts(cli, "update")?.kind === "latest-unaudited" && present;
         // AGEND-152 (Prism R4 on #3539): this one route is Install and Update (the page sends the CLI's id and nothing else), so it is told apart by what the computer already has. A CLI the computer
-        // already has, whose `runtime.update` is not "yes" (Antigravity updates itself; OpenCode's Update is not built), is refused here — before the job, the call and the one-shot admission —
+        // already has, whose `runtime.update` is not "yes" (a CLI whose registry says it is not updated from here), is refused here — before the job, the call and the one-shot admission —
         // whatever the page showed. A computer whose inventory has not been read has nothing to refuse on, and is installed to as before.
-        if (!runtimeFacts(cli, "update") && (machine.inventory?.clis ?? []).some(item => item.id === cli && item.path)) {
+        if (!runtimeFacts(cli, "update") && present) {
           json(res, 409, { error: `${runtimeFacts(cli, "provider")?.name ?? cli} is already installed on that computer and is not updated from here` }); return;
         }
         if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
@@ -194,7 +198,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const job: CliInstallJob = { cli, state: "installing", startedAt: Date.now() };
         // Taken in the same synchronous step as the check above, before any await: of two requests at once, only one gets here.
         const previous = jobs.get(id); jobs.set(id, job);
-        const settled = hub.callAccount(id, "cli.install", { cli, actor }, INSTALL_DEADLINE_MS).then(result => ({ result }), (error: unknown) => ({ error }));
+        const settled = hub.callAccount(id, toLatest ? "cli.update" : "cli.install", { cli, actor }, INSTALL_DEADLINE_MS).then(result => ({ result }), (error: unknown) => ({ error }));
         // A refusal that comes within EARLY_ANSWER_MS (offline, an older Runtime, the switch is off) is answered now; a run that is under way is followed through the job.
         let wait: NodeJS.Timeout | undefined;
         const early = await Promise.race([settled, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), EARLY_ANSWER_MS); })]);

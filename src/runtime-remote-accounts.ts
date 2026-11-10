@@ -36,6 +36,9 @@ export interface RemoteInstaller {
    * process and in the step that activates. `ended` in the answer settles when something the install still holds (the lock's release) has finished.
    */
   install(cli: string, gate?: () => void): Promise<{ version: string; ended?: Promise<unknown> }>;
+  /** AGEND-153: the CLIs whose Update is the named exception (the vendor's newest release, not audited), and that update. Absent: this installer has none (and `cli.update` is refused). */
+  knowsLatest?(cli: string): boolean;
+  update?(cli: string, gate?: () => void): Promise<{ version: string; ended?: Promise<unknown> }>;
 }
 export interface RemoteAccountsDeps {
   /** This pairing's folder: the switches, the audit log and the credential profiles all live in it. */
@@ -265,18 +268,22 @@ export class RemoteAccounts {
     // refused), and `signin.close` only ends something that is already running (turning a switch off must never leave a sign-in that cannot be closed).
     if (operation === "accounts.switches") { this.parse(operation, payload); return this.switches(); }
     if (operation === "signin.close") { const input = this.parse(operation, payload); return this.endSignIn(input.sessionId, "closed"); }
-    if (operation === "cli.install") {
+    if (operation === "cli.install" || operation === "cli.update") {
       const input = this.parse(operation, payload);
-      return this.audited("cli.install", "install", this.actorOf(input.actor), { cli: input.cli, detail: (result: { version: string }) => result.version }, ctx, {
+      // AGEND-153: `cli.update` is the named exception's update (the vendor's newest release, not audited): the same switch, the same one-at-a-time rule, the same audit trail under its own action name,
+      // and only for a CLI the installer says it takes to the newest release. An `install` of such a CLI is the pinned install, as before.
+      const latest = operation === "cli.update";
+      return this.audited(operation, "install", this.actorOf(input.actor), { cli: input.cli, detail: (result: { version: string }) => result.version }, ctx, {
         exclusive: "install",
         check: () => {
           if (!this.deps.installer) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
           if (!this.deps.installer.knows(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
+          if (latest && !(this.deps.installer.update && this.deps.installer.knowsLatest?.(input.cli))) throw new ProfileOwnershipRefusal("That CLI is not updated to a latest release from here", "unsupported");
           // An install whose child process could not be confirmed ended is still the Runtime's work: nothing else starts until it really ends.
           if (this.retained.has(INSTALL_KEY)) throw new SignInRefusal("A CLI install on this computer has not finished ending; try again in a moment", "busy");
           // Nothing to do, or done a moment ago: refused here, before `started`, so that a coordinator that keeps asking can only add one folded `refused` line per minute to
           // the audit log, and cannot push real operations out of it. (The dashboard offers no button for a CLI that is already at this version.)
-          if (this.deps.installer.installed?.(input.cli)) throw new SignInRefusal("That CLI is already installed at the version this Runtime installs", "rate_limited");
+          if (!latest && this.deps.installer.installed?.(input.cli)) throw new SignInRefusal("That CLI is already installed at the version this Runtime installs", "rate_limited");
           const last = this.lastChange.get(`${INSTALL_KEY}${input.cli}`);
           if (last !== undefined && this.now() - last < PROFILE_OP_MIN_GAP_MS) throw new SignInRefusal("An install of that CLI was just tried; wait a few seconds", "rate_limited");
           this.lastChange.set(`${INSTALL_KEY}${input.cli}`, this.now());
@@ -292,7 +299,7 @@ export class RemoteAccounts {
             if (leave) { const release = leave; until.then(() => release(), () => release()); }
           };
           let result: { version: string; ended?: Promise<unknown> };
-          try { result = await this.deps.installer!.install(input.cli, () => this.gate(ctx, "install")); }
+          try { result = await (latest ? this.deps.installer!.update!(input.cli, () => this.gate(ctx, "install")) : this.deps.installer!.install(input.cli, () => this.gate(ctx, "install"))); }
           catch (error) {
             const ended = (error as { ended?: unknown } | null)?.ended;
             if (error instanceof ProcessNotConfirmedEnded) holdUntil(error.ended);

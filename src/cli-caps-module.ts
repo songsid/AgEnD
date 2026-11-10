@@ -26,6 +26,8 @@ export interface UiCliCaps {
   runtimeName: string | null;
   /** A Windows Runtime can UPDATE it from the dashboard (`runtime.update`): install and update are separate facts — a CLI may be install-only (it updates itself, or Update is not built). */
   runtimeUpdate: boolean;
+  /** AGEND-153: that update is the named exception — it goes to the vendor's newest release, which AgEnD has not audited (`runtime.update.kind: "latest-unaudited"`); the page labels it so. */
+  runtimeUpdateLatest: boolean;
 }
 
 export function uiCliCaps(): Record<CliId, UiCliCaps> {
@@ -40,6 +42,7 @@ export function uiCliCaps(): Record<CliId, UiCliCaps> {
       firstRunSignIn: hostFacts(id, "firstRunSignIn")?.mode ?? null,
       runtimeInstall: runtimeFacts(id, "install") !== null,
       runtimeUpdate: runtimeFacts(id, "update") !== null,
+      runtimeUpdateLatest: runtimeFacts(id, "update")?.kind === "latest-unaudited",
       runtimeName: runtimeFacts(id, "install") ? runtimeFacts(id, "provider")?.name ?? null : null,
     };
     return [id, caps] as const;

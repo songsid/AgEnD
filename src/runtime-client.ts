@@ -19,7 +19,7 @@ import { readRuntimeInfo } from "./runtime-build-info.js";
 import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
 import { isCreatedProfile } from "./runtime-profile-ownership.js";
 import { killTree } from "./runtime-signin.js";
-import { CLI_INSTALL_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { CLI_INSTALL_CAPABILITY, CLI_UPDATE_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
@@ -222,7 +222,7 @@ export class RuntimeClient {
     this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY) ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY) ? remote : (name === CLI_INSTALL_CAPABILITY || name === CLI_UPDATE_CAPABILITY) ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }

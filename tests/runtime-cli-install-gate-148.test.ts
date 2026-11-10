@@ -54,8 +54,10 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
   // The paired computer, as the Runtime handler sees it: what `cli.install` was asked and with whom as the actor; its answer is that computer's owner's own switch.
   const calls: Array<{ operation: string; payload: any }> = [];
   let answer: () => Promise<unknown> = async () => ({ version: "0.167.0" });
+  // AGEND-153: what the computer already has (its last inventory) — the route sends `cli.update` for the named exception's CLI when it is there.
+  let inventory: unknown;
   const hub = {
-    machine: (id: string) => id === MACHINE ? { id, status: "online", runtimeInfo: { capabilities: ["exec", "remote-signin", "cli-install"] } } : undefined,
+    machine: (id: string) => id === MACHINE ? { id, status: "online", runtimeInfo: { capabilities: ["exec", "remote-signin", "cli-install", "cli-update"] }, ...(inventory ? { inventory } : {}) } : undefined,
     callAccount: async (_id: string, operation: string, payload: any) => { calls.push({ operation, payload }); return answer(); },
     listMachines: () => [], diagnosticTasks: () => [],
   };
@@ -106,7 +108,8 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
   const stateOf = (r: { body: any }, s: { record: SessionRecord }) => store.get(r.body.pending_change.id, s.record.idHash)?.state;
   const settle = () => new Promise(r => setTimeout(r, 30));
   const installs = () => calls.filter(c => c.operation === "cli.install");
-  return { fm, any, store, session, calls, installs, install, send, stateOf, settle,
+  const updates = () => calls.filter(c => c.operation === "cli.update");
+  return { fm, any, store, session, calls, installs, updates, install, send, stateOf, settle, has: (id: string, version: string) => { inventory = { home: "C:\\D", clis: [{ id, path: `C:\\tools\\${id}.exe`, version }] }; },
     answerWith: (fn: () => Promise<unknown>) => { answer = fn; },
     holdExecution: () => { looks = 0; let release!: () => void; hold = new Promise<void>(r => { release = r; }); return () => { hold = null; release(); }; } };
 }
@@ -120,6 +123,46 @@ describe("the lenient default: an administrator's request is applied at once, th
     expect(h.installs()).toHaveLength(1);
     expect(h.installs()[0]!.payload).toEqual({ cli: "codex", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) });
     expect(h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ")).toMatch(/Install codex 0\.\d+\.\d+ on the paired Windows computer/);
+  });
+});
+
+// AGEND-153: the named exception on a computer takes the very same gate: held, the asker's own code when they asked for it, and only then one `cli.update` to the computer; the held change says LATEST and "not audited".
+describe("AGEND-153: Antigravity's update to the vendor's latest goes through the same gate", () => {
+  it("the held change says it goes to the LATEST release, not audited — alongside the pinned install it would be on a computer without it", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    h.has("antigravity", "1.5.3");
+    const r = await h.install(s, "antigravity");
+    await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
+    const text = h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ");
+    expect(text).toMatch(/Install antigravity 1\.5\.3 on the paired Windows computer/);
+    expect(text).toMatch(/If antigravity is already on the paired Windows computer .*updates it to the vendor's LATEST release \(not audited by AgEnD\)/);
+    // a CLI whose update is the pinned install carries no such sentence
+    const other = await h.install(s, "codex");
+    await vi.waitFor(() => expect(h.stateOf(other, s)).toBe("applied"));
+    expect(h.store.get(other.body.pending_change.id, s.record.idHash)!.summary.join(" ")).not.toMatch(/LATEST/);
+  });
+  it("a strict admin off this computer: nothing is sent until their own digest-bound code; then exactly one `cli.update` with the CLI id and the opaque admin name", async () => {
+    const h = harness({ enrolled: true, strict: true }), s = h.session("code", "lan");
+    h.has("antigravity", "1.5.3");
+    const r = await h.install(s, "antigravity");
+    expect([r.status, r.body.pending_change.state, r.body.pending_change.totp]).toEqual([202, "pending", "ready"]);
+    await h.settle();
+    expect([h.calls.filter(c => c.operation.startsWith("cli.")).length, h.stateOf(r, s)]).toEqual([0, "pending"]);
+    const ok = await h.send(s, "POST", `/api/settings/pending/${r.body.pending_change.id}/confirm-totp`, { code: codeAt(Date.now()), digest: r.body.pending_change.confirm_digest });
+    expect(ok.status).toBe(202);
+    await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
+    expect(h.installs()).toHaveLength(0);
+    expect(h.updates()).toHaveLength(1);
+    expect(h.updates()[0]!.payload).toEqual({ cli: "antigravity", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) });
+  });
+  it("the public link and a guest start nothing; a hand-built POST is refused", async () => {
+    const h = harness({ enrolled: true });
+    h.has("antigravity", "1.5.3");
+    expect((await h.install(h.session("code", "here", { gateway: true }), "antigravity")).body.error).toBeTruthy();
+    expect((await h.install(h.session("guest", "here"), "antigravity")).body.error).toBeTruthy();
+    expect((await h.send(h.session("code", "here"), "POST", INSTALL, { cli: "antigravity" }, "route")).body.error).toBe("install_confirmation_required");
+    await h.settle();
+    expect(h.calls.filter(c => c.operation.startsWith("cli."))).toEqual([]);
   });
 });
 

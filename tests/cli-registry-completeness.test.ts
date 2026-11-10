@@ -77,14 +77,12 @@ kiro-cli runtime.accountRows not_yet_built undecided
 kiro-cli runtime.authStatus not_yet_built undecided
 kiro-cli runtime.identity not_applicable
 kiro-cli runtime.usage not_yet_built undecided
-antigravity host.update by_design
 antigravity host.dashboardSignIn by_design
 antigravity host.structuredSignIn not_yet_built undecided
 antigravity host.identity not_yet_built undecided
 antigravity host.namedAccounts needs_verification
 antigravity host.signOut needs_verification
 antigravity host.keepAlive needs_verification
-antigravity runtime.update by_design
 antigravity runtime.signIn not_yet_built undecided
 antigravity runtime.namedAccounts needs_verification
 antigravity runtime.accountRows not_yet_built undecided
@@ -132,7 +130,6 @@ opencode host.signOut needs_verification
 opencode host.keepAlive needs_verification
 opencode host.accountCard cli_has_none
 opencode host.usage cli_has_none
-opencode runtime.update not_yet_built #3521
 opencode runtime.signIn not_applicable
 opencode runtime.namedAccounts needs_verification
 opencode runtime.accountRows cli_has_none

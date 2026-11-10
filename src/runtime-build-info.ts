@@ -8,7 +8,7 @@ import { CLI_REGISTRY_MODULES } from "./cli-registry.js";
 import { RUNTIME_PROTOCOL_VERSION, validRuntimeVersion, type RuntimeInfo } from "./runtime-protocol.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { ACCOUNT_IDENTITY_CAPABILITY } from "./claude-auth-status.js";
-import { CLI_INSTALL_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { CLI_INSTALL_CAPABILITY, CLI_UPDATE_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { nativeInstallSupported } from "./runtime-cli-install.js";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
@@ -35,7 +35,7 @@ export function readRuntimeInfo(options: { moduleDirectory?: string; packagePath
   const directory = options.moduleDirectory ?? dirname(fileURLToPath(import.meta.url));
   const result: RuntimeInfo = { protocolVersions: [RUNTIME_PROTOCOL_VERSION], capabilities: ["exec", "mcp", ...((options.panes ?? process.platform === "win32") ? ["panes"] : []), RUNTIME_CREDENTIAL_CAPABILITY, ACCOUNT_IDENTITY_CAPABILITY, REMOTE_SIGNIN_CAPABILITY, MODEL_REFRESH_CAPABILITY,
     // Claimed only when this Runtime has an installer (native Windows x64): AgEnD must not offer an install to one that cannot do it.
-    ...((options.install ?? nativeInstallSupported()) ? [CLI_INSTALL_CAPABILITY] : [])] };
+    ...((options.install ?? nativeInstallSupported()) ? [CLI_INSTALL_CAPABILITY, CLI_UPDATE_CAPABILITY] : [])] };
   try {
     const pkg: unknown = JSON.parse(boundedFile(options.packagePath ?? join(directory, "..", "package.json"), 64 * 1024).toString("utf8"));
     if (!pkg || typeof pkg !== "object" || !("name" in pkg) || !["@songsid/agend", "@songsid/agend-runtime"].includes(String(pkg.name)) || !("version" in pkg) || !validRuntimeVersion(pkg.version)) return result;

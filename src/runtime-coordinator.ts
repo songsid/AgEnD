@@ -940,7 +940,7 @@ export class RuntimeCoordinator {
     const input = parseRuntimeRemotePayload(operation, payload);
     const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
     if (this.closed || machine.status !== "online" || !connection?.ready || !this.current(connection)) throw Error("Runtime machine is offline");
-    const needed = operation === "models.refresh" ? "model-catalog-refresh" : operation === "cli.install" ? "cli-install" : "remote-signin";
+    const needed = operation === "models.refresh" ? "model-catalog-refresh" : operation === "cli.install" ? "cli-install" : operation === "cli.update" ? "cli-update" : "remote-signin";
     if (!machine.runtimeInfo?.capabilities.includes(needed)) throw Error("Update the Runtime on that computer to use this; it does not offer it yet");
     if (this.accountPending.size >= 16) throw Error("Too many account operations are waiting; try again shortly");
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 15 * 60_000) throw Error("Invalid account operation timeout");

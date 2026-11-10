@@ -81,7 +81,7 @@ describe("startWebInstall — update", () => {
   it("an installed CLI behind the audited release: the window runs the registry's update command with the audited release, and the page is told from → to", async () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
-    const update = vi.fn<(from: string | null, target: string) => void>();
+    const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
     expect(fakeSessions).toHaveLength(1);
@@ -149,7 +149,7 @@ describe("startWebInstall — update", () => {
     const { fm, reporter } = fleet();
     await fm.backendAvailability.refresh(["grok"], { force: true });
     writeGrok("1.0.72");                                                             // replaced in place, readable: the update goes from what is there NOW
-    const update = vi.fn<(from: string | null, target: string) => void>();
+    const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.72", "1.0.77");
   });
@@ -173,7 +173,7 @@ describe("startWebInstall — update", () => {
     const reads = vi.spyOn(hostAvailabilityProbes, "version");
     reads.mockReset();
     reads.mockImplementationOnce(async () => "1.0.78").mockImplementation(async () => "1.0.70");
-    const update = vi.fn<(from: string | null, target: string) => void>();
+    const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
   });
@@ -187,16 +187,17 @@ describe("startWebInstall — update", () => {
     writeGrok("1.0.70");                                    // in ~/.grok/bin …
     rmSync(join(home, ".bash_profile"));                    // … which no login shell adds to PATH here
     const { fm, reporter } = fleet();
-    const update = vi.fn<(from: string | null, target: string) => void>();
+    const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
     expect(fakeSessions).toHaveLength(1);
   });
-  it("a CLI that is not installed anywhere is refused as not_installed; one that updates itself, or that is not a CLI, as unsupported", async () => {
+  it("a CLI that is not installed anywhere is refused as not_installed; one that updates itself with no exception, or that is not a CLI, as unsupported", async () => {
     rmSync(join(profileBin, "grok"));                       // not in the installer's directory, not on any PATH
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ refused: "not_installed" });
-    for (const backend of ["antigravity", "muse", "rm -rf /", "gemini"]) expect(await fm.startWebInstall(backend, reporter(), undefined, "update"), backend).toEqual({ refused: "unsupported" });
+    expect(await fm.startWebInstall("antigravity", reporter(), undefined, "update")).toEqual({ refused: "not_installed" });     // AGEND-153: it has an update (the named exception); there is just no copy here
+    for (const backend of ["muse", "rm -rf /", "gemini"]) expect(await fm.startWebInstall(backend, reporter(), undefined, "update"), backend).toEqual({ refused: "unsupported" });
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });

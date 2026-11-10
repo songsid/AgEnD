@@ -5,7 +5,9 @@ export const ANTIGRAVITY_SPEC = {
   id: "antigravity",
   host: {
     install: yes({ binary: "agy", command: "curl -fsSL https://antigravity.google/cli/install.sh | bash" }),
-    update: byDesign("Antigravity updates itself in the background and its `agy update` has no way to choose a release, so the dashboard only shows the installed and the audited versions."),
+    // AGEND-153 (#3521, the maintainer's decision on #3539): the NAMED EXCEPTION. Antigravity updates itself and `agy update` cannot choose a release, so the button runs it as it is and the
+    // CLI goes to the newest release Google serves, which AgEnD has NOT audited (`release: "latest-unaudited"`; the page says so on the button). Same gate as any update otherwise.
+    update: yes({ binary: "agy", command: "agy update", release: "latest-unaudited" }),
     chatLogin: yes({ aliases: ["agy"], mode: "declined" }),
     dashboardSignIn: byDesign("Bare `agy` is the whole agent CLI, not a login command, so it never gets the browser terminal (login-flows.ts: `remoteLogin: \"unsupported\"`)."),
     structuredSignIn: notYetBuilt("undecided", "`agy acp --login` (agy 1.5.0 and later) can be driven by the structured sign-in; not built on this registry yet."),
@@ -31,7 +33,10 @@ export const ANTIGRAVITY_SPEC = {
     // of them, then the signer, and refuses on any mismatch (runtime-cli-install.ts, `kind: "download"`). Windows x64 only.
     // AGEND-148: 1.5.3 is on the maintainer-confirmed audited ledger (cli-audited.ts), so this download is pinned to an AUDITED release, not for its integrity only.
     install: yes({ kind: "download", pin: "audited" }),
-    update: byDesign("Antigravity updates itself in the background and is not updated by the Runtime (its pinned download is an install, and the CLI then updates itself); the dashboard only shows the installed and the audited versions."),
+    // AGEND-153: the named exception on a computer. NOT the pinned install: the Runtime downloads the newest release Google's own manifest names (from a fixed address, only from the vendor's
+    // fixed file prefix), checks its sha512 against that manifest and the Authenticode signer (Google LLC), and only then switches to it (runtime-cli-install.ts, `LATEST_UNAUDITED`). The vendor's
+    // own updater is never run there. The release is not one AgEnD has audited, and the page says so.
+    update: yes({ kind: "latest-unaudited" }),
     signIn: notYetBuilt("undecided", "Antigravity signs in as the computer's own login, with no profile; not built on this registry yet."),
     namedAccounts: toVerify("Whether `agy` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "No row per computer for Antigravity's own login yet."),

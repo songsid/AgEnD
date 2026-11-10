@@ -95,7 +95,7 @@ describe("an older Runtime and an older server still work with it", () => {
     const directory = mkdtempSync(join(tmpdir(), "agend-registry-info-"));
     try {
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: true, install: true })).toEqual({
-        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "cli-install"],
+        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "cli-install", "cli-update"],
       });
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: false, install: false }).capabilities)
         .toEqual(["exec", "mcp", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh"]);

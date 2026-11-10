@@ -34,6 +34,7 @@ import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
 import { hostUpdatePlan } from "./web-host-install.js";
+import { runtimeFacts } from "./cli-registry.js";
 import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
 import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
@@ -134,7 +135,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!plan) throw new SettingsConfirmationError(400, "unsupported");
     const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
+      summary: [plan.target === null ? t("host_cli.update_latest", input.backend) : t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (isRuntimeCliInstallPath(path)) {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
@@ -144,7 +145,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!isInstallableCli(b.cli)) throw new SettingsConfirmationError(400, "unsupported");
     const machine = RUNTIME_CLI_INSTALL_PATH.exec(path)![1], input = { cli: b.cli, machine }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8))], affectedConnections: [], authority: HUB_AUTHORITY } };
+      // AGEND-153: a CLI whose update is the named exception is, when it is already on that computer, taken to the vendor's newest release — the held change says so in its own words.
+      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8)), ...(runtimeFacts(b.cli, "update")?.kind === "latest-unaudited" ? [t("runtime_cli.update_latest", input.cli, machine.slice(0, 8))] : [])], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
