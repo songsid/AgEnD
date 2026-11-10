@@ -239,6 +239,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
+  // M-2855: Settings → Access & security → Overview (linked by settings-access-overview.js; an older app.css lacks it).
+  "access-overview.css": { file: join("shared", "access-overview.css"), type: "text/css; charset=utf-8" },
   // #3292: Keep sign-in alive's line on an Accounts row (linked by accounts-keepalive.js; an older accounts.css lacks it).
   "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
@@ -438,7 +440,7 @@ export function handleAuthRequest(
       }
       const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
       const { sessionId, record } = sessions.create({ tier: "admin", surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId,
-        ...(result.session.owner ? { owner: result.session.owner } : {}), ...(result.session.remote ? { remote: result.session.remote } : {}) });
+        ...(result.session.owner ? { owner: result.session.owner } : {}), ...(result.session.remote ? { remote: result.session.remote } : { via: "totp" as const }) });
       // The session must be the kind that was asked for (the store drops a flag it does not allow), or there is none.
       if ((result.session.remote && record.remote !== result.session.remote) || (result.session.owner && !record.owner) || (!result.session.owner && !result.session.remote && (record.owner || record.remote))) {
         sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }); return;

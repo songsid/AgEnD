@@ -150,8 +150,10 @@ export interface SessionRecord {
    * in by a code a signed-in, owner-verified device approved (web-device-login.ts). Such a session is an ordinary admin
    * session on the local surface: no `host`, no `remote`, no owner — so it carries no owner authority until that is
    * separately verified (authority/web-authority.ts reads none of this field).
+   * "totp" (M-2855): signed in with an admin's authenticator code (POST /auth/totp) as that admin's own session or the
+   * web-only fleet's plain admin session — any surface, no `host`, no `remote` (the outside session says so by `remote`).
    */
-  readonly via?: "device";
+  readonly via?: "device" | "totp";
 }
 
 export interface SessionSummary {
@@ -201,7 +203,7 @@ export interface WebDeviceRow {
   readonly signOutBlocked?: "owner_required" | "other_admin";
 }
 export function sessionVia(record: Pick<SessionRecord, "host" | "remote" | "via">): SessionVia {
-  return record.via === "device" ? "device" : record.host === true ? "host" : record.remote === "totp" ? "totp" : "code";
+  return record.via === "device" ? "device" : record.host === true ? "host" : record.remote === "totp" || record.via === "totp" ? "totp" : "code";
 }
 
 export function sessionIdHash(sessionId: string): string {
@@ -309,7 +311,8 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.owner === undefined || isOwner(v.owner))
     && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
     && (v.remote === undefined || (v.remote === "totp" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.surface === "gateway" && typeof v.exposureId === "string"))
-    && (v.via === undefined || (v.via === "device" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.remote === undefined && v.surface === "local"))
+    && (v.via === undefined || (v.via === "device" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.remote === undefined && v.surface === "local")
+      || (v.via === "totp" && v.tier === "admin" && v.host === undefined && v.remote === undefined))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -396,7 +399,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true; remote?: "totp"; via?: "device" }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true; remote?: "totp"; via?: "device" | "totp" }): { sessionId: string; record: SessionRecord } {
     // #1920: a guest is always someone's own account; never a guest of nobody.
     if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
@@ -422,6 +425,8 @@ export class WebSessionStore {
       ...(input.remote === "totp" && input.tier === "admin" && !input.owner && input.host !== true && input.surface === "gateway" && input.exposureId ? { remote: "totp" as const } : {}),
       // Refs #3061: only ever on a local admin session with nothing else that carries authority (see SessionRecord.via).
       ...(input.via === "device" && input.tier === "admin" && !input.owner && input.host !== true && !input.remote && input.surface === "local" ? { via: "device" as const } : {}),
+      // M-2855: an authenticator sign-in that is not the outside session (that one says so by `remote`). Display only.
+      ...(input.via === "totp" && input.tier === "admin" && input.host !== true && !input.remote ? { via: "totp" as const } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);

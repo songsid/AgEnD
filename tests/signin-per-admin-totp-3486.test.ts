@@ -28,7 +28,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { handleAuthRequest } from "../src/auth-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
-import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { csrfTokenFor, sessionVia, tokenEpoch } from "../src/web-session.js";
 import { evaluateSettingsRole } from "../src/authority/settings-role.js";
 import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_REACH_STEPS, TOTP_RETIRED_KEEP_MS, TOTP_RETIRED_SLOTS, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { SIGNIN_KNOWN_COOKIE, addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
@@ -194,6 +194,39 @@ describe("who signs in: the admin the name stands for, with their own code", () 
     expect(s.record).not.toHaveProperty("host");
     expect(f.any.sessionAuthorizationStore()?.list() ?? []).toEqual([]);
     expect(f.any.webAuthority({ session: s.record, gateway: false, peer: "lan" }).authority.kind).toBe("none");
+  });
+});
+
+describe("M-2855: the device list says how it signed in — the authenticator app, on every way in", () => {
+  const listed = (f: ReturnType<typeof fleet>, sessionId: string) => f.any.webSessions.list().find((r: { handle: string }) => r.handle === f.any.webSessions.authenticate(sessionId, tokenEpoch(TOKEN), { touch: false, surface: "local" })?.handle)?.via;
+  it("a chat admin, direct and over a public link: `totp`, never `code` (the record says so; nothing else about the session changes)", async () => {
+    const f = fleet({ va: { quick_link: true } });
+    const direct = f.withCookie(await f.totp({ account: "alice_tg", code: codeOf(secretFor(ADMIN)) }), "lan");
+    expect(direct.record).toMatchObject({ tier: "admin", surface: "local", owner: { adapterId: "a", userId: ADMIN }, via: "totp" });
+    expect([direct.record.host, direct.record.remote]).toEqual([undefined, undefined]);
+    expect(sessionVia(direct.record)).toBe("totp");
+    expect(listed(f, direct.sessionId)).toBe("totp");                                                  // the row Settings → Devices shows
+    f.openLink();
+    const linked = f.withCookie(await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) }, { link: "quick" }), "lan", "quick");
+    expect(linked.record).toMatchObject({ surface: "gateway", owner: { adapterId: "a", userId: ADMIN_B }, via: "totp" });
+    expect(sessionVia(linked.record)).toBe("totp");
+  });
+  it("a web-only fleet: the plain admin session (direct) and the outside session both read `totp`; the outside one still by `remote` alone", async () => {
+    const f = fleet({ chat: false });
+    const direct = f.withCookie(await f.totp({ code: codeOf(HOST_SECRET) }, { where: "tailnetServe" }), "tailnetServe");
+    expect(direct.record.via).toBe("totp");
+    expect(sessionVia(direct.record)).toBe("totp");
+    const o = fleet({ chat: false, outside: true }); o.openLink(OUTSIDE_LINK_OWNER);
+    const outside = o.withCookie(await o.totp({ code: codeOf(HOST_SECRET) }, { link: "quick" }), "lan", "quick");
+    expect(outside.record).toMatchObject({ remote: "totp" });
+    expect(outside.record.via).toBeUndefined();
+    expect(sessionVia(outside.record)).toBe("totp");
+  });
+  it("display only: the same authority with and without the mark (the settings role and the web authority never read it)", async () => {
+    const f = fleet();
+    const s = f.withCookie(await f.totp({ account: "alice_tg", code: codeOf(secretFor(ADMIN)) }), "lan");
+    const { via: _via, ...unmarked } = s.record;
+    expect(f.any.webAuthority({ session: unmarked, gateway: false, peer: "lan" })).toEqual(f.any.webAuthority({ session: s.record, gateway: false, peer: "lan" }));
   });
 });
 
