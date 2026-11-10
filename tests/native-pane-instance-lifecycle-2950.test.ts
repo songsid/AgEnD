@@ -62,3 +62,12 @@ it("a native wake keeps its runner-owned path despite the native config projecti
  expect(f.fleet.daemons.get("native")).toBe(daemon);expect(f.native.release).not.toHaveBeenCalled();
  expect(f.native.acquire).toHaveBeenCalledOnce();expect(f.forbidden).not.toHaveBeenCalled();
 });
+
+it("a native pause remains owned by its Fleet lifecycle before portable pause admission",async()=>{
+ const f=fixture();await f.fleet.lifecycle.start("native",f.config,true);
+ const daemon=f.fleet.daemons.get("native");f.pane.capturePane.mockClear();
+ await expect(daemon.pause()).rejects.toThrow("Native pause is owned by its Fleet lifecycle transition");
+ expect(daemon.hasPendingPauseWake).toBe(false);expect(f.pane.capturePane).not.toHaveBeenCalled();
+ expect(f.fleet.daemons.get("native")).toBe(daemon);expect(f.native.release).not.toHaveBeenCalled();
+ expect(f.forbidden).not.toHaveBeenCalled();
+});
