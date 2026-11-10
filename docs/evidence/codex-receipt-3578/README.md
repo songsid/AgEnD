@@ -35,3 +35,7 @@ The author-only harness copies preserve exact run structure; local package paths
 ## Risk and rollback
 
 Extra observations are bounded and single-flight during the existing30s wait. Positive proof, owner fences, retry count, sender ACL and delivered-only authorization are unchanged. Revert the two source changes to roll back; no schema/data migration. No web UI or lazy module change, so style/browser SKEW is not applicable.
+
+## Review D6 follow-up
+
+The post-wait owner fence is now pinned for both generation and tmux replacement **after** the predicate observes `submitted` but **before** the wait resolves. Proof is staged until the confirmation result is consumed, matching the production verdict/receipt sequence. Both cases return false, leave the receipt queued and send no Enter. Removing the existing post-wait `current()` check fails exactly these two tests; restored suite10/10 and test types pass. Production bytes and all recorded live/replay evidence are unchanged; prior262-test clearance carries.
