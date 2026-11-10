@@ -708,9 +708,8 @@ function whereText(where) {
 /**
  * #2868: how a pending change is confirmed, in the order a person can act on it. First where: the General card (naming
  * the platform it was posted on), or the host's command when no General could take it. Then, when this browser could
- * confirm it itself (the server's read says so: #2170's rule), "Apply now"; when it isn't verified but could be,
- * "Authorize this browser" (the same DM card as the composer's). The host's command otherwise sits folded under
- * "Advanced".
+ * confirm it itself (the server's read says so: AGEND-122's rule), "Apply now", or the admin's own authenticator code.
+ * The host's command otherwise sits folded under "Advanced" (never on a page that is not the AgEnD computer's own).
  */
 // alpha.6 feedback #2c (the user's decision hmsg-77256f66): a change no General could take says WHY, in plain words, and what
 // would let it through — never "type this command on the host". The host's command stays folded under Advanced, a last resort.

@@ -295,7 +295,7 @@ describe("#3008 ② Settings → Access & security → Owner verification (Conne
         const w = await open(away);
         await w.click(w.$("#outAgain"));
         expect([w.$("dialog .dlg-title").textContent, w.$("#outAsk .note").textContent, w.$("#outAskGo").textContent, w.$("#outAskCode").parentNode.querySelector("label").textContent])
-          .toEqual(["請輸入目前的驗證碼", "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的驗證碼才能繼續。", "繼續", "目前的驗證碼"]);
+          .toEqual(["請輸入目前的驗證碼", "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的驗證碼才能繼續。", "繼續", "6 位數驗證碼（驗證器 App）"]);
         answers["POST /ui/outside/enroll"] = { status: 429, body: { error: "paused", retryAfterMs: 60 * 60_000 } };
         await w.type(w.$("#outAskCode"), "123456");
         await w.click(w.$("#outAskGo"));
