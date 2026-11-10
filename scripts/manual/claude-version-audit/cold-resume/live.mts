@@ -7,7 +7,7 @@
 // scratch CA (flags.mjs). The home is claude.ai-shaped with FAKE tokens; no real account, nothing leaves the host.
 // IS_SANDBOX=1 only because the namespace maps us to uid 0 and Claude refuses --dangerously-skip-permissions as root.
 //
-//   RIG=<dir with sock, envs3, h1-aged-backup, w1, proxy.port, ca.pem, flags.json> BIN=<dir with 2.1.318/2.1.319> \
+//   RIG=<dir with sock, envs3, h1-aged-backup, w1, proxy.port, ca.pem, flags.json> BIN=<dir with 2.1.318/2.1.319/2.1.322> \
 //     npx tsx scripts/manual/claude-version-audit/cold-resume/live.mts [case ...]
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
@@ -27,6 +27,10 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "319-summary-lookup-80": { v: "319", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
   "319-summary-newfocus": { v: "319", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "318-lookup": { v: "318", width: 160, flags: { tengu_amber_tally: TIER } },
+  // 2.1.322 audit: the new-conversation focus is where a first-sight Escape was dropped (5 of 6 launches unfixed).
+  "322-lookup": { v: "322", width: 160, flags: { tengu_amber_tally: TIER } },
+  "322-summary-lookup": { v: "322", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "322-summary-newfocus": { v: "322", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
@@ -76,9 +80,9 @@ async function run(name: string): Promise<boolean> {
   const files = readdirSync(proj).flatMap(d => readdirSync(join(proj, d)).filter(f => f.endsWith(".jsonl")).map(f => join(proj, d, f)));
   const text = files.map(f => readFileSync(f, "utf8")).join("");
   const compacted = /"compact_boundary"|isCompactSummary/.test(text);
-  const ok = sawDialog && ready === true && keys.join(",") === "Escape" && !after.includes("Resume this conversation?")
+  const ok = sawDialog && ready === true && /^Escape(,Escape){0,2}$/.test(keys.join(",")) && !after.includes("Resume this conversation?")
     && files.length === 1 && !compacted && after.includes("BIG hello");
-  console.log(`${ok ? "PASS" : "FAIL"} ${name}: dialog seen ${sawDialog}, ready ${ready}, keys [${keys.join(",")}], sessions ${files.length}, compacted ${compacted}, history kept ${after.includes("BIG hello")}`);
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}: dialog seen ${sawDialog}, ready ${ready}, keys [${keys.join(",")}], sessions ${files.length}, compacted ${compacted}, history kept ${after.includes("BIG hello")}, prompt gone ${!after.includes("Resume this conversation?")}`);
   writeFileSync(join(RIG, "frames", `acc-${name}-after.txt`), after);
   tmux("kill-session", "-t", session);
   return ok;
