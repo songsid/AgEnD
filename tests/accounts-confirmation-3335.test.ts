@@ -1,9 +1,13 @@
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import yaml from "js-yaml";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// Saving an account also refreshes its model catalog (#3530). These Settings
+// fixtures exercise the save/Apply boundary, never a real backend probe isolate.
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
 import { settingsChangeDiff } from "../src/settings-change.js";
@@ -11,10 +15,11 @@ import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 
+beforeEach(() => { FakeProbeWorker.reset(); FakeProbeWorker.answer = () => null; });
 const fixtures: Array<{ dir: string; fm: FleetManager; store: SettingsConfirmationStore }> = [];
 afterEach(() => {
   for (const { dir, fm, store } of fixtures.splice(0)) {
-    store.close(); fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
+    (fm as unknown as { stopCliEnvProbes(): void }).stopCliEnvProbes(); store.close(); fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
     rmSync(dir, { recursive: true, force: true });
   }
   vi.restoreAllMocks(); vi.unstubAllEnvs();
@@ -63,6 +68,8 @@ describe("Accounts Save through the HTTP confirmation gate (#3335)", () => {
     expect(response, "base returns400 unsupported_sensitive_effect before the account handler").toMatchObject({ status: 200, body: { ok: true } });
     expect((yaml.load(readFileSync(h.path, "utf8")) as any).instances.worker.backend_options["claude-code"].credential_profile).toBe("personal");
     expect(h.store.list("owner")).toEqual([]); expect(h.notify).not.toHaveBeenCalled();
+    expect(FakeProbeWorker.workers.map(worker => [worker.input.mode, worker.input.backend, worker.input.config.credentialStoreHome ? basename(worker.input.config.credentialStoreHome) : null]))
+      .toEqual([["env", "claude-code", "personal"]]);
     expect(h.fm.planConfigApply()).toEqual([{ target: "worker", kind: "restart" }]);
     const result = h.fm.startSettingsApply("account-move-3335");
     expect("job" in result).toBe(true);
