@@ -2,9 +2,9 @@ import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { flagEffort } from "./launch-effort.js";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { createHash } from "node:crypto";
+import { cleanupGrokMcp, grokMcpLaunchEnv, writeGrokMcp } from "./grok-mcp.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { selectionCard } from "../selection-card.js";
@@ -374,7 +374,7 @@ export class GrokBackend implements CliBackend {
     this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
-    let cmd = `${this.binaryPath} --no-auto-update`;
+    let cmd = `${grokMcpLaunchEnv(config, this.instanceDir)} ${this.binaryPath} --no-auto-update --no-leader`;
     // --always-approve auto-approves tool executions (documented flag). If a grok
     // build ignores it, getRuntimeDialogs() auto-approves the prompt as a net.
     if (config.skipPermissions !== false) cmd += " --always-approve";
@@ -398,23 +398,6 @@ export class GrokBackend implements CliBackend {
     return cmd;
   }
 
-  /**
-   * Build an ASCII-only, per-instance MCP server key. Grok Build's MCP client has
-   * a bug where a non-ASCII (e.g. CJK) server name connects but drops ALL tools
-   * (tool_count=0, misreported as "connection failed"). Instance names can be CJK
-   * (persona ClassicBot channels), so sanitize: pure-ASCII names pass through
-   * unchanged (readable + already unique); names with non-ASCII are stripped to an
-   * ASCII slug plus a short hash of the ORIGINAL name, so two distinct CJK names
-   * sharing a working directory can't collide to the same key.
-   */
-  private mcpKey(mcpName: string, instanceName: string): string {
-    const ascii = instanceName.replace(/[^\x20-\x7E]/g, "");
-    if (ascii === instanceName) return `${mcpName}-${instanceName}`;
-    const slug = ascii.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const hash = createHash("md5").update(instanceName).digest("hex").slice(0, 8);
-    return slug ? `${mcpName}-${slug}-${hash}` : `${mcpName}-${hash}`;
-  }
-
   /** The daemon's persisted session id (written from getSessionId()), for --resume. */
   private storedSessionId(): string | null {
     try {
@@ -425,55 +408,7 @@ export class GrokBackend implements CliBackend {
 
   writeConfig(config: CliBackendConfig): void {
     this.workingDirectory = config.workingDirectory;
-    // Grok Build merges MCP servers from a project-level .mcp.json (loaded below
-    // ~/.grok/config.toml in priority). Using the project file means we never
-    // clobber the user's global config. Standard mcpServers format: { command, args, env }.
-    const mcpPath = join(config.workingDirectory, ".mcp.json");
-    let root: Record<string, unknown> = {};
-    try { root = JSON.parse(readFileSync(mcpPath, "utf-8")); } catch { /* new file */ }
-
-    const servers = (root.mcpServers ?? {}) as Record<string, unknown>;
-    // Drop stale agend entries whose wrapper script no longer exists, plus any
-    // legacy non-ASCII key (grok drops all tools on a CJK key — we now always
-    // write ASCII keys, so a lingering CJK entry is dead weight to remove).
-    for (const [key, val] of Object.entries(servers)) {
-      if (key.startsWith("agend-")) {
-        const cmd = (val as Record<string, unknown>)?.command;
-        if ((typeof cmd === "string" && !existsSync(cmd)) || /[^\x20-\x7E]/.test(key)) {
-          delete servers[key];
-        }
-      }
-    }
-    // Namespace each server by instance so multiple instances can share a working
-    // dir. Key is ASCII-sanitized (grok's MCP client drops tools on a CJK key).
-    for (const [name, entry] of Object.entries(config.mcpServers)) {
-      const instanceKey = this.mcpKey(name, config.instanceName);
-      const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
-
-      // WORKAROUND (same as kiro-cli): grok does not reliably pass the mcp.json
-      // "env" block to the MCP server subprocess — the process would inherit grok's
-      // env, which has NO AGEND_SOCKET_PATH (the daemon keeps it out of process.env),
-      // so the server can't connect and every MCP tool (reply/react/…) fails. Emit a
-      // wrapper that exports the env explicitly, waits for the IPC socket, then execs
-      // the real server. This is env-delivery-independent and works either way.
-      const wrapperPath = join(this.instanceDir, `mcp-wrapper-${name}.sh`);
-      const envExports = Object.entries(allEnv)
-        .map(([k, v]) => `export ${k}='${String(v).replace(/'/g, "'\\''")}'`)
-        .join("\n");
-      // 0o700: wrapper inlines sensitive env (tokens, socket paths) — owner-only.
-      writeFileSync(
-        wrapperPath,
-        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${[entry.command, ...entry.args].map(shellQuote).join(" ")}\n`,
-        { mode: 0o700 },
-      );
-      chmodSync(wrapperPath, 0o700);
-
-      servers[instanceKey] = { command: wrapperPath, args: [] };
-    }
-    // Clean up any legacy non-namespaced key.
-    delete servers["agend"];
-    root.mcpServers = servers;
-    writeFileSync(mcpPath, JSON.stringify(root, null, 2));
+    writeGrokMcp(config, this.instanceDir);
 
     // Fleet instructions → AGENTS.md marker block (Grok reads AGENTS.md project docs,
     // same convention as Codex). Additive + idempotent via the AGEND marker.
@@ -786,22 +721,7 @@ export class GrokBackend implements CliBackend {
   }
 
   cleanup(config: CliBackendConfig): void {
-    // Remove only this instance's namespaced MCP entries — a non-namespaced key
-    // may belong to another instance sharing the working directory.
-    try {
-      const mcpPath = join(config.workingDirectory, ".mcp.json");
-      if (existsSync(mcpPath)) {
-        const root = JSON.parse(readFileSync(mcpPath, "utf-8"));
-        if (root.mcpServers) {
-          for (const name of Object.keys(config.mcpServers)) {
-            delete root.mcpServers[this.mcpKey(name, config.instanceName)];
-            // Also drop any legacy raw (pre-sanitize) key for this instance.
-            delete root.mcpServers[`${name}-${config.instanceName}`];
-          }
-          writeFileSync(mcpPath, JSON.stringify(root, null, 2));
-        }
-      }
-    } catch { /* best effort */ }
+    cleanupGrokMcp(config, this.instanceDir);
 
     // Remove fleet instructions marker block from AGENTS.md.
     try {
