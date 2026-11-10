@@ -1330,6 +1330,24 @@ program
       if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && await handOffLaunchdActivation("update")) return;
     }
     const { spawnSync } = await import("node:child_process");
+    // M-2858: every step below runs bare `npm`. With none on this PATH (a service or a runtime that ships Node alone —
+    // AgEnD's bundled Node has no npm), find the npm that manages THIS install (#3440's proof: its global root is the
+    // running package's own) and put its directory first, for this process and every npm and installer it starts; none
+    // → stop before anything is asked or changed, and say what to do.
+    {
+      const { npmForUpdate } = await import("./update-dispatch.js");
+      const found = await npmForUpdate();
+      if (!found.ok) {
+        console.error(`\n  ✗ Not updated: ${found.reason}\n`);
+        setUpdateProgressStage(DATA_DIR, "failed", { error: `Not updated: ${found.reason}` });
+        process.exitCode = 1;
+        return;
+      }
+      if (found.path !== null) {
+        process.env.PATH = found.path;
+        console.log(`  npm is not on PATH; using the npm that manages this install (${found.npmDir}).`);
+      }
+    }
     // M-2797: from here on, every npm this update starts (the version lookup, the preflight, the release's own installer
     // and its `npm install -g`) gives up on a silent connection instead of waiting minutes per try — set once, in this
     // process's environment, for each key nobody set (a person's .npmrc, variable or flag is kept, whatever its value).
