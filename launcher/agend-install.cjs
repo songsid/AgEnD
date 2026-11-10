@@ -101,6 +101,19 @@ var NPM_READS = /^(?:exec|x|access|adduser|add-user|login|logout|audit|bugs|issu
 // npm's flags that take a value (npm 10 config definitions) and the common ones that take none.
 var NPM_VALUE_FLAGS = /^(?:--(?:prefix|userconfig|globalconfig|cache|registry|loglevel|workspace|tag|otp|package|call|omit|include|before|access|scope|script-shell|shell|node-options|location|install-strategy|depth|auth-type|cafile|cert|key|proxy|https-proxy|noproxy|local-address|fetch-retries|fetch-timeout|maxsockets|user-agent|editor|browser|viewer|init-module|tag-version-prefix|preid|message|logs-dir|logs-max|replace-registry-host|cidr|expect-results|expect-result-count|sbom-format|sbom-type|lockfile-version|os|cpu|libc)|-w|-C|-c|-m)$/;
 var NPM_BOOLEAN_FLAGS = /^(?:-g|-y|-f|-s|-q|-d|-dd|-ddd|-S|-D|-O|-E|-B|-P|-l|-a|-h|-H|-v|--(?:no-[a-z0-9-]+|global|yes|force|silent|quiet|dry-run|json|offline|prefer-offline|prefer-online|ignore-scripts|foreground-scripts|legacy-peer-deps|strict-peer-deps|package-lock-only|save|save-dev|save-optional|save-exact|save-prod|save-peer|save-bundle|global-style|install-links|link|verbose|long|parseable|audit|fund|workspaces|include-workspace-root|if-present|production|usage|help|version|all|unicode|progress|update-notifier|bin-links|rebuild-bundle|engine-strict|prefer-dedupe|read-only|provenance|timing|umask))$/;
+/**
+ * M-2797 (Fable #3544 F1): `agend update` bounds npm with npm_config_fetch_* settings it lists in AGEND_UPDATE_NPM_BOUNDS
+ * (src/update-npm-env.ts). They are for this install's npm only: what restarts or starts the fleet gets the environment
+ * without them, so the long-running fleet follows the person's own npm settings again.
+ */
+var UPDATE_NPM_KEYS = ["fetch-timeout", "fetch-retries", "fetch-retry-mintimeout", "fetch-retry-maxtimeout"];
+function withoutUpdateNpmBounds(env) {
+  var copy = Object.assign({}, env);
+  var ours = String(copy.AGEND_UPDATE_NPM_BOUNDS || "").split(",");
+  UPDATE_NPM_KEYS.forEach(function (k) { if (ours.indexOf(k) >= 0) delete copy["npm_config_" + k.replace(/-/g, "_")]; });
+  delete copy.AGEND_UPDATE_NPM_BOUNDS;
+  return copy;
+}
 function isNpmCommand(word) { return NPM_CHANGES.test(word) || NPM_READS.test(word); }
 function npmCommands(args) {
   var words = args.split(/\s+/).filter(function (w) { return w !== ""; });
@@ -821,10 +834,10 @@ function main(argv, injected) {
       return fail(stage, why + ". Rolled back: " + outcome + (restored.length ? "; " + restored.join("; ") : "") + ". The update did not succeed");
     };
     if (kind) {
-      var service = deps.run(bin, ["install", "--no-activate"], { inherit: true });
+      var service = deps.run(bin, ["install", "--no-activate"], { inherit: true, env: withoutUpdateNpmBounds(deps.env) });
       if (service.status !== 0) return rollBack("starting", "`agend install --no-activate` could not refresh the " + kind + " service (exit " + service.status + ")", "AgEnD v" + version + " is installed — run `agend install --no-activate`, then `agend restart`");
     }
-    var env = Object.assign({}, deps.env, { AGEND_RESTART_ORIGIN: upgrade ? "agend-update" : "agend-install" });
+    var env = Object.assign({}, withoutUpdateNpmBounds(deps.env), { AGEND_RESTART_ORIGIN: upgrade ? "agend-update" : "agend-install" });
     if (fleetRunning(home, deps) && (kind || upgrade)) {
       var restarted = deps.run(bin, ["restart", "--yes"], { inherit: true, env: env });
       // 75: the restart job is still running (systemd goes on with it); the new fleet settles the marker.
@@ -851,5 +864,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, LOCK: LOCK };
+module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
