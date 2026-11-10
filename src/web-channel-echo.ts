@@ -45,8 +45,10 @@ export function neutralizeWebEchoText(text: string): string {
  */
 export function formatWebChannelEcho(user: string, preview: string, fullTextNote = "full text in web chat", opts: { guest?: boolean } = {}): string {
   const label = (clip(neutralizeWebEchoText(user).replace(/\s+/g, " "), 80) || "web-user") + (opts.guest ? " (guest)" : "");
-  const header = `${WEB_ECHO_PREFIX}${label}: `;
   const body = neutralizeWebEchoText(preview);
+  // M-2789: a message that opens with a quote ("> …", the web's 「引用」) starts it on its own line — Discord renders a
+  // quote only at a line's start, and the label is "name:" either way.
+  const header = `${WEB_ECHO_PREFIX}${label}:${body.startsWith(">") ? "\n" : " "}`;
   // Labels can expand short input dramatically. Keep one platform message:
   // a later Discord chunk would otherwise lose the provenance prefix.
   const budget = 1800 - header.length;

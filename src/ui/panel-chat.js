@@ -75,6 +75,7 @@ import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { installMessageActions } from "./chat-msg-actions.js";
+import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "./chat-quote.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
@@ -506,6 +507,37 @@ function Thread({ name, th }) {
       copyText, notice: (text, ok = true) => toast(text, ok),
       linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
     });
+    // M-2789: select a passage in a message → 「引用」 → it goes into the composer as a quote at the caret, repeatable.
+    const offQuote = installQuoteSelection(ls, {
+      field: () => document.getElementById("msgIn"),
+      canQuote: () => !!document.getElementById("msgIn"),
+      phone: () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches,
+      composerBox: () => document.querySelector(".composer-box"),
+      threadBox: () => sc,
+      insert: (text) => {
+        const field = document.getElementById("msgIn");
+        const value = store.state.drafts[name] || "";
+        // The caret where the person left it in the composer (kept when it lost the focus); never touched: the end.
+        const caret = field && field.dataset.touched === "1" ? composerCaret(field, value) : value.length;
+        const r = insertQuote(value, caret, text);
+        if (!r) return;
+        // Through the composer's own typing path (its onInput: the draft, the palette, the box's height), as a keystroke
+        // would — the store alone doesn't redraw the box. No composer on screen: the draft, for when it is.
+        if (field) {
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, r.value);
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+        } else store.setDraft(name, r.value);
+        const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+        // After the box redraws with the new text: the caret after the quote, in view. A phone keeps its keyboard down.
+        setTimeout(() => {
+          const el = document.getElementById("msgIn"); if (!el) return;
+          el.dataset.touched = "1";
+          try { el.setSelectionRange(r.caret, r.caret); } catch { /* not a text field */ }
+          if (!phone) el.focus();
+          showCaret(el, r.caret);
+        }, 0);
+      },
+    });
     // A copied message link (#m=<boot>-<id>): show that message, flashed.
     const linked = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
     if (linked) void thread.jumpTo(linked[1]);
@@ -519,7 +551,7 @@ function Thread({ name, th }) {
     return () => {
       window.removeEventListener("hashchange", onHash);
       unfollow();
-      offActions();
+      offActions(); offQuote();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       e.sink = null;

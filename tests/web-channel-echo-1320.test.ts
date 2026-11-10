@@ -280,6 +280,21 @@ describe("fleet-topic web echo (#1320 A)", () => {
       expect(h.received[0].type).toBe("fleet_inbound"); expect(h.s.webChannelEchoTails.size).toBe(0);
     });
   }
+  // M-2789: a web message answering quoted passages ("> …" lines, from the 「引用」 pill) reaches the agent as typed; its
+  // channel copy starts the quote on its own line — Discord renders "> " only at a line's start (a copy whose first
+  // quote sat after the "🌐 web · name: " label showed a bare ">"); Telegram's plain text shows the same lines.
+  for (const type of ["telegram", "discord"] as const) {
+    it(`${type}: M-2789 quoted passages — the agent gets them as typed; the copy's first quote starts its own line`, async () => {
+      const h = await harness(type);
+      const typed = "> 部署前要不要先跑 rehearsal？\n要，跑 b3 那套。\n\n> Hub 的名稱要不要顯示？\n要。";
+      expect((await send(h.fm, typed)).status).toBe(200); await flush();
+      expect(h.received[0].content).toContain(typed);
+      const echo = type === "telegram" ? h.telegramPayloads[0].text : h.discordPayloads[0].content;
+      expect(echo.startsWith(`${WEB_ECHO_PREFIX}web-user:\n> `)).toBe(true);
+      expect(echo.split("\n").filter((l: string) => l.startsWith("> "))).toEqual(["> 部署前要不要先跑 rehearsal?", "> Hub 的名稱要不要顯示?"]);
+      if (type === "telegram") expect(h.telegramPayloads[0].parse_mode).toBeUndefined();
+    });
+  }
   for (const type of ["telegram", "discord"] as const) {
     it(`${type}: direct mentions, attachment names and replayed echoes never enter a sibling bot`, async () => {
       const h = await harness(type), gate = deferred(); h.hold(gate.promise);
