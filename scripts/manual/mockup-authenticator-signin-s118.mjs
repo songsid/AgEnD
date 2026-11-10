@@ -1,14 +1,13 @@
-// Proposal only: actual signin.html and Settings shells, presentation-only DOM projection.
-// No production source/core change. Static sign-in POSTs refused; Settings uses a synthetic own-name read.
+// Code-only proposal: actual signin.html shell, presentation-only DOM projection.
+// Decision a690be6b; no production/core change. All sign-in POSTs refused.
+// The next-code state is visual only; its API answer shape awaits Junsion’s core PR.
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { bootFixture } from "./smoke-fixture/index.mts";
 const repo = process.cwd();
-if (!process.env.SETTINGS_REPO) throw new Error("set SETTINGS_REPO to the owned 2.3.x build root for Settings captures");
 process.env.REPO = repo;
 process.env.PW_DIR ||= repo;
 const require = createRequire(join(resolve(process.env.PW_DIR), "package.json"));
@@ -26,8 +25,6 @@ const proposalCss = `
 body { align-items: flex-start; padding-top: 64px; }
 @media (max-width: 600px) { body { padding-top: 32px; } }
 .s118-term { white-space: nowrap; }
-#account { text-align: left; text-transform: none; letter-spacing: normal; font: var(--fw-regular) var(--fs-lg)/var(--lh-md) var(--font-ui); min-height: var(--tap); }
-#nameHint { margin: var(--s-2) 0 var(--s-4); color: var(--text-3); font-size: var(--fs-xs); }
 #reach { margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-2); }
 #reach summary { min-height: var(--tap); display: flex; align-items: center; color: var(--text-2); }
 #reach summary::before { content: "▸"; margin-right: var(--s-2); color: var(--text-3); }
@@ -57,60 +54,49 @@ await new Promise(r => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const words = {
   "zh-TW": {
-    primary: "使用登入名稱和驗證器 App 登入。", account: "登入名稱", nameHint: "登入名稱位於已登入裝置的「設定 → 存取與安全 → 擁有者驗證」。",
+    primary: "輸入驗證器 App 的 6 位數驗證碼。",
     label: "6 位數驗證碼（驗證器 App）", signIn: "登入",
-    fallback: "改用裝置登入碼", fallbackHint: "還沒設定驗證器？也可以使用裝置登入碼。",
+    fallback: "改用 8 字元裝置登入碼", fallbackHint: "尚未設定驗證器 App？請使用 8 字元裝置登入碼。",
     reach: "如何在手機開啟 AgEnD？", reachLead: "在手機瀏覽器開啟 AgEnD 網址：",
     ways: ["同一個 Wi-Fi：使用電腦的區網網址。", "私人網路（如 Tailscale）：兩台裝置先連上同一個網路。", "外部連線：使用管理員提供的網址。"],
-    fallbackLead: "輸入你的 8 字元裝置登入碼。", fallbackLabel: "裝置登入碼", back: "改用驗證器登入",
-    deviceHint: "在聊天平台的 General 傳送 /web，取得裝置登入碼。每組裝置登入碼只能使用一次。",
-    wrong: "無法登入。請確認登入名稱、驗證器 App 的最新驗證碼，以及驗證器所在裝置的時間是否正確。",
+    fallbackLead: "輸入你的 8 字元裝置登入碼。", fallbackLabel: "8 字元裝置登入碼", back: "改用驗證器 App 登入",
+    deviceHint: "在聊天平台的 General 傳送 /web，取得只能使用一次的 8 字元裝置登入碼。",
+    wrong: "無法登入。請使用驗證器 App 最新的驗證碼，並確認驗證器所在裝置的時間正確。",
     wrongHint: "若驗證碼正確，登入可能暫時受限。請改用 8 字元裝置登入碼，或使用之前登入過的裝置。",
     paused: "登入已暫停，請等 5 分鐘後再試。", pausedButton: "暫時無法登入", pausedHint: "也可以改用 8 字元裝置登入碼，或使用之前登入過的裝置。",
-    ownName: "你的登入名稱", ownHint: "在其他裝置用驗證器 App 登入時，輸入這個名稱。",
-    settingsLead: "用你自己的驗證器 App 登入或確認變更。", settingsOtherApp: "其他驗證器 App",
-    settingsRecovery: "遺失驗證器時，請回 AgEnD 電腦重新綁定。無法用電子郵件或備援碼復原。",
-    settingsStrict: "開啟後，你在其他裝置確認變更時須輸入驗證碼；關閉則可直接套用。只影響你自己。",
+    next: "請等待驗證器 App 顯示下一組驗證碼，再試一次。", nextButton: "等待下一組驗證碼",
   },
   en: {
-    primary: "Enter your sign-in name and the code from your authenticator app.", account: "Sign-in name", nameHint: "On a signed-in device, find your name in Settings → Access & security → Owner verification.",
+    primary: "Enter the 6-digit code from your authenticator app.",
     label: "6-digit authenticator code", signIn: "Sign in",
-    fallback: "Use a device sign-in code", fallbackHint: "No authenticator set up? Use a device sign-in code instead.",
+    fallback: "Use an 8-character device sign-in code", fallbackHint: "No authenticator app set up? Use an 8-character device sign-in code.",
     reach: "How does my phone reach AgEnD?", reachLead: "Open this AgEnD's address in your phone's browser, then sign in.",
     ways: ["Same Wi-Fi: use the computer's local network address.", "Private network, such as Tailscale: connect both devices to that network first.", "Outside connection: use the address your admin provides."],
-    fallbackLead: "Enter your 8-character device sign-in code.", fallbackLabel: "Device sign-in code", back: "Use my authenticator",
-    deviceHint: "Send /web in General on your chat platform to get a device sign-in code. Each device sign-in code can be used only once.",
-    wrong: "Could not sign in. Check your sign-in name, the newest code in your authenticator app and whether the clock on your authenticator device is correct.",
+    fallbackLead: "Enter your 8-character device sign-in code.", fallbackLabel: "8-character device sign-in code", back: "Use my authenticator",
+    deviceHint: "Send /web in General on your chat platform to get a single-use 8-character device sign-in code.",
+    wrong: "Could not sign in. Use the newest code in your authenticator app and check the clock on your authenticator device.",
     wrongHint: "If you are sure the code is right, sign-in may be limited for a while: use the 8-character device sign-in code instead, or a device you have signed in from before.",
     paused: "Sign-in is paused. Please wait 5 minutes, then try again.", pausedButton: "Sign-in paused", pausedHint: "You can also use an 8-character device sign-in code, or use a device you have signed in from before.",
-    ownName: "Your sign-in name", ownHint: "Enter this name when signing in with your authenticator app on another device.",
-    settingsLead: "Use your own authenticator app to sign in or confirm changes.", settingsOtherApp: "Other authenticator apps",
-    settingsRecovery: "If you lose your authenticator, set it up again on the AgEnD computer. Email and backup codes cannot recover access.",
-    settingsStrict: "On: your confirmations from other devices need a code. Off: use Apply now. This affects only you.",
+    next: "Wait for the next code to appear in your authenticator app, then try again.", nextButton: "Wait for the next code",
   },
 };
-let browser, fx;
-const settingsOnly = process.env.SETTINGS_ONLY === "1";
-const previous = settingsOnly ? JSON.parse(await readFile(join(out, "receipt.json"), "utf8")) : null;
-const captures = previous ? previous.captures.filter(c => c.kind === "signin") : [];
-let version = previous?.browser;
-const record = async (page, name, kind) => {
+let browser;
+const captures = [];
+let version;
+const record = async (page, name) => {
   await page.evaluate(() => document.fonts.ready);
-  const geometry = await page.evaluate((kind) => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
-    top: kind === "signin" ? document.querySelector("main").getBoundingClientRect().top : null,
-    buttons: kind === "signin" ? [...document.querySelectorAll("#form button:not([hidden]),#reach summary,input:not([hidden])")].filter(n => n.getClientRects().length).map(n => ({ text: n.textContent || n.id, height: n.getBoundingClientRect().height })) : [],
-    nameVisible: kind === "settings" ? !!document.getElementById("s118SigninName")?.getClientRects().length : null,
-    versionDetail: kind === "settings" ? document.querySelector(".pill.ver")?.getAttribute("aria-label") || document.querySelector(".pill.ver")?.textContent : null,
-    theme: document.documentElement.dataset.theme, background: getComputedStyle(document.body).backgroundColor,
-    cardBottom: kind === "settings" ? document.querySelector("#outsideCard").getBoundingClientRect().bottom : null,
-    navTop: kind === "settings" ? document.querySelector("nav.tabs")?.getBoundingClientRect().top ?? null : null,
-  }), kind);
-  if (geometry.scroll > geometry.width || geometry.top < 0 || geometry.buttons.some(b => b.height < 44) || (kind === "settings" && (!geometry.nameVisible || !geometry.versionDetail?.includes("2.3.5-alpha.10+s118")))) throw new Error(JSON.stringify(geometry));
+  const geometry = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
+    top: document.querySelector("main").getBoundingClientRect().top,
+    buttons: [...document.querySelectorAll("#form button:not([hidden]),#reach summary,input:not([hidden])")].filter(n => n.getClientRects().length).map(n => ({ text: n.textContent || n.id, height: n.getBoundingClientRect().height })),
+    nameInputs: document.querySelectorAll('#account,[autocomplete="username"],#s118SigninName').length,
+    codeEmpty: document.querySelector("#code").value === "", placeholder: document.querySelector("#code").placeholder,
+    background: getComputedStyle(document.body).backgroundColor,
+  }));
+  if (geometry.scroll > geometry.width || geometry.top !== (name.startsWith("phone") ? 32 : 64) || geometry.buttons.some(b => b.height < 44) || geometry.nameInputs || !geometry.codeEmpty || (!name.includes("fallback") && geometry.placeholder)) throw new Error(JSON.stringify(geometry));
   await page.screenshot({ path: join(out, name), fullPage: true });
-  captures.push({ file: name, kind, geometry });
+  captures.push({ file: name, kind: "signin", geometry });
 };
 try {
-  if (!settingsOnly) {
   browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true, args: ["--no-sandbox", "--disable-background-networking"] });
   version = browser.version();
   for (const lang of ["zh-TW", "en"]) for (const screen of ["desk-light", "phone-dark"]) {
@@ -118,7 +104,7 @@ try {
     const context = await browser.newContext({ locale: lang, viewport: { width: phone ? 390 : 1366, height: phone ? 844 : 900 }, colorScheme: phone ? "dark" : "light" });
     await context.route("**/*", route => route.request().url().startsWith(origin + "/") ? route.continue() : route.abort());
     const page = await context.newPage();
-    for (const state of ["primary", "reach", "fallback", "wrong", "paused"]) {
+    for (const state of ["primary", "reach", "fallback", "wrong", "paused", "next-code"]) {
       await page.goto(origin + "/signin"); await page.waitForSelector("#form:not([hidden])");
       await page.evaluate(({ w, state, lang }) => {
         const form = document.getElementById("form");
@@ -126,19 +112,12 @@ try {
         form.querySelector("h1").textContent = lang === "zh-TW" ? "登入 AgEnD" : "Sign in to AgEnD";
         form.querySelector("p").textContent = state === "fallback" ? w.fallbackLead : w.primary;
         const codeLabel = form.querySelector('label[for="code"]'); codeLabel.textContent = state === "fallback" ? w.fallbackLabel : w.label;
-        if (state !== "fallback") {
-          const nameLabel = document.createElement("label"); nameLabel.htmlFor = "account"; nameLabel.textContent = w.account;
-          const name = document.createElement("input"); name.id = "account"; name.name = "account"; name.type = "text"; name.autocomplete = "username"; name.autocapitalize = "none"; name.spellcheck = false; name.placeholder = "alice_tg"; name.maxLength = 256;
-          if (state === "wrong" || state === "paused") name.value = "alice_tg";
-          const nameHint = document.createElement("p"); nameHint.id = "nameHint"; nameHint.textContent = w.nameHint;
-          codeLabel.before(nameLabel, name, nameHint);
-        }
         const code = document.getElementById("code");
         code.placeholder = state === "fallback" ? "XXXX-XXXX" : ""; code.inputMode = state === "fallback" ? "text" : "numeric"; code.autocomplete = "one-time-code"; code.maxLength = state === "fallback" ? 12 : 32; code.value = "";
         document.getElementById("resend").hidden = true; document.getElementById("another").hidden = true;
         form.querySelector(".hint").hidden = true; form.querySelectorAll("details").forEach(d => { d.hidden = true; });
-        const go = document.getElementById("go"); go.textContent = state === "paused" ? w.pausedButton : w.signIn; go.disabled = state === "paused";
-        const msg = document.getElementById("msg"); msg.textContent = state === "wrong" ? w.wrong : state === "paused" ? w.paused : ""; msg.hidden = !["wrong", "paused"].includes(state); msg.className = state === "paused" ? "ok" : "";
+        const go = document.getElementById("go"); go.textContent = state === "paused" ? w.pausedButton : state === "next-code" ? w.nextButton : w.signIn; go.disabled = ["paused", "next-code"].includes(state);
+        const msg = document.getElementById("msg"); msg.textContent = state === "wrong" ? w.wrong : state === "paused" ? w.paused : state === "next-code" ? w.next : ""; msg.hidden = !["wrong", "paused", "next-code"].includes(state); msg.className = state === "wrong" ? "" : "ok"; msg.setAttribute("role", state === "wrong" ? "alert" : "status");
         if (state === "wrong" || state === "paused") { const hint = document.createElement("p"); hint.id = "errorHint"; hint.textContent = state === "wrong" ? w.wrongHint : w.pausedHint; msg.after(hint); }
         const button = document.createElement("button"); button.id = "fallbackAction"; button.type = "button"; button.className = "secondary"; button.textContent = state === "fallback" ? w.back : w.fallback;
         go.after(button);
@@ -150,7 +129,7 @@ try {
         reach.append(summary, lead, ul); form.append(reach); code.blur();
         // Projection only: keep short Chinese UI terms intact, without disabling normal paragraph wrapping.
         if (lang === "zh-TW") {
-          const terms = /使用之前登入過的裝置|同一個網路|擁有者驗證|驗證器 App|裝置登入碼|登入名稱|驗證碼|存取與安全/g;
+          const terms = /8 字元裝置登入碼|使用之前登入過的裝置|同一個網路|驗證器 App|驗證器|下一組驗證碼|驗證碼|每組|立即|直接|核准/g;
           const texts = [], walk = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
           while (walk.nextNode()) texts.push(walk.currentNode);
           for (const text of texts) { const parts = text.textContent.split(terms), matches = text.textContent.match(terms); if (!matches) continue;
@@ -158,56 +137,15 @@ try {
           }
         }
       }, { w: words[lang], state, lang });
-      await record(page, `${screen}-${lang}-${state}.png`, "signin");
+      await record(page, `${screen}-${lang}-${state}.png`);
     }
     await context.close();
   }
   await browser.close(); browser = null;
-  }
-  process.env.REPO = resolve(process.env.SETTINGS_REPO || repo);
-  const settingsBuildVersion = JSON.parse(await readFile(join(process.env.REPO, "package.json"), "utf8")).version;
-  // Actual dashboard Settings shell; own-admin status/name and requested presentation polish are projected.
-  fx = await bootFixture({ port: Number(process.env.HP ?? 47740), classic: false, instances: 3 });
-  // The archive stamp has modified:null. Present the ordinary version-only state, without inventing clean-source proof.
-  // This fixture-only getter is documented separately from the real archive's provenance.
-  Object.defineProperty(fx.fm, "currentBuild", { value: { version: settingsBuildVersion, source: null, label: settingsBuildVersion } });
-  for (const lang of ["zh-TW", "en"]) for (const screen of ["desk-light", "phone-dark"]) {
-    const phone = screen.startsWith("phone");
-    const p = await fx.page({ device: phone ? "phone" : "desk", theme: phone ? "dark" : "light", lang });
-    try {
-      await p.ctx.route("**/ui/outside", r => r.request().method() === "GET" ? r.fulfill({ json: { webOnly: false, here: true, manage: true, codeNeeded: false, strict: false, enrolled: true, enrolledAt: Date.UTC(2026, 10, 9), outside: false, pausedForMs: 0, link: null, signinName: "alice_tg" } }) : r.fulfill({ status: 405 }));
-      await p.ctx.route("**/auth/totp", r => r.fulfill({ status: 405 }));
-      await p.ctx.route("**/assets/s118-proposal.css", r => r.fulfill({ contentType: "text/css", body: ".s118-term { white-space: nowrap; } @media(max-width:899px){ #outsideCard { margin-bottom: calc(var(--tap) + var(--s-5)); scroll-margin-bottom: var(--s-5); } }" }));
-      await p.page.goto(fx.base + "/settings/access"); await p.page.waitForSelector("#outsideCard");
-      const mine = await p.page.evaluate(async () => (await (await fetch("/ui/outside")).json()).signinName);
-      await p.page.evaluate(({ name, w, lang, theme }) => {
-        AgendTheme.set(theme);
-        const style = document.createElement("link"); style.rel = "stylesheet"; style.href = "/assets/s118-proposal.css"; document.head.append(style);
-        document.getElementById("outLead").textContent = w.settingsLead;
-        document.querySelector("#outApps > :last-child").textContent = w.settingsOtherApp;
-        document.getElementById("outSetUpOn").nextElementSibling.textContent = w.settingsRecovery;
-        document.getElementById("outStrict-hint").textContent = w.settingsStrict;
-        const row = document.createElement("div"); row.className = "s-row"; row.id = "s118SigninName";
-        const copy = document.createElement("div"), label = document.createElement("strong"), hint = document.createElement("p"), value = document.createElement("code");
-        label.textContent = w.ownName; hint.className = "note"; hint.textContent = w.ownHint; value.textContent = name;
-        copy.append(label, hint); row.append(copy, value); document.getElementById("outSetUpOn").after(row);
-        if (lang === "zh-TW") {
-          const texts = [], walk = document.createTreeWalker(document.getElementById("outsideCard"), NodeFilter.SHOW_TEXT);
-          while (walk.nextNode()) texts.push(walk.currentNode);
-          for (const text of texts) { const terms = /擁有者驗證|驗證器 App|裝置登入碼|登入名稱|驗證碼/g, parts = text.textContent.split(terms), matches = text.textContent.match(terms); if (!matches) continue;
-            const fragment = document.createDocumentFragment(); parts.forEach((part, i) => { fragment.append(part); if (matches[i]) { const term = document.createElement("span"); term.className = "s118-term"; term.textContent = matches[i]; fragment.append(term); } }); text.replaceWith(fragment);
-          }
-        }
-      }, { name: mine, w: words[lang], lang, theme: phone ? "dark" : "light" });
-      await p.page.waitForFunction(() => [...document.styleSheets].some(s => s.href?.endsWith("s118-proposal.css")));
-      await p.page.locator("#outsideCard").scrollIntoViewIfNeeded();
-      await record(p.page, `${screen}-${lang}-settings-name.png`, "settings");
-    } finally { await p.ctx.close(); }
-  }
   const digest = async name => createHash("sha256").update(await readFile(join(out, name))).digest("hex");
   await writeFile(join(out, "SHA256SUMS"), (await Promise.all(captures.map(async c => `${await digest(c.file)}  ${c.file}\n`))).join(""));
-  await writeFile(join(out, "receipt.json"), JSON.stringify({ base: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), contract: "#3548 d5e2a3c873da04a72de4def25c2e53db2889a381", settingsBuildVersion, browser: version, scope: "Design-only DOM projections in actual signin.html and dashboard Settings shell; no production source or authenticator POST. Settings own-name read, concise card copy/spacing and version-only header are synthetic design projections. Real archive provenance remains unchanged on disk; no clean-source claim. No core/SKEW/live-auth acceptance.", captures }, null, 2) + "\n");
+  await writeFile(join(out, "receipt.json"), JSON.stringify({ base: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), contract: "Decision a690be6b code-only; shell #3548 d5e2a3c8; code-only/next-code core response pending", browser: version, scope: "Code-only design projection in actual signin.html. No name field or Settings name row. Static sign-in POSTs refused. Next-code is presentation only: its exact HTTP answer waits for Junsion core. No production/core/SKEW/live-auth acceptance.", captures }, null, 2) + "\n");
   console.log(JSON.stringify({ captures: captures.length, out, browser: version }));
 } finally {
-  await browser?.close(); await fx?.close(); await new Promise(r => server.close(r));
+  await browser?.close(); await new Promise(r => server.close(r));
 }
