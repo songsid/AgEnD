@@ -29,8 +29,9 @@ export const ANTIGRAVITY_SPEC = {
     // manifest (https://storage.googleapis.com/antigravity-public/antigravity-cli/<version>/windows-x64/cli_windows_x64.exe, manifest `sha512`), and that file IS Authenticode-signed
     // (Google LLC, status Valid; its sha512 matches the manifest). The Runtime pins the exact URL, size and sha512, downloads that one file itself (the vendor script is not run), checks all
     // of them, then the signer, and refuses on any mismatch (runtime-cli-install.ts, `kind: "download"`). Windows x64 only.
-    install: yes({ kind: "download", pin: "integrity" }),
-    update: byDesign("Antigravity updates itself in the background and has no pinned install here; the dashboard only shows the installed and the audited versions."),
+    // AGEND-148: 1.5.3 is on the maintainer-confirmed audited ledger (cli-audited.ts), so this download is pinned to an AUDITED release, not for its integrity only.
+    install: yes({ kind: "download", pin: "audited" }),
+    update: byDesign("Antigravity updates itself in the background and is not updated by the Runtime (its pinned download is an install, and the CLI then updates itself); the dashboard only shows the installed and the audited versions."),
     signIn: notYetBuilt("undecided", "Antigravity signs in as the computer's own login, with no profile; not built on this registry yet."),
     namedAccounts: toVerify("Whether `agy` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "No row per computer for Antigravity's own login yet."),

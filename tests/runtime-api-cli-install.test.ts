@@ -82,7 +82,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("a local administrator reads the computer's switches from the computer, and the audit name is an opaque session handle", async () => {
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200);
-    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.319", kind: "npm", pin: "audited" }, { id: "codex", version: "0.167.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }] });
+    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.319", kind: "npm", pin: "audited" }, { id: "codex", version: "0.167.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }] });
     expect(calls[0]).toMatchObject({ operation: "accounts.switches", payload: {} });
     const install = await ask(INSTALL, "POST", "replay", { cli: "codex" });
     expect(install.status).toBe(202);

@@ -49,7 +49,7 @@ Measured 2026-11-09 (the hashes and signers are in `runtime-cli-install.ts` and 
 | Kiro | no | The stable manifest lists one Windows artifact, an MSI (no zip, no per-user package); the script runs `msiexec` into `C:\Program Files\Kiro-Cli`, which needs elevation (maintainer: keep elevation out of one-click). |
 | Muse | no | No npm package; its launcher (`muse-launcher.ps1`, not versioned) installs itself, and updates itself, from the vendor's server: there is no fixed file to pin. The page shows the official command and says why. |
 
-**Which pin says "Not yet verified by AgEnD":** the registry's `runtime.install.pin` (`audited` or `integrity`), not the install kind and not a vendor. Antigravity is `integrity` (see its row); the npm CLIs are `audited`. A failure message of the download path names the file ("The downloaded file…"), never "the package".
+**Which pin says "Not yet verified by AgEnD":** the registry's `runtime.install.pin` (`audited` or `integrity`), not the install kind and not a vendor. Both kinds are `audited` today: the npm CLIs, and Antigravity's download (its pinned 1.5.3 is on the audited ledger since #3539 — before that it was `integrity`, "Not yet verified"). `integrity` stays for a pin that is not on the ledger. A failure message of the download path names the file ("The downloaded file…"), never "the package".
 
 A CLI that stays "official command only" (Grok, Muse, Kiro) says why on the page (`OFFICIAL_COMMANDS` in `src/ui/runtime-cli-install.js`, from the same facts).
 

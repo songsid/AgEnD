@@ -14,7 +14,7 @@ let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, inst
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
 const response = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const catalogRows = [{ id: "claude-code", version: "2.1.319", kind: "npm", pin: "audited" }, { id: "codex", version: "0.167.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "integrity" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }];
+const catalogRows = [{ id: "claude-code", version: "2.1.319", kind: "npm", pin: "audited" }, { id: "codex", version: "0.167.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.3", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.5", kind: "npm", pin: "audited" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
 const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
@@ -209,8 +209,9 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-antigravity" })); await settle(14);
     expect(rowOf("antigravity").textContent).toContain("Not installed");
     expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
-    // 2026-11-10 decision: the pin is the vendor's newest build, not an audited version — the page says so, in both languages, and only on the download row.
-    expect(rowOf("antigravity").textContent).toContain("Not yet verified by AgEnD");
+    // AGEND-148: the pinned 1.5.3 is on the maintainer-confirmed audited ledger (the registry says `pin: "audited"`), so the page no longer calls it unverified; an integrity-only pin still does
+    // (the test above).
+    expect(rowOf("antigravity").textContent).not.toContain("Not yet verified by AgEnD");
     expect(rowOf("claude-code").textContent).not.toContain("Not yet verified by AgEnD");
     expect(rowOf("opencode").textContent).not.toContain("Not yet verified by AgEnD");
     expect(installButton("antigravity").disabled).toBe(false);
@@ -232,7 +233,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
-    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.167.0"); expect(rowOf("antigravity").textContent).toContain("尚未經 AgEnD 驗證");
+    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.167.0"); expect(rowOf("antigravity").textContent).not.toContain("尚未經 AgEnD 驗證");
     i18n.setLang("en", { store: false });
   });
 });
