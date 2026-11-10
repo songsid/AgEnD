@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
 import { installFleetProcessHandlers, startFleetOrExit } from "../src/fleet-process-handlers.js";
+import { dropUpdateNpmBounds } from "../src/update-npm-env.js";   // M-2797: a free name of the extracted CLI code
 
 // Production command callback; all process/IO/lifecycle seams are inert.
 // Never import the self-executing CLI or construct the real FleetManager.
@@ -39,7 +40,7 @@ function harness() {
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
     loadRawFleetConfig: () => ({ hub: { enabled: false } }),
-    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
+    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", dropUpdateNpmBounds, redirectToService: () => false, claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
     loadConfigModule: async () => ({ loadFleetConfig: () => ({ health_port: 1 }) }),
     fetch: vi.fn(async () => { throw new Error("No network (cold startup fixture)"); }), describeSignalSource: () => "test signal", Promise,

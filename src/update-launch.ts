@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { updateCommand } from "./update-dispatch.js";
 import { maskSecrets } from "./log-steps.js";
 import { t } from "./locale.js";
+import { failureCause } from "./web-update.js";
 
 /** How many bytes to read from the tail of the log when extracting a cause after the updater exits. */
 const CAUSE_TAIL_BYTES = 8 * 1024;
@@ -250,8 +251,10 @@ export function watchUpdateLaunch(
     const cause = tail === null ? null : extractUpdateCause(tail);
     const fix = updateFixHint(tail ?? "", { agendGone: agendAtLaunch && !existsSync(agendPath!) });
     // The persisted marker caps this text at 300 chars: keep the action and log before raw diagnostics.
+    // M-2797: the network is what failed: say that plainly (the old version still runs), not "could not finish".
+    const offline = !fix && cause !== null && failureCause(cause) === "network";
     fail([
-      fix ? t("update.failure.fix", fix) : t("update.failure.shell"),
+      fix ? t("update.failure.fix", fix) : offline ? t("update.failure.network") : t("update.failure.shell"),
       ...(logPath ? [t("update.failure.log", logPath)] : []),
       t("update.failure.summary", reason),
       ...(cause ? [t("update.failure.cause", cause)] : []),
