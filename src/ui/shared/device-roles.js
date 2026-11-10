@@ -8,7 +8,7 @@ import { register, t } from "./app-i18n.js";
 
 register("webauth", {
   en: { role: "Role", roleOwner: "Owner ✓", roleAdminUnverified: "Admin · not verified", roleGuest: "Guest", roleRead: "Read-only" },
-  "zh-TW": { role: "角色", roleOwner: "擁有者 ✓", roleAdminUnverified: "管理者 · 未驗證", roleGuest: "訪客", roleRead: "唯讀" },
+  "zh-TW": { role: "角色", roleOwner: "擁有者 ✓", roleAdminUnverified: "管理員 · 未驗證", roleGuest: "訪客", roleRead: "唯讀" },
 });
 register("app", {
   en: { manageDevices: "Manage devices" },

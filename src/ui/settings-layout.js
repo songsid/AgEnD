@@ -231,7 +231,7 @@ register("settingsLayout", {
     "revEditorContext": "Fleet 設定檔・個別設定可使用對應表單調整",
     "revUpdateCredential": "更新連接器憑證",
     "revSetCredential": "設定連接器憑證",
-    "revAuthorityBrief": "僅限已登入的 Fleet 管理者，並須在 Discord 或 Telegram 確認本人帳號授權；訪客不適用。發布、破壞性操作、花費、密鑰與轉交授權都需要它。",
+    "revAuthorityBrief": "僅限已登入的 Fleet 管理員，並須在 Discord 或 Telegram 確認本人帳號授權；訪客不適用。發布、破壞性操作、花費、密鑰與轉交授權都需要它。",
     "revAuthorityDetails": "授權規則說明",
     "revAuthorityEnabled": "允許網頁授權",
     "revAuthorityEnabledHint": "關閉會立即使現有授權失效；重新開啟不會恢復。",

@@ -266,7 +266,7 @@ describe("a change that did not go through says why, and can be sent again", () 
     outcome: { state, reason_code: reason, message, decided_at: 1 } });
   it.each([
     ["rejected", "withdrawn", "You withdrew this change, so nothing was changed.", "你已撤回這項變更，沒有任何設定被修改。"],
-    ["rejected", "rejected", "An admin turned it down, so nothing was changed.", "管理者拒絕了這項變更，沒有任何設定被修改。"],
+    ["rejected", "rejected", "An admin turned it down, so nothing was changed.", "管理員拒絕了這項變更，沒有任何設定被修改。"],
     // Not "no one confirmed it": a change that was confirmed and still applying when the five minutes ran out ends as expired too.
     ["expired", "expired", "It was not completed within 5 minutes. Check what the settings are now.", "5 分鐘內沒有完成，請確認設定目前的內容。"],
     ["expired", "not_found", "AgEnD no longer has this request (it timed out or was cleared). Check what the settings are now.", "AgEnD 已經沒有這項請求（已逾時或已清除），請確認設定目前的內容。"],

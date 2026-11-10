@@ -17,7 +17,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 **從 2.3.1 升級：**
 
 - 在 General 傳 `/update`，或在主機上執行 `agend update`。
-- **用經典引擎的 kiro：** kiro-cli 3.0 拿掉了它（`kiro_ui: legacy`，也是沒設定 `kiro_ui` 的 instance 的預設）。AgEnD 現在不讓 kiro 自行更新，新的 kiro instance 用 TUI 啟動。既有的 instance 請用 `migrate_kiro_instance` 連同對話一起搬過去，要 fleet 管理者在 General 確認。搬移是單向的。
+- **用經典引擎的 kiro：** kiro-cli 3.0 拿掉了它（`kiro_ui: legacy`，也是沒設定 `kiro_ui` 的 instance 的預設）。AgEnD 現在不讓 kiro 自行更新，新的 kiro instance 用 TUI 啟動。既有的 instance 請用 `migrate_kiro_instance` 連同對話一起搬過去，要 fleet 管理員在 General 確認。搬移是單向的。
 - **設定改版：** Fleet → Config 移除了，舊網址會導到新區段。修改要按 **儲存** 才生效；需要重啟的變更會在每一頁頂端提醒，AgEnD 不會自己重啟。
 - **辦公室裡的 agent 是新功能：** 沒有人為某個 agent 設定 `office_access`，`office_view` 與 `office_set` 就維持關閉。降回 2.3.1 時每間辦公室都會保留（只是沒有編輯配置的修改）。
 - **ClassicBot 的原生回覆：** 只有開啟 `reply_triggers` 才會觸發 bot（預設關閉）；@ 提及照常觸發。
@@ -94,7 +94,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
   - **誰確認：** 只有你派出去的卡片需要你確認（#2434）。agent 派出的卡片，由派出的那個 agent 確認。派出卡片的 agent 被刪掉時，卡片會改回給你（#2451）。
   - **在聊天室處理：** 設定 `needs_you.task_board: true` 後，等你確認或卡住的卡片會出現在 General 的「等你處理」，你可以直接確認、退回或回覆。
   - **每日摘要：** 設定 `defaults.task_board.summary_at`（例如 `"09:00"`，以 fleet 的時區計算）才會發送。沒設就是關閉。
-- **辦公室檢視**（`Fleet → 組織圖 → Office`，#2399）：把 fleet 畫成像素風的辦公室。每個團隊一間房，每個 agent 一張桌子。工作中的在打字，閒置的在喝茶，暫停的在睡覺，等你處理的會舉手，agent 之間的訊息會沿著走廊飛過去。有 Desks 和 Studio 兩種風格。管理者可以新增、改名、刪除辦公室，並布置成員與風格。唯讀 session 和公開連結只能看；訪客看不到組織圖和辦公室檢視。
+- **辦公室檢視**（`Fleet → 組織圖 → Office`，#2399）：把 fleet 畫成像素風的辦公室。每個團隊一間房，每個 agent 一張桌子。工作中的在打字，閒置的在喝茶，暫停的在睡覺，等你處理的會舉手，agent 之間的訊息會沿著走廊飛過去。有 Desks 和 Studio 兩種風格。管理員可以新增、改名、刪除辦公室，並布置成員與風格。唯讀 session 和公開連結只能看；訪客看不到組織圖和辦公室檢視。
 - **重啟與啟動：**
   - `agend restart` 是唯一的完整重啟。它會透過實際管理 AgEnD 的對象重啟（systemd、launchd 或 detached 的 fleet）。`agend restart <name>` 會立即重啟那一個 instance（#2356）。
   - 冷啟動或完整重啟時，網頁在 agent 還在啟動時就能打開，並顯示每個 agent 啟動的進度（#2398）。
@@ -111,7 +111,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
   <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="精簡模式的用量面板（示範資料）：Claude、Codex、Kiro 共五個帳號。">
 </p>
 
-- **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。fleet 管理者可以搜尋，在本機或透過公開連結都行（`web.search.public_link: false` 會在公開連結上關閉）；訪客不能用（#2486）。從 2.3.1 起索引預設不限天數（`web.search.retention_days` 未設定或 0；上限 30 萬筆）；2.3.0 仍保留 90 天。
+- **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。fleet 管理員可以搜尋，在本機或透過公開連結都行（`web.search.public_link: false` 會在公開連結上關閉）；訪客不能用（#2486）。從 2.3.1 起索引預設不限天數（`web.search.retention_days` 未設定或 0；上限 30 萬筆）；2.3.0 仍保留 90 天。
 - **聊天：**
   - **回覆指定訊息：** 滑鼠移上去按 ↩、按右鍵、手機左滑、長按，或按 R。從網頁送出的回覆，在 Discord 和 Telegram 上也會是原生回覆（#2281）。
   - **reaction：** agent 可以對網頁上的訊息加一個 emoji，例如只需要確認或道謝時（#2305）。
@@ -132,9 +132,9 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 
 - **自己網域的公開連結（具名 tunnel，#2307）：** 在 **設定** 裡填入 `web.public_link.hostname` 和 Cloudflare tunnel 的 token，公開連結每次都是同一個網址，手機主畫面上的捷徑就不會隔天失效。token 只能設定或清除，設定後讀不回來，也不會出現在 log 裡。格式不對會直接提示（#2344）。
   - **有效時間：** 用自己的網域時，`ttl_minutes` 可以設 1 到 10080 分鐘（7 天），或設 `0` 代表不過期（#2448）。快速 tunnel 最多 480 分鐘。
-  - **重啟後自動重開：** `web.public_link.auto_open`（預設關）會在 fleet 重啟後，替最後開啟連結的管理者重新打開。只適用於自己的網域。
+  - **重啟後自動重開：** `web.public_link.auto_open`（預設關）會在 fleet 重啟後，替最後開啟連結的管理員重新打開。只適用於自己的網域。
 - **自己網域的「授權此瀏覽器」（#2453）：** `web.verified_authority.named_link`（預設關）開啟後，你確認過的瀏覽器可以以你的帳號行事，但只限於你自己的網域。快速 tunnel 永遠不符合。
-- **從已驗證的網頁套用設定（#2170）：** 如果你的帳號是受影響連線的管理者，被擋下的設定變更會直接生效。
+- **從已驗證的網頁套用設定（#2170）：** 如果你的帳號是受影響連線的管理員，被擋下的設定變更會直接生效。
 - **同一個瀏覽器開兩個 AgEnD 不再互相登出**（#2396）。
 - **相依套件與安全：** 內建的 Node 更新到 22.23.4（#2405）。production 和開發用套件的 `npm audit` 都是 0（#2408）。修掉兩個 ReDoS（#2416）。`~/.agend` 一律建成 0700，之前被建成群組可寫的，下次啟動時會自動收緊（#2435）。
 

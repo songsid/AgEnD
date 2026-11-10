@@ -37,7 +37,7 @@ describe("#2904: a page over a public link never calls a permanent link temporar
     expect([hours, minutes]).toEqual([8, 30]);
     const [en, zh] = both("settings.webSessionHint");
     expect(en).toContain(`Over a public link (a temporary one or your permanent link), a session lasts at most ${hours} h, ends after ${minutes} min idle and never outlives the link; an admin's also never lasts longer than these settings (a guest's follows the guest settings).`);
-    expect(zh).toContain(`透過公開連結（臨時連結或你的固定網域）的 session 最長 ${hours} 小時、閒置 ${minutes} 分鐘就結束，也不會超過連結本身；管理者的 session 也不會超過這裡的設定（訪客依訪客設定）。`);
+    expect(zh).toContain(`透過公開連結（臨時連結或你的固定網域）的 session 最長 ${hours} 小時、閒置 ${minutes} 分鐘就結束，也不會超過連結本身；管理員的 session 也不會超過這裡的設定（訪客依訪客設定）。`);
     expect([/\b4 h\b/.test(en), /4 小時/.test(zh)]).toEqual([false, false]);
   });
 });
