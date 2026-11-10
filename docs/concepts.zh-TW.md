@@ -96,7 +96,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## fleet admin（`admin_users`）
 
-列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 agent（使用者 2026-11-04 批准）。
+列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理員 agent（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
 - 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或持久化聊天授權本身不授予這個角色（`docs/SECURITY.md:13`）。
@@ -119,7 +119,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 - `full`：全部工具。只能明示指定；預設不會拿到（環境變數 fallback 除外，`:212-222`）。
 - `coordinator`：worker 能力加全部 orchestration 動詞——經營艦隊用的 profile。
-- `general`：General 的管理者 profile——beta.8 起是 worker 加全部 orchestration 動詞（fleet decision 9e3bea6c）；beta.8 之前只有 `create/start/restart/wake_instance`——以及使用者的網頁設定。
+- `general`：General 的管理員 profile——beta.8 起是 worker 加全部 orchestration 動詞（fleet decision 9e3bea6c）；beta.8 之前只有 `create/start/restart/wake_instance`——以及使用者的網頁設定。
 - `worker`：預設值。負責做事，有 `standard` 沒有的回報能力（`report_result`）。
 - `standard`：讀取範圍廣，也有自己的排程與主題，但沒有 `report_result`、`delegate_task`、`request_information`——走不完「委派→做事→回報」。
 - `minimal`：窄小的發送者——回覆、轉交、查送達、讀決議、下載附件、看 emoji／貼圖列表。

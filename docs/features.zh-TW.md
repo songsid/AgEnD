@@ -793,7 +793,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
 
-**只用網頁的 fleet：這台電腦的管理者（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理者。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理者**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `via web (verified)`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
+**只用網頁的 fleet：這台電腦的管理員（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理員。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理員**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `via web (verified)`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
 
 **只用網頁的 fleet：通知（#2910）。**儀表板的**通知**（`/ui/notices`，在側欄）會保留原本 General 會說的事：fleet 錯誤、agent 當掉、額度或登入的通知、網頁登入、無法執行的排程、每日摘要，以及新版本（每個版本一次，附上要在這台電腦上執行的 `agend update`）。最新的 500 則會保留，重新啟動後也還在。新的通知會即時出現，側欄會顯示未讀數量，打開頁面就會標成已讀。有按鈕的提示（agent 停止、等你輸入或卡住）則在 **等你處理**。有聊天連線的 fleet 沒有通知頁：General 照舊會說這些事。
 
@@ -919,7 +919,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 **接回指定的對話（#2963）。** `restart_instance { name, resume_session_id }`（編排工具：General、coordinator）會讓 Codex instance 在這次重啟時接回那段對話，只限這一次。這個 id 必須是該 instance 的 sessions 裡、工作目錄完全相同、由 CLI 開始的 rollout；不符合就不會重啟，並回覆原因。之後的重啟照常。
 
-AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
+AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理員，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
 
 **`~/.codex` 在哪裡。** 上面提到的共用 Codex home，在 fleet 的環境有設定 `$CODEX_HOME` 時就是它，否則就是 `~/.codex`。每個 instance 本身則以 `~/.agend/cx/<hash>/` 底下的私有 `CODEX_HOME` 執行：裡面有它自己的 `config.toml`（你的設定，去掉其他 instance 的 AgEnD MCP 項目，再加上它自己的），登入資訊、session 和快取則連回共用的 home。
 
@@ -1127,7 +1127,7 @@ instances:
 
 ## Grok Build 後端 (Grok Build backend)
 
-AgEnD 支援 xAI 的 Grok Build CLI（`grok`）作為後端。需要 Grok CLI 1.0.13 以上：較舊的版本會被伺服器拒絕（HTTP 426），這時 AgEnD 會提示管理者執行 `grok update`。
+AgEnD 支援 xAI 的 Grok Build CLI（`grok`）作為後端。需要 Grok CLI 1.0.13 以上：較舊的版本會被伺服器拒絕（HTTP 426），這時 AgEnD 會提示管理員執行 `grok update`。
 
 ```yaml
 instances:
@@ -1362,7 +1362,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 之後陸續加入：
 - **Fleet → 組織圖**（`/ui/fleet/org`，#1389；2.2.5 起是畫布，#1918）：General 在最上面，接著是依 `fleet.yaml` 順序排列的 team，最後是不屬於任何 team 的 instance；每張卡片顯示頭像、身分色、狀態與 backend，點一下會打開它的聊天。拖曳平移；用滾輪、雙指縮放、+／−／Fit 按鈕或 `+ - 0` 鍵縮放；總覽小地圖可以直接跳過去；點 team 會把它收合成依狀態統計的成員數；搜尋會淡化不符合的項目。**清單**模式用文字說同樣的內容。這裡不能編輯任何東西。**即時流量**會在 instance 之間為每則訊息畫一條線（`delegate_task`、`send_to_instance`、`report_result`、`request_information`、`broadcast`）：排隊中是虛線，傳送中是移動的虛線，送達或被讀取後 12 秒淡出；`delegate_task` 會以**進行中**的工作線保留，直到它的 `report_result`（相同 correlation id）回來、一條線回傳為止，4 小時沒有回報則以**尚未回報**淡出；廣播給超過 8 個對象（或縮小檢視時的任何廣播）會變成每個 team 一條線並標示 ×N。只帶兩端的名稱，絕不帶訊息內容，也不包含 `cross_instance_visibility: hidden` 的 instance。公開連結也看得到，每 5 秒更新一次。自 #2182（2.3）起，每條線由 libavoid（`libavoid-js` 0.4.5，LGPL-2.1-or-later）從卡片連到卡片，繞過卡片、從 team 外框的缺口進出；它在一個只有它能執行 WebAssembly、而且連不到任何地方的 worker 裡執行；共用一段路的線會分開畫。側欄的 **Fleet 概覽**第一次會打開它（之後打開那台裝置上次用的 Fleet 分頁）。**辦公室**（在畫布和清單旁）把同一個 fleet 畫成像素辦公室：每個 instance 是一個小人，姿勢就是它的狀態，即時流量在他們之間傳遞。它有內建的辦公桌、工作室與溫馨風格，以及畫師的外觀包；存在主機上的辦公室（**編輯辦公室**）與**所有辦公室**；平移、縮放、Fit／填滿與全螢幕；用來安排座位、家具、夜間位置與保留座位的**編輯配置**；就寢；以及唯讀的**分享…**連結。所有細節，包括外觀包格式與上限，請見[辦公室指南](office.zh-TW.md)。
 - **辦公室裡的 agent**（#2578）：替某個 agent 打開 **辦公室** dashboard 功能後（`office_access: true`，沒設定就是關閉），它可以讀取自己所在的辦公室（`office_view`），並短暫指揮自己的角色（`office_set`：走動、說一句話、擺姿勢）。見[辦公室裡的 agent](office.zh-TW.md#辦公室裡的-agent)。
-- **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理者，而且預設要等管理者核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
+- **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理員，而且預設要等管理員核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
 - **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
   - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（由開頭思考區塊的時間戳記與思考時間推得）計到最後一個區塊。Codex 的回應以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間；rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。先前的讀取方式在 Claude 回應的第一個區塊就停止計時，等於只用思考時間去除整段回應的 token，數字偏高；現在會等整段回應結束（#3157）。2.3.4 第一次啟動時，會清掉舊方式記錄的 Claude 速度一次（token 數不受影響）。
@@ -1421,7 +1421,7 @@ web:
 
 不論哪一種，伺服器都會在訪客的每一個讀取上強制執行：聊天、歷史、檔案和事件串流都只限於這些 agent；任務板、組織圖和用量報表（每個 agent 的費用）永遠不屬於訪客，「檢視」和搜尋只給「信任」的訪客。fleet 管理員永遠不會是訪客。
 
-**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。指令（#2855）：只有聊天的指令表允許任何人在該 agent 頻道執行的那些；在網頁上是 `/ctx`、`/steer`、`/btw` 和 `/cancel`，指令選單只列出這些，其他的會被拒絕並說明原因；每分鐘最多 10 次、一次一個。它也看得到用量面板（◔），也就是主機上每個訂閱的剩餘額度，和聊天裡任何人用 `/usage` 看到的一樣，但不能強制重新整理。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理者的。它的介面只有這些：沒有 Fleet、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰；「聊天」等級的訪客也沒有「檢視」和搜尋。「信任」（#2855）的訪客多了：**檢視**，唯讀地看 agent 的畫面，不能打字、不能按鍵，畫面上會註明只能觀看；畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密，聊天和搜尋仍只限訪客看得到的內容；每位訪客每秒最多讀 2 次、同時最多 2 個 agent；所有觀看同一個 agent 的訪客每 500 毫秒共用一份畫面；每次最多 256 KB；在儀表板自己的連接埠上，訪客的檢視讀取也要經過這些檢查（`web.view_access: open` 時匿名的讀取不變）。**搜尋**，只搜它的 agent 裡、它的頻道顯示過或它自己寫的聊天訊息（和它的聊天同一個規則），最多 20 筆；不搜 agent 之間的訊息、任務、團隊或設定；每分鐘 6 次、一次一個；全部訪客同時最多 3 個搜尋，讓管理員的搜尋一定有空位。偏好（#2855）：它自己的主題、語言、最愛、排序和篩選存在主機上、歸在它的帳號下（每個裝置都一樣，管理員移除它時一併刪除）；其餘照主機的外觀，也讀不到提到範圍外 agent 的偏好。它也可以設定自己的網頁名稱。
+**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。指令（#2855）：只有聊天的指令表允許任何人在該 agent 頻道執行的那些；在網頁上是 `/ctx`、`/steer`、`/btw` 和 `/cancel`，指令選單只列出這些，其他的會被拒絕並說明原因；每分鐘最多 10 次、一次一個。它也看得到用量面板（◔），也就是主機上每個訂閱的剩餘額度，和聊天裡任何人用 `/usage` 看到的一樣，但不能強制重新整理。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理員的。它的介面只有這些：沒有 Fleet、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰；「聊天」等級的訪客也沒有「檢視」和搜尋。「信任」（#2855）的訪客多了：**檢視**，唯讀地看 agent 的畫面，不能打字、不能按鍵，畫面上會註明只能觀看；畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密，聊天和搜尋仍只限訪客看得到的內容；每位訪客每秒最多讀 2 次、同時最多 2 個 agent；所有觀看同一個 agent 的訪客每 500 毫秒共用一份畫面；每次最多 256 KB；在儀表板自己的連接埠上，訪客的檢視讀取也要經過這些檢查（`web.view_access: open` 時匿名的讀取不變）。**搜尋**，只搜它的 agent 裡、它的頻道顯示過或它自己寫的聊天訊息（和它的聊天同一個規則），最多 20 筆；不搜 agent 之間的訊息、任務、團隊或設定；每分鐘 6 次、一次一個；全部訪客同時最多 3 個搜尋，讓管理員的搜尋一定有空位。偏好（#2855）：它自己的主題、語言、最愛、排序和篩選存在主機上、歸在它的帳號下（每個裝置都一樣，管理員移除它時一併刪除）；其餘照主機的外觀，也讀不到提到範圍外 agent 的偏好。它也可以設定自己的網頁名稱。
 
 **Session。** 預設絕對時限 12 小時、閒置 2 小時（`web.guests.session`），絕不超過所在介面本身的時限（公開連結是 4 小時／30 分鐘）；每個帳號最多 4 個、全部最多 64 個，和管理員分開計算，所以訪客永遠不會把管理員擠掉。範圍變成空的訪客會被登出；關閉訪客登入會結束所有訪客 session，並忘記所有訪客記住的裝置，再次開啟也不會讓任何一個恢復。
 
@@ -1453,7 +1453,7 @@ bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用
 
 ### App 圖示（#2308）
 
-**設定 → 網頁儀表板 → App 圖示**可以選一張正方形的圖（PNG、JPG 或 WebP），用在瀏覽器分頁和手機主畫面，有預覽和 **恢復預設**；只有管理者的 session 能更換。Dashboard 現在有 web app manifest，安裝成 App（加入主畫面）時也會用同一個圖示。圖示網址帶有版本，所以換圖後馬上生效（iPhone 主畫面要刪掉捷徑再重新加入才會換）。
+**設定 → 網頁儀表板 → App 圖示**可以選一張正方形的圖（PNG、JPG 或 WebP），用在瀏覽器分頁和手機主畫面，有預覽和 **恢復預設**；只有管理員的 session 能更換。Dashboard 現在有 web app manifest，安裝成 App（加入主畫面）時也會用同一個圖示。圖示網址帶有版本，所以換圖後馬上生效（iPhone 主畫面要刪掉捷徑再重新加入才會換）。
 
 **橫幅焦點（2.2.5，#2086）。** 身分卡的橫幅繪製時絕不寬於 5:1（更寬的畫面會把它置中，放在模糊的副本上），也絕不窄於 9:4（會裁掉兩側），所以在 1600×600 的橫幅上，有一塊水平置中、大約 1350×320 的區域在各種卡片大小與版面都看得到。這塊區域會隨下面的焦點上下移動；焦點為預設的 50 時，它位於圖片中央。焦點從 0（頂端）到 100（底部），預設 50，決定高的圖片要顯示哪一部分：agent 用 `card.bannerFocus` 設定，人在 View 的**編輯資料**用滑桿設定（人的設定優先），General 用 `set_web_settings` 設定。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」、「身分卡」、「小工具」與「Mod」。
 
