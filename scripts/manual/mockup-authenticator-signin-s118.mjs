@@ -23,6 +23,9 @@ const files = {
   "/assets/loading.css": ["src/ui/shared/loading.css", "text/css"],
 };
 const proposalCss = `
+body { align-items: flex-start; padding-top: 64px; }
+@media (max-width: 600px) { body { padding-top: 32px; } }
+.s118-term { white-space: nowrap; }
 #account { text-align: left; text-transform: none; letter-spacing: normal; font: var(--fw-regular) var(--fs-lg)/var(--lh-md) var(--font-ui); min-height: var(--tap); }
 #nameHint { margin: var(--s-2) 0 var(--s-4); color: var(--text-3); font-size: var(--fs-xs); }
 #reach { margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-2); }
@@ -54,30 +57,36 @@ await new Promise(r => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const words = {
   "zh-TW": {
-    primary: "輸入你的登入名稱，以及驗證器 App 的驗證碼。", account: "登入名稱", nameHint: "在已登入的裝置，前往「設定 → 存取與安全 → 擁有者驗證」查看你的登入名稱。",
+    primary: "使用登入名稱和驗證器 App 登入。", account: "登入名稱", nameHint: "登入名稱位於已登入裝置的「設定 → 存取與安全 → 擁有者驗證」。",
     label: "6 位數驗證碼（驗證器 App）", signIn: "登入",
     fallback: "改用裝置登入碼", fallbackHint: "還沒設定驗證器？也可以使用裝置登入碼。",
-    reach: "如何在手機開啟 AgEnD？", reachLead: "先在手機瀏覽器開啟這個 AgEnD 的網址，再登入。",
-    ways: ["同一個 Wi-Fi：使用 AgEnD 電腦的區網網址。localhost 只適用於那台電腦。", "Tailnet：兩台裝置先連上同一個 tailnet，再開啟該電腦的網址。", "外部入口：使用管理員已開啟的外部網址。這裡不會自動開啟公開連結。"],
+    reach: "如何在手機開啟 AgEnD？", reachLead: "在手機瀏覽器開啟 AgEnD 網址：",
+    ways: ["同一個 Wi-Fi：使用電腦的區網網址。", "私人網路（如 Tailscale）：兩台裝置先連上同一個網路。", "外部連線：使用管理員提供的網址。"],
     fallbackLead: "輸入你的 8 字元裝置登入碼。", fallbackLabel: "裝置登入碼", back: "改用驗證器登入",
-    deviceHint: "在聊天平台的 General 傳 /web，取得裝置登入碼。它只能使用一次。",
-    wrong: "無法登入。請確認登入名稱、App 裡最新的驗證碼，以及手機時間。",
-    wrongHint: "如果確定驗證碼正確，登入可能暫時受限制。請改用 8 字元裝置登入碼，或使用之前登入過的裝置。",
-    paused: "登入暫停，請等 5 分鐘後再試。", pausedButton: "5 分鐘後再試", pausedHint: "也可以改用 8 字元裝置登入碼，或回到之前登入過的裝置。",
-    ownName: "你的登入名稱", ownHint: "在其他裝置用驗證器登入時，輸入這個名稱。",
+    deviceHint: "在聊天平台的 General 傳送 /web，取得裝置登入碼。每組裝置登入碼只能使用一次。",
+    wrong: "無法登入。請確認登入名稱、驗證器 App 的最新驗證碼，以及驗證器所在裝置的時間是否正確。",
+    wrongHint: "若驗證碼正確，登入可能暫時受限。請改用 8 字元裝置登入碼，或使用之前登入過的裝置。",
+    paused: "登入已暫停，請等 5 分鐘後再試。", pausedButton: "暫時無法登入", pausedHint: "也可以改用 8 字元裝置登入碼，或使用之前登入過的裝置。",
+    ownName: "你的登入名稱", ownHint: "在其他裝置用驗證器 App 登入時，輸入這個名稱。",
+    settingsLead: "用你自己的驗證器 App 登入或確認變更。", settingsOtherApp: "其他驗證器 App",
+    settingsRecovery: "遺失驗證器時，請回 AgEnD 電腦重新綁定。無法用電子郵件或備援碼復原。",
+    settingsStrict: "開啟後，你在其他裝置確認變更時須輸入驗證碼；關閉則可直接套用。只影響你自己。",
   },
   en: {
     primary: "Enter your sign-in name and the code from your authenticator app.", account: "Sign-in name", nameHint: "On a signed-in device, find your name in Settings → Access & security → Owner verification.",
     label: "6-digit authenticator code", signIn: "Sign in",
     fallback: "Use a device sign-in code", fallbackHint: "No authenticator set up? Use a device sign-in code instead.",
     reach: "How does my phone reach AgEnD?", reachLead: "Open this AgEnD's address in your phone's browser, then sign in.",
-    ways: ["Same Wi-Fi: use the AgEnD computer's LAN address. localhost works only on that computer.", "Tailnet: connect both devices to the same tailnet, then open the computer's address.", "Outside entry: use an outside address the admin has already opened. This page never opens a public link for you."],
+    ways: ["Same Wi-Fi: use the computer's local network address.", "Private network, such as Tailscale: connect both devices to that network first.", "Outside connection: use the address your admin provides."],
     fallbackLead: "Enter your 8-character device sign-in code.", fallbackLabel: "Device sign-in code", back: "Use my authenticator",
-    deviceHint: "Send /web in General on your chat platform to get a device sign-in code. It can be used only once.",
-    wrong: "Could not sign in. Check your sign-in name, the newest code in your app and your phone's clock.",
+    deviceHint: "Send /web in General on your chat platform to get a device sign-in code. Each device sign-in code can be used only once.",
+    wrong: "Could not sign in. Check your sign-in name, the newest code in your authenticator app and whether the clock on your authenticator device is correct.",
     wrongHint: "If you are sure the code is right, sign-in may be limited for a while: use the 8-character device sign-in code instead, or a device you have signed in from before.",
-    paused: "Sign-in is paused. Please wait 5 minutes, then try again.", pausedButton: "Try again in 5 minutes", pausedHint: "You can also use an 8-character device sign-in code, or return to a device you signed in from before.",
-    ownName: "Your sign-in name", ownHint: "Enter this name when signing in with your authenticator on another device.",
+    paused: "Sign-in is paused. Please wait 5 minutes, then try again.", pausedButton: "Sign-in paused", pausedHint: "You can also use an 8-character device sign-in code, or use a device you have signed in from before.",
+    ownName: "Your sign-in name", ownHint: "Enter this name when signing in with your authenticator app on another device.",
+    settingsLead: "Use your own authenticator app to sign in or confirm changes.", settingsOtherApp: "Other authenticator apps",
+    settingsRecovery: "If you lose your authenticator, set it up again on the AgEnD computer. Email and backup codes cannot recover access.",
+    settingsStrict: "On: your confirmations from other devices need a code. Off: use Apply now. This affects only you.",
   },
 };
 let browser, fx;
@@ -91,7 +100,10 @@ const record = async (page, name, kind) => {
     top: kind === "signin" ? document.querySelector("main").getBoundingClientRect().top : null,
     buttons: kind === "signin" ? [...document.querySelectorAll("#form button:not([hidden]),#reach summary,input:not([hidden])")].filter(n => n.getClientRects().length).map(n => ({ text: n.textContent || n.id, height: n.getBoundingClientRect().height })) : [],
     nameVisible: kind === "settings" ? !!document.getElementById("s118SigninName")?.getClientRects().length : null,
-    versionDetail: kind === "settings" ? document.querySelector(".pill.ver")?.getAttribute("aria-label") : null,
+    versionDetail: kind === "settings" ? document.querySelector(".pill.ver")?.getAttribute("aria-label") || document.querySelector(".pill.ver")?.textContent : null,
+    theme: document.documentElement.dataset.theme, background: getComputedStyle(document.body).backgroundColor,
+    cardBottom: kind === "settings" ? document.querySelector("#outsideCard").getBoundingClientRect().bottom : null,
+    navTop: kind === "settings" ? document.querySelector("nav.tabs")?.getBoundingClientRect().top ?? null : null,
   }), kind);
   if (geometry.scroll > geometry.width || geometry.top < 0 || geometry.buttons.some(b => b.height < 44) || (kind === "settings" && (!geometry.nameVisible || !geometry.versionDetail?.includes("2.3.5-alpha.10+s118")))) throw new Error(JSON.stringify(geometry));
   await page.screenshot({ path: join(out, name), fullPage: true });
@@ -122,7 +134,7 @@ try {
           codeLabel.before(nameLabel, name, nameHint);
         }
         const code = document.getElementById("code");
-        code.placeholder = state === "fallback" ? "XXXX-XXXX" : "123456"; code.inputMode = state === "fallback" ? "text" : "numeric"; code.autocomplete = "one-time-code"; code.maxLength = state === "fallback" ? 12 : 32; code.value = "";
+        code.placeholder = state === "fallback" ? "XXXX-XXXX" : ""; code.inputMode = state === "fallback" ? "text" : "numeric"; code.autocomplete = "one-time-code"; code.maxLength = state === "fallback" ? 12 : 32; code.value = "";
         document.getElementById("resend").hidden = true; document.getElementById("another").hidden = true;
         form.querySelector(".hint").hidden = true; form.querySelectorAll("details").forEach(d => { d.hidden = true; });
         const go = document.getElementById("go"); go.textContent = state === "paused" ? w.pausedButton : w.signIn; go.disabled = state === "paused";
@@ -136,6 +148,15 @@ try {
         const lead = document.createElement("p"); lead.textContent = w.reachLead;
         const ul = document.createElement("ul"); for (const text of w.ways) { const li = document.createElement("li"); li.textContent = text; ul.append(li); }
         reach.append(summary, lead, ul); form.append(reach); code.blur();
+        // Projection only: keep short Chinese UI terms intact, without disabling normal paragraph wrapping.
+        if (lang === "zh-TW") {
+          const terms = /使用之前登入過的裝置|同一個網路|擁有者驗證|驗證器 App|裝置登入碼|登入名稱|驗證碼|存取與安全/g;
+          const texts = [], walk = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
+          while (walk.nextNode()) texts.push(walk.currentNode);
+          for (const text of texts) { const parts = text.textContent.split(terms), matches = text.textContent.match(terms); if (!matches) continue;
+            const fragment = document.createDocumentFragment(); parts.forEach((part, i) => { fragment.append(part); if (matches[i]) { const term = document.createElement("span"); term.className = "s118-term"; term.textContent = matches[i]; fragment.append(term); } }); text.replaceWith(fragment);
+          }
+        }
       }, { w: words[lang], state, lang });
       await record(page, `${screen}-${lang}-${state}.png`, "signin");
     }
@@ -145,29 +166,47 @@ try {
   }
   process.env.REPO = resolve(process.env.SETTINGS_REPO || repo);
   const settingsBuildVersion = JSON.parse(await readFile(join(process.env.REPO, "package.json"), "utf8")).version;
-  // Actual dashboard Settings shell; only the own-admin status and the proposed static name row are projected.
+  // Actual dashboard Settings shell; own-admin status/name and requested presentation polish are projected.
   fx = await bootFixture({ port: Number(process.env.HP ?? 47740), classic: false, instances: 3 });
+  // The archive stamp has modified:null. Present the ordinary version-only state, without inventing clean-source proof.
+  // This fixture-only getter is documented separately from the real archive's provenance.
+  Object.defineProperty(fx.fm, "currentBuild", { value: { version: settingsBuildVersion, source: null, label: settingsBuildVersion } });
   for (const lang of ["zh-TW", "en"]) for (const screen of ["desk-light", "phone-dark"]) {
     const phone = screen.startsWith("phone");
     const p = await fx.page({ device: phone ? "phone" : "desk", theme: phone ? "dark" : "light", lang });
     try {
       await p.ctx.route("**/ui/outside", r => r.request().method() === "GET" ? r.fulfill({ json: { webOnly: false, here: true, manage: true, codeNeeded: false, strict: false, enrolled: true, enrolledAt: Date.UTC(2026, 10, 9), outside: false, pausedForMs: 0, link: null, signinName: "alice_tg" } }) : r.fulfill({ status: 405 }));
       await p.ctx.route("**/auth/totp", r => r.fulfill({ status: 405 }));
+      await p.ctx.route("**/assets/s118-proposal.css", r => r.fulfill({ contentType: "text/css", body: ".s118-term { white-space: nowrap; } @media(max-width:899px){ #outsideCard { margin-bottom: calc(var(--tap) + var(--s-5)); scroll-margin-bottom: var(--s-5); } }" }));
       await p.page.goto(fx.base + "/settings/access"); await p.page.waitForSelector("#outsideCard");
       const mine = await p.page.evaluate(async () => (await (await fetch("/ui/outside")).json()).signinName);
-      await p.page.evaluate(({ name, w }) => {
+      await p.page.evaluate(({ name, w, lang, theme }) => {
+        AgendTheme.set(theme);
+        const style = document.createElement("link"); style.rel = "stylesheet"; style.href = "/assets/s118-proposal.css"; document.head.append(style);
+        document.getElementById("outLead").textContent = w.settingsLead;
+        document.querySelector("#outApps > :last-child").textContent = w.settingsOtherApp;
+        document.getElementById("outSetUpOn").nextElementSibling.textContent = w.settingsRecovery;
+        document.getElementById("outStrict-hint").textContent = w.settingsStrict;
         const row = document.createElement("div"); row.className = "s-row"; row.id = "s118SigninName";
         const copy = document.createElement("div"), label = document.createElement("strong"), hint = document.createElement("p"), value = document.createElement("code");
         label.textContent = w.ownName; hint.className = "note"; hint.textContent = w.ownHint; value.textContent = name;
         copy.append(label, hint); row.append(copy, value); document.getElementById("outSetUpOn").after(row);
-      }, { name: mine, w: words[lang] });
+        if (lang === "zh-TW") {
+          const texts = [], walk = document.createTreeWalker(document.getElementById("outsideCard"), NodeFilter.SHOW_TEXT);
+          while (walk.nextNode()) texts.push(walk.currentNode);
+          for (const text of texts) { const terms = /擁有者驗證|驗證器 App|裝置登入碼|登入名稱|驗證碼/g, parts = text.textContent.split(terms), matches = text.textContent.match(terms); if (!matches) continue;
+            const fragment = document.createDocumentFragment(); parts.forEach((part, i) => { fragment.append(part); if (matches[i]) { const term = document.createElement("span"); term.className = "s118-term"; term.textContent = matches[i]; fragment.append(term); } }); text.replaceWith(fragment);
+          }
+        }
+      }, { name: mine, w: words[lang], lang, theme: phone ? "dark" : "light" });
+      await p.page.waitForFunction(() => [...document.styleSheets].some(s => s.href?.endsWith("s118-proposal.css")));
       await p.page.locator("#outsideCard").scrollIntoViewIfNeeded();
       await record(p.page, `${screen}-${lang}-settings-name.png`, "settings");
     } finally { await p.ctx.close(); }
   }
   const digest = async name => createHash("sha256").update(await readFile(join(out, name))).digest("hex");
   await writeFile(join(out, "SHA256SUMS"), (await Promise.all(captures.map(async c => `${await digest(c.file)}  ${c.file}\n`))).join(""));
-  await writeFile(join(out, "receipt.json"), JSON.stringify({ base: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), contract: "#3548 d5e2a3c873da04a72de4def25c2e53db2889a381", settingsBuildVersion, browser: version, scope: "Design-only DOM projections in actual signin.html and dashboard Settings shell; no production source or authenticator POST. Settings own-name read is synthetic. No core/SKEW/live-auth acceptance.", captures }, null, 2) + "\n");
+  await writeFile(join(out, "receipt.json"), JSON.stringify({ base: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), contract: "#3548 d5e2a3c873da04a72de4def25c2e53db2889a381", settingsBuildVersion, browser: version, scope: "Design-only DOM projections in actual signin.html and dashboard Settings shell; no production source or authenticator POST. Settings own-name read, concise card copy/spacing and version-only header are synthetic design projections. Real archive provenance remains unchanged on disk; no clean-source claim. No core/SKEW/live-auth acceptance.", captures }, null, 2) + "\n");
   console.log(JSON.stringify({ captures: captures.length, out, browser: version }));
 } finally {
   await browser?.close(); await fx?.close(); await new Promise(r => server.close(r));
