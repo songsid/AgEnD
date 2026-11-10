@@ -789,20 +789,13 @@ does not give that bot's admins permission to confirm; admin membership is
 checked again before applying. Cross-platform or unknown targets require host
 CLI confirmation. First-time Setup still uses host confirmation.
 
-**Your own Apply confirms it when this browser is web-verified (#2170).** After **Authorize this browser** (see
-[the chat](#the-chat-ui)), a change that would wait for a chat card is confirmed by your Apply itself when all of these
-hold: your account is on the platform of the connections the change affects, and a fleet admin of every one of them
-(the rule above); the change's scope is known; and there is a General the chat card could have gone to (connected, on
-that platform, not one the change affects). The card then says "Confirmed by your account", and that General gets a
-plain notice: who confirmed it from the web, the source, the requester, the summary and the outcome. Every check runs
-again when the change executes: if the authorization was revoked or ran out, you signed out, you are no longer an
-admin of those connections, or no General a chat card could go to is left (disconnected, its agent stopped), nothing is
-applied (the change ends as stale). Anything else waits for chat or the host
-exactly as before: a browser that is not web-verified, a guest, the public link, the host's own `agend web` session,
-an account on another platform, or a change that needs host CLI confirmation. Know what this rests on: authorizing
-the browser is **one** confirmation in your DM, kept for that session until it is revoked, runs out or signs out — not
-a fresh confirmation for each Apply. Anyone using that verified, signed-in browser (one left unattended, or a copy of
-its session cookie) can confirm such changes the same way. Sign out, or revoke it (Settings → Access & security → **Revoke web authority**, or **Not
-me** on the DM card), when you leave the browser.
+**Your own Apply confirms it (AGEND-122).** A signed-in fleet admin confirms a held change with their own **Apply now**,
+from any device that reaches the dashboard: no DM step and no browser authorization are needed for it. Your account must
+still be an admin of every connection the change touches (the rule above), web authority must be on (Settings → Access &
+security), and every check runs again when the change executes. Two switches make it stricter: your own **Ask for my
+authenticator code to confirm changes from other devices** (Settings → Access & security → **Owner verification**), which
+asks your authenticator app's 6-digit code for that change on any device but the AgEnD computer, and **Only this computer
+can authorize**, which leaves only the AgEnD computer's own browser. A confirmation from another device that opens a
+public link or sets a secret posts a Notice. Guests, read-only sessions and agents never confirm.
 
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.
