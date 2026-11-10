@@ -113,11 +113,17 @@ export interface HostCapabilities {
 }
 
 /** Every capability a CLI has on a paired Windows computer, as its Runtime reports and does it. */
+/**
+ * What a Runtime install's pinned version vouches for: `audited` — the pin is a release AgEnD has audited (the upstream rule for npm CLIs: "the audited version, not latest"); `integrity` — it is
+ * pinned only for what can be checked about the file (its size, checksum, the publisher's signature) because no audited release can be installed (the vendor serves only its newest build, and
+ * the CLI updates itself afterwards). The page says "Not yet verified by AgEnD" next to an `integrity` pin; nothing else decides that.
+ */
+export type InstallPin = "audited" | "integrity";
 export interface RuntimeCapabilities {
   /** The Runtime can list and (where `supports.execution`) run it. */
   readonly provider: Cap<NativeProviderFacts>;
-  /** The dashboard installs it, from a pinned npm package. (The pins stay in runtime-cli-install.ts.) */
-  readonly install: Cap<{ kind: "npm" }>;
+  /** The dashboard installs it: from a pinned npm package (`npm`), or from one pinned download (`download`: exact address, size, sha512; no npm package exists). (The pins stay in runtime-cli-install.ts.) */
+  readonly install: Cap<{ kind: "npm" | "download"; pin: InstallPin }>;
   /**
    * AGEND-136: the dashboard's Update button for that computer. `pinned`: the same closed installer as `install`, whose pinned release is the audited one
    * (runtime-cli-install.ts), so an update is that install over an older copy with every check of #3190 Part 3b; nothing the vendor's own updater would fetch runs.

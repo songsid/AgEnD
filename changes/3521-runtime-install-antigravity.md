@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Install Antigravity on a paired Windows computer from Settings → Runtime (#3521).** Antigravity has no npm package, so AgEnD installs it from **one pinned download**: the exact file address, its size and its sha512 are written in the Runtime's own table, and the Runtime downloads that one address itself (with a fixed PowerShell command; the vendor's `install.ps1` is not run). The install is refused, with the reason on the page, if the size or sha512 differ, if the file keeps growing past the pinned size, or if Windows does not report a valid signature by Google LLC. It is installed per user into the Runtime's own folder (no administrator, no PATH change) and only while that computer's owner has turned the `install` switch on; the dashboard sends only the CLI id. Grok, Muse and Kiro stay "official command only", each with its reason.
