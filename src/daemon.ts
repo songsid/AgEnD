@@ -4567,7 +4567,8 @@ export class Daemon extends EventEmitter {
             continue;
           }
           const autoKey = dialog.autoResolutionKey;
-          if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) {
+          if (dialog.verifyAfterKeys && autoKey
+            && ((this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) || this.retrySafeHeld(dialog))) {
             // A previous poll sent the safety choice but the CLI has not
             // repainted yet. Never send another Enter into the same screen
             // (a retrySafe dialog's keys may be re-sent: retrySafeDue).
@@ -4608,7 +4609,8 @@ export class Daemon extends EventEmitter {
             // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
             // not evidence that the old request was answered, and the one-minute fallback must keep running.
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
-            if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) return;
+            if (dialog.verifyAfterKeys && autoKey
+              && ((this.hasAutoDialogClaim(dialog) && !this.retrySafeDue(dialog)) || this.retrySafeHeld(dialog))) return;
             if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
             this.noteRetrySafeSend(dialog);
             this.logger.info(Daemon.answerDetailOf(dialog, currentPane), `Auto-dismissing runtime dialog: ${dialog.description}`);
@@ -9008,6 +9010,17 @@ export class Daemon extends EventEmitter {
     const sends = this.retrySafeSends;
     if (!sends || sends.key !== key || sends.spawn !== this.spawnGeneration) return false;  // no send of ours to repeat
     return sends.count < retry.max && performance.now() - sends.lastMono >= retry.afterMs;
+  }
+
+  /**
+   * RuntimeDialog.retrySafe: a send to this dialog is on record in this spawn and the next one is not due (its budget
+   * is spent, or `afterMs` has not passed). Holds even when the one-shot claim was released — a failed or uncertain key
+   * ACK releases it — so the budget can never be bypassed (#3589 review).
+   */
+  private retrySafeHeld(dialog: RuntimeDialog): boolean {
+    const key = dialog.autoResolutionKey, sends = this.retrySafeSends;
+    if (!dialog.retrySafe || !key || !sends || sends.key !== key || sends.spawn !== this.spawnGeneration) return false;
+    return !this.retrySafeDue(dialog);
   }
 
   /** Count one send of a retrySafe dialog's keys (the first one included). */
@@ -13914,9 +13927,8 @@ export class Daemon extends EventEmitter {
         for (const dialog of startupDialogs) {
           if (Daemon.dialogMatches(dialog, pane)) {
             if (dialog.autoResolutionKey
-              && (attemptedSafetyChoices.has(dialog.autoResolutionKey)
-                || this.hasAutoDialogClaim(dialog))
-              && !this.retrySafeDue(dialog)) {
+              && (((attemptedSafetyChoices.has(dialog.autoResolutionKey) || this.hasAutoDialogClaim(dialog))
+                && !this.retrySafeDue(dialog)) || this.retrySafeHeld(dialog))) {
               answeredStillVisible ??= dialog;
               continue;
             }

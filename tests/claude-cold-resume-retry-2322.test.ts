@@ -186,6 +186,29 @@ describe("runtime scanner: the prompt painted after startup (idle trigger or a l
     expect(keys.map(k => k.key)).toEqual(["Escape", "Escape", "Escape", "Escape", "Escape", "Escape"]);
   });
 
+  it("#3589 review: failed key ACKs (which release the one-shot claim) never bypass the budget — at most 3 attempts", async () => {
+    vi.useFakeTimers();
+    const { daemon, keys } = rig({ drop: Infinity });
+    daemon.tmux.sendSpecialKey.mockImplementation(async (key: string) => { keys.push({ key, at: performance.now() }); return false; });
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(60_000);
+    daemon.freezeRuntimeMonitors();
+    expect(keys.map(k => k.key)).toEqual(["Escape", "Escape", "Escape"]);
+    for (const gap of gaps(keys)) expect(gap).toBeGreaterThanOrEqual(1_000);
+  });
+
+  it("#3589 review control: a one-shot answer (no retrySafe) after a failed ACK keeps its old behaviour — re-sent on the next poll", async () => {
+    vi.useFakeTimers();
+    const { daemon, keys } = rig({ drop: Infinity, oneShot: true });
+    let first = true;
+    daemon.tmux.sendSpecialKey.mockImplementation(async (key: string) => { keys.push({ key, at: performance.now() }); const ok = !first; first = false; return ok; });
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(60_000);
+    daemon.freezeRuntimeMonitors();
+    // the failed ACK released the claim, so the next poll answers again; that answer took (ACK true) and is one-shot
+    expect(keys.map(k => k.key)).toEqual(["Escape", "Escape"]);
+  });
+
   it("control: a different prompt after the first Escape gets no key", async () => {
     vi.useFakeTimers();
     const { daemon, keys } = rig({ drop: Infinity, onEscape: (_n, state) => { state.pane = UNKNOWN; } });
