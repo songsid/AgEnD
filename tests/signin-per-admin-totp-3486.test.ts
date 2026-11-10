@@ -16,13 +16,21 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Counts the real HMAC primitive evaluations (every TOTP code is one) so the tests can show the work is the same, not only that every admin was visited.
+const hmac = vi.hoisted(() => ({ calls: 0 }));
+vi.mock("node:crypto", async importOriginal => {
+  const real = await importOriginal<typeof import("node:crypto")>();
+  const counting = (...args: Parameters<typeof real.createHmac>) => { hmac.calls++; return real.createHmac(...args); };
+  return { ...real, createHmac: counting, default: { ...real, createHmac: counting } };
+});
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleAuthRequest } from "../src/auth-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { evaluateSettingsRole } from "../src/authority/settings-role.js";
-import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_REACH_STEPS, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { SIGNIN_KNOWN_COOKIE, addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
 import { fleetCookieName } from "../src/web-cookie-names.js";
 import { setLocale } from "../src/locale.js";
@@ -872,6 +880,39 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
       expect(summary(await f.totp({ code: "123456" }))).toEqual(WRONG);
       expect(seen).toEqual([null]);
     });
+    it("the real HMAC work is the same: ordinary wrong, inside the skew reach, outside it, used, demoted, collision, not six digits — and a decoy when no one has an app", () => {
+      let T = 0;
+      const find = (() => { const t = Math.floor(Date.now() / 30_000) * 30_000 + 10_000, sec = (i: number) => base32Encode(Buffer.from(`collide-${i}`.padEnd(20, "#").slice(0, 20))), seen = new Map<string, string>();
+        for (let i = 0; i < 20_000; i++) { const c = hotp(base32Decode(sec(i))!, totpStep(t)), o = seen.get(c); if (o) return [o, sec(i), t] as const; seen.set(c, sec(i)); } throw new Error("none"); })();
+      const [sa, sb] = find; T = find[2];
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      try {
+        const dir = mkdtempSync(join(tmpdir(), "agend-155-hmac-")); roots.push(dir);
+        const rec = (secret: string) => ({ secret, enrolledAt: 1, lastStep: 0 });
+        writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, admins: { [A]: rec(sa), [B]: rec(sb) }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }));
+        const store = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} });
+        // A's step +1 is spent by a confirmation, so its code at +1 is a "used" one (B's code at +1 is not A's).
+        expect(store.verify(hotp(base32Decode(sa)!, totpStep(T) + 1), A)).toEqual({ kind: "ok" });
+        const both = [{ who: A, eligible: true }, { who: B, eligible: true }];
+        let n = 0;
+        const work = (code: string, candidates = both): number => { const before = hmac.calls; store.signInByCode(code, { key: `k${n++}` }, candidates, []); return hmac.calls - before; };
+        const at = (secret: string, offset: number) => hotp(base32Decode(secret)!, totpStep(T) + offset);
+        const per = 2 * TOTP_REACH_STEPS + 1;
+        const counts = {
+          ordinary: work("000000"),
+          skewInside: work(at(sa, 2)),                       // two steps ahead: inside the reach, outside the accepted window
+          skewOutside: work(at(sa, 9)),                      // far outside
+          used: work(at(sa, 1)),                             // a step already spent
+          demoted: work(at(sb, -1), [{ who: A, eligible: true }, { who: B, eligible: false }]),
+          collision: work(at(sa, 0)),                        // matches both apps
+          notDigits: work("12ab"),
+        };
+        expect(counts).toEqual({ ordinary: 2 * per, skewInside: 2 * per, skewOutside: 2 * per, used: 2 * per, demoted: 2 * per, collision: 2 * per, notDigits: 2 * per });
+        const empty = new WebRemoteAccess(join(mkdtempSync(join(tmpdir(), "agend-155-hmac0-")), WEB_REMOTE_ACCESS_FILE), { warn: () => {} });
+        const before = hmac.calls; empty.signInByCode("123456", { key: "x" }, [], []);
+        expect(hmac.calls - before).toBe(per);              // the decoy: exactly one app's worth
+      } finally { vi.useRealTimers(); }
+    });
     it("a web-only fleet compares its one app", async () => {
       const f = fleet({ chat: false }), seen = traced(f);
       await f.totp({ code: "000000" });
@@ -881,14 +922,14 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
 
   describe("two apps matching at once: nobody is signed in, and it is not an oracle", () => {
     /** Two secrets whose codes are equal at the same step (found by search: about 3 in a million per pair, so we look). */
-    const collide = (): [string, string, number] => {
-      const T = Math.floor(Date.now() / 30_000) * 30_000 + 10_000, seen = new Map<string, string>();
-      for (let i = 0; i < 20_000; i++) {
-        const secret = base32Encode(Buffer.from(`collide-${i}`.padEnd(20, "#").slice(0, 20)));
-        const code = hotp(base32Decode(secret)!, totpStep(T));
-        const other = seen.get(code);
-        if (other) return [other, secret, T];
-        seen.set(code, secret);
+    /** `[a, b]` with a's code at step now+offA equal to b's code at step now+offB (the same step: 0, 0), found by search; and the moment (mid-step) to pin the clock at. */
+    const collide = (offA = 0, offB = 0): [string, string, number] => {
+      const T = Math.floor(Date.now() / 30_000) * 30_000 + 10_000, secretOf = (i: number) => base32Encode(Buffer.from(`collide-${i}`.padEnd(20, "#").slice(0, 20)));
+      const byCode = new Map<string, string>();
+      for (let i = 0; i < 20_000; i++) byCode.set(hotp(base32Decode(secretOf(i))!, totpStep(T) + offA), secretOf(i));
+      for (let j = 0; j < 20_000; j++) {
+        const other = byCode.get(hotp(base32Decode(secretOf(j))!, totpStep(T) + offB));
+        if (other && other !== secretOf(j)) return [other, secretOf(j), T];
       }
       throw new Error("no collision found");
     };
@@ -918,14 +959,52 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
       expect((await f.totp({ code: codeOf(sa, 1) })).status).toBe(200);
       expect(f.withCookie(await f.totp({ code: codeOf(sb, -1) }), "lan").record).toMatchObject({ owner: { userId: ADMIN_B } });
     });
-    it("a collision with an app that has already used that step is not a collision: the other one signs in", async () => {
+    it("a refused collision stays refused after one of them SPENDS the step (route level): unnamed B-digits 401 → named B signs in as B → the same digits unnamed are still 401, never A", async () => {
       const [sa, sb, T] = collide();
       vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
       const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
-      expect(f.access().verify(codeOf(sa), A)).toEqual({ kind: "ok" });
-      const r = await f.totp({ code: codeOf(sb) });
-      expect(r.status).toBe(200);
-      expect(f.withCookie(r, "lan").record.owner).toEqual({ adapterId: "a", userId: ADMIN_B });
+      const digits = codeOf(sb);
+      expect(digits).toBe(codeOf(sa));
+      expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+      const named = await f.totp({ account: "bob", code: digits });
+      expect([named.status, f.withCookie(named, "lan").record.owner]).toEqual([200, { adapterId: "a", userId: ADMIN_B }]);   // by name it is B's, and spends B's step
+      expect(saved(f).admins[B].lastStep).toBe(totpStep(T));
+      for (let n = 0; n < 2; n++) {
+        expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);                              // the same digits, unnamed: refused, not A
+        f.restart();                                                                                  // … and a restart changes nothing (no state is kept for it)
+      }
+      expect(sessions(f)).toHaveLength(1);                                                            // only the named one: no session was made for A
+      expect(saved(f).admins[A].lastStep).toBe(0);
+    });
+    it("a refused collision stays refused after ONE of the two steps ages out (route level): B's step S equals A's step S+1; once S is gone and S+1 is still accepted the same digits are still 401", async () => {
+      const [sa, sb, T] = collide(1, 0);                                                              // a's code one step ahead = b's code now
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+      const digits = codeOf(sb);
+      expect(digits).toBe(codeOf(sa, 1));
+      expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);                                 // both steps in the window: ambiguous
+      vi.setSystemTime(T + 2 * 30_000);                                                               // S is two steps back (out), S+1 one step back (still accepted for A)
+      expect(totpStep(Date.now()) - 1).toBe(totpStep(T) + 1);
+      expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);                                 // before the fix this signed in as A
+      f.restart();
+      expect(summary(await f.totp({ code: digits }))).toEqual(WRONG);
+      expect(sessions(f)).toEqual([]);
+      expect([saved(f).admins[A].lastStep, saved(f).admins[B].lastStep]).toEqual([0, 0]);
+      // …once the steps it matched are all out of reach, the admin's own next code works as usual
+      expect((await f.totp({ code: codeOf(sa, 1) })).status).toBe(200);
+    });
+    it("a refused collision is refused whether or not one of the two may sign in (demoted) and whatever the limits say", async () => {
+      const [sa, sb, T] = collide();
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+      f.fm.fleetConfig!.channels![0]!.access!.allowed_users = [ADMIN];                                // B demoted: only A could sign in
+      expect(summary(await f.totp({ code: codeOf(sa) }))).toEqual(WRONG);
+      expect(sessions(f)).toEqual([]);
+    });
+    it("the digits of an admin who does NOT collide still sign in after another admin spent a step (the rule refuses only what two apps match)", async () => {
+      const f = fleet();
+      expect(f.access().verify(codeOf(secretFor(ADMIN_B)), B)).toEqual({ kind: "ok" });
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);
     });
   });
 
@@ -1076,6 +1155,8 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
       const keys = [0, 1, 2].map(i => adminKey("a", String(1000 + i)));
       writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, admins: Object.fromEntries(keys.map(k => [k, { secret: secretFor(k.slice(-4)), enrolledAt: 1, lastStep: 0 }])), outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }));
       const store = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} }, () => clock);
+      // The limiter arithmetic is what is measured, not the disk: no write per try (7 400 file writes made this slow on slow disks; persistence has its own tests).
+      (store as any).flush = () => true;
       const t0 = clock, end = t0 + 365 * 86_400_000, byDay: Record<number, number> = {};
       let tried = 0, id = 0;
       while (clock < end) {

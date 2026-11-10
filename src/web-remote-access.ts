@@ -170,6 +170,19 @@ export function totpSkew(secret: Uint8Array, code: string, nowMs: number): numbe
   return null;
 }
 
+/**
+ * AGEND-155: how far, in time steps either side of now, a code-only sign-in looks at EVERY admin's app, always — the accepted window
+ * (k = max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS) steps), plus the further k..2k a collision is looked for in (below), which also covers
+ * the clock-skew probe. 3k = 3 steps, so 2·3+1 = 7 codes (7 HMACs) per admin per request, whatever the code typed is, whether a
+ * step was already used and whether the admin may sign in.
+ */
+export const TOTP_REACH_STEPS = Math.max(3 * Math.max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS), TOTP_SKEW_PROBE_STEPS);
+/** The codes of one app for every step from now−TOTP_REACH_STEPS to now+TOTP_REACH_STEPS (index 0 is the earliest): fixed work, no early exit. */
+function codeReach(secret: Uint8Array, nowMs: number): string[] {
+  const first = totpStep(nowMs) - TOTP_REACH_STEPS;
+  return Array.from({ length: 2 * TOTP_REACH_STEPS + 1 }, (_, i) => hotp(secret, first + i));
+}
+
 /** The `otpauth://` URI an authenticator app reads from the QR code (or the key typed in by hand). */
 export function otpauthUri(secretBase32: string, account: string): string {
   const label = encodeURIComponent(`AgEnD:${account}`);
@@ -569,9 +582,12 @@ export class WebRemoteAccess {
    * - exactly one candidate matches (eligible, a step newer than their `lastStep`, and — unless this
    *   browser is a known device of that admin — no wait in force for the whole sign-in): that admin is signed in and their step spent;
    * - none matches: a wrong code. The same answer — and the same counting — as a code that is right for no one;
-   * - two or more match (for a right code, ≈ 3 in 10⁶ per other admin): nobody is signed in, **nothing is spent**, and it is a wrong code in every way: counted in the same
-   *   counters, answered with the same 401, so neither the answer nor a count says "your code collided with someone's". Not spending the
-   *   step means a collision cannot be used to burn an admin's step; the person waits for the next code.
+   * - two apps match (for a right code, ≈ 3 in 10⁶ per other admin; "match" = the raw codes of the two apps, one in the accepted window and
+   *   the other within 2k steps of it, whoever has spent what): nobody is signed in, **nothing is spent**, and it is a wrong code in every way:
+   *   counted in the same counters, answered with the same 401, so neither the answer nor a count says "your code collided with someone's".
+   *   Not spending the step means a collision cannot be used to burn an admin's step; the person waits for the next code. Because it is a
+   *   rule on the raw codes, those digits stay refused for as long as any step they matched is still accepted — after a step was spent, an
+   *   admin was demoted, a limit moved, or one of the two steps aged out — and a restart changes nothing (no state is kept for it).
    * Counting: a wrong code has no admin to blame, so it is counted in this browser's limiter, the whole sign-in's, and — for a known
    * device — in the known-path limiter of each admin whose mark it carries (by mark × admin, as with a name). The per-admin and per-name
    * counts do not apply to it (they stay for a request that still sends a name). What can pause an attempt: this browser's wait and the
@@ -590,27 +606,44 @@ export class WebRemoteAccess {
     const wait = Math.max(...waits);
     const idle: SignInBegan = { fleet: false, admin: false, waitMs: 0, halfFleet: false, halfAdmin: false };
     if (wait > 0) return { kind: "paused", retryAfterMs: wait, began: idle };
-    // Every candidate, always: the comparison, the ceiling read and the step all happen for each, whether or not it will matter.
-    const hits: string[] = [], skews: number[] = [];
-    let compared = false;
+    // Every candidate, always, the same work: all TOTP_REACH_STEPS-each-side codes of their app (7 HMACs), compared in full, no early exit;
+    // only afterwards is anything decided by what was spent, who may sign in here, and what is open. With no app at all, one app's worth
+    // of work is done with a decoy secret.
+    const typed = code.replace(/\s/g, ""), valid = /^\d{6}$/.test(typed), R = TOTP_REACH_STEPS, at = totpStep(now), k = Math.max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS);
+    const same = (candidate: string): boolean => timingSafeEqual(Buffer.from(candidate), Buffer.from(valid ? typed : "x".repeat(candidate.length))) && valid;
+    const rows: { who: string; eligible: boolean; lastStep: number; eq: boolean[] }[] = [];
     for (const c of candidates) {
       const rec = this.rec(c.who);
       if (!rec) continue;
-      compared = true;
       this.compareTrace?.(c.who);
-      const secret = base32Decode(rec.secret)!;
-      const step = matchTotp(secret, code, now, rec.lastStep);
+      rows.push({ who: c.who, eligible: c.eligible, lastStep: rec.lastStep, eq: codeReach(base32Decode(rec.secret)!, now).map(same) });
+    }
+    const compared = rows.length > 0;
+    if (!compared) { this.compareTrace?.(null); codeReach(this.decoySecret, now).map(same); }
+    const accepted = (i: number): boolean => i - R >= -TOTP_PAST_STEPS && i - R <= TOTP_FUTURE_STEPS;
+    // A code that matches TWO admins' apps — in the accepted window for one, within 2k steps of it for the other — is refused, whatever has
+    // happened to either since: spent steps, demotion, limits and time (while any of the steps it matched is still accepted) do not
+    // matter, because only the raw codes of the apps are looked at. It needs no memory, so a restart cannot lose it. Without this a refused
+    // collision could be used later (after one admin spent their step, or after one of the steps aged out) to sign the same digits in as the other.
+    let ambiguous = false;
+    for (const x of rows) for (const y of rows) {
+      if (x === y) continue;
+      for (let i = 0; i < x.eq.length; i++) for (let j = 0; j < y.eq.length; j++) ambiguous = ambiguous || (accepted(i) && x.eq[i]! && y.eq[j]! && Math.abs(i - j) <= 2 * k);
+    }
+    const hits: string[] = [], skews: number[] = [];
+    for (const r of rows) {
+      let step: number | null = null;
+      for (let i = 0; i < r.eq.length; i++) if (step === null && accepted(i) && r.eq[i] && at + i - R > r.lastStep) step = at + i - R;
       // A known device is not held by the whole sign-in's wait for its own admin; for anyone else it is (the wait was not checked above).
       // The admin's own ceiling (started by named attempts) is not read: it holds the named path only.
-      const open = marks.includes(c.who) || fleet.pausedUntil <= now;
-      // The clock-skew look (log only) is made for every candidate, a hit or not, so the work does not depend on whether someone matched.
-      const sk = totpSkew(secret, code, now);
-      if (step !== null && c.eligible && open) hits.push(c.who); else if (sk !== null) skews.push(sk);
+      const open = marks.includes(r.who) || fleet.pausedUntil <= now;
+      if (step !== null && r.eligible && open && !ambiguous) hits.push(r.who);
+      else for (let i = 0; i < r.eq.length; i++) if (r.eq[i] && !accepted(i) && Math.abs(i - R) <= TOTP_SKEW_PROBE_STEPS) skews.push(i - R);   // the clock-skew look: log only
     }
-    if (!compared) { this.compareTrace?.(null); matchTotp(this.decoySecret, code, now, -1); totpSkew(this.decoySecret, code, now); }
     if (hits.length === 1) {
-      const who = hits[0]!, rec = this.rec(who)!;
-      const step = matchTotp(base32Decode(rec.secret)!, code, now, rec.lastStep)!;
+      const who = hits[0]!, rec = this.rec(who)!, row = rows.find(r => r.who === who)!;
+      let step = -1;
+      for (let i = 0; i < row.eq.length; i++) if (step < 0 && accepted(i) && row.eq[i] && at + i - R > rec.lastStep) step = at + i - R;
       const before = this.state, beforeBrowser = this.browserLim.get(browser.key);
       const { lim: _lim, klim: _klim, ...clean } = rec;
       this.state = this.withRec(this.state, who, { ...clean, lastStep: step });
@@ -636,7 +669,7 @@ export class WebRemoteAccess {
     const began: SignInBegan = { fleet: f.wait > 0, admin: kWait > 0, waitMs: Math.max(f.wait, kWait), halfFleet: f.half, halfAdmin: ks.some(k => k.half) };
     const started = Math.max(w.wait, isKnown ? kWait : f.wait);
     return started > 0 ? { kind: "paused", retryAfterMs: started, began }
-      : { kind: "wrong", ...(hits.length === 0 && compared && skews.length === 1 ? { skewSteps: skews[0] } : {}), began };
+      : { kind: "wrong", ...(hits.length === 0 && compared && !ambiguous && skews.length === 1 ? { skewSteps: skews[0] } : {}), began };
   }
 
   /**
