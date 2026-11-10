@@ -39,20 +39,16 @@ function expiryText(iso) {
 }
 /**
  * #3066 §1: a server line ({ text, i18n }) in this page's language — or, when this tab's strings predate the key (a
- * stale tab), the server's own English text, never the bare key.
+ * stale tab), the server's own English text, never the bare key. M-2815: the card no longer draws capacity; kept
+ * exported so a module from another release that imports it still links (settings-stale-module-link-3321).
  */
 export function capacityLine(x) {
   if (!x || typeof x.text !== "string") return "";
   const key = x.i18n && typeof x.i18n.key === "string" ? `view.${x.i18n.key}` : null;
   return key && t(key) !== key ? usageText(x.text, x.i18n) : x.text;
 }
-/** #3066 §1: a weekly quota's measured 100% (or why not yet), and the limit it always carries: only this fleet counts. */
-function UsageCapacity({ c }) {
-  const notes = Array.isArray(c.notes) ? c.notes : [];
-  return html`<div class=${`u-cap${c.status === "ok" ? "" : " u-cap-wait"}`}>
-    <div class="u-cap-line">${capacityLine(c.line)}</div>
-    ${notes.map((n, i) => html`<div key=${i} class="u-cap-note">${capacityLine(n)}</div>`)}</div>`;
-}
+// M-2815 (the user): the card shows no measured capacity ("100% ≈ …" and its fleet-only note) — get_usage and the usage
+// report keep it (#3066 §1); a weekly metric's `capacity` is left unread here.
 export function UsageMetric({ m }) {
   const bar = useRef(null);
   const label = usageText(m.label, m.labelI18n);
@@ -67,8 +63,7 @@ export function UsageMetric({ m }) {
     const sub = [note, resetText(m.resetsAt)].filter(Boolean).join(" · ");
     return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span>${word ? html`<span class=${`u-status ${cls}`}>${word}</span>` : null}
       <span class=${`u-pct ${cls}`}>${pct.toFixed(0)}<span class="u-unit">%</span></span></div>
-      <div class="u-meter"><div ref=${bar} class=${`u-fill ${cls}`}></div></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}
-      ${m.capacity ? html`<${UsageCapacity} c=${m.capacity} />` : null}</div>`;
+      <div class="u-meter"><div ref=${bar} class=${`u-fill ${cls}`}></div></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
   }
   if (m.type === "dollars") {
     const val = m.limit ? `$${(m.used ?? 0).toFixed(2)} / $${m.limit.toFixed(2)}` : `$${(m.used ?? 0).toFixed(2)}`;
@@ -149,12 +144,28 @@ export function compactSlots(p) {
   const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
   const isShort = (m) => Number(m.windowMs) > 0 && m.windowMs < TWO_DAYS;
   const short = pct.filter(isShort).sort((a, b) => a.windowMs - b.windowMs)[0] || null;
-  const long = pct.filter((m) => !isShort(m)).map((m, i) => ({ m, i }))
+  // M-2815: the long column is the account's own week; a per-model one (scope "model") only when it has nothing else.
+  const longest = (list) => list.map((m, i) => ({ m, i }))
     .sort((a, b) => ((Number(b.m.windowMs) || -1) - (Number(a.m.windowMs) || -1)) || a.i - b.i)[0]?.m || null;
+  const longs = pct.filter((m) => !isShort(m));
+  const long = longest(longs.filter((m) => m.scope !== "model")) || longest(longs);
   return { short, long };
 }
-/** The windows a compact line shows, short first. */
-export const compactMetrics = (p) => { const { short, long } = compactSlots(p); return [short, long].filter(Boolean); };
+/**
+ * The windows a compact line shows, short first; then (M-2815, the user) each per-model weekly ("Fable (weekly)") the
+ * server sends, on its own labelled bar — a per-model window under two days stays in the full card.
+ */
+export const compactMetrics = (p) => {
+  const { short, long } = compactSlots(p);
+  const models = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed && m.scope === "model"
+    && m !== long && Number(m.windowMs) >= TWO_DAYS);
+  return [short, long, ...models].filter(Boolean);
+};
+/** A per-model window's tag on the compact line: the model's name ("Fable"), the window's full name in its tooltip. */
+export function modelTag(m) {
+  const arg = m && m.labelI18n && Array.isArray(m.labelI18n.args) ? m.labelI18n.args[0] : null;
+  return typeof arg === "string" && arg ? arg : String((m && m.label) || "").replace(/\s*\(weekly\)$/i, "");
+}
 /**
  * The logins grouped by provider for the compact view (nine logins, five of them Claude's: the provider once, then a
  * line per login), in the order the person set (↑↓): a group where its first login is, its logins in their order.
@@ -206,13 +217,14 @@ export function CompactRow({ p, onExpand }) {
   const say = stale ? stale.mark : note || tn("usage.no_data");
   const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
   const name = title.profile || title.base;
-  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
+  const models = !pools && metrics.some((m) => m.scope === "model");
+  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
     <span class="u-crow-head"><span class="u-crow-name">${name}</span>
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
       ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
         title=${x.metrics.map((m) => { const c = resetClock(m); return `${usageText(m.label, m.labelI18n)}: ${pctOf(m).toFixed(0)}%${c ? ` (${c})` : ""}`; }).join(" · ")} />`)
-      : metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
+      : metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} tag=${m.scope === "model" ? modelTag(m) : undefined} />`)
       : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
   </button>`;
 }
