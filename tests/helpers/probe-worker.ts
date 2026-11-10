@@ -7,28 +7,34 @@ export class FakeProbeWorker extends EventEmitter {
   static workers: FakeProbeWorker[] = [];
   static answer: ((input: BackendProbeInput) => unknown) | undefined;
   static constructionError: Error | undefined;
+  private disposed = false;
+  readonly exited: Promise<void>;
   readonly input: BackendProbeInput;
   terminate = vi.fn<() => Promise<number>>().mockResolvedValue(0);
 
   constructor(_entry: unknown, readonly options: { workerData: BackendProbeInput }) {
     super();
     if (FakeProbeWorker.constructionError) throw FakeProbeWorker.constructionError;
+    this.exited = new Promise(resolve => this.once("exit", () => resolve()));
     this.input = options.workerData;
     FakeProbeWorker.workers.push(this);
     if (FakeProbeWorker.answer) {
       try {
         const answer = FakeProbeWorker.answer(this.input);
         void Promise.resolve(answer).then(
-          result => this.emit("message", { ok: true, result }),
-          error => this.emit("message", { ok: false, error: String(error) }),
+          result => this.send({ ok: true, result }),
+          error => this.send({ ok: false, error: String(error) }),
         );
       } catch (error) {
-        queueMicrotask(() => this.emit("message", { ok: false, error: String(error) }));
+        queueMicrotask(() => this.send({ ok: false, error: String(error) }));
       }
     }
   }
 
-  reply(result: BackendProbeResult | null): void { this.emit("message", { ok: true, result }); }
+  private send(message: unknown): void { if (!this.disposed) this.emit("message", message); }
+  reply(result: BackendProbeResult | null): void { this.send({ ok: true, result }); }
+  /** Shared teardown fences callbacks whose fake answer promise outlives the test. */
+  dispose(): void { this.disposed = true; this.removeAllListeners(); }
   static reset(): void {
     this.workers = [];
     this.answer = undefined;

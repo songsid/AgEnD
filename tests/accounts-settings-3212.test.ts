@@ -13,7 +13,6 @@ import yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Saving an account also refreshes its model catalog (#3530). These Settings
 // fixtures exercise the save/Apply boundary, never a real backend probe isolate.
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 import { FakeProbeWorker } from "./helpers/probe-worker.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest } from "../src/settings-api.js";

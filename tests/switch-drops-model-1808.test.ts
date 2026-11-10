@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 // This file's own AGEND_HOME (see backend-command-1806.test.ts): the cli-env cache must not race another file's.
 process.env.AGEND_HOME = mkdtempSync(join(process.env.AGEND_HOME as string, "switch-1808-home-"));
-vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
   rotateLogIfNeeded: vi.fn(),
